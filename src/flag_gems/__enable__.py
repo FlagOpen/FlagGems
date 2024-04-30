@@ -8,6 +8,7 @@ from .div import div
 from .dropout import native_dropout
 from .exp import exp, exp_out
 from .gelu import gelu
+from .groupnorm import group_norm
 from .layernorm import layer_norm
 from .mean import mean
 from .mm import mm
@@ -38,6 +39,7 @@ def enable(lib=aten_lib):
     lib.impl("exp", exp, "CUDA")
     lib.impl("exp.out", exp_out, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
+    lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
     lib.impl("mean", mean, "CUDA")
     lib.impl("mm", mm, "CUDA")

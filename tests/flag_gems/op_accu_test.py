@@ -315,6 +315,86 @@ def test_accuracy_gelu(shape, dtype):
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
+# Not support N != 1 when backprop
+# Not support C != num_groups
+@pytest.mark.parametrize(
+   "N, C, H, W, num_groups", [
+    # CIFAR-10
+    (1, 3, 32, 32, 3),
+    (1, 32, 32, 32, 16),
+    # ResNet
+    (1, 3, 224, 224, 3),
+    # 512x512 size picture
+    (1, 3, 512, 512, 3),
+    ]
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
+    def group_norm_torch_manual(x, num_groups, weight=None, bias=None, eps=1e-5):
+        N, C, H, W = x.shape
+        group_size = C // num_groups
+        # Reshape
+        x = x.view(N, num_groups, group_size, H, W)
+        x = x.reshape(N * num_groups, -1)
+
+        # Mean and Rstd
+        mean = x.mean(dim=1, keepdim=True)
+        var = x.var(dim=1, unbiased=False, keepdim=True)
+        rstd = 1 / torch.sqrt(var + eps)
+
+        # Norm
+        x = (x - mean) * rstd
+        x = x.view(N, C, H, W)
+        if weight is not None:
+            weight = weight.view(1, C, 1, 1)
+            x = x * weight
+        if bias is not None:
+            bias = bias.view(1, C, 1, 1)
+            x = x + bias
+
+        # Reshape
+        mean = mean.reshape(N, num_groups)
+        rstd = rstd.reshape(N, num_groups)
+        return x, mean, rstd
+    
+    HW = H*W
+    inp = torch.randn(size=(N,C,H,W), dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    eps = 1e-5
+
+    ref_inp = inp.to(torch.float64)
+    ref_weight = weight.to(torch.float64)
+    ref_bias = bias.to(torch.float64)
+
+    (ref_out, ref_mean, ref_rstd) = group_norm_torch_manual(
+        ref_inp,
+        num_groups,
+        weight=ref_weight,
+        bias=ref_bias,
+        eps=eps,
+    )
+    
+    (res_out, res_mean, res_rstd) = flag_gems.group_norm(
+        inp, weight, bias, N, C, HW, num_groups, eps
+    )
+
+    allclose_with_dtype(res_mean, ref_mean, dtype)
+    allclose_with_dtype(res_rstd, ref_rstd, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight, ref_bias), out_grad.to(torch.float64)
+    )
+    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_out, (inp, weight, bias), out_grad
+    )
+    group_size = C // num_groups
+    allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size*HW)
+    allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=group_size*HW)
+    allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=group_size*HW)
+
 
 @pytest.mark.parametrize(
     "shape",
@@ -373,7 +453,6 @@ def test_accuracy_layernorm(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mean(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
-
     ref_out = torch.mean(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mean(inp)
