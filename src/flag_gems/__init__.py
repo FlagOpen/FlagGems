@@ -7,6 +7,7 @@ from .dropout import native_dropout
 from .div import div
 from .exp import exp
 from .gelu import gelu
+from .groupnorm import group_norm
 from .layernorm import layer_norm
 from .mean import mean
 from .mm import mm
@@ -35,6 +36,7 @@ __all__ = [
     "native_dropout",
     "exp",
     "gelu",
+    "group_norm"
     "layer_norm",
     "mean",
     "mm",
