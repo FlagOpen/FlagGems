@@ -53,6 +53,9 @@ class NameCollector(ast.NodeVisitor):
     def visit_AugAssign(self, node):
         self.names.add(node.target.id)
 
+    def visit_AnnAssign(self, node):
+        self.names.add(node.target.id)
+
 
 def inline_function(f: JITFunction, input_names: List[str],
                     output_names: List[str], namespace: _Namespace):

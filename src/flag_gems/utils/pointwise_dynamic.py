@@ -212,6 +212,7 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    code.writeline("import math")
     code.writeline("import torch")
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
@@ -225,7 +226,10 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
 
 class PointwiseDynamicFunction:
-
+    """Utility to generate function for general pointwise operation. It generate wrapper & JITFunction
+    which are specialized according to the rank of the task space(the broadcasted shape of all input tensors).
+    The generated code are written out to the cache directory (defaults to ~/.flaggems).
+    """
     def __init__(self, scalar_fn: JITFunction):
         self.scalar_fn = scalar_fn
         self.scalar_fn_cache_key = scalar_fn.cache_key

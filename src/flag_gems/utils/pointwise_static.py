@@ -192,6 +192,7 @@ def generate_pointwise_kernel(input_strides: List[Stride],
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
+    code.writeline("import math")
     code.writeline("import torch")
     code.writeline("import triton")
     code.writeline("from triton import language as tl")

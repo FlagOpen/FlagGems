@@ -1,3 +1,4 @@
+import math
 import torch
 import triton
 import triton.language as tl
@@ -6,7 +7,8 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 @pointwise_dynamic
 @triton.jit
 def sigmoid_forward(x):
-    return 1 / (1 + tl.exp(-x.to(tl.float32)))
+    log2e: tl.constexpr = math.log2(math.e)
+    return 1 / (1 + tl.math.exp2(-x.to(tl.float32) * log2e))
 
 
 @pointwise_dynamic
