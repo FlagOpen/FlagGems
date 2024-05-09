@@ -105,7 +105,6 @@ def add(A, B, *, alpha=1):
     if __debug__:
         print("GEMS ADD")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        A = A.contiguous()
         O = torch.empty_like(A)
         try:
             A, B = torch.broadcast_tensors(A, B)
@@ -113,6 +112,7 @@ def add(A, B, *, alpha=1):
             print(
                 f"Add: Tensor shape {A.shape} and tensor shape {B.shape} cannot broadcast to each other."
             )
+        A = A.contiguous()
         B = B.contiguous()
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
