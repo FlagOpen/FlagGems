@@ -315,6 +315,7 @@ def test_accuracy_gelu(shape, dtype):
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
+
 # Not support N != 1 when backprop
 @pytest.mark.parametrize(
    "N, C, H, W, num_groups", [
@@ -359,9 +360,9 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
         mean = mean.reshape(N, num_groups)
         rstd = rstd.reshape(N, num_groups)
         return x, mean, rstd
-    
-    HW = H*W
-    inp = torch.randn(size=(N,C,H,W), dtype=dtype, device="cuda", requires_grad=True)
+
+    HW = H * W
+    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cuda", requires_grad=True)
     weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
     bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
     eps = 1e-5
@@ -377,7 +378,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
         bias=ref_bias,
         eps=eps,
     )
-    
+
     (res_out, res_mean, res_rstd) = flag_gems.group_norm(
         inp, weight, bias, N, C, HW, num_groups, eps
     )
@@ -858,3 +859,23 @@ def test_accuracy_triu(shape, diagonal, dtype):
         res_out = torch.triu(inp, diagonal)
 
     allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dim", [-1, 0, 1, None])
+@pytest.mark.parametrize("correction", [0, 1])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_var, ref_mean = torch.var_mean(inp, dim, correction=correction, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_var, res_mean = torch.var_mean(
+            inp, dim, correction=correction, keepdim=keepdim
+        )
+
+    allclose_with_dtype(res_mean, ref_mean, dtype)
+    allclose_with_dtype(res_var, ref_var, dtype)

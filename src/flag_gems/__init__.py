@@ -23,6 +23,7 @@ from .sigmoid import sigmoid
 from .sub import sub
 from .triu import triu
 from .softmax import softmax
+from .var_mean import var_mean
 from .__enable__ import enable, use_gems
 
 __all__ = [
@@ -37,7 +38,7 @@ __all__ = [
     "native_dropout",
     "exp",
     "gelu",
-    "group_norm"
+    "group_norm",
     "layer_norm",
     "mean",
     "mm",
@@ -53,4 +54,5 @@ __all__ = [
     "softmax",
     "sub",
     "triu",
+    "var_mean",
 ]

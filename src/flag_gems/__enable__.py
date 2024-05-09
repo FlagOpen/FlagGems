@@ -24,6 +24,7 @@ from .sigmoid import sigmoid
 from .sub import sub
 from .triu import triu
 from .softmax import softmax
+from .var_mean import var_mean
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -55,6 +56,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("triu", triu, "CUDA")
     lib.impl("softmax.int", softmax, "AutogradCUDA")
+    lib.impl("var_mean.correction", var_mean, "CUDA")
 
 
 class use_gems:
