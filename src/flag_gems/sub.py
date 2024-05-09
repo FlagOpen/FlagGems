@@ -151,7 +151,6 @@ def sub(A, B, *, alpha=1):
     if __debug__:
         print("GEMS SUB")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        O = torch.empty_like(A)
         try:
             A, B = torch.broadcast_tensors(A, B)
         except RuntimeError as e:
@@ -160,6 +159,7 @@ def sub(A, B, *, alpha=1):
             )
         A = A.contiguous()
         B = B.contiguous()
+        O = torch.empty_like(A)
         M = A.numel()
         grid_fn = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
         sub_kernel[grid_fn](A, B, alpha, O, M)
