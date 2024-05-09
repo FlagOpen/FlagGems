@@ -2,7 +2,7 @@ from typing import List
 import ast
 
 from triton.runtime import JITFunction
-from torch.fx.graph import _Namespace
+from flag_gems.utils.code_utils import NameSpace
 
 
 class Rename(ast.NodeTransformer):
@@ -58,7 +58,7 @@ class NameCollector(ast.NodeVisitor):
 
 
 def inline_function(f: JITFunction, input_names: List[str],
-                    output_names: List[str], namespace: _Namespace):
+                    output_names: List[str], namespace: NameSpace):
     nc = NameCollector()
     ast_tree = ast.parse(f.src)
     nc.visit(ast_tree)
@@ -71,7 +71,7 @@ def inline_function(f: JITFunction, input_names: List[str],
 
     # replace temporaries with auto-named names to avoid conflicts
     for name in nc.names:
-        mapping[name] = namespace.create_name(name, None)
+        mapping[name] = namespace.create_name(name)
 
     rename = Rename(mapping)
     renamed_tree = rename.visit(ast_tree)

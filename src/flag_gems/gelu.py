@@ -1,7 +1,6 @@
 import torch
 import triton
 import triton.language as tl
-from .__libentry__ import libentry
 
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 

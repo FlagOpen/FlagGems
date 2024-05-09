@@ -3,7 +3,6 @@ import importlib
 from typing import List, Callable, Mapping
 
 import torch
-from torch._inductor.utils import IndentedBuffer
 import triton
 from triton.runtime.jit import JITFunction
 from triton import language as tl
@@ -11,7 +10,7 @@ from triton import language as tl
 from flag_gems.utils.shape_utils import broadcast_shapes
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.inliner import inline_function
-
+from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 def generate_pointwise_wrapper(
     inputs: List[torch.Tensor],
@@ -128,27 +127,37 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
 
+    function_ns = NameSpace()
     # signature
     with code.indent():
         input_parameters = [f"in{i}_ptr" for i in range(num_inputs)]
         output_parameters = [f"out{i}_ptr" for i in range(num_outputs)]
         ptr_arguments = ", ".join(chain(input_parameters, output_parameters))
         code.writeline(f"{ptr_arguments},")
+        for arg_name in ptr_arguments:
+            function_ns.create_name(arg_name)
 
         for i in range(num_inputs):
+            for j in range(rank):
+                function_ns.create_name(f"stride_in{i}{j}")
             stride_args = ", ".join(f"stride_in{i}{j}: int"
                                     for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in{i}")
 
         for i in range(num_outputs):
+            for j in range(rank):
+                function_ns.create_name(f"stride_out{i}{j}")
             stride_args = ", ".join(f"stride_out{i}{j}: int"
                                     for j in range(rank))
             code.writeline(f"{stride_args}, # strides for out{i}")
 
         task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+        for i in range(rank):
+            function_ns.create_name(f"s{i}")
         code.writeline(f"{task_space_args}, # task_space")
 
         code.writeline("tile_size: tl.constexpr,")
+        function_ns.create_name("tile_size")
 
     code.writeline("):")
 
@@ -157,26 +166,34 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
         code.writeline("# task id & masking")
         pid_stmt = "pid = tl.program_id(0)"
         code.writeline(pid_stmt)
+        function_ns.create_name("pid")
+
         # tile size
         tid_stmt = "tid = pid * tile_size + tl.arange(0, tile_size)"
         code.writeline(tid_stmt)
+        function_ns.create_name("tid")
+
         # masking
         volume_expr: str = " * ".join(f"s{i}" for i in range(rank))
         num_task_stmt: str = f"num_tasks = {volume_expr}"
         code.writeline(num_task_stmt)
+        function_ns.create_name("num_tasks")
+
         mask_stmt: str = "mask = tid < num_tasks"
         code.writeline(mask_stmt)
+        function_ns.create_name("mask")
         code.newline()
 
         # reconstruct multi index
         code.writeline("# multi index recontruction")
         for i in reversed(range(rank)):
             code.writeline(f"i{i} = tid % s{i}")
+            function_ns.create_name(f"{i}")
             if i > 0:
                 code.writeline(f"tid //= s{i}")
         code.newline()
 
-        function_ns = torch.fx.graph._Namespace()
+
         # loads
         code.writeline("# loads")
         for i in range(num_inputs):
@@ -184,7 +201,7 @@ def generate_pointwise_kernel(num_inputs: int, num_outputs: int, rank: int,
                                         for j in range(rank))
             ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
             load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
-            function_ns.create_name(f"in{i}", None)  # add to the namespace
+            function_ns.create_name(f"in{i}")  # add to the namespace
             code.writeline(load_stmt)
         code.newline()
 
@@ -249,7 +266,7 @@ class PointwiseDynamicFunction:
 
             file_name = f"pointwise_dynamic_{self.scalar_fn_cache_key}_rank_{key}.py"
             with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getrawvalue())
+                f.write(code.getvalue())
                 f.close()
 
             # load

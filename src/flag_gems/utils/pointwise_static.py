@@ -4,13 +4,13 @@ from typing import List, Callable, Mapping
 import hashlib
 
 import torch
-from torch._inductor.utils import IndentedBuffer
 import triton
 from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.shape_utils import broadcast_shapes, broadcasted_stride, c_contiguous_stride, volume, Shape, Stride
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.inliner import inline_function
+from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 
 def generate_pointwise_wrapper(
@@ -123,14 +123,19 @@ def generate_pointwise_kernel(input_strides: List[Stride],
     num_outputs = len(output_strides)
     rank = len(task_space)
 
+    function_ns = NameSpace()
+
     # signature
     with code.indent():
         input_parameters = [f"in{i}_ptr" for i in range(num_inputs)]
         output_parameters = [f"out{i}_ptr" for i in range(num_outputs)]
         ptr_arguments = ", ".join(chain(input_parameters, output_parameters))
         code.writeline(f"{ptr_arguments},")
+        for arg_name in ptr_arguments:
+            function_ns.create_name(arg_name)
 
         code.writeline("tile_size: tl.constexpr,")
+        function_ns.create_name("tile_size")
 
     code.writeline("):")
 
@@ -140,23 +145,26 @@ def generate_pointwise_kernel(input_strides: List[Stride],
         code.writeline("# task id & masking")
         pid_stmt = "pid = tl.program_id(0)"
         code.writeline(pid_stmt)
+        function_ns.create_name("pid")
         # tile size
         tid_stmt = "tid = pid * tile_size + tl.arange(0, tile_size)"
         code.writeline(tid_stmt)
+        function_ns.create_name("tid")
         # masking
         mask_stmt: str = f"mask = tid < {num_tasks}"
         code.writeline(mask_stmt)
+        function_ns.create_name("mask")
         code.newline()
 
         # reconstruct multi index
         code.writeline("# multi index recontruction")
         for i in reversed(range(rank)):
             code.writeline(f"i{i} = tid % {task_space[i]}")
+            code.writeline(f"i{i}")
             if i > 0:
                 code.writeline(f"tid //= {task_space[i]}")
         code.newline()
 
-        function_ns = torch.fx.graph._Namespace()
         # loads
         code.writeline("# loads")
         for i in range(num_inputs):
@@ -164,7 +172,7 @@ def generate_pointwise_kernel(input_strides: List[Stride],
                                         for j in range(rank))
             ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
             load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
-            function_ns.create_name(f"in{i}", None)  # add to the namespace
+            function_ns.create_name(f"in{i}")  # add to the namespace
             code.writeline(load_stmt)
         code.newline()
 
@@ -227,7 +235,7 @@ class PointwiseStaticFunction:
 
             file_name = f"pointwise_static_{self.scalar_fn_cache_key}_spec_{key}.py"
             with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getrawvalue())
+                f.write(code.getvalue())
                 f.close()
 
             # load

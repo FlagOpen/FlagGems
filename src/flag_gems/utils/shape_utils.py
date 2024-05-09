@@ -95,10 +95,8 @@ def volume(shape: Shape) -> int:
 def is_valid_perm(perm: Perm) -> bool:
     r = len(perm)
     sorted_axes = sorted(perm)
-    if sorted_axes[0] != 0:
-        return False
-    for i in range(1, r):
-        if sorted_axes[i] != (sorted_axes[i - 1] + 1):
+    for i in range(r):
+        if sorted_axes[i] != i:
             return False
     return True
 
