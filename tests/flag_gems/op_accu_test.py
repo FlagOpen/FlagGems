@@ -467,6 +467,22 @@ def test_accuracy_mean(shape, dtype):
 
 @pytest.mark.parametrize(
     "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_meandim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_out = torch.mean(inp.to(torch.float64), dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
     [
         (256, 256, 256),
         (1024, 1024, 1024),
@@ -745,6 +761,7 @@ def test_accuracy_sigmoid(shape, dtype):
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, out_grad.to(torch.float64))
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     allclose_with_dtype(res_in_grad, ref_in_grad, dtype)
+
 
 @pytest.mark.parametrize(
     "shape",

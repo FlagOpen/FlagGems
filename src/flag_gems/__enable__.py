@@ -10,7 +10,7 @@ from .exp import exp, exp_out
 from .gelu import gelu
 from .groupnorm import group_norm
 from .layernorm import layer_norm
-from .mean import mean
+from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
 from .pow_scalar import pow_scalar
@@ -44,6 +44,7 @@ def enable(lib=aten_lib):
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
     lib.impl("mean", mean, "CUDA")
+    lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul.Tensor", mul, "CUDA")
     lib.impl("pow.Scalar", pow_scalar, "CUDA")

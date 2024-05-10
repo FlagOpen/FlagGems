@@ -9,7 +9,7 @@ from .exp import exp
 from .gelu import gelu
 from .groupnorm import group_norm
 from .layernorm import layer_norm
-from .mean import mean
+from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
 from .pow_scalar import pow_scalar
@@ -42,6 +42,7 @@ __all__ = [
     "group_norm",
     "layer_norm",
     "mean",
+    "mean_dim",
     "mm",
     "mul",
     "pow_scalar",
