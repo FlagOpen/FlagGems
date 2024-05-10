@@ -135,24 +135,16 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
     if dim is None:
-        dim = 0
-        M = 1
-        N = x.numel()
-        shape = [1] * x.ndim
-        x = x.flatten()
-    else:
-        shape = list(x.shape)
-        N = 1
-        order = list(range(x.ndim))
-        for i in dim:
-            i = i % x.ndim
-            order.remove(i)
-            order.append(i)
-            N *= shape[i]
-            shape[i] = 1
-        x = x.permute(order)
-        M = x.numel() // N
-    x = x.contiguous()
+        dim = list(range(x.ndim))
+    shape = list(x.shape)
+    dim = [d % x.ndim for d in dim]
+    order = [i for i in range(x.ndim) if i not in dim] + dim
+    x = x.permute(order).contiguous()
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
     if ord == 2:
@@ -166,5 +158,5 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     else:
         v_norm_kernel[grid](x, out, M, N, ord)
     if not keepdim:
-        out = out.squeeze()
+        out = out.squeeze(dim=dim)
     return out

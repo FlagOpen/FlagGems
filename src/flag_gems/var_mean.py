@@ -68,30 +68,22 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         correction = 1.0
 
     if dim is None:
-        dim = 0
-        M = 1
-        N = x.numel()
-        shape = [1] * x.ndim
-        x = x.flatten()
-    else:
-        shape = list(x.shape)
-        N = 1
-        order = list(range(x.ndim))
-        for i in dim:
-            i = i % x.ndim
-            order.remove(i)
-            order.append(i)
-            N *= shape[i]
-            shape[i] = 1
-        x = x.permute(order)
-        M = x.numel() // N
-    x = x.contiguous()
+        dim = list(range(x.ndim))
+    shape = list(x.shape)
+    dim = [d % x.ndim for d in dim]
+    order = [i for i in range(x.ndim) if i not in dim] + dim
+    x = x.permute(order).contiguous()
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = x.numel() // N
     var = torch.empty(shape, dtype=x.dtype, device=x.device)
     mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
     var_mean_kernel[grid](x, var, mean, M, N, correction)
     if not keepdim:
-        var = var.squeeze()
-        mean = mean.squeeze()
+        var = var.squeeze(dim=dim)
+        mean = mean.squeeze(dim=dim)
     return var, mean
