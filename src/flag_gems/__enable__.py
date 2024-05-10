@@ -25,6 +25,7 @@ from .sub import sub
 from .triu import triu
 from .softmax import softmax
 from .var_mean import var_mean
+from .vector_norm import vector_norm
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -57,6 +58,7 @@ def enable(lib=aten_lib):
     lib.impl("triu", triu, "CUDA")
     lib.impl("softmax.int", softmax, "AutogradCUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
+    lib.impl("linalg_vector_norm", vector_norm, "CUDA")
 
 
 class use_gems:
