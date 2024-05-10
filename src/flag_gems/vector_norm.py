@@ -141,12 +141,17 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         shape = [1] * x.ndim
         x = x.flatten()
     else:
-        dim = dim[0] % x.ndim
-        x = x.transpose(dim, -1)
-        N = x.shape[-1]
-        M = x.numel() // N
         shape = list(x.shape)
-        shape[-1] = 1
+        N = 1
+        order = list(range(x.ndim))
+        for i in dim:
+            i = i % x.ndim
+            order.remove(i)
+            order.append(i)
+            N *= shape[i]
+            shape[i] = 1
+        x = x.permute(order)
+        M = x.numel() // N
     x = x.contiguous()
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
@@ -160,7 +165,6 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         l0_norm_kernel[grid](x, out, M, N)
     else:
         v_norm_kernel[grid](x, out, M, N, ord)
-    out = out.transpose(dim, -1)
     if not keepdim:
         out = out.squeeze()
     return out

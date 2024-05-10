@@ -867,7 +867,7 @@ def test_accuracy_triu(shape, diagonal, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
-@pytest.mark.parametrize("dim", [-1, 0, 1, None])
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
 @pytest.mark.parametrize("correction", [0, 1])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
@@ -888,7 +888,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
-@pytest.mark.parametrize("dim", [-1, 0, 1, None])
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):

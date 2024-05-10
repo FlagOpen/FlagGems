@@ -74,20 +74,23 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         shape = [1] * x.ndim
         x = x.flatten()
     else:
-        dim = dim[0] % x.ndim
-        x = x.transpose(dim, -1)
-        N = x.shape[-1]
-        M = x.numel() // N
         shape = list(x.shape)
-        shape[-1] = 1
+        N = 1
+        order = list(range(x.ndim))
+        for i in dim:
+            i = i % x.ndim
+            order.remove(i)
+            order.append(i)
+            N *= shape[i]
+            shape[i] = 1
+        x = x.permute(order)
+        M = x.numel() // N
     x = x.contiguous()
     var = torch.empty(shape, dtype=x.dtype, device=x.device)
     mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
     var_mean_kernel[grid](x, var, mean, M, N, correction)
-    var = var.transpose(dim, -1)
-    mean = mean.transpose(dim, -1)
     if not keepdim:
         var = var.squeeze()
         mean = mean.squeeze()
