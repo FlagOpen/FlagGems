@@ -10,6 +10,7 @@ if [ -z "$commit" ]; then
 fi
 
 if [[ `pwd` != $pytorch_dir ]]; then
+  mkdir -p $pytorch_dir
   cd $pytorch_dir
 fi
 
