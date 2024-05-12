@@ -1,0 +1,65 @@
+name: nightly
+
+on:
+  workflow_dispatch:
+    inputs:
+      triton_nightly:
+        description: installing triton nightly (off by default)?
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: 15 7 * * 1-5
+  push:
+    branches:
+      - ci
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+jobs:
+  checkout:
+    name: checkout
+    runs-on: [self-hosted]
+    steps:
+      - name: checkout FlagGems repos
+        uses: actions/checkout@v4
+
+  install-triton:
+    name: install triton
+    runs-on: [self-hosted]
+    steps:
+      - name: install stable
+        id: install-triton-stable
+        if: ${{ inputs.triton_nightly == false }}
+        run: |
+          conda run -n py_3.10 pip install --progress-bar off triton
+      - name: install nightly
+        id: install-triton-nightly
+        if: ${{ inputs.triton_nightly == true }}
+        run: |
+          conda run -n py_3.10 pip install --progress-bar off -U --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/Triton-Nightly/pypi/simple/ triton
+
+  test:
+    name: run acc tests
+    runs-on: [self-hosted]
+    needs: [checkout, install-triton]
+    steps:
+      - name: accuracy test
+        id: acc-test
+        run: |
+          pytest -v tests/flag_gems/op_accu_test.py
+  
+  clean-up:
+    name: clean up tests
+    runs-on: [self-hosted]
+    needs: test
+    steps:
+      - name: clean up repos dirs
+        id: clean-up
+        working-directory: /workspace/
+        run: |
+          rm -rf FlagGems
