@@ -125,8 +125,6 @@ def group_norm_backward_kernel(
     num_groups,
     group_size,
     grad_x,
-    dW,
-    dB,
     C,
     HW,
     BLOCK_GROUP_SIZE: tl.constexpr,
@@ -213,31 +211,83 @@ def group_norm_backward_kernel(
     grad_X = grad_centered_mean + grad_mean
     tl.store(grad_x_block_ptr, grad_X.to(X_val.dtype), boundary_check=(0, 1))
 
-    norm = centered_mean * rstd
-    grad_weight = tl.sum(norm * grad_Y, 1)
-    offset = batch * C + group * group_size
-    dW_block_ptr = tl.make_block_ptr(
-        dW + offset,
-        shape=(group_size,),
-        strides=(1,),
+
+@libentry()
+@triton.jit
+def weight_bias_backward_kernel(
+    dY,
+    X,
+    Mean,
+    Rstd,
+    dW,
+    dB,
+    num_groups,
+    N,
+    C,
+    HW,
+    BLOCK_N: tl.constexpr,
+    BLOCK_HW: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    grad_y_ptr = tl.make_block_ptr(
+        dY + pid * HW,
+        shape=(N, HW),
+        strides=(C * HW, 1),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, BLOCK_HW),
+        order=(1, 0),
+    )
+    x_ptr = tl.make_block_ptr(
+        X + pid * HW,
+        shape=(N, HW),
+        strides=(C * HW, 1),
+        offsets=(0, 0),
+        block_shape=(BLOCK_N, BLOCK_HW),
+        order=(1, 0),
+    )
+    mean_ptr = tl.make_block_ptr(
+        Mean + pid % num_groups,
+        shape=(N,),
+        strides=(num_groups,),
         offsets=(0,),
-        block_shape=(BLOCK_GROUP_SIZE,),
+        block_shape=(BLOCK_N,),
         order=(0,),
     )
-
-    tl.store(dW_block_ptr, grad_weight.to(X_val.dtype), boundary_check=(0,))
-
-    grad_bias = tl.sum(grad_Y, 1)
-    dB_block_ptr = tl.make_block_ptr(
-        dB + offset,
-        shape=(group_size,),
-        strides=(1,),
+    rstd_ptr = tl.make_block_ptr(
+        Rstd + pid % num_groups,
+        shape=(N,),
+        strides=(num_groups,),
         offsets=(0,),
-        block_shape=(BLOCK_GROUP_SIZE,),
+        block_shape=(BLOCK_N,),
         order=(0,),
     )
+    dW_ptr = tl.make_block_ptr(
+        dW + pid,
+        shape=(1,),
+        strides=(1,),
+        offsets=(0,),
+        block_shape=(1),
+        order=(0,),
+    )
+    dB_ptr = tl.make_block_ptr(
+        dB + pid,
+        shape=(1,),
+        strides=(1,),
+        offsets=(0,),
+        block_shape=(1),
+        order=(0,),
+    )
+    grad_y = tl.load(grad_y_ptr, boundary_check=(0, 1))
+    x = tl.load(x_ptr, boundary_check=(0, 1))
+    mean = tl.load(mean_ptr, boundary_check=(0,))
+    mean = tl.expand_dims(mean, 1)
+    rstd = tl.load(rstd_ptr, boundary_check=(0,))
+    rstd = tl.expand_dims(rstd, 1)
 
-    tl.store(dB_block_ptr, grad_bias.to(X_val.dtype), boundary_check=(0,))
+    dB = tl.sum(grad_y)
+    dW = tl.sum((x - mean) * rstd * grad_y)
+    tl.store(dW_ptr, dW.to(x.dtype), boundary_check=(0,))
+    tl.store(dB_ptr, dB.to(x.dtype), boundary_check=(0,))
 
 
 class GroupNorm(torch.autograd.Function):
@@ -303,12 +353,24 @@ class GroupNorm(torch.autograd.Function):
             num_groups,
             group_size,
             x_grad,
-            weight_grad,
-            bias_grad,
             C,
             HW,
             BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
             BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+        )
+        weight_bias_backward_kernel[(C, 1, 1)](
+            y_grad,
+            x,
+            mean,
+            rstd,
+            weight_grad,
+            bias_grad,
+            num_groups,
+            N,
+            C,
+            HW,
+            BLOCK_N = triton.next_power_of_2(N),
+            BLOCK_HW = triton.next_power_of_2(HW),
         )
         return x_grad, weight_grad, bias_grad, None, None, None, None, None
 

@@ -316,7 +316,6 @@ def test_accuracy_gelu(shape, dtype):
     allclose_with_dtype(res_out, ref_out, dtype)
 
 
-# Not support N != 1 when backprop
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -327,13 +326,9 @@ def test_accuracy_gelu(shape, dtype):
         (1, 64, 32, 32, 16),
         (1, 64, 32, 32, 32),
         (1, 64, 32, 32, 64),
-        # ResNet
-        # (1, 3, 224, 224, 3),
-        # 512x512 size picture
-        # (1, 3, 512, 512, 3),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     def group_norm_torch_manual(x, num_groups, weight=None, bias=None, eps=1e-5):
         N, C, H, W = x.shape
@@ -397,8 +392,8 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     )
     group_size = C // num_groups
     allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
-    # allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N*HW)
-    # allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N*HW)
+    allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N*HW)
+    allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N*HW)
 
 
 @pytest.mark.parametrize(
