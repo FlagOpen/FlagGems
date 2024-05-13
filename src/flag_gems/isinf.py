@@ -1,18 +1,17 @@
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
 @pointwise_dynamic
 @triton.jit
-def rsqrt_func(x):
-    return 1.0 / tl.sqrt(x.to(tl.float32))
+def isinf_func(x):
+    return tl.math.isinf(x.to(tl.float32))
 
 
-def rsqrt(A):
+def isinf(A):
     if __debug__:
-        print("GEMS RSQRT")
-    O = rsqrt_func(A)
+        print("GEMS ISINF")
+    O = isinf_func(A)
     return O
