@@ -100,10 +100,11 @@ def min(inp):
     min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
     min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
- 
+
+
 def min_dim(inp, dim=None, keepdim=False):
     if __debug__:
-        print("GEMS min")
+        print("GEMS min_dim")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

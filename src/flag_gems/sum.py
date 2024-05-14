@@ -74,7 +74,7 @@ def sum_kernel(
     mask = m_offset[:, None, None] < M and n_offset[None, :, None] < N
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
-    result_index = tl.sum(inp_vals)
+    result_index = tl.sum(inp_vals, axis=1)
 
     out_ptrs = out + offset_index
     tl.store(out_ptrs, result_index, mask=mask1)
@@ -97,11 +97,12 @@ def sum(inp, *, dtype=None):
     sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
+
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     if __debug__:
-        print("GEMS sum")
-    dim = dim[0] # todo dim list
-        
+        print("GEMS sum_dim")
+    dim = dim[0]  # todo dim list
+
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

@@ -101,6 +101,7 @@ def max(inp):
     max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
+
 def max_dim(inp, dim=None, keepdim=False):
     if __debug__:
         print("GEMS max_dim")
