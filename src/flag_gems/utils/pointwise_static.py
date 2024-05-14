@@ -288,7 +288,7 @@ if __name__ == "__main__":
         c = a + b
         return tl.sigmoid(c)
 
-    a = torch.randn(4, 4, device="cuda")
+    a = torch.randn(4, 4, device="mlu")
     b = torch.randn_like(a)
     # print(a.shape, a.stride())
 

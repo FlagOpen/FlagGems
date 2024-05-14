@@ -9,6 +9,16 @@ RESOLUTION = {
     torch.int64: 1.3e-6,
 }
 
+DEVICE = "cpu"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+else:
+    try:
+        import torch_mlu
+        if torch.mlu.is_available():
+            DEVICE = "mlu"
+    except ImportError:
+        ...
 
 def allclose_with_dtype(a, b, dtype, equal_nan=False, reduce_dim=1):
     b = b.to(dtype)
@@ -23,7 +33,7 @@ def allclose_with_dtype(a, b, dtype, equal_nan=False, reduce_dim=1):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_abs(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.abs(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -39,8 +49,8 @@ def test_accuracy_abs(shape, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_add(shape, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -60,8 +70,8 @@ def test_accuracy_add(shape, alpha, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_add_broadcast(shape_a, shape_b, alpha, dtype):
-    inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape_a, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape_b, dtype=dtype, device=DEVICE)
 
     ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -81,7 +91,7 @@ def test_accuracy_add_broadcast(shape_a, shape_b, alpha, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = scalar
 
     ref_out = torch.add(inp1.to(torch.float64), inp2, alpha=alpha)
@@ -103,7 +113,7 @@ def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.add(inp1, inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -126,9 +136,9 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("beta", [1.0, 0.5])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
-    mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
-    mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
-    bias = torch.randn((N,), dtype=dtype, device="cuda")
+    mat1 = torch.randn((M, K), dtype=dtype, device=DEVICE)
+    mat2 = torch.randn((K, N), dtype=dtype, device=DEVICE)
+    bias = torch.randn((N,), dtype=dtype, device=DEVICE)
 
     ref_out = torch.addmm(
         bias.to(torch.float64),
@@ -149,9 +159,14 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
 def test_accuracy_bitwisenot(shape, dtype):
-    inp = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+    if DEVICE != "mlu":
+        inp = torch.randint(
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=DEVICE
+        )
+    else:
+        inp = torch.randint(
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+        ).to(DEVICE)
 
     ref_out = torch.bitwise_not(inp)
     with flag_gems.use_gems():
@@ -172,8 +187,8 @@ def test_accuracy_bitwisenot(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_bmm(batch, M, N, K, dtype):
-    tensor_A = torch.randn((batch, M, K), dtype=dtype, device="cuda")
-    tensor_B = torch.randn((batch, K, N), dtype=dtype, device="cuda")
+    tensor_A = torch.randn((batch, M, K), dtype=dtype, device=DEVICE)
+    tensor_B = torch.randn((batch, K, N), dtype=dtype, device=DEVICE)
 
     ref_out = torch.bmm(tensor_A.to(torch.float64), tensor_B.to(torch.float64))
     with flag_gems.use_gems():
@@ -188,7 +203,7 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_cos(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.cos(ref_inp)
@@ -205,7 +220,7 @@ def test_accuracy_cos(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_cumsum(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.cumsum(inp.to(torch.float64), dim=dim)
     with flag_gems.use_gems():
@@ -220,8 +235,8 @@ def test_accuracy_cumsum(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_div(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.div(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
@@ -240,8 +255,8 @@ def test_accuracy_div(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_div_broadcast(shape_a, shape_b, dtype):
-    inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape_a, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape_b, dtype=dtype, device=DEVICE)
 
     ref_out = torch.div(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
@@ -260,7 +275,7 @@ def test_accuracy_div_broadcast(shape_a, shape_b, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = scalar
 
     ref_out = torch.div(inp1.to(torch.float64), inp2)
@@ -281,7 +296,7 @@ def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
-    inp2 = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
+    inp2 = torch.randint(-5, 5, shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.div(inp1, inp2.to(torch.float64))
     with flag_gems.use_gems():
@@ -297,7 +312,7 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 def test_accuracy_dropout(shape, dtype, p):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
 
     ref_out = torch.nn.functional.dropout(inp, p, True)
     with flag_gems.use_gems():
@@ -325,7 +340,7 @@ def test_accuracy_dropout(shape, dtype, p):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_exp(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.exp(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -340,7 +355,7 @@ def test_accuracy_exp(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_gelu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.nn.functional.gelu(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -364,9 +379,9 @@ def test_accuracy_gelu(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     HW = H * W
-    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cuda", requires_grad=True)
-    weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
-    bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=DEVICE, requires_grad=True)
+    weight = torch.randn(size=(C,), dtype=dtype, device=DEVICE, requires_grad=True)
+    bias = torch.randn(size=(C,), dtype=dtype, device=DEVICE, requires_grad=True)
     eps = 1e-5
 
     ref_inp = inp.to(torch.float64)
@@ -407,7 +422,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_isinf(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp = torch.masked_fill(inp, inp > 1.0, -float("inf"))
 
     ref_out = torch.isinf(inp.to(torch.float64))
@@ -423,7 +438,7 @@ def test_accuracy_isinf(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_isnan(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp = torch.masked_fill(inp, inp > 1.0, float("nan"))
 
     ref_out = torch.isnan(inp.to(torch.float64))
@@ -444,9 +459,9 @@ def test_accuracy_layernorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
-    bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    weight = torch.randn(layer_shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    bias = torch.randn(layer_shape, dtype=dtype, device=DEVICE, requires_grad=True)
     eps = 1e-5
 
     ref_inp = inp.to(torch.float64)
@@ -489,7 +504,7 @@ def test_accuracy_layernorm(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mean(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_out = torch.mean(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.mean(inp)
@@ -505,7 +520,7 @@ def test_accuracy_mean(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_meandim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_out = torch.mean(inp.to(torch.float64), dim, keepdim)
     with flag_gems.use_gems():
         res_out = torch.mean(inp, dim, keepdim)
@@ -526,8 +541,8 @@ def test_accuracy_meandim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mm(shape, dtype):
     M, N, K = shape
-    tensor_a = torch.randn((M, K), dtype=dtype, device="cuda")
-    tensor_b = torch.randn((K, N), dtype=dtype, device="cuda")
+    tensor_a = torch.randn((M, K), dtype=dtype, device=DEVICE)
+    tensor_b = torch.randn((K, N), dtype=dtype, device=DEVICE)
 
     ref_out = torch.mm(tensor_a.to(torch.float64), tensor_b.to(torch.float64))
     with flag_gems.use_gems():
@@ -542,8 +557,8 @@ def test_accuracy_mm(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mul(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.mul(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
@@ -562,8 +577,8 @@ def test_accuracy_mul(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mul_broadcast(shape_a, shape_b, dtype):
-    inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape_a, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape_b, dtype=dtype, device=DEVICE)
 
     ref_out = torch.mul(inp1.to(torch.float64), inp2.to(torch.float64))
     with flag_gems.use_gems():
@@ -582,7 +597,7 @@ def test_accuracy_mul_broadcast(shape_a, shape_b, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = scalar
 
     ref_out = torch.mul(inp1.to(torch.float64), inp2)
@@ -603,7 +618,7 @@ def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.mul(inp1, inp2.to(torch.float64))
     with flag_gems.use_gems():
@@ -618,7 +633,7 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_neg(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.neg(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -637,7 +652,7 @@ def test_accuracy_neg(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_pow_scalar_tensor(inp, shape, dtype):
-    exponent = torch.randint(-5, 5, shape, dtype=dtype, device="cuda")
+    exponent = torch.randint(-5, 5, shape, dtype=dtype, device=DEVICE)
     ref_out = torch.pow(inp, exponent.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.pow(inp, exponent)
@@ -655,7 +670,7 @@ def test_accuracy_pow_scalar_tensor(inp, shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_pow_tensor_scalar(shape, exponent, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.pow(inp.to(torch.float64), exponent)
     with flag_gems.use_gems():
@@ -670,8 +685,8 @@ def test_accuracy_pow_tensor_scalar(shape, exponent, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_pow_tensor_tensor(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    exponent = torch.randint(-10, 10, shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    exponent = torch.randint(-10, 10, shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.pow(inp.to(torch.float64), exponent.to(torch.float64))
     with flag_gems.use_gems():
@@ -690,8 +705,8 @@ def test_accuracy_pow_tensor_tensor(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_pow_tensor_tensor_broadcast(shape_a, shape_b, dtype):
-    inp = torch.randn(shape_a, dtype=dtype, device="cuda")
-    exponent = torch.randint(-10, 10, shape_b, dtype=dtype, device="cuda")
+    inp = torch.randn(shape_a, dtype=dtype, device=DEVICE)
+    exponent = torch.randint(-10, 10, shape_b, dtype=dtype, device=DEVICE)
 
     ref_out = torch.pow(inp.to(torch.float64), exponent.to(torch.float64))
     with flag_gems.use_gems():
@@ -706,7 +721,7 @@ def test_accuracy_pow_tensor_tensor_broadcast(shape_a, shape_b, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_reciprocal(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.reciprocal(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -721,7 +736,7 @@ def test_accuracy_reciprocal(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_relu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.nn.functional.relu(ref_inp)
@@ -742,7 +757,7 @@ def test_accuracy_relu(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_rsqrt(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.rsqrt(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -758,8 +773,8 @@ def test_accuracy_rsqrt(shape, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_rsub(shape, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.rsub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -774,7 +789,7 @@ def test_accuracy_rsub(shape, alpha, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sigmoid(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.sigmoid(ref_inp)
@@ -795,7 +810,7 @@ def test_accuracy_sigmoid(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_silu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.nn.functional.silu(ref_inp)
@@ -816,7 +831,7 @@ def test_accuracy_silu(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sin(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.sin(ref_inp)
@@ -833,8 +848,8 @@ def test_accuracy_sin(shape, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sub(shape, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -854,8 +869,8 @@ def test_accuracy_sub(shape, alpha, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sub_broadcast(shape_a, shape_b, alpha, dtype):
-    inp1 = torch.randn(shape_a, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape_b, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape_a, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape_b, dtype=dtype, device=DEVICE)
 
     ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -875,7 +890,7 @@ def test_accuracy_sub_broadcast(shape_a, shape_b, alpha, dtype):
 @pytest.mark.parametrize("alpha", [0, 1, 4, -9])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = scalar
 
     ref_out = torch.sub(inp1.to(torch.float64), inp2, alpha=alpha)
@@ -897,7 +912,7 @@ def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.sub(inp1, inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
@@ -913,7 +928,7 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_softmax(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
@@ -934,7 +949,7 @@ def test_accuracy_softmax(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_tanh(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
 
     ref_inp = inp.to(torch.float64)
     ref_out = torch.tanh(ref_inp)
@@ -956,7 +971,7 @@ def test_accuracy_tanh(shape, dtype):
 @pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_triu(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_out = torch.triu(inp.to(torch.float64), diagonal)
     with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
@@ -970,7 +985,7 @@ def test_accuracy_triu(shape, diagonal, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_max(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.max(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -988,7 +1003,7 @@ def test_accuracy_max(shape, dtype):
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_max_dim(shape, dim, keepdim, dtype):
 
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.max(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1007,7 +1022,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_min(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.min(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -1025,7 +1040,7 @@ def test_accuracy_min(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_var, ref_mean = torch.var_mean(inp, dim, correction=correction, keepdim=keepdim)
     with flag_gems.use_gems():
         res_var, res_mean = torch.var_mean(
@@ -1045,7 +1060,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_min_dim(shape, dim, keepdim, dtype):
 
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.min(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1065,7 +1080,7 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sum(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.sum(inp.to(torch.float64))
     with flag_gems.use_gems():
@@ -1082,7 +1097,7 @@ def test_accuracy_sum(shape, dtype):
 @pytest.mark.parametrize("dim", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.sum(inp.to(torch.float64), dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1099,7 +1114,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_amax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.amax(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1116,7 +1131,7 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_argmax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
         res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
@@ -1129,7 +1144,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_accuracy_prod(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_out = torch.prod(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.prod(inp)
@@ -1144,7 +1159,7 @@ def test_accuracy_prod(shape, dtype):
 @pytest.mark.parametrize("dim", [0, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_prod_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
 
     ref_out = torch.prod(inp.to(torch.float64), dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1161,8 +1176,11 @@ def test_accuracy_prod_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_out = torch.linalg.vector_norm(inp.to(torch.float64), ord, dim, keepdim)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    if DEVICE != "mlu":
+        ref_out = torch.linalg.vector_norm(inp.to(torch.float64), ord, dim, keepdim)
+    else:
+        ref_out = torch.linalg.vector_norm(inp.to(torch.float32).to("cpu"), ord, dim, keepdim).to(DEVICE)
     with flag_gems.use_gems():
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 

@@ -12,7 +12,7 @@ def run_bench(op, *args, warmups=10, repetitions=1000, **kwargs):
     start = time.time()
     for i in range(repetitions):
         ref_out = op(*args, **kwargs)
-    torch.cuda.synchronize()
+    torch.mlu.synchronize()
     end = time.time()
     ms = (end - start) * 1000
     return ms
@@ -79,7 +79,7 @@ abs_bench.extra_args(M=1024)
 
 @abs_bench.perf
 def bench_abs(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -94,8 +94,8 @@ add_bench.extra_args(M=1024)
 
 @add_bench.perf
 def bench_add(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
-    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
+    inp2 = torch.randn((M, N), dtype=dtype, device="mlu")
     alpha = random.random()
     ms = run_bench(op, inp1, inp2, alpha=alpha)
     return ms
@@ -103,7 +103,7 @@ def bench_add(op, M, N, dtype):
 
 @add_bench.perf
 def bench_add_scalar(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
     inp2 = random.random()
     alpha = random.random()
     ms = run_bench(op, inp1, inp2, alpha=alpha)
@@ -120,9 +120,9 @@ addmm_bench.extra_args(alpha=1.0, beta=1.0)
 
 @addmm_bench.perf
 def bench_addmm(op, M, N, K, alpha, beta, dtype):
-    mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
-    mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
-    bias = torch.randn((N,), dtype=dtype, device="cuda")
+    mat1 = torch.randn((M, K), dtype=dtype, device="mlu")
+    mat2 = torch.randn((K, N), dtype=dtype, device="mlu")
+    bias = torch.randn((N,), dtype=dtype, device="mlu")
     ms = run_bench(op, bias, mat1, mat2, alpha=alpha, beta=beta)
     return ms
 
@@ -137,8 +137,8 @@ bmm_bench.extra_args(batch=4)
 
 @bmm_bench.perf
 def bench_bmm(op, batch, M, N, K, dtype):
-    tensor_A = torch.randn((batch, M, K), dtype=dtype, device="cuda")
-    tensor_B = torch.randn((batch, K, N), dtype=dtype, device="cuda")
+    tensor_A = torch.randn((batch, M, K), dtype=dtype, device="mlu")
+    tensor_B = torch.randn((batch, K, N), dtype=dtype, device="mlu")
     ms = run_bench(op, tensor_A, tensor_B)
     return ms
 
@@ -153,7 +153,7 @@ cumsum_bench.extra_args(M=1024, dim=1)
 
 @cumsum_bench.perf
 def bench_cumsum(op, M, N, dim, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp, dim=dim)
     return ms
 
@@ -168,15 +168,15 @@ div_bench.extra_args(M=1024)
 
 @div_bench.perf
 def bench_div(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
-    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
+    inp2 = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp1, inp2)
     return ms
 
 
 @div_bench.perf
 def bench_div_scalar(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
     inp2 = random.randint(0, 1000)
     ms = run_bench(op, inp1, inp2)
     return ms
@@ -192,7 +192,7 @@ dropout_bench.extra_args(M=1024)
 
 @dropout_bench.perf
 def bench_dropout(op, M, N, p, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp, p, True)
     return ms
 
@@ -207,7 +207,7 @@ exp_bench.extra_args(M=1024)
 
 @exp_bench.perf
 def bench_exp(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -222,7 +222,7 @@ gelu_bench.extra_args(M=1024)
 
 @gelu_bench.perf
 def bench_gelu(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -237,9 +237,9 @@ layernorm_bench.extra_args(M=1024)
 
 @layernorm_bench.perf
 def bench_layernorm(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
-    weight = torch.randn(N, dtype=dtype, device="cuda")
-    bias = torch.randn(N, dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
+    weight = torch.randn(N, dtype=dtype, device="mlu")
+    bias = torch.randn(N, dtype=dtype, device="mlu")
     eps = 1e-5
     ms = run_bench(
         op,
@@ -264,7 +264,7 @@ mean_bench.extra_args(M=1024)
 
 @mean_bench.perf
 def bench_mean(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -279,8 +279,8 @@ mm_bench.extra_args()
 
 @mm_bench.perf
 def bench_mm(op, M, N, K, dtype):
-    tensor_a = torch.randn((M, K), dtype=dtype, device="cuda")
-    tensor_b = torch.randn((K, N), dtype=dtype, device="cuda")
+    tensor_a = torch.randn((M, K), dtype=dtype, device="mlu")
+    tensor_b = torch.randn((K, N), dtype=dtype, device="mlu")
     ms = run_bench(op, tensor_a, tensor_b)
     return ms
 
@@ -295,15 +295,15 @@ mul_bench.extra_args(M=1024)
 
 @mul_bench.perf
 def bench_mul(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
-    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
+    inp2 = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp1, inp2)
     return ms
 
 
 @mul_bench.perf
 def bench_mul_scalar(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
     inp2 = random.randint(0, 10000)
     ms = run_bench(op, inp1, inp2)
     return ms
@@ -327,7 +327,7 @@ pow_bench.extra_args(M=1024)
 
 @pow_bench.perf
 def bench_pow_tensor_scalar(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     exponent = random.randint(-10, 10)
     ms = run_bench(op, inp, exponent)
     return ms
@@ -335,15 +335,15 @@ def bench_pow_tensor_scalar(op, M, N, dtype):
 
 @pow_bench.perf
 def bench_pow_tensor_tensor(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
-    exponent = torch.randint(-10, 10, (M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
+    exponent = torch.randint(-10, 10, (M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp, exponent)
     return ms
 
 
 @reciprocal_bench.perf
 def bench_reciprocal(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -358,7 +358,7 @@ relu_bench.extra_args(M=1024)
 
 @relu_bench.perf
 def bench_relu(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -373,7 +373,7 @@ rsqrt_bench.extra_args(M=1024)
 
 @rsqrt_bench.perf
 def bench_rsqrt(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -388,7 +388,7 @@ silu_bench.extra_args(M=1024)
 
 @silu_bench.perf
 def bench_silu(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -403,7 +403,7 @@ sigmoid_bench.extra_args(M=1024)
 
 @silu_bench.perf
 def bench_sigmoid(op, M, N, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp)
     return ms
 
@@ -418,7 +418,7 @@ softmax_bench.extra_args(M=1024, dim=1)
 
 @softmax_bench.perf
 def bench_softmax(op, M, N, dim, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp, dim=dim)
     return ms
 
@@ -433,8 +433,8 @@ sub_bench.extra_args(M=1024)
 
 @sub_bench.perf
 def bench_sub(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
-    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
+    inp2 = torch.randn((M, N), dtype=dtype, device="mlu")
     alpha = random.randint(0, 10000)
     ms = run_bench(op, inp1, inp2, alpha=alpha)
     return ms
@@ -442,7 +442,7 @@ def bench_sub(op, M, N, dtype):
 
 @sub_bench.perf
 def bench_sub_scalar(op, M, N, dtype):
-    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp1 = torch.randn((M, N), dtype=dtype, device="mlu")
     inp2 = random.randint(0, 10000)
     alpha = random.randint(0, 10000)
     ms = run_bench(op, inp1, inp2, alpha=alpha)
@@ -459,7 +459,7 @@ triu_bench.extra_args(M=1024, diagonal=1)
 
 @triu_bench.perf
 def bench_triu(op, M, N, diagonal, dtype):
-    inp = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp = torch.randn((M, N), dtype=dtype, device="mlu")
     ms = run_bench(op, inp, diagonal=diagonal)
     return ms
 
