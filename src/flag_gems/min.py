@@ -85,48 +85,49 @@ def min_kernel(
     tl.store(out_index_ptrs, result_index, mask=mask1)
 
 
-def min(inp, dim=None, keepdim=False, *, dtype=None):
+def min(inp):
     if __debug__:
         print("GEMS min")
-    if dim is None:
-        M = inp.numel()
-        if dtype is None:
-            dtype = inp.dtype
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
+    M = inp.numel()
+    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    mid_size = triton.cdiv(M, block_size)
+    block_mid = triton.next_power_of_2(mid_size)
 
-        mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        out = torch.empty([], dtype=dtype, device=inp.device)
+    dtype = inp.dtype
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    out = torch.empty([], dtype=dtype, device=inp.device)
 
-        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-        return out
-    else:
-        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-        shape = inp.shape
-        dim = dim % inp.ndim
-        N = shape[dim]
-        M = math.prod(shape[:dim])
-        K = inp.numel() // M // N
+    min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+    min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    return out
+ 
+def min_dim(inp, dim=None, keepdim=False):
+    if __debug__:
+        print("GEMS min")
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    shape = inp.shape
+    dim = dim % inp.ndim
+    N = shape[dim]
+    M = math.prod(shape[:dim])
+    K = inp.numel() // M // N
 
-        inp = inp.contiguous()
+    inp = inp.contiguous()
 
-        shape_list = list(shape)
-        shape_list[dim] = 1
-        out_value = torch.empty((M, K), dtype=inp.dtype, device=inp.device)
-        out_index = torch.empty((M, K), dtype=torch.int64, device=inp.device)
-        out_value = out_value.reshape(shape_list)
-        out_index = out_index.reshape(shape_list)
-        if not keepdim:
-            out_value = torch.squeeze(out_value, dim)
-            out_index = torch.squeeze(out_index, dim)
+    shape_list = list(shape)
+    shape_list[dim] = 1
+    out_value = torch.empty((M, K), dtype=inp.dtype, device=inp.device)
+    out_index = torch.empty((M, K), dtype=torch.int64, device=inp.device)
+    out_value = out_value.reshape(shape_list)
+    out_index = out_index.reshape(shape_list)
+    if not keepdim:
+        out_value = torch.squeeze(out_value, dim)
+        out_index = torch.squeeze(out_index, dim)
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
-        min_kernel[grid](inp, out_value, out_index, M, N, K)
-        Min_out = namedtuple("min", ["values", "indices"])
-        out = Min_out(values=out_value, indices=out_index)
-        return out
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
+    min_kernel[grid](inp, out_value, out_index, M, N, K)
+    Min_out = namedtuple("min", ["values", "indices"])
+    out = Min_out(values=out_value, indices=out_index)
+    return out

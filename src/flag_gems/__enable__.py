@@ -31,10 +31,10 @@ from .sub import sub
 from .tanh import tanh
 from .triu import triu
 
-from .max import max
-from .min import min
+from .max import max,max_dim
+from .min import min,min_dim
 from .amax import amax
-from .sum import sum
+from .sum import sum,sum_dim
 from .argmax import argmax
 from .prod import prod
 
@@ -77,12 +77,12 @@ def enable(lib=aten_lib):
     lib.impl("triu", triu, "CUDA")
 
     lib.impl("max", max, "CUDA")
-    lib.impl("max.dim", max, "CUDA")
+    lib.impl("max.dim", max_dim, "CUDA")
     lib.impl("min", min, "CUDA")
-    lib.impl("min.dim", min, "CUDA")
+    lib.impl("min.dim", min_dim, "CUDA")
     lib.impl("amax", amax, "CUDA")
     lib.impl("sum", sum, "CUDA")
-    lib.impl("sum.dim_intList", sum, "CUDA")
+    lib.impl("sum.dim_IntList", sum_dim, "CUDA")
     lib.impl("argmax", argmax, "CUDA")
     lib.impl("prod", prod, "CUDA")
 
