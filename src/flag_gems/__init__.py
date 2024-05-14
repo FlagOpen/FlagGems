@@ -29,6 +29,14 @@ from .softmax import softmax
 from .sub import sub
 from .tanh import tanh
 from .triu import triu
+
+from .max import max
+from .min import min
+from .amax import amax
+from .sum import sum
+from .argmax import argmax
+from .prod import prod
+
 from .__enable__ import enable, use_gems
 
 __all__ = [
@@ -65,4 +73,12 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
+
+    "max",
+    "min",
+    "sum",
+    "amax",
+    "argmax",
+    "prod",
+    
 ]

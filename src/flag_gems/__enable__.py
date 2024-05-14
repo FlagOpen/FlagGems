@@ -31,6 +31,14 @@ from .sub import sub
 from .tanh import tanh
 from .triu import triu
 
+from .max import max
+from .min import min
+from .amax import amax
+from .sum import sum
+from .argmax import argmax
+from .prod import prod
+
+
 aten_lib = torch.library.Library("aten", "IMPL")
 
 
@@ -67,6 +75,16 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("tanh", tanh, "AutogradCUDA")
     lib.impl("triu", triu, "CUDA")
+    
+    lib.impl("max", max, "CUDA")
+    lib.impl("max.dim", max, "CUDA")
+    lib.impl("min", min, "CUDA")
+    lib.impl("min.dim", min, "CUDA")
+    lib.impl("amax", amax, "CUDA")
+    lib.impl("sum", sum, "CUDA")
+    lib.impl("sum.dim_intList", sum, "CUDA")
+    lib.impl("argmax", argmax, "CUDA")
+    lib.impl("prod", prod, "CUDA")
 
 
 class use_gems:

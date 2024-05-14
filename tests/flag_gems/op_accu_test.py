@@ -7,6 +7,7 @@ RESOLUTION = {
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
     torch.bfloat16: 0.016,
+    torch.int64: 1.3e-6,
 }
 
 
@@ -894,4 +895,138 @@ def test_accuracy_triu(shape, diagonal, dtype):
     with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
 
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_max(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.max(inp.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.max(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dim", [0, 1])
+def test_accuracy_max_dim(shape, dim, keepdim, dtype):
+
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.max(inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.max(inp, dim=dim, keepdim=keepdim)
+    ref_out_value, ref_out_index = ref_out
+    res_out_value, res_out_index = res_out
+    allclose_with_dtype(ref_out_index, res_out_index, torch.int64)
+    allclose_with_dtype(ref_out_value, res_out_value, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_min(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.min(inp.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.min(inp)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dim", [0, 1])
+def test_accuracy_min_dim(shape, dim, keepdim, dtype):
+
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.min(inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.min(inp, dim=dim, keepdim=keepdim)
+    ref_out_value, ref_out_index = ref_out
+    res_out_value, res_out_index = res_out
+    allclose_with_dtype(ref_out_index, res_out_index, torch.int64)
+    allclose_with_dtype(ref_out_value, res_out_value, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dim", [0, 1, None])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_sum(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dim", [0, 1, None])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_amax(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    ref_out = torch.amax(inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.amax(inp, dim=dim, keepdim=keepdim)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dim", [0, 1, None])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_argmax(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    allclose_with_dtype(res_out, ref_out, res_out.dtype)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4096, i * 64) for i in range(1, 20)],
+)
+# @pytest.mark.parametrize("keepdim", [True, False])
+# @pytest.mark.parametrize("dim", [None])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_prod(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_out = torch.prod(inp)
+    with flag_gems.use_gems():
+        res_out = torch.prod(inp)
     allclose_with_dtype(res_out, ref_out, dtype)
