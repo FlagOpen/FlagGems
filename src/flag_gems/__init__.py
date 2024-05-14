@@ -73,12 +73,10 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
-
     "max",
     "min",
     "sum",
     "amax",
     "argmax",
     "prod",
-    
 ]

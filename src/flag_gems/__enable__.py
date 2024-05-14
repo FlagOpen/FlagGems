@@ -75,7 +75,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("tanh", tanh, "AutogradCUDA")
     lib.impl("triu", triu, "CUDA")
-    
+
     lib.impl("max", max, "CUDA")
     lib.impl("max.dim", max, "CUDA")
     lib.impl("min", min, "CUDA")
