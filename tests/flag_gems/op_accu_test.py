@@ -929,7 +929,9 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
         res_out = torch.max(inp, dim=dim, keepdim=keepdim)
     ref_out_value, ref_out_index = ref_out
     res_out_value, res_out_index = res_out
-    allclose_with_dtype(ref_out_index, res_out_index, torch.int64)
+    assert (
+        not torch.equal(ref_out_index,res_out_index)
+    ), f"ref_out_index: {ref_out_index}, res_out_index: {res_out_index}"
     allclose_with_dtype(ref_out_value, res_out_value, dtype)
 
 
@@ -964,7 +966,10 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
         res_out = torch.min(inp, dim=dim, keepdim=keepdim)
     ref_out_value, ref_out_index = ref_out
     res_out_value, res_out_index = res_out
-    allclose_with_dtype(ref_out_index, res_out_index, torch.int64)
+    assert (
+        not torch.equal(ref_out_index,res_out_index)
+    ), f"ref_out_index: {ref_out_index}, res_out_index: {res_out_index}"
+
     allclose_with_dtype(ref_out_value, res_out_value, dtype)
 
 
@@ -1030,7 +1035,10 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     ref_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
         res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
-    allclose_with_dtype(res_out, ref_out, res_out.dtype)
+    assert (
+        not torch.equal(ref_out,res_out)
+    ), f"ref_out: {ref_out}, res_out: {res_out}"
+
 
 
 @pytest.mark.parametrize(

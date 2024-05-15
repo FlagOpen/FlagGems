@@ -25,10 +25,10 @@ def sum_kernel_1(
 
 @libentry()
 @triton.jit
-def sum_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
+def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
-    mask = offset < MID_SIZE
+    mask = offset < mid_size
     mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
     sum_val = tl.sum(mid_val)
     tl.store(out, sum_val)
@@ -67,11 +67,11 @@ def sum_kernel(
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None, None] * N * K + n_offset[None, :, None] * K + pid_k
-    offset_index = m_offset[:, None] * K + pid_k[None, :]
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    offset_index = m_offset * K + pid_k
     # set mask
-    mask1 = m_offset[:, None] < M
-    mask = m_offset[:, None, None] < M and n_offset[None, :, None] < N
+    mask1 = m_offset < M
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
     result_index = tl.sum(inp_vals, axis=1)
@@ -117,8 +117,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
     if dtype is None:
         dtype = inp.dtype
-    out = torch.empty((M, K), dtype=dtype, device=inp.device)
-    out = out.reshape(shape_list)
+    out = torch.empty(shape_list, dtype=dtype, device=inp.device)
     if not keepdim:
         out = torch.squeeze(out, dim)
 
