@@ -2,7 +2,6 @@ import torch
 import triton
 import triton.language as tl
 from .__libentry__ import libentry
-import math
 
 
 @libentry()
@@ -222,6 +221,7 @@ def weight_bias_backward_kernel(
     dW,
     dB,
     num_groups,
+    group_size,
     N,
     C,
     HW,
@@ -246,7 +246,7 @@ def weight_bias_backward_kernel(
         order=(1, 0),
     )
     mean_ptr = tl.make_block_ptr(
-        Mean + pid % num_groups,
+        Mean + pid // group_size,
         shape=(N,),
         strides=(num_groups,),
         offsets=(0,),
@@ -254,7 +254,7 @@ def weight_bias_backward_kernel(
         order=(0,),
     )
     rstd_ptr = tl.make_block_ptr(
-        Rstd + pid % num_groups,
+        Rstd + pid // group_size,
         shape=(N,),
         strides=(num_groups,),
         offsets=(0,),
@@ -366,11 +366,12 @@ class GroupNorm(torch.autograd.Function):
             weight_grad,
             bias_grad,
             num_groups,
+            group_size,
             N,
             C,
             HW,
-            BLOCK_N = triton.next_power_of_2(N),
-            BLOCK_HW = triton.next_power_of_2(HW),
+            BLOCK_N=triton.next_power_of_2(N),
+            BLOCK_HW=triton.next_power_of_2(HW),
         )
         return x_grad, weight_grad, bias_grad, None, None, None, None, None
 

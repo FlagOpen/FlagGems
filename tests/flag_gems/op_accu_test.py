@@ -363,33 +363,6 @@ def test_accuracy_gelu(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
-    def group_norm_torch_manual(x, num_groups, weight=None, bias=None, eps=1e-5):
-        N, C, H, W = x.shape
-        group_size = C // num_groups
-        # Reshape
-        x = x.view(N, num_groups, group_size, H, W)
-        x = x.reshape(N * num_groups, -1)
-
-        # Mean and Rstd
-        mean = x.mean(dim=1, keepdim=True)
-        var = x.var(dim=1, unbiased=False, keepdim=True)
-        rstd = 1 / torch.sqrt(var + eps)
-
-        # Norm
-        x = (x - mean) * rstd
-        x = x.view(N, C, H, W)
-        if weight is not None:
-            weight = weight.view(1, C, 1, 1)
-            x = x * weight
-        if bias is not None:
-            bias = bias.view(1, C, 1, 1)
-            x = x + bias
-
-        # Reshape
-        mean = mean.reshape(N, num_groups)
-        rstd = rstd.reshape(N, num_groups)
-        return x, mean, rstd
-
     HW = H * W
     inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cuda", requires_grad=True)
     weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
@@ -400,13 +373,12 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     ref_weight = weight.to(torch.float64)
     ref_bias = bias.to(torch.float64)
 
-    (ref_out, ref_mean, ref_rstd) = group_norm_torch_manual(
-        ref_inp,
-        num_groups,
-        weight=ref_weight,
-        bias=ref_bias,
-        eps=eps,
+    ref_out = torch.nn.functional.group_norm(
+        ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
+    ref_mean = torch.mean(ref_inp.reshape([N, num_groups, -1]), dim=2)
+    ref_var = torch.var(ref_inp.reshape([N, num_groups, -1]), dim=2, correction=0)
+    ref_rstd = torch.rsqrt(ref_var + eps)
 
     (res_out, res_mean, res_rstd) = flag_gems.group_norm(
         inp, weight, bias, N, C, HW, num_groups, eps
@@ -425,8 +397,8 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     )
     group_size = C // num_groups
     allclose_with_dtype(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
-    allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N*HW)
-    allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N*HW)
+    allclose_with_dtype(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
+    allclose_with_dtype(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
 
 
 @pytest.mark.parametrize(
@@ -852,7 +824,6 @@ def test_accuracy_sin(shape, dtype):
         res_out = torch.sin(inp)
 
     allclose_with_dtype(res_out, ref_out, dtype)
-
 
 
 @pytest.mark.parametrize(
