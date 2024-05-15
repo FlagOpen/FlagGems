@@ -1151,6 +1151,7 @@ def test_accuracy_prod_dim(shape, dim, keepdim, dtype):
     ref_out = torch.prod(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
         res_out = torch.prod(inp, dim=dim, keepdim=keepdim)
+    allclose_with_dtype(res_out, ref_out, dtype)
 
 @pytest.mark.parametrize(
     "shape",
