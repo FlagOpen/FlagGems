@@ -31,12 +31,12 @@ from .sub import sub
 from .tanh import tanh
 from .triu import triu
 
-from .max import max,max_dim
-from .min import min,min_dim
+from .max import max, max_dim
+from .min import min, min_dim
 from .amax import amax
-from .sum import sum,sum_dim
+from .sum import sum, sum_dim
 from .argmax import argmax
-from .prod import prod,prod_dim
+from .prod import prod, prod_dim
 
 
 aten_lib = torch.library.Library("aten", "IMPL")

@@ -6,8 +6,8 @@ from .__libentry__ import libentry
 
 
 @triton.jit
-def reduce_mul(a,b):
-    return a*b
+def reduce_mul(a, b):
+    return a * b
 
 
 @libentry()
@@ -23,7 +23,7 @@ def prod_kernel_mid(
     inp_ptrs = inp + offset
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
-    mid_value = tl.reduce(inp_val, axis = 0,combine_fn=reduce_mul)
+    mid_value = tl.reduce(inp_val, axis=0, combine_fn=reduce_mul)
     mid_ptr = mid + pid
     tl.store(mid_ptr, mid_value.to(inp_val.dtype))
 
@@ -35,7 +35,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mid_ptrs = mid + offset
     mask = offset < mid_size
     mid_val = tl.load(mid_ptrs, mask=mask, other=1.0)
-    prod_val = tl.reduce(mid_val, axis = 0,combine_fn=reduce_mul)
+    prod_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
 
 
@@ -56,7 +56,6 @@ def prod(inp, *, dtype=None):
     prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
     prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
- 
 
 
 @libentry()
@@ -108,7 +107,6 @@ def prod_kernel(
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
     if __debug__:
         print("GEMS prod_dim")
-    dim = dim[0]  # todo dim list
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
