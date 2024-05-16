@@ -1,7 +1,7 @@
 import torch
 import pytest
 import flag_gems
-
+import math
 
 RESOLUTION = {
     torch.float16: 1e-3,
@@ -1061,7 +1061,7 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
 
 @pytest.mark.parametrize(
     "shape",
-    [(16, i * 3) for i in range(1, 20)],
+    [(4096, i * 64) for i in range(1, 20)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sum(shape, dtype):
@@ -1071,12 +1071,12 @@ def test_accuracy_sum(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.sum(inp)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=math.prod(shape))
 
 
 @pytest.mark.parametrize(
     "shape",
-    [(3, i * 4) for i in range(1, 20)],
+    [(4096, i * 64) for i in range(1, 20)],
 )
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
@@ -1088,7 +1088,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     with flag_gems.use_gems():
         res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    allclose_with_dtype(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
 @pytest.mark.parametrize(

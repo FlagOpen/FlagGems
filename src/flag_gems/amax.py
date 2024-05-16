@@ -80,17 +80,17 @@ def amax_kernel(
     tl.store(out_ptrs, result_index, mask=mask1)
 
 
-def amax(inp, dim=None, keepdim=False):
+def amax(inp, dim=[], keepdim=False):
     if __debug__:
         print("GEMS amax")
-    if dim is None or len(dim) == 0:
+    if  len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
         mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        if dim is None:
+        if not keepdim:
             out = torch.empty([], dtype=dtype, device=inp.device)
         else:
             shape = list(inp.shape)
