@@ -27,6 +27,9 @@ jobs:
     steps:
       - name: checkout FlagGems repos
         uses: actions/checkout@v4
+      - name: install FlagGems
+        run: |
+          conda run -n py_3.10 pip install --no-dependencies -e .
 
   install-triton:
     name: install triton
@@ -52,11 +55,16 @@ jobs:
         id: acc-test
         run: |
           pytest -v tests/flag_gems/op_accu_test.py
+      - name: perf test
+        id: perf
+        run: |
+          pytest -v tests/flag_gems/op_perf_test.py
   
   clean-up:
     name: clean up tests
     runs-on: [self-hosted]
     needs: test
+    if: ${{ always() }}
     steps:
       - name: clean up repos dirs
         id: clean-up
