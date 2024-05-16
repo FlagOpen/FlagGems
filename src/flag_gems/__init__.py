@@ -31,12 +31,12 @@ from .sub import sub
 from .tanh import tanh
 from .triu import triu
 
-from .max import max
-from .min import min
+from .max import max, max_dim
+from .min import min, min_dim
 from .amax import amax
-from .sum import sum
+from .sum import sum, sum_dim
 from .argmax import argmax
-from .prod import prod
+from .prod import prod, prod_dim
 
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -80,11 +80,15 @@ __all__ = [
     "tanh",
     "triu",
     "max",
+    "max_dim",
     "min",
+    "min_dim",
     "sum",
+    "sum_dim",
     "amax",
     "argmax",
     "prod",
+    "prod_dim",
     "var_mean",
     "vector_norm",
 ]

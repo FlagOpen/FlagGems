@@ -101,7 +101,7 @@ def amax(inp, dim=None, keepdim=False):
         amax_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
         return out
     else:
-        dim = dim[0]
+        dim = dim[0] # todo add dim list
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         shape = inp.shape
         dim = dim % inp.ndim
