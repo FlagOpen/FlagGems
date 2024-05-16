@@ -39,6 +39,7 @@ from .min import min, min_dim
 from .amax import amax
 from .argmax import argmax
 from .prod import prod, prod_dim
+from .sum import sum, sum_dim
 
 
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -90,6 +91,8 @@ def enable(lib=aten_lib):
     lib.impl("argmax", argmax, "CUDA")
     lib.impl("prod", prod, "CUDA")
     lib.impl("prod.dim_int", prod_dim, "CUDA")
+    lib.impl("sum", sum, "CUDA")
+    lib.impl("sum.dim_IntList", sum_dim, "CUDA")
 
 
 class use_gems:

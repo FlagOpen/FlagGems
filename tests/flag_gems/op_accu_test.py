@@ -1016,6 +1016,7 @@ def test_accuracy_min(shape, dtype):
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
+
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
@@ -1067,7 +1068,7 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
 def test_accuracy_sum(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.sum(inp)
+    ref_out = torch.sum(inp.to(torch.float64))
     with flag_gems.use_gems():
         res_out = torch.sum(inp)
 
@@ -1084,7 +1085,7 @@ def test_accuracy_sum(shape, dtype):
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+    ref_out = torch.sum(inp.to(torch.float64), dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
         res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
 
@@ -1152,6 +1153,7 @@ def test_accuracy_prod_dim(shape, dim, keepdim, dtype):
     with flag_gems.use_gems():
         res_out = torch.prod(inp, dim=dim, keepdim=keepdim)
     allclose_with_dtype(res_out, ref_out, dtype)
+
 
 @pytest.mark.parametrize(
     "shape",
