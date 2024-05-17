@@ -9,7 +9,6 @@ FlagGems通过对PyTorch的后端aten算子进行覆盖重写，实现算子库�
 ## 更新日志
 
 ### v1.0
-- 2024年四月发布  
 - 支持BLAS类算子：addmm, bmm, mm  
 - 支持pointwise类算子：abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu  
 - 支持reduction类算子：cumsum, layernorm, mean, softmax  
@@ -101,7 +100,7 @@ pip install .
 
 ## 贡献代码
 
-欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[Contributing.md](https://github.com/FlagOpen/FlagGems/blob/master/Contributing.md)。
+欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](https://github.com/FlagOpen/FlagGems/blob/master/CONTRIBUTING.md)。
 
 ## 联系我们
 
