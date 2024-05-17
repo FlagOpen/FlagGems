@@ -64,24 +64,6 @@ def triu_batch_kernel(
     BATCH_BLOCK_SIZE: tl.constexpr,
     MN_BLOCK_SIZE: tl.constexpr,
 ):
-    # version 1
-    # batch_id = tl.program_id(0)
-    # row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]
-    # batch_mask = row < batch
-    # X += row * MN
-    # Y += row * MN
-
-    # for mn_offset in range(0, MN, MN_BLOCK_SIZE):
-    #     cols = mn_offset + tl.arange(0, MN_BLOCK_SIZE)[None, :]
-    #     mn_mask = cols < MN
-    #     mask = batch_mask and mn_mask
-    #     x = tl.load(X + cols, mask, other=0.0)
-    #     m = cols // N
-    #     n = cols % N
-    #     y = tl.where(m + diagonal <= n, x, 0.0)
-    #     tl.store(Y + cols, y, mask=mask)
-
-    # version 2
     batch_id = tl.program_id(0)
     mn_id = tl.program_id(1)
     row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]

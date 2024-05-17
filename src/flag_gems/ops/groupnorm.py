@@ -278,15 +278,16 @@ def weight_bias_backward_kernel(
         block_shape=(1),
         order=(0,),
     )
-    grad_y = tl.load(grad_y_ptr, boundary_check=(0, 1))
+    grad_y = tl.load(grad_y_ptr, boundary_check=(0, 1)).to(tl.float32)
     x = tl.load(x_ptr, boundary_check=(0, 1))
-    mean = tl.load(mean_ptr, boundary_check=(0,))
+    x_f32 = x.to(tl.float32)
+    mean = tl.load(mean_ptr, boundary_check=(0,)).to(tl.float32)
     mean = tl.expand_dims(mean, 1)
-    rstd = tl.load(rstd_ptr, boundary_check=(0,))
+    rstd = tl.load(rstd_ptr, boundary_check=(0,)).to(tl.float32)
     rstd = tl.expand_dims(rstd, 1)
 
     dB = tl.sum(grad_y)
-    dW = tl.sum((x - mean) * rstd * grad_y)
+    dW = tl.sum((x_f32 - mean) * rstd * grad_y)
     tl.store(dW_ptr, dW.to(x.dtype), boundary_check=(0,))
     tl.store(dB_ptr, dB.to(x.dtype), boundary_check=(0,))
 
