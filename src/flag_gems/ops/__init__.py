@@ -1,7 +1,9 @@
 from .abs import abs
 from .add import add
 from .addmm import addmm
+from .bitwise_and import bitwise_and_tensor
 from .bitwise_not import bitwise_not
+from .bitwise_or import bitwise_or_tensor
 from .bmm import bmm
 from .cos import cos
 from .cumsum import cumsum
@@ -45,7 +47,9 @@ __all__ = [
     "add",
     "abs",
     "addmm",
+    "bitwise_and_tensor",
     "bitwise_not",
+    "bitwise_or_tensor",
     "bmm",
     "cos",
     "cumsum",

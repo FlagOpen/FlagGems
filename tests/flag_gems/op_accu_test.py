@@ -148,6 +148,26 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseand(shape, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+    inp2 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_and(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_and(inp1, inp2)
+
+    torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
 def test_accuracy_bitwisenot(shape, dtype):
     inp = torch.randint(
         low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
@@ -156,6 +176,26 @@ def test_accuracy_bitwisenot(shape, dtype):
     ref_out = torch.bitwise_not(inp)
     with flag_gems.use_gems():
         res_out = torch.bitwise_not(inp)
+
+    torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseor(shape, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+    inp2 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_or(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(inp1, inp2)
 
     torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
 
@@ -987,7 +1027,6 @@ def test_accuracy_max(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_max_dim(shape, dim, keepdim, dtype):
-
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.max(inp, dim=dim, keepdim=keepdim)
@@ -1044,7 +1083,6 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_min_dim(shape, dim, keepdim, dtype):
-
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_out = torch.min(inp, dim=dim, keepdim=keepdim)
