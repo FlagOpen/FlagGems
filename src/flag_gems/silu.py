@@ -17,7 +17,10 @@ def silu_forward(x):
 def silu_backward(x, dy):
     dy_fp32 = dy.to(tl.float32)
     x_fp32 = x.to(tl.float32)
-    sigma = tl.math.div_rn(1.0, 1.0 + tl.exp(-x_fp32))
+    if torch.version.hip is None:
+        sigma = tl.math.div_rn(1.0, 1.0 + tl.exp(-x_fp32))
+    else:
+        sigma = 1 / (1 + tl.math.exp(-(x_fp32)))
     dx = dy_fp32 * sigma * (1.0 + x_fp32 * (1.0 - sigma))
     return dx
 
