@@ -76,12 +76,12 @@ pip install .
     - Operator Performance  
         ```shell
         cd tests/flag_gems
-        python -O op_perf_test.py
+        python op_perf_test.py
         ```
 
-2. Run without printing Flag infomation  
+2. Run tests with logging infomation  
     ```shell
-    python -O program.py
+    pytest program.py --log-cli-level debug
     ```
 
 ## Supported Operators

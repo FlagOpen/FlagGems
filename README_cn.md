@@ -75,12 +75,12 @@ pip install .
     - 算子性能测试  
         ```shell
         cd tests/flag_gems
-        python -O op_perf_test.py
+        python op_perf_test.py
         ```
 
-2. 运行时关闭打印信息  
+2. 运行时打印日志信息  
     ```shell
-    python -O program.py
+    pytest program.py --log-cli-level debug
     ```
 
 ## 支持算子

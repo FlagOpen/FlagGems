@@ -1,5 +1,6 @@
 import triton
 import triton.language as tl
+import logging
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 
 
@@ -10,7 +11,6 @@ def exp_func(x):
 
 
 def exp(A):
-    if __debug__:
-        print("GEMS EXP")
+    logging.debug("GEMS EXP")
     O = exp_func(A)
     return O
