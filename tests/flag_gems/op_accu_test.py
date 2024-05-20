@@ -160,7 +160,7 @@ def test_accuracy_bitwiseand(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.bitwise_and(inp1, inp2)
 
-    torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -177,7 +177,7 @@ def test_accuracy_bitwisenot(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.bitwise_not(inp)
 
-    torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -197,7 +197,7 @@ def test_accuracy_bitwiseor(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.bitwise_or(inp1, inp2)
 
-    torch.testing.assert_close(res_out, ref_out, atol=0, rtol=0)
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -454,7 +454,7 @@ def test_accuracy_isinf(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.isinf(inp)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
@@ -470,7 +470,7 @@ def test_accuracy_isnan(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.isnan(inp)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
 @pytest.mark.parametrize(
