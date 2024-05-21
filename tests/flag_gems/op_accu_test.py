@@ -1206,6 +1206,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 
     allclose_with_dtype(res_out, ref_out, dtype)
 
+
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (20, 320, 15)],

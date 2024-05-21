@@ -94,6 +94,5 @@ __all__ = [
     "var_mean",
     "vector_norm",
     "log_softmax",
-    "outer"
-    
+    "outer",
 ]

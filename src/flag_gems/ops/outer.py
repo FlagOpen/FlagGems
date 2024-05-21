@@ -9,7 +9,7 @@ from .mm import mm
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
-        logging("GEMS OUTER")
+        logging.debug("GEMS OUTER")
         assert inp.ndim == 1 and weight.ndim == 1, "Invalid input"
         inp1 = inp[:, None]
         weight1 = weight[None, :]
@@ -21,17 +21,13 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging("GEMS OUTER VJP")
+        logging.debug("GEMS OUTER VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors
 
         inp_shape = inp.shape
-        #weight = weight[None, :]
-        #weight = weight.contiguous()
-        #out_grad_trans = torch.transpose(out_grad, 0, 1)
-        #inp_grad_mid = mm(weight, out_grad_trans)
-        inp_grad_mid = mm(out_grad, weight[:,None])
+        inp_grad_mid = mm(out_grad, weight[:, None])
         inp_grad = inp_grad_mid.reshape(inp_shape)
 
         weight_shape = weight.shape
