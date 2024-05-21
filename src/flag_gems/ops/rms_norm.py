@@ -22,7 +22,7 @@ def rms_norm_kernel(
 ):
     pid = tl.program_id(0)
     Y += pid * y_stride_r
-    X += pid * y_stride_r
+    X += pid * x_stride_r
 
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
