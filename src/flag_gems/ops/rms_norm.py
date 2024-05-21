@@ -54,9 +54,8 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        raise Exception("Not implemented")
+        raise NotImplementedError(f"rms_norm not implemented for backward")
         
-
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
     return RmsNorm.apply(x, normalized_shape, weight, eps)
