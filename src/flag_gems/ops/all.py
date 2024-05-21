@@ -128,13 +128,13 @@ def all_dim(inp, dim=None, keepdim=False):
 
 def all_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS all_dims")
+    assert (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim"
     dtype = inp.dtype
 
     shape = list(inp.shape)
     N = 1
     order = list(range(inp.ndim))
     for i in dim:
-        assert (i >= -inp.ndim and i < inp.ndim), "Invalid dim"
         i = i % inp.ndim
         order.remove(i)
         order.append(i)
