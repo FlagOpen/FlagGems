@@ -1,4 +1,5 @@
 import torch
+
 from .ops import *
 from .fused import *
 
@@ -23,8 +24,6 @@ def enable(lib=aten_lib):
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
-    lib.impl("rms_norm", rms_norm, "CUDA")
-
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
@@ -56,6 +55,12 @@ def enable(lib=aten_lib):
     lib.impl("prod.dim_int", prod_dim, "CUDA")
     lib.impl("sum", sum, "CUDA")
     lib.impl("sum.dim_IntList", sum_dim, "CUDA")
+    lib.impl("all", all, "CUDA")
+    lib.impl("all.dim", all_dim, "CUDA")
+    lib.impl("all.dims", all_dims, "CUDA")
+    lib.impl("any", any, "CUDA")
+    lib.impl("any.dim", any_dim, "CUDA")
+    lib.impl("any.dims", any_dims, "CUDA")
     lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
     lib.impl("outer", outer, "AutogradCUDA")
 
