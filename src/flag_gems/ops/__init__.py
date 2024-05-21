@@ -39,8 +39,6 @@ from .amax import amax
 from .sum import sum, sum_dim
 from .argmax import argmax
 from .prod import prod, prod_dim
-from .log_softmax import log_softmax
-from .outer import outer
 
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -93,6 +91,4 @@ __all__ = [
     "prod_dim",
     "var_mean",
     "vector_norm",
-    "log_softmax",
-    "outer",
 ]

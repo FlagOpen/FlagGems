@@ -54,8 +54,6 @@ def enable(lib=aten_lib):
     lib.impl("prod.dim_int", prod_dim, "CUDA")
     lib.impl("sum", sum, "CUDA")
     lib.impl("sum.dim_IntList", sum_dim, "CUDA")
-    lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
-    lib.impl("outer", outer, "AutogradCUDA")
 
 
 class use_gems:
