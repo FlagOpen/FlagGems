@@ -80,7 +80,7 @@ def amax_kernel(
     tl.store(out, all, row_mask)
 
 
-def amax(inp, dim=None, keepdim=False):
+def amax(inp, dim=[], keepdim=False):
     logging.debug("GEMS AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
@@ -101,6 +101,8 @@ def amax(inp, dim=None, keepdim=False):
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+        if isinstance(dim, int):
+            dim = [dim]
         dtype = inp.dtype
 
         shape = list(inp.shape)

@@ -59,26 +59,25 @@ def sum_kernel(
     out,
     M,
     N,
-    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
-    result_index = tl.sum(inp_vals, axis=1)
+    # Map the program id to the row of inp it should compute.
+    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + pid * N
+    out = out + pid
+    row_mask = pid < M
 
-    out_ptrs = out + offset_index
-    tl.store(out_ptrs, result_index, mask=mask1)
+    _all = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
+
+        a = tl.load(inp + cols, mask, other=0.0).to(tl.float32)
+        _all += a
+    all = tl.sum(_all, axis=1)[:, None]
+    tl.store(out, all, row_mask)
 
 
 def sum(inp, *, dtype=None):
@@ -93,37 +92,38 @@ def sum(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-    sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    sum_kernel_1[(mid_size, 1)](inp, mid, M, block_size)
+    sum_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
     return out
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS SUM DIM")
-    dim = dim[0]  # todo dim list
-
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
-    dim = dim % inp.ndim
-    N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
+    if isinstance(dim, int):
+        dim = [dim]
+    dtype = inp.dtype
 
+    shape = list(inp.shape)
+    N = 1
+    order = list(range(inp.ndim))
+    for i in dim:
+        i = i % inp.ndim
+        order.remove(i)
+        order.append(i)
+        N *= shape[i]
+        shape[i] = 1
+    inp = inp.permute(order)
+    M = inp.numel() // N
     inp = inp.contiguous()
 
-    shape_list = list(shape)
-    shape_list[dim] = 1
-
-    if dtype is None:
-        dtype = inp.dtype
-    out = torch.empty(shape_list, dtype=dtype, device=inp.device)
-    if not keepdim:
-        out = torch.squeeze(out, dim)
+    out = torch.empty(shape, dtype=dtype, device=inp.device)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
-        K,
     )
-    sum_kernel[grid](inp, out, M, N, K)
+    sum_kernel[grid](inp, out, M, N)
+    if not keepdim:
+        out = out.squeeze()
 
     return out
