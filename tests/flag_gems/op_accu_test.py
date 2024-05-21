@@ -536,8 +536,8 @@ def test_accuracy_skip_layernorm(shape, dtype):
     ]
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
     residual = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
-    bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=False)
+    bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=False)
     eps = 1e-5
 
     ref_inp = inp.to(torch.float64)
