@@ -534,8 +534,8 @@ def test_accuracy_rmsnorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
+    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=False)
     eps = 1e-5
 
     ref_inp = inp.to(torch.float64)

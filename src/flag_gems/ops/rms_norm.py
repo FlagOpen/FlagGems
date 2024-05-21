@@ -28,7 +28,7 @@ def rms_norm_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
-    var = tl.sum(x * x, axis=0) / N
+    var = tl.sum(x * x / N, axis=0)
     rrms = 1 / tl.sqrt(var + eps)
 
     w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
@@ -52,10 +52,6 @@ class RmsNorm(torch.autograd.Function):
         rms_norm_kernel[M, ](y, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
         return y
 
-    @staticmethod
-    def backward(ctx, out_grad):
-        raise NotImplementedError(f"rms_norm not implemented for backward")
-        
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
     return RmsNorm.apply(x, normalized_shape, weight, eps)
