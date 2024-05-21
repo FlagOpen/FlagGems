@@ -2,6 +2,7 @@ import triton
 import triton.language as tl
 import torch
 import logging
+from ..utils.random_utils import philox_cuda_seed_offset
 from ..utils import libentry
 
 
@@ -25,17 +26,18 @@ from ..utils import libentry
 def dropout_forward_kernel(
     X,
     Y,
-    Mask,
     N,
     p,
+    philox_seed,
+    philox_offset,
     N_BLOCK_SIZE: tl.constexpr,
 ):
-    n_offset = tl.program_id(0) * N_BLOCK_SIZE
+    block_offset = tl.program_id(0) * N_BLOCK_SIZE
     X_ptr = tl.make_block_ptr(
         X,
         shape=(N,),
         strides=(1,),
-        offsets=(n_offset,),
+        offsets=(block_offset,),
         block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
@@ -43,26 +45,16 @@ def dropout_forward_kernel(
         Y,
         shape=(N,),
         strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    Mask_ptr = tl.make_block_ptr(
-        Mask,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
+        offsets=(block_offset,),
         block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
     inp = tl.load(X_ptr)
-    # random seed (lucky number)
-    seed = 7
-    pmask = tl.rand(seed, n_offset + tl.arange(0, N_BLOCK_SIZE)) > p
-    output = tl.where(pmask, inp, 0.0)
-    output = output * (1.0 / (1.0 - p))
-    tl.store(Y_ptr, output.to(inp.dtype))
-    tl.store(Mask_ptr, pmask.to(tl.int8))
+    offset = philox_offset + block_offset + tl.arange(0, N_BLOCK_SIZE)
+    pmask = tl.rand(philox_seed, offset, n_rounds=6) > p
+    p = 1.0 / (1.0 - p)
+    out = tl.where(pmask, inp * p, 0.0)
+    tl.store(Y_ptr, out.to(inp.dtype))
 
 
 @libentry()
@@ -87,23 +79,17 @@ def dropout_backward_kernel(
     MASK,
     DX,
     N,
-    scale,
+    p,
+    philox_seed,
+    philox_offset,
     N_BLOCK_SIZE: tl.constexpr,
 ):
-    n_offset = tl.program_id(0) * N_BLOCK_SIZE
+    block_offset = tl.program_id(0) * N_BLOCK_SIZE
     DY_ptr = tl.make_block_ptr(
         DY,
         shape=(N,),
         strides=(1,),
-        offsets=(n_offset,),
-        block_shape=(N_BLOCK_SIZE,),
-        order=(0,),
-    )
-    MASK_ptr = tl.make_block_ptr(
-        MASK,
-        shape=(N,),
-        strides=(1,),
-        offsets=(n_offset,),
+        offsets=(block_offset,),
         block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
@@ -111,15 +97,16 @@ def dropout_backward_kernel(
         DX,
         shape=(N,),
         strides=(1,),
-        offsets=(n_offset,),
+        offsets=(block_offset,),
         block_shape=(N_BLOCK_SIZE,),
         order=(0,),
     )
     dy = tl.load(DY_ptr)
-    mask = tl.load(MASK_ptr)
-    output = dy * mask
-    output = output * scale
-    tl.store(DX_ptr, output.to(dy.dtype))
+    offset = philox_offset + block_offset + tl.arange(0, N_BLOCK_SIZE)
+    pmask = tl.rand(philox_seed, offset, n_rounds=6) > p
+    p = 1.0 / (1.0 - p)
+    dx = tl.where(pmask, dy * p, 0.0)
+    tl.store(DX_ptr, dx.to(dy.dtype))
 
 
 class NativeDropout(torch.autograd.Function):
@@ -129,12 +116,15 @@ class NativeDropout(torch.autograd.Function):
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
         x = x.contiguous()
         O = torch.empty_like(x)
-        Mask = torch.empty(x.shape, dtype=torch.bool, device=x.device)
         N = x.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
-        dropout_forward_kernel[grid_fn](x, O, Mask, N, p)
+        inc = triton.cdiv(N, BLOCK_SIZE)
+        philox_seed, philox_offset = philox_cuda_seed_offset(inc)
+        dropout_forward_kernel[grid_fn](x, O, N, p, philox_seed, philox_offset)
         ctx.save_for_backward(Mask)
         ctx.p = p
+        ctx.philox_seed = philox_seed
+        ctx.philox_offset = philox_offset
         return O, Mask
 
     @staticmethod
@@ -146,7 +136,7 @@ class NativeDropout(torch.autograd.Function):
         grad_inputs = torch.empty_like(grad_outputs)
         N = grad_outputs.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
-        dropout_backward_kernel[grid_fn](grad_outputs, Mask, grad_inputs, N, scale)
+        dropout_backward_kernel[grid_fn](grad_outputs, grad_inputs, N, p, ctx.philox_seed, ctx.philox_offset)
         return grad_inputs, None, None
 
 
