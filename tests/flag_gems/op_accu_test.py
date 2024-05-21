@@ -527,16 +527,15 @@ def test_accuracy_layernorm(shape, dtype):
     "shape",
     [(4096, i * 64) for i in range(1, 20)],
 )
-# @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_skip_layernorm(shape, dtype):
     M = shape[0]
     N = shape[1]
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    residual = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
+    residual = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=False)
     weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
     bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
     eps = 1e-5

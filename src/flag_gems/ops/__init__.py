@@ -15,7 +15,6 @@ from .groupnorm import group_norm
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
-from .skip_layernorm import skip_layer_norm
 from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
@@ -62,7 +61,6 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
-    "skip_layer_norm", 
     "mean",
     "mean_dim",
     "mm",
