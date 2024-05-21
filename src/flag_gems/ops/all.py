@@ -9,21 +9,16 @@ import logging
 # torch.all: Tests if all elements in input evaluate to True.
 #            If the dtype of input is not BOOL, then test if all elements in input evaluate to non-zero value
 # In triton function, test if all elements in input evaluate to non-zero value is ok. 
+def cfggen():
+    block_m = [1, 2, 4, 8]
+    configs = [
+        triton.Config({"BLOCK_M": m, }, num_warps=4) for m in block_m
+    ]
+    return configs
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
+@triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.heuristics(
     values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
 )
@@ -48,7 +43,7 @@ def all_kernel_dim(
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp + cols, mask, other=0.0).to(tl.float32)
+        a = tl.load(inp + cols, mask, other=1.0).to(tl.float32)
         _all += (a == 0)
     all = tl.max(_all, axis=1)[:, None]
     tl.store(out, all, row_mask)
@@ -66,7 +61,7 @@ def all_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
     all_val = tl.max(inp_val == 0., axis=0)
     mid_ptr = mid + pid
     tl.store(mid_ptr, all_val)
@@ -79,7 +74,7 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
     mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
-    all_val = tl.max(mid_val == 0, axis=0)
+    all_val = tl.min(mid_val == 0, axis=0)
     tl.store(out, all_val)
 
 
@@ -102,18 +97,22 @@ def all(inp):
 
 def all_dim(inp, dim=None, keepdim=False): 
     logging.debug("GEMS all_dim")
-    assert (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim"    
+    assert (dim is None) or (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim"    
     dtype = inp.dtype
+    if dim is None:
+        dim = list(range(inp.ndim))
+    else:
+        dim = [dim]
 
     shape = list(inp.shape)
-    N = shape[dim]
-    order = list(range(inp.ndim))
-    order.remove(dim)
-    order.append(dim)
-    shape[dim] = 1
-    inp = inp.permute(order)
+    dim = [d % inp.ndim for d in dim]
+    order = [i for i in range(inp.ndim) if i not in dim] + dim
+    inp = inp.permute(order).contiguous()
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
     M = inp.numel() // N
-    inp = inp.contiguous()
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
@@ -122,27 +121,27 @@ def all_dim(inp, dim=None, keepdim=False):
     )
     all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
-        out = out.squeeze()
+        out = out.squeeze(dim=dim)
     return (out == 0.)
     
 
 def all_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS all_dims")
-    assert (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim"
+    assert (dim is None) or ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
     dtype = inp.dtype
 
+    if dim is None:
+        dim = list(range(inp.ndim))
+
     shape = list(inp.shape)
+    dim = [d % inp.ndim for d in dim]
+    order = [i for i in range(inp.ndim) if i not in dim] + dim
+    inp = inp.permute(order).contiguous()
     N = 1
-    order = list(range(inp.ndim))
     for i in dim:
-        i = i % inp.ndim
-        order.remove(i)
-        order.append(i)
         N *= shape[i]
         shape[i] = 1
-    inp = inp.permute(order)
     M = inp.numel() // N
-    inp = inp.contiguous()
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
@@ -151,5 +150,5 @@ def all_dims(inp, dim=None, keepdim=False):
     )
     all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
-        out = out.squeeze()
+        out = out.squeeze(dim=dim)
     return (out == 0.)

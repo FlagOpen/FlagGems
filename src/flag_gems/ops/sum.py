@@ -35,21 +35,16 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, sum_val)
 
 
+def cfggen():
+    block_m = [1, 2, 4, 8]
+    configs = [
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+    ]
+    return configs
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
+@triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.heuristics(
     values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
 )
@@ -99,23 +94,22 @@ def sum(inp, *, dtype=None):
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS SUM DIM")
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if dim is None:
+        dim = list(range(inp.ndim))
     if isinstance(dim, int):
         dim = [dim]
+    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
     dtype = inp.dtype
 
     shape = list(inp.shape)
+    dim = [d % inp.ndim for d in dim]
+    order = [i for i in range(inp.ndim) if i not in dim] + dim
+    inp = inp.permute(order).contiguous()
     N = 1
-    order = list(range(inp.ndim))
     for i in dim:
-        i = i % inp.ndim
-        order.remove(i)
-        order.append(i)
         N *= shape[i]
         shape[i] = 1
-    inp = inp.permute(order)
     M = inp.numel() // N
-    inp = inp.contiguous()
 
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
@@ -124,6 +118,5 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     )
     sum_kernel[grid](inp, out, M, N)
     if not keepdim:
-        out = out.squeeze()
-
+        out = out.squeeze(dim=dim)
     return out
