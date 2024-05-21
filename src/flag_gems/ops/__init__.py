@@ -15,6 +15,7 @@ from .groupnorm import group_norm
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
+from .rms_norm import rms_norm
 from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
@@ -39,6 +40,8 @@ from .amax import amax
 from .sum import sum, sum_dim
 from .argmax import argmax
 from .prod import prod, prod_dim
+from .log_softmax import log_softmax
+from .outer import outer
 
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -61,6 +64,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "rms_norm", 
     "mean",
     "mean_dim",
     "mm",
@@ -91,4 +95,6 @@ __all__ = [
     "prod_dim",
     "var_mean",
     "vector_norm",
+    "log_softmax",
+    "outer",
 ]
