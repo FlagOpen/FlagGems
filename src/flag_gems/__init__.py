@@ -54,6 +54,12 @@ def enable(lib=aten_lib):
     lib.impl("prod.dim_int", prod_dim, "CUDA")
     lib.impl("sum", sum, "CUDA")
     lib.impl("sum.dim_IntList", sum_dim, "CUDA")
+    lib.impl("all", all, "CUDA")
+    lib.impl("all.dim", all_dim, "CUDA")
+    lib.impl("all.dims", all_dims, "CUDA")
+    lib.impl("any", any, "CUDA")
+    lib.impl("any.dim", any_dim, "CUDA")
+    lib.impl("any.dims", any_dims, "CUDA")
 
 
 class use_gems:
