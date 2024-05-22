@@ -40,7 +40,7 @@ def all_kernel_dim(
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp + cols, mask, other=1.0).to(tl.float32)
+        a = tl.load(inp + cols, mask, other=1.0)
         min_val = tl.min(tl.abs(a), axis=1)[:, None]
         all = tl.minimum(all, min_val)
     tl.store(out, all, row_mask)
@@ -58,7 +58,7 @@ def all_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
     all_val = tl.min(tl.abs(inp_val), axis=0)
     mid_ptr = mid + pid
     tl.store(mid_ptr, all_val)
@@ -84,12 +84,12 @@ def all(inp):
 
     dtype = inp.dtype
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    out = torch.empty([], dtype=torch.bool, device=inp.device)
 
     all_kernel_1[(mid_size, 1)](inp, mid, n_elements, block_size)
     all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
-    return out.to(torch.bool)
+    return out
 
 
 def all_dim(inp, dim=None, keepdim=False): 
@@ -111,7 +111,7 @@ def all_dim(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp.numel() // N
 
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
@@ -144,7 +144,7 @@ def all_dims(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp.numel() // N
 
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
