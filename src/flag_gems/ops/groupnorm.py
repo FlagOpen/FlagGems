@@ -95,11 +95,11 @@ def group_norm_backward_kernel(
     dY_ptr = grad_y + xy_offset
     dX_ptr = grad_x + xy_offset
 
-    rstd = tl.load(Rstd_ptr)
-    mean = tl.load(Mean_ptr)
-    dY_val = tl.load(dY_ptr, mask=xy_mask, other=0.0)
-    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0)
-    weight = tl.load(W_ptr, mask=wb_mask, other=0.0)[:, None]
+    rstd = tl.load(Rstd_ptr).to(tl.float32)
+    mean = tl.load(Mean_ptr).to(tl.float32)
+    dY_val = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    weight = tl.load(W_ptr, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
     dx_hat = weight * dY_val
 
