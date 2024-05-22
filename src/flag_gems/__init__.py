@@ -23,7 +23,7 @@ def enable(lib=aten_lib):
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
-    lib.impl("skip_rms_norm", skip_rms_norm, "CUDA")
+    lib.impl("rms_norm", rms_norm, "CUDA")
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
@@ -55,6 +55,8 @@ def enable(lib=aten_lib):
     lib.impl("prod.dim_int", prod_dim, "CUDA")
     lib.impl("sum", sum, "CUDA")
     lib.impl("sum.dim_IntList", sum_dim, "CUDA")
+    lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
+    lib.impl("outer", outer, "AutogradCUDA")
 
 
 class use_gems:
