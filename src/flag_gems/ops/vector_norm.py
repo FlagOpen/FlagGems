@@ -137,9 +137,12 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dim is None:
         dim = list(range(x.ndim))
     shape = list(x.shape)
-    dim = [d % x.ndim for d in dim]
+    dim = sorted([d % x.ndim for d in dim])
     order = [i for i in range(x.ndim) if i not in dim] + dim
-    x = x.permute(order).contiguous()
+    if order == shape:
+        x = x.contiguous()
+    else:
+        x = x.permute(order).contiguous()
     N = 1
     for i in dim:
         N *= shape[i]
