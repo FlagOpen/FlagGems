@@ -38,14 +38,6 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 def cfggen():
     block_m = [1, 2, 4, 8]
     configs = [
-        triton.Config({"BLOCK_M": m, }, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
         triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
     ]
     return configs
