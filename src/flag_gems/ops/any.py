@@ -103,7 +103,7 @@ def any_dim(inp, dim=None, keepdim=False):
         dim = list(range(inp.ndim))
     else:
         dim = [dim]
-    assert (dim is None) or (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim" 
+    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
     dtype = inp.dtype
 
     shape = list(inp.shape)
