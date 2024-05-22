@@ -66,7 +66,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
-    "rms_norm", 
+    "rms_norm",
     "mean",
     "mean_dim",
     "mm",

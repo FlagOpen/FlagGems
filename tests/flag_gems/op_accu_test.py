@@ -599,11 +599,10 @@ def test_accuracy_rmsnorm(shape, dtype):
     ref_inp = inp.to(torch.float64)
     ref_weight = weight.to(torch.float64)
 
-
-    def _torch_rms_norm(x, weight, eps): 
+    def _torch_rms_norm(x, weight, eps):
         variance = x.pow(2).mean(-1, keepdim=True)
         hidden_states = x * torch.rsqrt(variance + eps)
-        return weight * hidden_states 
+        return weight * hidden_states
 
     ref_out = _torch_rms_norm(
         ref_inp,
@@ -611,12 +610,9 @@ def test_accuracy_rmsnorm(shape, dtype):
         eps=eps,
     )
 
-    res_out = flag_gems.rms_norm(
-        inp, list(layer_shape), weight=weight, eps=eps
-    )
+    res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
     allclose_with_dtype(res_out, ref_out, dtype)
-    
 
 
 @pytest.mark.parametrize(
