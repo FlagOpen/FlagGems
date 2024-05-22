@@ -43,11 +43,16 @@ def cfggen():
     return configs
 
 
+def cfggen():
+    block_m = [1, 2, 4, 8]
+    configs = [
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+    ]
+    return configs
+
+
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
-)
 @triton.jit
 def sum_kernel(
     inp,
@@ -102,9 +107,12 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     dtype = inp.dtype
 
     shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
+    dim = sorted([d % inp.ndim for d in dim])
     order = [i for i in range(inp.ndim) if i not in dim] + dim
-    inp = inp.permute(order).contiguous()
+    if order == shape:
+        inp = inp.contiguous()
+    else:
+        inp = inp.permute(order).contiguous()
     N = 1
     for i in dim:
         N *= shape[i]
