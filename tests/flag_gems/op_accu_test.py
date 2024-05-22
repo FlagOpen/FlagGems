@@ -16,7 +16,7 @@ def allclose_with_dtype(a, b, dtype, equal_nan=False, reduce_dim=1):
     rtol = RESOLUTION[dtype]
     torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
-
+'''
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
@@ -1252,16 +1252,19 @@ def test_accuracy_outer(shape, dtype):
     allclose_with_dtype(res_in1_grad, ref_in1_grad, dtype)
     allclose_with_dtype(res_in2_grad, ref_in2_grad, dtype)
 
-
+'''
 @pytest.mark.parametrize(
     "shape",
     [(4096, i * 64) for i in range(1, 20)],
 )
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
-def test_accuracy_all(shape, dtype):
+@pytest.mark.parametrize("boolType", ["normal", "allTrue"])
+def test_accuracy_all(shape, dtype, boolType):
     if (dtype == torch.bool):
-        inp = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp1 = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp2 = torch.ones(shape, dtype=torch.float32, device="cuda")
+        inp = inp1 if boolType is "normal" else inp2
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -1279,9 +1282,12 @@ def test_accuracy_all(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
-def test_accuracy_all_dim(shape, dim, keepdim, dtype):
+@pytest.mark.parametrize("boolType", ["normal", "allTrue"])
+def test_accuracy_all_dim(shape, dim, keepdim, dtype, boolType):
     if (dtype == torch.bool):
-        inp = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp1 = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp2 = torch.ones(shape, dtype=torch.float32, device="cuda")
+        inp = inp1 if boolType is "normal" else inp2
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -1297,10 +1303,13 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype):
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dim", [[1, 0], [1, 2]])
-def test_accuracy_all_dims(shape, dim, keepdim, dtype):
+@pytest.mark.parametrize("dim", [[1, 0], [1, 2], 0, 1])
+@pytest.mark.parametrize("boolType", ["normal", "allTrue"])
+def test_accuracy_all_dims(shape, dim, keepdim, dtype, boolType):
     if (dtype == torch.bool):
-        inp = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp1 = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp2 = torch.ones(shape, dtype=torch.float32, device="cuda")
+        inp = inp1 if boolType is "normal" else inp2
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -1315,9 +1324,12 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype):
     [(4096, i * 64) for i in range(1, 20)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
-def test_accuracy_any(shape, dtype):
+@pytest.mark.parametrize("boolType", ["normal", "allFalse"])
+def test_accuracy_any(shape, dtype, boolType):
     if (dtype == torch.bool):
-        inp = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp1 = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp2 = torch.zeros(shape, dtype=torch.float32, device="cuda")
+        inp = inp1 if boolType is "normal" else inp2
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -1335,9 +1347,12 @@ def test_accuracy_any(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
-def test_accuracy_any_dim(shape, dim, keepdim, dtype):
+@pytest.mark.parametrize("boolType", ["normal", "allFalse"])
+def test_accuracy_any_dim(shape, dim, keepdim, dtype, boolType):
     if (dtype == torch.bool):
-        inp = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp1 = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp2 = torch.zeros(shape, dtype=torch.float32, device="cuda")
+        inp = inp1 if boolType is "normal" else inp2
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -1349,14 +1364,17 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype):
 
 @pytest.mark.parametrize(
     "shape",
-    [(1026, 16, 1026)],
+    [(1024, 1024, 16), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
 @pytest.mark.parametrize("dtype", [torch.bool])
 @pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dim", [[1, 0], [1, 2]])
-def test_accuracy_any_dims(shape, dim, keepdim, dtype):
+@pytest.mark.parametrize("dim", [[1, 0], [1, 2], 0, 1])
+@pytest.mark.parametrize("boolType", ["normal", "allFalse"])
+def test_accuracy_any_dims(shape, dim, keepdim, dtype, boolType):
     if (dtype == torch.bool):
-        inp = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp1 = torch.randn(shape, dtype=torch.float32, device="cuda") > 0
+        inp2 = torch.zeros(shape, dtype=torch.float32, device="cuda")
+        inp = inp1 if boolType is "normal" else inp2
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
 

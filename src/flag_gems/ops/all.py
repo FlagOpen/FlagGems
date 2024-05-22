@@ -97,12 +97,12 @@ def all(inp):
 
 def all_dim(inp, dim=None, keepdim=False): 
     logging.debug("GEMS all_dim")
-    assert (dim is None) or (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim"    
-    dtype = inp.dtype
     if dim is None:
         dim = list(range(inp.ndim))
     else:
         dim = [dim]
+    assert (dim is None) or (dim >= -inp.ndim and dim < inp.ndim), "Invalid dim" 
+    dtype = inp.dtype
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
@@ -127,11 +127,12 @@ def all_dim(inp, dim=None, keepdim=False):
 
 def all_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS all_dims")
-    assert (dim is None) or ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
-    dtype = inp.dtype
-
     if dim is None:
         dim = list(range(inp.ndim))
+    if isinstance(dim, int):
+        dim = [dim]
+    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
+    dtype = inp.dtype
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
