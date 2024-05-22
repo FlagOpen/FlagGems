@@ -1413,6 +1413,10 @@ def test_accuracy_any_dims(shape, dim, keepdim):
     with flag_gems.use_gems():
         res_out = torch.any(inp, dim=dim, keepdim=keepdim)
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 30)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
