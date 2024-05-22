@@ -58,7 +58,7 @@ def any_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
     any_val = tl.max(tl.abs(inp_val), axis=0)
     mid_ptr = mid + pid
     tl.store(mid_ptr, any_val)
@@ -89,7 +89,7 @@ def any(inp):
     any_kernel_1[(mid_size, 1)](inp, mid, n_elements, block_size)
     any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
-    return out.to(torch.bool)
+    return out
 
 
 def any_dim(inp, dim=None, keepdim=False):
@@ -144,7 +144,7 @@ def any_dims(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp.numel() // N
 
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
@@ -152,4 +152,4 @@ def any_dims(inp, dim=None, keepdim=False):
     any_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
-    return out.to(torch.bool)
+    return out

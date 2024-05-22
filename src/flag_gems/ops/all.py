@@ -119,7 +119,7 @@ def all_dim(inp, dim=None, keepdim=False):
     all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
-    return out.to(torch.bool)
+    return out
     
 
 def all_dims(inp, dim=None, keepdim=False):
@@ -152,4 +152,4 @@ def all_dims(inp, dim=None, keepdim=False):
     all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
-    return out.to(torch.bool)
+    return out
