@@ -52,6 +52,7 @@ def any_kernel_1(
     inp,
     mid,
     n_elements,
+    mid_size, 
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -61,7 +62,8 @@ def any_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
     any_val = tl.max(tl.abs(inp_val), axis=0)
     mid_ptr = mid + pid
-    tl.store(mid_ptr, any_val)
+    mid_mask = mid_ptr < mid_size
+    tl.store(mid_ptr, any_val, mask=mid_mask)
 
 
 @libentry()
@@ -86,7 +88,7 @@ def any(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    any_kernel_1[(mid_size, 1)](inp, mid, n_elements, block_size)
+    any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
     any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
     return out
