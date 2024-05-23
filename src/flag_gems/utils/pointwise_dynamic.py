@@ -303,7 +303,10 @@ def generate_pointwise_kernel(op_desc: OPDesc, rank, kernel_name: str, code: Ind
                     function_ns.create_name(f"in{input_tensor_index}_ptr")
                     input_tensor_index += 1
                 else:
-                    code.writeline(f"val{non_tensor_index}: {type_name(op_desc.dtypes[i])},")
+                    if op_desc.dtypes[i] is not None:
+                        code.writeline(f"val{non_tensor_index}: {type_name(op_desc.dtypes[i])},")
+                    else:
+                        code.writeline(f"val{non_tensor_index},")
                     function_ns.create_name(f"val{non_tensor_index}")
                     non_tensor_index += 1
             elif op_desc.intents[i] == Intent.OUT:
