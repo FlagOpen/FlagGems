@@ -65,7 +65,7 @@ def any_kernel_1(
     inp_ptrs = inp + offset
     mask = offset < n_elements
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
-    any_val = tl.max(inp_val != 0, axis=0)
+    any_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_any)
     mid_ptr = mid + pid
     mid_mask = pid < mid_size
     tl.store(mid_ptr, any_val, mask=mid_mask)
@@ -78,12 +78,12 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
     mid_val = tl.load(mid_ptrs, mask=mask, other=0)
-    any_val = tl.max(mid_val, axis=0)
+    any_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_any)
     tl.store(out, any_val)
 
 
 def any(inp):
-    logging.debug("GEMS any")
+    logging.debug("GEMS ANY")
     n_elements = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
@@ -100,7 +100,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS any_dim")
+    logging.debug("GEMS ANY_DIM")
     shape = list(inp.shape)
     if dim is None:
         dim = list(range(inp.ndim))
@@ -127,13 +127,13 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS any_dims")
+    logging.debug("GEMS ANY_DIMS")
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
     assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
 
     shape = list(inp.shape)
-    dim = sorted([d % inp.ndim for d in dim])
+    dim = [d % inp.ndim for d in dim]
     order = [i for i in range(inp.ndim) if i not in dim] + dim
     inp = inp.permute(order).contiguous()
     N = 1
