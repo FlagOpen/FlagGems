@@ -34,7 +34,7 @@ def any_kernel_dim(
     out = out + pid
     row_mask = pid < M
 
-    any = tl.zeros([BLOCK_M, 1], dtype=tl.float32)
+    any = tl.zeros([BLOCK_M, 1], dtype=tl.int1)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
