@@ -7,6 +7,7 @@ from .gelu_and_mul import gelu_and_mul
 __all__ = [
     "skip_layer_norm", 
     "skip_rms_norm", 
+    "skip_layer_norm",
     "silu_and_mul",
     "gelu_and_mul",
 ]
