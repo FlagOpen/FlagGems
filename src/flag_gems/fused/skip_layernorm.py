@@ -41,8 +41,7 @@ def skip_layer_norm_kernel(
     # Compute variance
     _var = tl.where(mask, x - mean, 0.0)
     _var = _var * _var
-    _var /= N
-    var = tl.sum(_var, axis=0)
+    var = tl.sum(_var, axis=0) / N
     rstd = 1 / tl.sqrt(var + eps)
 
     w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0).to(tl.float32)

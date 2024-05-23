@@ -28,7 +28,7 @@ def rms_norm_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
 
-    var = tl.sum(x * x / N, axis=0)
+    var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
 
     w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)

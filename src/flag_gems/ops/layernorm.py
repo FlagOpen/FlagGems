@@ -47,8 +47,8 @@ def layer_norm_kernel(
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    _mean /= N
-    mean = tl.sum(_mean, axis=1)[:, None]
+    mean = tl.sum(_mean, axis=1) / N
+    mean = mean[:, None]
 
     # Compute variance
     _var = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -60,8 +60,8 @@ def layer_norm_kernel(
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         x = tl.where(col_mask, x - mean, 0.0)
         _var += x * x
-    _var /= N
-    var = tl.sum(_var, axis=1)[:, None]
+    var = tl.sum(_var, axis=1) / N
+    var = var[:, None]
     rstd = 1 / tl.sqrt(var + eps)
     # Write mean / rstd
     tl.store(Mean + row, mean)

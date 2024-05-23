@@ -43,10 +43,10 @@ def group_norm_kernel(
     Y_ptr = Y + xy_offset
 
     X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    mean = tl.sum(X_val / num_elements)
+    mean = tl.sum(X_val) / num_elements
     x = tl.where(xy_mask, X_val - mean, 0.0)
 
-    var = tl.sum(x * x / num_elements)
+    var = tl.sum(x * x) / num_elements
     rstd = tl.math.rsqrt(var + eps)
     x_hat = x * rstd
 
@@ -109,7 +109,7 @@ def group_norm_backward_kernel(
     grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
     grad_distance = 2 * x * grad_var
     grad_centered_mean = dx_hat * rstd + grad_distance
-    grad_mean = -tl.sum(grad_centered_mean / num_elements)
+    grad_mean = -tl.sum(grad_centered_mean) / num_elements
     grad_X = grad_centered_mean + grad_mean
     tl.store(dX_ptr, grad_X, mask=xy_mask)
 
