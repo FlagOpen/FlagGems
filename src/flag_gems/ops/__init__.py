@@ -7,6 +7,7 @@ from .bitwise_and import bitwise_and_tensor
 from .bitwise_not import bitwise_not
 from .bitwise_or import bitwise_or_tensor
 from .bmm import bmm
+from .clamp import clamp_tensor
 from .cos import cos
 from .cumsum import cumsum
 from .dropout import native_dropout
@@ -62,6 +63,7 @@ __all__ = [
     "bitwise_not",
     "bitwise_or_tensor",
     "bmm",
+    "clamp_tensor",
     "cos",
     "cumsum",
     "div",
@@ -72,7 +74,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
-    "rms_norm", 
+    "rms_norm",
     "mean",
     "mean_dim",
     "mm",
