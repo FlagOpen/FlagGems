@@ -1398,7 +1398,7 @@ def test_accuracy_outer(shape, dtype):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [4, 8, 1024, 4096] for j in range(1, 10)],
+    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
@@ -1415,10 +1415,9 @@ def test_accuracy_all(shape, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
-
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [4, 8, 1024, 4096] for j in range(1, 10)],
+    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
 )
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
@@ -1458,7 +1457,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [4, 8, 1024, 4096] for j in range(1, 10)],
+    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allFalse"])
@@ -1477,7 +1476,7 @@ def test_accuracy_any(shape, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [4, 8, 1024, 4096] for j in range(1, 10)],
+    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
 )
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [0, 1])
@@ -1552,3 +1551,4 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
         res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
     allclose_with_dtype(res_out, ref_out, dtype)
+

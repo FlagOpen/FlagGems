@@ -19,7 +19,7 @@ def cfggen():
 
 @triton.jit
 def reduce_any(a, b):
-    return tl.maximum(a, b)
+    return a or b
 
 
 @libentry()

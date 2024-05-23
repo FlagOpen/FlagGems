@@ -19,7 +19,7 @@ def cfggen():
 
 @triton.jit
 def reduce_all(a, b):
-    return tl.minimum(a, b)
+    return a and b
 
 
 @libentry()
