@@ -91,8 +91,6 @@ def sum(inp, *, dtype=None):
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS SUM DIM")
-    if dim is None:
-        dim = list(range(inp.ndim))
     if dtype is None:
         dtype = inp.dtype
 

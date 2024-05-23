@@ -100,7 +100,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY_DIM")
+    logging.debug("GEMS ANY DIM")
     shape = list(inp.shape)
     if dim is None:
         dim = list(range(inp.ndim))
@@ -127,7 +127,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY_DIMS")
+    logging.debug("GEMS ANY DIMS")
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
     assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
