@@ -62,7 +62,7 @@ def all_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
     all_val = tl.min(tl.abs(inp_val), axis=0)
     mid_ptr = mid + pid
-    mid_mask = mid_ptr < mid_size
+    mid_mask = pid < mid_size
     tl.store(mid_ptr, all_val, mask=mid_mask)
 
 
@@ -96,29 +96,25 @@ def all(inp):
 
 def all_dim(inp, dim=None, keepdim=False): 
     logging.debug("GEMS all_dim")
-    if dim is None:
-        dim = list(range(inp.ndim))
-    else:
-        dim = [dim]
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
-    dtype = inp.dtype
-
     shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
-    order = [i for i in range(inp.ndim) if i not in dim] + dim
-    inp = inp.permute(order).contiguous()
-    N = 1
-    for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
+    if dim is None:
+        out = all(inp).reshape(shape)
+        dim = shape
+    else:
+        assert (dim >= -inp.ndim and dim < inp.ndim) , "Invalid dim" 
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        dim = dim % inp.ndim
+        inp = inp.contiguous()
+        N = shape[dim]
+        shape[dim] = 1
+        M = inp.numel() // N
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-    )
-    all_kernel_dim[grid](inp, out, M, N)
+        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+        )
+        all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

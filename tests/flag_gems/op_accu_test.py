@@ -1192,7 +1192,7 @@ def test_accuracy_sum(shape, dtype):
 )
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [[0, 1], 0, 1, None])
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -1358,10 +1358,10 @@ def test_accuracy_all_dim(shape, dim, keepdim):
 
 @pytest.mark.parametrize(
     "shape",
-    [(1024, 1024, 16), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
+@pytest.mark.parametrize("dim", [-1, 0, 1, None, [1, 0]])
 @pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dim", [[1, 0], [1, 2], 0, 1])
 def test_accuracy_all_dims(shape, dim, keepdim):
     inp = torch.rand(shape, device="cuda") < 0.5
 
