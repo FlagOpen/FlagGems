@@ -98,12 +98,9 @@ def amax(inp, dim=None, keepdim=False):
         dtype = inp.dtype
 
         shape = list(inp.shape)
-        dim = sorted([d % inp.ndim for d in dim])
+        dim = [d % inp.ndim for d in dim]
         order = [i for i in range(inp.ndim) if i not in dim] + dim
-        if order == shape:
-            inp = inp.contiguous()
-        else:
-            inp = inp.permute(order).contiguous()
+        inp = inp.permute(order).contiguous()
         N = 1
         for i in dim:
             N *= shape[i]

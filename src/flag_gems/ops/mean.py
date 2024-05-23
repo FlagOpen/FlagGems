@@ -92,12 +92,9 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         dim = list(range(x.ndim))
 
     shape = list(x.shape)
-    dim = sorted([d % x.ndim for d in dim])
+    dim = [d % x.ndim for d in dim]
     order = [i for i in range(x.ndim) if i not in dim] + dim
-    if order == shape:
-        x = x.contiguous()
-    else:
-        x = x.permute(order).contiguous()
+    x = x.permute(order).contiguous()
     N = 1
     for i in dim:
         N *= shape[i]

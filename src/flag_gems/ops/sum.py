@@ -60,7 +60,7 @@ def sum_kernel(
     out = out + pid
     row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, 1], dtype=tl.float32)
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
@@ -68,7 +68,8 @@ def sum_kernel(
 
         a = tl.load(inp + cols, mask, other=0.0).to(tl.float32)
         _sum += tl.sum(a, axis=1)[:, None]
-    tl.store(out, _sum, row_mask)
+    sum = tl.sum(_sum, axis=1)[:, None]
+    tl.store(out, sum, row_mask)
 
 
 def sum(inp, *, dtype=None):
@@ -83,8 +84,8 @@ def sum(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    sum_kernel_1[(mid_size, 1)](inp, mid, M, block_size)
-    sum_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+    sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+    sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
 
@@ -92,10 +93,8 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS SUM DIM")
     if dim is None:
         dim = list(range(inp.ndim))
-    if isinstance(dim, int):
-        dim = [dim]
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
-    dtype = inp.dtype
+    if dtype is None:
+        dtype = inp.dtype
 
     shape = list(inp.shape)
     dim = sorted([d % inp.ndim for d in dim])
