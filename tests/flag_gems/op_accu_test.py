@@ -52,7 +52,11 @@ def test_accuracy_add(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
-    ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
+    if dtype == torch.float16:
+        ref_out = inp1 + inp2 * alpha
+    else:
+        ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
+    
     with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
@@ -72,8 +76,10 @@ def test_accuracy_add(shape, alpha, dtype):
 def test_accuracy_add_broadcast(shape_a, shape_b, alpha, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device=DEVICE)
     inp2 = torch.randn(shape_b, dtype=dtype, device=DEVICE)
-
-    ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
+    if dtype == torch.float16:
+        ref_out = inp1 + inp2 * alpha
+    else:
+        ref_out = torch.add(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
@@ -775,8 +781,11 @@ def test_accuracy_rsqrt(shape, dtype):
 def test_accuracy_rsub(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
-
-    ref_out = torch.rsub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
+    
+    if dtype == torch.float16:
+        ref_out = inp2 - inp1 * alpha
+    else:
+        ref_out = torch.rsub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.rsub(inp1, inp2, alpha=alpha)
 
@@ -851,7 +860,10 @@ def test_accuracy_sub(shape, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
 
-    ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
+    if dtype == torch.float16:
+        ref_out = inp1 - inp2 * alpha
+    else:
+        ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
@@ -872,7 +884,10 @@ def test_accuracy_sub_broadcast(shape_a, shape_b, alpha, dtype):
     inp1 = torch.randn(shape_a, dtype=dtype, device=DEVICE)
     inp2 = torch.randn(shape_b, dtype=dtype, device=DEVICE)
 
-    ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
+    if dtype == torch.float16:
+        ref_out = inp1 - inp2 * alpha
+    else:
+        ref_out = torch.sub(inp1.to(torch.float64), inp2.to(torch.float64), alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
