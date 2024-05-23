@@ -6,7 +6,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 
 
 @pytest.mark.parametrize("prompt", ["How are you today?", "What is your name?", "Who are you?", "Where are you from?"])
-def test_accuracy_bert(prompt):
+def test_accuracy_llama(prompt):
     tokenizer = AutoTokenizer.from_pretrained("sharpbai/Llama-2-7b-hf")
     model = AutoModelForCausalLM.from_pretrained("sharpbai/Llama-2-7b-hf")
 
@@ -24,6 +24,4 @@ def test_accuracy_bert(prompt):
         res_output,
         atol=1e-3,
         rtol=1e-3,
-    ), f"LLAMA FAIL with maxdiff {maxdiff} \nREF: {ref_outputs}\nRES: {res_outputs}"
-    
-   
+    ), f"LLAMA FAIL with maxdiff {maxdiff} \nREF: {ref_output}\nRES: {res_output}"
