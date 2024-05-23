@@ -30,20 +30,20 @@ def any_kernel_dim(
 ):
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
+    inp_ptr = inp + pid * N
+    out_ptr = out + pid
     row_mask = pid < M
 
-    any = tl.zeros([BLOCK_M, 1], dtype=tl.int1)
+    any = tl.zeros([BLOCK_M, 1], dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp + cols, mask, other=0.0)
+        a = tl.load(inp_ptr + cols, mask, other=0.0)
         max_val = tl.max(tl.abs(a), axis=1)[:, None]
         any = tl.maximum(any, max_val)
-    tl.store(out, any, row_mask)
+    tl.store(out_ptr, any, row_mask)
 
 
 @libentry()
@@ -62,7 +62,7 @@ def any_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
     any_val = tl.max(tl.abs(inp_val), axis=0)
     mid_ptr = mid + pid
-    mid_mask = mid_ptr < mid_size
+    mid_mask = pid < mid_size
     tl.store(mid_ptr, any_val, mask=mid_mask)
 
 

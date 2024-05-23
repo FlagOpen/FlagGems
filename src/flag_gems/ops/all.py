@@ -30,20 +30,20 @@ def all_kernel_dim(
 ):
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
+    inp_ptr = inp + pid * N
+    out_ptr = out + pid
     row_mask = pid < M
 
-    all = tl.full([BLOCK_M, 1], value=1., dtype=tl.int1)
+    all = tl.full([BLOCK_M, 1], value=1., dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp + cols, mask, other=1.0)
+        a = tl.load(inp_ptr + cols, mask, other=1.0)
         min_val = tl.min(tl.abs(a), axis=1)[:, None]
         all = tl.minimum(all, min_val)
-    tl.store(out, all, row_mask)
+    tl.store(out_ptr, all, row_mask)
 
 
 @libentry()
