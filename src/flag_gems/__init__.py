@@ -13,6 +13,7 @@ def enable(lib=aten_lib):
     lib.impl("bitwise_not", bitwise_not, "CUDA")
     lib.impl("bitwise_or.Tensor", bitwise_or_tensor, "CUDA")
     lib.impl("bmm", bmm, "CUDA")
+    lib.impl("clamp.Tensor", clamp_tensor, "CUDA")
     lib.impl("cos", cos, "CUDA")
     lib.impl("cumsum", cumsum, "CUDA")
     lib.impl("div.Tensor", div, "CUDA")
@@ -23,6 +24,8 @@ def enable(lib=aten_lib):
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
+    lib.impl("rms_norm", rms_norm, "CUDA")
+    
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
@@ -54,6 +57,8 @@ def enable(lib=aten_lib):
     lib.impl("prod.dim_int", prod_dim, "CUDA")
     lib.impl("sum", sum, "CUDA")
     lib.impl("sum.dim_IntList", sum_dim, "CUDA")
+    lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
+    lib.impl("outer", outer, "AutogradCUDA")
 
 
 class use_gems:
