@@ -17,6 +17,11 @@ def cfggen():
     return configs
 
 
+@triton.jit
+def reduce_any(a, b):
+    return tl.maximum(a, b)
+
+
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
@@ -30,20 +35,20 @@ def any_kernel_dim(
 ):
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp_ptr = inp + pid * N
-    out_ptr = out + pid
+    inp = inp + pid * N
+    out = out + pid
     row_mask = pid < M
 
-    any = tl.zeros([BLOCK_M, 1], dtype=tl.float32)
+    _any = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.int1)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp_ptr + cols, mask, other=0.0)
-        max_val = tl.max(tl.abs(a), axis=1)[:, None]
-        any = tl.maximum(any, max_val)
-    tl.store(out_ptr, any, row_mask)
+        a = tl.load(inp + cols, mask, other=0.0)
+        _any = _any or (a != 0)
+    any = tl.reduce(_any, axis=1, combine_fn=reduce_any)
+    tl.store(out, any[:, None], row_mask)
 
 
 @libentry()
@@ -59,8 +64,8 @@ def any_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
-    any_val = tl.max(tl.abs(inp_val), axis=0)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
+    any_val = tl.max(inp_val != 0, axis=0)
     mid_ptr = mid + pid
     mid_mask = pid < mid_size
     tl.store(mid_ptr, any_val, mask=mid_mask)
@@ -72,7 +77,7 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=0)
     any_val = tl.max(mid_val, axis=0)
     tl.store(out, any_val)
 
@@ -98,23 +103,24 @@ def any_dim(inp, dim=None, keepdim=False):
     logging.debug("GEMS any_dim")
     shape = list(inp.shape)
     if dim is None:
-        out = any(inp).reshape(shape)
-        dim = shape
+        dim = list(range(inp.ndim))
     else:
         assert (dim >= -inp.ndim and dim < inp.ndim) , "Invalid dim" 
+        dim = [dim % inp.ndim]
+    order = [i for i in range(inp.ndim) if i not in dim] + dim
+    inp = inp.permute(order).contiguous()
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = inp.numel() // N
 
-        dim = dim % inp.ndim
-        inp = inp.contiguous()
-        N = shape[dim]
-        shape[dim] = 1
-        M = inp.numel() // N
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
-        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-        )
-        any_kernel_dim[grid](inp, out, M, N)
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+    )
+    any_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
@@ -122,20 +128,14 @@ def any_dim(inp, dim=None, keepdim=False):
 
 def any_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS any_dims")
-    if dim is None:
-        dim = list(range(inp.ndim))
-    if isinstance(dim, int):
-        dim = [dim]
+    if dim is None or isinstance(dim, int):
+        return any_dim(inp, dim=dim, keepdim=keepdim)
     assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
-    dtype = inp.dtype
 
     shape = list(inp.shape)
     dim = sorted([d % inp.ndim for d in dim])
     order = [i for i in range(inp.ndim) if i not in dim] + dim
-    if order == shape:
-        inp = inp.contiguous()
-    else:
-        inp = inp.permute(order).contiguous()
+    inp = inp.permute(order).contiguous()
     N = 1
     for i in dim:
         N *= shape[i]
