@@ -103,7 +103,7 @@ def all_dim(inp, dim=None, keepdim=False):
     logging.debug("GEMS ALL DIM")
     shape = list(inp.shape)
     if dim is None:
-        dim = list(range(inp.ndim))
+        dim = list(range(inp.ndim)) # TODO: Need to be optimized
     else:
         assert (dim >= -inp.ndim and dim < inp.ndim) , "Invalid dim" 
 
