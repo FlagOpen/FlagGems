@@ -270,10 +270,11 @@ def generate_functional_pointwise_wrapper(
             num_output_tensor_index += 1
 
         # call destination_passing_func
-        call_str = f"{output_ref_for_wrapper(op_desc)} = {destination_passing_func_name}({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+        output_names: str = output_ref_for_wrapper(op_desc)
+        call_str = f"{output_names} = {destination_passing_func_name}({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
         code.writeline(call_str)
 
-        return_str = f"return {output_ref_for_wrapper(op_desc)}"
+        return_str = f"return {output_names}"
         code.writeline(return_str)
         code.newline()
     return code
