@@ -123,6 +123,8 @@ def apply_rotary_pos_emb(
     assert (
         cos.shape[-1] * 2 == q.shape[-1]
     ), f"cos/sin dim must be half of q/k dim, got {cos.shape} and {q.shape}"
+    assert cos.is_contiguous(), "cos must be contiguous"
+    assert sin.is_contiguous(), "sin must be contiguous"
 
     q_shape = q.shape
     k_shape = k.shape
@@ -136,8 +138,8 @@ def apply_rotary_pos_emb(
         q.shape[0] == k.shape[0]
     ), f"q and k must have the same length, got {q.shape} and {k.shape}"
     assert (
-        position_ids.numel() == q.shape[0]
-    ), f"position_ids must have the same length as q, got {position_ids.shape} and {q.shape}"
+        position_ids.shape == q.shape[:-2]
+    ), f"position_ids must have the same length as q, got {position_ids.shape} and {q.shape[:-2]}"
 
     q_embed = torch.empty_like(q)
     k_embed = torch.empty_like(k)
