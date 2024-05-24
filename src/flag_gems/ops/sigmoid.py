@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic
 @triton.jit
 def sigmoid_forward(x):
-    log2e: tl.constexpr = math.log2(math.e)
+    log2e: tl.constexpr = tl.math.log2(math.e)
     return 1 / (1 + tl.math.exp2(-x.to(tl.float32) * log2e))
 
 
