@@ -34,10 +34,11 @@ def all_kernel_dim(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
-    row_mask = pid < M
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + rows * N
+    out = out + rows
+    row_mask = rows < M
 
     _all = tl.full([BLOCK_M, BLOCK_N], value=1, dtype=tl.int1)
     for off in range(0, N, BLOCK_N):
@@ -67,8 +68,7 @@ def all_kernel_1(
     inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
     all_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_all)
     mid_ptr = mid + pid
-    mid_mask = pid < mid_size
-    tl.store(mid_ptr, all_val, mask=mid_mask)
+    tl.store(mid_ptr, all_val)
 
 
 @libentry()

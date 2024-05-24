@@ -55,10 +55,11 @@ def amax_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + pid * N
-    out = out + pid
-    row_mask = pid < M
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = (inp + rows * N)
+    out = out + rows
+    row_mask = rows < M
 
     _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
