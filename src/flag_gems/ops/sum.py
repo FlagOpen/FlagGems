@@ -67,7 +67,7 @@ def sum_kernel(
         mask = row_mask and col_mask
 
         a = tl.load(inp + cols, mask, other=0.0).to(tl.float32)
-        _sum += tl.sum(a, axis=1)[:, None]
+        _sum += a
     sum = tl.sum(_sum, axis=1)[:, None]
     tl.store(out, sum, row_mask)
 
