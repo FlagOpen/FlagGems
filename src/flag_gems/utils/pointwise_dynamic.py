@@ -1,38 +1,19 @@
-from itertools import chain
 import importlib
-from typing import List, Callable, Mapping, Optional
-from functools import partial
+from typing import Tuple, List, Callable, Mapping, Optional, Any
+
 import torch
 import triton
 from triton.runtime.jit import JITFunction
 from triton import language as tl
 
-from flag_gems.utils.shape_utils import (
-    broadcast_shapes,
-    Shape,
-)
-
-
+from flag_gems.utils.shape_utils import broadcast_shapes
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.inliner import inline_function
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 
-from dataclasses import dataclass
-from triton.runtime.jit import JITFunction
-import torch
-from enum import Enum
-
-
 # ------------------ Operation Description ---------------------------
-class Intent(Enum):
-    IN = 0
-    OUT = 1
-
-    def __str__(self):
-        return self.name.lower()
-
-def type_name(type) -> str:
+def _type_name(type) -> str:
     "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
     if type in (bool, int, float, str):
         return type.__name__
@@ -40,130 +21,212 @@ def type_name(type) -> str:
         return str(type)
     return str(type)
 
-@dataclass
+def _check_typed_list(container, type):
+    for item in container:
+        assert isinstance(item, type)
+
+def _check_sized_list(container, size):
+    assert len(container) == size
+
 class OPDesc:
-    is_tensor: List[bool]
-    intents: List[Intent]
-    dtypes: List[torch.dtype]
+    _num_inputs: int
+    _is_tensor: List[bool]
+    _dtypes: List[Optional[type]]
+
+    _num_input_tensors: int
+    _num_non_tensor_inputs: int
+
+    _num_outputs: int
+    _output_dtypes: List[torch.dtype]
+
     scalar_fn: JITFunction
 
-    def __post_init__(self):
-        assert len(self.is_tensor) == len(self.intents) == len(self.dtypes)
-        for i in range(0, len(self.is_tensor)):
-            if not self.is_tensor[i]:
-                self.intents[i] = Intent.IN # non tensors can only be input now
+    def __init__(
+        self,
+        *,
+        num_inputs: Optional[int] = None,
+        is_tensor: Optional[List[bool]] = None,
+        dtypes: Optional[List[Optional[type]]] = None,
+        num_outputs: Optional[int] = None,
+        output_dtypes: Optional[List[torch.dtype]] = None,
+    ):
+        if is_tensor is not None:
+            _check_typed_list(is_tensor, bool)
+        if dtypes is not None:
+            _check_typed_list(dtypes, (type, type(None)))
+
+        if num_inputs is not None:
+            self._num_inputs = num_inputs
+            if is_tensor is not None:
+                _check_sized_list(is_tensor, num_inputs)
+                self._is_tensor = is_tensor
+            else:
+                self._is_tensor = [True] * num_inputs
+
+            if dtypes is not None:
+                _check_sized_list(dtypes, num_inputs)
+                self._dtypes = dtypes
+            else:
+                self._dtypes = [None] * num_inputs
+        elif is_tensor is not None:
+            self._num_inputs = len(is_tensor)
+            self._is_tensor = is_tensor
+            if dtypes is not None:
+                _check_sized_list(dtypes, self._num_inputs)
+                self._dtypes = dtypes
+            else:
+                self._dtypes = [None] * self._num_inputs
+        elif dtypes is not None:
+            self._num_inputs = len(dtypes)
+            self._dtypes = dtypes
+            if is_tensor is not None:
+                _check_sized_list(is_tensor, self._num_inputs)
+                self._is_tensor = is_tensor
+            else:
+                self._is_tensor = [item is None for item in dtypes]
+        else:
+            raise ValueError("Cannot make OPDesc when none of (num_inputs, is_tensor, dtypes) is specified.")
+
+        if output_dtypes is not None:
+            _check_typed_list(output_dtypes, torch.dtype)
+
+        if num_outputs is not None:
+            self._num_outputs = num_outputs
+            if output_dtypes is not None:
+                _check_sized_list(output_dtypes, num_outputs)
+                self._output_dtypes = output_dtypes
+            else:
+                self._output_dtypes = [None] * num_inputs # infer from the 1st input
+        elif output_dtypes is not None:
+            self._num_outputs = len(output_dtypes)
+            self._output_dtypes = output_dtypes
+        else:
+            self._num_outputs = 1
+            self._output_dtypes = [None]
+
+        assert self._num_inputs >= 1
+        assert self._num_outputs >= 1
+
+        self._num_input_tensors = sum(self._is_tensor)
+        self._num_non_tensor_inputs = self._num_inputs - self._num_input_tensors
 
 
-    def arity(self):
-        return len(self.is_tensor)
+    def num_inputs(self):
+        # num of arguments, outputs not included
+        return self._num_inputs
 
-    def num_input_tensors(self):
-        n = 0
-        for i in range(0, len(self.is_tensor)):
-            if self.is_tensor[i] and self.intents[i] == Intent.IN:
-                n += 1
-        return n
+    def num_outputs(self):
+        return self._num_outputs
 
-    def num_output_tensors(self):
-        n = 0
-        for i in range(0, len(self.is_tensor)):
-            if self.is_tensor[i] and self.intents[i] == Intent.OUT:
-                n += 1
-        return n
+    def is_tensor(self, arg_id: int) -> bool:
+        return self._is_tensor[arg_id]
 
-    def num_non_tensor_args(self):
-        n = 0
-        for i in range(0, len(self.is_tensor)):
-            if (not self.is_tensor[i]) and self.intents[i] == Intent.IN:
-                n += 1
-        return n
+    def input_type(self, arg_id) -> Optional[type]:
+        return self._dtypes[arg_id]
 
-    def __str__(self):
-        repr = f"OPDesc(\n\tis_tensor: {self.is_tensor}\n\tintents: {self.intents}\n\tdtypes: {[type_name(t) for t in self.dtypes]}\n\tshapes: {self.shapes}\n)"
-        return repr
+    def output_dtype(self, output_id) -> torch.dtype:
+        return self._output_dtypes[output_id]
 
+    def num_input_tensors(self) -> int:
+        return self._num_input_tensors
 
-def create_description(
-    is_tensor: List[bool],
-    intents: List[Intent],
-    dtypes: List,
-    scalar_fn: JITFunction,
-):
-    return OPDesc(is_tensor, intents, dtypes, scalar_fn)
+    def num_output_tensors(self) -> int:
+        return self._num_outputs
 
+    def num_non_tensor_args(self) -> int:
+        return self._num_non_tensor_inputs
+
+    def signature(self, outputs_in_arg: bool = False):
+        input_types = []
+        for is_tensor, dtype in zip(self._is_tensor, self._dtypes):
+            if is_tensor:
+                input_types.append("Tensor")
+            else:
+                if dtype is None:
+                    input_types.append("scalar")
+                else:
+                    input_types.append(_type_name(dtype))
+
+        output_types = []
+        for dtype in self._output_dtypes:
+            if dtype is None:
+                output_types.append("Tensor")
+            else:
+                output_types.append(f"Tensor[{_type_name(dtype)}]")
+        if outputs_in_arg:
+            input_types.extend(output_types)
+        sig = f'Pointwise: ({", ".join(input_types)}) -> ({", ".join(output_types)})'
+        return sig
+
+    def __str__(self) -> str:
+        return self.signature(outputs_in_arg=False)
 
 # --------------------------- pointwise wrapper genration -----------------------------------
-def parameter_for_wrapper(op_desc: OPDesc, include_outputs=False) -> str:
-    """Generate parameter declaration with type annotation for wrapper function"""
+def parameter_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str:
+    """Generate parameter declaration with type annotation for wrapper function.
+    Example: in0: torch.Tensor, val0: float, out0: torch.Tensor
+    """
     parameters: List[str] = []
-    input_tensor_index = 0
-    non_tensor_index = 0
-    output_tensor_index = 0
-    for i in range(op_desc.arity()):
-        if op_desc.intents[i] == Intent.IN:
-            if op_desc.is_tensor[i]:
-                parameters.append(f"in{input_tensor_index}: torch.Tensor")
-                input_tensor_index += 1
-            else:
-                if op_desc.dtypes[i] is not None:
-                    parameters.append(f"val{non_tensor_index}: {type_name(op_desc.dtypes[i])}")
-                else:
-                    parameters.append(f"val{non_tensor_index}")
-                non_tensor_index += 1
-        elif op_desc.intents[i] == Intent.OUT:
-            if not include_outputs:
-                continue
-            if op_desc.is_tensor[i]:
-                parameters.append(f"out{output_tensor_index}: torch.Tensor")
-                output_tensor_index += 1
-            else:
-                raise ValueError("Unreachable")
-        else:
-            raise ValueError("Unreachable")
-    return ", ".join(parameters)
 
-def parameter_ref_for_wrapper(op_desc: OPDesc, include_outputs=False) -> str:
-    """Generate parameter reference for wrapper function"""
-    parameters: List[str] = []
     input_tensor_index = 0
     non_tensor_index = 0
-    output_tensor_index = 0
-    for i in range(op_desc.arity()):
-        if op_desc.intents[i] == Intent.IN:
-            if op_desc.is_tensor[i]:
-                parameters.append(f"in{input_tensor_index}")
-                input_tensor_index += 1
+    for i in range(op_desc.num_inputs()):
+        if op_desc._is_tensor[i]:
+            parameters.append(f"in{input_tensor_index}: torch.Tensor")
+            input_tensor_index += 1
+        else:
+            if op_desc.input_type(i) is not None:
+                parameters.append(f"val{non_tensor_index}: {_type_name(op_desc.input_type(i))}")
             else:
                 parameters.append(f"val{non_tensor_index}")
-                non_tensor_index += 1
-        elif op_desc.intents[i] == Intent.OUT:
-            if not include_outputs:
-                continue
-            if op_desc.is_tensor[i]:
-                parameters.append(f"out{output_tensor_index}")
-                output_tensor_index += 1
-            else:
-                raise ValueError("Unreachable")
+            non_tensor_index += 1
+
+    if include_outputs:
+        output_tensor_index = 0
+        for i in range(op_desc.num_outputs()):
+            parameters.append(f"out{output_tensor_index}: torch.Tensor")
+            output_tensor_index += 1
+
+    return ", ".join(parameters)
+
+def parameter_ref_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str:
+    """Generate parameter reference for wrapper function.
+    Example: in0, val0, out0
+    """
+    parameters: List[str] = []
+
+    input_tensor_index = 0
+    non_tensor_index = 0
+    for i in range(op_desc.num_inputs()):
+        if op_desc._is_tensor[i]:
+            parameters.append(f"in{input_tensor_index}")
+            input_tensor_index += 1
         else:
-            raise ValueError("Unreachable")
+            parameters.append(f"val{non_tensor_index}")
+            non_tensor_index += 1
+
+    if include_outputs:
+        output_tensor_index = 0
+        for i in range(op_desc.num_outputs()):
+            parameters.append(f"out{output_tensor_index}")
+            output_tensor_index += 1
+
     return ", ".join(parameters)
 
 def output_ref_for_wrapper(op_desc: OPDesc) -> str:
     """Generate output variable refernece for wrapper function.
+    Example: out0, out1
     """
-    parameters: List[str] = []
-    output_tensor_index = 0
-    for i in range(op_desc.arity()):
-        if op_desc.intents[i] == Intent.OUT:
-            if op_desc.is_tensor[i]:
-                parameters.append(f"out{output_tensor_index}")
-                output_tensor_index += 1
+    parameters: List[str] = [f"out{i}" for i in range(op_desc.num_outputs())]
     return ", ".join(parameters)
 
-def docstring_for_wrapper(op_desc: OPDesc):
-    doc = f'"""Generated destination passing style wrapper function with {op_desc.num_input_tensors()} input tensor(s), {op_desc.num_output_tensors()} output tensor(s), {op_desc.num_non_tensor_args()} non tesnor input(s)."""'
+def docstring_for_functional_wrapper(op_desc: OPDesc):
+    doc = f'"""Generated wrapper function with {str(op_desc)}"""'
     return doc
 
+def docstring_for_destination_passing_wrapper(op_desc: OPDesc):
+    doc = f'"""Generated wrapper function with {op_desc.signature(outputs_in_arg=True)}"""'
+    return doc
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import math")
@@ -178,8 +241,12 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.newline()
     return code
 
-
-def generate_functional_pointwise_wrapper(op_desc: OPDesc, wrapper_name: str, destination_passing_func_name: str, code: IndentedBuffer):
+def generate_functional_pointwise_wrapper(
+    op_desc: OPDesc,
+    wrapper_name: str,
+    destination_passing_func_name: str,
+    code: IndentedBuffer
+) -> IndentedBuffer:
     # wrapper signature
     parameters: str = parameter_for_wrapper(op_desc, include_outputs=False)
     wrapper_signature: str = f"def {wrapper_name}({parameters}):"
@@ -187,7 +254,7 @@ def generate_functional_pointwise_wrapper(op_desc: OPDesc, wrapper_name: str, de
 
     with code.indent():
         # docstring
-        wrapper_docstring = docstring_for_wrapper(op_desc)
+        wrapper_docstring = docstring_for_functional_wrapper(op_desc)
         code.writeline(wrapper_docstring)
 
         shapes_str = ", ".join(f"in{i}.shape" for i in range(op_desc.num_input_tensors()))
@@ -195,13 +262,12 @@ def generate_functional_pointwise_wrapper(op_desc: OPDesc, wrapper_name: str, de
 
         # output allocation
         num_output_tensor_index = 0
-        for i in range(op_desc.arity()):
-            if op_desc.intents[i] == Intent.OUT:
-                if op_desc.dtypes[i] is None:
-                    code.writeline(f"out{num_output_tensor_index} = torch.empty(shape, dtype=in0.dtype, device=in0.device)")
-                else:
-                    code.writeline(f"out{num_output_tensor_index} = torch.empty(shape, dtype={type_name(op_desc.dtypes[i])}, device=in0.device)")
-                num_output_tensor_index += 1
+        for i in range(op_desc.num_outputs()):
+            if op_desc.input_type(i) is None:
+                code.writeline(f"out{num_output_tensor_index} = torch.empty(shape, dtype=in0.dtype, device=in0.device)")
+            else:
+                code.writeline(f"out{num_output_tensor_index} = torch.empty(shape, dtype={_type_name(op_desc.output_dtype(i))}, device=in0.device)")
+            num_output_tensor_index += 1
 
         # call destination_passing_func
         call_str = f"{output_ref_for_wrapper(op_desc)} = {destination_passing_func_name}({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
@@ -212,8 +278,13 @@ def generate_functional_pointwise_wrapper(op_desc: OPDesc, wrapper_name: str, de
         code.newline()
     return code
 
-
-def generate_destination_passing_pointwise_wrapper(op_desc: OPDesc, rank, wrapper_name: str, kernel_name: str, code: IndentedBuffer):
+def generate_destination_passing_pointwise_wrapper(
+    op_desc: OPDesc,
+    rank: int,
+    wrapper_name: str,
+    kernel_name: str,
+    code: IndentedBuffer
+) -> IndentedBuffer:
     # wrapper signature
     parameters: str = parameter_for_wrapper(op_desc, include_outputs=True)
     wrapper_signature: str = f"def {wrapper_name}({parameters}):"
@@ -222,13 +293,13 @@ def generate_destination_passing_pointwise_wrapper(op_desc: OPDesc, rank, wrappe
     # task partitioning, 1d task indexing
     tile_size = 512
     num_warps = 4
-    if rank == 0:
+    if rank == 0: # special case with rank-0, only 1 element to compute
         tile_size = 32
         num_warps = 1
 
     with code.indent():
         # docstring
-        wrapper_docstring = docstring_for_wrapper(op_desc)
+        wrapper_docstring = docstring_for_destination_passing_wrapper(op_desc)
         code.writeline(wrapper_docstring)
 
         shapes_str = ", ".join(f"in{i}.shape" for i in range(op_desc.num_input_tensors()))
@@ -283,59 +354,66 @@ def generate_destination_passing_pointwise_wrapper(op_desc: OPDesc, rank, wrappe
         code.newline()
     return code
 
-
-def generate_pointwise_kernel(op_desc: OPDesc, rank, kernel_name: str, code: IndentedBuffer) -> IndentedBuffer:
+def generate_pointwise_kernel(
+    op_desc: OPDesc,
+    scalar_fn: JITFunction,
+    rank: int,
+    kernel_name: str,
+    code: IndentedBuffer
+) -> IndentedBuffer:
     code.writeline("@libentry()")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
 
-    scalar_fn = op_desc.scalar_fn
     function_ns = NameSpace()
     # signature
     with code.indent():
         input_tensor_index = 0
         non_tensor_index = 0
         output_tensor_index = 0
-        for i in range(op_desc.arity()):
-            if op_desc.intents[i] == Intent.IN:
-                if op_desc.is_tensor[i]:
-                    code.writeline(f"in{input_tensor_index}_ptr: tl.pointer_type,")
-                    function_ns.create_name(f"in{input_tensor_index}_ptr")
-                    input_tensor_index += 1
-                else:
-                    if op_desc.dtypes[i] is not None:
-                        code.writeline(f"val{non_tensor_index}: {type_name(op_desc.dtypes[i])},")
-                    else:
-                        code.writeline(f"val{non_tensor_index},")
-                    function_ns.create_name(f"val{non_tensor_index}")
-                    non_tensor_index += 1
-            elif op_desc.intents[i] == Intent.OUT:
-                if op_desc.is_tensor[i]:
-                    code.writeline(f"out{output_tensor_index}_ptr: tl.pointer_type,")
-                    function_ns.create_name(f"out{output_tensor_index}_ptr")
-                    output_tensor_index += 1
-                else:
-                    raise ValueError("Unreachable")
+        # inputs ptrs & non tensor inputs
+        for i in range(op_desc.num_inputs()):
+            if op_desc.is_tensor(i):
+                code.writeline(f"in{input_tensor_index}_ptr: tl.pointer_type,")
+                function_ns.create_name(f"in{input_tensor_index}_ptr")
+                input_tensor_index += 1
             else:
-                raise ValueError("Unreachable")
+                if op_desc.input_type(i) is not None:
+                    code.writeline(f"val{non_tensor_index}: {_type_name(op_desc.input_type(i))},")
+                else:
+                    code.writeline(f"val{non_tensor_index},")
+                function_ns.create_name(f"val{non_tensor_index}")
+                non_tensor_index += 1
+
+        # output ptrs
+        for i in range(op_desc.num_outputs()):
+            code.writeline(f"out{output_tensor_index}_ptr: tl.pointer_type,")
+            function_ns.create_name(f"out{output_tensor_index}_ptr")
+            output_tensor_index += 1
+
 
         if rank > 0:
+            # strides for inputs
             for i in range(op_desc.num_input_tensors()):
                 for j in range(rank):
                     function_ns.create_name(f"in{i}_stride{j}")
                 stride_args = ", ".join(f"in{i}_stride{j}: int" for j in range(rank))
                 code.writeline(f"{stride_args}, # strides for in{i}")
 
+            # strides for outputs
             for i in range(op_desc.num_output_tensors()):
                 for j in range(rank):
                     function_ns.create_name(f"out{i}_stride{j}")
                 stride_args = ", ".join(f"out{i}_stride{j}: int" for j in range(rank))
                 code.writeline(f"{stride_args}, # strides for out{i}")
 
+            # task space, used to reconstruct multi index
             task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
             for i in range(rank):
                 function_ns.create_name(f"s{i}")
             code.writeline(f"{task_space_args}, # task_space")
+
+            # number of tasks, used to compute mask
             code.writeline(f"num_tasks: int,")
             function_ns.create_name("num_tasks")
 
@@ -343,6 +421,7 @@ def generate_pointwise_kernel(op_desc: OPDesc, rank, kernel_name: str, code: Ind
         function_ns.create_name("tile_size")
     code.writeline("):")
 
+    # function body
     with code.indent():
         # get pid
         code.writeline("# task id & masking")
@@ -350,18 +429,14 @@ def generate_pointwise_kernel(op_desc: OPDesc, rank, kernel_name: str, code: Ind
         code.writeline(pid_stmt)
         function_ns.create_name("pid")
 
-        # tile size
+        # get tid (a.k.a task id)
         tid_stmt = "tid = pid * tile_size + tl.arange(0, tile_size)"
         code.writeline(tid_stmt)
         function_ns.create_name("tid")
 
-        # masking
-        # volume_expr: str = " * ".join(f"s{i}" for i in range(rank))
-        # num_task_stmt: str = f"num_tasks = {volume_expr}"
-        # code.writeline(num_task_stmt)
-        # function_ns.create_name("num_tasks")
-
         if rank > 0:
+            # only apply masking when rank > 0
+            # since we only load a value instead of a block of values when the rank is 0
             mask_stmt: str = "mask = tid < num_tasks"
             code.writeline(mask_stmt)
             function_ns.create_name("mask")
@@ -395,27 +470,18 @@ def generate_pointwise_kernel(op_desc: OPDesc, rank, kernel_name: str, code: Ind
         code.writeline("# compute")
 
         inputs_to_scalar_fn = []
-        outputs_to_scalar_fn = []
-
         input_tensor_index = 0
         non_tensor_index = 0
-        output_tensor_index = 0
-        for i in range(op_desc.arity()):
-            if op_desc.intents[i] == Intent.IN:
-                if op_desc.is_tensor[i]:
-                    inputs_to_scalar_fn.append(f"in{input_tensor_index}")
-                    input_tensor_index += 1
-                else:
-                    inputs_to_scalar_fn.append(f"val{non_tensor_index}")
-                    non_tensor_index += 1
-            elif op_desc.intents[i] == Intent.OUT:
-                if op_desc.is_tensor[i]:
-                    outputs_to_scalar_fn.append(f"out{output_tensor_index}")
-                    output_tensor_index += 1
-                else:
-                    raise ValueError("Unreachable")
+        for i in range(op_desc.num_inputs()):
+            if op_desc.is_tensor(i):
+                inputs_to_scalar_fn.append(f"in{input_tensor_index}")
+                input_tensor_index += 1
             else:
-                raise ValueError("Unreachable")
+                inputs_to_scalar_fn.append(f"val{non_tensor_index}")
+                non_tensor_index += 1
+
+        outputs_to_scalar_fn = [f"out{i}" for i in range(op_desc.num_outputs())]
+
 
         compute_body = inline_function(
             scalar_fn,
@@ -433,24 +499,34 @@ def generate_pointwise_kernel(op_desc: OPDesc, rank, kernel_name: str, code: Ind
             if rank > 0:
                 ptrs_expr: str = " + ".join(f"i{j} * out{i}_stride{j}" for j in range(rank))
                 ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
-                load_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
+                store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
             else:
                 ptrs_expr: str = f"out{i}_ptr"
-                load_stmt: str = f"tl.store({ptrs_expr}, out{i})"
-            code.writeline(load_stmt)
+                store_stmt: str = f"tl.store({ptrs_expr}, out{i})"
+            code.writeline(store_stmt)
         code.newline()
     return code
 
-def generate_code(op_desc: OPDesc, inputs, wrapper_name, destination_passing_func_name, kernel_name, code):
-    input_tensor_ids = [i for i in range(op_desc.arity()) if (op_desc.is_tensor[i] is True and op_desc.intents[i] == Intent.IN)]
-    # print(input_tensor_ids)
+def generate_code(
+    op_desc: OPDesc,
+    scalar_fn: JITFunction,
+    inputs: Tuple[Any],
+    wrapper_name: str,
+    destination_passing_func_name:str,
+    kernel_name:str,
+    code: IndentedBuffer
+) -> IndentedBuffer:
+    assert len(inputs) == op_desc.num_inputs(), "the number of inputs does not match {str(op_desc)}"
+    input_tensor_ids = [i for i in range(op_desc.num_inputs()) if op_desc.is_tensor(i)]
     tensor_shapes = [inputs[i].shape for i in input_tensor_ids]
     shape = broadcast_shapes(tensor_shapes)
     rank = len(shape)
+
+    # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
     code = generate_functional_pointwise_wrapper(op_desc, wrapper_name, destination_passing_func_name, code)
     code = generate_destination_passing_pointwise_wrapper(op_desc, rank, destination_passing_func_name, kernel_name, code)
-    code = generate_pointwise_kernel(op_desc, rank, kernel_name, code)
+    code = generate_pointwise_kernel(op_desc, scalar_fn, rank, kernel_name, code)
     return code
 
 class PointwiseDynamicFunction:
@@ -459,28 +535,41 @@ class PointwiseDynamicFunction:
     The generated code are written out to the cache directory (defaults to ~/.flaggems).
     """
 
-    def __init__(self, op_desc: OPDesc):
-        self.op_desc = op_desc
-        self.scalar_fn_cache_key = op_desc.scalar_fn.cache_key
+    def __init__(self, op_desc: OPDesc, scalar_fn: JITFunction):
+        self._op_desc = op_desc
+
+        assert isinstance(scalar_fn, JITFunction)
+        self._scalar_fn = scalar_fn
+        self._scalar_fn_cache_key = scalar_fn.cache_key
+
+        # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args):
+        # It does not accept kwargs
         key = f"{self.arg_key(*args)}"
         if key in self.overloads:
             overload = self.overloads[key]
         else:
             # generate file & import it
-            op_desc = self.op_desc
             code = IndentedBuffer()
-            code = generate_code(op_desc, args, "_wrapper", "_wrapper_out", "_jit_function", code)
+            code = generate_code(
+                self._op_desc,
+                self._scalar_fn,
+                args,
+                "_wrapper",
+                "_wrapper_out",
+                "_jit_function",
+                code)
 
-            file_name = f"pointwise_dynamic_{self.scalar_fn_cache_key}_rank_{key}.py"
+            file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}.py"
             with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
-                f.close()
 
             # load
-            spec = importlib.util.spec_from_file_location("_add_module", f.name)
+            spec = importlib.util.spec_from_file_location(
+                f"_gen_module_{self._scalar_fn_cache_key}",
+                f.name)
             m = importlib.util.module_from_spec(spec)
             # do not expose it to sys.modules
             # sys.modules["_add_module"] = m
@@ -496,75 +585,32 @@ class PointwiseDynamicFunction:
 
 
 def pointwise_dynamic(
-    f=None,
+    f: Optional[JITFunction] = None,
     *,
-    is_tensor: Optional[List[bool]]=None,
-    dtypes: Optional[List[Optional[type]]]=None,
-    output_dtypes: Optional[List[type]]=None
+    num_inputs: Optional[int] = None,
+    is_tensor: Optional[List[bool]] = None,
+    dtypes: Optional[List[Optional[type]]] = None,
+    num_outputs: Optional[int] = None,
+    output_dtypes: Optional[List[type]] = None
 ):
     def decorator(fn):
-        nonlocal is_tensor
-        nonlocal dtypes
-        nonlocal output_dtypes
-        if is_tensor is None:
+        nonlocal num_inputs
+        if (num_inputs is None) and (is_tensor is None) and (dtypes is None):
             num_inputs = len(fn.arg_names)
-            is_tensor = [True] * num_inputs
-        else:
-            num_inputs = len(is_tensor)
-
-        if dtypes is not None:
-            assert len(dtypes) == num_inputs
-        else:
-            dtypes = [None] * num_inputs
-
-        if output_dtypes is None:
-            output_dtypes = [None]
-            num_outputs = 1
-        else:
-            num_outputs = len(output_dtypes)
-
-        op_desc = create_description(
-            is_tensor=list(is_tensor) + [True] * num_outputs,
-            intents = [Intent.IN] * num_inputs + [Intent.OUT] * num_outputs,
-            dtypes = list(dtypes) + list(output_dtypes),
-            scalar_fn=fn
-        )
-        return PointwiseDynamicFunction(op_desc)
+        op_desc = OPDesc(
+            num_inputs=num_inputs,
+            is_tensor=is_tensor,
+            dtypes=dtypes,
+            num_outputs=num_outputs,
+            output_dtypes=output_dtypes)
+        return PointwiseDynamicFunction(op_desc, fn)
 
     if f is not None:
-        assert isinstance(f, JITFunction)
         return decorator(f)
     return decorator
 
 
-
 if __name__ == "__main__":
-    import triton
-    @triton.jit
-    def trunc(x, min, max):
-        return tl.where(x > max, max, tl.where(x < min, min,  x))
-
-
-    @triton.jit
-    def saxpy(x, alpha, y):
-        return x * alpha + y
-
-
-    op_desc = create_description(
-        [True, False, True, True],
-        [Intent.IN, Intent.IN, Intent.IN, Intent.OUT],
-        [None, float, None, None],
-        saxpy,
-    )
-
-    x = torch.randn(3, 4, device="cuda")
-    y = torch.randn(4, device="cuda")
-
-    from flag_gems.utils.code_utils import IndentedBuffer
-    code = IndentedBuffer()
-    code = generate_code(op_desc, (x, 2.0, y), "_wrapper", "_wrapper_out", "_jit_function", code)
-    # print(code.getvalue())
-
     @pointwise_dynamic(
         is_tensor=[True, False, True],
         dtypes=[None, float, None])
@@ -572,14 +618,15 @@ if __name__ == "__main__":
     def saxpy(x, alpha, y):
         return x * alpha + y
 
+    x = torch.randn((3, 4), device="cuda")
+    y = torch.randn((4,), device="cuda")
     out1 = saxpy(x, 2.0, y)
     out2 = x * 2.0 + y
     print(out1)
     print(out2)
     print()
 
-    @pointwise_dynamic(
-        is_tensor=[True, False, True])
+    @pointwise_dynamic(is_tensor=[True, False, True])
     @triton.jit
     def saxpy(x, alpha, y):
         return x * alpha + y
@@ -591,8 +638,7 @@ if __name__ == "__main__":
     print()
 
 
-    @pointwise_dynamic(
-        output_dtypes=[bool])
+    @pointwise_dynamic(output_dtypes=[torch.bool])
     @triton.jit
     def ge(x, y):
         return x > y
