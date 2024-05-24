@@ -77,7 +77,7 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(tl.int1)
     any_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_any)
     tl.store(out, any_val)
 
@@ -90,8 +90,8 @@ def any(inp):
     block_mid = triton.next_power_of_2(mid_size)
     dtype = inp.dtype
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
+    out = torch.empty([], dtype=torch.bool, device=inp.device)
 
     any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
     any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
