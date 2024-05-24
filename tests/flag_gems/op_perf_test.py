@@ -483,6 +483,41 @@ def bench_rope(op, M, num_heads, head_dim, max_seq_len, dtype):
     cos = torch.randn((max_seq_len, head_dim // 2), dtype=dtype, device="cuda")
     sin = torch.randn((max_seq_len, head_dim // 2), dtype=dtype, device="cuda")
     ms = run_bench(op, q, k, cos, sin, position_ids)
+
+
+silu_and_mul_bench = Benchmark("silu_and_mul")
+silu_and_mul_bench.bench_params(dtype=f16_f32_bf)
+silu_and_mul_bench.provider_ops(
+    gem=silu_and_mul, torch=lambda a, b: torch.nn.functional.silu(a) * b
+)
+silu_and_mul_bench.arg_names("N")
+silu_and_mul_bench.arg_vals(sizes)
+silu_and_mul_bench.extra_args(M=1024)
+
+
+@silu_and_mul_bench.perf
+def bench_silu_and_mul(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp1, inp2)
+    return ms
+
+
+gelu_and_mul_bench = Benchmark("gelu_and_mul")
+gelu_and_mul_bench.bench_params(dtype=f16_f32_bf)
+gelu_and_mul_bench.provider_ops(
+    gem=gelu_and_mul, torch=lambda a, b: torch.nn.functional.gelu(a) * b
+)
+gelu_and_mul_bench.arg_names("N")
+gelu_and_mul_bench.arg_vals(sizes)
+gelu_and_mul_bench.extra_args(M=1024)
+
+
+@gelu_and_mul_bench.perf
+def bench_gelu_and_mul(op, M, N, dtype):
+    inp1 = torch.randn((M, N), dtype=dtype, device="cuda")
+    inp2 = torch.randn((M, N), dtype=dtype, device="cuda")
+    ms = run_bench(op, inp1, inp2)
     return ms
 
 
@@ -514,3 +549,5 @@ bench_sub.run(print_data=True)
 bench_sub_scalar.run(print_data=True)
 bench_triu.run(print_data=True)
 bench_rope.run(print_data=True)
+bench_silu_and_mul.run(print_data=True)
+bench_gelu_and_mul.run(print_data=True)
