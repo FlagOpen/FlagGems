@@ -103,27 +103,28 @@ def all_dim(inp, dim=None, keepdim=False):
     logging.debug("GEMS ALL DIM")
     shape = list(inp.shape)
     if dim is None:
-        dim = list(range(inp.ndim)) # TODO: Need to be optimized
+        out = all(inp)
+        if keepdim:
+            out = torch.reshape(out, [1] * inp.ndim)
     else:
         assert (dim >= -inp.ndim and dim < inp.ndim) , "Invalid dim" 
+        dim = dim % inp.ndim
+        order = list(range(0, inp.ndim))
+        order.remove(dim)
+        order.append(dim)
+        inp = inp.permute(order).contiguous()
+        N = shape[dim]
+        shape[dim] = 1
+        M = inp.numel() // N
 
-        dim = [dim % inp.ndim]
-    order = [i for i in range(inp.ndim) if i not in dim] + dim
-    inp = inp.permute(order).contiguous()
-    N = 1
-    for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
+        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-    )
-    all_kernel_dim[grid](inp, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+        )
+        all_kernel_dim[grid](inp, out, M, N)
+        if not keepdim:
+            out = out.squeeze(dim=dim)
     return out
 
 
