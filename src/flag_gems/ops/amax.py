@@ -60,13 +60,13 @@ def amax_kernel(
     out = out + pid
     row_mask = pid < M
 
-    _all = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(inp + cols, mask, other=0.0).to(tl.float32)
+        a = tl.load(inp + cols, mask, other=-float("inf")).to(tl.float32)
         _all = tl.maximum(_all, a)
     all = tl.max(_all, axis=1)[:, None]
     tl.store(out, all, row_mask)
