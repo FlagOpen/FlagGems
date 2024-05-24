@@ -39,8 +39,6 @@ class OPDesc:
     _num_outputs: int
     _output_dtypes: List[torch.dtype]
 
-    scalar_fn: JITFunction
-
     def __init__(
         self,
         *,
