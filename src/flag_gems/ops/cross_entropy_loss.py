@@ -195,6 +195,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         )
         return out, None, None, None, None, None
 
+
 # todo: reducetion(dtype: int,default mean->1), support other scenarios as follows: (none->0, sum->2)
 def cross_entropy_loss(
     input, target, weight=None, reduction="Mean", ignore_index=-100, label_smoothing=0.0
