@@ -172,6 +172,48 @@ def test_accuracy_bitwiseand(shape, dtype):
     "shape",
     [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
 )
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseand_scalar(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_and(inp1, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_and(inp1, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseand_scalar_tensor(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_and(scalar, inp1)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_and(scalar, inp1)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
 @pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
 def test_accuracy_bitwisenot(shape, dtype):
     inp = torch.randint(
@@ -206,6 +248,48 @@ def test_accuracy_bitwiseor(shape, dtype):
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseor_scalar(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_or(inp1, scalar)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(inp1, scalar)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize(
+    "scalar",
+    [0x000f, 0x7fff, -0x00ff],
+)
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
+def test_accuracy_bitwiseor_scalar_tensor(shape, scalar, dtype):
+    inp1 = torch.randint(
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+    )
+
+    ref_out = torch.bitwise_or(scalar, inp1)
+    with flag_gems.use_gems():
+        res_out = torch.bitwise_or(scalar, inp1)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
     "batch, M, N, K",
     [
         (1, 1024, 1024, 1024),
@@ -234,6 +318,29 @@ def test_accuracy_bmm(batch, M, N, K, dtype):
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_clamp(shape, isnone, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    import random
+    maxi = random.random()
+    mini = random.random()
+    if isnone == "min":
+        mini = None
+    elif isnone == "max":
+        maxi = None
+
+    ref_out = torch.clamp(inp, min=mini, max=maxi)
+    with flag_gems.use_gems():
+        res_out = torch.clamp(inp, min=mini, max=maxi)
+
+    assert torch.equal(res_out, ref_out), f"ref_out: {ref_out}, res_out: {res_out}"
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)],
+)
+@pytest.mark.parametrize("isnone", [None, "max", "min"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_clamp_tensor(shape, isnone, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     maxi = torch.randn(shape, dtype=dtype, device="cuda")
     mini = torch.randn(shape, dtype=dtype, device="cuda")

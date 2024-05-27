@@ -3,11 +3,11 @@ from .any import any, any_dim, any_dims
 from .abs import abs
 from .add import add
 from .addmm import addmm
-from .bitwise_and import bitwise_and_tensor
+from .bitwise_and import bitwise_and_tensor, bitwise_and_scalar, bitwise_and_scalar_tensor
 from .bitwise_not import bitwise_not
-from .bitwise_or import bitwise_or_tensor
+from .bitwise_or import bitwise_or_tensor, bitwise_or_scalar, bitwise_or_scalar_tensor
 from .bmm import bmm
-from .clamp import clamp_tensor
+from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cumsum import cumsum
 from .dropout import native_dropout
@@ -60,9 +60,14 @@ __all__ = [
     "abs",
     "addmm",
     "bitwise_and_tensor",
+    "bitwise_and_scalar",
+    "bitwise_and_scalar_tensor",
     "bitwise_not",
     "bitwise_or_tensor",
+    "bitwise_or_scalar",
+    "bitwise_or_scalar_tensor",
     "bmm",
+    "clamp",
     "clamp_tensor",
     "cos",
     "cumsum",
