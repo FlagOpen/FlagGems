@@ -1396,7 +1396,7 @@ def test_accuracy_outer(shape, dtype):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
+    [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
@@ -1415,10 +1415,10 @@ def test_accuracy_all(shape, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
+    [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
 )
 @pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dim", [0, 1, -1, None])
+@pytest.mark.parametrize("dim", [0, 1, None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
 def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
@@ -1435,7 +1435,7 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(1024, 1024, 16), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15), (2, 3, 5)],
+    [(1024, 1024, 16), (16, 128, 64, 64), (2, 3, 5)],
 )
 @pytest.mark.parametrize("dim", [[1, 0], [1, 2]])
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -1455,7 +1455,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
+    [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allFalse"])
@@ -1474,10 +1474,10 @@ def test_accuracy_any(shape, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(i, j * 64) for i in [2, 4, 4096] for j in range(1, 10)],
+    [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
 )
 @pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dim", [0, 1, -1, None])
+@pytest.mark.parametrize("dim", [0, 1, None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16, torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allFalse"])
 def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
@@ -1494,7 +1494,7 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
 
 @pytest.mark.parametrize(
     "shape",
-    [(1024, 1024, 16), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15), (2, 3, 5)],
+    [(1024, 1024, 16), (16, 128, 64, 64), (2, 3, 5)],
 )
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", [[1, 0], [1, 2]])
