@@ -2,6 +2,11 @@ import torch
 import pytest
 import flag_gems
 
+
+major, minor = torch.__version__.split(".")[:2]
+skip_expr = major < "2" or minor < "2"
+
+
 RESOLUTION = {
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
@@ -1514,6 +1519,7 @@ def test_accuracy_all(shape, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
@@ -1534,6 +1540,7 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
     
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024, 16), (16, 128, 64, 64), (2, 3, 5)],
@@ -1573,6 +1580,7 @@ def test_accuracy_any(shape, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(i, j) for i in [2, 4096] for j in [2, 64, 1024]],
@@ -1593,6 +1601,7 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
     assert torch.equal(ref_out, res_out), f"ref_out: {ref_out}, res_out: {res_out}"
 
 
+@pytest.mark.skipif(skip_expr, reason="PyTorch < 2.2.0 does not support")
 @pytest.mark.parametrize(
     "shape",
     [(1024, 1024, 16), (16, 128, 64, 64), (2, 3, 5)],
