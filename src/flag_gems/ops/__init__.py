@@ -12,16 +12,22 @@ from .cos import cos
 from .cumsum import cumsum
 from .dropout import native_dropout
 from .div import div
+from .eq import eq, eq_scalar
 from .exp import exp
+from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
+from .gt import gt, gt_scalar
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
+from .le import le, le_scalar
+from .lt import lt, lt_scalar
 from .rms_norm import rms_norm
 from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
+from .ne import ne, ne_scalar
 from .neg import neg
 from .pow_scalar import pow_scalar
 from .pow_tensor_scalar import pow_tensor_scalar
@@ -73,17 +79,29 @@ __all__ = [
     "cumsum",
     "div",
     "native_dropout",
+    "eq",
+    "eq_scalar",
     "exp",
+    "ge",
+    "ge_scalar",
     "gelu",
     "group_norm",
+    "gt",
+    "gt_scalar",
     "isinf",
     "isnan",
     "layer_norm",
+    "le",
+    "le_scalar",
+    "lt",
+    "lt_scalar",
     "rms_norm",
     "mean",
     "mean_dim",
     "mm",
     "mul",
+    "ne",
+    "ne_scalar",
     "neg",
     "pow_scalar",
     "pow_tensor_scalar",
