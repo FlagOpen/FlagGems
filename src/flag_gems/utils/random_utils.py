@@ -16,6 +16,18 @@ def philox_cuda_seed_offset(increment, device=None):
     gen.set_state(state_copy)
     return seed, offset
 
+def philox_mlu_seed_offset(increment, device=None):
+    device = device or torch.mlu.current_device()
+    gen = torch.mlu.default_generators[device]
+    state_copy = gen.get_state()
+    c0, c1 = state_copy.view(torch.int64)[-2:]
+    seed, offset = int(c0), int(c1)
+    increment = (increment + 3) // 4 * 4
+    c1 += increment
+    # get_state returns a new tensor, so it needs set_state to update the actual generator state.
+    gen.set_state(state_copy)
+    return seed, offset
+
 
 def per_thread_offset(N, num_blocks, num_warps, warp_threads=32):
     block_threads = num_warps * warp_threads

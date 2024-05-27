@@ -47,7 +47,7 @@ def group_norm_kernel(
     x = tl.where(xy_mask, X_val - mean, 0.0)
 
     var = tl.sum(x * x) / num_elements
-    rstd = tl.math.rsqrt(var + eps)
+    rstd = tl.extra.mlu.libdevice.rsqrt(var + eps)
     x_hat = x * rstd
 
     weight = tl.load(W_ptr, mask=wb_mask, other=0.0)[:, None]

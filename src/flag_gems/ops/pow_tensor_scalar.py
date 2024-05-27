@@ -33,7 +33,7 @@ def pow_tensor_scalar_kernel(
     X_ptrs = X + offset
     Y_ptrs = Y + offset
     X_val = tl.load(X_ptrs, mask=mask, other=0.0)
-    Y_val = tl.math.pow(X_val.to(tl.float32), exponent)
+    Y_val = tl.extra.mlu.libdevice.pow(X_val.to(tl.float32), exponent)
     tl.store(Y_ptrs, Y_val, mask=mask)
 
 

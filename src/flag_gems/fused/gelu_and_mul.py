@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @triton.jit
 def gelu_none_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
-    x_gelu = 0.5 * x_fp32 * (1 + tl.math.erf(x_fp32 * 0.7071067811))
+    x_gelu = 0.5 * x_fp32 * (1 + tl.extra.mlu.libdevice.erf(x_fp32 * 0.7071067811))
     return x_gelu * y
 
 
@@ -22,10 +22,10 @@ def gelu_tanh_and_mul_kernel(x, y):
         * x_fp32
         * (
             1
-            + tl.math.tanh(
+            + tl.extra.mlu.libdevice.tanh(
                 x_fp32
                 * 0.79788456
-                * (1 + 0.044715 * tl.math.pow(x_fp32.to(tl.float32), 2))
+                * (1 + 0.044715 * tl.extra.mlu.libdevice.pow(x_fp32.to(tl.float32), 2))
             )
         )
     )

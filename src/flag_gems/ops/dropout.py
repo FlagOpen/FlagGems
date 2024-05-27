@@ -2,7 +2,7 @@ import triton
 import triton.language as tl
 import torch
 import logging
-from ..utils.random_utils import philox_cuda_seed_offset
+from ..utils.random_utils import philox_mlu_seed_offset
 from ..utils import libentry
 
 
@@ -99,7 +99,7 @@ class NativeDropout(torch.autograd.Function):
         # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
         # hence we cannot obtain the per thread offset as in Pytorch.
         increment = N
-        philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+        philox_seed, philox_offset = philox_mlu_seed_offset(increment)
         dropout_forward_kernel[grid_fn](x, O, N, p, philox_seed, philox_offset)
         ctx.p = p
         ctx.philox_seed = philox_seed

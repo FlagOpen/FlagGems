@@ -33,7 +33,7 @@ def pow_scalar_kernel(
     exp_ptrs = exponent + offset
     Y_ptrs = Y + offset
     exp_val = tl.load(exp_ptrs, mask=mask, other=0.0)
-    Y_val = tl.math.pow(X_val, exp_val)
+    Y_val = tl.extra.mlu.libdevice.pow(X_val, exp_val)
     tl.store(Y_ptrs, Y_val, mask=mask)
 
 

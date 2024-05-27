@@ -8,7 +8,7 @@ from ..utils import pointwise_dynamic
 @triton.jit
 def gelu_none(x):
     scale = 0.7071067811
-    output = 0.5 * x * (1 + tl.math.erf(x * scale))
+    output = 0.5 * x * (1 + tl.extra.mlu.libdevice.erf(x * scale))
     return output
 
 
@@ -20,8 +20,8 @@ def gelu_tanh(x):
         * x
         * (
             1
-            + tl.math.tanh(
-                x * 0.79788456 * (1 + 0.044715 * tl.math.pow(x.to(tl.float32), 2))
+            + tl.extra.mlu.libdevice.tanh(
+                x * 0.79788456 * (1 + 0.044715 * tl.extra.mlu.libdevice.pow(x.to(tl.float32), 2))
             )
         )
     )
