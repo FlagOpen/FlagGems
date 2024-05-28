@@ -19,8 +19,8 @@ def test_accuracy_bert(prompt, dtype):
     inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
     ref_model = copy.deepcopy(model)
-    ref_model.to(torch.float64).to("cuda").eval()
-    ref_inputs = copy.deepcopy(inputs).to(torch.float64)
+    ref_model.to(torch.float64).to("cpu").eval()
+    ref_inputs = copy.deepcopy(inputs).to(torch.float64).to('cpu')
     with torch.no_grad():
         ref_outputs = ref_model(**ref_inputs).last_hidden_state.to(dtype)
 
@@ -31,6 +31,7 @@ def test_accuracy_bert(prompt, dtype):
         with torch.no_grad():
             res_outputs = res_model(**res_inputs).last_hidden_state
 
+    res_outputs = res_outputs.to("cpu")
     maxdiff = torch.max(torch.abs(ref_outputs - res_outputs))
     succeed = True
     if (
