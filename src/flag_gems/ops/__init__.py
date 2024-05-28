@@ -27,6 +27,7 @@ from .rms_norm import rms_norm
 from .mean import mean, mean_dim
 from .mm import mm
 from .mul import mul
+from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
 from .pow_scalar import pow_scalar
@@ -100,6 +101,7 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "mv",
     "ne",
     "ne_scalar",
     "neg",

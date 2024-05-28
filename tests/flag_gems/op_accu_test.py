@@ -1012,6 +1012,29 @@ def test_accuracy_mul(shape, dtype):
 
 
 @pytest.mark.parametrize(
+    "shape",
+    [
+        (256, 256),
+        (1024, 1024),
+        (1024, 128),
+        (1024, 64),
+        (640, 256),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_mv(shape, dtype):
+    N, M = shape
+    matrix = torch.randn((N, M), dtype=dtype, device="cuda")
+    vector = torch.randn((M,), dtype=dtype, device="cuda")
+
+    ref_out = torch.mv(matrix.to(torch.float64), vector.to(torch.float64))
+    with flag_gems.use_gems():
+        res_out = torch.mv(matrix, vector)
+
+    allclose_with_dtype(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize(
     "shape_a",
     [(16, 1024, 256)],
 )
