@@ -166,12 +166,11 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
 @pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
 def test_accuracy_bitwiseand(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=DEVICE
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to(DEVICE)
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=DEVICE
-    )
-
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to(DEVICE)
     ref_out = torch.bitwise_and(inp1, inp2)
     with flag_gems.use_gems():
         res_out = torch.bitwise_and(inp1, inp2)
@@ -208,11 +207,11 @@ def test_accuracy_bitwisenot(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.int16, torch.int32])
 def test_accuracy_bitwiseor(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=DEVICE
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to(DEVICE)
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=DEVICE
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to(DEVICE)
 
     ref_out = torch.bitwise_or(inp1, inp2)
     with flag_gems.use_gems():
@@ -258,7 +257,8 @@ def test_accuracy_clamp(shape, isnone, dtype):
     elif isnone == "max":
         maxi = None
 
-    ref_out = torch.clamp(inp, min=mini, max=maxi)
+    ref_out = torch.clamp(inp.to("cpu"), min=(mini.to("cpu") if mini != None else None), max=(
+        maxi.to("cpu") if maxi != None else None)).to(DEVICE)
     with flag_gems.use_gems():
         res_out = torch.clamp(inp, min=mini, max=maxi)
 
@@ -1437,7 +1437,7 @@ def test_accuracy_all(shape, dtype, kind):
     if (kind == "allTrue"):
         inp = torch.ones(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=DEVICE)
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
 
     ref_out = torch.all(inp)
     with flag_gems.use_gems():
@@ -1458,7 +1458,7 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
     if (kind == "allTrue"):
         inp = torch.ones(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=DEVICE)
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
 
     ref_out = torch.all(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1478,7 +1478,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
     if (kind == "allTrue"):
         inp = torch.ones(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=DEVICE)
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
 
     ref_out = torch.all(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1496,7 +1496,7 @@ def test_accuracy_any(shape, dtype, kind):
     if (kind == "allFalse"):
         inp = torch.zeros(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=DEVICE)
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
 
     ref_out = torch.any(inp)
     with flag_gems.use_gems():
@@ -1517,7 +1517,7 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
     if (kind == "allFalse"):
         inp = torch.zeros(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=DEVICE)
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
 
     ref_out = torch.any(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():
@@ -1537,7 +1537,7 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     if (kind == "allFalse"):
         inp = torch.zeros(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device=DEVICE)
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
 
     ref_out = torch.any(inp, dim=dim, keepdim=keepdim)
     with flag_gems.use_gems():

@@ -5,11 +5,11 @@ import triton.language as tl
 import logging
 from ..utils import pointwise_dynamic
 
-
 @pointwise_dynamic
 @triton.jit
 def sigmoid_forward(x):
-    log2e: tl.constexpr = tl.math.log2(math.e)
+    # FIXME: use math.log2(math.e) after fixed 
+    log2e: tl.constexpr = 1.4426950408889634
     return 1 / (1 + tl.math.exp2(-x.to(tl.float32) * log2e))
 
 
