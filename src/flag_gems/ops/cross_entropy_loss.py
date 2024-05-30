@@ -2,8 +2,15 @@ import torch
 import triton
 import triton.language as tl
 import logging
+from enum import Enum
 from ..utils import libentry
 from .sum import sum, sum_dim
+
+
+class Reduction(Enum):
+    NONE = 0
+    MEAN = 1
+    SUM = 2
 
 
 @libentry()
@@ -192,7 +199,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             dim = 1
         else:
             dim = 0
-        if reduction != 1:
+        if reduction != Reduction.MEAN.value:
             mean_num = -1
         else:
             mean_num = -target.numel()
@@ -221,7 +228,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             N,
             K,
         )
-        if reduction:
+        if reduction != Reduction.NONE.value:
             out_result = sum(out)
         else:
             out_result = sum_dim(out, dim=[dim])
@@ -252,7 +259,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        if reduction:
+        if reduction != Reduction.NONE.value:
             softmax_and_sub_reduce_kernel[grid](
                 out,
                 inp,
