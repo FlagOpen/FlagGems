@@ -3,7 +3,7 @@ import triton
 import triton.language as tl
 import logging
 from ..utils import libentry
-from .sum import sum
+from .sum import sum, sum_dim
 
 
 @libentry()
@@ -56,7 +56,7 @@ def log_softmax_and_mul_kernel(
     denominator = tl.sum(numerator, axis=1)[:, None]
     softmax_output = tl.log(numerator / denominator)
     target = tl.load(target_ptr + offset, mask=mask, other=0.0)
-    out = softmax_output * target / (-mean_num)
+    out = softmax_output * target / (mean_num)
     output_ptrs = output_ptr + offset
     tl.store(output_ptrs, out, mask=mask)
 
@@ -93,6 +93,7 @@ def softmax_and_sub_kernel(
     target_ptr,
     out_grad,
     mean_num,
+    reduction,
     M,
     N,
     K,
@@ -114,7 +115,13 @@ def softmax_and_sub_kernel(
     softmax_output = numerator / denominator
     target_ptrs = target_ptr + offset
     target = tl.load(target_ptrs, mask=mask, other=0.0)
-    out_grad_value = tl.load(out_grad)
+    # if reduction == 0:
+    # out_grad_ptr = out_grad + m_offset[:,None]*K + pid_k
+    # else:
+    out_grad_ptr = out_grad
+
+    # out_grad_ptr = out_grad + out_grad_offset
+    out_grad_value = tl.load(out_grad_ptr)
     out = out_grad_value * (softmax_output - target) / mean_num
     output_ptrs = output_ptr + offset
 
@@ -130,10 +137,12 @@ class CrossEntropyLoss(torch.autograd.Function):
             dim = 1
         else:
             dim = 0
-
+        if reduction != 1:
+            mean_num = -1
+        else:
+            mean_num = -target.numel()
         shape = list(input.shape)
         shape[dim] = 1
-        mean_num = target.numel()
         target = torch.zeros_like(input).scatter(dim, target.view(shape), 1)
 
         M = 1
@@ -157,11 +166,15 @@ class CrossEntropyLoss(torch.autograd.Function):
             N,
             K,
         )
-        out_result = sum(out)
+        if reduction != 0:
+            out_result = sum(out)
+        else:
+            out_result = sum_dim(out, dim=[dim])
 
         ctx.save_for_backward(input, target)
         ctx.dim = dim
-        ctx.mean_num = mean_num
+        ctx.mean_num = -mean_num
+        ctx.reduction = reduction
         return out_result
 
     @staticmethod
@@ -170,6 +183,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         input, target = ctx.saved_tensors
         dim = ctx.dim
         mean_num = ctx.mean_num
+        reduction = ctx.reduction
 
         M = 1
         N = input.shape[dim]
@@ -189,6 +203,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             target,
             out_grad,
             mean_num,
+            reduction,
             M,
             N,
             K,
@@ -200,6 +215,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 def cross_entropy_loss(
     input, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
 ):
+    print("reduction=====", reduction)
     return CrossEntropyLoss.apply(
         input, target, weight, reduction, ignore_index, label_smoothing
     )
