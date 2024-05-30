@@ -114,7 +114,7 @@ def softmax_and_sub_kernel(
     softmax_output = numerator / denominator
     target_ptrs = target_ptr + offset
     target = tl.load(target_ptrs, mask=mask, other=0.0)
-    out_grad_ptr = out_grad + m_offset[:,None]*K + pid_k
+    out_grad_ptr = out_grad + m_offset[:, None] * K + pid_k
     out_grad_value = tl.load(out_grad_ptr)
     out = out_grad_value * (softmax_output - target) / mean_num
     output_ptrs = output_ptr + offset
