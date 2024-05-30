@@ -1575,11 +1575,11 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     inp1, inp2 = inp.chunk(2, dim=-1)
 
     ref_out = torch.mul(
-        torch.nn.functional.gelu(inp1.to(torch.float64), approximate=approximate),
-        inp2.to(torch.float64),
+        torch.nn.functional.gelu(inp1.to(torch.float64).cpu(), approximate=approximate),
+        inp2.to(torch.float64).cpu(),
     )
     with flag_gems.use_gems():
         res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    allclose_with_dtype(res_out.cpu(), ref_out, dtype)
 
