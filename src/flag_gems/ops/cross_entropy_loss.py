@@ -2,12 +2,12 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from enum import Enum
+from enum import IntEnum
 from ..utils import libentry
 from .sum import sum, sum_dim
 
 
-class Reduction(Enum):
+class Reduction(IntEnum):
     NONE = 0
     MEAN = 1
     SUM = 2
@@ -194,6 +194,7 @@ class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, target, weight, reduction, ignore_index, label_smoothing):
         logging.debug("GEMS CrossEntropyLoss")
+        assert reduction in Reduction._value2member_map_, "Invalid reduction"
         assert isinstance(input, torch.Tensor), "input is not a tensor"
         if input.ndim >= 2:
             dim = 1
