@@ -34,3 +34,23 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("maxi", SCALARS)
+@pytest.mark.parametrize("mini", SCALARS)
+@pytest.mark.parametrize("isnone", [None, "max", "min"])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_clamp(shape, maxi, mini, isnone, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="musa")
+    if isnone == "min":
+        mini = None
+    elif isnone == "max":
+        maxi = None
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.clamp(ref_inp, min=mini, max=maxi)
+    with flag_gems.use_gems():
+        res_out = torch.clamp(inp, min=mini, max=maxi)
+
+    gems_assert_equal(res_out, ref_out)
+
