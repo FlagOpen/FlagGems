@@ -51,7 +51,7 @@ def test_accuracy_add(shape, alpha, dtype):
 def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    ref_inp1 = to_reference(inp1, False)
 
     ref_out = torch.add(ref_inp1, inp2, alpha=alpha)
     with flag_gems.use_gems():
@@ -727,7 +727,7 @@ def test_accuracy_mul(shape, dtype):
 def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    ref_inp1 = to_reference(inp1, False)
 
     ref_out = torch.mul(ref_inp1, inp2)
     with flag_gems.use_gems():
@@ -877,7 +877,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    ref_inp1 = to_reference(inp1, False)
 
     ref_out = torch.pow(ref_inp1, inp2)
     with flag_gems.use_gems():
@@ -944,7 +944,7 @@ def test_accuracy_sub(shape, alpha, dtype):
 def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    ref_inp1 = to_reference(inp1, False)
 
     ref_out = torch.sub(ref_inp1, inp2, alpha=alpha)
     with flag_gems.use_gems():

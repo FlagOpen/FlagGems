@@ -109,7 +109,7 @@ def test_accuracy_outer(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = to_reference(out_grad, False)
 
     ref_in1_grad, ref_in2_grad = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad
