@@ -125,7 +125,6 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     out = tl.extra.mlu.libdevice.pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
 
-
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     logging.debug("GEMS VECTOR NORM")
     if dtype is not None:
