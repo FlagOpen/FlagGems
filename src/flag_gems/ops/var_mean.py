@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry
+from ..utils import libentry, MLU_GRID_MAX
 
 
 def cfggen():
@@ -87,7 +87,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
     var = torch.empty(shape, dtype=x.dtype, device=x.device)
     mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), 65535),)
+    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
     var_mean_kernel[grid](x, var, mean, M, N, correction)
     if not keepdim:
         var = var.squeeze(dim=dim)

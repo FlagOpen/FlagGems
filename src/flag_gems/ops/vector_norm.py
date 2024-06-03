@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry
+from ..utils import libentry, MLU_GRID_MAX
 
 
 def cfggen():
