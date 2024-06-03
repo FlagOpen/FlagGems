@@ -5,12 +5,16 @@ import flag_gems
 from transformers import AutoTokenizer, BertConfig, BertModel
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    ["How are you today?", "What is your name?", "Who are you?", "Where are you from?"],
+)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-def test_accuracy_bert(dtype):
+def test_accuracy_bert(prompt, dtype):
     config = BertConfig()
     model = BertModel(config)
     tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
-    inputs = tokenizer("Hello, my dog is cute.", return_tensors="pt").to("mlu")
+    inputs = tokenizer(prompt, return_tensors="pt").to("mlu")
 
     ref_model = copy.deepcopy(model)
     ref_model.to(torch.float32).to("mlu").eval()
