@@ -11,9 +11,9 @@ from .accuracy_utils import *
 @pytest.mark.parametrize("beta", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
-    mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
-    mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
-    bias = torch.randn((N,), dtype=dtype, device="cuda")
+    mat1 = torch.randn((M, K), dtype=dtype, device=DEVICE)
+    mat2 = torch.randn((K, N), dtype=dtype, device=DEVICE)
+    bias = torch.randn((N,), dtype=dtype, device=DEVICE)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
     ref_bias = to_reference(bias, True)
@@ -31,8 +31,8 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
     batch = 4
-    mat1 = torch.randn((batch, M, K), dtype=dtype, device="cuda")
-    mat2 = torch.randn((batch, K, N), dtype=dtype, device="cuda")
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=DEVICE)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=DEVICE)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 
@@ -48,8 +48,8 @@ def test_accuracy_bmm(M, N, K, dtype):
 @pytest.mark.parametrize("K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mm(M, N, K, dtype):
-    mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
-    mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
+    mat1 = torch.randn((M, K), dtype=dtype, device=DEVICE)
+    mat2 = torch.randn((K, N), dtype=dtype, device=DEVICE)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 
@@ -64,8 +64,8 @@ def test_accuracy_mm(M, N, K, dtype):
 @pytest.mark.parametrize("N", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mv(M, N, dtype):
-    matrix = torch.randn((N, M), dtype=dtype, device="cuda")
-    vector = torch.randn((M,), dtype=dtype, device="cuda")
+    matrix = torch.randn((N, M), dtype=dtype, device=DEVICE)
+    vector = torch.randn((M,), dtype=dtype, device=DEVICE)
     ref_matrix = to_reference(matrix, True)
     ref_vector = to_reference(vector, True)
 
@@ -80,8 +80,8 @@ def test_accuracy_mv(M, N, dtype):
 @pytest.mark.parametrize("N", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_outer(M, N, dtype):
-    inp1 = torch.randn(M, dtype=dtype, device="cuda", requires_grad=True)
-    inp2 = torch.randn(N, dtype=dtype, device="cuda", requires_grad=True)
+    inp1 = torch.randn(M, dtype=dtype, device=DEVICE, requires_grad=True)
+    inp2 = torch.randn(N, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 

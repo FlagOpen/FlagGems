@@ -1,6 +1,8 @@
 import torch
-from .conftest import TO_CPU
+from .conftest import TO_CPU, DEVICE
+import logging
 
+logging.debug("Using Device: " + DEVICE)
 
 major, minor = torch.__version__.split(".")[:2]
 skip_expr = major < "2" or minor < "2"

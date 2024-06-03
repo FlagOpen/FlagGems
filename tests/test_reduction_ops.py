@@ -9,9 +9,9 @@ from .accuracy_utils import *
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
 def test_accuracy_all(shape, dtype, kind):
     if kind == "allTrue":
-        inp = torch.ones(shape, dtype=dtype, device="cuda")
+        inp = torch.ones(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp)
@@ -29,9 +29,9 @@ def test_accuracy_all(shape, dtype, kind):
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
 def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
     if kind == "allTrue":
-        inp = torch.ones(shape, dtype=dtype, device="cuda")
+        inp = torch.ones(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp, dim=dim, keepdim=keepdim)
@@ -48,9 +48,9 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
 def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allTrue":
-        inp = torch.ones(shape, dtype=dtype, device="cuda")
+        inp = torch.ones(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp, dim=dim, keepdim=keepdim)
@@ -64,7 +64,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_amax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
@@ -79,9 +79,9 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("kind", ["normal", "allFalse"])
 def test_accuracy_any(shape, dtype, kind):
     if kind == "allFalse":
-        inp = torch.zeros(shape, dtype=dtype, device="cuda")
+        inp = torch.zeros(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp)
@@ -99,9 +99,9 @@ def test_accuracy_any(shape, dtype, kind):
 @pytest.mark.parametrize("kind", ["normal", "allFalse"])
 def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
     if kind == "allFalse":
-        inp = torch.zeros(shape, dtype=dtype, device="cuda")
+        inp = torch.zeros(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
@@ -118,9 +118,9 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
 @pytest.mark.parametrize("kind", ["normal", "allFalse"])
 def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allFalse":
-        inp = torch.zeros(shape, dtype=dtype, device="cuda")
+        inp = torch.zeros(shape, dtype=dtype, device=DEVICE)
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device=DEVICE).to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
@@ -134,7 +134,7 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_argmax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
@@ -149,12 +149,12 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cross_entropy_loss(shape, dtype, size_average, reduce, reduction):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     dim = 1
     up_limit = shape[dim] - 1
     target_shape = list(shape)
     del target_shape[dim]
-    target = torch.randint(0, up_limit, target_shape, device="cuda")
+    target = torch.randint(0, up_limit, target_shape, device=DEVICE)
 
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
@@ -180,7 +180,7 @@ def test_accuracy_cross_entropy_loss(shape, dtype, size_average, reduce, reducti
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
@@ -205,9 +205,9 @@ def test_accuracy_cumsum(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     HW = H * W
-    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cuda", requires_grad=True)
-    weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
-    bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=DEVICE, requires_grad=True)
+    weight = torch.randn(size=(C,), dtype=dtype, device=DEVICE, requires_grad=True)
+    bias = torch.randn(size=(C,), dtype=dtype, device=DEVICE, requires_grad=True)
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -252,9 +252,9 @@ def test_accuracy_layernorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
-    bias = torch.randn(layer_shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    weight = torch.randn(layer_shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    bias = torch.randn(layer_shape, dtype=dtype, device=DEVICE, requires_grad=True)
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -297,7 +297,7 @@ def test_accuracy_layernorm(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
@@ -316,7 +316,7 @@ def test_accuracy_log_softmax(shape, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -331,7 +331,7 @@ def test_accuracy_max(shape, dtype):
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp, dim=dim, keepdim=keepdim)
@@ -346,7 +346,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mean(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp)
@@ -361,7 +361,7 @@ def test_accuracy_mean(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp, dim, keepdim)
@@ -374,7 +374,7 @@ def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_min(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.min(ref_inp)
@@ -389,7 +389,7 @@ def test_accuracy_min(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_min_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.min(ref_inp, dim=dim, keepdim=keepdim)
@@ -404,7 +404,7 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_prod(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.prod(ref_inp)
@@ -418,7 +418,7 @@ def test_accuracy_prod(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_prod_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.prod(ref_inp, dim=dim, keepdim=keepdim)
@@ -434,8 +434,8 @@ def test_accuracy_rmsnorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    weight = torch.randn(layer_shape, dtype=dtype, device=DEVICE)
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -460,10 +460,10 @@ def test_accuracy_skip_layernorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    residual = torch.randn(shape, dtype=dtype, device="cuda")
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda")
-    bias = torch.randn(layer_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    residual = torch.randn(shape, dtype=dtype, device=DEVICE)
+    weight = torch.randn(layer_shape, dtype=dtype, device=DEVICE)
+    bias = torch.randn(layer_shape, dtype=dtype, device=DEVICE)
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -492,9 +492,9 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    residual = torch.randn(shape, dtype=dtype, device="cuda")
-    weight = torch.randn(layer_shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    residual = torch.randn(shape, dtype=dtype, device=DEVICE)
+    weight = torch.randn(layer_shape, dtype=dtype, device=DEVICE)
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -525,7 +525,7 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_softmax(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
@@ -544,7 +544,7 @@ def test_accuracy_softmax(shape, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sum(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.sum(ref_inp)
@@ -559,7 +559,7 @@ def test_accuracy_sum(shape, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
@@ -581,7 +581,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_var, ref_mean = torch.var_mean(
@@ -602,7 +602,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)

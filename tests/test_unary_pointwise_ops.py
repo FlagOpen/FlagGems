@@ -7,7 +7,7 @@ from .accuracy_utils import *
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_abs(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.abs(ref_inp)
@@ -21,8 +21,8 @@ def test_accuracy_abs(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwisenot(shape, dtype):
     inp = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to(DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.bitwise_not(ref_inp)
@@ -35,7 +35,7 @@ def test_accuracy_bitwisenot(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cos(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cos(ref_inp)
@@ -48,7 +48,7 @@ def test_accuracy_cos(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_exp(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.exp(ref_inp)
@@ -61,7 +61,7 @@ def test_accuracy_exp(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gelu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.gelu(ref_inp)
@@ -75,14 +75,14 @@ def test_accuracy_gelu(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_accuracy_gelu_and_mul(shape, approximate, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.mul(
-        torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
-    )
+        torch.nn.functional.gelu(ref_inp1.cpu(), approximate=approximate), ref_inp2.cpu()
+    ).to(DEVICE)
     with flag_gems.use_gems():
         res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
@@ -92,7 +92,7 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_isinf(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp = torch.masked_fill(inp, inp > 1.0, -float("inf"))
     ref_inp = to_reference(inp)
 
@@ -106,7 +106,7 @@ def test_accuracy_isinf(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_isnan(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp = torch.masked_fill(inp, inp > 1.0, float("nan"))
     ref_inp = to_reference(inp)
 
@@ -120,7 +120,7 @@ def test_accuracy_isnan(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_neg(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.neg(ref_inp)
@@ -133,7 +133,7 @@ def test_accuracy_neg(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_reciprocal(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.reciprocal(ref_inp)
@@ -146,7 +146,7 @@ def test_accuracy_reciprocal(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_relu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.relu(ref_inp)
@@ -166,7 +166,7 @@ def test_accuracy_relu(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rsqrt(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.rsqrt(ref_inp)
@@ -179,7 +179,7 @@ def test_accuracy_rsqrt(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sigmoid(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.sigmoid(ref_inp)
@@ -199,7 +199,7 @@ def test_accuracy_sigmoid(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.silu(ref_inp)
@@ -219,8 +219,8 @@ def test_accuracy_silu(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu_and_mul(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -234,7 +234,7 @@ def test_accuracy_silu_and_mul(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sin(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.sin(ref_inp)
@@ -247,7 +247,7 @@ def test_accuracy_sin(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tanh(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.tanh(ref_inp)
@@ -268,7 +268,7 @@ def test_accuracy_tanh(shape, dtype):
 @pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_triu(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.triu(ref_inp, diagonal)
