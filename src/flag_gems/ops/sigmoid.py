@@ -8,9 +8,8 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic
 @triton.jit
 def sigmoid_forward(x):
-    # FIXME: use math.log2(math.e) after fixed 
-    log2e: tl.constexpr = 1.4426950408889634
-    return 1 / (1 + tl.math.exp2(-x.to(tl.float32) * log2e))
+    log2e: tl.constexpr = math.log2(math.e)
+    return 1 / (1 + tl.extra.mlu.libdevice.exp2(-x.to(tl.float32) * log2e))
 
 
 @pointwise_dynamic
