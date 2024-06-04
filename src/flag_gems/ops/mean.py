@@ -2,7 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, MLU_GRID_MAX
+from ..utils import libentry
 import math
 
 
@@ -106,7 +106,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         shape[i] = 1
     M = x.numel() // N
     mean = torch.empty(shape, dtype=dtype, device=x.device)
-    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
+    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), 65536),)
     mean_dim_kernel[grid](x, mean, M, N)
     if not keepdim:
         mean = mean.squeeze(dim)
