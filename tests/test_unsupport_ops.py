@@ -54,3 +54,37 @@ def test_accuracy_clamp(shape, maxi, mini, isnone, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_triu(shape, diagonal, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="musa")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.triu(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.triu(inp, diagonal)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_silu(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.nn.functional.silu(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.silu(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, False)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
