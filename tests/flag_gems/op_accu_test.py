@@ -1374,12 +1374,15 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     if DEVICE != "mlu":
         ref_out = torch.linalg.vector_norm(inp.to(torch.float64), ord, dim, keepdim)
     else:
-        ref_out = torch.linalg.vector_norm(inp.to(torch.float32).to("cpu"), ord, dim, keepdim).to(DEVICE)
+        if ord in [float("inf"), -float("inf")]:
+            # FIXME: torch can't support type with inf.
+            ref_out = torch.linalg.vector_norm(inp.to(torch.float32).to("cpu"), ord, dim, keepdim).to(DEVICE)
+        else:
+            ref_out = torch.linalg.vector_norm(inp.to(torch.float32), ord, dim, keepdim).to(DEVICE)
     with flag_gems.use_gems():
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     allclose_with_dtype(res_out, ref_out, dtype)
-
 
 @pytest.mark.parametrize(
     "shape",
