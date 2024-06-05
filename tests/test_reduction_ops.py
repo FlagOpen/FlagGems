@@ -348,7 +348,7 @@ def test_accuracy_log_softmax(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = to_reference(out_grad, False)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
@@ -372,7 +372,7 @@ def test_accuracy_softmax(shape, dtype, dim):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = to_reference(out_grad, False)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
