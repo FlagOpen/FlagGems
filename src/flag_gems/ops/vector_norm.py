@@ -2,9 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-#from ..utils import libentry, MLU_GRID_MAX
-from ..utils import libentry
-
+from ..utils import libentry, MLU_GRID_MAX
 
 def cfggen():
     block_m = [1, 2, 4, 8]
@@ -182,7 +180,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         shape[i] = 1
     M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
-    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), 65535),)
+    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
     if ord == 2:
         l2_norm_kernel[grid](x, out, M, N)
     elif ord == float("inf"):

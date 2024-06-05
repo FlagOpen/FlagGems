@@ -2,9 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-#from ..utils import libentry, MLU_GRID_MAX
-from ..utils import libentry
-
+from ..utils import libentry, MLU_GRID_MAX
 
 def cfggen():
     block_m = [1, 2, 4, 8]
