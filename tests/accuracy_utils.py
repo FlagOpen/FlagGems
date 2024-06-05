@@ -26,7 +26,6 @@ SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [0, 1]
 DIMS_LIST = [0, 1, [0, 1], [1, 0]]
 
-
 def to_reference(inp, upcast=False):
     if inp is None:
         return None

@@ -3,7 +3,6 @@ import pytest
 import flag_gems
 from .accuracy_utils import *
 
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
@@ -355,22 +354,6 @@ def test_accuracy_mean(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dim", DIMS_LIST)
-@pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
-    ref_inp = to_reference(inp, True)
-
-    ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_min(shape, dtype):
@@ -587,7 +570,7 @@ def test_accuracy_meandim(shape, dim, keepdim, dtype):
     with flag_gems.use_gems():
         res_out = torch.mean(inp, dim, keepdim)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype)
 
 @pytest.mark.parametrize(
     "shape",
@@ -605,8 +588,8 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
             inp, dim, correction=correction, keepdim=keepdim
         )
 
-    allclose_with_dtype(res_mean, ref_mean, dtype)
-    allclose_with_dtype(res_var, ref_var, dtype)
+    gems_assert_close(res_mean, ref_mean, dtype)
+    gems_assert_close(res_var, ref_var, dtype)
 
 @pytest.mark.parametrize(
     "shape",
@@ -629,5 +612,5 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     with flag_gems.use_gems():
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
-    allclose_with_dtype(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype)
 
