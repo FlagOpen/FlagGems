@@ -49,7 +49,7 @@ CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if QUICK_MODE else ["mean", "none", "sum"
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_amax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
     ref_inp = to_reference(inp)
 
     ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
@@ -66,7 +66,7 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_argmax(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
     ref_inp = to_reference(inp)
 
     ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
@@ -88,9 +88,9 @@ def test_accuracy_cross_entropy_loss_indices(
     target_shape = list(shape)
     del target_shape[dim]
 
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randint(0, up_limit, target_shape, device="cuda")
-    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
+    target = torch.randint(0, up_limit, target_shape, device="musa")
+    weight = torch.randn(shape[dim], dtype=dtype, device="musa")
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
     ref_weight = to_reference(weight, True)
@@ -127,9 +127,9 @@ def test_accuracy_cross_entropy_loss_probabilities(
     shape, dtype, reduction, label_smoothing
 ):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randn(shape, dtype=dtype, device="cuda")
-    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
+    target = torch.randn(shape, dtype=dtype, device="musa")
+    weight = torch.randn(shape[dim], dtype=dtype, device="musa")
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
     ref_weight = to_reference(weight, True)
@@ -167,10 +167,10 @@ CUMSUM_SHAPES = (
 def test_accuracy_cumsum(shape, dtype):
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+        inp = torch.randint(-3, 3, shape, device="musa").to(dtype)
     else:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp = to_reference(inp, True)
+        inp = torch.randn(shape, dtype=dtype, device="musa")
+    ref_inp = to_reference(inp, False)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
     with flag_gems.use_gems():
@@ -206,8 +206,8 @@ def test_accuracy_nonzero(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
+    ref_inp = to_reference(inp, False)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
     with flag_gems.use_gems():
@@ -215,7 +215,7 @@ def test_accuracy_log_softmax(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = to_reference(out_grad, False)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
@@ -230,7 +230,7 @@ def test_accuracy_log_softmax(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 def test_accuracy_softmax(shape, dtype, dim):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
@@ -239,7 +239,7 @@ def test_accuracy_softmax(shape, dtype, dim):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = to_reference(out_grad, False)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
@@ -255,8 +255,8 @@ def test_accuracy_softmax(shape, dtype, dim):
 def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     if shape[0] == 1:  # TODO: res is inf, while ref is nan
         shape = (2, 2)
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp = to_reference(inp, True)
+    inp = torch.randn(shape, dtype=dtype, device="musa")
+    ref_inp = to_reference(inp, False)
 
     ref_var, ref_mean = torch.var_mean(
         ref_inp, dim, correction=correction, keepdim=keepdim
