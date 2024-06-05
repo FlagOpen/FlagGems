@@ -1375,6 +1375,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         ref_out = torch.linalg.vector_norm(inp.to(torch.float64), ord, dim, keepdim)
     else:
         if ord in [float("inf"), -float("inf")]:
+            # FIXME: torch can't support type with inf.
             ref_out = torch.linalg.vector_norm(inp.to(torch.float32).to("cpu"), ord, dim, keepdim).to(DEVICE)
         else:
             ref_out = torch.linalg.vector_norm(inp.to(torch.float32), ord, dim, keepdim).to(DEVICE)
