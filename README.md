@@ -37,7 +37,7 @@ def add_func(x, y, alpha):
 
 #### Output Data Type
 
-FlagGems' automatic code generation defaults that output tensors are with the same data type as the first input tensor. When developers need to use other data types, they can specify this by passing a list of data types to the parameter `output_dtypes`. For example, in the following code, the output tensor type is specified as `torch.bool`.
+By default, all output tensors have the same data type as the first input tensor, but it can also be customized by providing a list of data types to the parameter `output_dtypes`. For example, in the following code, the output tensor type is specified as `torch.bool`.
 
 ```python
 @pointwise_dynamic(output_dtypes=[torch.bool])

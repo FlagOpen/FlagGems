@@ -37,7 +37,7 @@ def add_func(x, y, alpha):
 
 #### 输出数据类型
 
-`pointwise_dynamic`默认输出张量使用与首个输入张量相同的数据类型，当开发者需要使用其他数据类型时，可通过向参数`output_dtypes`传入数据类型组成的列表来指定。例如以下代码，指定输出张量类型为`torch.bool`。
+在默认情况下，输出张量使用与首个输入张量相同的数据类型，但也可向参数`output_dtypes`传入数据类型组成的列表来指定。例如以下代码，指定输出张量类型为`torch.bool`。
 
 ```python
 @pointwise_dynamic(output_dtypes=[torch.bool])
