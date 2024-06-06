@@ -35,7 +35,7 @@ def test_accuracy_dropout(shape, p, dtype):
     if TO_CPU or shape == (1,):
         shape = (32768,)
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    ref_inp = to_reference(inp)
+    ref_inp = inp
 
     # NOTE: ensure that scalars are float32(instead of float64)
     # in some cases, casting up then casting down have different result
@@ -47,13 +47,12 @@ def test_accuracy_dropout(shape, p, dtype):
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad)
+    ref_grad = out_grad
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    res_out = to_reference(res_out)
-    res_in_grad = to_reference(res_in_grad)
+    res_out = res_out
 
     exp_equal = (p * p + one_minus_p * one_minus_p) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
