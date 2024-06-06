@@ -102,6 +102,7 @@ def enable(lib=aten_lib):
     lib.impl("reciprocal", reciprocal, "PrivateUse1")
     lib.impl("relu", relu, "AutogradPrivateUse1")
     lib.impl("rsqrt", rsqrt, "PrivateUse1")
+    lib.impl("rsub.Tensor", rsub, "PrivateUse1")
     lib.impl("sigmoid", sigmoid, "AutogradPrivateUse1")
     lib.impl("silu", silu, "AutogradPrivateUse1")
     lib.impl("sin", sin, "PrivateUse1")

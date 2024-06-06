@@ -55,8 +55,8 @@ def heur_block_n(args):
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
+        # triton.Config({"BLOCK_M": 16}, num_warps=8),
+        # triton.Config({"BLOCK_M": 32}, num_warps=8),
     ],
     key=[
         "M",

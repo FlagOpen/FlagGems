@@ -24,64 +24,69 @@ def heur_divisible_k(args):
     configs=[
         triton.Config(
             {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=2,
+            num_warps=8,
+            num_stages=4,
         ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
+        # triton.Config(
+        #     {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
+        #     num_warps=4,
+        #     num_stages=2,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=2,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=2,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=2,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=2,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=2,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
+        #     num_warps=4,
+        #     num_stages=3,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=3,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=3,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=3,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=3,
+        # ),
+        # triton.Config(
+        #     {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+        #     num_warps=4,
+        #     num_stages=3,
+        # ),
     ],
     key=["M", "N", "K"],
 )

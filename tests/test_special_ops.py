@@ -31,7 +31,7 @@ from .conftest import TO_CPU
 def test_accuracy_dropout(shape, p, dtype):
     if TO_CPU or shape == (1,):
         shape = (32768,)
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
     ref_inp = to_reference(inp)
 
     # NOTE: ensure that scalars are float32(instead of float64)
@@ -75,7 +75,7 @@ def test_accuracy_dropout(shape, p, dtype):
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
-def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
+def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="musa"):
     inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
     t = torch.arange(max_seq_len, device=device, dtype=inv_freq.dtype)
     freqs = torch.outer(t, inv_freq)
@@ -153,14 +153,14 @@ def test_apply_rotary_pos_emb(
 ):
     seq_len = torch.randint(1, max_seq_len, (1,)).item()
     q = torch.randn(
-        (batch_size, seq_len, q_heads, head_dim), dtype=dtype, device="cuda"
+        (batch_size, seq_len, q_heads, head_dim), dtype=dtype, device="musa"
     )
     k = torch.randn(
-        (batch_size, seq_len, k_heads, head_dim), dtype=dtype, device="cuda"
+        (batch_size, seq_len, k_heads, head_dim), dtype=dtype, device="musa"
     )
 
-    position_ids = torch.randint(0, max_seq_len, (batch_size, seq_len), device="cuda")
-    cos, sin = get_rope_cos_sin(max_seq_len, head_dim, dtype, device="cuda")
+    position_ids = torch.randint(0, max_seq_len, (batch_size, seq_len), device="musa")
+    cos, sin = get_rope_cos_sin(max_seq_len, head_dim, dtype, device="musa")
 
     ref_q = to_reference(q, True)
     ref_k = to_reference(k, True)
