@@ -7,21 +7,24 @@ from ..utils import libentry
 
 
 try:
-    tl_rand_dtype = tl.uint64
+    tl_rand_dtype = tl.int64
     @triton.jit
     def _rand(seed, offset):
+        tl.static_print(seed.dtype)
         offset = offset.to(tl_rand_dtype)
         z = tl.rand(seed, offset, n_rounds=6)
 
     grid = (1,)
-    seed, offset = philox_cuda_seed_offset(0)
-    _rand[grid](seed, offset)
+    _seed, _offset = philox_cuda_seed_offset(0)
+    _rand[grid](_seed, _offset)
 except:
-    tl_rand_dtype = tl.uint32
+    tl_rand_dtype = tl.int32
 
 del grid
-del seed
-del offset
+del _seed
+del _offset
+
+print(tl_rand_dtype)
 
 @libentry()
 @triton.autotune(
