@@ -4,68 +4,6 @@ import flag_gems
 from .accuracy_utils import *
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_triu(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.triu(ref_inp, diagonal)
-    with flag_gems.use_gems():
-        res_out = torch.triu(inp, diagonal)
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_silu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp = to_reference(inp, False)
-
-    ref_out = torch.nn.functional.silu(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.silu(inp)
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, False)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
-
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_cross_entropy_loss(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    dim = 1
-    up_limit = shape[dim] - 1
-    target_shape = list(shape)
-    del target_shape[dim]
-    target = torch.randint(0, up_limit, target_shape, device="musa")
-
-    ref_inp = to_reference(inp, False)
-    ref_target = to_reference(target)
-
-    criterion = torch.nn.CrossEntropyLoss()
-
-    ref_out = criterion(ref_inp, ref_target)
-    with flag_gems.use_gems():
-        res_out = criterion(inp, target)
-    gems_assert_close(res_out, ref_out, dtype)
-
-    out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, False)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
-
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
@@ -181,46 +119,6 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
     gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
-
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_log_softmax(shape, dtype):
-    dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp = to_reference(inp, False)
-
-    ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.log_softmax(inp, dim=dim)
-    gems_assert_close(res_out, ref_out, dtype)
-
-    out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, False)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
-
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_softmax(shape, dtype):
-    dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp = to_reference(inp, False)
-
-    ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.softmax(inp, dim=dim)
-    gems_assert_close(res_out, ref_out, dtype)
-
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, False)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
