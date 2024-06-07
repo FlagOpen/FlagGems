@@ -70,8 +70,8 @@ def log_softmax_kernel(
     configs=[
         triton.Config({"BLOCK_M": 1}),
         triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
+        # triton.Config({"BLOCK_M": 4}),
+        # triton.Config({"BLOCK_M": 8}),
     ],
     key=[
         "M",
