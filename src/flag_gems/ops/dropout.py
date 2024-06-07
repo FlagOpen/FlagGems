@@ -10,21 +10,19 @@ try:
     tl_rand_dtype = tl.int64
     @triton.jit
     def _rand(seed, offset):
-        tl.static_print(seed.dtype)
         offset = offset.to(tl_rand_dtype)
         z = tl.rand(seed, offset, n_rounds=6)
 
-    grid = (1,)
+    _grid = (1,)
     _seed, _offset = philox_cuda_seed_offset(0)
-    _rand[grid](_seed, _offset)
+    _rand[_grid](_seed, _offset)
 except:
     tl_rand_dtype = tl.int32
 
-del grid
+del _grid
 del _seed
 del _offset
 
-print(tl_rand_dtype)
 
 @libentry()
 @triton.autotune(
