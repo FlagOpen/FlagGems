@@ -43,8 +43,8 @@ def test_accuracy_bmm(M, N, K, dtype):
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device="musa")
     mat2 = torch.randn((batch, K, N), dtype=dtype, device="musa")
-    ref_mat1 = to_reference(mat1, False)
-    ref_mat2 = to_reference(mat2, False)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
 
     ref_out = torch.bmm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
@@ -60,8 +60,8 @@ def test_accuracy_bmm(M, N, K, dtype):
 def test_accuracy_mm(M, N, K, dtype):
     mat1 = torch.randn((M, K), dtype=dtype, device="musa")
     mat2 = torch.randn((K, N), dtype=dtype, device="musa")
-    ref_mat1 = to_reference(mat1, False)
-    ref_mat2 = to_reference(mat2, False)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
 
     ref_out = torch.mm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
@@ -76,8 +76,8 @@ def test_accuracy_mm(M, N, K, dtype):
 def test_accuracy_mv(M, N, dtype):
     matrix = torch.randn((N, M), dtype=dtype, device="musa")
     vector = torch.randn((M,), dtype=dtype, device="musa")
-    ref_matrix = to_reference(matrix, False)
-    ref_vector = to_reference(vector, False)
+    ref_matrix = to_reference(matrix, True)
+    ref_vector = to_reference(vector, True)
 
     ref_out = torch.mv(ref_matrix, ref_vector)
     with flag_gems.use_gems():
@@ -92,8 +92,8 @@ def test_accuracy_mv(M, N, dtype):
 def test_accuracy_outer(M, N, dtype):
     inp1 = torch.randn(M, dtype=dtype, device="musa", requires_grad=True)
     inp2 = torch.randn(N, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp1 = to_reference(inp1, False)
-    ref_inp2 = to_reference(inp2, False)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.outer(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -101,7 +101,7 @@ def test_accuracy_outer(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, False)
+    ref_grad = to_reference(out_grad, True)
 
     ref_in1_grad, ref_in2_grad = torch.autograd.grad(
         ref_out, (ref_inp1, ref_inp2), ref_grad

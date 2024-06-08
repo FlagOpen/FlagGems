@@ -170,7 +170,7 @@ def test_accuracy_cumsum(shape, dtype):
         inp = torch.randint(-3, 3, shape, device="musa").to(dtype)
     else:
         inp = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp = to_reference(inp, False)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
     with flag_gems.use_gems():
@@ -207,7 +207,7 @@ def test_accuracy_nonzero(shape, dtype):
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp = to_reference(inp, False)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
     with flag_gems.use_gems():
@@ -215,7 +215,7 @@ def test_accuracy_log_softmax(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, False)
+    ref_grad = to_reference(out_grad, True)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
@@ -239,7 +239,7 @@ def test_accuracy_softmax(shape, dtype, dim):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, False)
+    ref_grad = to_reference(out_grad, True)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
@@ -256,7 +256,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     if shape[0] == 1:  # TODO: res is inf, while ref is nan
         shape = (2, 2)
     inp = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp = to_reference(inp, False)
+    ref_inp = to_reference(inp, True)
 
     ref_var, ref_mean = torch.var_mean(
         ref_inp, dim, correction=correction, keepdim=keepdim
