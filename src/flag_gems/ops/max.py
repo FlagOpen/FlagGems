@@ -81,7 +81,7 @@ def max_kernel(
     mask1 = m_offset < M
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
     result_value, result_index = tl.max(inp_vals, axis=1, return_indices=True)
 
     out_value_ptrs = out_value + offset_index
