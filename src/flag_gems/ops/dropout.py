@@ -14,7 +14,7 @@ try:
         z = tl.rand(seed, offset, n_rounds=6)
 
     _grid = (1,)
-    _seed, _offset = philox_cuda_seed_offset(0)
+    _seed, _offset = philox_mlu_seed_offset(0)
     _rand[_grid](_seed, _offset)
 except:
     tl_rand_dtype = tl.int32
