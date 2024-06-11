@@ -247,7 +247,7 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
-            latency = triton.testing.do_bench(
+            latency = triton.musa_testing.do_bench(
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
