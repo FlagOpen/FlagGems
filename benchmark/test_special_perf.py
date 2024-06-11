@@ -13,8 +13,8 @@ from .performance_utils import (
 
 def test_perf_embedding():
     def embedding_kwargs(dtype, batch, size):
-        input = torch.randint(0, batch, (batch,), device="cuda")
-        weight = torch.randn((batch + 1, size), device="cuda", dtype=dtype)
+        input = torch.randint(0, batch, (batch,), device="musa")
+        weight = torch.randn((batch + 1, size), device="musa", dtype=dtype)
         return {"input": input, "weight": weight}
 
     bench = Benchmark(
@@ -51,7 +51,7 @@ def test_perf_topk():
 
 def test_perf_resolve_neg():
     def resolve_neg_arg(dtype, batch, size):
-        x = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        x = torch.randn(size=(batch, size), dtype=dtype, device="musa")
         y = x.conj()
         z = y.imag
         return (z,)
@@ -69,7 +69,7 @@ def test_perf_resolve_neg():
 
 def test_perf_resolve_conj():
     def resolve_conj_arg(dtype, batch, size):
-        x = torch.randn(size=(size, batch), dtype=dtype, device="cuda")
+        x = torch.randn(size=(size, batch), dtype=dtype, device="musa")
         return (x.conj(),)
 
     bench = Benchmark(

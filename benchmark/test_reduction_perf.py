@@ -61,14 +61,14 @@ def test_perf_argmax():
 
 def test_perf_cross_entropy_loss():
     def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device="musa")
         target = torch.randint(
             0,
             size,
             [
                 batch,
             ],
-            device="cuda",
+            device="musa",
         )
         return inp, target
 
@@ -85,7 +85,7 @@ def test_perf_cross_entropy_loss():
 
 def test_perf_cumsum():
     def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device="musa")
         return inp, 1
 
     bench = Benchmark(
@@ -145,20 +145,20 @@ def test_perf_groupnorm():
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, C, size], dtype=dtype, device="musa")
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device="cuda",
+            device="musa",
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device="cuda",
+            device="musa",
         )
         return inp, G, weight, bias
 
@@ -175,20 +175,20 @@ def test_perf_groupnorm():
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device="musa")
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device="musa",
         )
         bias = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device="musa",
         )
         return (
             inp,

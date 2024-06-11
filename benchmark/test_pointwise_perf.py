@@ -449,8 +449,8 @@ def test_perf_triu():
 
 def test_perf_where():
     def where_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([batch, size], dtype=dtype, device="musa")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="musa")
         condition = inp1 > 0
         return condition, inp1, inp2
 
