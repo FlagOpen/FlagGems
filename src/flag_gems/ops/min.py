@@ -39,6 +39,7 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_M": 4}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
         triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
