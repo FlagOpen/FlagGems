@@ -6,9 +6,34 @@ import triton.language as tl
 
 from ..utils import libentry
 
+def get_configs_io_bound():
+    configs = []
+    for num_stages in [1]:
+# TODO support block size 16 for MFMA dot op
+        for block_m in [16, 32] if torch.version.hip is None and not hasattr(torch, "corex") else [32, 64]:
+            for block_k in [32, 64]:
+                for block_n in [32, 64, 128, 256]:
+                    num_warps = 4 if block_n <= 64 else 8
+                    configs.append(
+                        triton.Config({'BLOCK_SIZE_M': block_m, 'BLOCK_SIZE_N': block_n, 'BLOCK_SIZE_K': block_k},
+                                      num_stages=num_stages, num_warps=num_warps))
+    return configs
 
-@libentry()
-@triton.autotune(
+def get_configs_compute_bound():
+    configs = []
+    for block_m in [64, 128, 256]:
+        for block_n in [64, 128, 256]:
+            for block_k in [32, 64, 128]:
+                num_warps = 8 if block_n <= 64 else 16
+                configs.append(
+                        triton.Config({'BLOCK_SIZE_M': block_m, 'BLOCK_SIZE_N': block_n, 'BLOCK_SIZE_K': block_k},
+                                      num_stages=1, num_warps=num_warps))
+    return configs
+
+def get_nv_configs():
+    configs = []
+    if hasattr(torch, "corex"):
+      return configs
     configs=[
         triton.Config(
             {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
@@ -50,7 +75,12 @@ from ..utils import libentry
             num_stages=5,
             num_warps=2,
         ),
-    ],
+    ]
+    return configs
+
+@libentry()
+@triton.autotune(
+ get_nv_configs() + get_configs_compute_bound() + get_configs_io_bound(),
     key=["M", "N", "K"],
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
