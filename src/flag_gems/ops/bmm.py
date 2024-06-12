@@ -18,9 +18,35 @@ def heur_divisible_n(args):
 def heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
+def get_configs_io_bound():
+    configs = []
+    for num_stages in [1, 2]:
+      for block_m in [16, 32] if torch.version.hip is None and not hasattr(torch, "corex") else [32, 64]:
+        for block_k in [32, 64]:
+          for block_n in [32, 64, 128, 256]:
+            for group_m in [1, 2]:
+              num_warps = 4 if block_n <= 64 else 8
+              configs.append(triton.Config({'TILE_M': block_m, 'TILE_N': block_n, 'TILE_K': block_k, 'GROUP_M': group_m},
+                            num_stages=num_stages, num_warps=num_warps))
+    return configs
 
-@libentry()
-@triton.autotune(
+def get_configs_compute_bound():
+    configs = []
+    for num_stages in [1, 2]:
+        for block_m in [64, 128, 256]:
+            for block_n in [64, 128, 256]:
+                for block_k in [32, 64, 128]:
+                    for group_m in [1, 2]:
+                        num_warps = 8 if block_n <= 64 else 16
+                        configs.append(
+                                triton.Config({'TILE_M': block_m, 'TILE_N': block_n, 'TILE_K': block_k, 'GROUP_M': group_m},
+                                        num_stages=num_stages, num_warps=num_warps))
+    return configs
+
+def get_nv_configs():
+    configs = []
+    if hasattr(torch, "corex"):
+      return configs
     configs=[
         triton.Config(
             {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
@@ -82,7 +108,13 @@ def heur_divisible_k(args):
             num_warps=4,
             num_stages=3,
         ),
-    ],
+    ]
+    return configs
+
+
+@libentry()
+@triton.autotune(
+    get_nv_configs() + get_configs_compute_bound() + get_configs_io_bound(),
     key=["M", "N", "K"],
 )
 @triton.heuristics(
