@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, dim_compress
+from ..utils import dim_compress, libentry
 
 
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input

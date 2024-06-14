@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, dim_compress
+from ..utils import dim_compress, libentry
 
 
 @libentry()
