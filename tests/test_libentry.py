@@ -1,10 +1,23 @@
-from contextlib import nullcontext as does_not_raise
+from contextlib import contextmanager
 
 import torch
 import triton
 from triton import language as tl
 
 from flag_gems.utils import libentry
+
+
+# not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
+@contextmanager
+def not_raises(ExpectedException):
+    try:
+        yield
+
+    except ExpectedException as error:
+        raise AssertionError(f"Raised exception {error} when it should not!")
+
+    except Exception as error:
+        raise AssertionError(f"An unexpected exception {error} raised.")
 
 
 def softmax_inner_decorator_cascade(x, dim, dtype=None):
@@ -153,17 +166,17 @@ def test_decorator_cascade():
     # to test inner decorator can use arguments supplied by outer decorator
     # and grid function can use arguments supplied by all the decorator
     x = torch.randn((128, 128, 128), device="cuda")
-    with does_not_raise():
+    with not_raises(KeyError):
         _ = softmax_inner_decorator_cascade(x, dim=2)
 
 
 def test_pass_kernel_arg_via_kw():
     x = torch.randn((128, 128, 128), device="cuda")
-    with does_not_raise():
+    with not_raises(KeyError):
         _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
 
 
 def test_kernel_arg_apply_default():
     x = torch.randn((128, 128, 128), device="cuda")
-    with does_not_raise():
+    with not_raises(KeyError):
         _ = softmax_inner_kernel_arg_apply_default(x, dim=2)
