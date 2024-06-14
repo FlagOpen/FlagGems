@@ -206,6 +206,8 @@ class CrossEntropyLoss(torch.autograd.Function):
             mean_num = -target.numel()
         shape = list(input.shape)
         shape[dim] = 1
+        if torch.any(target < 0):
+            return torch.tensor(float("nan"), dtype=input.dtype, device=input.device)
         target = torch.zeros_like(input).scatter(dim, target.view(shape), 1)
 
         M = 1

@@ -13,7 +13,14 @@ def eq_func(x, y):
 
 def eq(A, B):
     logging.debug("GEMS EQ")
-    O = eq_func(A, B)
+    if A.dim() == 0 and B.dim()==0:
+        O = eq_func_scalar(A.item(), B.item())
+    elif A.dim() == 0:
+        O = eq_func_scalar(A.item(), B)
+    elif B.dim() == 0:
+        O = eq_func_scalar(A, B.item())
+    else:
+        O = eq_func(A, B)
     return O
 
 

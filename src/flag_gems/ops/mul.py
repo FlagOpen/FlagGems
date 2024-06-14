@@ -23,9 +23,13 @@ def mul(A, B):
         O = mul_func(A, B)
         return O
     elif isinstance(A, torch.Tensor):
+        if A.dtype is torch.bool:
+            A = A.to(torch.int64)
         O = mul_func_scalar(A, B)
         return O
     elif isinstance(B, torch.Tensor):
+        if B.dtype is torch.bool:
+            B = B.to(torch.int64)
         O = mul_func_scalar(B, A)
         return O
     else:
