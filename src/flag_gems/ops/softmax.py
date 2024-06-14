@@ -10,14 +10,10 @@ from ..utils import libentry
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config(
-            {"TILE_K": 32},
-        ),
+        triton.Config({"TILE_K": 32}),
         triton.Config({"TILE_K": 64}),
         triton.Config({"TILE_K": 128}),
-        triton.Config(
-            {"TILE_K": 256},
-        ),
+        triton.Config({"TILE_K": 256}),
         triton.Config({"TILE_K": 512}),
         triton.Config({"TILE_K": 1024}),
     ],
