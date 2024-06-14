@@ -51,7 +51,6 @@ class LibEntry(triton.KernelInterface):
             # 2. kwargs,
             # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
             # when kwargs & captured args conflict, captured args have higher priority
-            print(kernel.constants)
             for k, v in kernel.constants.items():
                 arg_name = self.arg_names[int(k)]
                 kwargs[arg_name] = v
