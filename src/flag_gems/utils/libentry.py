@@ -35,24 +35,18 @@ class LibEntry(triton.KernelInterface):
             kernel = self.kernel_cache[entry_key]
 
         # collect all the arguments to the kernel, all non-constexpr arguments
-        k_args = [
-            arg
-            for i, arg in enumerate(args)
-            if i in self.kernel_arg_indices
-        ]
+        k_args = [arg for i, arg in enumerate(args) if i in self.kernel_arg_indices]
         if len(k_args) < len(self.kernel_arg_indices):
-            for p in self.jit_function.params[len(args):]:
+            for p in self.jit_function.params[len(args) :]:
                 if not p.is_constexpr:
                     if p.name in kwargs:
                         k_args.append(kwargs[p.name])
                     else:
                         k_args.append(p.default)
 
-
         grid = kwargs["grid"]
         if callable(grid):
-            # collect all arguments to the grid fn，
-            # ie:
+            # collect all arguments to the grid fn，ie:
             # 1. args,
             # 2. kwargs,
             # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
