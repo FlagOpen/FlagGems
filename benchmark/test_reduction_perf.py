@@ -1,7 +1,15 @@
-import torch
 import pytest
-import flag_gems
-from .performance_utils import *
+import torch
+
+from .performance_utils import (
+    BLAS_BATCH,
+    FLOAT_DTYPES,
+    REDUCTION_BATCH,
+    SIZES,
+    DEVICE,
+    Benchmark,
+    unary_arg,
+)
 
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -58,6 +66,18 @@ def test_perf_argmax(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_cross_entropy_loss(dtype):
+    def cross_entropy_loss_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        target = torch.randint(
+            0,
+            size,
+            [
+                batch,
+            ],
+            device=DEVICE,
+        )
+        return inp, target
+
     bench = Benchmark(
         op_name="cross_entropy_loss",
         torch_op=torch.nn.CrossEntropyLoss(),
@@ -71,6 +91,10 @@ def test_perf_cross_entropy_loss(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_cumsum(dtype):
+    def cumsum_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        return inp, 1
+
     bench = Benchmark(
         op_name="cumsum",
         torch_op=torch.cumsum,
@@ -84,6 +108,26 @@ def test_perf_cumsum(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_groupnorm(dtype):
+    def group_norm_args(dtype, batch, size):
+        C = 16
+        G = 16
+        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return inp, G, weight, bias
+
     bench = Benchmark(
         op_name="groupnorm",
         torch_op=torch.nn.functional.group_norm,
@@ -97,6 +141,31 @@ def test_perf_groupnorm(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_layernorm(dtype):
+    def layer_norm_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                size,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                size,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return (
+            inp,
+            [
+                size,
+            ],
+            weight,
+            bias,
+        )
+
     bench = Benchmark(
         op_name="layernorm",
         torch_op=torch.layer_norm,

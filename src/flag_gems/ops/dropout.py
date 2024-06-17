@@ -1,22 +1,24 @@
+import logging
+
+import torch
 import triton
 import triton.language as tl
-import torch
-import logging
 from ..utils.random_utils import philox_mlu_seed_offset
 from ..utils import libentry
 
+from ..utils import libentry
 
 try:
     tl_rand_dtype = tl.int64
+
     @triton.jit
     def _rand(seed, offset):
         offset = offset.to(tl_rand_dtype)
-        z = tl.rand(seed, offset, n_rounds=6)
 
     _grid = (1,)
     _seed, _offset = philox_mlu_seed_offset(0)
     _rand[_grid](_seed, _offset)
-except:
+except Exception:
     tl_rand_dtype = tl.int32
 
 del _grid
@@ -114,18 +116,18 @@ class NativeDropout(torch.autograd.Function):
         logging.debug("GEMS NATIVE DROPOUT FORWARD")
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
         x = x.contiguous()
-        O = torch.empty_like(x)
+        out = torch.empty_like(x)
         N = x.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
         # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
         # hence we cannot obtain the per thread offset as in Pytorch.
         increment = N
         philox_seed, philox_offset = philox_mlu_seed_offset(increment)
-        dropout_forward_kernel[grid_fn](x, O, N, p, philox_seed, philox_offset)
+        dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
         ctx.p = p
         ctx.philox_seed = philox_seed
         ctx.philox_offset = philox_offset
-        return O, None
+        return out, None
 
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):

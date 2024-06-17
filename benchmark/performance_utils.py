@@ -1,9 +1,10 @@
+import time
+
 import torch
 import triton
-import time
+
 import flag_gems
 from .conftest import CPU_MODE, DEVICE
-
 
 WARMUP = 10
 REPETITION = 1000
@@ -18,6 +19,10 @@ class Benchmark:
         self.dtype = dtype
         self.batch = batch
         self.sizes = sizes
+        self.gems_op = None
+
+    def set_gems(self, gems_op):
+        self.gems_op = gems_op
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
@@ -53,6 +58,7 @@ class Benchmark:
                 gems_perf = self.profile(self.gems_op, *args)
             spd = torch_perf / gems_perf
             speedup += spd
+            # print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
         speedup /= len(self.sizes)
         print(speedup)
 

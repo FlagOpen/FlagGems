@@ -1,7 +1,7 @@
 import torch
 
-from .ops import *
-from .fused import *
+from .fused import *  # noqa: F403
+from .ops import *  # noqa: F403
 
 __version__ = "2.0"
 
@@ -67,7 +67,9 @@ def enable(lib=aten_lib):
     lib.impl("triu", triu, "PrivateUse1")
     lib.impl("var_mean.correction", var_mean, "PrivateUse1")
     lib.impl("linalg_vector_norm", vector_norm, "PrivateUse1")
-
+    lib.impl("where.self", where_self, "PrivateUse1")
+    lib.impl("where.ScalarSelf", where_scalar_self, "PrivateUse1")
+    lib.impl("where.ScalarOther", where_scalar_other, "PrivateUse1")
     lib.impl("max", max, "PrivateUse1")
     lib.impl("max.dim", max_dim, "PrivateUse1")
     lib.impl("min", min, "PrivateUse1")
