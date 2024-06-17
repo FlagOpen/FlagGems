@@ -125,7 +125,9 @@ def softmax_and_sub_kernel(
     target = tl.load(target_ptrs, mask=mask, other=0.0)
     out_grad_ptr = out_grad + m_offset[:, None] * K + pid_k
     out_grad_value = tl.load(out_grad_ptr)
-    out = out_grad_value * (softmax_output - target) / mean_num
+    # backward formula derivation for value of ingnore index
+    target_sum = tl.sum(target, axis=1)[:, None]
+    out = out_grad_value * (target_sum * softmax_output - target) / mean_num
     output_ptrs = output_ptr + offset
 
     tl.store(output_ptrs, out, mask=mask)
@@ -184,9 +186,10 @@ def softmax_and_sub_reduce_kernel(
     softmax_output = numerator / denominator
     target_ptrs = target_ptr + offset
     target = tl.load(target_ptrs, mask=mask, other=0.0)
-
+    # backward formula derivation for value of ingnore index
+    target_sum = tl.sum(target, axis=1)[:, None]
     out_grad_value = tl.load(out_grad)
-    out = out_grad_value * (softmax_output - target) / mean_num
+    out = out_grad_value * (target_sum * softmax_output - target) / mean_num
     output_ptrs = output_ptr + offset
 
     tl.store(output_ptrs, out, mask=mask)
@@ -198,6 +201,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         logging.debug("GEMS CrossEntropyLoss")
         assert reduction in Reduction._value2member_map_, "Invalid reduction"
         assert isinstance(input, torch.Tensor), "input is not a tensor"
+
         if input.ndim >= 2:
             dim = 1
         else:
@@ -205,11 +209,21 @@ class CrossEntropyLoss(torch.autograd.Function):
         if reduction != Reduction.MEAN.value:
             mean_num = -1
         else:
-            mean_num = -target.numel()
+            if ignore_index != -100:
+                ignore_count = (target == ignore_index).to(torch.int16).sum().item()
+            else:
+                ignore_count = 0
+            mean_num = -target.numel() + ignore_count
         shape = list(input.shape)
         shape[dim] = 1
         target = torch.zeros_like(input).scatter(dim, target.view(shape), 1)
 
+        # set ignore value 0
+        if ignore_index != -100:
+            if dim == 0:
+                target[ignore_index] = 0
+            else:
+                target[:, ignore_index] = 0
         M = 1
         N = input.shape[dim]
         for i in range(dim):
@@ -287,8 +301,6 @@ class CrossEntropyLoss(torch.autograd.Function):
         return out, None, None, None, None, None
 
 
-# todo: reducetion(dtype: int,default mean->1), support other scenarios as follows:
-#       (none->0, sum->2)
 def cross_entropy_loss(
     input, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
 ):
