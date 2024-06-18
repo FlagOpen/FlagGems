@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import libentry
 
 
@@ -25,9 +27,9 @@ from ..utils import libentry
 @triton.heuristics(
     values={
         "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: 4
-        if args["N"] <= 1024
-        else (8 if args["N"] <= 2048 else 16),
+        "num_warps": lambda args: (
+            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
+        ),
     },
 )
 @triton.jit
@@ -76,9 +78,9 @@ def softmax_kernel(
 @triton.heuristics(
     values={
         "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: 4
-        if args["N"] <= 1024
-        else (8 if args["N"] <= 2048 else 16),
+        "num_warps": lambda args: (
+            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
+        ),
     },
 )
 @triton.jit

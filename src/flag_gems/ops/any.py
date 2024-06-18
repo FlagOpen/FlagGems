@@ -1,14 +1,16 @@
+import logging
+import math
+
 import torch
 import triton
-import math
 import triton.language as tl
-from ..utils import libentry
-import logging
+
+from ..utils import dim_compress, libentry
 
 
-# torch.any: Tests if any elements in input evaluate to True.
-#            If the dtype of input is not BOOL, then test if any elements in input evaluate to non-zero value
-# In triton function, test if any elements in input evaluate to non-zero value is ok. 
+# torch.any: Tests if any elements in input evaluate to True. If the dtype of input
+#            is not BOOL, then test if any elements in input evaluate to non-zero value
+# In triton function, test if any elements in input evaluate to non-zero value is ok.
 def cfggen():
     block_m = [1, 2, 4, 8]
     configs = [
@@ -58,7 +60,7 @@ def any_kernel_1(
     inp,
     mid,
     n_elements,
-    mid_size, 
+    mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -88,7 +90,6 @@ def any(inp):
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
-    dtype = inp.dtype
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
@@ -107,21 +108,16 @@ def any_dim(inp, dim=None, keepdim=False):
         if keepdim:
             out = torch.reshape(out, [1] * inp.ndim)
     else:
-        assert (dim >= -inp.ndim and dim < inp.ndim) , "Invalid dim" 
+        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
-        order = list(range(0, inp.ndim))
-        order.remove(dim)
-        order.append(dim)
-        inp = inp.permute(order).contiguous()
+        inp = dim_compress(inp, dim)
         N = shape[dim]
         shape[dim] = 1
         M = inp.numel() // N
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-        )
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         any_kernel_dim[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
@@ -132,12 +128,11 @@ def any_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS ANY DIMS")
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
+    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
-    order = [i for i in range(inp.ndim) if i not in dim] + dim
-    inp = inp.permute(order).contiguous()
+    inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
         N *= shape[i]
@@ -146,9 +141,7 @@ def any_dims(inp, dim=None, keepdim=False):
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-    )
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     any_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)

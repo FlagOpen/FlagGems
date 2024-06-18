@@ -1,9 +1,11 @@
+import logging
+import math
+
 import torch
 import triton
 import triton.language as tl
-import logging
-from ..utils import libentry
-import math
+
+from ..utils import dim_compress, libentry
 
 
 @libentry()
@@ -57,7 +59,7 @@ def amax_kernel(
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = (inp + rows * N)
+    inp = inp + rows * N
     out = out + rows
     row_mask = rows < M
 
@@ -95,13 +97,12 @@ def amax(inp, dim=None, keepdim=False):
     else:
         if isinstance(dim, int):
             dim = [dim]
-        assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim" 
+        assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
         dtype = inp.dtype
 
         shape = list(inp.shape)
         dim = [d % inp.ndim for d in dim]
-        order = [i for i in range(inp.ndim) if i not in dim] + dim
-        inp = inp.permute(order).contiguous()
+        inp = dim_compress(inp, dim)
         N = 1
         for i in dim:
             N *= shape[i]
@@ -110,9 +111,7 @@ def amax(inp, dim=None, keepdim=False):
 
         out = torch.empty(shape, dtype=dtype, device=inp.device)
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-        )
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         amax_kernel[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
