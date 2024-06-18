@@ -1,7 +1,18 @@
-import torch
 import pytest
+import torch
+
 import flag_gems
-from .accuracy_utils import *
+
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    POINTWISE_SHAPES,
+    SCALARS,
+    DEVICE,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -601,3 +612,48 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
         res_out = torch.sub(inp1, inp2, alpha=alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_self(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.where(ref_inp1 > 0, ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.where(inp1 > 0, inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_scalar_self(shape, scalar, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.where(inp2 > 0, inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.where(inp2 > 0, inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_where_scalar_other(shape, scalar, dtype):
+    inp1 = scalar
+    inp2 = torch.randn(shape, dtype=dtype, device=DEVICE)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.where(inp2 > 0, ref_inp2, inp1)
+    with flag_gems.use_gems():
+        res_out = torch.where(inp2 > 0, inp2, inp1)
+
+    gems_assert_equal(res_out, ref_out)
