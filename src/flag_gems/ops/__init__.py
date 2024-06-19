@@ -46,6 +46,7 @@ from .reciprocal import reciprocal
 from .relu import relu
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .select import select
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -138,4 +139,5 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "select",
 ]

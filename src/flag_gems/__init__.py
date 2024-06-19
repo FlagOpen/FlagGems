@@ -90,6 +90,8 @@ def enable(lib=aten_lib):
     lib.impl("outer", outer, "AutogradCUDA")
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
 
+    lib.impl("select.int", select, "CUDA")
+
 
 class use_gems:
     def __init__(self):

@@ -622,3 +622,20 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_select(shape, dim, dtype):
+    import random
+
+    index = random.randint(0, shape[dim])
+
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+    ref_out = torch.select(ref_inp, dim=dim, index=index)
+    with flag_gems.use_gems():
+        res_out = torch.select(inp, dim=dim, index=index)
+
+    gems_assert_equal(res_out, ref_out)
