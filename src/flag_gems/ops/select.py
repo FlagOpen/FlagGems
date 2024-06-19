@@ -36,6 +36,7 @@ def select(inp, dim=None, index=None):
     assert dim is not None and dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index is not None and index >= 0 and index < inp.size(dim), "Invalid index"
     dim = dim % inp.ndim
+    index = index % inp.size(dim)
     dtype = inp.dtype
     inp_shape = list(inp.shape)
 
