@@ -128,8 +128,8 @@ def softmax_and_sub_kernel(
     # backward formula derivation for value of ingnore index
     target_sum = tl.sum(target, axis=1)[:, None]
     out = out_grad_value * (target_sum * softmax_output - target) / mean_num
-    output_ptrs = output_ptr + offset
 
+    output_ptrs = output_ptr + offset
     tl.store(output_ptrs, out, mask=mask)
 
 
@@ -190,8 +190,8 @@ def softmax_and_sub_reduce_kernel(
     target_sum = tl.sum(target, axis=1)[:, None]
     out_grad_value = tl.load(out_grad)
     out = out_grad_value * (target_sum * softmax_output - target) / mean_num
-    output_ptrs = output_ptr + offset
 
+    output_ptrs = output_ptr + offset
     tl.store(output_ptrs, out, mask=mask)
 
 
@@ -206,20 +206,39 @@ class CrossEntropyLoss(torch.autograd.Function):
             dim = 1
         else:
             dim = 0
+
         if reduction != Reduction.MEAN.value:
             mean_num = -1
         else:
-            if ignore_index != -100:
-                ignore_count = (target == ignore_index).to(torch.int16).sum().item()
-            else:
-                ignore_count = 0
+            # get all ingore count of target
+            ignore_count = (target == ignore_index).to(torch.int16).sum().item()
             mean_num = -target.numel() + ignore_count
+
+        # special mean_num is 0, return 0
+        if mean_num == 0:
+            ctx.save_for_backward(input, target)
+            ctx.dim = dim
+            ctx.mean_num = -mean_num
+            ctx.reduction = reduction
+            return torch.tensor(float("nan"), device=input.device, dtype=input.dtype)
+
         shape = list(input.shape)
+        c_value = shape[dim]
         shape[dim] = 1
+
+        # action for target value equals ignore index, out of [0,C)
+        # 1 to delete target negetive value and set 0 to make sure scatter is OK
+        target_tmp = target
+        target = torch.where(target == ignore_index, 0, target)
         target = torch.zeros_like(input).scatter(dim, target.view(shape), 1)
 
-        # set ignore value 0
-        if ignore_index != -100:
+        # 2 set ignore index of target value 0
+        target_tmp = target_tmp.unsqueeze(dim)
+        target_tmp = target_tmp.expand(input.shape).contiguous()
+        target = torch.where(target_tmp == ignore_index, 0, target)
+
+        # special for ingore_index in [0,C)
+        if ignore_index >= 0 and ignore_index < c_value:
             if dim == 0:
                 target[ignore_index] = 0
             else:
@@ -263,7 +282,15 @@ class CrossEntropyLoss(torch.autograd.Function):
         dim = ctx.dim
         mean_num = ctx.mean_num
         reduction = ctx.reduction
-
+        if mean_num == 0:
+            return (
+                torch.tensor(float("nan"), dtype=input.dtype, device=input.device),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
         M = 1
         N = input.shape[dim]
         for i in range(dim):
