@@ -267,6 +267,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dim is None or len(dim) == x.ndim:
         dim = list(range(x.ndim))
         shape = [1] * x.ndim
+        x = dim_compress(x, dim)
         M = x.numel()
         BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
