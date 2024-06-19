@@ -31,10 +31,10 @@ def select_kernel(inp, out, M, N, index, BLOCK_M: tl.constexpr, BLOCK_N: tl.cons
     tl.store(out, selected, rows_mask)
 
 
-def select(inp, dim=None, index=0):
+def select(inp, dim=None, index=None):
     logging.debug("GEMS SELECT")
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    assert index >= 0 and index < inp.size(dim), "Invalid index"
+    assert dim is not None and dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    assert index is not None and index >= 0 and index < inp.size(dim), "Invalid index"
     dim = dim % inp.ndim
     dtype = inp.dtype
     inp_shape = list(inp.shape)
@@ -49,3 +49,7 @@ def select(inp, dim=None, index=0):
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     select_kernel[grid](inp, out, M, N, index)
     return out.squeeze(dim=dim)
+
+
+inp = torch.arange(1, 26).reshape(5, 5)
+print(select(inp))
