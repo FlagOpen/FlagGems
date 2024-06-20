@@ -328,7 +328,7 @@ def generate_destination_passing_pointwise_wrapper(
 
     # task partitioning, 1d task indexing
     tile_size = 512
-    num_warps = 4
+    num_warps = 1
     if rank == 0:  # special case with rank-0, only 1 element to compute
         tile_size = 32
         num_warps = 1
