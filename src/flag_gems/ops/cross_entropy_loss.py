@@ -211,7 +211,8 @@ class CrossEntropyLoss(torch.autograd.Function):
             mean_num = -1
         else:
             # get all ingore count of target
-            ignore_count = (target == ignore_index).to(torch.int16).sum().item()
+            ignore_count = (target == ignore_index).to(torch.int64).sum().item()
+
             mean_num = -target.numel() + ignore_count
 
         # special mean_num is 0, return 0
