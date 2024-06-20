@@ -73,55 +73,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_layernorm(shape, dtype):
-    M = shape[0]
-    N = shape[1]
-    layer_shape = [
-        N,
-    ]
-    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    weight = torch.randn(layer_shape, dtype=dtype, device="musa", requires_grad=True)
-    bias = torch.randn(layer_shape, dtype=dtype, device="musa", requires_grad=True)
-    eps = 1e-5
-
-    ref_inp = to_reference(inp, False)
-    ref_weight = to_reference(weight, False)
-    ref_bias = to_reference(bias, False)
-
-    ref_out = torch.layer_norm(
-        ref_inp,
-        list(layer_shape),
-        weight=ref_weight,
-        bias=ref_bias,
-        eps=eps,
-    )
-    (res_out, res_mean, res_rstd) = flag_gems.layer_norm(
-        inp, list(layer_shape), weight=weight, bias=bias, eps=eps
-    )
-
-    ref_mean = torch.mean(ref_inp, dim=1)
-    ref_var = torch.var(ref_inp, dim=1, correction=0)
-    ref_rstd = torch.rsqrt(ref_var + eps)
-    gems_assert_close(res_mean, ref_mean, dtype)
-    gems_assert_close(res_rstd, ref_rstd, dtype)
-    gems_assert_close(res_out, ref_out, dtype)
-
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, False)
-
-    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-        ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
-    )
-    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-        res_out, (inp, weight, bias), out_grad
-    )
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
-    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
-
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("correction", [0, 1])
 @pytest.mark.parametrize("keepdim", [True, False])
