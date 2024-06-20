@@ -199,8 +199,10 @@ def layer_norm_loop_kernel(
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
+        # for m in [1, 2, 4, 8]
+        for m in [1, 2, 4]
+        # for w in [4, 8, 16]
+        for w in [4, 8]
     ],
     key=["M", "N"],
 )
