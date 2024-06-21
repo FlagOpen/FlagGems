@@ -217,11 +217,17 @@ class CrossEntropyLoss(torch.autograd.Function):
 
         # special mean_num is 0, return 0
         if mean_num == 0:
-            ctx.save_for_backward(input, target)
+            ctx.shape = input.shape
+            ctx.mean_num = mean_num
             ctx.dim = dim
-            ctx.mean_num = -mean_num
-            ctx.reduction = reduction
-            return torch.tensor(float("nan"), device=input.device, dtype=input.dtype)
+            ctx.input_dtype = input.dtype
+            ctx.input_device = input.device
+            if dim == 0:
+                return torch.tensor(0, device=input.device, dtype=input.dtype)
+            else:
+                return torch.tensor(
+                    float("nan"), device=input.device, dtype=input.dtype
+                )
 
         shape = list(input.shape)
         c_value = shape[dim]
@@ -238,12 +244,6 @@ class CrossEntropyLoss(torch.autograd.Function):
         target_tmp = target_tmp.expand(input.shape).contiguous()
         target = torch.where(target_tmp == ignore_index, 0, target)
 
-        # special for ingore_index in [0,C)
-        if ignore_index >= 0 and ignore_index < c_value:
-            if dim == 0:
-                target[ignore_index] = 0
-            else:
-                target[:, ignore_index] = 0
         M = 1
         N = input.shape[dim]
         for i in range(dim):
@@ -279,19 +279,32 @@ class CrossEntropyLoss(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS CrossEntropyLoss VJP")
-        input, target = ctx.saved_tensors
-        dim = ctx.dim
         mean_num = ctx.mean_num
-        reduction = ctx.reduction
+        dim = ctx.dim
         if mean_num == 0:
-            return (
-                torch.tensor(float("nan"), dtype=input.dtype, device=input.device),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
+            input_shape = ctx.shape
+            input_dtype = ctx.input_dtype
+            input_device = ctx.input_device
+            if dim == 0:
+                return (
+                    torch.zeros(input_shape, dtype=input_dtype, device=input_device),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            else:
+                return (
+                    torch.tensor(float("nan"), dtype=input.dtype, device=input.device),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+        input, target = ctx.saved_tensors
+        reduction = ctx.reduction
         M = 1
         N = input.shape[dim]
         for i in range(dim):
