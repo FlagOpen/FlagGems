@@ -230,7 +230,6 @@ class CrossEntropyLoss(torch.autograd.Function):
                 )
 
         shape = list(input.shape)
-        c_value = shape[dim]
         shape[dim] = 1
 
         # action for target value equals ignore index, out of [0,C)
@@ -296,7 +295,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 )
             else:
                 return (
-                    torch.tensor(float("nan"), dtype=input.dtype, device=input.device),
+                    torch.tensor(float("nan"), dtype=input_dtype, device=input_device),
                     None,
                     None,
                     None,
