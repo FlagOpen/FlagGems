@@ -435,3 +435,17 @@ def test_perf_where(dtype):
         sizes=SIZES,
     )
     bench.run()
+
+
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_perf_isclose(dtype):
+    bench = Benchmark(
+        op_name="isclose",
+        torch_op=torch.isclose,
+        arg_func=binary_args,
+        dtype=dtype,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
