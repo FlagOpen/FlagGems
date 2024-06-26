@@ -47,6 +47,12 @@ def isclose(
     equal_nan: bool = False,
 ) -> torch.Tensor:
     logging.debug("GEMS ISCLOSE")
+    if rtol < 0:
+        raise RuntimeError(
+            "rtol must be greater than or equal to zero, but got {}".format(rtol))
+    if atol < 0:
+        raise RuntimeError(
+            "atol must be greater than or equal to zero, but got {}".format(atol))
     if equal_nan:
         return isclose_func_equal_nan(A, B, rtol, atol)
     else:
