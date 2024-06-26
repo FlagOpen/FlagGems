@@ -25,7 +25,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
-from .isclose import isclose, allclose
+from .isclose import allclose, isclose
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
