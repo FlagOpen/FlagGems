@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
+from .all import all
 
 
 @pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
@@ -44,10 +45,21 @@ def isclose(
     rtol = 1e-05,
     atol = 1e-08,
     equal_nan : bool = False,
-):
+) -> torch.Tensor:
     logging.debug("GEMS ISCLOSE")
     if equal_nan:
         return isclose_func_equal_nan(A, B, rtol, atol)
     else:
         return isclose_func(A, B, rtol, atol)
+
+
+def allclose(
+    A : torch.Tensor,
+    B : torch.Tensor,
+    rtol = 1e-05,
+    atol = 1e-08,
+    equal_nan : bool = False,
+) -> bool:
+    logging.debug("GEMS ALLCLOSE")
+    return all(isclose(A, B, rtol, atol, equal_nan)).item()
 
