@@ -676,7 +676,7 @@ def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     if gen_nan:
         nan_num = torch.full(
-            (1,), float('nan' if gen_nan == 1 else 'inf'), dtype=dtype, device="cuda"
+            (1,), float("nan" if gen_nan == 1 else "inf"), dtype=dtype, device="cuda"
         )
         inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
         inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
