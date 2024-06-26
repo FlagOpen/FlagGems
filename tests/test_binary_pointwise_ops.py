@@ -726,7 +726,6 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
                 dtype=dtype,
                 device="cuda",
             )
-            )
             inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
     else:
