@@ -61,8 +61,12 @@ def isclose(
             "atol must be greater than or equal to zero, but got {}".format(atol)
         )
     def is_int(X):
-        return X.dtype == torch.int8 or X.dtype == torch.int16 or \
-            X.dtype == torch.int32 or X.dtype == torch.int64
+        return (
+            X.dtype == torch.int8
+            or X.dtype == torch.int16
+            or X.dtype == torch.int32
+            or X.dtype == torch.int64
+        )
     if False and is_int(A) and is_int(B):
         return isclose_func_int(A, B, rtol, atol)
     elif equal_nan:
