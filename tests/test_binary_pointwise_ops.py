@@ -661,26 +661,29 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("equal_nan", [False, True])
-@pytest.mark.parametrize("gen_nan", [False, True])
+@pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4])    # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
     rtol = torch.rand(1, dtype=dtype, device="cuda").item()
     atol = torch.rand(1, dtype=dtype, device="cuda").item()
-    logging.debug("#### shape={}, dtype={}, rtol={}, atol={}".format(
+    logging.debug("shape={}, dtype={}, rtol={}, atol={}".format(
         shape, dtype, rtol, atol))
-    #inp1 = torch.randn(shape, dtype=dtype, device="cuda").to(torch.int32)
+    # inp1 = torch.randn(shape, dtype=dtype, device="cuda").to(torch.int32)
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     if gen_nan:
-        nan_num = torch.full((1,), float('nan'), dtype=dtype, device="cuda")
-        inp1.view(-1)[0] = nan_num
-        inp2.view(-1)[0] = nan_num
-        logging.debug("  ## equal_nan={}, gen_nan={}: inp1[0]={}, inp2[0]={}".format(
-            equal_nan, gen_nan, inp1.view(-1)[0], inp2.view(-1)[0]))
+        nan_num = torch.full(
+            (1,), float('nan' if gen_nan == 1 else 'inf'), dtype=dtype, device="cuda")
+        inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
+        inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.isclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
     with flag_gems.use_gems():
         res_out = torch.isclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
+    if gen_nan:
+        logging.debug("equal_nan={}, gen_nan={}: inp1={}, inp2={}, res={}, ref={}".format(
+            equal_nan, gen_nan, inp1.view(-1)[0], inp2.view(-1)[0],
+            res_out.view(-1)[0], ref_out.view(-1)[0]))
     gems_assert_equal(res_out, ref_out)
 

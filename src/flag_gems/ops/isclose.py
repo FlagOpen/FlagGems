@@ -10,31 +10,31 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
 @triton.jit
 def isclose_func(x, y, rtol, atol):
-    return tl.abs(x.to(tl.float64) - y.to(tl.float64)) <= atol + rtol * tl.abs(y.to(tl.float64))
+    x_fp = x.to(tl.float64)
+    y_fp = y.to(tl.float64)
+    return tl.where(
+        tl.math.isinf(x.to(tl.float32)) | tl.math.isinf(y.to(tl.float32)),
+        x_fp == y_fp,
+        tl.abs(x_fp - y_fp) <= atol + rtol * tl.abs(y_fp)
+    )
     # return tl.abs(x - y) <= atol + rtol * tl.abs(y)
 
 
 @pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
 @triton.jit
 def isclose_func_equal_nan(x, y, rtol, atol):
-    finite_x = (x == x)
-    finite_y = (y == y)
+    x_fp = x.to(tl.float64)
+    y_fp = y.to(tl.float64)
+    x_nan = (x_fp != x_fp)
+    y_nan = (y_fp != y_fp)
     return tl.where(
-        finite_x & finite_y,
-        tl.abs(x.to(tl.float64) - y.to(tl.float64)) <= atol + rtol * tl.abs(y.to(tl.float64)),
-        finite_x == finite_y
-    )
-
-
-@pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
-@triton.jit
-def isclose_func_equal_nan_bf16(x, y, rtol, atol):
-    finite_x = (x.to(tl.float64) == x.to(tl.float64))
-    finite_y = (y.to(tl.float64) == y.to(tl.float64))
-    return tl.where(
-        finite_x & finite_y,
-        tl.abs(x.to(tl.float64) - y.to(tl.float64)) <= atol + rtol * tl.abs(y.to(tl.float64)),
-        finite_x == finite_y
+        x_nan | y_nan,
+        x_nan == y_nan,
+        tl.where(
+            tl.math.isinf(x.to(tl.float32)) | tl.math.isinf(y.to(tl.float32)),
+            x_fp == y_fp,
+            tl.abs(x_fp - y_fp) <= atol + rtol * tl.abs(y_fp)
+        )
     )
 
 
@@ -47,10 +47,7 @@ def isclose(
 ):
     logging.debug("GEMS ISCLOSE")
     if equal_nan:
-        if A.dtype == torch.bfloat16 or B.dtype == torch.bfloat16:
-            return isclose_func_equal_nan_bf16(A, B, rtol, atol)
-        else:
-            return isclose_func_equal_nan(A, B, rtol, atol)
+        return isclose_func_equal_nan(A, B, rtol, atol)
     else:
         return isclose_func(A, B, rtol, atol)
 
