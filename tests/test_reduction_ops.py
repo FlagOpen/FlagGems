@@ -305,7 +305,8 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES +
+                         [(5, 32000), (7, 40960), (13, 32768, 4), (10, 16384, 11), (4, 40000, 11), (16, 910030, 11)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1
