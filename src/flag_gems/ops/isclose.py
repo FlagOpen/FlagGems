@@ -80,13 +80,9 @@ def _isclose(
     equal_nan: bool = False,
 ) -> torch.Tensor:
     if A.dtype != B.dtype:
-        raise RuntimeError(
-            "{} did not match {}".format(A.dtype, B.dtype)
-        )
+        raise RuntimeError("{} did not match {}".format(A.dtype, B.dtype))
     if A.is_quantized or B.is_quantized:
-        raise RuntimeError(
-            "isclose is not supported for quantized inputs."
-        )
+        raise RuntimeError("isclose is not supported for quantized inputs.")
     if rtol < 0:
         raise RuntimeError(
             "rtol must be greater than or equal to zero, but got {}".format(rtol)
@@ -96,8 +92,13 @@ def _isclose(
             "atol must be greater than or equal to zero, but got {}".format(atol)
         )
 
-    if (A.dtype == torch.int64 or A.dtype == torch.int32 or A.dtype == torch.int16
-        or A.dtype == torch.int8 or A.dtype == torch.bool):
+    if (
+        A.dtype == torch.int64
+        or A.dtype == torch.int32
+        or A.dtype == torch.int16
+        or A.dtype == torch.int8
+        or A.dtype == torch.bool
+    ):
         return isclose_func_int(A, B, rtol, atol)
     elif equal_nan:
         if A.dtype == torch.float32 or A.dtype == torch.float64:
