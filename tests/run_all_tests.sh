@@ -6,7 +6,7 @@ ts=$(date +"%Y-%m-%d_%H-%M-%S")
 dirp=logs_$ts
 mkdir -p $dirp
 
-for i in `ls test*ops.py `; do
+for i in `ls test_*.py `; do
 
 	echo "testing file : "$i
 
