@@ -661,7 +661,8 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(128, 1024, 1024)])
 @pytest.mark.parametrize(
-    "dtype", [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES
+    "dtype",
+    [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES,
 )
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
@@ -731,7 +732,7 @@ def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES
+    [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES,
 )
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
