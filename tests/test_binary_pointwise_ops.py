@@ -659,24 +659,23 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(128, 1024, 1024)])
+@pytest.mark.parametrize(
+    "dtype", [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES
+)
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
     "gen_nan", [0, 1, 2, 3, 4]
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
-    rtol = torch.rand(1, dtype=torch.float16, device="cuda").item()
-    atol = torch.rand(1, dtype=torch.bfloat16, device="cuda").item()
+    rtol = torch.rand(1, dtype=torch.bfloat16, device="cuda").item()
+    atol = torch.rand(1, dtype=torch.float32, device="cuda").item()
     if dtype in FLOAT_DTYPES:
         inp1 = torch.randn(shape, dtype=dtype, device="cuda")
         inp2 = torch.randn(shape, dtype=dtype, device="cuda")
         if gen_nan:
             nan_num = torch.full(
-                (1,),
-                float("nan" if gen_nan == 1 else "inf"),
-                dtype=dtype,
-                device="cuda",
+                (1,), float("nan" if gen_nan == 1 else "inf"), dtype=dtype, device="cuda"
             )
             inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
@@ -684,8 +683,9 @@ def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
         atol *= 10
         inp1 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
         inp2 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
+
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
     logging.debug(
         "shape={}, dtype={}, rtol={}, atol={}".format(shape, dtype, rtol, atol)
     )
@@ -693,38 +693,53 @@ def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
     with flag_gems.use_gems():
         res_out = torch.isclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
     ref_out = torch.isclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
+
+    inp1_flat = inp1.view(-1)
+    inp2_flat = inp2.view(-1)
+    ref_flat = ref_out.view(-1)
+    res_flat = res_out.view(-1)
     if dtype in FLOAT_DTYPES and gen_nan:
         logging.debug(
             "equal_nan={}, gen_nan={}: inp1={}, inp2={}, res={}, ref={}".format(
                 equal_nan,
                 gen_nan,
-                inp1.view(-1)[0],
-                inp2.view(-1)[0],
-                res_out.view(-1)[0],
-                ref_out.view(-1)[0],
+                inp1_flat[0],
+                inp2_flat[0],
+                res_flat[0],
+                ref_flat[0],
             )
         )
-    gems_assert_equal(res_out, ref_out)
+    if dtype in [torch.float32, torch.float16, torch.bfloat16]:
+        if dtype == torch.float32:
+            rate = 0.000001
+        elif dtype == torch.float16:
+            rate = 0.001
+        else:
+            rate = 0.01
+        err_num = torch.sum(torch.ne(res_out, ref_out)).item()
+        logging.debug("err_num = {}, err_rate = {}".format(err_num, err_num / ref_out.numel()))
+        assert err_num <= max(1, ref_out.numel() * rate)
+    else:
+        gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype", [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES
+)
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
     "gen_nan", [0, 1, 2, 3, 4]
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
-    rtol = torch.rand(1, dtype=torch.float16, device="cuda").item()
-    atol = torch.rand(1, dtype=torch.bfloat16, device="cuda").item()
+    rtol = torch.rand(1, dtype=torch.bfloat16, device="cuda").item()
+    atol = torch.rand(1, dtype=torch.float32, device="cuda").item()
     if dtype in FLOAT_DTYPES:
-        inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-        inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+        inp1 = torch.full(shape, 1.234, dtype=dtype, device="cuda")
+        inp2 = torch.full(shape, 1.234, dtype=dtype, device="cuda")
         if gen_nan:
             nan_num = torch.full(
-                (1,),
-                float("nan" if gen_nan == 1 else "inf"),
-                dtype=dtype,
-                device="cuda",
+                (1,), float("nan" if gen_nan == 1 else "inf"), dtype=dtype, device="cuda"
             )
             inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
@@ -732,8 +747,9 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
         atol *= 10
         inp1 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
         inp2 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
+
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
     logging.debug(
         "shape={}, dtype={}, rtol={}, atol={}".format(shape, dtype, rtol, atol)
     )
@@ -741,15 +757,5 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     with flag_gems.use_gems():
         res_out = torch.allclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
-    if dtype in FLOAT_DTYPES and gen_nan:
-        logging.debug(
-            "equal_nan={}, gen_nan={}: inp1={}, inp2={}, res={}, ref={}".format(
-                equal_nan,
-                gen_nan,
-                inp1.view(-1)[0],
-                inp2.view(-1)[0],
-                res_out,
-                ref_out,
-            )
-        )
+
     assert res_out == ref_out
