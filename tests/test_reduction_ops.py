@@ -8,6 +8,7 @@ from .accuracy_utils import (
     DIMS_LIST,
     FLOAT_DTYPES,
     REDUCTION_SHAPES,
+    BIG_REDUCTION_SHAPES,
     DEVICE,
     gems_assert_close,
     gems_assert_equal,
@@ -188,7 +189,7 @@ def test_accuracy_cross_entropy_loss(shape, dtype, size_average, reduce, reducti
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + BIG_REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
     dim = 1
@@ -305,8 +306,7 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES +
-                         [(5, 32000), (7, 40960), (13, 32768, 4), (10, 16384, 11), (4, 40000, 11), (16, 910030, 11)])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + BIG_REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
     dim = 1
@@ -518,8 +518,7 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES +
-                         [(5, 32000), (7, 40960), (13, 32768, 4), (10, 16384, 11), (4, 40000, 11), (16, 910030, 11)])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + BIG_REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_softmax(shape, dtype):
     dim = 1
