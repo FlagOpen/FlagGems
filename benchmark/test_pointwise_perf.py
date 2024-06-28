@@ -83,9 +83,13 @@ def test_perf_bitwiseor(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_clamp(dtype):
+    def torch_clamp(*args):
+        input, minv, maxv = args
+        return torch.min(torch.max(input, minv), maxv)
+
     bench = Benchmark(
         op_name="clamp",
-        torch_op=torch.clamp,
+        torch_op=torch_clamp,
         arg_func=ternary_args,
         dtype=dtype,
         batch=POINTWISE_BATCH,
