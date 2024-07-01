@@ -38,6 +38,13 @@ class LibEntry(triton.KernelInterface):
         for arg in dns_args:
             if hasattr(arg, "data_ptr"):
                 entry_key.append(str(arg.dtype))
+            elif isinstance(arg, int):
+                if -(2**31) <= arg and arg <= 2**31 - 1:
+                    entry_key.append("i32")
+                elif 2**63 <= arg and arg <= 2**64 - 1:
+                    entry_key.append("u64")
+                else:
+                    entry_key.append("i64")
             else:
                 entry_key.append(type(arg))
         # const args passed by position
