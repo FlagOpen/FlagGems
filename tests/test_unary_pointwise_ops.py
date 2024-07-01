@@ -4,10 +4,10 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    FLOAT_DTYPES,
     ALL_FLOAT_DTYPES,
-    INT_DTYPES,
     ALL_INT_DTYPES,
+    FLOAT_DTYPES,
+    INT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
     gems_assert_equal,
@@ -254,6 +254,7 @@ def test_accuracy_triu(shape, diagonal, dtype):
         res_out = torch.triu(inp, diagonal)
 
     gems_assert_equal(res_out, ref_out)
+
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
