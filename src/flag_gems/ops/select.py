@@ -33,10 +33,8 @@ def select_kernel(inp, out, M, N, index, BLOCK_M: tl.constexpr, BLOCK_N: tl.cons
 
 def select(inp, dim, index):
     logging.debug("GEMS SELECT")
-    assert dim is not None and dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    assert (
-        index is not None and index >= -inp.size(dim) and index < inp.size(dim)
-    ), "Invalid index"
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    assert index >= -inp.size(dim) and index < inp.size(dim), "Invalid index"
     dim = dim % inp.ndim
     index = index % inp.size(dim)
     dtype = inp.dtype
