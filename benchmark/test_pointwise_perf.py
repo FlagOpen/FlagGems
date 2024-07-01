@@ -450,3 +450,29 @@ def test_perf_allclose_int():
         sizes=SIZES,
     )
     bench.run()
+
+
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_perf_isfinite(dtype):
+    bench = Benchmark(
+        op_name="isfinite",
+        torch_op=torch.isfinite,
+        arg_func=unary_arg,
+        dtype=dtype,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_perf_isfinite_int(dtype):
+    bench = Benchmark(
+        op_name="isfinite",
+        torch_op=torch.isfinite,
+        arg_func=unary_int_arg,
+        dtype=dtype,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
