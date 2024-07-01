@@ -16,7 +16,7 @@ def isclose_func(x, y, rtol, atol):
     return tl.where(
         tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
         x_fp == y_fp,
-        tl.abs(x_fp - y_fp) <= atol + rtol * tl.abs(y_fp),
+        tl.abs(x - y) <= atol + rtol * tl.abs(y),
     )
 
 
@@ -33,7 +33,7 @@ def isclose_func_equal_nan(x, y, rtol, atol):
         tl.where(
             tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
             x_fp == y_fp,
-            tl.abs(x_fp - y_fp) <= atol + rtol * tl.abs(y_fp),
+            tl.abs(x - y) <= atol + rtol * tl.abs(y),
         ),
     )
 
