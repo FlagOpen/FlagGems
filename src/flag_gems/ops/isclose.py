@@ -92,13 +92,7 @@ def _isclose(
             "atol must be greater than or equal to zero, but got {}".format(atol)
         )
 
-    if (
-        A.dtype == torch.int64
-        or A.dtype == torch.int32
-        or A.dtype == torch.int16
-        or A.dtype == torch.int8
-        or A.dtype == torch.bool
-    ):
+    if A.dtype in (torch.int64, torch.int32, torch.int16, torch.int8, torch.bool):
         return isclose_func_int(A, B, rtol, atol)
     elif equal_nan:
         if A.dtype == torch.float32 or A.dtype == torch.float64:
