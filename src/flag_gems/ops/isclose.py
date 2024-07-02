@@ -95,12 +95,12 @@ def _isclose(
     if A.dtype in (torch.int64, torch.int32, torch.int16, torch.int8, torch.bool):
         return isclose_func_int(A, B, rtol, atol)
     elif equal_nan:
-        if A.dtype == torch.float32 or A.dtype == torch.float64:
+        if A.dtype in (torch.float32, torch.float64):
             return isclose_func_equal_nan_fp(A, B, rtol, atol)
         else:
             return isclose_func_equal_nan(A, B, rtol, atol)
     else:
-        if A.dtype == torch.float32 or A.dtype == torch.float64:
+        if A.dtype in (torch.float32, torch.float64):
             return isclose_func_fp(A, B, rtol, atol)
         else:
             return isclose_func(A, B, rtol, atol)
