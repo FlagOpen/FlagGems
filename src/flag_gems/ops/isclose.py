@@ -8,68 +8,40 @@ from ..utils import pointwise_dynamic
 from .all import all
 
 
-@pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
+@pointwise_dynamic(
+    is_tensor=[True, True, False, False, False, False], output_dtypes=[torch.bool]
+)
 @triton.jit
-def isclose_func(x, y, rtol, atol):
-    x_fp = x.to(tl.float32)
-    y_fp = y.to(tl.float32)
-    return tl.where(
-        tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
-        x_fp == y_fp,
-        tl.abs(x - y) <= atol + rtol * tl.abs(y),
-    )
-
-
-@pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
-@triton.jit
-def isclose_func_equal_nan(x, y, rtol, atol):
-    x_fp = x.to(tl.float32)
-    y_fp = y.to(tl.float32)
-    x_nan = x_fp != x_fp
-    y_nan = y_fp != y_fp
-    return tl.where(
-        x_nan | y_nan,
-        x_nan == y_nan,
-        tl.where(
-            tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
-            x_fp == y_fp,
-            tl.abs(x - y) <= atol + rtol * tl.abs(y),
-        ),
-    )
-
-
-@pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
-@triton.jit
-def isclose_func_fp(x, y, rtol, atol):
-    return tl.where(
-        tl.math.isinf(x) | tl.math.isinf(y),
-        x == y,
-        tl.abs(x - y) <= atol + rtol * tl.abs(y),
-    )
-
-
-@pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
-@triton.jit
-def isclose_func_equal_nan_fp(x, y, rtol, atol):
-    x_nan = x != x
-    y_nan = y != y
-    return tl.where(
-        x_nan | y_nan,
-        x_nan == y_nan,
-        tl.where(
-            tl.math.isinf(x) | tl.math.isinf(y),
-            x == y,
-            tl.abs(x - y) <= atol + rtol * tl.abs(y),
-        ),
-    )
-
-
-@pointwise_dynamic(is_tensor=[True, True, False, False], output_dtypes=[torch.bool])
-@triton.jit
-def isclose_func_int(x, y, rtol, atol):
-    x_long = x.to(tl.int64)
-    y_long = y.to(tl.int64)
-    return tl.abs(x_long - y_long) <= atol + rtol * tl.abs(y_long)
+def isclose_func(x, y, rtol, atol, float_dtype: tl.constexpr, equal_nan: tl.constexpr):
+    if float_dtype:
+        if x.dtype == torch.float64:
+            x_fp = x
+            y_fp = y
+        else:
+            x_fp = x.to(tl.float32)
+            y_fp = y.to(tl.float32)
+        if equal_nan:
+            x_nan = x_fp != x_fp
+            y_nan = y_fp != y_fp
+            return tl.where(
+                x_nan | y_nan,
+                x_nan == y_nan,
+                tl.where(
+                    tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
+                    x_fp == y_fp,
+                    tl.abs(x - y) <= atol + rtol * tl.abs(y),
+                ),
+            )
+        else:
+            return tl.where(
+                tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
+                x_fp == y_fp,
+                tl.abs(x - y) <= atol + rtol * tl.abs(y),
+            )
+    else:
+        x_long = x.to(tl.int64)
+        y_long = y.to(tl.int64)
+        return tl.abs(x_long - y_long) <= atol + rtol * tl.abs(y_long)
 
 
 def _isclose(
@@ -91,19 +63,13 @@ def _isclose(
         raise RuntimeError(
             "atol must be greater than or equal to zero, but got {}".format(atol)
         )
-
-    if A.dtype in (torch.int64, torch.int32, torch.int16, torch.int8, torch.bool):
-        return isclose_func_int(A, B, rtol, atol)
-    elif equal_nan:
-        if A.dtype in (torch.float32, torch.float64):
-            return isclose_func_equal_nan_fp(A, B, rtol, atol)
-        else:
-            return isclose_func_equal_nan(A, B, rtol, atol)
-    else:
-        if A.dtype in (torch.float32, torch.float64):
-            return isclose_func_fp(A, B, rtol, atol)
-        else:
-            return isclose_func(A, B, rtol, atol)
+    float_dtype = A.dtype in (
+        torch.float64,
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+    )
+    return isclose_func(A, B, rtol, atol, float_dtype, equal_nan)
 
 
 def isclose(
