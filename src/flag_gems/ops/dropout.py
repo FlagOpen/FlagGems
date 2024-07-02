@@ -37,16 +37,11 @@ UNROLL = 4
 
 @triton.heuristics(
     values={
-        # "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024 if args["N"] <= 1024 else 2048,
         "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
-        "num_warps": lambda args: 4
-        if args["N"] <= 512
-        else 8
-        if args["N"] <= 1024
-        else 16,
+        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
     }
 )
-@triton.jit
+@triton.jit(do_not_specialize=("philox_seed", "philox_offset"))
 def dropout_forward_kernel(X, Y, N, p, philox_seed, philox_offset, BLOCK: tl.constexpr):
     UNROLL = 4
     philox_seed = philox_seed.to(tl.int64)
@@ -91,19 +86,11 @@ def dropout_forward_kernel(X, Y, N, p, philox_seed, philox_offset, BLOCK: tl.con
 
 @triton.heuristics(
     values={
-        "BLOCK": lambda args: 512
-        if args["N"] <= 512
-        else 1024
-        if args["N"] <= 1024
-        else 2048,
-        "num_warps": lambda args: 4
-        if args["N"] <= 512
-        else 8
-        if args["N"] <= 1024
-        else 16,
+        "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
+        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
     }
 )
-@triton.jit
+@triton.jit(do_not_specialize=("philox_seed", "philox_offset"))
 def dropout_backward_kernel(
     DY,
     DX,
