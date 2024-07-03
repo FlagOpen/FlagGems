@@ -5,9 +5,9 @@ name: flag-gems-test
 
 on:
   push:
-    branches: ["master"]
+    branches: [ "master" ]
   pull_request:
-    branches: ["master"]
+    branches: [ "master" ]
 
 jobs:
   container-unit-test:
@@ -24,8 +24,6 @@ jobs:
 
       - name: unit_test-flag-gems
         run: |
-          CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &
-
           commands=(
             "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &"
             "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_pointwise_type_promotion.py &"
