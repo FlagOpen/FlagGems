@@ -47,7 +47,7 @@ from .reciprocal import reciprocal
 from .relu import relu
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
-from .scatter import scatter_add, scatter_reduce, scatter_src
+from .scatter import scatter_reduce, scatter_src
 from .select import select
 from .sigmoid import sigmoid
 from .silu import silu
@@ -130,7 +130,6 @@ __all__ = [
     "min",
     "min_dim",
     "scatter_src",
-    "scatter_add",
     "scatter_reduce",
     "sum",
     "sum_dim",

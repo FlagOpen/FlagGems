@@ -46,12 +46,12 @@ def cfggen():
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def scatter_kernel(
-    inp,
     inp_offsets,
     src,
     src_offsets,
     index,
     idx_offsets,
+    out,
     M,
     N,
     stride_dim,
@@ -77,7 +77,7 @@ def scatter_kernel(
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
 
         inp_indices += cur_index * stride_dim
-        tl.store(inp + inp_indices, cur_src, mask=mask)
+        tl.store(out + inp_indices, cur_src, mask=mask)
 
 
 @libentry()
@@ -90,6 +90,7 @@ def scatter_add_kernel(
     src_offsets,
     index,
     idx_offsets,
+    out,
     M,
     N,
     stride_dim,
@@ -111,13 +112,13 @@ def scatter_add_kernel(
         src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
 
-        cur_src = tl.load(src + src_indices, mask=mask, other=0)
+        cur_src = tl.load(src + src_indices, mask=mask, other=0).to(tl.float32)
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
 
         inp_indices += cur_index * stride_dim
-        cur_inp = tl.load(inp + inp_indices, mask=mask, other=0)
+        cur_inp = tl.load(inp + inp_indices, mask=mask, other=0).to(tl.float32)
         res = cur_inp + cur_src
-        tl.store(inp + inp_indices, res, mask=mask)
+        tl.store(out + inp_indices, res, mask=mask)
 
 
 @libentry()
@@ -130,6 +131,7 @@ def scatter_mul_kernel(
     src_offsets,
     index,
     idx_offsets,
+    out,
     M,
     N,
     stride_dim,
@@ -151,13 +153,13 @@ def scatter_mul_kernel(
         src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
 
-        cur_src = tl.load(src + src_indices, mask=mask, other=0)
+        cur_src = tl.load(src + src_indices, mask=mask, other=0).to(tl.float32)
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
 
         inp_indices += cur_index * stride_dim
-        cur_inp = tl.load(inp + inp_indices, mask=mask, other=0)
+        cur_inp = tl.load(inp + inp_indices, mask=mask, other=0).to(tl.float32)
         res = cur_inp * cur_src
-        tl.store(inp + inp_indices, res, mask=mask)
+        tl.store(out + inp_indices, res, mask=mask)
 
 
 def scatter(inp, dim, index, src, reduction=None):
@@ -175,6 +177,7 @@ def scatter(inp, dim, index, src, reduction=None):
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()
+    out = inp.clone()
 
     src_strided = src.as_strided(index.shape, src.stride())
     inp_strided = restride_dim(inp, dim, index.shape)
@@ -194,12 +197,12 @@ def scatter(inp, dim, index, src, reduction=None):
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     if reduction is None:
         scatter_kernel[grid](
-            inp,
             inp_offsets,
             src,
             src_offsets,
             index,
             idx_offsets,
+            out,
             M,
             N,
             inp.stride(dim),
@@ -212,6 +215,7 @@ def scatter(inp, dim, index, src, reduction=None):
             src_offsets,
             index,
             idx_offsets,
+            out,
             M,
             N,
             inp.stride(dim),
@@ -224,11 +228,12 @@ def scatter(inp, dim, index, src, reduction=None):
             src_offsets,
             index,
             idx_offsets,
+            out,
             M,
             N,
             inp.stride(dim),
         )
-    return inp
+    return out
 
 
 def scatter_src(inp, dim, index, src):
@@ -236,18 +241,13 @@ def scatter_src(inp, dim, index, src):
     return scatter(inp, dim, index, src)
 
 
-def scatter_add(inp, dim, index, src):
-    logging.debug("GEMS SCATTER ADD")
-    return scatter(inp, dim, index, src, reduction="add")
-
-
 def scatter_reduce(inp, dim, index, src, reduce):
     logging.debug("GEMS SCATTER REDUCE")
     # TODO: As is shown in PyTorch's document(torch.Tensor.scatter_reduce_),
-    # this function is still in beta and may change in the near future.
+    # this function is still **in beta** and may change in the near future.
     # So for now, we're just going to stick with the original "add" and "multiply" parameters.
     # Maybe we can add reduction options like "mean", "amax" and "amin" in the future.
-    if reduce == "sum":
-        return scatter_add(inp, dim, index, src)
-    elif reduce == "prod":
+    if reduce == "sum" or reduce == "add":
+        return scatter(inp, dim, index, src, reduction="add")
+    elif reduce == "prod" or reduce == "multiply":
         return scatter(inp, dim, index, src, reduction="multiply")
