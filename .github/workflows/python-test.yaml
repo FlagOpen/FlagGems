@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: unit_test-flag-gems
+        shell: bash
         run: |
           cmds=(
             "CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &"
