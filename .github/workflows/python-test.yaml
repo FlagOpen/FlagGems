@@ -1,4 +1,3 @@
-
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
@@ -6,9 +5,9 @@ name: flag-gems-test
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 jobs:
   container-unit-test:
@@ -26,12 +25,47 @@ jobs:
       - name: unit_test-flag-gems
         run: |
           CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_unary_pointwise_ops.py &
+          pid1=$!
           CUDA_VISIBLE_DEVICES=0 pytest -s tests/test_pointwise_type_promotion.py &
+          pid2=$!
           CUDA_VISIBLE_DEVICES=1 pytest -s tests/test_binary_pointwise_ops.py &
+          pid3=$!
           CUDA_VISIBLE_DEVICES=2 pytest -s tests/test_blas_ops.py &
+          pid4=$!
           CUDA_VISIBLE_DEVICES=3 pytest -s tests/test_reduction_ops.py &
+          pid5=$!
           CUDA_VISIBLE_DEVICES=4 pytest -s tests/test_special_ops.py &
-          CUDA_VISIBLE_DEVICES=5 pytest -s tests/test_libentry.py && wait
+          pid6=$!
+          CUDA_VISIBLE_DEVICES=5 pytest -s tests/test_libentry.py &
+          pid7=$!
+          wait $pid1
+          result1=$?
+          wait $pid2
+          result2=$?
+          wait $pid3
+          result3=$?
+          wait $pid4
+          result4=$?
+          wait $pid5
+          result5=$?
+          wait $pid6
+          result6=$?
+          wait $pid7
+          result7=$?
+          echo "test_unary_pointwise_ops.py exit status: $result1"
+          echo "test_pointwise_type_promotion.py exit status: $result2"
+          echo "test_binary_pointwise_ops.py exit status: $result3"
+          echo "test_blas_ops.py exit status: $result4"
+          echo "test_reduction_ops.py exit status: $result5"
+          echo "test_special_ops.py exit status: $result6"
+          echo "test_libentry.py exit status: $result7"
+          if [ $result1 -eq 0 ] && [ $result2 -eq 0 ] && [ $result3 -eq 0 ] && [ $result4 -eq 0 ] && [ $result5 -eq 0 ] && [ $result6 -eq 0 ] && [ $result7 -eq 0 ]; then
+            echo "All commands executed successfully."
+            exit 0
+          else
+            echo "One or more commands failed."
+            exit 1
+          fi
 
   container-model-test:
     runs-on: [self-hosted, docker]
