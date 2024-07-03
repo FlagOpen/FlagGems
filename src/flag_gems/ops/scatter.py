@@ -1,6 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from ..utils import libentry
 
 
 def offsetCalculator(inp, idx, strides, dim, isInp):
@@ -17,6 +21,10 @@ def offsetCalculator(inp, idx, strides, dim, isInp):
         idx = idx // shape[d]
         # FIXME: Should we write a fast div/mod
         # to boost the '%' and '//'? (Since they may be run many times)
+        # See also:
+        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        #   - Division by Invariant Integers Using Multiplication,
+        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
     return (offsets) if not isInp else (offsets - idx_dim)
 
 
@@ -27,13 +35,14 @@ def restride_dim(src, dim, shape):
 
 
 def cfggen():
-    block_m = [2]
+    block_m = [1, 2, 4, 8]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 2}, num_warps=1) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
     ]
     return configs
 
 
+@libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def scatter_kernel(
@@ -71,8 +80,87 @@ def scatter_kernel(
         tl.store(inp + inp_indices, cur_src, mask=mask)
 
 
-# Temporarily for scatter.src only
-def scatter_src(inp, dim, index, src):
+@libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def scatter_add_kernel(
+    inp,
+    inp_offsets,
+    src,
+    src_offsets,
+    index,
+    idx_offsets,
+    M,
+    N,
+    stride_dim,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    rows_mask = rows_offsets < M
+
+    for off in range(0, N, BLOCK_N):
+        cols_offsets = off + tl.arange(0, BLOCK_N)[None, :]
+        cols_mask = cols_offsets < N
+
+        offsets = rows_offsets * N + cols_offsets
+        mask = rows_mask and cols_mask
+
+        inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
+        src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
+        idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
+
+        cur_src = tl.load(src + src_indices, mask=mask, other=0)
+        cur_index = tl.load(index + idx_indices, mask=mask, other=0)
+
+        inp_indices += cur_index * stride_dim
+        cur_inp = tl.load(inp + inp_indices, mask=mask, other=0)
+        res = cur_inp + cur_src
+        tl.store(inp + inp_indices, res, mask=mask)
+
+
+@libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def scatter_mul_kernel(
+    inp,
+    inp_offsets,
+    src,
+    src_offsets,
+    index,
+    idx_offsets,
+    M,
+    N,
+    stride_dim,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    rows_mask = rows_offsets < M
+
+    for off in range(0, N, BLOCK_N):
+        cols_offsets = off + tl.arange(0, BLOCK_N)[None, :]
+        cols_mask = cols_offsets < N
+
+        offsets = rows_offsets * N + cols_offsets
+        mask = rows_mask and cols_mask
+
+        inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
+        src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
+        idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
+
+        cur_src = tl.load(src + src_indices, mask=mask, other=0)
+        cur_index = tl.load(index + idx_indices, mask=mask, other=0)
+
+        inp_indices += cur_index * stride_dim
+        cur_inp = tl.load(inp + inp_indices, mask=mask, other=0)
+        res = cur_inp * cur_src
+        tl.store(inp + inp_indices, res, mask=mask)
+
+
+def scatter(inp, dim, index, src, reduction=None):
     assert (
         inp.ndim == index.ndim and inp.ndim == src.ndim
     ), "self, index and src (if it is a Tensor) should all have the same number of dimensions"
@@ -104,21 +192,62 @@ def scatter_src(inp, dim, index, src):
     M = index.numel() // N
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    scatter_kernel[grid](
-        inp, inp_offsets, src, src_offsets, index, idx_offsets, M, N, inp.stride(dim)
-    )
+    if reduction is None:
+        scatter_kernel[grid](
+            inp,
+            inp_offsets,
+            src,
+            src_offsets,
+            index,
+            idx_offsets,
+            M,
+            N,
+            inp.stride(dim),
+        )
+    elif reduction == "add":
+        scatter_add_kernel[grid](
+            inp,
+            inp_offsets,
+            src,
+            src_offsets,
+            index,
+            idx_offsets,
+            M,
+            N,
+            inp.stride(dim),
+        )
+    elif reduction == "multiply":
+        scatter_mul_kernel[grid](
+            inp,
+            inp_offsets,
+            src,
+            src_offsets,
+            index,
+            idx_offsets,
+            M,
+            N,
+            inp.stride(dim),
+        )
     return inp
 
 
-src = torch.arange(1, 26, device="cuda").reshape(5, 5)
-# src = torch.ones((5, 5, 5)).cuda() + 1 # ensure that non-unique indices won't lead to confusing result
-dim = 1
-index = torch.tensor([[0, 1, 2, 3], [0, 3, 4, 5]], dtype=src.dtype, device=src.device)
-inp = torch.zeros((6, 6), dtype=src.dtype, device=src.device)
-torch_res = inp.scatter(dim, index, src)
-triton_res = scatter_src(inp, dim, index, src)
-print(f"torch_res: {torch_res}")
-print(f"triton_res: {triton_res}")
-print(
-    f"The output of torch and triton is {'✅SAME' if torch.allclose(torch_res, triton_res) else '🚨DIFF'}"
-)
+def scatter_src(inp, dim, index, src):
+    logging.debug("GEMS SCATTER SRC")
+    return scatter(inp, dim, index, src)
+
+
+def scatter_add(inp, dim, index, src):
+    logging.debug("GEMS SCATTER ADD")
+    return scatter(inp, dim, index, src, reduction="add")
+
+
+def scatter_reduce(inp, dim, index, src, reduce):
+    logging.debug("GEMS SCATTER REDUCE")
+    # TODO: As is shown in PyTorch's document(torch.Tensor.scatter_reduce_),
+    # this function is still in beta and may change in the near future.
+    # So for now, we're just going to stick with the original "add" and "multiply" parameters.
+    # Maybe we can add reduction options like "mean", "amax" and "amin" in the future.
+    if reduce == "sum":
+        return scatter_add(inp, dim, index, src)
+    elif reduce == "prod":
+        return scatter(inp, dim, index, src, reduction="multiply")
