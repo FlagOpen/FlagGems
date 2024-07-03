@@ -145,6 +145,7 @@ class NativeDropout(torch.autograd.Function):
     def forward(ctx, x, p, train):
         logging.debug("GEMS NATIVE DROPOUT FORWARD")
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
+        device = x.device
         x = x.contiguous()
         out = torch.empty_like(x)
         N = x.numel()
@@ -152,8 +153,9 @@ class NativeDropout(torch.autograd.Function):
         # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
         # hence we cannot obtain the per thread offset as in Pytorch.
         increment = triton.cdiv(N, UNROLL)
-        philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-        dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
+        with torch.cuda.device(device):
+            philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+            dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
         ctx.p = p
         ctx.philox_seed = philox_seed
         ctx.philox_offset = philox_offset
@@ -162,13 +164,15 @@ class NativeDropout(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):
         logging.debug("GEMS NATIVE DROPOUT BACKWARD")
+        device = grad_outputs.device
         grad_outputs = grad_outputs.contiguous()
         grad_inputs = torch.empty_like(grad_outputs)
         N = grad_outputs.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        dropout_backward_kernel[grid_fn](
-            grad_outputs, grad_inputs, N, ctx.p, ctx.philox_seed, ctx.philox_offset
-        )
+        with torch.cuda.device(device):
+            dropout_backward_kernel[grid_fn](
+                grad_outputs, grad_inputs, N, ctx.p, ctx.philox_seed, ctx.philox_offset
+            )
         return grad_inputs, None, None
 
 
