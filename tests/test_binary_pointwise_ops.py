@@ -664,16 +664,24 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
     "dtype",
     [torch.float64, torch.int64, torch.int8, torch.bool] + FLOAT_DTYPES + INT_DTYPES,
 )
+@pytest.mark.parametrize("zero_tol", [False, True])
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
     "gen_nan", [0, 1, 2, 3, 4]
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
-def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
-    rtol = torch.rand(1, dtype=torch.float32, device="cuda").item() * (
-        0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01
+def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
+    rtol = (
+        torch.rand(1, dtype=torch.float32, device="cuda").item()
+        * (0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01)
+        if not zero_tol
+        else 0
     )
     if dtype in FLOAT_DTYPES:
-        atol = torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device="cuda").item()
+        atol = (
+            torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device="cuda").item()
+            if not zero_tol
+            else 0
+        )
         inp1 = torch.randn(shape, dtype=dtype, device="cuda")
         inp2 = torch.randn(shape, dtype=dtype, device="cuda")
         if gen_nan:
@@ -687,8 +695,12 @@ def test_accuracy_isclose(shape, dtype, equal_nan, gen_nan):
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
     else:
         atol = (
-            torch.finfo(torch.float16).eps
-            * torch.randint(0, 10, (1,), device="cuda").item()
+            (
+                torch.finfo(torch.float16).eps
+                * torch.randint(0, 10, (1,), device="cuda").item()
+            )
+            if not zero_tol
+            else 0
         )
         inp1 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
         inp2 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)

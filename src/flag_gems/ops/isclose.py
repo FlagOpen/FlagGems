@@ -9,10 +9,30 @@ from .all import all
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False, False, False, False], output_dtypes=[torch.bool]
+    is_tensor=[True, True, False, False, False, False, False],
+    output_dtypes=[torch.bool],
 )
 @triton.jit
-def isclose_func(x, y, rtol, atol, float_dtype: tl.constexpr, equal_nan: tl.constexpr):
+def isclose_func(
+    x,
+    y,
+    rtol,
+    atol,
+    float_dtype: tl.constexpr,
+    zero_tol: tl.constexpr,
+    equal_nan: tl.constexpr,
+):
+    if zero_tol:
+        if equal_nan:
+            x_nan = x != x
+            y_nan = y != y
+            return tl.where(
+                x_nan | y_nan,
+                x_nan == y_nan,
+                x == y,
+            )
+        else:
+            return x == y
     if float_dtype:
         if x.dtype == torch.float64:
             x_fp = x
@@ -69,7 +89,8 @@ def _isclose(
         torch.float16,
         torch.bfloat16,
     )
-    return isclose_func(A, B, rtol, atol, float_dtype, equal_nan)
+    zero_atol = rtol == 0 and atol == 0
+    return isclose_func(A, B, rtol, atol, float_dtype, zero_atol, equal_nan)
 
 
 def isclose(
