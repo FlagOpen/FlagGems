@@ -16,39 +16,38 @@ class LibEntry(triton.KernelInterface):
         while not isinstance(fn, triton.runtime.JITFunction):
             fn = fn.fn
         self.jit_function: triton.runtime.JITFunction = fn
-        self.spec_indices = []
-        self.dns_indices = []
-        for p in self.jit_function.params:
-            if not p.is_constexpr:
-                if p.do_not_specialize:
-                    self.dns_indices.append(p.num)
-                else:
-                    self.spec_indices.append(p.num)
+        self.specialize_indices = [
+            p.num
+            for p in self.jit_function.params
+            if not p.is_constexpr and not p.do_not_specialize
+        ]
+        self.do_not_specialize_indices = [
+            p.num
+            for p in self.jit_function.params
+            if not p.is_constexpr and p.do_not_specialize
+        ]
 
     def key(self, spec_args, dns_args, const_args):
-        entry_key = []
-        for arg in spec_args:
-            if hasattr(arg, "data_ptr"):
-                entry_key.append(str(arg.dtype))
-                entry_key.append(arg.data_ptr() % self.divisibility == 0)
-            else:
-                entry_key.append(type(arg))
-                entry_key.append(arg)
-        # args do not specialize
-        for arg in dns_args:
-            if hasattr(arg, "data_ptr"):
-                entry_key.append(str(arg.dtype))
-            elif isinstance(arg, int):
-                if -(2**31) <= arg and arg <= 2**31 - 1:
-                    entry_key.append("i32")
-                elif 2**63 <= arg and arg <= 2**64 - 1:
-                    entry_key.append("u64")
-                else:
-                    entry_key.append("i64")
-            else:
-                entry_key.append(type(arg))
+        spec_key = [
+            (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+            if hasattr(arg, "data_ptr")
+            else (type(arg), arg)
+            for arg in spec_args
+        ]
+        dns_key = [
+            arg.dtype
+            if hasattr(arg, "data_ptr")
+            else type(arg)
+            if not isinstance(arg, int)
+            else "i32"
+            if -(2**31) <= arg and arg <= 2**31 - 1
+            else "u64"
+            if 2**63 <= arg and arg <= 2**64 - 1
+            else "i64"
+            for arg in dns_args
+        ]
         # const args passed by position
-        return tuple(entry_key + const_args)
+        return tuple(spec_key + dns_key + const_args)
 
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
@@ -59,10 +58,10 @@ class LibEntry(triton.KernelInterface):
         const_args = []  # constexpr arguments
         k_args = []  # kernel arguments
         for i, arg in enumerate(args):
-            if i in self.spec_indices:
+            if i in self.specialize_indices:
                 k_args.append(arg)
                 spec_args.append(arg)
-            elif i in self.dns_indices:
+            elif i in self.do_not_specialize_indices:
                 k_args.append(arg)
                 dns_args.append(arg)
             else:
