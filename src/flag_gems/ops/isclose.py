@@ -10,7 +10,7 @@ from .all import all
 
 @pointwise_dynamic(
     is_tensor=[True, True, False, False, False, False, False],
-    output_dtypes=[torch.bool],
+    promotion_methods=[(0, 1, 2, 3, 4, 5, 6, "ALWAYS_BOOL")],
 )
 @triton.jit
 def isclose_func(
