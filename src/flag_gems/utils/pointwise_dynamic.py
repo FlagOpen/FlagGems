@@ -633,6 +633,9 @@ class PointwiseDynamicFunction:
         self._op_desc = op_desc
 
         assert isinstance(scalar_fn, JITFunction)
+        assert op_desc.num_inputs() == len(
+            scalar_fn.arg_names
+        ), f"Mismatch arg nums: {op_desc.num_inputs()} from OPDESC vs {len(scalar_fn.arg_names)} from scalar_fn."
         self._scalar_fn = scalar_fn
         self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
