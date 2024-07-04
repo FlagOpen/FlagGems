@@ -9,8 +9,8 @@ from .all import all
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False, False, False, False, False],
-    promotion_methods=[(0, 1, 2, 3, 4, 5, 6, "ALWAYS_BOOL")],
+    is_tensor=[True, True, False, False, False, False, False, False],
+    promotion_methods=[(0, 1, "ALWAYS_BOOL")],
 )
 @triton.jit
 def isclose_func(
@@ -19,49 +19,30 @@ def isclose_func(
     rtol,
     atol,
     float_dtype: tl.constexpr,
+    reduced_dtype: tl.constexpr,
     zero_tol: tl.constexpr,
     equal_nan: tl.constexpr,
 ):
-    if zero_tol:
-        if equal_nan:
-            x_nan = x != x
-            y_nan = y != y
-            return tl.where(
-                x_nan | y_nan,
-                x_nan == y_nan,
-                x == y,
-            )
-        else:
-            return x == y
-    if float_dtype:
-        if x.dtype == torch.float64:
-            x_fp = x
-            y_fp = y
-        else:
-            x_fp = x.to(tl.float32)
-            y_fp = y.to(tl.float32)
-        if equal_nan:
-            x_nan = x_fp != x_fp
-            y_nan = y_fp != y_fp
-            return tl.where(
-                x_nan | y_nan,
-                x_nan == y_nan,
-                tl.where(
-                    tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
-                    x_fp == y_fp,
-                    tl.abs(x - y) <= atol + rtol * tl.abs(y),
-                ),
-            )
-        else:
-            return tl.where(
-                tl.math.isinf(x_fp) | tl.math.isinf(y_fp),
-                x_fp == y_fp,
-                tl.abs(x - y) <= atol + rtol * tl.abs(y),
-            )
+    cast_x = x if x.dtype == tl.float64 else x.to(tl.float32)
+    cast_y = y if x.dtype == tl.float64 else y.to(tl.float32)
+    if x.dtype == tl.bfloat16:
+        close = cast_x == cast_y
+    elif reduced_dtype:
+        close = cast_x == cast_y
     else:
-        x_long = x.to(tl.int64)
-        y_long = y.to(tl.int64)
-        return tl.abs(x_long - y_long) <= atol + rtol * tl.abs(y_long)
+        close = x == y
+    if equal_nan:
+        if float_dtype:
+            close |= (cast_x != cast_x) & (cast_y != cast_y)
+    if zero_tol:
+        return close
+    else:
+        allowed_error = atol + tl.abs(rtol * cast_y)
+        actual_error = tl.abs(cast_x - cast_y)
+        actual_error_finite = (actual_error != float("inf")) & (
+            actual_error != float("-inf")
+        )
+        return close | (actual_error_finite & (actual_error <= allowed_error))
 
 
 def _isclose(
@@ -89,8 +70,11 @@ def _isclose(
         torch.float16,
         torch.bfloat16,
     )
-    zero_atol = rtol == 0 and atol == 0
-    return isclose_func(A, B, rtol, atol, float_dtype, zero_atol, equal_nan)
+    reduced_dtype = A.dtype in (torch.bool, torch.int8)
+    zero_tol = (rtol == 0) and (atol == 0)
+    return isclose_func(
+        A, B, rtol, atol, float_dtype, reduced_dtype, zero_tol, equal_nan
+    )
 
 
 def isclose(
