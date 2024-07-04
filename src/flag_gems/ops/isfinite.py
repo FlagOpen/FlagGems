@@ -10,36 +10,20 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(is_tensor=[True], output_dtypes=[torch.bool])
 @triton.jit
 def isfinite_func(x):
-    x_fp = x.to(tl.float32)
-    return (x_fp == x_fp) & (x_fp != float("inf")) & (x_fp != float("-inf"))
-
-
-@pointwise_dynamic(is_tensor=[True], output_dtypes=[torch.bool])
-@triton.jit
-def isfinite_func_fp(x):
-    return (x == x) & (x != float("inf")) & (x != float("-inf"))
-
-
-def _isfinite(
-    A: torch.Tensor,
-) -> torch.Tensor:
-    if (
-        A.dtype == torch.int64
-        or A.dtype == torch.int32
-        or A.dtype == torch.int16
-        or A.dtype == torch.int8
-        or A.dtype == torch.bool
-    ):
-        return torch.full(A.shape, True, dtype=torch.bool, device=A.device)
-    else:
-        if A.dtype == torch.float32 or A.dtype == torch.float64:
-            return isfinite_func_fp(A)
-        else:
-            return isfinite_func(A)
+    cast_x = x if x.dtype == torch.float64 else x.to(tl.float32)
+    return (cast_x == cast_x) & (cast_x != float("inf")) & (cast_x != float("-inf"))
 
 
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
     logging.debug("GEMS ISFINITE")
-    return _isfinite(A)
+    if A.dtype in (
+        torch.float64,
+        torch.float32,
+        torch.float16,
+        torch.bfloat16,
+    ):
+        return isfinite_func(A)
+    else:
+        return torch.full(A.shape, True, dtype=torch.bool, device=A.device)
