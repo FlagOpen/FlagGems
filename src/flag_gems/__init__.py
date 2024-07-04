@@ -96,6 +96,7 @@ def enable(lib=aten_lib):
     lib.impl("gather", gather, "CUDA")
     lib.impl("gather.out", gather_out, "CUDA")
     lib.impl("select_scatter", select_scatter, "CUDA")
+    lib.impl("slice_scatter", slice_scatter, "CUDA")
 
 
 class use_gems:

@@ -53,6 +53,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
@@ -148,4 +149,5 @@ __all__ = [
     "where_scalar_other",
     "select",
     "select_scatter",
+    "slice_scatter",
 ]

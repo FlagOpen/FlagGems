@@ -4,34 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
-
-
-def offsetCalculator(inp, idx, strides, dim, isInp):
-    ndim = inp.ndim
-    shape = list(inp.shape)
-    offsets = 0
-    idx_dim = 0
-    for d in range(0, ndim):
-        mod = torch.floor(idx % shape[d])
-        add_on = mod * strides[d]
-        offsets += add_on
-        if d == dim:
-            idx_dim = add_on
-        idx = idx // shape[d]
-        # FIXME: Should we write a fast div/mod
-        # to boost the '%' and '//'? (Since they may be run many times)
-        # See also:
-        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
-        #   - Division by Invariant Integers Using Multiplication,
-        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
-    return (offsets) if not isInp else (offsets - idx_dim)
-
-
-def restride_dim(src, dim, shape):
-    strides = list(src.stride())
-    strides[dim] = 0
-    return src.as_strided(shape, strides)
+from ..utils import libentry, offsetCalculator, restride_dim
 
 
 def cfggen():
@@ -177,7 +150,7 @@ def scatter(inp, dim, index, src, reduction=None):
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()
-    out = inp.clone()
+    out = inp.clone().contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
     inp_strided = restride_dim(inp, dim, index.shape)

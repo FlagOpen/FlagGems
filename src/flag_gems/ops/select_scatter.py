@@ -28,9 +28,9 @@ def offsetCalculator(inp, idx, strides, dim, isInp):
     return (offsets) if not isInp else (offsets - idx_dim)
 
 
-def restride_dim(src, dim, shape):
+def restride_dim(src, dim, shape, step=0):
     strides = list(src.stride())
-    strides[dim] = 0
+    strides[dim] *= step
     return src.as_strided(shape, strides)
 
 

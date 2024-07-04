@@ -633,7 +633,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 def test_accuracy_select(shape, dim, dtype):
     import random
 
-    index = random.randint(0, shape[dim], device="cuda")
+    index = random.randint(0, shape[dim])
 
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp)
@@ -844,5 +844,45 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=src)
     with flag_gems.use_gems():
         res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("start", [16, 32, 64])
+@pytest.mark.parametrize("end", [32, 64, 128])
+@pytest.mark.parametrize("step", [1, 3, 6])
+def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    size_dim = shape[dim]
+
+    if start is None:
+        start = 0
+    if end is None:
+        end = size_dim
+    range = end - start
+    if end < start:
+        range = 0
+        end = start = 0
+    elif (end - start) > size_dim:
+        range = size_dim
+        start = 0
+        end = size_dim
+
+    valid_shape = list(inp.shape)
+    valid_shape[dim] = (range + (step - 1)) // step
+
+    src = torch.randn(valid_shape, dtype=dtype, device="cuda")
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.slice_scatter(
+        ref_inp, dim=dim, src=src, start=start, end=end, step=step
+    )
+    with flag_gems.use_gems():
+        res_out = torch.slice_scatter(
+            ref_inp, dim=dim, src=src, start=start, end=end, step=step
+        )
 
     gems_assert_equal(res_out, ref_out)
