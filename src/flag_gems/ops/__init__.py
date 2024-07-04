@@ -49,6 +49,7 @@ from .rms_norm import rms_norm
 from .rsqrt import rsqrt
 from .scatter import scatter_reduce, scatter_src
 from .select import select
+from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -146,4 +147,5 @@ __all__ = [
     "where_scalar_self",
     "where_scalar_other",
     "select",
+    "select_scatter",
 ]
