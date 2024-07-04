@@ -360,8 +360,9 @@ def generate_destination_passing_pointwise_wrapper(
         wrapper_docstring = docstring_for_destination_passing_wrapper(op_desc)
         code.writeline(wrapper_docstring)
 
-        code.writeline("shape = out0.shape")
-        code.writeline("num_tasks = volume(shape)")
+        if rank > 0:
+            code.writeline("shape = out0.shape")
+            code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
             code.writeline("tile_size = min(8192, triton.next_power_of_2(num_tasks))")
@@ -373,7 +374,6 @@ def generate_destination_passing_pointwise_wrapper(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
             )
         else:
-            code.writeline("tile_size = 32")
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
         code.writeline("grid = (num_ctas, 1, 1)")
