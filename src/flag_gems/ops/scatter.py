@@ -246,8 +246,8 @@ def scatter_reduce(inp, dim, index, src, reduce):
     # TODO: As is shown in PyTorch's document(torch.Tensor.scatter_reduce_),
     # this function is still **in beta** and may change in the near future.
     # So for now, we're just going to stick with the original "add" and "multiply" parameters.
-    # Maybe we can add reduction options like "mean", "amax" and "amin" in the future.
-    if reduce == "sum" or reduce == "add":
+    # Maybe we can add reduction options like "sum", "prod", "mean", "amax" and "amin" in the future.
+    if reduce == "add":
         return scatter(inp, dim, index, src, reduction="add")
-    elif reduce == "prod" or reduce == "multiply":
+    elif reduce == "multiply":
         return scatter(inp, dim, index, src, reduction="multiply")
