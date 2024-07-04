@@ -1,4 +1,4 @@
 [submodule "triton_musa"]
 	path = triton_musa
-	url = git@sh-code.mthreads.com:sw/triton_musa.git
+	url = ../../sw/triton_musa.git
 	branch = develop
