@@ -825,3 +825,24 @@ def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
         res_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_select_scatter(shape, dim, dtype):
+    import random
+
+    index = random.randint(0, shape[dim])
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    src_shape = list(inp.shape)
+    del src_shape[dim]
+    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=src)
+    with flag_gems.use_gems():
+        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
+
+    gems_assert_equal(res_out, ref_out)
