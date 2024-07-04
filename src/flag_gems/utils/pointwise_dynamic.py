@@ -395,34 +395,33 @@ def generate_destination_passing_pointwise_wrapper(
         # grid
         code.writeline("# kernel launch")
 
-        # grid_stmt: str = f"grid = triton.cdiv(num_tasks, {tile_size}), 1, 1"
-        # code.writeline(grid_stmt)
-
         # launch kernel
-        kernel_launch: str = f"{kernel_name}[grid]("
-        code.writeline(kernel_launch)
-
+        code.writeline("with torch.cuda.device(in0.device):")
         with code.indent():
-            code.writeline(
-                f"{parameter_ref_for_wrapper(op_desc, include_outputs=True)},"
-            )
+            kernel_launch: str = f"{kernel_name}[grid]("
+            code.writeline(kernel_launch)
 
-            if rank > 0:
-                for i in range(op_desc.num_input_tensors()):
-                    s = ", ".join(f"in{i}_strides[{j}]" for j in range(rank))
-                    code.writeline(f"{s}, # stride for in{i}")
+            with code.indent():
+                code.writeline(
+                    f"{parameter_ref_for_wrapper(op_desc, include_outputs=True)},"
+                )
 
-                for i in range(op_desc.num_output_tensors()):
-                    s = ", ".join(f"out{i}_strides[{j}]" for j in range(rank))
-                    code.writeline(f"{s}, # stride for out{i}")
+                if rank > 0:
+                    for i in range(op_desc.num_input_tensors()):
+                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(rank))
+                        code.writeline(f"{s}, # stride for in{i}")
 
-                shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
-                code.writeline(f"{shape_args}, # task indexing space")
-                code.writeline("num_tasks, # num tasks")
-                code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                code.writeline("tile_size=tile_size,")
-            code.writeline("num_warps=num_warps,")
-        code.writeline(")")
+                    for i in range(op_desc.num_output_tensors()):
+                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(rank))
+                        code.writeline(f"{s}, # stride for out{i}")
+
+                    shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
+                    code.writeline(f"{shape_args}, # task indexing space")
+                    code.writeline("num_tasks, # num tasks")
+                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                    code.writeline("tile_size=tile_size,")
+                code.writeline("num_warps=num_warps,")
+            code.writeline(")")
 
         # return
         code.writeline(f"return {output_ref_for_wrapper(op_desc)}")
