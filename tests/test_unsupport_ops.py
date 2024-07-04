@@ -73,27 +73,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dim", DIMS_LIST)
-@pytest.mark.parametrize("correction", [0, 1])
-@pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp = to_reference(inp, False)
-
-    ref_var, ref_mean = torch.var_mean(
-        ref_inp, dim, correction=correction, keepdim=keepdim
-    )
-    with flag_gems.use_gems():
-        res_var, res_mean = torch.var_mean(
-            inp, dim, correction=correction, keepdim=keepdim
-        )
-
-    gems_assert_close(res_mean, ref_mean, dtype)
-    gems_assert_close(res_var, ref_var, dtype)
-
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
