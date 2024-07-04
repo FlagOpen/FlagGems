@@ -41,9 +41,16 @@ UNROLL = 4
         "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
     }
 )
-@triton.jit(do_not_specialize=("philox_seed", "philox_offset"))
-def dropout_forward_kernel(X, Y, N, p, philox_seed, philox_offset, BLOCK: tl.constexpr):
-    UNROLL = 4
+@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
+def dropout_forward_kernel(
+    X,
+    Y,
+    N,
+    p,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -90,7 +97,7 @@ def dropout_forward_kernel(X, Y, N, p, philox_seed, philox_offset, BLOCK: tl.con
         "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
     }
 )
-@triton.jit(do_not_specialize=("philox_seed", "philox_offset"))
+@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_backward_kernel(
     DY,
     DX,
