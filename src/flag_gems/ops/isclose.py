@@ -9,7 +9,7 @@ from .all import all
 
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False, False, False, False, False, False],
+    is_tensor=[True, True, False, False, False, False],
     promotion_methods=[(0, 1, "ALWAYS_BOOL")],
 )
 @triton.jit
@@ -18,31 +18,25 @@ def isclose_func(
     y,
     rtol,
     atol,
-    float_dtype: tl.constexpr,
-    reduced_dtype: tl.constexpr,
-    zero_tol: tl.constexpr,
     equal_nan: tl.constexpr,
+    zero_tol: tl.constexpr,
 ):
-    cast_x = x if x.dtype == tl.float64 else x.to(tl.float32)
-    cast_y = y if x.dtype == tl.float64 else y.to(tl.float32)
-    if x.dtype == tl.bfloat16:
-        close = cast_x == cast_y
-    elif reduced_dtype:
+    cast_x = x if x.dtype.is_fp64() else x.to(tl.float32)
+    cast_y = y if x.dtype.is_fp64() else y.to(tl.float32)
+    if x.dtype.is_bf16():
         close = cast_x == cast_y
     else:
         close = x == y
     if equal_nan:
-        if float_dtype:
-            close |= (cast_x != cast_x) & (cast_y != cast_y)
-    if zero_tol:
-        return close
-    else:
-        allowed_error = atol + tl.abs(rtol * cast_y)
-        actual_error = tl.abs(cast_x - cast_y)
-        actual_error_finite = (actual_error != float("inf")) & (
-            actual_error != float("-inf")
+        close |= (cast_x != cast_x) & (cast_y != cast_y)
+    if not zero_tol:
+        allowed = atol + tl.abs(rtol * cast_y)
+        actual = tl.abs(cast_x - cast_y)
+        actual_finite = (
+            (actual == actual) & (actual != float("inf")) & (actual != float("-inf"))
         )
-        return close | (actual_error_finite & (actual_error <= allowed_error))
+        close |= actual_finite & (actual <= allowed)
+    return close
 
 
 def _isclose(
@@ -64,17 +58,8 @@ def _isclose(
         raise RuntimeError(
             "atol must be greater than or equal to zero, but got {}".format(atol)
         )
-    float_dtype = A.dtype in (
-        torch.float64,
-        torch.float32,
-        torch.float16,
-        torch.bfloat16,
-    )
-    reduced_dtype = A.dtype in (torch.bool, torch.int8)
     zero_tol = (rtol == 0) and (atol == 0)
-    return isclose_func(
-        A, B, rtol, atol, float_dtype, reduced_dtype, zero_tol, equal_nan
-    )
+    return isclose_func(A, B, rtol, atol, equal_nan, zero_tol)
 
 
 def isclose(
