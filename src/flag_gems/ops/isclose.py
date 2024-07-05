@@ -46,6 +46,10 @@ def _isclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> torch.Tensor:
+    # note: Int8 is not supported in isclose_func, because the result of int8 == int8 is wrong
+    # in triton jit function, and needs to be fixed in triton. The same is true for bool.
+    if A.dtype == torch.bool:
+        return A == B
     if A.dtype != B.dtype:
         raise RuntimeError("{} did not match {}".format(A.dtype, B.dtype))
     if A.is_quantized or B.is_quantized:
