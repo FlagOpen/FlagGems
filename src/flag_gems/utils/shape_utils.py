@@ -2,6 +2,8 @@ import functools
 import operator
 from typing import Iterable, Tuple
 
+from torch import floor
+
 Shape = Tuple[int]
 Stride = Tuple[int]
 MultiIndex = Tuple[int]
@@ -137,3 +139,30 @@ def dim_compress(inp, dims):
     sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
     order = batch_dim + sorted_reduction_dim
     return inp.permute(order).contiguous()
+
+
+def offsetCalculator(inp, idx, strides, dim, isInp):
+    ndim = inp.ndim
+    shape = list(inp.shape)
+    offsets = 0
+    idx_dim = 0
+    for d in range(0, ndim):
+        mod = floor(idx % shape[d])
+        add_on = mod * strides[d]
+        offsets += add_on
+        if d == dim:
+            idx_dim = add_on
+        idx = idx // shape[d]
+        # FIXME: Should we write a fast div/mod
+        # to boost the '%' and '//'? (Since they may be run many times)
+        # See also:
+        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        #   - Division by Invariant Integers Using Multiplication,
+        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
+    return (offsets) if not isInp else (offsets - idx_dim)
+
+
+def restride_dim(src, dim, shape, step=0, storage_offset=None):
+    strides = list(src.stride())
+    strides[dim] *= step
+    return src.as_strided(shape, strides, storage_offset)

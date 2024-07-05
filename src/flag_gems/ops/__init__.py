@@ -21,6 +21,7 @@ from .div import div
 from .dropout import native_dropout
 from .eq import eq, eq_scalar
 from .exp import exp
+from .gather import gather, gather_out
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -46,6 +47,8 @@ from .reciprocal import reciprocal
 from .relu import relu
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .scatter import scatter_reduce, scatter_src
+from .select import select
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -85,6 +88,8 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "gather",
+    "gather_out",
     "ge",
     "ge_scalar",
     "gelu",
@@ -113,6 +118,9 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
+    "scatter_src",
+    "scatter_reduce",
+    "select",
     "sigmoid",
     "silu",
     "sin",
