@@ -33,9 +33,9 @@ def isclose_func(
         allowed = atol + tl.abs(rtol * cast_y)
         actual = tl.abs(cast_x - cast_y)
         actual_finite = (
-            (actual == actual) & (actual != float("inf")) & (actual != float("-inf"))
+            tl.math.isfinited(actual) if x.dtype.is_fp64() else tl.math.finitef(actual)
         )
-        close |= actual_finite & (actual <= allowed)
+        close |= actual_finite.to(tl.int1) & (actual <= allowed)
     return close
 
 
