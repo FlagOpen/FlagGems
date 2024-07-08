@@ -252,3 +252,16 @@ def test_accuracy_triu(shape, diagonal, dtype):
         res_out = torch.triu(inp, diagonal)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_erf(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.erf(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.erf(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)

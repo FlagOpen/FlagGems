@@ -20,6 +20,7 @@ from .cumsum import cumsum
 from .div import div
 from .dropout import native_dropout
 from .eq import eq, eq_scalar
+from .erf import erf
 from .exp import exp
 from .ge import ge, ge_scalar
 from .gelu import gelu
@@ -82,6 +83,7 @@ __all__ = [
     "cumsum",
     "div",
     "native_dropout",
+    "erf",
     "eq",
     "eq_scalar",
     "exp",
