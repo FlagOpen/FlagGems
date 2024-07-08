@@ -21,6 +21,7 @@ MAX_C_MLU_CUMSUM = 16384
     key=[
         "M",
         "N",
+        "K",
     ],
 )
 @triton.heuristics(
@@ -75,6 +76,7 @@ def cumsum_kernel(
     key=[
         "M",
         "N",
+        "K",
     ],
 )
 @triton.jit

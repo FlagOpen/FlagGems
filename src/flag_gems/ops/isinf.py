@@ -1,13 +1,12 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(output_dtypes=[torch.bool])
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isinf_func(x):
     return tl.extra.mlu.libdevice.isinf(x.to(tl.float32))

@@ -6,7 +6,7 @@ import triton
 import flag_gems
 from .conftest import CPU_MODE, DEVICE
 
-WARMUP = 10
+WARMUP = 100
 REPETITION = 1000
 
 
@@ -20,9 +20,6 @@ class Benchmark:
         self.batch = batch
         self.sizes = sizes
         self.gems_op = None
-
-    def set_gems(self, gems_op):
-        self.gems_op = gems_op
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
@@ -107,105 +104,3 @@ def ternary_args(dtype, batch, size):
     inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
     inp3 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
     return inp1, inp2, inp3
-
-
-def cross_entropy_loss_args(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    target = torch.randint(
-        0,
-        size,
-        [
-            batch,
-        ],
-        device=DEVICE,
-    )
-    return inp, target
-
-
-def cumsum_args(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    return inp, 1
-
-
-def group_norm_args(dtype, batch, size):
-    C = 16
-    G = 16
-    inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
-    weight = torch.randn(
-        [
-            C,
-        ],
-        dtype=dtype,
-        device=DEVICE,
-    )
-    bias = torch.randn(
-        [
-            C,
-        ],
-        dtype=dtype,
-        device=DEVICE,
-    )
-    return inp, G, weight, bias
-
-
-def layer_norm_args(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    weight = torch.randn(
-        [
-            size,
-        ],
-        dtype=dtype,
-        device=DEVICE,
-    )
-    bias = torch.randn(
-        [
-            size,
-        ],
-        dtype=dtype,
-        device=DEVICE,
-    )
-    return (
-        inp,
-        [
-            size,
-        ],
-        weight,
-        bias,
-    )
-
-
-def addmm_args(dtype, batch, size):
-    bias = torch.randn(
-        [
-            size,
-        ],
-        dtype=dtype,
-        device=DEVICE,
-    )
-    inp1 = torch.randn([size, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([size, size], dtype=dtype, device=DEVICE)
-    return bias, inp1, inp2
-
-
-def bmm_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size, size], dtype=dtype, device=DEVICE)
-    return inp1, inp2
-
-
-def mm_args(dtype, batch, size):
-    inp1 = torch.randn([size, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([size, size], dtype=dtype, device=DEVICE)
-    return inp1, inp2
-
-
-def mv_args(dtype, batch, size):
-    inp1 = torch.randn([size, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([size], dtype=dtype, device=DEVICE)
-    return inp1, inp2
-
-
-def outer_args(dtype, batch, size):
-    inp1 = torch.randn([size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([size], dtype=dtype, device=DEVICE)
-    return inp1, inp2

@@ -119,7 +119,7 @@ def log_softmax_kernel_split_c(
         inp = tl.load(input_ptrs, mask=mask, other=-
                       float("inf")).to(tl.float32)
         # get max for each block
-        tmp1 = tl.where(tmp0 < inp, inp, tmp0)
+        tmp1 = tl.maximum(inp, tmp0)
         tmp0 = tmp1
 
     tmp2 = tl.max(tmp0, 1)[:, None]
