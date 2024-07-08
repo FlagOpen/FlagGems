@@ -123,6 +123,7 @@ class LibEntry(triton.KernelInterface):
             grid = grid + (1, 1)
 
             kernel[grid[0:3]](*k_args)
+        return kernel, constexprs
 
 
 def libentry():
