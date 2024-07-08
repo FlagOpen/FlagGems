@@ -20,7 +20,6 @@ def rand_kernel(
     N,
     philox_seed,
     philox_offset,
-    dtype,
     BLOCK: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
@@ -45,16 +44,16 @@ def rand_kernel(
     tl.store(out_ptr + off_3, r3, mask=off_3 < N, eviction_policy="evict_first")
 
 
-def rand(size, *, dtype=None):
+def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     logging.debug("GEMS RAND")
-    out = torch.empty(size, dtype=dtype, device=torch.device("cuda"))
+    if dtype is None:
+        dtype = torch.get_default_dtype()
+    if device is None:
+        device = torch.device("cuda")
+
+    out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
     philox_seed, philox_offset = philox_cuda_seed_offset(N)
-    rand_kernel[grid_fn](out, N, philox_seed, philox_offset, dtype)
+    rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out
-
-
-if __name__ == "__main__":
-    a = rand(size=(10, 2))
-    print(a)

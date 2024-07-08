@@ -32,7 +32,6 @@ def randn_kernel(
     N,
     philox_seed,
     philox_offset,
-    dtype,
     BLOCK: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
@@ -59,16 +58,15 @@ def randn_kernel(
     tl.store(out_ptr + off_3, n3, mask=off_3 < N, eviction_policy="evict_first")
 
 
-def randn(size, *, dtype=None):
+def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     logging.debug("GEMS RANDN")
-    out = torch.empty(size, dtype=dtype, device=torch.device("cuda"))
+    if dtype is None:
+        dtype = torch.get_default_dtype()
+    if device is None:
+        device = torch.device("cuda")
+    out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
     philox_seed, philox_offset = philox_cuda_seed_offset(N)
-    randn_kernel[grid_fn](out, N, philox_seed, philox_offset, dtype)
+    randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out
-
-
-if __name__ == "__main__":
-    a = randn(size=(10, 2))
-    print(a)
