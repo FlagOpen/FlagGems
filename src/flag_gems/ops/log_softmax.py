@@ -315,24 +315,25 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        if N > MAX_C_MLU_LOG_SOFTMAX_FORWARD:
-            logging.debug(
-                "GEMS LOG_SOFTMAX USE SPLITC FORWARD FOR N = %d" % (N))
-            log_softmax_kernel_split_c[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-            )
-        else:
-            log_softmax_kernel[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-            )
+        with torch.mlu.device(inp.device):
+            if N > MAX_C_MLU_LOG_SOFTMAX_FORWARD:
+                logging.debug(
+                    "GEMS LOG_SOFTMAX USE SPLITC FORWARD FOR N = %d" % (N))
+                log_softmax_kernel_split_c[grid](
+                    out,
+                    inp,
+                    M,
+                    N,
+                    K,
+                )
+            else:
+                log_softmax_kernel[grid](
+                    out,
+                    inp,
+                    M,
+                    N,
+                    K,
+                )
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out
@@ -359,26 +360,27 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        if N > MAX_C_MLU_LOG_SOFTMAX_BACKWARD:
-            logging.debug(
-                "GEMS LOG_SOFTMAX USE SPLITC VJP FOR N = %d" % (N))
-            log_softmax_backward_kernel_split_c[grid](
-                out,
-                out_grad,
-                in_grad,
-                M,
-                N,
-                K,
-            )
-        else:
-            log_softmax_backward_kernel[grid](
-                out,
-                out_grad,
-                in_grad,
-                M,
-                N,
-                K,
-            )
+        with torch.mlu.device(in_grad.device):
+            if N > MAX_C_MLU_LOG_SOFTMAX_BACKWARD:
+                logging.debug(
+                    "GEMS LOG_SOFTMAX USE SPLITC VJP FOR N = %d" % (N))
+                log_softmax_backward_kernel_split_c[grid](
+                    out,
+                    out_grad,
+                    in_grad,
+                    M,
+                    N,
+                    K,
+                )
+            else:
+                log_softmax_backward_kernel[grid](
+                    out,
+                    out_grad,
+                    in_grad,
+                    M,
+                    N,
+                    K,
+                )
         return in_grad, None, None
 
 
