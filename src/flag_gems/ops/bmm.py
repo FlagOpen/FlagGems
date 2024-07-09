@@ -6,6 +6,15 @@ import triton.language as tl
 
 from ..utils import libentry
 
+# cambricon configs
+blocksmn = [256, 512, 1024]
+blocksk = [128, 256]
+cambricon_configs = [triton.Config(
+    {"TILE_M": m, "TILE_N": n, "TILE_K": k, "GROUP_M": gm},
+    num_warps=nup,
+    num_stages=ns,
+) for m in blocksmn for n in blocksmn for k in blocksk for gm in [1, 2] for nup, ns in [[1, 1], [1, 2], [1, 10], [4, 1], [4, 2], [4, 10]]
+]
 
 @libentry()
 @triton.autotune(
@@ -70,7 +79,7 @@ from ..utils import libentry
             num_warps=4,
             num_stages=3,
         ),
-    ],
+    ] + cambricon_configs,
     key=["M", "N", "K"],
 )
 @triton.heuristics(
