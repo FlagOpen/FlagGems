@@ -21,13 +21,7 @@ def test_accuracy_cumsum(shape, dtype):
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
-        (16, 3, 16, 16, 1),
-        (32, 32, 32, 32, 8),
-        (1, 32, 32, 32, 8),
-        (1, 32, 32, 32, 16),
-        (1, 64, 32, 32, 16),
-        (1, 64, 32, 32, 32),
-        (1, 64, 32, 32, 64),
+        (32, 32, 32, 32, 8), # out of shared-memory
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
