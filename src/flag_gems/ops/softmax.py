@@ -212,9 +212,28 @@ def softmax_kernel_inner(
 
 
 # ------------------------  backward -------------------------------
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"TILE_K": 4}),
+        triton.Config({"TILE_K": 8}),
+        triton.Config({"TILE_K": 16}),
+        triton.Config({"TILE_K": 32}),
+        triton.Config({"TILE_K": 64}),
+        triton.Config({"TILE_K": 128}),
+        triton.Config({"TILE_K": 256}),
+        triton.Config({"TILE_K": 512}),
+        triton.Config({"TILE_K": 1024}),
+    ],
+    key=[
+        "M",
+        "N",
+        "K",
+    ],
+)
 @triton.heuristics(
     values={
-        "TILE_K": lambda args: max(triton.cdiv(args["K"], 65535), 32)
+        "TILE_K": lambda args: max(triton.cdiv(args["K"], 65535), args["TILE_K"])
     }
 )
 @triton.heuristics(
@@ -239,12 +258,15 @@ def softmax_backward_kernel_non_inner(
     pid_k = tl.program_id(1)
     offsets_k = pid_k * TILE_K + tl.arange(0, TILE_K)
 
+    # grad for xn = zn * yn - yn * sum(yi * zi) [z for bp grad] and yn = e^xn / sum(e^xi) for forward
     if ONE_TILE_PER_CTA:
         offsets_n = tl.arange(0, TILE_N)
         offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
         mask = (offsets_n < N)[:, None] & (offsets_k < K)
         out_tile = tl.load(out_ptr + offsets, mask=mask)
+        out_tile = tl.cast(out_tile, tl.float32)
         out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask)
+        out_grad_tile = tl.cast(out_grad_tile, tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, axis=0)
         in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)

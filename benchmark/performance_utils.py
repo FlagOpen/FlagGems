@@ -43,7 +43,7 @@ class Benchmark:
         return latency
 
     def run(self):
-        print(f"Operator {self.op_name} Speedup Test ({self.dtype})")
+        # print(f"\nOperator {self.op_name} Speedup Test ({self.dtype})")
         speedup = 0
         for size in self.sizes:
             args = self.arg_func(self.dtype, self.batch, size)
@@ -57,7 +57,7 @@ class Benchmark:
             speedup += spd
             # print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
         speedup /= len(self.sizes)
-        print(speedup)
+        print(f"\nOperator_Speedup_Test_Result:\t{self.op_name}\t{self.dtype}\t{speedup}")
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
