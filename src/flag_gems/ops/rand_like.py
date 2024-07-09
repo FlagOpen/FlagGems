@@ -19,5 +19,6 @@ def rand_like(
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
     philox_seed, philox_offset = philox_cuda_seed_offset(N)
-    rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
+    with torch.cuda.device(x.device):
+        rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

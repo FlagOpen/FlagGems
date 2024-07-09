@@ -68,5 +68,6 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
     philox_seed, philox_offset = philox_cuda_seed_offset(N)
-    randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+    with torch.cuda.device(device):
+        randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

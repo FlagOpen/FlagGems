@@ -19,11 +19,11 @@ class Benchmark:
         self.op_name = op_name
         self.torch_op = torch_op
         self.arg_func = arg_func
+        self.kwargs_func = kwargs_func
         self.dtype = dtype
         self.batch = batch
         self.sizes = sizes
         self.gems_op = None
-        self.kwargs_func = kwargs_func
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
