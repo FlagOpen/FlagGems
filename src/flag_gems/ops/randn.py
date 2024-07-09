@@ -14,7 +14,7 @@ except AttributeError:
     @triton.jit
     def pair_uniform_to_normal(u1, u2):
         """Box-Muller transform"""
-        u1 = triton.standard.maximum(1.0e-7, u1)
+        u1 = tl.maximum(1.0e-7, u1)
         th = 6.283185307179586 * u2
         r = tl.sqrt(-2.0 * tl.log(u1))
         return r * tl.cos(th), r * tl.sin(th)
