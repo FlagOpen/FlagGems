@@ -70,21 +70,3 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
     gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
-
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
-@pytest.mark.parametrize("dim", DIMS_LIST)
-@pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp = to_reference(inp, False)
-
-    ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-
