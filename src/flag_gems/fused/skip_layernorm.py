@@ -9,7 +9,7 @@ from ..utils import libentry
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def skip_layer_norm_kernel(
     Y,  # pointer to the output
     X,  # pointer to the input
@@ -70,9 +70,10 @@ class SkipLayerNorm(torch.autograd.Function):
         bias = bias.contiguous()
         y = torch.empty_like(x)
 
-        skip_layer_norm_kernel[M,](
-            y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        with torch.mlu.device(x.device):
+            skip_layer_norm_kernel[M,](
+                y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
         return y
 
 

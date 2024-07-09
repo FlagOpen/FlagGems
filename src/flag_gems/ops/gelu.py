@@ -6,15 +6,15 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_none(x):
-    scale = 0.7071067811
+    scale: tl.constexpr = 0.7071067811
     output = 0.5 * x * (1 + tl.extra.mlu.libdevice.erf(x * scale))
     return output
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_tanh(x):
     output = (

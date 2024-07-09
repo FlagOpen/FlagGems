@@ -9,9 +9,13 @@ from ..utils import libentry
 
 
 def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
+    block_m = [1, 2, 4]
+    block_n = [1024, 2048, 4096]
+    warps = [4, 8, 16]
     configs = [
-        triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 2048}, num_warps=w)
+        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
+        for m in block_m
+        for n in block_n
         for w in warps
     ]
     return configs
@@ -19,7 +23,7 @@ def cfggen():
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel(
     X,
     Y,
@@ -203,9 +207,10 @@ class LayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
         logging.debug("GEMS LAYERNORM FORWARD")
-        dim = x.ndim - len(normalized_shape)
-        M = math.prod(x.shape[:dim])
+        # dim = x.ndim - len(normalized_shape)
+        # M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
+        M = x.numel() // N
         x = x.contiguous()
         weight = weight.contiguous()
         bias = bias.contiguous()
@@ -214,7 +219,8 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=x.dtype, device=x.device)
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
 
-        layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, M, N, eps)
+        with torch.mlu.device(x.device):
+            layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, M, N, eps)
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
         ctx.N = N
@@ -233,9 +239,11 @@ class LayerNorm(torch.autograd.Function):
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
-        weight_bias_backward_kernel[grid](
-            out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
-        )
+
+        with torch.mlu.device(x.device):
+            weight_bias_backward_kernel[grid](
+                out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
+            )
         return in_grad, None, weight_grad, bias_grad, None, None
 
 

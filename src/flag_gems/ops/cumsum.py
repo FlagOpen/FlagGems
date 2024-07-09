@@ -21,6 +21,7 @@ MAX_C_MLU_CUMSUM = 16384
     key=[
         "M",
         "N",
+        "K",
     ],
 )
 @triton.heuristics(
@@ -75,6 +76,7 @@ def cumsum_kernel(
     key=[
         "M",
         "N",
+        "K",
     ],
 )
 @triton.jit
@@ -128,9 +130,10 @@ def cumsum(inp, dim=1, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    if N > MAX_C_MLU_CUMSUM:
-        logging.debug("GEMS CUMSUM USE SPLITC FOR N = %d" % (N))
-        cumsum_kernel_split[grid](inp, out, M, N, K)
-    else:
-        cumsum_kernel[grid](inp, out, M, N, K)
+    with torch.mlu.device(inp.device):
+        if N > MAX_C_MLU_CUMSUM:
+            logging.debug("GEMS CUMSUM USE SPLITC FOR N = %d" % (N))
+            cumsum_kernel_split[grid](inp, out, M, N, K)
+        else:
+            cumsum_kernel[grid](inp, out, M, N, K)
     return out

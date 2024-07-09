@@ -51,8 +51,9 @@ def mean(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-    mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
+    with torch.mlu.device(inp.device):
+        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
 
 
@@ -70,8 +71,6 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
     num_prog = tl.num_programs(0)
     task_num = tl.cdiv(M, BLOCK_M)
     iter_num = tl.cdiv(task_num, num_prog)
-    if task_num % num_prog != 0:
-        iter_num = iter_num + 1
     for i in range(0, iter_num):
         pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
@@ -113,7 +112,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
-    mean_dim_kernel[grid](x, out, M, N)
+    with torch.mlu.device(x.device):
+        mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
         out = out.squeeze(dim)
     return out

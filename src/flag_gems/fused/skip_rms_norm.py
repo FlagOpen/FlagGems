@@ -9,7 +9,7 @@ from ..utils import libentry
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["eps"])
 def skip_rms_norm_kernel(
     Y,  # pointer to the output
     X,  # pointer to the input
@@ -59,9 +59,10 @@ class SkipRmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        skip_rms_norm_kernel[M,](
-            y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
-        )
+        with torch.mlu.device(x.device):
+            skip_rms_norm_kernel[M,](
+                y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
+            )
         return y
 
 

@@ -58,15 +58,16 @@ def mv(inp, vec):
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    mv_kernel[grid](
-        inp,
-        vec,
-        out,
-        N,
-        M,
-        inp.stride(0),
-        inp.stride(1),
-        vec.stride(0),
-        out.stride(0),
-    )
+    with torch.mlu.device(inp.device):
+        mv_kernel[grid](
+            inp,
+            vec,
+            out,
+            N,
+            M,
+            inp.stride(0),
+            inp.stride(1),
+            vec.stride(0),
+            out.stride(0),
+        )
     return out

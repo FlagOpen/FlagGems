@@ -34,7 +34,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.jit
+@triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
     X,
     Var,
@@ -49,8 +49,6 @@ def var_mean_welford_kernel(
     num_prog = tl.num_programs(0)
     task_num = tl.cdiv(M, BLOCK_M)
     iter_num = tl.cdiv(task_num, num_prog)
-    if task_num % num_prog != 0:
-        iter_num = iter_num + 1
     for i in range(0, iter_num):
         pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
@@ -123,7 +121,7 @@ def var_mean_kernel_1(
 @triton.heuristics(
     values={"BLOCK_N": lambda args: triton.next_power_of_2(args["BLOCK_NUM"])},
 )
-@triton.jit
+@triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,
     Average,
@@ -169,10 +167,11 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
         grid = min(BLOCK_NUM, MLU_GRID_MAX)
-        var_mean_kernel_1[(grid,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-        var_mean_kernel_2[(1,)](
-            acc, average, count, var, mean, N, correction, BLOCK_NUM
-        )
+        with torch.mlu.device(x.device):
+            var_mean_kernel_1[(grid,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
+            var_mean_kernel_2[(1,)](
+                acc, average, count, var, mean, N, correction, BLOCK_NUM
+            )
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
@@ -186,7 +185,8 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
         grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
-        var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
+        with torch.mlu.device(x.device):
+            var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 
     if not keepdim:
         var = var.squeeze(dim=dim)
