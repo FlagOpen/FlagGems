@@ -7,6 +7,22 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 from .all import all
 
+try:
+    from triton.language.extra.cuda.libdevice import isfinited as _isfinited
+except ImportError:
+    try:
+        from triton.language.math import isfinited as _isfinited
+    except ImportError:
+        from triton.language.libdevice import isfinited as _isfinited
+
+try:
+    from triton.language.extra.cuda.libdevice import finitef as _finitef
+except ImportError:
+    try:
+        from triton.language.math import finitef as _finitef
+    except ImportError:
+        from triton.language.libdevice import finitef as _finitef
+
 
 @pointwise_dynamic(
     is_tensor=[True, True, False, False, False, False],
@@ -32,9 +48,7 @@ def isclose_func(
     if not zero_tol:
         allowed = atol + tl.abs(rtol * cast_y)
         actual = tl.abs(cast_x - cast_y)
-        actual_finite = (
-            tl.math.isfinited(actual) if x.dtype.is_fp64() else tl.math.finitef(actual)
-        )
+        actual_finite = _isfinited(actual) if x.dtype.is_fp64() else _finitef(actual)
         close |= actual_finite.to(tl.int1) & (actual <= allowed)
     return close
 
