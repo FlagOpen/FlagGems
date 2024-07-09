@@ -8,7 +8,7 @@ import triton.backends.mlu.driver as driver
 from ..utils import libentry
 
 MAX_C_MLU_SOFTMAX_FORWARD = 16384
-MAX_C_MLU_SOFTMAX_BACKWARD = 32768
+MAX_C_MLU_SOFTMAX_BACKWARD = 8192
 
 def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
     tile_k = 1
@@ -212,24 +212,10 @@ def softmax_kernel_inner(
 
 
 # ------------------------  backward -------------------------------
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"TILE_K": 4}),
-        triton.Config({"TILE_K": 8}),
-        triton.Config({"TILE_K": 16}),
-        triton.Config({"TILE_K": 32}),
-        triton.Config({"TILE_K": 64}),
-        triton.Config({"TILE_K": 128}),
-        triton.Config({"TILE_K": 256}),
-        triton.Config({"TILE_K": 512}),
-        triton.Config({"TILE_K": 1024}),
-    ],
-    key=[
-        "M",
-        "N",
-        "K",
-    ],
+@triton.heuristics(
+    values={
+        "TILE_K": lambda args: max(triton.cdiv(args["K"], 65535), 32)
+    }
 )
 @triton.heuristics(
     values={
@@ -290,11 +276,11 @@ def softmax_backward_kernel_non_inner(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD/32}),
-        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD/16}),
-        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD/8}),
-        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD/4}),
-        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD/2}),
+        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD//32}),
+        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD//16}),
+        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD//8}),
+        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD//4}),
+        triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD//2}),
         triton.Config({"TILE_N": MAX_C_MLU_SOFTMAX_BACKWARD}),
     ],
     key=["M", "N"],
@@ -559,6 +545,7 @@ class Softmax(torch.autograd.Function):
 
         with torch.mlu.device(inp.device):
             if K > 1:
+                logging.debug("GEMS SOFTMAX USE NON INNER")
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_kernel_non_inner[grid](
                     out,
@@ -568,6 +555,7 @@ class Softmax(torch.autograd.Function):
                     K,
                 )
             else:
+                logging.debug("GEMS SOFTMAX USE INNER")
                 grid = (M, 1, 1)
                 softmax_kernel_inner[grid](
                     out,
@@ -598,6 +586,7 @@ class Softmax(torch.autograd.Function):
 
         with torch.mlu.device(in_grad.device):
             if K > 1:
+                logging.debug("GEMS SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_backward_kernel_non_inner[grid](
                     out,
@@ -608,6 +597,7 @@ class Softmax(torch.autograd.Function):
                     K,
                 )
             else:
+                logging.debug("GEMS SOFTMAX VJP USE INNER")
                 grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
                 softmax_backward_kernel_inner[grid](
                     out,

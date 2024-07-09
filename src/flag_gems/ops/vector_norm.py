@@ -276,7 +276,7 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(tl.math.pow(tl.abs(x), ord))
+    mid = tl.sum(tl.extra.mlu.libdevice.pow(tl.abs(x), ord))
     tl.store(Mid, mid)
 
 
@@ -287,7 +287,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.math.pow(tl.sum(mid), 1 / ord)
+    out = tl.extra.mlu.libdevice.pow(tl.sum(mid), 1 / ord)
     tl.store(Out, out)
 
 

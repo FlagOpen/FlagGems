@@ -105,6 +105,7 @@ def softmax_inner_kernel_arg_apply_default(x, dim, dtype=None):
     values={
         "TILE_M": lambda args: 1024 // args["TILE_N"],
         "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+        "num_warps": lambda args: 1,
     },
 )
 @triton.jit
