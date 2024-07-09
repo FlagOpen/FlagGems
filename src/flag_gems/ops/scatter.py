@@ -152,7 +152,6 @@ def scatter(inp, dim, index, src, reduction=None):
     src = src.contiguous()
     out = inp.clone().contiguous()
 
-    src_strided = src.as_strided(index.shape, src.stride())
     inp_strided = restride_dim(inp, dim, index.shape)
     # FIXME: Are there any other way to get the "flatten offset" of a tensor?
     idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
@@ -163,7 +162,7 @@ def scatter(inp, dim, index, src, reduction=None):
     # so that the offset calculation can proceed in parallel
     inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
     idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
-    src_offsets = offsetCalculator(src_strided, idx, src.stride(), dim, isInp=False)
+    src_offsets = idx_offsets
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 
