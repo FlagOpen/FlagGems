@@ -137,6 +137,16 @@ def to_reference(inp, upcast=False):
             ref_inp = ref_inp.to(torch.float64)
     return ref_inp
 
+def to_reference_fp64(inp, upcast=False):
+    if inp is None:
+        return None
+    ref_inp = inp
+    if TO_CPU:
+        ref_inp = ref_inp.to("cpu")
+    if upcast:
+        ref_inp = ref_inp.to(torch.float64)
+    return ref_inp
+
 
 def to_cpu(res, ref):
     if TO_CPU:
