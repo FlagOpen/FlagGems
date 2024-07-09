@@ -34,7 +34,7 @@ except AttributeError:
         return x * scale
 
 
-UNROLL = 4
+UNROLL = tl.constexpr(4)
 
 
 @triton.heuristics(
@@ -109,7 +109,6 @@ def dropout_backward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL = 4
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
