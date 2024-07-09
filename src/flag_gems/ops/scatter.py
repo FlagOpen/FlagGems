@@ -21,7 +21,6 @@ def cfggen():
 def scatter_kernel(
     inp_offsets,
     src,
-    src_offsets,
     index,
     idx_offsets,
     out,
@@ -43,10 +42,9 @@ def scatter_kernel(
         mask = rows_mask and cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
-        src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
 
-        cur_src = tl.load(src + src_indices, mask=mask, other=0)
+        cur_src = tl.load(src + idx_indices, mask=mask, other=0)
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
 
         inp_indices += cur_index * stride_dim
@@ -60,7 +58,6 @@ def scatter_add_kernel(
     inp,
     inp_offsets,
     src,
-    src_offsets,
     index,
     idx_offsets,
     out,
@@ -82,10 +79,9 @@ def scatter_add_kernel(
         mask = rows_mask and cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
-        src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
 
-        cur_src = tl.load(src + src_indices, mask=mask, other=0).to(tl.float32)
+        cur_src = tl.load(src + idx_indices, mask=mask, other=0).to(tl.float32)
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
 
         inp_indices += cur_index * stride_dim
@@ -101,7 +97,6 @@ def scatter_mul_kernel(
     inp,
     inp_offsets,
     src,
-    src_offsets,
     index,
     idx_offsets,
     out,
@@ -123,10 +118,9 @@ def scatter_mul_kernel(
         mask = rows_mask and cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
-        src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
 
-        cur_src = tl.load(src + src_indices, mask=mask, other=0).to(tl.float32)
+        cur_src = tl.load(src + idx_indices, mask=mask, other=0).to(tl.float32)
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
 
         inp_indices += cur_index * stride_dim
@@ -163,7 +157,6 @@ def scatter(inp, dim, index, src, reduction=None):
     # so that the offset calculation can proceed in parallel
     inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
     idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
-    src_offsets = idx_offsets
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 
@@ -172,7 +165,6 @@ def scatter(inp, dim, index, src, reduction=None):
         scatter_kernel[grid](
             inp_offsets,
             src_strided,
-            src_offsets,
             index,
             idx_offsets,
             out,
@@ -185,7 +177,6 @@ def scatter(inp, dim, index, src, reduction=None):
             inp,
             inp_offsets,
             src_strided,
-            src_offsets,
             index,
             idx_offsets,
             out,
@@ -198,7 +189,6 @@ def scatter(inp, dim, index, src, reduction=None):
             inp,
             inp_offsets,
             src_strided,
-            src_offsets,
             index,
             idx_offsets,
             out,
