@@ -3,8 +3,9 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
-from ..utils import dim_compress, libentry
+import logging
+from ..utils import libentry, MLU_GRID_MAX
+from ..utils import dim_compress
 
 
 def cfggen():
@@ -45,36 +46,40 @@ def var_mean_welford_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Var = Var + pid
-    Mean = Mean + pid
-    row_mask = pid < M
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Var_ptr = Var + pid
+        Mean_ptr = Mean + pid
+        row_mask = pid < M
 
-    _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+            x = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
 
-        count = _count + mask
-        cnt = tl.maximum(count, 1)
-        cur_mean = (_mean * _count + x) / cnt
-        _acc += (x - cur_mean) * (x - _mean) * mask
-        _mean = cur_mean
-        _count = count
+            count = _count + mask
+            cnt = tl.maximum(count, 1)
+            cur_mean = (_mean * _count + x) / cnt
+            _acc += (x - cur_mean) * (x - _mean) * mask
+            _mean = cur_mean
+            _count = count
 
-    mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
-    var = acc / (N - correction)
-    mean = mean[:, None]
-    var = var[:, None]
-    # Write mean / var
-    tl.store(Mean, mean, row_mask)
-    tl.store(Var, var, row_mask)
+        mean, _, acc = tl.reduce((_mean, _count, _acc), axis=1, combine_fn=welford_func)
+        var = acc / (N - correction)
+        mean = mean[:, None]
+        var = var[:, None]
+        # Write mean / var
+        tl.store(Mean_ptr, mean, row_mask)
+        tl.store(Var_ptr, var, row_mask)
 
 
 @libentry()
@@ -87,25 +92,29 @@ def var_mean_kernel_1(
     N,
     BLOCK_N: tl.constexpr,
 ):
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(N, BLOCK_N)
+    iter_num = tl.cdiv(task_num, num_prog)
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0)
-    offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    for i in range(0, iter_num):
+        pid = i * num_prog + tl.program_id(0)
+        offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    X = X + offset
-    Acc = Acc + pid
-    Average = Average + pid
-    Count = Count + pid
-    mask = offset < N
+        X_ptr = X + offset
+        Acc_ptr = Acc + pid
+        Average_ptr = Average + pid
+        Count_ptr = Count + pid
+        mask = offset < N
 
-    x = tl.load(X, mask, other=0.0).to(tl.float32)
+        x = tl.load(X_ptr, mask, other=0.0).to(tl.float32)
 
-    count = tl.sum(mask.to(tl.float32))
-    average = tl.sum(x) / count
-    acc = tl.sum(x * x) - count * average * average
+        count = tl.sum(mask.to(tl.float32))
+        average = tl.sum(x) / count
+        acc = tl.sum(x * x) - count * average * average
 
-    tl.store(Average, average)
-    tl.store(Acc, acc)
-    tl.store(Count, count)
+        tl.store(Average_ptr, average)
+        tl.store(Acc_ptr, acc)
+        tl.store(Count_ptr, count)
 
 
 @libentry()
@@ -157,8 +166,9 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
-        with torch.cuda.device(x.device):
-            var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
+        grid = min(BLOCK_NUM, MLU_GRID_MAX)
+        with torch.mlu.device(x.device):
+            var_mean_kernel_1[(grid,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
             var_mean_kernel_2[(1,)](
                 acc, average, count, var, mean, N, correction, BLOCK_NUM
             )
@@ -174,8 +184,8 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-        with torch.cuda.device(x.device):
+        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
+        with torch.mlu.device(x.device):
             var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 
     if not keepdim:

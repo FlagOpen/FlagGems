@@ -1,10 +1,12 @@
 import logging
 
 import torch
+import torch_mlu
 import triton
 import triton.language as tl
+from ..utils.random_utils import philox_mlu_seed_offset
+from ..utils import libentry
 
-from ..utils.random_utils import philox_cuda_seed_offset
 
 try:
     uint_to_uniform_float = tl.uint_to_uniform_float
@@ -160,8 +162,8 @@ class NativeDropout(torch.autograd.Function):
         # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
         # hence we cannot obtain the per thread offset as in Pytorch.
         increment = triton.cdiv(N, UNROLL)
-        with torch.cuda.device(device):
-            philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+        with torch.mlu.device(device):
+            philox_seed, philox_offset = philox_mlu_seed_offset(increment)
             dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
         ctx.p = p
         ctx.philox_seed = philox_seed
@@ -176,7 +178,7 @@ class NativeDropout(torch.autograd.Function):
         grad_inputs = torch.empty_like(grad_outputs)
         N = grad_outputs.numel()
         grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        with torch.cuda.device(device):
+        with torch.mlu.device(device):
             dropout_backward_kernel[grid_fn](
                 grad_outputs, grad_inputs, N, ctx.p, ctx.philox_seed, ctx.philox_offset
             )

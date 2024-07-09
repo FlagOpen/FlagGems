@@ -6,6 +6,7 @@ from .performance_utils import (
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
+    DEVICE,
     Benchmark,
     binary_args,
     binary_int_args,
@@ -82,9 +83,13 @@ def test_perf_bitwiseor(dtype):
 
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_clamp(dtype):
+    def torch_clamp(*args):
+        input, minv, maxv = args
+        return torch.min(torch.max(input, minv), maxv)
+
     bench = Benchmark(
         op_name="clamp",
-        torch_op=torch.clamp,
+        torch_op=torch_clamp,
         arg_func=ternary_args,
         dtype=dtype,
         batch=POINTWISE_BATCH,
@@ -419,8 +424,8 @@ def test_perf_triu(dtype):
 
 
 def where_args(dtype, batch, size):
-    inp1 = torch.randn([size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([size], dtype=dtype, device="cuda")
+    inp1 = torch.randn([size], dtype=dtype, device=DEVICE)
+    inp2 = torch.randn([size], dtype=dtype, device=DEVICE)
     condition = inp1 > 0
     return condition, inp1, inp2
 

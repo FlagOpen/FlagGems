@@ -8,6 +8,7 @@ from .performance_utils import (
     POINTWISE_BATCH,
     REDUCTION_BATCH,
     SIZES,
+    DEVICE,
     Benchmark,
     binary_args,
 )
@@ -54,21 +55,21 @@ def test_perf_silu_and_mul(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_skip_layernorm(dtype):
     def skip_layernorm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        residual = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        residual = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         bias = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         return (
             inp,
@@ -100,14 +101,14 @@ def test_perf_skip_layernorm(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_skip_rmsnorm(dtype):
     def skip_rmsnorm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        residual = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        residual = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         return (
             inp,

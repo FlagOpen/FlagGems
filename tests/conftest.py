@@ -2,9 +2,9 @@ def pytest_addoption(parser):
     parser.addoption(
         "--device",
         action="store",
-        default="cuda",
+        default="mlu",
         required=False,
-        choices=["cuda", "cpu"],
+        choices=["cuda", "cpu", "mlu"],
         help="device to run reference tests on",
     )
 
@@ -13,3 +13,5 @@ def pytest_configure(config):
     value = config.getoption("--device")
     global TO_CPU
     TO_CPU = value == "cpu"
+    global DEVICE
+    DEVICE = value

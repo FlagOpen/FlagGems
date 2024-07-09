@@ -13,6 +13,18 @@ from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 from flag_gems.utils.shape_utils import broadcast_shapes
 
 
+DEVICE = "cpu"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+else:
+    try:
+        import torch_mlu
+        if torch.mlu.is_available():
+            DEVICE = "mlu"
+    except ImportError:
+        ...
+
+
 # ------------------ Operation Description ---------------------------
 def _type_name(type) -> str:
     "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
@@ -364,8 +376,8 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
-            code.writeline("num_warps = 4")
+            code.writeline("tile_size = min(8192, triton.next_power_of_2(num_tasks))")
+            code.writeline("num_warps = 1")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
@@ -393,7 +405,7 @@ def generate_destination_passing_pointwise_wrapper(
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device):")
+        code.writeline("with torch.mlu.device(in0.device):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)
@@ -816,8 +828,8 @@ if __name__ == "__main__":
     def saxpy(x, alpha, y):
         return x * alpha + y
 
-    x = torch.randn((3, 4), device="cuda")
-    y = torch.randn((4,), device="cuda")
+    x = torch.randn((3, 4), device=DEVICE)
+    y = torch.randn((4,), device=DEVICE)
     out1 = saxpy(x, 2.0, y)
     out2 = x * 2.0 + y
     print(out1)
@@ -880,8 +892,8 @@ if __name__ == "__main__":
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
 
-    x = torch.tensor(1.0, device="cuda")
-    y = torch.tensor(2.0, device="cuda")
+    x = torch.tensor(1.0, device=DEVICE)
+    y = torch.tensor(2.0, device=DEVICE)
     out1 = ordinary2(x, y)
     out2 = torch.sin(x) + torch.cos(y)
     print(out1)
@@ -898,7 +910,7 @@ if __name__ == "__main__":
             tl.float32
         )  # ensures that y is not used for specialization
 
-    x = torch.arange(10, device="cuda")
+    x = torch.arange(10, device=DEVICE)
     y = 1
     # by default value 1 is treated as constexpr even thought it is not marked as constexpr
     # do_not_specialize avoids this

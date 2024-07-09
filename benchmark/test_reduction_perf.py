@@ -6,6 +6,7 @@ from .performance_utils import (
     FLOAT_DTYPES,
     REDUCTION_BATCH,
     SIZES,
+    DEVICE,
     Benchmark,
     unary_arg,
 )
@@ -66,14 +67,14 @@ def test_perf_argmax(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_cross_entropy_loss(dtype):
     def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         target = torch.randint(
             0,
             size,
             [
                 batch,
             ],
-            device="cuda",
+            device=DEVICE,
         )
         return inp, target
 
@@ -91,7 +92,7 @@ def test_perf_cross_entropy_loss(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_cumsum(dtype):
     def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         return inp, 1
 
     bench = Benchmark(
@@ -110,20 +111,20 @@ def test_perf_groupnorm(dtype):
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         return inp, G, weight, bias
 
@@ -141,20 +142,20 @@ def test_perf_groupnorm(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_layernorm(dtype):
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         bias = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=DEVICE,
         )
         return (
             inp,

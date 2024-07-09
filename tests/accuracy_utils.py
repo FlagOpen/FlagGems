@@ -1,6 +1,8 @@
 import torch
+from .conftest import TO_CPU, DEVICE
+import logging
 
-from .conftest import TO_CPU
+logging.debug("Using Device: " + DEVICE)
 
 major, minor = torch.__version__.split(".")[:2]
 skip_expr = major < "2" or minor < "2"
@@ -15,6 +17,7 @@ RESOLUTION = {
 
 POINTWISE_SHAPES = [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)]
 REDUCTION_SHAPES = [(4096, 256 * i) for i in range(1, 10, 2)]
+BIG_REDUCTION_SHAPES = [(5, 32000), (7, 40960), (13, 32768, 4), (10, 16384, 11), (4, 40000, 11), (16, 910030, 11)]
 MNK_SHAPES = [15, 160, 1024]
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -23,7 +26,6 @@ INT_DTYPES = [torch.int16, torch.int32]
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [0, 1]
 DIMS_LIST = [0, 1, [0, 1], [1, 0]]
-
 
 def to_reference(inp, upcast=False):
     if inp is None:

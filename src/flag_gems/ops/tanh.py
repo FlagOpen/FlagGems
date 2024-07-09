@@ -10,13 +10,13 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_forward(x):
-    return tl.math.tanh(x.to(tl.float32))
+    return tl.extra.mlu.libdevice.tanh(x.to(tl.float32))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_backward(y, dy):
-    return dy * (1.0 - tl.math.pow(y.to(tl.float32), 2))
+    return dy * (1.0 - tl.extra.mlu.libdevice.pow(y.to(tl.float32), 2))
 
 
 class Tanh(torch.autograd.Function):

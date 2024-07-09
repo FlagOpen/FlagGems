@@ -41,6 +41,7 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_M": 4}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
         triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
@@ -99,7 +100,7 @@ def min(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch.mlu.device(inp.device):
         min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
@@ -129,7 +130,7 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch.mlu.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N, K)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)

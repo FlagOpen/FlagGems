@@ -46,6 +46,7 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_M": 4}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
         triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
@@ -109,7 +110,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch.cuda.device(inp.device):
+        with torch.mlu.device(inp.device):
             argmax_kernel_1[(mid_size, 1, 1)](inp, mid_value, mid_index, M, block_size)
             argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
@@ -133,7 +134,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch.mlu.device(inp.device):
             argmax_kernel[grid](inp, out_index, M, N, K)
 
         return out_index

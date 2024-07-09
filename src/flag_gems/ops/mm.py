@@ -219,7 +219,7 @@ def mm(a, b):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
-    with torch.cuda.device(a.device):
+    with torch.mlu.device(a.device):
         mm_kernel[grid](
             a,
             b,

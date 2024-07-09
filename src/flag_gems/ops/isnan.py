@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isnan_func(x):
-    return tl.math.isnan(x.to(tl.float32))
+    return tl.extra.mlu.libdevice.isnan(x.to(tl.float32))
 
 
 def isnan(A):

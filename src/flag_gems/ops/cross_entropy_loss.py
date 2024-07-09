@@ -255,7 +255,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch.mlu.device(inp.device):
             log_softmax_and_mul_kernel[grid](
                 out,
                 inp,
@@ -317,7 +317,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch.mlu.device(inp.device):
             if reduction != Reduction.NONE.value:
                 softmax_and_sub_reduce_kernel[grid](
                     out,

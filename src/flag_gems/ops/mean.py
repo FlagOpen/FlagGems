@@ -4,8 +4,10 @@ import math
 import torch
 import triton
 import triton.language as tl
-
-from ..utils import dim_compress, libentry
+import logging
+from ..utils import libentry, MLU_GRID_MAX
+import math
+from ..utils import dim_compress
 
 
 @libentry()
@@ -49,7 +51,7 @@ def mean(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch.mlu.device(inp.device):
         mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
@@ -66,23 +68,27 @@ def mean(inp, *, dtype=None):
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Mean = Mean + pid
-    row_mask = pid < M
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Mean_ptr = Mean + pid
+        row_mask = pid < M
 
-    # Compute mean
-    _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        # Compute mean
+        _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _mean += a
-    mean = tl.sum(_mean, axis=1) / N
-    mean = mean[:, None]
-    tl.store(Mean, mean, row_mask)
+            a = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
+            _mean += a
+        _mean /= N
+        mean = tl.sum(_mean, axis=1)[:, None]
+        tl.store(Mean_ptr, mean, row_mask)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
@@ -105,9 +111,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         shape[i] = 1
     M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
-    grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-
-    with torch.cuda.device(x.device):
+    grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
+    with torch.mlu.device(x.device):
         mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
         out = out.squeeze(dim)

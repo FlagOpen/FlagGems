@@ -2,6 +2,7 @@ import inspect
 
 import triton
 
+MLU_GRID_MAX = 65535
 
 class LibEntry(triton.KernelInterface):
     def __init__(

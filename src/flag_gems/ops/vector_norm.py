@@ -4,8 +4,9 @@ import math
 import torch
 import triton
 import triton.language as tl
-
-from ..utils import dim_compress, libentry
+import logging
+from ..utils import libentry, MLU_GRID_MAX
+from ..utils import dim_compress
 
 
 def cfggen():
@@ -20,23 +21,30 @@ def cfggen():
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Out = Out + pid
-    row_mask = pid < M
+    # Map the program id to the row of X it should compute.
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    if task_num % num_prog != 0:
+        iter_num = iter_num + 1
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Out_ptr = Out + pid
+        row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += a * a
-    sum = tl.sum(_sum, axis=1)
+            a = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
+            _sum += a * a
+        sum = tl.sum(_sum, axis=1)
 
-    out = tl.sqrt(sum)[:, None]
-    tl.store(Out, out, row_mask)
+        out = tl.sqrt(sum)[:, None]
+        tl.store(Out_ptr, out, row_mask)
 
 
 @libentry()
@@ -68,23 +76,30 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Out = Out + pid
-    row_mask = pid < M
+    # Map the program id to the row of X it should compute.
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    if task_num % num_prog != 0:
+        iter_num = iter_num + 1
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Out_ptr = Out + pid
+        row_mask = pid < M
 
-    _max = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        _max = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _max = tl.maximum(tl.abs(a), _max)
+            a = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
+            _max = tl.maximum(tl.abs(a), _max)
 
-    max = tl.max(_max, axis=1)
-    out = max[:, None]
-    tl.store(Out, out, row_mask)
+        max = tl.max(_max, axis=1)
+        out = max[:, None]
+        tl.store(Out_ptr, out, row_mask)
 
 
 @libentry()
@@ -116,24 +131,31 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Out = Out + pid
-    row_mask = pid < M
+    
+    # Map the program id to the row of X it should compute.
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    if task_num % num_prog != 0:
+        iter_num = iter_num + 1
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Out_ptr = Out + pid
+        row_mask = pid < M
 
-    _min = tl.full([BLOCK_M, BLOCK_N], value=float("inf"), dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        _min = tl.full([BLOCK_M, BLOCK_N], value=float("inf"), dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=float("inf")).to(tl.float32)
-        _min = tl.minimum(tl.abs(a), _min)
+            a = tl.load(X_ptr + cols, mask, other=float("inf")).to(tl.float32)
+            _min = tl.minimum(tl.abs(a), _min)
 
-    min = tl.min(_min, axis=1)
-    out = min[:, None]
-    tl.store(Out, out, row_mask)
-
+        min = tl.min(_min, axis=1)
+        out = min[:, None]
+        tl.store(Out_ptr, out, row_mask)
 
 @libentry()
 @triton.jit
@@ -164,22 +186,29 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Out = Out + pid
-    row_mask = pid < M
+    # Map the program id to the row of X it should compute.
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    if task_num % num_prog != 0:
+        iter_num = iter_num + 1
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Out_ptr = Out + pid
+        row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=0).to(tl.float32)
-        _sum += tl.where(a != 0, 1, 0)
-    sum = tl.sum(_sum, axis=1)
-    out = sum[:, None]
-    tl.store(Out, out, row_mask)
+            a = tl.load(X_ptr + cols, mask, other=0).to(tl.float32)
+            _sum += tl.where(a != 0, 1, 0)
+        sum = tl.sum(_sum, axis=1)
+        out = sum[:, None]
+        tl.store(Out_ptr, out, row_mask)
 
 
 @libentry()
@@ -212,22 +241,29 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    X = X + pid * N
-    Out = Out + pid
-    row_mask = pid < M
+    # Map the program id to the row of X it should compute.
+    num_prog = tl.num_programs(0)
+    task_num = tl.cdiv(M, BLOCK_M)
+    iter_num = tl.cdiv(task_num, num_prog)
+    if task_num % num_prog != 0:
+        iter_num = iter_num + 1
+    for i in range(0, iter_num):
+        pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+        X_ptr = X + pid * N
+        Out_ptr = Out + pid
+        row_mask = pid < M
 
-    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+        _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += tl.math.pow(tl.abs(a), ord)
-    sum = tl.sum(_sum, axis=1)
-    out = tl.math.pow(sum, 1 / ord)[:, None]
-    tl.store(Out, out, row_mask)
+            a = tl.load(X_ptr + cols, mask, other=0.0).to(tl.float32)
+            _sum += tl.extra.mlu.libdevice.pow(tl.abs(a), ord)
+        sum = tl.sum(_sum, axis=1)
+        out = tl.extra.mlu.libdevice.pow(sum, 1 / ord)[:, None]
+        tl.store(Out_ptr, out, row_mask)
 
 
 @libentry()
@@ -264,7 +300,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
-    with torch.cuda.device(x.device):
+    with torch.mlu.device(x.device):
         if dim is None or len(dim) == x.ndim:
             dim = list(range(x.ndim))
             shape = [1] * x.ndim
