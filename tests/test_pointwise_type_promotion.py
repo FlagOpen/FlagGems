@@ -62,6 +62,7 @@ def test_type_promotion_int_to_float(shape, float_type):
     inp_float = torch.randn(shape, dtype=float_type, device="cuda")
     ref_inp = to_reference(inp_float)
     ref_out = torch.sin(ref_inp)
+    ref_out = to_reference(ref_out)
     with flag_gems.use_gems():
         res_out = torch.sin(inp_float)
     gems_assert_close(res_out, ref_out, float_type)
@@ -95,6 +96,7 @@ def test_type_promotion_complex_to_long(shape, float_type):
     inp = torch.randn(shape, dtype=float_type, device="cuda")
     ref_inp = to_reference(inp)
     ref_out = torch.abs(ref_inp)
+    ref_out = to_reference(ref_out)
     with flag_gems.use_gems():
         res_out = torch.abs(inp)
     gems_assert_equal(res_out, ref_out)
