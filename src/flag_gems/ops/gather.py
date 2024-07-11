@@ -22,7 +22,6 @@ def gather_kernel(
     inp,
     inp_offsets,
     out,
-    out_offsets,
     index,
     idx_offsets,
     M,
@@ -43,14 +42,13 @@ def gather_kernel(
         mask = rows_mask and cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
-        out_indices = tl.load(out_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
 
         cur_index = tl.load(index + idx_indices, mask=mask, other=0)
         inp_indices += cur_index * stride_dim
         cur_inp = tl.load(inp + inp_indices, mask=mask, other=0)
 
-        tl.store(out + out_indices, cur_inp, mask=mask)
+        tl.store(out + idx_indices, cur_inp, mask=mask)
 
 
 def gather(inp, dim, index, sparse_grad=False):
@@ -76,13 +74,12 @@ def gather(inp, dim, index, sparse_grad=False):
     # so that the offset calculation can proceed in parallel
     inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
     idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
-    out_offsets = offsetCalculator(out, idx, out.stride(), dim, isInp=False)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     gather_kernel[grid](
-        inp, inp_offsets, out, out_offsets, index, idx_offsets, M, N, inp.stride(dim)
+        inp, inp_offsets, out, index, idx_offsets, M, N, inp.stride(dim)
     )
     return out
 
@@ -107,7 +104,6 @@ def gather_out(inp, dim, index, sparse_grad=False, out=None):
     index = index.contiguous()
     out = out.contiguous()
 
-    out_strided = out.as_strided(index.shape, out.stride())
     inp_strided = restride_dim(inp, dim, index.shape)
     # FIXME: Are there any other way to get the "flatten offset" of a tensor?
     idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
@@ -118,12 +114,11 @@ def gather_out(inp, dim, index, sparse_grad=False, out=None):
     # so that the offset calculation can proceed in parallel
     inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
     idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
-    out_offsets = offsetCalculator(out_strided, idx, out.stride(), dim, isInp=False)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     gather_kernel[grid](
-        inp, inp_offsets, out, out_offsets, index, idx_offsets, M, N, inp.stride(dim)
+        inp, inp_offsets, out, index, idx_offsets, M, N, inp.stride(dim)
     )
     return out
