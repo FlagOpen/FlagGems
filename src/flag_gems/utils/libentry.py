@@ -5,8 +5,6 @@ import torch
 import torch_mlu
 import triton.backends.mlu.driver as driver
 
-TOTAL_CORE_NUM = 48
-
 getdeviceprob = lambda x: driver.BangUtils().get_device_properties(torch.mlu.current_device()).get(x)
 TOTAL_CLUSTER_NUM = getdeviceprob('cluster_num')
 TOTAL_CORE_NUM = TOTAL_CLUSTER_NUM * getdeviceprob("core_num_per_cluster")

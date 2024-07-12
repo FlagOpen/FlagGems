@@ -5,36 +5,32 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 
 @libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def amax_kernel_1(
     inp,
-    mid,
+    out,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    amax_val = tl.max(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, amax_val)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.full([BLOCK_SIZE], value=-float("inf"), dtype=tl.float32)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        _tmp = tl.where((_tmp < inp_val), inp_val, _tmp)
 
-
-@libentry()
-@triton.jit
-def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
-    amax_val = tl.max(mid_val)
-    tl.store(out, amax_val)
+    amax_val = tl.max(_tmp)
+    tl.atomic_max(out, amax_val)
 
 
 def cfggen():
@@ -79,22 +75,18 @@ def amax(inp, dim=None, keepdim=False):
     logging.debug("GEMS AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
+        grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
         dtype = inp.dtype
-        mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         if not keepdim:
-            out = torch.empty([], dtype=dtype, device=inp.device)
+            out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
         else:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
                 shape[i] = 1
-            out = torch.empty(shape, dtype=dtype, device=inp.device)
+            out = torch.full(shape, float("-inf"), dtype=torch.float32, device=inp.device)
         with torch.mlu.device(inp.device):
-            amax_kernel_1[(mid_size, 1)](inp, mid, M, block_size)
-            amax_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
-        return out
+            amax_kernel_1[grid](inp, out, M)
+        return out.to(dtype)
     else:
         if isinstance(dim, int):
             dim = [dim]

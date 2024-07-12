@@ -5,38 +5,34 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, TOTAL_CORE_NUM
+from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 import math
 from ..utils import dim_compress
 
 
-@libentry()
+# @libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=['out'])
 @triton.jit
 def mean_kernel_1(
     inp,
-    mid,
+    out,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
-    sum_val = tl.sum(inp_val, axis=0)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=0.0)
+        _tmp = inp_val + _tmp
 
-
-@libentry()
-@triton.jit
-def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
-    sum_val = tl.sum(mid_val, axis=0) / M
-    tl.store(out, sum_val)
+    mean_val = tl.sum(_tmp, axis=0) / M
+    tl.atomic_add(out, mean_val)
 
 
 def mean(inp, *, dtype=None):
@@ -44,17 +40,12 @@ def mean(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
+    out = torch.zeros([], dtype=torch.float32, device=inp.device)
 
     with torch.mlu.device(inp.device):
-        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
-    return out
+        mean_kernel_1[grid](inp, out, M)
+    return out.to(dtype)
 
 
 @libentry()

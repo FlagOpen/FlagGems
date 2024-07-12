@@ -6,36 +6,32 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 
 @libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def min_kernel_1(
     inp,
-    mid,
+    out,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=float("inf"))
-    min_val = tl.min(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, min_val)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.full([BLOCK_SIZE], value=float("inf"), dtype=tl.float32)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=float("inf"))
+        _tmp = tl.where((inp_val < _tmp), inp_val, _tmp)
 
-
-@libentry()
-@triton.jit
-def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=float("inf"))
-    min_val = tl.min(mid_val)
-    tl.store(out, min_val)
+    min_val = tl.min(_tmp)
+    tl.atomic_min(out, min_val)
 
 
 def heur_block_n(args):
@@ -98,18 +94,14 @@ def min_kernel(
 def min(inp):
     logging.debug("GEMS MIN")
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    mid_size = TOTAL_CORE_NUM
 
     dtype = inp.dtype
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    out = torch.full([], float("inf"), dtype=torch.float32, device=inp.device)
 
     with torch.mlu.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    return out
+        min_kernel_1[(mid_size, 1, 1)](inp, out, M)
+    return out.to(dtype)
 
 
 def min_dim(inp, dim=None, keepdim=False):

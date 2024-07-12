@@ -6,36 +6,32 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 
 @libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def max_kernel_1(
     inp,
-    mid,
+    out,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    max_val = tl.max(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, max_val)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.full([BLOCK_SIZE], value=-float("inf"), dtype=tl.float32)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        _tmp = tl.where((_tmp < inp_val), inp_val, _tmp)
 
-
-@libentry()
-@triton.jit
-def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
-    max_val = tl.max(mid_val)
-    tl.store(out, max_val)
+    max_val = tl.max(_tmp)
+    tl.atomic_max(out, max_val)
 
 
 def heur_block_n(args):
@@ -98,18 +94,14 @@ def max_kernel(
 def max(inp):
     logging.debug("GEMS MAX")
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
+    grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     dtype = inp.dtype
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+
+    out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
 
     with torch.mlu.device(inp.device):
-        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    return out
+        max_kernel_1[grid](inp, out, M)
+    return out.to(dtype)
 
 
 def max_dim(inp, dim=None, keepdim=False):

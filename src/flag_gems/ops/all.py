@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
@@ -55,50 +55,41 @@ def all_kernel_dim(
 
 
 @libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def all_kernel_1(
     inp,
-    mid,
-    n_elements,
-    mid_size,
+    out,
+    M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
-    all_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_all)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, all_val)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.full([BLOCK_SIZE], value=1, dtype=tl.int1)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=1.0)
+        _tmp = _tmp and (inp_val !=0 )
 
-
-@libentry()
-@triton.jit
-def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1).to(tl.int1)
-    all_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_all)
-    tl.store(out, all_val)
+    all_val = tl.reduce(_tmp != 0, axis=0, combine_fn=reduce_all)
+    tl.atomic_and(out, all_val.to(tl.int32))
 
 
 def all(inp):
     logging.debug("GEMS ALL")
-    n_elements = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
-    mid_size = triton.cdiv(n_elements, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    M = inp.numel()
+    grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    out = torch.ones([], dtype=torch.int32, device=inp.device)
 
     with torch.mlu.device(inp.device):
-        all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-        all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+        all_kernel_1[grid](inp, out, M)
 
-    return out
+    return out.to(torch.bool)
 
 
 def all_dim(inp, dim=None, keepdim=False):
