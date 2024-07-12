@@ -9,6 +9,7 @@ from ..utils import libentry, TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM
 
 MAX_C_MLU_SOFTMAX_FORWARD = 16384
 MAX_C_MLU_SOFTMAX_BACKWARD = 8192
+MLU_GRID_MAX = 65535
 
 def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
     tile_k = 1
@@ -29,6 +30,12 @@ def heuristics_for_num_warps(tile_size):
         return 8
     else:
         return 16
+
+
+@triton.jit
+def prev_multiple_of(a, b):
+    # the largest x<a that x%b ==0
+    return tl.cdiv(a, b) * b - b
 
 @triton.heuristics(
     values={
@@ -111,126 +118,131 @@ def softmax_kernel_non_inner(
             tl.store(output_ptr + offsets, o, mask=mask)
 
 
-@triton.jit
-def next_multiple_of(a, b):
-    # the smallest x>=a that x%b ==0
-    return tl.cidv(a, b) * b
+def config_prune(configs, named_args, **kwargs):
+    N = named_args['N']
+    configs_map = {}
+    for config in configs:
+        kw = config.kwargs
+        BLOCK_M, BLOCK_N, num_warps, num_stages = \
+            kw['BLOCK_M'], kw['BLOCK_N'], config.num_warps, config.num_stages
+        # When N is less than MAX_C_MLU_SOFTMAX_FORWARD, no reduction loops
+        if N < MAX_C_MLU_SOFTMAX_FORWARD:
+            BLOCK_N = kw['BLOCK_N'] = N
+            num_stages = config.num_stages = 1
+        key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+        # Only keep one config for the same key
+        configs_map.setdefault(key, config)
+    pruned_configs = []
+    for k, v in configs_map.items():
+        pruned_configs.append(v)
+    configs = pruned_configs
+    return pruned_configs
 
 
-@triton.jit
-def prev_multiple_of(a, b):
-    # the largest x<a that x%b ==0
-    return tl.cdiv(a, b) * b - b
-
-
-def heur_num_warps_inner(args):
-    tile_size = args["TILE_N"]
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
-
-
-@triton.heuristics(
-    values={
-        "TILE_N": lambda args: triton.next_power_of_2(args["N"])
-        if args["N"] <= MAX_C_MLU_SOFTMAX_FORWARD
-        else MAX_C_MLU_SOFTMAX_FORWARD
-    },
+@triton.autotune(
+    configs=[
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_N": 2**n
+        },
+                      num_stages=s,
+                      num_warps=1) for m in range(1, 30, 3)
+        for n in range(6, 13, 1) for s in [1, 3]
+    ],
+    key=[
+        "M",
+        "N",
+    ],
+    prune_configs_by={'early_config_prune': config_prune},
 )
 @triton.heuristics(
     values={
-        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
-    },
-)
-@triton.heuristics(
-    values={"num_warps": lambda args: heuristics_for_num_warps(args["TILE_N"])},
-)
+        "ONE_TILE_PER_CTA": lambda args: args["N"] < MAX_C_MLU_SOFTMAX_FORWARD,
+    }, )
 @triton.jit
 def softmax_kernel_inner(
     output_ptr,
     input_ptr,
     M,
     N,
-    TILE_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
+        pid_m = tl.program_id(0)
+        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        n_offset = tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N + n_offset[None, :]
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
         input_ptrs = input_ptr + offset
-        mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            output_ptr.dtype.element_ty
-        )
-        m = tl.max(inp, 0)
-        e = tl.exp(inp - m)
-        z = tl.sum(e, 0)
-        out = e / z
+        inp = tl.load(input_ptrs, mask=mask,
+                      other=-float("inf")).to(tl.float32)
+        row_minus_max = inp - tl.max(inp, axis=1)[:, None]
+        numerator = tl.exp(row_minus_max)
+        denominator = tl.sum(numerator, axis=1)[:, None]
+        softmax_output = numerator / denominator
         output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, out, mask=mask)
+        tl.store(output_ptrs, softmax_output, mask=mask)
     else:
-        m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
-        z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
-        input_ptr += pid_m * N
-        output_ptr += pid_m * N
+        pid_m = tl.program_id(0)
+        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        for start_n in range(0, previous_multiple, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets)
-            m_new = tl.maximum(m, inp)
-            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            m = m_new
-        # specialize the last iteration
-        for start_n in range(previous_multiple, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
-            m_new = tl.maximum(m, inp)
-            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
-            m = m_new
+        tmp0 = tl.full([BLOCK_M, BLOCK_N], float("-inf"), tl.float32)
+        for col_offset in range(0, N, BLOCK_N):
+            n_offset = col_offset + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            input_ptrs = input_ptr + offset
+            inp = tl.load(input_ptrs, mask=mask,
+                          other=-float("inf")).to(tl.float32)
+            # get max for each block
+            tmp1 = tl.maximum(inp, tmp0)
+            tmp0 = tmp1
 
-        m_reduced = tl.max(m, 0)
-        z = tl.sum(z * tl.exp(m - m_reduced), 0)
-        m = m_reduced
+        tmp2 = tl.max(tmp0, 1)[:, None]
+        tmp3 = tl.full([BLOCK_M, BLOCK_N], 0, tl.float32)
+        for col_offset in range(0, N, BLOCK_N):
+            n_offset = col_offset + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            input_ptrs = input_ptr + offset
+            inp = tl.load(input_ptrs, mask=mask,
+                          other=-float("inf")).to(tl.float32)
+            # minus max value each line
+            row_minus_max = inp - tmp2
+            numerator = tl.exp(row_minus_max)
+            tmp4 = tmp3 + numerator
+            tmp3 = tmp4
 
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        # specialize the first iteration
-        for start_n in range(0, TILE_N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets,
-                mask=mask,
-                other=-float("inf"),
-                eviction_policy="evict_first",
-            )
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o, mask=mask)
-        for start_n in range(TILE_N, N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first")
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o)
-
+        denominator = tl.sum(tmp3, axis=1)[:, None]
+        for col_offset in range(0, N, BLOCK_N):
+            n_offset = col_offset + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            input_ptrs = input_ptr + offset
+            inp = tl.load(input_ptrs, mask=mask,
+                          other=-float("inf")).to(tl.float32)
+            row_minus_max = inp - tmp2
+            numerator = tl.exp(row_minus_max)
+            softmax_output = numerator / denominator
+            output_ptrs = output_ptr + offset
+            tl.store(output_ptrs, softmax_output, mask)
 
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"TILE_K": 4}),
-        triton.Config({"TILE_K": 8}),
-        triton.Config({"TILE_K": 16}),
-        triton.Config({"TILE_K": 32}),
-        triton.Config({"TILE_K": 64}),
-        triton.Config({"TILE_K": 128}),
-        triton.Config({"TILE_K": 256}),
-        triton.Config({"TILE_K": 512}),
-        triton.Config({"TILE_K": 1024}),
+        triton.Config({"TILE_K": 4}, num_warps=1),
+        triton.Config({"TILE_K": 8}, num_warps=1),
+        triton.Config({"TILE_K": 16}, num_warps=1),
+        triton.Config({"TILE_K": 32}, num_warps=1),
+        triton.Config({"TILE_K": 64}, num_warps=1),
+        triton.Config({"TILE_K": 128}, num_warps=1),
+        triton.Config({"TILE_K": 256}, num_warps=1),
+        triton.Config({"TILE_K": 512}, num_warps=1),
+        triton.Config({"TILE_K": 1024}, num_warps=1),
     ],
     key=[
         "M",
@@ -240,9 +252,9 @@ def softmax_kernel_inner(
 )
 @triton.heuristics(
     values={
-        "TILE_K": lambda args: max(triton.cdiv(args["K"], TOTAL_CORE_NUM), args["TILE_K"])
-    }
-)
+        "TILE_K":
+        lambda args: max(triton.cdiv(args["K"], MLU_GRID_MAX), args["TILE_K"])
+    })
 @triton.heuristics(
     values={
         "TILE_N": lambda args: max(1, MAX_C_MLU_SOFTMAX_BACKWARD // args["TILE_K"]),
@@ -372,98 +384,6 @@ def softmax_backward_kernel_inner(
             n_offsets += TILE_N
             offsets += TILE_N
 
-
-# ------------------------ other n split kernels ------------------------
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_SOFTMAX_FORWARD}, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-        "K",
-    ],
-)
-@triton.heuristics(
-    values={
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
-)
-@triton.jit
-def softmax_kernel_split_c(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-    tmp0 = tl.full([BLOCK_M, BLOCK_N], float("-inf"), tl.float32)
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-        # get max for each block
-        tmp1 = tl.where(tmp0 < inp, inp, tmp0)
-        tmp0 = tmp1
-
-    tmp2 = tl.max(tmp0, 1)[:, None]
-    tmp3 = tl.full([BLOCK_M, BLOCK_N], 0, tl.float32)
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-        # minus max value each line
-        row_minus_max = inp - tmp2
-        numerator = tl.exp(row_minus_max)
-        tmp4 = tmp3 + numerator
-        tmp3 = tmp4
-
-    denominator = tl.sum(tmp3, axis=1)[:, None]
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
-        row_minus_max = inp - tmp2
-        numerator = tl.exp(row_minus_max)
-        softmax_output = numerator / denominator
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, softmax_output, mask)
-
-
 @libentry()
 @triton.autotune(
     configs=[
@@ -586,7 +506,7 @@ class Softmax(torch.autograd.Function):
                 )
             else:
                 logging.debug("GEMS SOFTMAX USE INNER")
-                grid = (M, 1, 1)
+                grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), 1, 1)
                 softmax_kernel_inner[grid](
                     out,
                     inp,

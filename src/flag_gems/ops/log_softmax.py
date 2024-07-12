@@ -9,6 +9,7 @@ from ..utils import libentry
 MAX_C_MLU_LOG_SOFTMAX_FORWARD = 16384
 MAX_C_MLU_LOG_SOFTMAX_BACKWARD = 32768
 
+
 def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
@@ -22,28 +23,42 @@ def heur_num_warps(args):
         return 16
 
 
+def config_prune(configs, named_args, **kwargs):
+    N = named_args['N']
+    configs_map = {}
+    for config in configs:
+        kw = config.kwargs
+        BLOCK_M, BLOCK_N, num_warps, num_stages = \
+            kw['BLOCK_M'], kw['BLOCK_N'], config.num_warps, config.num_stages
+        # When N is less than MAX_C_MLU_LOG_SOFTMAX_FORWARD, no reduction loops
+        if N < MAX_C_MLU_LOG_SOFTMAX_FORWARD:
+            BLOCK_N = kw['BLOCK_N'] = N
+            num_stages = config.num_stages = 1
+        key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
+        # Only keep one config for the same key
+        configs_map.setdefault(key, config)
+    pruned_configs = []
+    for k, v in configs_map.items():
+        pruned_configs.append(v)
+    configs = pruned_configs
+    return pruned_configs
+
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_N": 2**n
+        },
+                      num_stages=s,
+                      num_warps=1) for m in range(1, 30, 3)
+        for n in range(6, 13, 1) for s in [1, 3]
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
+    prune_configs_by={'early_config_prune': config_prune},
 )
 @triton.jit
 def log_softmax_kernel(
@@ -74,38 +89,19 @@ def log_softmax_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_FORWARD}, num_stages=5),
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_N": 2**n
+        },
+                      num_stages=s,
+                      num_warps=1) for m in range(1, 30, 3)
+        for n in range(6, 13, 1) for s in [1, 3]
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    values={
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
+    prune_configs_by={'early_config_prune': config_prune},
 )
 @triton.jit
 def log_softmax_kernel_split_c(
@@ -325,7 +321,7 @@ class LogSoftmax(torch.autograd.Function):
             K,
         )
         with torch.mlu.device(inp.device):
-            if N > MAX_C_MLU_LOG_SOFTMAX_FORWARD:
+            if N >= MAX_C_MLU_LOG_SOFTMAX_FORWARD:
                 logging.debug(
                     "GEMS LOG_SOFTMAX USE SPLITC FORWARD FOR N = %d" % (N))
                 log_softmax_kernel_split_c[grid](
