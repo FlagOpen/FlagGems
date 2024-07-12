@@ -771,7 +771,7 @@ class PointwiseDynamicFunction:
         self.overloads: Mapping[str, Callable] = {}
 
     def __call__(self, *args, **kwargs):
-        # note: kwargs should not be used in JITFunction directly should not be used in JITFunction directly
+        # note: kwargs should not be used in JITFunction directly
         key = f"{self.arg_key(*args)}"
         if key in self.overloads:
             overload = self.overloads[key]
