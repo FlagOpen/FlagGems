@@ -22,14 +22,14 @@ class LibEntry(triton.KernelInterface):
             fn = fn.fn
         self.jit_function: triton.runtime.JITFunction = fn
         self.specialize_indices = [
-            p.num
-            for p in self.jit_function.params
-            if not p.is_constexpr and not p.do_not_specialize
+            num
+            for num, arg_name in enumerate(self.jit_function.arg_names)
+            if num not in self.jit_function.constexprs and num not in self.jit_function.do_not_specialize
         ]
         self.do_not_specialize_indices = [
-            p.num
-            for p in self.jit_function.params
-            if not p.is_constexpr and p.do_not_specialize
+            num
+            for num, arg_name in enumerate(self.jit_function.arg_names)
+            if num not in self.jit_function.constexprs and num in self.jit_function.do_not_specialize
         ]
         self.lock = threading.Lock()
 
@@ -72,17 +72,18 @@ class LibEntry(triton.KernelInterface):
                 dns_args.append(arg)
             else:
                 const_args.append(arg)
-        for p in self.jit_function.params[len(args) :]:
-            if p.name in kwargs:
-                val = kwargs[p.name]
-            elif p.default is inspect._empty:
+        for i, arg_names in enumerate(self.jit_function.arg_names[len(args) :]):
+            i += len(args)
+            if arg_names in kwargs:
+                val = kwargs[arg_names]
+            elif self.jit_function.arg_defaults[i] is inspect._empty:
                 continue
             else:
-                val = p.default
+                val = self.jit_function.arg_defaults[i]
 
-            if p.is_constexpr:
+            if i in self.jit_function.constexprs:
                 const_args.append(val)
-            elif p.do_not_specialize:
+            elif i in self.jit_function.do_not_specialize:
                 dns_args.append(val)
                 k_args.append(val)
             else:
@@ -121,13 +122,9 @@ class LibEntry(triton.KernelInterface):
                     else:
                         raise RuntimeError("Invalid Runtime Function")
                     fn = fn.fn
-                for p in self.jit_function.params:
-                    if (
-                        p.is_constexpr
-                        and p.name not in constexprs
-                        and (p.default is not inspect._empty)
-                    ):
-                        constexprs[p.name] = p.default
+                for num, arg_name in enumerate(self.jit_function.arg_names):
+                    if num in self.jit_function.constexprs and arg_name not in constexprs and (self.jit_function.arg_defaults[num] is not inspect._empty):
+                        constexprs[arg_name] = self.jit_function.arg_defaults[num]
                 cache[entry_key] = (kernel, constexprs)
             return kernel, constexprs
 
