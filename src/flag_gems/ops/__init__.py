@@ -21,6 +21,7 @@ from .div import div
 from .dropout import native_dropout
 from .eq import eq, eq_scalar
 from .exp import exp
+from .flip import flip
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -91,6 +92,7 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "flip",
     "ge",
     "ge_scalar",
     "gelu",
