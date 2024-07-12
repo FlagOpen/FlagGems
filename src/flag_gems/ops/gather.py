@@ -60,6 +60,9 @@ def gather(inp, dim, index, sparse_grad=False):
         ((0 <= index.size(i) and index.size(i) <= inp.size(i)) or i == dim)
         for i in range(0, index.ndim)
     ), "index.size(d) <= self.size(d) for all dimensions d != dim"
+    assert (0 <= index and index < inp.size(dim)) == torch.ones(
+        tuple(index.shape), dtype=torch.bool
+    ), "0 <= index < self.size(dim)"
     out = torch.empty_like(index, dtype=inp.dtype, device=inp.device).contiguous()
     inp = inp.contiguous()
     index = index.contiguous()
