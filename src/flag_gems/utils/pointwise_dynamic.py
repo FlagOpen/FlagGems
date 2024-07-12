@@ -5,6 +5,7 @@ from typing import Any, Callable, List, Mapping, Optional, Tuple
 import torch
 import torch._prims_common as utils
 import triton
+import math
 from triton import language as tl
 from triton.runtime.jit import JITFunction
 
@@ -26,6 +27,12 @@ else:
 
 
 # ------------------ Operation Description ---------------------------
+def all_shapes_same(shapes):
+    if len(shapes) == 0:
+        return False
+    rank = len(shapes[0])
+    return all(len(shape) == rank for shape in shapes)
+
 def _type_name(type) -> str:
     "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
     if type in (bool, int, float, str):
@@ -308,6 +315,7 @@ def generate_functional_pointwise_wrapper(
     wrapper_name: str,
     destination_passing_func_name: str,
     code: IndentedBuffer,
+    same_shapes: bool
 ) -> IndentedBuffer:
     # wrapper signature
     parameters: str = parameter_for_wrapper(op_desc, include_outputs=False)
@@ -322,7 +330,13 @@ def generate_functional_pointwise_wrapper(
         shapes_str = ", ".join(
             f"in{i}.shape" for i in range(op_desc.num_input_tensors())
         )
-        code.writeline(f"shape = broadcast_shapes([{shapes_str}])")
+        if same_shapes:
+            code.writeline("ori_shape = in0.shape")
+            for i in range(op_desc.num_input_tensors()):
+                code.writeline(f"in{i} = in{i}.flatten()")
+            code.writeline(f"shape = in0.shape")
+        else:
+            code.writeline(f"shape = broadcast_shapes([{shapes_str}])")
 
         # output allocation
         num_output_tensor_index = 0
@@ -347,7 +361,10 @@ def generate_functional_pointwise_wrapper(
         )
         code.writeline(call_str)
 
-        return_str = f"return {output_names}"
+        if same_shapes:
+            return_str = f"return {output_names}.view(ori_shape)"
+        else:
+            return_str = f"return {output_names}"
         code.writeline(return_str)
         code.newline()
         code.newline()
@@ -376,7 +393,7 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(8192, triton.next_power_of_2(num_tasks))")
+            code.writeline("tile_size = min(16384, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
@@ -622,6 +639,7 @@ def generate_pointwise_kernel(
                 ptrs_expr: str = " + ".join(
                     f"i{j} * in{i}_stride{j}" for j in range(rank)
                 )
+
                 ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
                 load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
                 function_ns.create_name(f"in{i}")  # add to the namespace
@@ -639,6 +657,7 @@ def generate_pointwise_kernel(
                 ptrs_expr: str = " + ".join(
                     f"i{j} * out{i}_stride{j}" for j in range(rank)
                 )
+
                 ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
                 store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
                 code.writeline(store_stmt)
@@ -717,13 +736,17 @@ def generate_code(
     ), "the number of inputs does not match {str(op_desc)}"
     input_tensor_ids = [i for i in range(op_desc.num_inputs()) if op_desc.is_tensor(i)]
     tensor_shapes = [inputs[i].shape for i in input_tensor_ids]
-    shape = broadcast_shapes(tensor_shapes)
-    rank = len(shape)
+    same_shapes = all_shapes_same(tensor_shapes)
+    shape = [math.prod(tensor_shapes[0])]
+    rank = 1
+    if not same_shapes:
+      shape = broadcast_shapes(tensor_shapes)
+      rank = len(shape)
 
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
     code = generate_functional_pointwise_wrapper(
-        op_desc, wrapper_name, destination_passing_func_name, code
+        op_desc, wrapper_name, destination_passing_func_name, code, same_shapes
     )
     code = generate_destination_passing_pointwise_wrapper(
         op_desc, rank, destination_passing_func_name, kernel_name, code
