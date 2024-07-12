@@ -12,10 +12,7 @@ def flip_func(x, **kwargs):
     return x
 
 
-def flip(
-    A: torch.Tensor,
-    dims,
-) -> torch.Tensor:
+def flip(A: torch.Tensor, dims) -> torch.Tensor:
     logging.debug("GEMS FLIP")
     strides = list(A.stride())
     flip_dims_b = [False for _ in A.stride()]
