@@ -43,6 +43,9 @@ def enable(lib=aten_lib):
     lib.impl("lt.Tensor", lt, "CUDA")
     lib.impl("lt.Scalar", lt_scalar, "CUDA")
     lib.impl("rms_norm", rms_norm, "CUDA")
+    lib.impl("rand", rand, "CUDA")
+    lib.impl("randn", randn, "CUDA")
+    lib.impl("rand_like", rand_like, "CUDA")
 
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
@@ -102,6 +105,8 @@ def enable(lib=aten_lib):
     lib.impl("gather.out", gather_out, "CUDA")
     lib.impl("select_scatter", select_scatter, "CUDA")
     lib.impl("slice_scatter", slice_scatter, "CUDA")
+    lib.impl("isclose", isclose, "CUDA")
+    lib.impl("allclose", allclose, "CUDA")
 
 
 class use_gems:
