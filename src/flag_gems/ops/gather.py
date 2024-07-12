@@ -101,6 +101,9 @@ def gather_out(inp, dim, index, sparse_grad=False, out=None):
         for i in range(0, index.ndim)
     ), "index.size(d) <= self.size(d) for all dimensions d != dim"
     assert index.shape == out.shape, "out will have the same shape as index"
+    assert (0 <= index and index < inp.size(dim)) == torch.ones(
+        tuple(index.shape), dtype=torch.bool
+    ), "0 <= index < self.size(dim)"
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
     inp = inp.contiguous()
