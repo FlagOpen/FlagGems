@@ -17,30 +17,41 @@ from triton.language.standard import (
 
 @triton.jit
 def topk_stage1_kernel(
-    Y,  # pointer to the output
-    INDEX,  # pointer to the output
-    X,  # pointer to the input
+    y_ptr,
+    index_ptr,
+    x_ptr,
     k,
-    N: tl.constexpr,  # number of columns in X
+    N: tl.constexpr,
     CHUNK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    Y += pid * k
-    INDEX += pid * k
+    cur_batch = tl.program_id(0)
+    cur_chunk_idx = tl.program_id(1)
+    chunk_num = tl.num_programs(1)
 
-    offset = pid * CHUNK_SIZE
-    X += offset
+    y_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
+    index_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
+
+    chunk_offset = cur_chunk_idx * CHUNK_SIZE
+    x_ptr += cur_batch * N + chunk_offset
 
     cols = tl.arange(0, CHUNK_SIZE)
-    mask = (offset + cols) < N
+    mask = (chunk_offset + cols) < N
 
-    x_val = tl.load(X + cols, mask=mask, other=-10000.0)
+    x_val = tl.load(x_ptr + cols, mask=mask, other=-10000.0)
     for k_idx in range(k):
         chunk_max_val = tl.max(x_val)
         chunk_max_idx = tl.argmax(x_val, axis=0)
-        tl.store(Y + k_idx, chunk_max_val)
-        tl.store(INDEX + k_idx, chunk_max_idx + offset)
+        tl.store(y_ptr + k_idx, chunk_max_val)
+        tl.store(index_ptr + k_idx, chunk_max_idx + chunk_offset)
         x_val = tl.where(cols == chunk_max_idx, -10000, x_val)
+
+
+"""
+Note(Zhengzekang):
+Refer from triton2.2 official `sort` implementation:
+https://github.com/triton-lang/triton/blob/release/2.2.x/python/triton/language/standard.py#L392-L404
+Just add indices to sort with values.
+"""
 
 
 @triton.jit
@@ -135,26 +146,31 @@ def argsort(x, ids, dim: core.constexpr = None, descending: core.constexpr = 0):
 
 @triton.jit
 def topk_stage2_kernel(
-    Y,  # pointer to the output
-    INDEX,  # pointer to the output
-    CHUNK_X,  # pointer to the input
-    CHUNK_INDEX,  # pointer to the input
+    y_ptr,
+    index_ptr,
+    chunk_x,
+    chunk_index,
     k: tl.constexpr,
-    DESCENDING: tl.constexpr,
-    N: tl.constexpr,  # number of columns in X
+    N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
+    cur_batch = tl.program_id(0)
+    chunk_x += cur_batch * N
+    chunk_index += cur_batch * N
+    y_ptr += cur_batch * k
+    index_ptr += cur_batch * k
+
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    chunk_x_val = tl.load(CHUNK_X + cols, mask=mask, other=-10000.0)
-    chunk_index_val = tl.load(CHUNK_INDEX + cols, mask=mask, other=-10000)
+    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=-10000.0)
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=-10000)
 
     sorted_chunk_x, sorted_chunk_index = argsort(
         chunk_x_val, chunk_index_val, descending=True
     )
-    tl.store(Y + cols, sorted_chunk_x, mask=cols < k)
-    tl.store(INDEX + cols, sorted_chunk_index, mask=cols < k)
+    tl.store(y_ptr + cols, sorted_chunk_x, mask=cols < k)
+    tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < k)
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
@@ -163,28 +179,37 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     assert largest, "Currently only support largest == True"
     assert sorted, "Currently only support sorted == True"
 
-    N = math.prod(x.shape)
-    CHUNK_SIZE = 128
-    CHUNK_NUM = triton.cdiv(N, CHUNK_SIZE)
+    topk_elem_cnt = x.shape[dim]
+    batch_size = math.prod(x.shape) // topk_elem_cnt
 
-    stage1_out = torch.empty(CHUNK_NUM * k, device=x.device, dtype=x.dtype)
-    stage1_out_idx = torch.empty(CHUNK_NUM * k, device=x.device, dtype=torch.int32)
-    stage2_out = torch.empty(k, device=x.device, dtype=x.dtype)
-    stage2_out_idx = torch.empty(k, device=x.device, dtype=torch.int32)
+    chunk_size = 128
+    chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
-    topk_stage1_kernel[CHUNK_NUM,](
+    stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
+    stage1_out_idx = torch.empty(
+        batch_size * chunk_num * k, device=x.device, dtype=torch.int32
+    )
+
+    out_shape = x.shape[:-1] + (k,)
+    stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
+    stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int32)
+
+    topk_stage1_kernel[
+        batch_size,
+        chunk_num,
+    ](
         stage1_out,  # pointer to the output
         stage1_out_idx,  # pointer to the output
         x,  # pointer to the input
-        topk,
-        N,
-        CHUNK_SIZE,
+        k,
+        topk_elem_cnt,
+        chunk_size,
     )
 
-    stage2_elem_cnt = CHUNK_NUM * k
+    stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-    topk_stage2_kernel[1,](
+    topk_stage2_kernel[batch_size,](
         stage2_out,
         stage2_out_idx,
         stage1_out,
