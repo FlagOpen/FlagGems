@@ -108,9 +108,15 @@ def var_mean_kernel_1(
     tl.store(Count, count)
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["BLOCK_NUM"])
+
+
 @libentry()
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["BLOCK_NUM"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
@@ -157,10 +163,11 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
-        var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-        var_mean_kernel_2[(1,)](
-            acc, average, count, var, mean, N, correction, BLOCK_NUM
-        )
+        with torch.cuda.device(x.device):
+            var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
+            var_mean_kernel_2[(1,)](
+                acc, average, count, var, mean, N, correction, BLOCK_NUM
+            )
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
@@ -174,7 +181,8 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
         grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-        var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
+        with torch.cuda.device(x.device):
+            var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 
     if not keepdim:
         var = var.squeeze(dim=dim)
