@@ -450,3 +450,15 @@ def test_perf_allclose_int():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_erf():
+    bench = Benchmark(
+        op_name="erf",
+        torch_op=torch.erf,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
