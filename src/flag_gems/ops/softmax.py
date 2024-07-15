@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 import triton.backends.mlu.driver as driver
 
-from ..utils import libentry
+from ..utils import libentry, TOTAL_CLUSTER_NUM, MLU_GRID_MAX
 
 MAX_C_MLU_SOFTMAX_FORWARD = 16384
 MAX_C_MLU_SOFTMAX_BACKWARD = 8192
@@ -22,6 +22,13 @@ def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
             break
     return tile_k
 
+def heuristics_for_num_warps(tile_size):
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 @triton.heuristics(
     values={
@@ -29,8 +36,7 @@ def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
             args["M"],
             args["K"],
             MAX_C_MLU_SOFTMAX_FORWARD,
-            driver.BangUtils().get_device_properties(
-                torch.mlu.current_device()).get('cluster_num'),
+            TOTAL_CLUSTER_NUM,
         )
     }
 )
@@ -105,15 +111,6 @@ def softmax_kernel_non_inner(
             tl.store(output_ptr + offsets, o, mask=mask)
 
 
-def heuristics_for_num_warps(tile_size):
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
-
-
 @triton.jit
 def next_multiple_of(a, b):
     # the smallest x>=a that x%b ==0
@@ -124,6 +121,16 @@ def next_multiple_of(a, b):
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
+
+
+def heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 
 @triton.heuristics(
@@ -233,7 +240,7 @@ def softmax_kernel_inner(
 )
 @triton.heuristics(
     values={
-        "TILE_K": lambda args: max(triton.cdiv(args["K"], 65535), args["TILE_K"])
+        "TILE_K": lambda args: max(triton.cdiv(args["K"], MLU_GRID_MAX), args["TILE_K"])
     }
 )
 @triton.heuristics(
@@ -293,6 +300,7 @@ def softmax_backward_kernel_non_inner(
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             offsets_n += TILE_N
             offsets += TILE_N * K
+
 
 
 @libentry()

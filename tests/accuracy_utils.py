@@ -21,7 +21,9 @@ BIG_REDUCTION_SHAPES = [(29, 32000), (27, 40960), (23, 32768, 4), (101, 16384, 1
 MNK_SHAPES = [15, 160, 1024]
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+ALL_FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
+ALL_INT_DTYPES = [torch.int16, torch.int32, torch.int64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [0, 1]

@@ -43,6 +43,9 @@ def enable(lib=aten_lib):
     lib.impl("lt.Tensor", lt, "PrivateUse1")
     lib.impl("lt.Scalar", lt_scalar, "PrivateUse1")
     lib.impl("rms_norm", rms_norm, "PrivateUse1")
+    lib.impl("rand", rand, "PrivateUse1")
+    lib.impl("randn", randn, "PrivateUse1")
+    lib.impl("rand_like", rand_like, "PrivateUse1")
 
     lib.impl("mean", mean, "PrivateUse1")
     lib.impl("mean.dim", mean_dim, "PrivateUse1")
@@ -89,6 +92,8 @@ def enable(lib=aten_lib):
     lib.impl("log_softmax.int", log_softmax, "AutogradPrivateUse1")
     lib.impl("outer", outer, "AutogradPrivateUse1")
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradPrivateUse1")
+    lib.impl("isclose", isclose, "PrivateUse1")
+    lib.impl("allclose", allclose, "PrivateUse1")
 
 
 class use_gems:

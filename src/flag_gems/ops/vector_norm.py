@@ -8,6 +8,14 @@ import logging
 from ..utils import libentry, MLU_GRID_MAX
 from ..utils import dim_compress
 
+try:
+    from triton.language.extra.mlu.libdevice import pow
+except ImportError:
+    try:
+        from triton.language.math import pow
+    except ImportError:
+        from triton.language.libdevice import pow
+
 
 def cfggen():
     block_m = [1, 2, 4, 8]
@@ -245,8 +253,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
     num_prog = tl.num_programs(0)
     task_num = tl.cdiv(M, BLOCK_M)
     iter_num = tl.cdiv(task_num, num_prog)
-    if task_num % num_prog != 0:
-        iter_num = iter_num + 1
+
     for i in range(0, iter_num):
         pid = (i * num_prog + tl.program_id(0)) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
         X_ptr = X + pid * N
@@ -276,7 +283,7 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(tl.extra.mlu.libdevice.pow(tl.abs(x), ord))
+    mid = tl.sum(pow(tl.abs(x), ord))
     tl.store(Mid, mid)
 
 
@@ -287,7 +294,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.extra.mlu.libdevice.pow(tl.sum(mid), 1 / ord)
+    out = pow(tl.sum(mid), 1 / ord)
     tl.store(Out, out)
 
 

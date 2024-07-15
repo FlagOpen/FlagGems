@@ -15,6 +15,19 @@ class Reduction(IntEnum):
     SUM = 2
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def heur_num_warps(args):
+    if args["N"] <= 1024:
+        return 4
+    elif args["N"] <= 2048:
+        return 8
+    else:
+        return 16
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -26,6 +39,10 @@ class Reduction(IntEnum):
         triton.Config({"BLOCK_M": 4}, num_stages=5),
         triton.Config({"BLOCK_M": 8}, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({"BLOCK_M": 16}, num_stages=1),
+        triton.Config({"BLOCK_M": 32}, num_stages=1),
+        triton.Config({"BLOCK_M": 64}, num_stages=1),
+        triton.Config({"BLOCK_M": 128}, num_stages=1),
     ],
     key=[
         "M",
@@ -33,12 +50,10 @@ class Reduction(IntEnum):
     ],
 )
 @triton.heuristics(
-    values={
-        "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
+    {
+        "BLOCK_N": heur_block_n,
+        "num_warps": heur_num_warps,
+    }
 )
 @triton.jit(do_not_specialize=["mean_num"])
 def log_softmax_and_mul_kernel(
@@ -88,12 +103,10 @@ def log_softmax_and_mul_kernel(
     ],
 )
 @triton.heuristics(
-    values={
-        "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
+    {
+        "BLOCK_N": heur_block_n,
+        "num_warps": heur_num_warps,
+    }
 )
 @triton.jit(do_not_specialize=["mean_num"])
 def softmax_and_sub_kernel(
@@ -151,12 +164,10 @@ def softmax_and_sub_kernel(
     ],
 )
 @triton.heuristics(
-    values={
-        "BLOCK_N": lambda args: triton.next_power_of_2(args["N"]),
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
-    },
+    {
+        "BLOCK_N": heur_block_n,
+        "num_warps": heur_num_warps,
+    }
 )
 @triton.jit(do_not_specialize=["mean_num"])
 def softmax_and_sub_reduce_kernel(

@@ -30,8 +30,7 @@ else:
 def all_shapes_same(shapes):
     if len(shapes) == 0:
         return False
-    rank = len(shapes[0])
-    return all(len(shape) == rank for shape in shapes)
+    return all(shape == shapes[0] for shape in shapes)
 
 def _type_name(type) -> str:
     "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"

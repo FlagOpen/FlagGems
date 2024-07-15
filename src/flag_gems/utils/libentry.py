@@ -1,8 +1,15 @@
 import inspect
 
 import triton
+import torch
+import torch_mlu
+import triton.backends.mlu.driver as driver
 
 MLU_GRID_MAX = 65535
+
+getdeviceprob = lambda x: driver.BangUtils().get_device_properties(torch.mlu.current_device()).get(x)
+TOTAL_CLUSTER_NUM = getdeviceprob('cluster_num')
+TOTAL_CORE_NUM = TOTAL_CLUSTER_NUM * getdeviceprob("core_num_per_cluster")
 
 class LibEntry(triton.KernelInterface):
     def __init__(
@@ -113,18 +120,18 @@ class LibEntry(triton.KernelInterface):
         else:
             kernel, constexprs = self.kernel_cache[entry_key]
 
-        if callable(grid):
-            # collect all arguments to the grid fn，ie:
-            # 1. args,
-            # 2. kwargs,
-            # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
-            # when kwargs & captured args conflict, captured args have higher priority
-            meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
-            grid = grid(meta)
-        grid = grid + (1, 1)
+            if callable(grid):
+                # collect all arguments to the grid fn，ie:
+                # 1. args,
+                # 2. kwargs,
+                # 3. all all other captured arguments in CompiledKernel from Autotunner & Heuristics
+                # when kwargs & captured args conflict, captured args have higher priority
+                meta = {**dict(zip(self.arg_names, args)), **kwargs, **constexprs}
+                grid = grid(meta)
+            grid = grid + (1, 1)
 
-        kernel[grid[0:3]](*k_args)
-        return
+            kernel[grid[0:3]](*k_args)
+        return kernel, constexprs
 
 
 def libentry():

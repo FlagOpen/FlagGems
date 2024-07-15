@@ -25,6 +25,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .isclose import allclose, isclose
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -42,6 +43,9 @@ from .neg import neg
 from .outer import outer
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
+from .rand import rand
+from .rand_like import rand_like
+from .randn import randn
 from .reciprocal import reciprocal
 from .relu import relu
 from .rms_norm import rms_norm
@@ -62,6 +66,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "allclose",
     "any",
     "any_dim",
     "any_dims",
@@ -91,6 +96,7 @@ __all__ = [
     "group_norm",
     "gt",
     "gt_scalar",
+    "isclose",
     "isinf",
     "isnan",
     "layer_norm",
@@ -103,6 +109,9 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "rand",
+    "randn",
+    "rand_like",
     "mv",
     "ne",
     "ne_scalar",

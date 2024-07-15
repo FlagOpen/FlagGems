@@ -1,4 +1,3 @@
-import pytest
 import torch
 
 import flag_gems
@@ -14,8 +13,7 @@ from .performance_utils import (
 )
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_gelu_and_mul(dtype):
+def test_perf_gelu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.gelu(x), y)
 
@@ -25,7 +23,7 @@ def test_perf_gelu_and_mul(dtype):
         op_name="gelu_and_mul",
         torch_op=torch_op,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
@@ -33,8 +31,7 @@ def test_perf_gelu_and_mul(dtype):
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_silu_and_mul(dtype):
+def test_perf_silu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.silu(x), y)
 
@@ -44,7 +41,7 @@ def test_perf_silu_and_mul(dtype):
         op_name="silu_and_mul",
         torch_op=torch_op,
         arg_func=binary_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
@@ -52,8 +49,7 @@ def test_perf_silu_and_mul(dtype):
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_skip_layernorm(dtype):
+def test_perf_skip_layernorm():
     def skip_layernorm_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         residual = torch.randn([batch, size], dtype=dtype, device=DEVICE)
@@ -90,7 +86,7 @@ def test_perf_skip_layernorm(dtype):
         op_name="skip_layernorm",
         torch_op=torch_op,
         arg_func=skip_layernorm_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
     )
@@ -98,8 +94,7 @@ def test_perf_skip_layernorm(dtype):
     bench.run()
 
 
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_perf_skip_rmsnorm(dtype):
+def test_perf_skip_rmsnorm():
     def skip_rmsnorm_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
         residual = torch.randn([batch, size], dtype=dtype, device=DEVICE)
@@ -132,7 +127,7 @@ def test_perf_skip_rmsnorm(dtype):
         op_name="skip_rmsnorm",
         torch_op=torch_op,
         arg_func=skip_rmsnorm_args,
-        dtype=dtype,
+        dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
     )

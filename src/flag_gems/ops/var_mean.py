@@ -117,9 +117,15 @@ def var_mean_kernel_1(
         tl.store(Count_ptr, count)
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["BLOCK_NUM"])
+
+
 @libentry()
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["BLOCK_NUM"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
