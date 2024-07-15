@@ -55,9 +55,14 @@ def prod(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
-    prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
+    with torch.cuda.device(inp.device):
+        prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
+        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
+
+
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
 
 
 @libentry()
@@ -76,7 +81,9 @@ def prod(inp, *, dtype=None):
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def prod_kernel(
@@ -131,6 +138,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    prod_kernel[grid](inp, out, M, N, K)
+    with torch.cuda.device(inp.device):
+        prod_kernel[grid](inp, out, M, N, K)
 
     return out
