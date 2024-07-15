@@ -37,13 +37,13 @@ def topk_stage1_kernel(
     cols = tl.arange(0, CHUNK_SIZE)
     mask = (chunk_offset + cols) < N
 
-    x_val = tl.load(x_ptr + cols, mask=mask, other=-10000.0)
+    x_val = tl.load(x_ptr + cols, mask=mask, other=-10000.0).to(tl.float32)
     for k_idx in range(k):
         chunk_max_val = tl.max(x_val)
         chunk_max_idx = tl.argmax(x_val, axis=0)
         tl.store(y_ptr + k_idx, chunk_max_val)
         tl.store(index_ptr + k_idx, chunk_max_idx + chunk_offset)
-        x_val = tl.where(cols == chunk_max_idx, -10000, x_val)
+        x_val = tl.where(cols == chunk_max_idx, -10000.0, x_val)
 
 
 """
@@ -163,7 +163,7 @@ def topk_stage2_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=-10000.0)
+    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=-10000.0).to(tl.float32)
     chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=-10000)
 
     sorted_chunk_x, sorted_chunk_index = argsort(
@@ -208,6 +208,12 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
 
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
+
+    print(stage2_out.shape, stage2_out.dtype)
+    print(stage2_out_idx.shape, stage2_out_idx.dtype)
+
+    print(stage1_out.shape, stage1_out.dtype)
+    print(stage1_out_idx.shape, stage1_out_idx.dtype)
 
     topk_stage2_kernel[batch_size,](
         stage2_out,

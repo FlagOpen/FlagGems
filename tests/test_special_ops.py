@@ -9,6 +9,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 
@@ -186,3 +187,24 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.parametrize("hiddensize", [128])
+@pytest.mark.parametrize("topk", [2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_topk(
+    batch_size,
+    hiddensize,
+    topk,
+    dtype,
+):
+    x = torch.randn((batch_size, hiddensize), dtype=dtype, device="cuda")
+
+    ref_value, ref_index = torch.topk(x, topk)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk)
+
+    gems_assert_close(ref_value, res_value, dtype)
+    gems_assert_equal(ref_index, res_index)
