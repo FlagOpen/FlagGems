@@ -1,3 +1,7 @@
+import logging
+import math
+
+import torch
 import triton
 import triton.language as tl
 import triton.language.core as core
@@ -136,6 +140,7 @@ def topk_stage2_kernel(
     CHUNK_X,  # pointer to the input
     CHUNK_INDEX,  # pointer to the input
     k: tl.constexpr,
+    DESCENDING: tl.constexpr,
     N: tl.constexpr,  # number of columns in X
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -145,18 +150,48 @@ def topk_stage2_kernel(
     chunk_x_val = tl.load(CHUNK_X + cols, mask=mask, other=-10000.0)
     chunk_index_val = tl.load(CHUNK_INDEX + cols, mask=mask, other=-10000)
 
-    # for k_idx in range(k):
-    #     chunk_max_val = tl.max(chunk_x_val)
-    #     chunk_max_idx = tl.argmax(chunk_x_val, axis=0)
-
-    #     tl.store(Y + k_idx, chunk_max_val)
-    #     chunk_index_val = tl.load(CHUNK_INDEX + chunk_max_idx)
-    #     tl.store(INDEX + k_idx, chunk_index_val)
-
-    #     chunk_x_val = tl.where(cols == chunk_max_idx, -10000, chunk_x_val)
-
     sorted_chunk_x, sorted_chunk_index = argsort(
         chunk_x_val, chunk_index_val, descending=True
     )
     tl.store(Y + cols, sorted_chunk_x, mask=cols < k)
     tl.store(INDEX + cols, sorted_chunk_index, mask=cols < k)
+
+
+def topk(x, k, dim=-1, largest=True, sorted=True):
+    logging.debug("GEMS TOPK")
+    assert dim == -1, "Currently only support topk in last dimension"
+    assert largest, "Currently only support largest == True"
+    assert sorted, "Currently only support sorted == True"
+
+    N = math.prod(x.shape)
+    CHUNK_SIZE = 128
+    CHUNK_NUM = triton.cdiv(N, CHUNK_SIZE)
+
+    stage1_out = torch.empty(CHUNK_NUM * k, device=x.device, dtype=x.dtype)
+    stage1_out_idx = torch.empty(CHUNK_NUM * k, device=x.device, dtype=torch.int32)
+    stage2_out = torch.empty(k, device=x.device, dtype=x.dtype)
+    stage2_out_idx = torch.empty(k, device=x.device, dtype=torch.int32)
+
+    topk_stage1_kernel[CHUNK_NUM,](
+        stage1_out,  # pointer to the output
+        stage1_out_idx,  # pointer to the output
+        x,  # pointer to the input
+        topk,
+        N,
+        CHUNK_SIZE,
+    )
+
+    stage2_elem_cnt = CHUNK_NUM * k
+    BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
+
+    topk_stage2_kernel[1,](
+        stage2_out,
+        stage2_out_idx,
+        stage1_out,
+        stage1_out_idx,
+        k,
+        stage2_elem_cnt,
+        BLOCK_SIZE,
+    )
+
+    return (stage2_out, stage2_out_idx)
