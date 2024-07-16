@@ -8,19 +8,16 @@ from ..utils import libentry
 
 
 def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
     configs = [
-        triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=w)
-        for w in warps
+        triton.Config({"M_BLOCK_SIZE": 32, "N_BLOCK_SIZE": 512}, num_warps=1, num_stages=3),
+        triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=1, num_stages=0)
     ]
     return configs
 
 
 def cfggen_batch():
-    warps = [1, 2, 4, 8, 16, 32]
     configs = [
-        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=w)
-        for w in warps
+        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=1)
     ]
     return configs
 
