@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 import triton.backends.mlu.driver as driver
 
-from ..utils import libentry, TOTAL_CLUSTER_NUM, MLU_GRID_MAX
+from ..utils import libentry, TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM
 
 MAX_C_MLU_SOFTMAX_FORWARD = 16384
 MAX_C_MLU_SOFTMAX_BACKWARD = 8192
@@ -240,7 +240,7 @@ def softmax_kernel_inner(
 )
 @triton.heuristics(
     values={
-        "TILE_K": lambda args: max(triton.cdiv(args["K"], MLU_GRID_MAX), args["TILE_K"])
+        "TILE_K": lambda args: max(triton.cdiv(args["K"], TOTAL_CORE_NUM), args["TILE_K"])
     }
 )
 @triton.heuristics(

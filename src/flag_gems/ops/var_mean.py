@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, MLU_GRID_MAX
+from ..utils import libentry, TOTAL_CORE_NUM
 from ..utils import dim_compress
 
 
@@ -172,7 +172,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
-        grid = min(BLOCK_NUM, MLU_GRID_MAX)
+        grid = min(BLOCK_NUM, TOTAL_CORE_NUM)
         with torch.mlu.device(x.device):
             var_mean_kernel_1[(grid,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
             var_mean_kernel_2[(1,)](
@@ -190,7 +190,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), MLU_GRID_MAX),)
+        grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), TOTAL_CORE_NUM),)
         with torch.mlu.device(x.device):
             var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 

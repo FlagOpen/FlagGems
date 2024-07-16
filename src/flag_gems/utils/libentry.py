@@ -5,7 +5,7 @@ import torch
 import torch_mlu
 import triton.backends.mlu.driver as driver
 
-MLU_GRID_MAX = 65535
+TOTAL_CORE_NUM = 48
 
 getdeviceprob = lambda x: driver.BangUtils().get_device_properties(torch.mlu.current_device()).get(x)
 TOTAL_CLUSTER_NUM = getdeviceprob('cluster_num')
