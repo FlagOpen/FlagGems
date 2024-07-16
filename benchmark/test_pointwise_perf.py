@@ -1,4 +1,5 @@
 import torch
+import flag_gems
 
 from .performance_utils import (
     FLOAT_DTYPES,
@@ -75,16 +76,20 @@ def test_perf_bitwiseor():
     bench.run()
 
 
-# def test_perf_clamp():
-#     bench = Benchmark(
-#         op_name="clamp",
-#         torch_op=torch.clamp,
-#         arg_func=ternary_args,
-#         dtypes=FLOAT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_clamp():
+    def torch_clamp(*args):
+        input, minv, maxv = args
+        return torch.min(torch.max(input, minv), maxv)
+    bench = Benchmark(
+        op_name="clamp",
+        torch_op=torch_clamp,
+        arg_func=ternary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.set_gems(flag_gems.ops.clamp_tensor)
+    bench.run()
 
 
 def test_perf_cos():
