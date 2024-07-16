@@ -3,6 +3,7 @@ import torch
 from .performance_utils import (
     FLOAT_DTYPES,
     POINTWISE_BATCH,
+    DEVICE,
     SIZES,
     Benchmark,
     unary_arg,
@@ -11,7 +12,7 @@ from .performance_utils import (
 
 def test_perf_rand():
     def rand_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
+        return {"size": (batch, size), "dtype": dtype, "device": DEVICE}
 
     bench = Benchmark(
         op_name="rand",
@@ -27,7 +28,7 @@ def test_perf_rand():
 
 def test_perf_randn():
     def randn_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
+        return {"size": (batch, size), "dtype": dtype, "device": DEVICE}
 
     bench = Benchmark(
         op_name="randn",

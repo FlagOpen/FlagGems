@@ -5,7 +5,7 @@ def pytest_addoption(parser):
         default="mlu",
         required=False,
         choices=["cuda", "cpu", "mlu"],
-        help="record latency in cuda or cpu",
+        help="record latency in cuda or cpu or mlu",
     )
 
 
