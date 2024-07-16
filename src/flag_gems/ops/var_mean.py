@@ -11,15 +11,24 @@ from ..utils import dim_compress
 def cfggen():
     block_m = [1, 2, 4, 8]
     block_n = [1024, 2048]
-    warps = [4, 8, 16]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=w)
+        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1)
         for m in block_m
         for n in block_n
-        for w in warps
     ]
     return configs
 
+def cfg_reduce_op(init_out: bool):
+    block_size = [1, 64, 256, 1024]
+    if init_out:
+        configs = [
+            triton.Config({"BLOCK_SIZE": size}, num_warps=1, num_stages=3, pre_hook=lambda nargs: nargs['Out'].zero_()) for size in block_size
+        ]
+    else:
+        configs = [
+            triton.Config({"BLOCK_SIZE": size}, num_warps=1, num_stages=3) for size in block_size
+        ]
+    return configs
 
 @triton.jit
 def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
@@ -83,6 +92,7 @@ def var_mean_welford_kernel(
 
 
 @libentry()
+@triton.autotune(configs=cfg_reduce_op(init_out=False), key=["N"])
 @triton.jit
 def var_mean_kernel_1(
     X,
@@ -90,43 +100,41 @@ def var_mean_kernel_1(
     Average,
     Count,
     N,
-    BLOCK_N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    num_prog = tl.num_programs(0)
-    task_num = tl.cdiv(N, BLOCK_N)
-    iter_num = tl.cdiv(task_num, num_prog)
+
     # Map the program id to the row of X it should compute.
-    for i in range(0, iter_num):
-        pid = i * num_prog + tl.program_id(0)
-        offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
 
-        X_ptr = X + offset
-        Acc_ptr = Acc + pid
-        Average_ptr = Average + pid
-        Count_ptr = Count + pid
-        mask = offset < N
+    count = 0.0
+    _tmp1 = tl.zeros([BLOCK_SIZE], tl.float32)
+    _tmp2 = tl.zeros([BLOCK_SIZE], tl.float32)
+    for block_start_offset in range(block_start, N, step):
+        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < N
+        x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+        _count = tl.sum(mask.to(tl.float32))
+        count = count + _count
+        _tmp1 = _tmp1 + x
+        _tmp2 = _tmp2 + x * x
 
-        x = tl.load(X_ptr, mask, other=0.0).to(tl.float32)
+    count = tl.maximum(count, 1)
+    average = tl.sum(_tmp1) / count
+    acc = tl.sum(_tmp2) - count * average * average
 
-        count = tl.sum(mask.to(tl.float32))
-        average = tl.sum(x) / count
-        acc = tl.sum(x * x) - count * average * average
+    Acc = Acc + pid
+    Average = Average + pid
+    Count = Count + pid
 
-        tl.store(Average_ptr, average)
-        tl.store(Acc_ptr, acc)
-        tl.store(Count_ptr, count)
-
-
-def heur_block_n(args):
-    return triton.next_power_of_2(args["BLOCK_NUM"])
+    tl.store(Average, average)
+    tl.store(Acc, acc)
+    tl.store(Count, count)
 
 
 @libentry()
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
-)
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_kernel_2(
     Acc,
@@ -136,18 +144,15 @@ def var_mean_kernel_2(
     Mean,
     N,
     correction,
-    BLOCK_NUM,
-    BLOCK_N: tl.constexpr,
+    BLOCK_NUM: tl.constexpr,
 ):
-    offset = tl.arange(0, BLOCK_N)
-    mask = offset < BLOCK_NUM
+    offset = tl.arange(0, BLOCK_NUM)
     Acc = Acc + offset
     Average = Average + offset
     Count = Count + offset
-    acc = tl.load(Acc, mask, other=0.0).to(tl.float32)
-    average = tl.load(Average, mask, other=0.0).to(tl.float32)
-    count = tl.load(Count, mask, other=0.0).to(tl.float32)
-
+    acc = tl.load(Acc)
+    average = tl.load(Average)
+    count = tl.load(Count)
     mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
     var = nvar / (N - correction)
@@ -166,18 +171,13 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         N = x.numel()
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
-        BLOCK_N = 1024
-        BLOCK_NUM = triton.cdiv(N, BLOCK_N)
-        acc = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-        count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
-
-        grid = min(BLOCK_NUM, TOTAL_CORE_NUM)
+        acc = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
+        average = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
+        count = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         with torch.mlu.device(x.device):
-            var_mean_kernel_1[(grid,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
+            var_mean_kernel_1[(TOTAL_CORE_NUM,)](x, acc, average, count, N)
             var_mean_kernel_2[(1,)](
-                acc, average, count, var, mean, N, correction, BLOCK_NUM
-            )
+                acc, average, count, var, mean, N, correction, BLOCK_NUM=TOTAL_CORE_NUM)
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
