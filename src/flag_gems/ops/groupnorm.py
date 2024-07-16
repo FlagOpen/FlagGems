@@ -68,6 +68,88 @@ def group_norm_kernel(
     tl.store(Mean_ptr, mean)
     tl.store(Rstd_ptr, rstd)
 
+def split(num_groups, hw):
+    if num_groups <= 4: 
+        split = num_groups
+    elif num_groups <= 16:
+        split = 6
+    else:
+        split = 8
+    if num_groups // split == 0:
+        return num_groups
+    return split
+
+def num_stages(args):
+    return 3
+
+def num_warps(args):
+    return 1
+
+@libentry()
+@triton.heuristics({ 'SPLIT': lambda args: split(args['num_groups'], args["HW"]) })
+@triton.heuristics({
+    'num_stages': lambda args: num_stages(args),
+    'num_warps': lambda args: num_warps(args)
+})
+@triton.jit(do_not_specialize=["eps"])
+def group_norm_kernel_opt(
+    X,
+    Y,
+    W,
+    B,
+    Mean,
+    Rstd,
+    group_size,
+    C,
+    HW,
+    num_groups,
+    eps,
+    BLOCK_GROUP_SIZE: tl.constexpr,
+    BLOCK_HW_SIZE: tl.constexpr,
+    SPLIT: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    div_v = tl.cdiv(num_groups, SPLIT)
+    div_mod = num_groups % SPLIT
+    split_group = pid % div_v
+    split_n = pid // div_v
+    real_num_elements = group_size * HW
+
+    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
+    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
+     
+    W_ptr = W + split_group * SPLIT * group_size
+    B_ptr = B + split_group * SPLIT * group_size
+
+    Mean_ptr = Mean + split_n * num_groups + split_group * SPLIT
+    Rstd_ptr = Rstd + split_n * num_groups + split_group * SPLIT
+
+    xy_offset = split_n * real_num_elements * num_groups + split_group * SPLIT * real_num_elements + group_offset[:, None] * HW + hw_offset[None, :]
+
+    xy_mask = group_offset[:, None] < C and hw_offset[None, :] < HW
+    wb_mask = group_offset < C
+
+    ub = SPLIT
+    if (div_mod != 0) and ((split_group+1) == div_v):
+        ub = div_mod
+    for idx in range(0, ub):
+        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+        weight = tl.load(W_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
+        bias = tl.load(B_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
+
+        mean = tl.sum(X_val) / real_num_elements
+        x = tl.where(xy_mask, X_val - mean, 0.0)
+        var = tl.sum(x * x) / real_num_elements
+        rstd = tl.rsqrt(var + eps)
+        x_hat = x * rstd
+
+        Y_val = x_hat * weight + bias
+        tl.store(Y + xy_offset, Y_val, mask=xy_mask)
+        xy_offset += real_num_elements 
+        group_offset += group_size
+
+        tl.store(Mean_ptr + idx, mean)
+        tl.store(Rstd_ptr + idx, rstd)
 
 @libentry()
 @triton.jit
@@ -182,10 +264,10 @@ class GroupNorm(torch.autograd.Function):
         y = torch.empty_like(x)
         mean = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
         rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
-        grid = (N * num_groups,)
+        grid = lambda meta: ( N * triton.cdiv(num_groups, meta["SPLIT"]),)
 
         with torch.mlu.device(x.device):
-            group_norm_kernel[grid](
+            group_norm_kernel_opt[grid](
                 x,
                 y,
                 weight,
@@ -197,7 +279,7 @@ class GroupNorm(torch.autograd.Function):
                 HW,
                 num_groups,
                 eps,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
                 BLOCK_HW_SIZE=triton.next_power_of_2(HW),
             )
         ctx.save_for_backward(x, weight, mean, rstd)
