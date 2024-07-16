@@ -1,12 +1,23 @@
-from PIL import Image
-import torch
 import pytest
-import flag_gems
 import requests
+import torch
+from PIL import Image
 from transformers import AutoProcessor, LlavaForConditionalGeneration
 
-@pytest.mark.parametrize("prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"])
-@pytest.mark.parametrize("url", ["https://www.ilankelman.org/stopsigns/australia.jpg"])
+import flag_gems
+
+
+@pytest.mark.parametrize(
+    "prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"]
+)
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.ilankelman.org/stopsigns/australia.jpg",
+        "https://www.ilankelman.org/themes2/towerpisaleaning.jpg",
+        "https://www.ilankelman.org/themes1/sunsetrainbowbb.jpg",
+    ],
+)
 def test_accuracy_llava(prompt, url):
     model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf")
     processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
@@ -20,7 +31,7 @@ def test_accuracy_llava(prompt, url):
 
     with flag_gems.use_gems():
         res_output = model(**inputs).logits
-    
+
     maxdiff = torch.max(torch.abs(ref_output - res_output))
     succeed = True
     if (
@@ -41,4 +52,4 @@ def test_accuracy_llava(prompt, url):
         succeed = score >= 0.99
     assert (
         succeed
-    ), f"LLAVA_{dtype} FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_output}\nRES: {res_output}"
+    ), f"LLAVA FAIL with maxdiff {maxdiff} and score {score}\nREF: {ref_output}\nRES: {res_output}"
