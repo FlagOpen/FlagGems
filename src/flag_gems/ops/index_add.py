@@ -1,17 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-
-def dim_compress(inp, dims):
-    if isinstance(dims, int):
-        dims = [dims]
-    dim = inp.ndim
-    stride = inp.stride()
-    batch_dim = [i for i in range(dim) if i not in dims]
-    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
-    order = batch_dim + sorted_reduction_dim
-    return inp.permute(order).contiguous()
+from ..utils import dim_compress, libentry
 
 
 def cfggen():
@@ -22,10 +15,11 @@ def cfggen():
     return configs
 
 
+@libentry
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def index_add_kernel(
-    inp, index, src, M, N, alpha, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+    inp, out, index, src, M, N, alpha, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
 ):
     pid = tl.program_id(0)
     rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -44,10 +38,11 @@ def index_add_kernel(
 
         cur_inp += alpha * cur_src
 
-        tl.store(inp + inp_off, cur_inp, mask=block_mask)
+        tl.store(out + inp_off, cur_inp, mask=block_mask)
 
 
-def index_add_(inp, dim, index, src, alpha=1):
+def index_add(inp, dim, index, src, alpha=1):
+    logging.debug("GEMS INDEX ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"
@@ -66,21 +61,15 @@ def index_add_(inp, dim, index, src, alpha=1):
     src_shape = list(src.shape)
     inp = dim_compress(inp, dim)
     src = dim_compress(src, dim)
+    out = torch.empty_like(inp, dtype=inp.dtype, device=inp.device)
     N = src_shape[dim]
     M = src.numel() // N
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    index_add_kernel[grid](inp, index, src, M, N, alpha)
-    return inp
-
-
-x1 = torch.ones(3, 3, device="cuda")
-x2 = torch.ones(3, 3, device="cuda")
-src = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=torch.float, device="cuda")
-index = torch.tensor([0, 1, 2], device="cuda")
-dim = 0
-alpha = 1
-triton_res = index_add_(x1, dim, index, src, alpha)
-torch_res = torch.index_add(x2, dim, index, src, alpha=alpha)
-print("triton_res", triton_res)
-print("torch_res", torch_res)
+    index_add_kernel[grid](inp, out, index, src, M, N, alpha)
+    if dim != out.ndim - 1:
+        order = [i for i in range(out.ndim - 1)]
+        order.insert(order, inp.ndim - 1)
+        return out.permute(order).contiguous()
+    else:
+        return out

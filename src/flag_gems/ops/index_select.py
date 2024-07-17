@@ -4,13 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import dim_compress, libentry
 
 
 def cfggen():
-    block_m = [4]
+    block_m = [1, 2, 4, 8]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 2}, num_warps=1) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 128}, num_warps=4) for m in block_m
     ]
     return configs
 
@@ -51,7 +51,6 @@ def index_select(inp, dim, index):
     dim = dim % inp.ndim
     inp_shape = list(inp.shape)
 
-    """
     # with dim_compress
     inp = dim_compress(inp, dim)
     N = inp_shape[dim]
@@ -73,8 +72,9 @@ def index_select(inp, dim, index):
     # with gather
     new_index_shape = [1] * inp.ndim
     new_index_shape[dim] = index.size(0)
-    index_ = index.view(new_index_shape).clone()
+    index_ = index.view(new_index_shape)
     new_index_shape = inp_shape
     new_index_shape[dim] = index.size(0)
-    index_ = index_.expand(new_index_shape).clone()
+    index_ = index_.expand(new_index_shape)
     return torch.gather(inp, dim, index_)
+    """

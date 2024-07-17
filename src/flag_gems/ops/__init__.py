@@ -26,6 +26,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .index_add import index_add
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -35,6 +36,7 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
+from .masked_fill import masked_fill
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -105,6 +107,7 @@ __all__ = [
     "group_norm",
     "gt",
     "gt_scalar",
+    "index_add",
     "index_select",
     "isclose",
     "isfinite",
@@ -115,6 +118,7 @@ __all__ = [
     "le_scalar",
     "lt",
     "lt_scalar",
+    "masked_fill",
     "rms_norm",
     "mean",
     "mean_dim",
