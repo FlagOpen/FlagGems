@@ -376,6 +376,7 @@ def generate_destination_passing_pointwise_wrapper(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    same_shapes: bool
 ) -> IndentedBuffer:
     # wrapper signature
     parameters: str = parameter_for_wrapper(op_desc, include_outputs=True)
@@ -391,8 +392,12 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = volume(shape)")
 
+        tile_size = 16384
         if rank > 0:
-            code.writeline("tile_size = min(16384, triton.next_power_of_2(num_tasks))")
+            if same_shapes:
+                code.writeline(f"tile_size = min({tile_size}, triton.next_power_of_2(num_tasks))")
+            else:
+                code.writeline(f"tile_size = min({tile_size//2}, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
@@ -748,7 +753,7 @@ def generate_code(
         op_desc, wrapper_name, destination_passing_func_name, code, same_shapes
     )
     code = generate_destination_passing_pointwise_wrapper(
-        op_desc, rank, destination_passing_func_name, kernel_name, code
+        op_desc, rank, destination_passing_func_name, kernel_name, code, same_shapes
     )
     code = generate_pointwise_kernel(op_desc, scalar_fn, rank, kernel_name, code)
     return code
