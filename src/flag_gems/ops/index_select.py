@@ -1,23 +1,10 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
-
-def dim_compress(inp, dims):
-    if isinstance(dims, int):
-        dims = [dims]
-    dim = inp.ndim
-    stride = inp.stride()
-    batch_dim = [i for i in range(dim) if i not in dims]
-    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
-    order = batch_dim + sorted_reduction_dim
-    return inp.permute(order).contiguous()
-
-
-def expand_index(index, inp_shape, dim):
-    index_ = []
-    # TODO
-    return tuple(index_)
+from ..utils import libentry
 
 
 def cfggen():
@@ -28,6 +15,7 @@ def cfggen():
     return configs
 
 
+@libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def index_select_kernel(
@@ -53,6 +41,7 @@ def index_select_kernel(
 
 
 def index_select(inp, dim, index):
+    logging.debug("GEMS INDEX SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
     assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
@@ -63,8 +52,8 @@ def index_select(inp, dim, index):
     inp_shape = list(inp.shape)
 
     """
+    # with dim_compress
     inp = dim_compress(inp, dim)
-    #print("inp_reshape", inp)
     N = inp_shape[dim]
     M = inp.numel() // N
     index_len = index.numel()
@@ -74,20 +63,18 @@ def index_select(inp, dim, index):
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     index_select_kernel[grid](inp, out, M, N, index, index_len)
-    res_shape = inp_shape
-    res_shape[dim] = index.numel()
+    if dim != out.ndim - 1:
+        order = [i for i in range(out.ndim - 1)]
+        order.insert(dim, out.ndim - 1)
+        return out.permute(order).contiguous()
+    else:
+        return out
     """
-    print(expand_index(index, inp_shape, dim))
-
-    return torch.gather(inp, dim, index)
-
-
-inp = torch.arange(1, 61, device="cuda").reshape(3, 4, 5)
-print("inp", inp)
-indices = torch.tensor([0, 2], device="cuda")
-dim = 1
-torch_res = torch.index_select(inp, dim, indices)
-print("torch_res", torch_res)
-triton_res = index_select(inp, dim, indices)
-print("triton_res", triton_res)
-print("✅" if torch.allclose(triton_res, torch_res) else "❌")
+    # with gather
+    new_index_shape = [1] * inp.ndim
+    new_index_shape[dim] = index.size(0)
+    index_ = index.view(new_index_shape).clone()
+    new_index_shape = inp_shape
+    new_index_shape[dim] = index.size(0)
+    index_ = index_.expand(new_index_shape).clone()
+    return torch.gather(inp, dim, index_)
