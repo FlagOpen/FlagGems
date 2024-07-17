@@ -79,6 +79,9 @@ def sum(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
+        if dtype is torch.bool:
+            inp = inp.to(torch.int64)
+            dtype = torch.int64
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -86,8 +89,9 @@ def sum(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-    sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    with torch.cuda.device(inp.device):
+        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
 
@@ -95,6 +99,8 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS SUM DIM")
     if dtype is None:
         dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
@@ -108,7 +114,8 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    sum_kernel[grid](inp, out, M, N)
+    with torch.cuda.device(inp.device):
+        sum_kernel[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out
