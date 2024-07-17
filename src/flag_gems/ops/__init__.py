@@ -28,6 +28,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .index_select import index_select
 from .isclose import allclose, isclose
+from .isfinite import isfinite
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -106,6 +107,7 @@ __all__ = [
     "gt_scalar",
     "index_select",
     "isclose",
+    "isfinite",
     "isinf",
     "isnan",
     "layer_norm",

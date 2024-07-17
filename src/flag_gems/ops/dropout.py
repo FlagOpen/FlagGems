@@ -4,15 +4,29 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 
-UNROLL = 4
+
+def heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
 
 
 @triton.heuristics(
-    values={
-        "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
-        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
+    {
+        "BLOCK": heur_block,
+        "num_warps": heur_num_warps,
     }
 )
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
@@ -25,6 +39,7 @@ def dropout_forward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
+    UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -66,9 +81,9 @@ def dropout_forward_kernel(
 
 
 @triton.heuristics(
-    values={
-        "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
-        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
+    {
+        "BLOCK": heur_block,
+        "num_warps": heur_num_warps,
     }
 )
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
@@ -81,7 +96,7 @@ def dropout_backward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL = 4
+    UNROLL: tl.constexpr = 4
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -119,6 +134,9 @@ def dropout_backward_kernel(
     tl.store(DX + off_1, dx_1, mask=off_1 < N, eviction_policy="evict_first")
     tl.store(DX + off_2, dx_2, mask=off_2 < N, eviction_policy="evict_first")
     tl.store(DX + off_3, dx_3, mask=off_3 < N, eviction_policy="evict_first")
+
+
+UNROLL = 4
 
 
 class NativeDropout(torch.autograd.Function):
