@@ -108,6 +108,8 @@ UPSAMPLE_SHAPES = [
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
+if hasattr(torch, "corex"):
+    ALL_FLOAT_DTYPES = FLOAT_DTYPES 
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
 BOOL_TYPES = [torch.bool]
