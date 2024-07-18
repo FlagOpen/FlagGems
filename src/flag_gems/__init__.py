@@ -26,6 +26,7 @@ def enable(lib=aten_lib):
     lib.impl("cumsum", cumsum, "CUDA")
     lib.impl("div.Tensor", div, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
+    lib.impl("embedding", embedding, "AutogradCUDA")
     lib.impl("eq.Tensor", eq, "CUDA")
     lib.impl("eq.Scalar", eq_scalar, "CUDA")
     lib.impl("exp", exp, "CUDA")
@@ -100,6 +101,7 @@ def enable(lib=aten_lib):
     lib.impl("gather.out", gather_out, "CUDA")
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
+    lib.impl("flip", flip, "CUDA")
 
 
 class use_gems:
