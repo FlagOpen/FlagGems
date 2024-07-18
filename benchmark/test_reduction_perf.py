@@ -273,3 +273,69 @@ def test_perf_vector_norm():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_index_select():
+    def index_select_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        import random
+
+        dim = random.choice([0, 1])
+        index_size = inp.size(dim)
+        from math import floor
+
+        index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
+        return (inp, dim, index)
+
+    bench = Benchmark(
+        op_name="index_select",
+        torch_op=torch.index_select,
+        arg_func=index_select_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_index_add():
+    def index_add_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        import random
+
+        dim = random.choice([0, 1])
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max // 2
+        index = torch.randint(0, index_max, (index_len,), device="cuda")
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        return (inp, dim, index, src)
+
+    bench = Benchmark(
+        op_name="index_add",
+        torch_op=torch.index_add,
+        arg_func=index_add_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_masked_fill():
+    def masked_fill_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        value = 1024
+        return (inp, mask, value)
+
+    bench = Benchmark(
+        op_name="masked_fill",
+        torch_op=torch.masked_fill,
+        arg_func=masked_fill_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()

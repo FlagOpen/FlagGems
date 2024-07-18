@@ -886,3 +886,59 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
         )
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    index_size = inp.size(dim)
+    from math import floor
+
+    index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.index_select(ref_inp, dim, index)
+    with flag_gems.use_gems():
+        res_out = torch.index_select(inp, dim, index)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_add(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+
+    src_shape = list(inp.shape)
+    index_max = src_shape[dim]
+    index_len = index_max // 2
+    index = torch.randperm(index_len, device="cuda")
+    src_shape[dim] = index_len
+    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    alpha = 2
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.index_add(ref_inp, dim, index, src, alpha=alpha)
+    with flag_gems.use_gems():
+        res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
+
+    gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+def test_accuracy_masked_fill(shape, dtype, threshold):
+    inp = torch.zeros(shape, dtype=dtype, device="cuda")
+    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+    value = 1024
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.masked_fill(ref_inp, mask, value)
+    with flag_gems.use_gems():
+        res_out = torch.masked_fill(inp, mask, value)
+
+    gems_assert_equal(res_out, ref_out)
