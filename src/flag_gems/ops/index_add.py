@@ -15,7 +15,7 @@ def cfggen():
     return configs
 
 
-@libentry
+@libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.jit
 def index_add_kernel(
@@ -69,7 +69,7 @@ def index_add(inp, dim, index, src, alpha=1):
     index_add_kernel[grid](inp, out, index, src, M, N, alpha)
     if dim != out.ndim - 1:
         order = [i for i in range(out.ndim - 1)]
-        order.insert(order, inp.ndim - 1)
+        order.insert(dim, inp.ndim - 1)
         return out.permute(order).contiguous()
     else:
         return out

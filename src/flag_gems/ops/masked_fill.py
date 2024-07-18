@@ -10,7 +10,7 @@ from ..utils import broadcastable_to, libentry
 def cfggen():
     block_m = [1, 2, 4, 8]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 128}, num_warps=4) for m in block_m
     ]
     return configs
 
