@@ -9,14 +9,18 @@ from ..utils import libentry
 
 
 def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    warps = [4, 8, 16]
+    block_m = [i for i in range(1, 36, 4)]  #[1, 2, 4]
+    block_n = [i for i in range(64, 193, 64)]
+    warps = [1]
+    num_stages = [1, 3]
     configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
+        triton.Config({
+            "BLOCK_ROW_SIZE": m,
+            "BLOCK_COL_SIZE": n
+        },
+                      num_warps=w,
+                      num_stages=s) for m in block_m for n in block_n
+        for w in warps for s in num_stages
     ]
     return configs
 
@@ -46,16 +50,6 @@ def layer_norm_kernel(
 
     # Compute mean
     _mean = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    for off in range(0, N, BLOCK_COL_SIZE):
-        cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _mean += a
-    mean = tl.sum(_mean, axis=1) / N
-    mean = mean[:, None]
-
     # Compute variance
     _var = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for off in range(0, N, BLOCK_COL_SIZE):
@@ -63,14 +57,17 @@ def layer_norm_kernel(
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        x = tl.where(col_mask, x - mean, 0.0)
-        _var += x * x
-    var = tl.sum(_var, axis=1) / N
+        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        _mean += a
+        _var += a * a
+    mean = tl.sum(_mean, axis=1) / N
+    mean_bc = mean[:, None]
+
+    var = tl.sum(_var, axis=1) / N - (mean * mean)
     var = var[:, None]
     rstd = 1 / tl.sqrt(var + eps)
     # Write mean / rstd
-    tl.store(Mean + row, mean)
+    tl.store(Mean + row, mean_bc)
     tl.store(Rstd + row, rstd)
 
     # Normalize and apply linear transformation
@@ -82,7 +79,7 @@ def layer_norm_kernel(
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        x = tl.where(col_mask, x - mean, 0.0)
+        x = tl.where(col_mask, x - mean_bc, 0.0)
         x_hat = x * rstd
         y = x_hat * w + b
         # Write output
@@ -92,9 +89,11 @@ def layer_norm_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
+        triton.Config({
+            "BLOCK_ROW_SIZE": m,
+            "BLOCK_COL_SIZE": 2048
+        },
+                      num_warps=w) for m in [1, 2, 4, 8] for w in [4, 8, 16]
     ],
     key=["M", "N"],
 )
@@ -111,7 +110,8 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(
+        0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -158,9 +158,11 @@ def layer_norm_backward_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for n in [1, 2, 4, 8]
-        for w in [4, 8]
+        triton.Config({
+            "BLOCK_ROW_SIZE": 2048,
+            "BLOCK_COL_SIZE": n
+        },
+                      num_warps=w) for n in [1, 2, 4, 8] for w in [4, 8]
     ],
     key=["N"],
 )
@@ -177,7 +179,8 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(
+        0, BLOCK_COL_SIZE)[None, :]
     col_mask = pid < N
     dY += pid
     X += pid
@@ -204,8 +207,15 @@ def weight_bias_backward_kernel(
 
 
 class LayerNorm(torch.autograd.Function):
+
     @staticmethod
-    def forward(ctx, x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
+    def forward(ctx,
+                x,
+                normalized_shape,
+                weight,
+                bias,
+                eps=1e-5,
+                cudnn_enable=True):
         logging.debug("GEMS LAYERNORM FORWARD")
         # dim = x.ndim - len(normalized_shape)
         # M = math.prod(x.shape[:dim])
@@ -235,17 +245,18 @@ class LayerNorm(torch.autograd.Function):
         N = ctx.N
         in_grad = torch.empty_like(x)
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd, in_grad, M, N)
+        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd,
+                                         in_grad, M, N)
         grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
 
         with torch.mlu.device(x.device):
-            weight_bias_backward_kernel[grid](
-                out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
-            )
+            weight_bias_backward_kernel[grid](out_grad, x, mean, rstd,
+                                              weight_grad, bias_grad, M, N)
         return in_grad, None, weight_grad, bias_grad, None, None
 
 
 def layer_norm(x, normalized_shape, weight, bias, eps=1e-5, cudnn_enable=True):
-    return LayerNorm.apply(x, normalized_shape, weight, bias, eps, cudnn_enable)
+    return LayerNorm.apply(x, normalized_shape, weight, bias, eps,
+                           cudnn_enable)

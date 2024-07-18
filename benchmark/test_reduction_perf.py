@@ -1,4 +1,5 @@
 import torch
+import flag_gems
 
 from .performance_utils import (
     BLAS_BATCH,
@@ -156,7 +157,7 @@ def test_perf_layernorm():
             weight,
             bias,
         )
-
+    gems_op = flag_gems.ops.layer_norm
     bench = Benchmark(
         op_name="layernorm",
         torch_op=torch.layer_norm,
@@ -165,6 +166,7 @@ def test_perf_layernorm():
         batch=REDUCTION_BATCH,
         sizes=SIZES,
     )
+    bench.set_gems(gems_op)
     bench.run()
 
 

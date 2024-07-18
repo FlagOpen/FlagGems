@@ -80,7 +80,7 @@ def test_perf_skip_layernorm():
     def torch_op(inp, residual, layer_shape, weight, bias):
         return torch.layer_norm(inp + residual, layer_shape, weight, bias)
 
-    gems_op = flag_gems.skip_layer_norm
+    gems_op = flag_gems.fused.skip_layer_norm
 
     bench = Benchmark(
         op_name="skip_layernorm",
