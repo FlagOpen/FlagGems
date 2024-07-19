@@ -31,7 +31,7 @@ def prod_kernel_mid(
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+        inp_val = tl.load(inp + offset, mask=mask, other=1.0).to(tl.float32)
         _tmp = inp_val * _tmp
 
     mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
@@ -41,11 +41,13 @@ def prod_kernel_mid(
 
 @libentry()
 @triton.jit
-def prod_kernel_result(mid, out, mid_size: tl.constexpr):
-    offset = tl.arange(0, mid_size)
-    mid_ptrs = mid + offset
-    mid_val = tl.load(mid_ptrs).to(tl.float32)
-    prod_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_mul)
+def prod_kernel_result(mid, out, mid_size: tl.constexpr, half_mid: tl.constexpr):
+    offset1 = tl.arange(0, half_mid)
+    offset2 = tl.arange(half_mid, mid_size)
+    first_half = tl.load(mid + offset1)
+    second_half = tl.load(mid + offset2)
+    prod_tmp = first_half * second_half
+    prod_val = tl.reduce(prod_tmp, axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
 
 
@@ -56,13 +58,14 @@ def prod(inp, *, dtype=None):
 
     M = inp.numel()
     mid_size = TOTAL_CORE_NUM
+    half_mid = mid_size // 2
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch.mlu.device(inp.device):
         prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M)
-        prod_kernel_result[(1, 1, 1)](mid, out, mid_size)
+        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, half_mid)
     return out
 
 
