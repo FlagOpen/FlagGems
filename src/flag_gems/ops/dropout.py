@@ -14,16 +14,6 @@ def heur_block(args):
     else:
         return 1024
 
-
-def heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
-
-
 @triton.heuristics(
     {
         "BLOCK": heur_block,
@@ -43,7 +33,6 @@ def dropout_forward_kernel(
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
 
-
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(0)
     i4_start = pid * BLOCK
@@ -51,7 +40,7 @@ def dropout_forward_kernel(
     step = num_jobs * BLOCK * UNROLL
     mp = 1.0 / (1.0 - p)
 
-    r = tl.empty([4, BLOCK], dtype=tl.float32)
+    r = tl.empty([UNROLL, BLOCK], dtype=tl.float32)
     for block_offset in range(block_start, N, step):
         c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
         c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
@@ -68,7 +57,6 @@ def dropout_forward_kernel(
 
         off = block_offset + tl.arange(0, UNROLL * BLOCK)
         x = tl.load(X + off, mask=off < N, other=0.0)
-
         y = x * mp * tl.reshape(mask, [UNROLL * BLOCK], can_reorder=True)  # tl.where(mask0, x0 * p, 0.0)
         tl.store(Y + off, y, mask=off < N)
         i4_start += num_jobs * BLOCK
@@ -89,18 +77,18 @@ def dropout_backward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL: tl.constexpr = 4
+    UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
 
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(0)
     i4_start = pid * BLOCK
-    block_start = pid * UNROLL * BLOCK
+    block_start = pid * BLOCK * UNROLL
     step = num_jobs * BLOCK * UNROLL
     mp = 1.0 / (1.0 - p)
 
-    r = tl.empty([4, BLOCK], dtype=tl.float32)
+    r = tl.empty([UNROLL, BLOCK], dtype=tl.float32)
     for block_offset in range(block_start, N, step):
         c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
         c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
@@ -115,11 +103,8 @@ def dropout_backward_kernel(
 
         mask = r > p
         off = block_offset + tl.arange(0, UNROLL * BLOCK)
-
         dy = tl.load(DY + off, mask=off < N, other=0.0)
-
         dx = mp * dy * tl.reshape(mask, [UNROLL * BLOCK], can_reorder=True)
-
         tl.store(DX + off, dx, mask=off < N)
         i4_start += num_jobs * BLOCK
 
