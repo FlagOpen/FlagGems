@@ -5,8 +5,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, TOTAL_CORE_NUM
-from ..utils import dim_compress
+from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 try:
     from triton.language.extra.mlu.libdevice import pow
@@ -22,18 +21,6 @@ def cfggen():
     configs = [
         triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=1) for m in block_m
     ]
-    return configs
-
-def cfg_reduce_op(init_out: bool):
-    block_size = [1, 64, 256, 1024]
-    if init_out:
-        configs = [
-            triton.Config({"BLOCK_SIZE": size}, num_warps=1, num_stages=3, pre_hook=lambda nargs: nargs['Out'].zero_()) for size in block_size
-        ]
-    else:
-        configs = [
-            triton.Config({"BLOCK_SIZE": size}, num_warps=1, num_stages=3) for size in block_size
-        ]
     return configs
 
 @libentry()
@@ -66,7 +53,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         tl.store(Out_ptr, out, row_mask)
 
 @libentry()
-@triton.autotune(configs=cfg_reduce_op(init_out=False), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def l2_norm_kernel_1(
     X,
@@ -135,7 +122,7 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfg_reduce_op(init_out=False), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def max_norm_kernel_1(
     X,
@@ -191,7 +178,7 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         tl.store(Out_ptr, out, row_mask)
 
 @libentry()
-@triton.autotune(configs=cfg_reduce_op(init_out=False), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def min_norm_kernel_1(
     X,
@@ -246,7 +233,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 
 
 # @libentry()
-@triton.autotune(configs=cfg_reduce_op(init_out=True), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=['Out'])
 @triton.jit
 def l0_norm_kernel_1(
     X,
@@ -299,7 +286,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 
 
 @libentry()
-@triton.autotune(configs=cfg_reduce_op(init_out=False), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_1(
     X,
@@ -356,17 +343,18 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             x = dim_compress(x, dim)
             M = x.numel()
 
+            grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
             mid = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
             out = torch.zeros(shape, dtype=torch.float, device=x.device)
             if ord == 2:
                 l2_norm_kernel_1[(TOTAL_CORE_NUM,)](x, mid, M)
                 l2_norm_kernel_2[(1,)](mid, out, BLOCK_NUM=TOTAL_CORE_NUM)
             elif ord == float("inf"):
-                max_norm_kernel_1[(TOTAL_CORE_NUM,)](x, out, M)
+                max_norm_kernel_1[grid](x, out, M)
             elif ord == -float("inf"):
-                min_norm_kernel_1[(TOTAL_CORE_NUM,)](x, out, M)
+                min_norm_kernel_1[grid](x, out, M)
             elif ord == 0:
-                l0_norm_kernel_1[(TOTAL_CORE_NUM,)](x, out, M)
+                l0_norm_kernel_1[grid](x, out, M)
             else:
                 l1_norm_kernel_1[(TOTAL_CORE_NUM,)](x, mid, M, ord)
                 l1_norm_kernel_2[(1,)](mid, out, ord, BLOCK_NUM=TOTAL_CORE_NUM)

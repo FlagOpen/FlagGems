@@ -4,8 +4,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, TOTAL_CORE_NUM
-from ..utils import dim_compress
+from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 
 def cfggen():
@@ -16,18 +15,6 @@ def cfggen():
         for m in block_m
         for n in block_n
     ]
-    return configs
-
-def cfg_reduce_op(init_out: bool):
-    block_size = [1, 64, 256, 1024]
-    if init_out:
-        configs = [
-            triton.Config({"BLOCK_SIZE": size}, num_warps=1, num_stages=3, pre_hook=lambda nargs: nargs['Out'].zero_()) for size in block_size
-        ]
-    else:
-        configs = [
-            triton.Config({"BLOCK_SIZE": size}, num_warps=1, num_stages=3) for size in block_size
-        ]
     return configs
 
 @triton.jit
@@ -92,14 +79,14 @@ def var_mean_welford_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfg_reduce_op(init_out=False), key=["N"])
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def var_mean_kernel_1(
     X,
     Acc,
     Average,
     Count,
-    N,
+    M,
     BLOCK_SIZE: tl.constexpr,
 ):
 
@@ -112,9 +99,9 @@ def var_mean_kernel_1(
     count = 0.0
     _tmp1 = tl.zeros([BLOCK_SIZE], tl.float32)
     _tmp2 = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, N, step):
+    for block_start_offset in range(block_start, M, step):
         offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < N
+        mask = offsets < M
         x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
         _count = tl.sum(mask.to(tl.float32))
         count = count + _count
@@ -142,7 +129,7 @@ def var_mean_kernel_2(
     Count,
     Var,
     Mean,
-    N,
+    M,
     correction,
     BLOCK_NUM: tl.constexpr,
 ):
@@ -155,7 +142,7 @@ def var_mean_kernel_2(
     count = tl.load(Count)
     mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
-    var = nvar / (N - correction)
+    var = nvar / (M - correction)
     tl.store(Mean, mean)
     tl.store(Var, var)
 
@@ -168,16 +155,18 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
     if dim is None or len(dim) == x.ndim:
         dim = list(range(x.ndim))
         shape = [1] * x.ndim
-        N = x.numel()
+        M = x.numel()
+
+        grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
         acc = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         average = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         count = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         with torch.mlu.device(x.device):
-            var_mean_kernel_1[(TOTAL_CORE_NUM,)](x, acc, average, count, N)
+            var_mean_kernel_1[(TOTAL_CORE_NUM,)](x, acc, average, count, M)
             var_mean_kernel_2[(1,)](
-                acc, average, count, var, mean, N, correction, BLOCK_NUM=TOTAL_CORE_NUM)
+                acc, average, count, var, mean, M, correction, BLOCK_NUM=TOTAL_CORE_NUM)
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
