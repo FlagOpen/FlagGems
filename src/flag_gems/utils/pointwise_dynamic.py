@@ -893,7 +893,7 @@ class WrapperGenerator:
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
+        code.writeline("with torch.musa._DeviceGuard(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -1075,7 +1075,8 @@ class PointwiseDynamicFunction:
 
         assert isinstance(scalar_fn, JITFunction)
         self._scalar_fn = scalar_fn
-        self._scalar_fn_cache_key = scalar_fn.cache_key
+        # FIXME: cache_key is too long and make open file failed.
+        self._scalar_fn_cache_key = scalar_fn.cache_key[:33]
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or CodeGenConfig(

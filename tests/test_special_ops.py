@@ -18,6 +18,7 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     to_reference,
+    to_reference_gpu,
 )
 from .conftest import TO_CPU
 
@@ -32,7 +33,7 @@ def test_accuracy_dropout(shape, p, dtype):
     if TO_CPU or shape == (1,):
         shape = (32768,)
     inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference_gpu(inp)
 
     # NOTE: ensure that scalars are float32(instead of float64)
     # in some cases, casting up then casting down have different result
@@ -44,13 +45,13 @@ def test_accuracy_dropout(shape, p, dtype):
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad)
+    ref_grad = to_reference_gpu(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    res_out = to_reference(res_out)
-    res_in_grad = to_reference(res_in_grad)
+    res_out = to_reference_gpu(res_out)
+    res_in_grad = to_reference_gpu(res_in_grad)
 
     exp_equal = (p * p + one_minus_p * one_minus_p) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
@@ -76,7 +77,9 @@ def test_accuracy_dropout(shape, p, dtype):
 
 
 def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="musa"):
-    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+    # FIXME: aten::pow.Scalar_out is not supported on torch_musa, so workaround temporarily.
+    # inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
+    inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim).cpu()).to(device)
     t = torch.arange(max_seq_len, device=device, dtype=inv_freq.dtype)
     freqs = torch.outer(t, inv_freq)
     cos = freqs.cos().to(dtype)

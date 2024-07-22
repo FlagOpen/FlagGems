@@ -129,7 +129,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch.cuda.device(mat1.device):
+    with torch.musa.device(mat1.device):
         addmm_kernel[grid](
             mat1,
             mat2,

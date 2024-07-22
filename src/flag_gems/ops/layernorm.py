@@ -331,7 +331,7 @@ class LayerNorm(torch.autograd.Function):
         mean = torch.empty(M, dtype=acc_type, device=x.device)
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
-        with torch.cuda.device(x.device):
+        with torch.musa.device(x.device):
             if N <= 128:
                 TILE_N = triton.next_power_of_2(N)
                 TILE_M = triton.cdiv(1024, TILE_N)
@@ -389,17 +389,14 @@ class LayerNorm(torch.autograd.Function):
         (x, weight, mean, rstd) = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
+        in_grad = torch.empty_like(x)
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd, in_grad, M, N)
+        grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
+        weight_grad = torch.empty_like(weight)
+        bias_grad = torch.empty_like(weight)
 
-        with torch.cuda.device(x.device):
-            in_grad = torch.empty_like(x)
-            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-            layer_norm_backward_kernel[grid](
-                out_grad, x, weight, mean, rstd, in_grad, M, N
-            )
-
-            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-            weight_grad = torch.empty_like(weight)
-            bias_grad = torch.empty_like(weight)
+        with torch.musa.device(x.device):
             weight_bias_backward_kernel[grid](
                 out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
             )

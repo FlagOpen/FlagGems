@@ -131,7 +131,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch.cuda.device(inp.device):
+        with torch.musa.device(inp.device):
             argmax_kernel_1[(mid_size, 1, 1)](
                 inp,
                 mid_value,
@@ -163,7 +163,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch.musa.device(inp.device):
             argmax_kernel[grid](
                 inp,
                 out_index,

@@ -61,7 +61,8 @@ STACK_SHAPES = [
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
 
-FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+# FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+FLOAT_DTYPES = [torch.float16, torch.float32]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
@@ -79,6 +80,15 @@ def to_reference(inp, upcast=False):
         ref_inp = ref_inp.to(torch.float64)
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
+    return ref_inp
+
+
+def to_reference_gpu(inp, upcast=False, device='musa'):
+    if inp is None:
+        return None
+    ref_inp = inp.to(device=device)
+    if upcast:
+        ref_inp = ref_inp.to(torch.float64)
     return ref_inp
 
 

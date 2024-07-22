@@ -17,7 +17,8 @@ def heur_num_warps(args):
     elif args["N"] <= 2048:
         return 8
     else:
-        return 16
+        # num_warps cannot be larger than 8 because warp size is 128 on mtgpu.
+        return 8
 
 
 @libentry()
@@ -25,8 +26,8 @@ def heur_num_warps(args):
     configs=[
         triton.Config({"BLOCK_M": 1}),
         triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
+        # triton.Config({"BLOCK_M": 4}),
+        # triton.Config({"BLOCK_M": 8}),
     ],
     key=[
         "M",
@@ -135,7 +136,7 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch.musa.device(inp.device):
             log_softmax_kernel[grid](
                 out,
                 inp,
@@ -169,7 +170,7 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(in_grad.device):
+        with torch.musa.device(in_grad.device):
             log_softmax_backward_kernel[grid](
                 out,
                 out_grad,

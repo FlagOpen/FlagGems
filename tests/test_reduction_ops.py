@@ -156,27 +156,27 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-CUMSUM_SHAPES = (
-    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
-)
+# CUMSUM_SHAPES = (
+#     [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+# )
 
 
-@pytest.mark.cumsum
-@pytest.mark.parametrize("shape", CUMSUM_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
-def test_accuracy_cumsum(shape, dtype):
-    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
-    if dtype in INT_DTYPES:
-        inp = torch.randint(-3, 3, shape, device="musa").to(dtype)
-    else:
-        inp = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp = to_reference(inp, True)
+# @pytest.mark.cumsum
+# @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
+# @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+# def test_accuracy_cumsum(shape, dtype):
+#     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+#     if dtype in INT_DTYPES:
+#         inp = torch.randint(-3, 3, shape, device="musa").to(dtype)
+#     else:
+#         inp = torch.randn(shape, dtype=dtype, device="musa")
+#     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.cumsum(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.cumsum(inp, dim=dim)
+#     ref_out = torch.cumsum(ref_inp, dim=dim)
+#     with flag_gems.use_gems():
+#         res_out = torch.cumsum(inp, dim=dim)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+#     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]

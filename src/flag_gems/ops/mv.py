@@ -58,7 +58,7 @@ def mv(inp, vec):
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch.cuda.device(inp.device):
+    with torch.musa.device(inp.device):
         mv_kernel[grid](
             inp,
             vec,
