@@ -411,6 +411,12 @@ class LayerNorm(torch.autograd.Function):
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
+        in_grad = torch.empty_like(x)
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd, in_grad, M, N)
+        grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
+        weight_grad = torch.empty_like(weight)
+        bias_grad = torch.empty_like(weight)
 
         with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
