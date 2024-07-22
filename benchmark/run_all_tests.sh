@@ -5,8 +5,9 @@ ts=$(date +"%Y-%m-%d_%H-%M-%S")
 
 cardnum=`ls /dev/cambricon_dev* |wc -l`
 
-dirp=logs_perf_$ts
+dirp=logs_perf_${ts}${1}
 mkdir -p $dirp
+echo "saving logs to: "$dirp
 
 ind=0
 for i in `ls test_*.py `; do
@@ -19,3 +20,4 @@ done
 
 # wait
 echo "finish date: "$(date +"%Y-%m-%d_%H-%M-%S")
+echo "saved logs to: "$dirp

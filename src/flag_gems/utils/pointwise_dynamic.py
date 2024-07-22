@@ -217,6 +217,8 @@ def parameter_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str
             parameters.append(f"out{output_tensor_index}: torch.Tensor")
             output_tensor_index += 1
 
+    parameters.append("**kwargs")
+
     return ", ".join(parameters)
 
 
@@ -245,9 +247,14 @@ def ith_parameter_for_type_promotion(op_desc: OPDesc, ith: int) -> str:
     return ", ".join(parameters)
 
 
-def parameter_ref_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str:
+def parameter_ref_for_wrapper(
+    op_desc: OPDesc,
+    include_outputs: bool = False,
+    include_offset: bool = False,
+    include_kwargs: bool = False,
+) -> str:
     """Generate parameter reference for wrapper function.
-    Example: in0, val0, out0
+    Example: in0, val0, out0, out0_offset
     """
     parameters: List[str] = []
 
@@ -265,7 +272,12 @@ def parameter_ref_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) ->
         output_tensor_index = 0
         for i in range(op_desc.num_outputs()):
             parameters.append(f"out{output_tensor_index}")
+            if include_offset:
+                parameters.append(f"out{output_tensor_index}_offset")
             output_tensor_index += 1
+
+    if include_kwargs:
+        parameters.append("**kwargs")
 
     return ", ".join(parameters)
 
@@ -356,7 +368,7 @@ def generate_functional_pointwise_wrapper(
         output_names: str = output_ref_for_wrapper(op_desc)
         call_str = (
             f"{output_names} = {destination_passing_func_name}"
-            f"({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+            f"({parameter_ref_for_wrapper(op_desc, include_outputs=True, include_offset=False, include_kwargs=True)})"
         )
         code.writeline(call_str)
 
@@ -416,11 +428,24 @@ def generate_destination_passing_pointwise_wrapper(
                 code.writeline(
                     f"in{i}_strides = broadcasted_stride(in{i}.shape, in{i}.stride(), shape)"
                 )
-
             for i in range(op_desc.num_output_tensors()):
-                code.writeline(f"out{i}_strides = out{i}.stride()")
+                code.writeline(f"if 'out{i}_offset' in kwargs:")
+                with code.indent():
+                    code.writeline(f"out{i}_offset = kwargs['out{i}_offset']")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(f"out{i}_offset = 0")
 
-            code.newline()
+                code.writeline(f"if 'out{i}_strides' in kwargs:")
+                with code.indent():
+                    code.writeline(f"out{i}_strides = kwargs['out{i}_strides']")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(f"out{i}_strides = out{i}.stride()")
+        else:
+            for i in range(op_desc.num_output_tensors()):
+                code.writeline(f"out{i}_offset = 0")
+        code.newline()
 
         # grid
         code.writeline("# kernel launch")
@@ -433,7 +458,14 @@ def generate_destination_passing_pointwise_wrapper(
 
             with code.indent():
                 code.writeline(
-                    f"{parameter_ref_for_wrapper(op_desc, include_outputs=True)},"
+                    "{},".format(
+                        parameter_ref_for_wrapper(
+                            op_desc,
+                            include_outputs=True,
+                            include_offset=True,
+                            include_kwargs=False,
+                        )
+                    )
                 )
 
                 if rank > 0:
@@ -516,7 +548,9 @@ def generate_pointwise_kernel(
             code.writeline(
                 f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
             )
+            code.writeline(f"out{output_tensor_index}_offset: int,")
             function_ns.create_name(f"out{output_tensor_index}_ptr")
+            function_ns.create_name(f"out{output_tensor_index}_offset")
             output_tensor_index += 1
 
         # signature: strides, for each tensor arguments
@@ -591,7 +625,7 @@ def generate_pointwise_kernel(
 
             code.writeline("# stores")
             for i in range(op_desc.num_output_tensors()):
-                ptrs_expr: str = f"out{i}_ptr"
+                ptrs_expr: str = f"out{i}_ptr + out{i}_offset"
                 store_stmt: str = f"tl.store({ptrs_expr}, out{i})"
                 code.writeline(store_stmt)
             code.newline()
@@ -661,8 +695,7 @@ def generate_pointwise_kernel(
                 ptrs_expr: str = " + ".join(
                     f"i{j} * out{i}_stride{j}" for j in range(rank)
                 )
-
-                ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
+                ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
                 store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
                 code.writeline(store_stmt)
 
@@ -719,7 +752,7 @@ def generate_pointwise_kernel(
                     ptrs_expr: str = " + ".join(
                         f"i{j} * out{i}_stride{j}" for j in range(rank)
                     )
-                    ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
+                    ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
                     store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
                     code.writeline(store_stmt)
                 code.newline()
@@ -743,17 +776,18 @@ def generate_code(
     same_shapes = all_shapes_same(tensor_shapes)
     shape = [math.prod(tensor_shapes[0])]
     rank = 1
-    if not same_shapes:
+    doopt = same_shapes and scalar_fn.__name__ != "flip_func"
+    if not doopt:
       shape = broadcast_shapes(tensor_shapes)
       rank = len(shape)
 
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
     code = generate_functional_pointwise_wrapper(
-        op_desc, wrapper_name, destination_passing_func_name, code, same_shapes
+        op_desc, wrapper_name, destination_passing_func_name, code, doopt
     )
     code = generate_destination_passing_pointwise_wrapper(
-        op_desc, rank, destination_passing_func_name, kernel_name, code, same_shapes
+        op_desc, rank, destination_passing_func_name, kernel_name, code, doopt
     )
     code = generate_pointwise_kernel(op_desc, scalar_fn, rank, kernel_name, code)
     return code
@@ -776,8 +810,8 @@ class PointwiseDynamicFunction:
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
-    def __call__(self, *args):
-        # It does not accept kwargs
+    def __call__(self, *args, **kwargs):
+        # note: kwargs should not be used in JITFunction directly
         key = f"{self.arg_key(*args)}"
         if key in self.overloads:
             overload = self.overloads[key]
@@ -809,7 +843,7 @@ class PointwiseDynamicFunction:
             spec.loader.exec_module(m)
             overload = getattr(m, "_wrapper")
             self.overloads[key] = overload
-        return overload(*args)
+        return overload(*args, **kwargs)
 
     def arg_key(self, *args):
         tensors = [item for item in args if torch.is_tensor(item)]

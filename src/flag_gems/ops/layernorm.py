@@ -67,8 +67,8 @@ def layer_norm_kernel(
     var = var[:, None]
     rstd = 1 / tl.sqrt(var + eps)
     # Write mean / rstd
-    tl.store(Mean + row, mean_bc)
-    tl.store(Rstd + row, rstd)
+    tl.store(Mean + row, mean_bc, row_mask)
+    tl.store(Rstd + row, rstd, row_mask)
 
     # Normalize and apply linear transformation
     for off in range(0, N, BLOCK_COL_SIZE):

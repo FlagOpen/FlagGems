@@ -26,6 +26,7 @@ def enable(lib=aten_lib):
     lib.impl("cumsum", cumsum, "PrivateUse1")
     lib.impl("div.Tensor", div, "PrivateUse1")
     lib.impl("native_dropout", native_dropout, "AutogradPrivateUse1")
+    lib.impl("embedding", embedding, "AutogradPrivateUse1")
     lib.impl("eq.Tensor", eq, "PrivateUse1")
     lib.impl("eq.Scalar", eq_scalar, "PrivateUse1")
     lib.impl("exp", exp, "PrivateUse1")
@@ -35,6 +36,7 @@ def enable(lib=aten_lib):
     lib.impl("native_group_norm", group_norm, "AutogradPrivateUse1")
     lib.impl("gt.Tensor", gt, "PrivateUse1")
     lib.impl("gt.Scalar", gt_scalar, "PrivateUse1")
+    lib.impl("isfinite", isfinite, "PrivateUse1")
     lib.impl("isinf", isinf, "PrivateUse1")
     lib.impl("isnan", isnan, "PrivateUse1")
     lib.impl("native_layer_norm", layer_norm, "AutogradPrivateUse1")
@@ -94,6 +96,7 @@ def enable(lib=aten_lib):
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradPrivateUse1")
     lib.impl("isclose", isclose, "PrivateUse1")
     lib.impl("allclose", allclose, "PrivateUse1")
+    lib.impl("flip", flip, "PrivateUse1")
 
 
 class use_gems:

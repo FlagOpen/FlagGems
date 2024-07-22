@@ -3,8 +3,10 @@
 
 ts=$(date +"%Y-%m-%d_%H-%M-%S")
 
-dirp=logs_$ts
+dirp=logs_models_${ts}${1}
 mkdir -p $dirp
+
+echo "saving logs to: "$dirp
 
 for i in `ls model*test.py `; do
 
@@ -15,3 +17,4 @@ for i in `ls model*test.py `; do
 done
 
 echo "finish date: "$(date +"%Y-%m-%d_%H-%M-%S")
+echo "saved logs to: "$dirp

@@ -75,6 +75,9 @@ def sum(inp, *, dtype=None):
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
+        if dtype is torch.bool:
+            inp = inp.to(torch.int32)
+            dtype = torch.int32
 
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     out = torch.zeros([], dtype=torch.float32, device=inp.device)
@@ -88,6 +91,8 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS SUM DIM")
     if dtype is None:
         dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]

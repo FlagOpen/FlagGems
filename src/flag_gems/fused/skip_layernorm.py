@@ -77,6 +77,8 @@ def skip_layer_norm_kernel(
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        r = tl.load(R + cols, mask, other=0.0).to(tl.float32)
+        x += r
         x = tl.where(col_mask, x - mean_bc, 0.0)
         x_hat = x * rstd
         y = x_hat * w + b
