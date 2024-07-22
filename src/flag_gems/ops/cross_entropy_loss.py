@@ -543,7 +543,6 @@ class CrossEntropyLoss(torch.autograd.Function):
                 )
         elif label_smoothing == 0:
             # target indices
-            w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch_device_fn.device(inp.device):
                 celoss_indices_kernel[grid](
                     inp,
