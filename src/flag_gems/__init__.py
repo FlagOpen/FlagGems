@@ -12,6 +12,7 @@ def enable(lib=aten_lib):
     lib.impl("abs", abs, "CUDA")
     lib.impl("add.Tensor", add, "CUDA")
     lib.impl("addmm", addmm, "CUDA")
+    lib.impl("arange", arange, "CUDA")
     lib.impl("bitwise_and.Tensor", bitwise_and_tensor, "CUDA")
     lib.impl("bitwise_and.Scalar", bitwise_and_scalar, "CUDA")
     lib.impl("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, "CUDA")
