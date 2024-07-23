@@ -22,6 +22,7 @@ from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
 from .exp import exp
+from .fill import fill
 from .flip import flip
 from .ge import ge, ge_scalar
 from .gelu import gelu
@@ -94,6 +95,7 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "fill",
     "flip",
     "ge",
     "ge_scalar",

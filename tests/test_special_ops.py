@@ -9,6 +9,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 
@@ -222,3 +223,15 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize("value", [0, 1, 9])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_fill(value, shape, dtype):
+    x = torch.ones(shape, device="cuda", dtype=dtype)
+    res_out = torch.fill(x, value)
+    with flag_gems.use_gems():
+        ref_out = torch.fill(x, value)
+
+    gems_assert_equal(ref_out, res_out)
