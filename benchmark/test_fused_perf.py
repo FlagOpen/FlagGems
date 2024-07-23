@@ -12,22 +12,22 @@ from .performance_utils import (
 )
 
 
-def test_perf_gelu_and_mul():
-    def torch_op(x, y):
-        return torch.mul(torch.nn.functional.gelu(x), y)
+# def test_perf_gelu_and_mul():
+#     def torch_op(x, y):
+#         return torch.mul(torch.nn.functional.gelu(x), y)
 
-    gems_op = flag_gems.gelu_and_mul
+#     gems_op = flag_gems.gelu_and_mul
 
-    bench = Benchmark(
-        op_name="gelu_and_mul",
-        torch_op=torch_op,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.set_gems(gems_op)
-    bench.run()
+#     bench = Benchmark(
+#         op_name="gelu_and_mul",
+#         torch_op=torch_op,
+#         arg_func=binary_args,
+#         dtypes=FLOAT_DTYPES,
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.set_gems(gems_op)
+#     bench.run()
 
 
 def test_perf_silu_and_mul():

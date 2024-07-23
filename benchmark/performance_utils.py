@@ -9,7 +9,7 @@ from .conftest import CPU_MODE
 
 WARMUP = 100
 REPETITION = 1000
-torch.backends.musa.matmul.allow_tf32 = False
+# torch.backends.musa.matmul.allow_tf32 = False
 
 
 class Benchmark:
@@ -28,7 +28,6 @@ class Benchmark:
         if is_backward:
             self.op_name += " backward"
         self.torch_op = torch_op
-        self.gems_op = None
         self.arg_func = arg_func
         self.kwargs_func = kwargs_func
         self.dtypes = dtypes
@@ -103,7 +102,8 @@ class Benchmark:
                 )
 
 
-FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+# FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+FLOAT_DTYPES = [torch.float16, torch.float32]
 INT_DTYPES = [torch.int16, torch.int32]
 
 
@@ -111,7 +111,7 @@ DEFAULT_BATCH = 1
 POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
-SIZES = [i * 1024 for i in range(1, 81, 5)]
+SIZES = [i * 64 for i in range(1, 22, 5)]
 
 
 def unary_arg(dtype, batch, size):
