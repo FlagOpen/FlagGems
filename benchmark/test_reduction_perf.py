@@ -179,6 +179,17 @@ def test_perf_log_softmax():
     )
     bench.run()
 
+def test_perf_log_softmax_backward():
+    bench = Benchmark(
+        op_name="log_softmax",
+        torch_op=torch.nn.functional.log_softmax,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
 
 def test_perf_max():
     bench = Benchmark(
@@ -236,6 +247,18 @@ def test_perf_softmax():
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
+    )
+    bench.run()
+
+def test_perf_softmax_backward():
+    bench = Benchmark(
+        op_name="softmax",
+        torch_op=torch.nn.functional.softmax,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
     )
     bench.run()
 
