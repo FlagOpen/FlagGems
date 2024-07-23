@@ -27,6 +27,7 @@ def enable(lib=aten_lib):
     lib.impl("div.Tensor", div, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
     lib.impl("erf", erf, "CUDA")
+    lib.impl("embedding", embedding, "AutogradCUDA")
     lib.impl("eq.Tensor", eq, "CUDA")
     lib.impl("eq.Scalar", eq_scalar, "CUDA")
     lib.impl("exp", exp, "CUDA")
@@ -36,6 +37,7 @@ def enable(lib=aten_lib):
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
+    lib.impl("isfinite", isfinite, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
@@ -95,6 +97,7 @@ def enable(lib=aten_lib):
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
+    lib.impl("flip", flip, "CUDA")
 
 
 class use_gems:

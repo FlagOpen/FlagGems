@@ -19,14 +19,17 @@ from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum
 from .div import div
 from .dropout import native_dropout
+from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
+from .flip import flip
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .isclose import allclose, isclose
+from .isfinite import isfinite
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -89,9 +92,11 @@ __all__ = [
     "div",
     "native_dropout",
     "erf",
+    "embedding",
     "eq",
     "eq_scalar",
     "exp",
+    "flip",
     "ge",
     "ge_scalar",
     "gelu",
@@ -99,6 +104,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "isclose",
+    "isfinite",
     "isinf",
     "isnan",
     "layer_norm",
