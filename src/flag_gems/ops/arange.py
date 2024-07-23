@@ -46,5 +46,4 @@ def arange(start, end, step=1, dtype=None, layout=None, device=None, pin_memory=
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
     arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
-
     return result

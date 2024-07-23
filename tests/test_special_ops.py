@@ -9,6 +9,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 
@@ -222,3 +223,15 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize("start", [0, 1, 3])
+@pytest.mark.parametrize("step", [1, 2, 5])
+@pytest.mark.parametrize("end", [128, 256, 1024])
+@pytest.mark.parametrize("dtype", [torch.int64, torch.float32])
+def test_arange(start, step, end, dtype):
+    res_out = torch.arange(start, end, step, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        ref_out = torch.arange(start, end, step, dtype=dtype, device="cuda")
+
+    gems_assert_equal(ref_out, res_out)
