@@ -42,7 +42,7 @@ def celoss_indice_kernel(
     w_ptrs = w_ptr + tgt
     w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)
     w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
+    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask and ignore_mask)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -143,6 +143,7 @@ def celoss_indice_bwd(
     w_ptr,
     inp_grad_ptr,
     ignore_index,
+    mean_num,
     N,
     C,
     D,
@@ -189,6 +190,7 @@ def celoss_indice_bwd(
             (tl.exp(inp - final_max[None, :]) / final_sum[None, :] - minus_one)
             * w_tgt
             * out_grad
+            * mean_num
         )
         inp_grad_ptrs = (
             inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
@@ -241,14 +243,16 @@ class CrossEntropyLoss(torch.autograd.Function):
         ctx.C = C
         ctx.D = D
         ctx.ignore_index = ignore_index
+        ctx.mean_num = 1
 
         if reduction == 0:  # NONE
             return out
         elif reduction == 1:  # MEAN
             if target.ndim == dim:
-                return sum(out) / (N * D)
+                ctx.mean_num = 1 / (N * D)
             else:
-                return sum(out) / sum(w_tgt)
+                ctx.mean_num = 1 / sum(w_tgt).item()
+            return sum(out) * ctx.mean_num
         else:  # SUM
             return sum(out)
 
@@ -256,18 +260,20 @@ class CrossEntropyLoss(torch.autograd.Function):
     def backward(ctx, out_grad):
         logging.debug("GEMS CrossEntropyLoss VJP")
 
-        out_grad = out_grad.contiguous()
         inp, tgt, weight = ctx.saved_tensors
         N = ctx.N
         C = ctx.C
         D = ctx.D
         ignore_index = ctx.ignore_index
+        mean_num = ctx.mean_num
+
+        out_grad = out_grad.broadcast_to(tgt.shape).contiguous()
 
         shape = inp.shape
         inp_grad = torch.zeros(shape, dtype=inp.dtype, device=inp.device)
         grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
         celoss_indice_bwd[grid](
-            out_grad, inp, tgt, weight, inp_grad, ignore_index, N, C, D
+            out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, N, C, D
         )
         return inp_grad, None, None, None, None, None
 
@@ -297,12 +303,12 @@ for size in SIZE:
         dtype=dtype,
         device="cuda",
     )
-    loss = torch.nn.CrossEntropyLoss(weight=weight, reduction="none", ignore_index=0)
+    loss = torch.nn.CrossEntropyLoss(weight=weight, reduction="mean", ignore_index=0)
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     tgt = torch.randint(0, 10, target_shape, device="cuda")
     # tgt = torch.randn(shape, dtype=dtype, device="cuda")
     out_ = loss(inp, tgt)
-    out = celoss(inp, tgt, weight=weight, ignore_index=0, reduction=0)
+    out = celoss(inp, tgt, weight=weight, ignore_index=0, reduction=1)
     flag = torch.allclose(out_, out, rtol=1.3e-6, atol=1e-4)
     diff = torch.max(torch.abs(out_ - out))
     print(f"SHAPE {shape} FORWARD: {flag}, DIFF: {diff}")
