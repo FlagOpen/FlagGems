@@ -5,8 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, TOTAL_CORE_NUM
 
+MAX_C_MLU_LAYERNORM_BACKWARD = 8192
 
 def cfggen():
     block_m = [i for i in range(1, 36, 4)]  #[1, 2, 4]
@@ -86,19 +87,90 @@ def layer_norm_kernel(
         tl.store(Y + cols, y, mask=mask)
 
 
+def cfggen_bw():
+    configs = [
+        triton.Config({"BLOCK_ROW_SIZE": 1}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 1}, num_warps=1, num_stages=3),
+        triton.Config({"BLOCK_ROW_SIZE": 4}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 4}, num_warps=1, num_stages=3),
+        triton.Config({"BLOCK_ROW_SIZE": 16}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 32}, num_warps=1, num_stages=1),
+    ]
+    return configs
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({
-            "BLOCK_ROW_SIZE": m,
-            "BLOCK_COL_SIZE": 2048
-        },
-                      num_warps=w) for m in [1, 2, 4, 8] for w in [4, 8, 16]
-    ],
-    key=["M", "N"],
-)
+@triton.autotune(configs=cfggen_bw(), key=["M", "N"], reset_to_zero=["DW", "DB"])
 @triton.jit
 def layer_norm_backward_kernel(
+        DX,  # pointer to the input gradient
+        DY,  # pointer to the output gradient
+        DW,  # pointer to the partial sum of weights gradient
+        DB,  # pointer to the partial sum of biases gradient
+        X,  # pointer to the input
+        W,  # pointer to the weights
+        Mean,  # pointer to the mean
+        Rstd,  # pointer to the 1/std
+        M,  # number of rows in X
+        N,  # number of columns in X
+        BLOCK_ROW_SIZE: tl.constexpr,
+        BLOCK_COL_SIZE: tl.constexpr):
+    # Map the program id to the elements of X, DX, and DY it should compute.
+    pid = tl.program_id(0)
+
+    row_start = pid * BLOCK_ROW_SIZE
+    cols = tl.arange(0, BLOCK_COL_SIZE)
+    num_jobs = tl.num_programs(axis=0)
+    step = num_jobs * BLOCK_ROW_SIZE
+
+    X += cols[None, :]
+    DY += cols[None, :]
+    W += cols[None, :]
+    DX += cols[None, :]
+    w = tl.load(W).to(tl.float32)
+
+    partial_dw = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    partial_db = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    for row in range(row_start, M, step):
+        row_off = row + tl.arange(0, BLOCK_ROW_SIZE)
+        mask = row_off[:, None] < M
+        # Load data to SRAM
+        off = row_off[:, None] * N
+        x = tl.load(X + off, mask, other=0.0).to(tl.float32)
+        dy = tl.load(DY + off, mask, other=0.0).to(tl.float32)
+        mean = tl.load(Mean + row_off, mask = row_off < M)[:, None].to(tl.float32)
+        rstd = tl.load(Rstd + row_off, mask = row_off < M)[:, None].to(tl.float32)
+        # Compute dx
+        x_hat = (x - mean) * rstd
+        wdy = w * dy
+        c1 = tl.sum(x_hat * wdy, axis=1)[:, None]
+        c2 = tl.sum(wdy, axis=1)[:, None]
+        dx = (wdy - (x_hat * c1 + c2) / N) * rstd
+        # Accumulate partial sums for dw/db
+        partial_dw += (dy * x_hat).to(tl.float32)
+        partial_db += (dy).to(tl.float32)
+        # Write dx
+        tl.store(DX + off, dx.to(x.dtype), mask=mask)
+
+    dw = tl.sum(partial_dw, axis=0)
+    db = tl.sum(partial_db, axis=0)
+    tl.atomic_add(DW + cols, dw)
+    tl.atomic_add(DB + cols, db)
+
+
+def cfggen_input_bw():
+    block_m = [1, 4, 16, 32]
+    block_n = [32, 256, 1024, 2048]
+    num_stages = [1, 3]
+    configs = [triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n},
+                             num_warps=1,
+                             num_stages=s) for m in block_m for n in block_n for s in num_stages
+    ]
+    return configs
+
+@libentry()
+@triton.autotune(configs=cfggen_input_bw(), key=["M", "N"])
+@triton.jit
+def input_backward_kernel(
     dY,
     X,
     W,
@@ -110,62 +182,66 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(
-        0, BLOCK_ROW_SIZE)[:, None]
-    row_mask = pid < M
-    dY += pid * N
-    X += pid * N
-    dX += pid * N
-    Mean += pid
-    Rstd += pid
+    pid = tl.program_id(0)
 
-    mean = tl.load(Mean).to(tl.float32)
-    rstd = tl.load(Rstd).to(tl.float32)
+    row_start = pid * BLOCK_ROW_SIZE
+    num_jobs = tl.num_programs(axis=0)
+    step = num_jobs * BLOCK_ROW_SIZE
 
-    dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    for row in range(row_start, M, step):
+        row_off = row + tl.arange(0, BLOCK_ROW_SIZE)
+        mean = tl.load(Mean + row_off, mask = row_off < M, other = 0.0)[:, None].to(tl.float32)
+        rstd = tl.load(Rstd + row_off, mask = row_off < M, other = 0.0)[:, None].to(tl.float32)
 
-    for off in range(0, N, BLOCK_COL_SIZE):
-        cols = off + tl.arange(0, BLOCK_COL_SIZE)
-        col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
-        x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        x = tl.where(mask, x - mean, 0.0)
-        x_hat = x * rstd
-        w = tl.load(W + cols, mask=cols < N).to(tl.float32)
-        dx_hat = dy * w
-        dx_part2 += dx_hat
-        dx_part3 += dx_hat * x_hat
+        row_mask = row_off[:, None] < M
+        off = row_off[:, None] * N
+        new_dY = dY + off
+        new_X = X + off
+        new_DX = dX + off
 
-    dx_2 = tl.sum(dx_part2, axis=1)[:, None]
-    dx_3 = tl.sum(dx_part3, axis=1)[:, None]
+        dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+        dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
 
-    for off in range(0, N, BLOCK_COL_SIZE):
-        cols = off + tl.arange(0, BLOCK_COL_SIZE)
-        col_mask = cols[None, :] < N
-        mask = row_mask and col_mask
-        dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
-        x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        w = tl.load(W + cols, mask=cols < N).to(tl.float32)
-        x = tl.where(mask, x - mean, 0.0)
-        x_hat = x * rstd
-        dx_hat = dy * w
-        dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / N)
-        tl.store(dX + cols, dx, mask=mask)
+        for off in range(0, N, BLOCK_COL_SIZE):
+            cols = off + tl.arange(0, BLOCK_COL_SIZE)
+            col_mask = cols[None, :] < N
+            mask = row_mask and col_mask
+            dy = tl.load(new_dY + cols[None, :], mask, other = 0.0).to(tl.float32)
+            x = tl.load(new_X + cols[None, :], mask, other = 0.0).to(tl.float32)
+            x_hat = (x - mean) * rstd
+            w = tl.load(W + cols, mask=cols < N).to(tl.float32)
+            wdy = dy * w
+            dx_part2 += wdy
+            dx_part3 += wdy * x_hat
 
+        dx_2 = tl.sum(dx_part2, axis=1)[:, None]
+        dx_3 = tl.sum(dx_part3, axis=1)[:, None]
+
+        for off in range(0, N, BLOCK_COL_SIZE):
+            cols = off + tl.arange(0, BLOCK_COL_SIZE)
+            col_mask = cols[None, :] < N
+            mask = row_mask and col_mask
+            dy = tl.load(new_dY + cols[None, :], mask, other = 0.0).to(tl.float32)
+            x = tl.load(new_X + cols[None, :], mask, other = 0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=cols < N, other = 0.0).to(tl.float32)
+            x_hat = (x - mean) * rstd
+            wdy = dy * w
+            dx = rstd * (wdy - (dx_2 + x_hat * dx_3) / N)
+            tl.store(new_DX + cols, dx.to(x.dtype), mask=mask)
+
+
+def cfggen_wb_bw():
+    block_m = [32, 64, 128, 512, 1024]
+    block_n = [1, 4, 16, 32]
+    num_stages = [1, 3]
+    configs = [triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n},
+                             num_warps=1,
+                             num_stages=s) for m in block_m for n in block_n for s in num_stages
+    ]
+    return configs
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({
-            "BLOCK_ROW_SIZE": 2048,
-            "BLOCK_COL_SIZE": n
-        },
-                      num_warps=w) for n in [1, 2, 4, 8] for w in [4, 8]
-    ],
-    key=["N"],
-)
+@triton.autotune(configs=cfggen_wb_bw(), key=["M", "N"])
 @triton.jit
 def weight_bias_backward_kernel(
     dY,
@@ -179,32 +255,40 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(
-        0, BLOCK_COL_SIZE)[None, :]
-    col_mask = pid < N
-    dY += pid
-    X += pid
-    dW += pid
-    dB += pid
-    accW = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    accB = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
-    for off in range(0, M, BLOCK_ROW_SIZE):
-        rows = off + tl.arange(0, BLOCK_ROW_SIZE)
-        row_mask = rows[:, None] < M
-        mask = row_mask and col_mask
-        dy = tl.load(dY + rows[:, None] * N, mask).to(tl.float32)
-        x = tl.load(X + rows[:, None] * N, mask).to(tl.float32)
-        mean = tl.load(Mean + rows, mask=rows < M)[:, None].to(tl.float32)
-        rstd = tl.load(Rstd + rows, mask=rows < M)[:, None].to(tl.float32)
-        x = tl.where(col_mask, x - mean, 0.0)
-        x_hat = x * rstd
-        accW += dy * x_hat
-        accB += dy
-    dw = tl.sum(accW, axis=0)
-    db = tl.sum(accB, axis=0)
-    tl.store(dW, dw[None, :], mask=col_mask)
-    tl.store(dB, db[None, :], mask=col_mask)
 
+    pid = tl.program_id(0)
+
+    col_start = pid * BLOCK_COL_SIZE
+    num_jobs = tl.num_programs(axis=0)
+    step = num_jobs * BLOCK_COL_SIZE
+
+    for col in range(col_start, N, step):
+        col_off = col + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+        col_mask = col_off < N
+
+        new_dY = dY + col_off
+        new_X = X + col_off
+        new_dW = dW + col_off
+        new_dB = dB + col_off
+
+        accW = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+        accB = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+
+        for off in range(0, M, BLOCK_ROW_SIZE):
+            rows = off + tl.arange(0, BLOCK_ROW_SIZE)
+            row_mask = rows[:, None] < M
+            mask = row_mask and col_mask
+            dy = tl.load(new_dY + rows[:, None] * N, mask, other = 0.0).to(tl.float32)
+            x = tl.load(new_X + rows[:, None] * N, mask, other = 0.0).to(tl.float32)
+            mean = tl.load(Mean + rows, mask = rows < M, other = 0.0)[:, None].to(tl.float32)
+            rstd = tl.load(Rstd + rows, mask = rows < M, other = 0.0)[:, None].to(tl.float32)
+            x_hat = (x - mean) * rstd
+            accW += dy * x_hat
+            accB += dy
+        dw = tl.sum(accW, axis=0)
+        db = tl.sum(accB, axis=0)
+        tl.store(new_dW, dw[None, :], mask=col_mask)
+        tl.store(new_dB, db[None, :], mask=col_mask)
 
 class LayerNorm(torch.autograd.Function):
 
@@ -240,20 +324,59 @@ class LayerNorm(torch.autograd.Function):
     def backward(ctx, out_grad, mean_grad, rstd_grad):
         logging.debug("GEMS LAYERNORM BACKWARD")
         out_grad = out_grad.contiguous()
-        (x, weight, mean, rstd) = ctx.saved_tensors
-        M = ctx.M
-        N = ctx.N
-        in_grad = torch.empty_like(x)
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd,
-                                         in_grad, M, N)
-        grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-        weight_grad = torch.empty_like(weight)
-        bias_grad = torch.empty_like(weight)
+        x, weight, mean, rstd = ctx.saved_tensors
+        M, N = ctx.M, ctx.N
+        if N <= MAX_C_MLU_LAYERNORM_BACKWARD:
+            in_grad = torch.empty_like(out_grad)
+            weight_grad = torch.zeros((weight.shape[0],), dtype=torch.float, device=weight.device)
+            bias_grad = torch.zeros((weight.shape[0],), dtype=torch.float, device=weight.device)
+            # enqueue kernel using forward pass heuristics
+            # also compute partial sums for DW and DB
+            grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), TOTAL_CORE_NUM),)
+            with torch.mlu.device(x.device):
+                layer_norm_backward_kernel[grid](
+                    in_grad,
+                    out_grad,
+                    weight_grad,
+                    bias_grad,
+                    x,
+                    weight,
+                    mean,
+                    rstd,
+                    M,
+                    N,
+                    BLOCK_COL_SIZE=N,
+                )
+            weight_grad = weight_grad.to(x.dtype)
+            bias_grad = bias_grad.to(x.dtype)
+        else:
+            in_grad = torch.empty_like(x)
+            grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), TOTAL_CORE_NUM),)
+            input_backward_kernel[grid](
+                out_grad,
+                x,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                M,
+                N,
+            )
+            weight_grad = torch.empty_like(weight)
+            bias_grad = torch.empty_like(weight)
+            grid = lambda META: (min(triton.cdiv(N, META['BLOCK_COL_SIZE']), TOTAL_CORE_NUM),)
+            with torch.mlu.device(x.device):
+                weight_bias_backward_kernel[grid](
+                    out_grad,
+                    x,
+                    mean,
+                    rstd,
+                    weight_grad,
+                    bias_grad,
+                    M,
+                    N,
+                )
 
-        with torch.mlu.device(x.device):
-            weight_bias_backward_kernel[grid](out_grad, x, mean, rstd,
-                                              weight_grad, bias_grad, M, N)
         return in_grad, None, weight_grad, bias_grad, None, None
 
 

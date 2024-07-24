@@ -10,7 +10,7 @@ import math
 from ..utils import dim_compress
 
 
-# @libentry()
+@libentry()
 @triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=['out'])
 @triton.jit
 def mean_kernel_1(

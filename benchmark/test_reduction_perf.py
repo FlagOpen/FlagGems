@@ -193,6 +193,23 @@ def test_perf_layernorm():
     bench.run()
 
 
+def test_perf_layernorm_backward():
+    def layer_norm_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn([size,], dtype=dtype, device=DEVICE,)
+        bias = torch.randn([size,], dtype=dtype, device=DEVICE,)
+        return (inp, [size,], weight, bias,)
+    bench = Benchmark(
+        op_name="layernorm",
+        torch_op=torch.layer_norm,
+        arg_func=layer_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
+
 def test_perf_log_softmax():
     bench = Benchmark(
         op_name="log_softmax",

@@ -8,7 +8,7 @@ import triton.language as tl
 from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 
 
-# @libentry()
+@libentry()
 @triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=['out'])
 @triton.jit
 def sum_kernel_1(

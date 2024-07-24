@@ -232,7 +232,7 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         tl.store(Out_ptr, out, row_mask)
 
 
-# @libentry()
+@libentry()
 @triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=['Out'])
 @triton.jit
 def l0_norm_kernel_1(
