@@ -1,0 +1,3 @@
+[submodule "genesis"]
+	path = genesis
+	url = ssh://git@gitlab.software.cambricon.com:2289/neuware/genesis.git

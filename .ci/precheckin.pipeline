@@ -1,0 +1,127 @@
+library "cambricon-pipe-lib@master"
+
+env.image = "yellow.hub.cambricon.com/genesis/devel/x86_64/genesis:0.7.13-x86_64-ubuntu2004-prebuild-thirdparty-py_3_10"
+def mrLabels = getMergeRequestLabel(projectId: env.gitlabMergeRequestTargetProjectId, mergeRequestId: env.gitlabMergeRequestIid)
+println mrLabels
+def priorityClassName
+def triggerByUser = steps.getMergeRequestInfo(projectId: env.gitlabMergeRequestTargetProjectId, mergeRequestId: env.gitlabMergeRequestIid).triggerPhraseByUser
+if (triggerByUser == "Merge-Robot") {
+    priorityClassName = "high-priority"
+}
+def triggerMap = triggerParams.get()
+
+cnpipe {
+    checkUTReport false
+    checkMRUpvotes false
+    enableRebaseSkipTest false
+    enableCoverage true
+    priorityClass priorityClassName
+    useGitmirror true
+    // ----------------------------check merge request------------------------------------------------
+    template('build_test') {
+        stage 'build_test'
+        unstash 'CI_MR_PROJ'
+    }
+    agent('agent_test') {
+        container {
+            image this.image
+        }
+        resReq {
+            reqMlus 1
+            lmtMlus 1
+            reqCpu 35
+            lmtCpu 35
+            reqMemory '60Gi'
+            lmtMemory '60Gi'
+            reqEphemeralStorage '200Gi'
+            lmtEphemeralStorage '200Gi'
+        }
+    }
+    // ------------------------------------------build and test----------------------------------------
+    task('test_normal', templates.build_test) {
+        agent {
+            template 'agent_test'
+            container {
+                image this.image
+            }
+            node {
+                cardType 'MLU590-M9U','MLU590-H8','MLU570','MLU580'
+            }
+            resReq {
+                reqMemory '90Gi'
+                lmtMemory '90Gi'
+            }
+        }
+        timeout 2, "HOURS"
+        script '''
+            set -ex
+            mkdir -p flaggems_cache
+            export TEST_TMPDIR=${CI_WORK_DIR}/flaggems_cache
+            cd flaggems
+            pip install .
+
+            # Compile genesis for test.
+            pushd genesis
+            pip3 install pytest-xdist
+            bash ./build_tools/scripts/update_depends.sh
+            ./run.sh -f //genesis:triton -j 30 --jenkins
+            pip3 install bazel-bin/genesis/triton-*cp310*.whl
+            popd
+
+            echo "------------ run op test ------------------------"
+            pushd tests
+
+            for i in `ls test_*.py `; do
+                if [ "$i" != "test_blas_ops.py" ] && [ "$i" != "test_big_shapes.py" ]; then
+                    echo "testing file : "$i
+                    pytest -vs $i -n 8
+                fi
+            done
+
+            popd
+            echo "------------ run op test success -----------------"
+        '''
+    }
+
+    task('test_blas_and_big_shapes', templates.build_test) {
+        agent {
+            template 'agent_test'
+            container {
+                image this.image
+            }
+            node {
+                cardType 'MLU590-M9U','MLU590-H8','MLU570','MLU580'
+            }
+            resReq {
+                reqMemory '90Gi'
+                lmtMemory '90Gi'
+            }
+        }
+        timeout 2, "HOURS"
+        script '''
+            set -ex
+            mkdir -p flaggems_cache
+            export TEST_TMPDIR=${CI_WORK_DIR}/flaggems_cache
+            cd flaggems
+            pip install .
+
+            # Compile genesis for test.
+            pushd genesis
+            pip3 install pytest-xdist
+            bash ./build_tools/scripts/update_depends.sh
+            ./run.sh -f //genesis:triton -j 30 --jenkins
+            pip3 install bazel-bin/genesis/triton-*cp310*.whl
+            popd
+
+            echo "------------ run op test ------------------------"
+            pushd tests
+
+            pytest -vs test_blas_ops.py -n 10
+
+            popd
+            echo "------------ run op test success -----------------"
+
+        '''
+    }
+
+}

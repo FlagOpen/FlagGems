@@ -4,23 +4,118 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, TOTAL_CLUSTER_NUM
 
 MAX_C_MLU_LOG_SOFTMAX_FORWARD = 16384
-MAX_C_MLU_LOG_SOFTMAX_BACKWARD = 32768
+MAX_C_MLU_LOG_SOFTMAX_BACKWARD = 8192
+MLU_GRID_MAX = 65535
 
+def heuristics_for_tile_k(m, k, max_tile_k, num_sms):
+    tile_k = 1
+    upper_bound = min(k, max_tile_k)
+    while tile_k <= upper_bound:
+        num_blocks = m * triton.cdiv(k, tile_k)
+        num_waves = num_blocks / num_sms
+        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
+        else:
+            break
+    return tile_k
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def heur_num_warps(args):
-    if args["N"] <= 1024:
+def heuristics_for_num_warps(tile_size):
+    if tile_size < 2048:
         return 4
-    elif args["N"] <= 2048:
+    elif tile_size < 4096:
         return 8
     else:
         return 16
+
+
+@triton.jit
+def prev_multiple_of(a, b):
+    # the largest x<a that x%b ==0
+    return tl.cdiv(a, b) * b - b
+
+@triton.heuristics(
+    values={
+        "TILE_K": lambda args: heuristics_for_tile_k(
+            args["M"],
+            args["K"],
+            MAX_C_MLU_LOG_SOFTMAX_FORWARD,
+            TOTAL_CLUSTER_NUM,
+        )
+    }
+)
+@triton.heuristics(values={"TILE_N": lambda args: triton.cdiv(MAX_C_MLU_LOG_SOFTMAX_FORWARD, args["TILE_K"])})
+@triton.heuristics(
+    values={
+        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+    },
+)
+@triton.heuristics(
+    values={
+        "num_warps": lambda args: heuristics_for_num_warps(
+            args["TILE_N"] * args["TILE_K"]
+        )
+    },
+)
+@triton.jit
+def log_softmax_kernel_non_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_k = tl.program_id(1)
+    pid_m = tl.program_id(0)
+
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
+        mask = (n_offsets[:, None] < N) & (k_offsets < K)
+        input_ptrs = input_ptr + offset
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+        m = tl.max(inp, 0)
+        e = tl.exp(inp - m[None, :])
+        z = tl.sum(e, 0)
+        out = e / z
+        output_ptrs = output_ptr + offset
+        tl.store(output_ptrs, out, mask=mask)
+    else:
+        m = tl.full([TILE_N, TILE_K], value=float("-inf"), dtype=tl.float32)
+        z = tl.full([TILE_N, TILE_K], value=0.0, dtype=tl.float32)
+
+        # specialization does not improve performance inn this example, as tested
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
+            mask = (n_offsets[:, None] < N) & (k_offsets < K)
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
+            m_new = tl.maximum(m, inp)
+            alpha = tl.exp(m - m_new)
+            z = z * alpha + tl.exp(inp - m_new)
+            m = m_new
+
+        m_reduced = tl.max(m, 0)  # (TILE_K,)
+        z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)  # (TILE_K, )
+        m = m_reduced
+        log2e = 1.442695
+        # specialization does not improve performance inn this example, as tested
+        previous_multiple = prev_multiple_of(N, TILE_N)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
+            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
+            mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
+            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
+            o = tl.exp(inp - m[None, :]) / z[None, :]
+            out = tl.log2(o) / log2e
+            tl.store(output_ptr + offsets, out, mask=mask)
 
 
 def config_prune(configs, named_args, **kwargs):
@@ -43,7 +138,7 @@ def config_prune(configs, named_args, **kwargs):
     configs = pruned_configs
     return pruned_configs
 
-@libentry()
+
 @triton.autotune(
     configs=[
         triton.Config({
@@ -59,245 +154,221 @@ def config_prune(configs, named_args, **kwargs):
         "N",
     ],
     prune_configs_by={'early_config_prune': config_prune},
-)
-@triton.jit
-def log_softmax_kernel(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    input_ptrs = input_ptr + offset
-    inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-    row_minus_max = inp - tl.max(inp, axis=1)[:, None]
-    numerator = tl.exp(row_minus_max)
-    denominator = tl.sum(numerator, axis=1)[:, None]
-    softmax_output = tl.log(numerator / denominator)
-    output_ptrs = output_ptr + offset
-    tl.store(output_ptrs, softmax_output, mask=mask)
-
-
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({
-            "BLOCK_M": m,
-            "BLOCK_N": 2**n
-        },
-                      num_stages=s,
-                      num_warps=1) for m in range(1, 30, 3)
-        for n in range(6, 13, 1) for s in [1, 3]
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-    prune_configs_by={'early_config_prune': config_prune},
-)
-@triton.jit
-def log_softmax_kernel_split_c(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-    tmp0 = tl.full([BLOCK_M, BLOCK_N], float("-inf"), tl.float32)
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-
-                      float("inf")).to(tl.float32)
-        # get max for each block
-        tmp1 = tl.maximum(inp, tmp0)
-        tmp0 = tmp1
-
-    tmp2 = tl.max(tmp0, 1)[:, None]
-    tmp3 = tl.full([BLOCK_M, BLOCK_N], 0, tl.float32)
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-        # minus max value each line
-        row_minus_max = inp - tmp2
-        numerator = tl.exp(row_minus_max)
-        tmp4 = tmp3 + numerator
-        tmp3 = tmp4
-
-    denominator = tl.sum(tmp3, axis=1)[:, None]
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-        row_minus_max = inp - tmp2
-        numerator = tl.exp(row_minus_max)
-        softmax_output = tl.log(numerator / denominator)
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, softmax_output, mask)
-
-
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
 )
 @triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
-)
+    values={
+        "ONE_TILE_PER_CTA": lambda args: args["N"] < MAX_C_MLU_LOG_SOFTMAX_FORWARD,
+    }, )
 @triton.jit
-def log_softmax_backward_kernel(
-    out_ptr,
-    out_grad_ptr,
-    in_grad_ptr,
+def log_softmax_kernel_inner(
+    output_ptr,
+    input_ptr,
     M,
     N,
-    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
+    log2e = 1.442695
+    if ONE_TILE_PER_CTA:
+        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        n_offset = tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N + n_offset[None, :]
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        input_ptrs = input_ptr + offset
+        inp = tl.load(input_ptrs, mask=mask,
+                      other=-float("inf")).to(tl.float32)
+        row_minus_max = inp - tl.max(inp, axis=1)[:, None]
+        numerator = tl.exp(row_minus_max)
+        denominator = tl.sum(numerator, axis=1)[:, None]
+        softmax_output = numerator / denominator
+        output = tl.log2(softmax_output) / log2e
+        output_ptrs = output_ptr + offset
+        tl.store(output_ptrs, output, mask=mask)
+    else:
+        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    out_ptrs = out_ptr + offsets
-    out = tl.load(out_ptrs, mask=mask).to(tl.float32)
-    out_grad_ptrs = out_grad_ptr + offsets
-    out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
+        tmp0 = tl.full([BLOCK_M, BLOCK_N], float("-inf"), tl.float32)
+        for col_offset in range(0, N, BLOCK_N):
+            n_offset = col_offset + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            input_ptrs = input_ptr + offset
+            inp = tl.load(input_ptrs, mask=mask,
+                          other=-float("inf")).to(tl.float32)
+            # get max for each block
+            tmp1 = tl.maximum(inp, tmp0)
+            tmp0 = tmp1
 
-    scale = tl.sum(out_grad, 1)
-    in_grad = out_grad - tl.exp(out.to(tl.float32)) * scale[:, None]
+        tmp2 = tl.max(tmp0, 1)[:, None]
+        tmp3 = tl.full([BLOCK_M, BLOCK_N], 0, tl.float32)
+        for col_offset in range(0, N, BLOCK_N):
+            n_offset = col_offset + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            input_ptrs = input_ptr + offset
+            inp = tl.load(input_ptrs, mask=mask,
+                          other=-float("inf")).to(tl.float32)
+            # minus max value each line
+            row_minus_max = inp - tmp2
+            numerator = tl.exp(row_minus_max)
+            tmp4 = tmp3 + numerator
+            tmp3 = tmp4
 
-    in_grad_ptrs = in_grad_ptr + offsets
-    tl.store(in_grad_ptrs, in_grad, mask=mask)
+        denominator = tl.sum(tmp3, axis=1)[:, None]
+        for col_offset in range(0, N, BLOCK_N):
+            n_offset = col_offset + tl.arange(0, BLOCK_N)
+            offset = m_offset[:, None] * N + n_offset[None, :]
+            mask = m_offset[:, None] < M and n_offset[None, :] < N
+            input_ptrs = input_ptr + offset
+            inp = tl.load(input_ptrs, mask=mask,
+                          other=-float("inf")).to(tl.float32)
+            row_minus_max = inp - tmp2
+            numerator = tl.exp(row_minus_max)
+            softmax_output = numerator / denominator
+            output = tl.log2(softmax_output) / log2e
+            output_ptrs = output_ptr + offset
+            tl.store(output_ptrs, output, mask)
 
 
+# ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//4}, num_stages=5),
-
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD//2}, num_stages=5),
-
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 1, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 2, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 4, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=5),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=4),
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD}, num_stages=5),
+        triton.Config({"TILE_K": 2**k}, num_warps=1, num_stages = s)
+        for k in range(3, 11, 1)
+        for s in [1, 3]
     ],
     key=[
         "M",
         "N",
+        "K",
     ],
 )
 @triton.heuristics(
     values={
-        "num_warps": lambda args: (
-            4 if args["N"] <= 1024 else (8 if args["N"] <= 2048 else 16)
-        ),
+        "TILE_K":
+        lambda args: max(triton.cdiv(args["K"], MLU_GRID_MAX), args["TILE_K"])
+    })
+@triton.heuristics(
+    values={
+        "TILE_N": lambda args: max(1, MAX_C_MLU_LOG_SOFTMAX_BACKWARD // args["TILE_K"]),
+        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
     },
 )
 @triton.jit
-def log_softmax_backward_kernel_split_c(
+def log_softmax_backward_kernel_non_inner(
     out_ptr,
     out_grad_ptr,
     in_grad_ptr,
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offsets_k = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    # grad for xn = zn - e^yn * sum(zi) [z for bp grad] and yn = ln(e^xn / sum(e^xi)) for forward
-    tmp0 = tl.full([BLOCK_M, BLOCK_N], float(0), tl.float32)
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask,
-                           other=float(0)).to(tl.float32)
+    if ONE_TILE_PER_CTA:
+        offsets_n = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
+        mask = (offsets_n < N)[:, None] & (offsets_k < K)
+        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+        
+        scale = tl.sum(out_grad_tile, axis=0)
+        in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[None, :]
 
-        tmp1 = tmp0 + out_grad
-        tmp0 = tmp1
+        tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+    else:
+        offsets_n = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
+        scale = tl.zeros([TILE_N, TILE_K], dtype=tl.float32)
+        for _ in range(0, N, TILE_N):
+            mask = (offsets_n < N)[:, None] & (offsets_k < K)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            scale += out_grad_tile
+            offsets_n += TILE_N
+            offsets += TILE_N * K
+        scale = tl.sum(scale, axis=0)  # (TILE_K)
 
-    scale = tl.sum(tmp0, axis=1)
+        offsets_n = tl.arange(0, TILE_N)
+        offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
+        for _ in range(0, N, TILE_N):
+            mask = (offsets_n < N)[:, None] & (offsets_k < K)
+            out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[None, :]
+            tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+            offsets_n += TILE_N
+            offsets += TILE_N * K
 
-    for col_offset in range(0, N, BLOCK_N):
-        n_offset = col_offset + tl.arange(0, BLOCK_N)
-        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"TILE_N": MAX_C_MLU_LOG_SOFTMAX_BACKWARD // (2**k)}, num_warps=1, num_stages = s)
+        for k in range(0, 6, 1)
+        for s in [1, 3]
+    ],
+    key=["M", "N"],
+)
+@triton.heuristics(
+    values={
+        "TILE_M": lambda args: max(1, MAX_C_MLU_LOG_SOFTMAX_BACKWARD // args["TILE_N"]),
+        "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+    },
+)
+@triton.jit
+def log_softmax_backward_kernel_inner(
+    out_ptr,
+    out_grad_ptr,
+    in_grad_ptr,
+    M,
+    N,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = m_offsets[:, None] * N + n_offsets
+        mask = (m_offsets[:, None] < M) & (n_offsets < N)
+        out_tile = tl.load(out_ptr + offsets, mask=mask).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+        scale = tl.sum(out_grad_tile, 1)
+        in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[:, None]
+        tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+    else:
+        scale = tl.zeros([TILE_M, TILE_N], dtype=tl.float32)
 
-        out_ptrs = out_ptr + offsets
-        out = tl.load(out_ptrs, mask=mask).to(tl.float32)
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = m_offsets[:, None] * N + n_offsets
+        for _ in range(0, N, TILE_N):
+            mask = (m_offsets[:, None] < M) & (n_offsets < N)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            scale += out_grad_tile
+            n_offsets += TILE_N
+            offsets += TILE_N
+        scale = tl.sum(scale, 1)  # (TILE_M,)
 
-        out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-
-        in_grad = out_grad - tl.exp(out.to(tl.float32)) * scale[:, None]
-
-        in_grad_ptrs = in_grad_ptr + offsets
-        tl.store(in_grad_ptrs, in_grad, mask=mask)
-
+        n_offsets = tl.arange(0, TILE_N)
+        offsets = m_offsets[:, None] * N + n_offsets
+        for _ in range(0, N, TILE_N):
+            mask = (m_offsets[:, None] < M) & (n_offsets < N)
+            out_tile = tl.load(
+                out_ptr + offsets, mask=mask, eviction_policy="evict_first"
+            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask).to(tl.float32)
+            in_grad_tile = out_grad_tile - tl.exp(out_tile) * scale[:, None]
+            tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
+            n_offsets += TILE_N
+            offsets += TILE_N
 
 class LogSoftmax(torch.autograd.Function):
     @staticmethod
@@ -316,15 +387,11 @@ class LogSoftmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
         with torch.mlu.device(inp.device):
-            if N >= MAX_C_MLU_LOG_SOFTMAX_FORWARD:
-                logging.debug(
-                    "GEMS LOG_SOFTMAX USE SPLITC FORWARD FOR N = %d" % (N))
-                log_softmax_kernel_split_c[grid](
+            if K > 1:
+                logging.debug("GEMS LOGSOFTMAX USE NON INNER")
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                log_softmax_kernel_non_inner[grid](
                     out,
                     inp,
                     M,
@@ -332,12 +399,13 @@ class LogSoftmax(torch.autograd.Function):
                     K,
                 )
             else:
-                log_softmax_kernel[grid](
+                logging.debug("GEMS LOGSOFTMAX USE INNER")
+                grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), 1, 1)
+                log_softmax_kernel_inner[grid](
                     out,
                     inp,
                     M,
                     N,
-                    K,
                 )
         ctx.save_for_backward(out)
         ctx.dim = dim
@@ -361,15 +429,11 @@ class LogSoftmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
         with torch.mlu.device(in_grad.device):
-            if N > MAX_C_MLU_LOG_SOFTMAX_BACKWARD:
-                logging.debug(
-                    "GEMS LOG_SOFTMAX USE SPLITC VJP FOR N = %d" % (N))
-                log_softmax_backward_kernel_split_c[grid](
+            if K > 1:
+                logging.debug("GEMS LOG SOFTMAX VJP USE NON INNER")
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                log_softmax_backward_kernel_non_inner[grid](
                     out,
                     out_grad,
                     in_grad,
@@ -378,13 +442,14 @@ class LogSoftmax(torch.autograd.Function):
                     K,
                 )
             else:
-                log_softmax_backward_kernel[grid](
+                logging.debug("GEMS LOG SOFTMAX VJP USE INNER")
+                grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+                log_softmax_backward_kernel_inner[grid](
                     out,
                     out_grad,
                     in_grad,
                     M,
                     N,
-                    K,
                 )
         return in_grad, None, None
 
