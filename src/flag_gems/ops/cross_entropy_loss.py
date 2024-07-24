@@ -82,6 +82,7 @@ def celoss_probability_kernel(
     tgt_ptr,
     w_ptr,
     out_ptr,
+    label_smoothing,
     N,
     C,
     D,
@@ -118,6 +119,7 @@ def celoss_probability_kernel(
         w_mask = offset_c < C
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
         tgt = tl.load(tgt_ptrs, mask, other=1).to(tl.float32)
+        tgt = tgt * (1.0 - label_smoothing) + label_smoothing / C
         w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
         log = final_sum[None, :] + final_max[None, :] - inp
         _sum += w * log * tgt
@@ -213,6 +215,7 @@ def celoss_probability_bwd(
     tgt_ptr,
     w_ptr,
     inp_grad_ptr,
+    label_smoothing,
     mean_num,
     N,
     C,
@@ -241,6 +244,7 @@ def celoss_probability_bwd(
 
         tgt_ptrs = tgt_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
+        tgt = tgt * (1 - label_smoothing) + label_smoothing / C
 
         w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
@@ -266,6 +270,7 @@ def celoss_probability_bwd(
 
         tgt_ptrs = tgt_ptr + offset
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
+        tgt = tgt * (1 - label_smoothing) + label_smoothing / C
 
         w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
@@ -310,7 +315,9 @@ class CrossEntropyLoss(torch.autograd.Function):
         if target.ndim == dim:
             # target probabilities
             with torch.cuda.device(inp.device):
-                celoss_probability_kernel[grid](inp, tgt, weight, out, N, C, D)
+                celoss_probability_kernel[grid](
+                    inp, tgt, weight, out, label_smoothing, N, C, D
+                )
         else:
             # target indices
             w_tgt = torch.zeros(shape, dtype=torch.float32, device=inp.device)
@@ -323,6 +330,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         ctx.C = C
         ctx.D = D
         ctx.ignore_index = ignore_index
+        ctx.label_smoothing = label_smoothing
         ctx.mean_num = 1
         ctx.shape = shape
 
@@ -346,6 +354,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         C = ctx.C
         D = ctx.D
         ignore_index = ctx.ignore_index
+        label_smoothing = ctx.label_smoothing
         mean_num = ctx.mean_num
         shape = ctx.shape
 
@@ -355,7 +364,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
         if tgt.ndim == inp.ndim:
             celoss_probability_bwd[grid](
-                out_grad, inp, tgt, weight, inp_grad, mean_num, N, C, D
+                out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, N, C, D
             )
         else:
             celoss_indice_bwd[grid](

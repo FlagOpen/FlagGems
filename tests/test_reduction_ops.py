@@ -194,24 +194,29 @@ def test_accuracy_cross_entropy_loss_indices(shape, dtype, ignore_index, reducti
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.mark.parametrize("label_smoothing", [0, 0.1, 1])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_cross_entropy_loss_probabilities(shape, dtype, reduction):
+def test_accuracy_cross_entropy_loss_probabilities(
+    shape, dtype, reduction, label_smoothing
+):
     dim = 1
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     target = torch.randn(shape, dtype=dtype, device="cuda")
     weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
-    ref_target = to_reference(target)
+    ref_target = to_reference(target, True)
     ref_weight = to_reference(weight, True)
     ref_criterion = torch.nn.CrossEntropyLoss(
         weight=ref_weight,
         reduction=reduction,
+        label_smoothing=label_smoothing,
     )
     res_criterion = torch.nn.CrossEntropyLoss(
         weight=weight,
         reduction=reduction,
+        label_smoothing=label_smoothing,
     )
 
     ref_out = ref_criterion(ref_inp, ref_target)
