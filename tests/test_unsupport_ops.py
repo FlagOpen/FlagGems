@@ -250,12 +250,57 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 # ------------------------ test_special_ops.py -------------------------------
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_randn(shape, dtype):
+@pytest.mark.parametrize("EmbeddingSize", [4096])
+@pytest.mark.parametrize("Batch", [2, 4])
+@pytest.mark.parametrize("M", [4, 8])
+@pytest.mark.parametrize("N", [128, 256, 4096])
+@pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
+@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.float32]
+)  # triton.atomic_add still not support bf16
+def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
+    indices = torch.randint(
+        0, EmbeddingSize, (Batch, M), device="musa", requires_grad=False
+    )
+    embedding = torch.randn(
+        (EmbeddingSize, N), device="musa", dtype=dtype, requires_grad=True
+    )
+    ref_embedding = to_reference(embedding)
+
+    res_out = torch.nn.functional.embedding(
+        indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+    )
     with flag_gems.use_gems():
-        res_out = torch.randn(shape, dtype=dtype, device="musa")
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
-    assert torch.abs(mean) < 0.01
-    assert torch.abs(std - 1) < 0.01
+        ref_out = torch.nn.functional.embedding(
+            indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+        )
+    out_grad = torch.randn_like(ref_out)
+    ref_grad = to_reference(out_grad)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
+
+    gems_assert_close(ref_out, res_out, dtype)
+    gems_assert_close(ref_in_grad, res_in_grad, dtype)
+
+
+# ------------------------ test_unary_pointwise_ops.py -------------------------------
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_isfinite(shape, dtype):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="musa")
+        inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
+        inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
+        inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
+    else:
+        inp = torch.randint(-1000, 1000, shape, device="musa").to(dtype)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.isfinite(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.isfinite(inp)
+    gems_assert_equal(res_out, ref_out)
