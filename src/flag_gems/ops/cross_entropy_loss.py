@@ -88,25 +88,16 @@ def log_softmax_and_mul_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({"BLOCK_M": 8}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 16}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 32}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 64}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 128}, num_stages=1, num_warps=1),
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
 )
 @triton.jit(do_not_specialize=["mean_num"])
 def softmax_and_sub_kernel(
@@ -116,17 +107,16 @@ def softmax_and_sub_kernel(
     out_grad,
     mean_num,
     M,
-    N,
+    N: tl.constexpr,
     K,
     BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
+    n_offset = tl.arange(0, N)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    mask = m_offset[:, None] < M
     input_ptrs = input_ptr + offset
     inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
     row_minus_max = inp - tl.max(inp, axis=1)[:, None]
@@ -149,25 +139,16 @@ def softmax_and_sub_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({"BLOCK_M": 8}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 16}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 32}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 64}, num_stages=1, num_warps=1),
+        triton.Config({"BLOCK_M": 128}, num_stages=1, num_warps=1),
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
 )
 @triton.jit(do_not_specialize=["mean_num"])
 def softmax_and_sub_reduce_kernel(
@@ -177,17 +158,16 @@ def softmax_and_sub_reduce_kernel(
     out_grad,
     mean_num,
     M,
-    N,
+    N: tl.constexpr,
     K,
     BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
+    n_offset = tl.arange(0, N)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    mask = m_offset[:, None] < M
     input_ptrs = input_ptr + offset
     inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
     row_minus_max = inp - tl.max(inp, axis=1)[:, None]
