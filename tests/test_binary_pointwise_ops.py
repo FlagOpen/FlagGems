@@ -574,23 +574,23 @@ def test_accuracy_ge_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-# @pytest.mark.gelu_and_mul
-# @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-# @pytest.mark.parametrize("approximate", ["none", "tanh"])
-# def test_accuracy_gelu_and_mul(shape, approximate, dtype):
-#     inp1 = torch.randn(shape, dtype=dtype, device="musa")
-#     inp2 = torch.randn(shape, dtype=dtype, device="musa")
-#     ref_inp1 = to_reference(inp1, True)
-#     ref_inp2 = to_reference(inp2, True)
+@pytest.mark.gelu_and_mul
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_accuracy_gelu_and_mul(shape, approximate, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="musa")
+    inp2 = torch.randn(shape, dtype=dtype, device="musa")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
 
-#     ref_out = torch.mul(
-#         torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
-#     )
-#     with flag_gems.use_gems():
-#         res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
+    ref_out = torch.mul(
+        torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
+    )
+    with flag_gems.use_gems():
+        res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
-#     gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.gt
