@@ -94,6 +94,8 @@ class LibEntry(triton.KernelInterface):
         # print('thread', threading.get_native_id(), 'current device =', device)
         cache = self.kernel_cache[device]
         while entry_key not in cache:
+            # NOTE: we serialize the first run of a jit function regardless of which device to run on
+            # because Triton runtime is currently not threadsafe.
             with self.lock:
                 # print('thread', threading.get_native_id(), 'grabs lock.')
                 if entry_key in cache:
@@ -141,7 +143,7 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        print("thread", threading.get_native_id(), "run cached function.")
+        # print("thread", threading.get_native_id(), "run cached function.")
         kernel[grid[0:3]](*k_args)
         return kernel, constexprs
 
