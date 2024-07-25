@@ -155,11 +155,14 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.parametrize("label_smoothing", [0, 0.1, 1])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
-def test_accuracy_cross_entropy_loss_indices(shape, dtype, ignore_index, reduction):
+def test_accuracy_cross_entropy_loss_indices(
+    shape, dtype, ignore_index, reduction, label_smoothing
+):
     dim = 1
     up_limit = shape[dim] - 1
     target_shape = list(shape)
@@ -175,11 +178,13 @@ def test_accuracy_cross_entropy_loss_indices(shape, dtype, ignore_index, reducti
         weight=ref_weight,
         ignore_index=ignore_index,
         reduction=reduction,
+        label_smoothing=label_smoothing,
     )
     res_criterion = torch.nn.CrossEntropyLoss(
         weight=weight,
         ignore_index=ignore_index,
         reduction=reduction,
+        label_smoothing=label_smoothing,
     )
 
     ref_out = ref_criterion(ref_inp, ref_target)
