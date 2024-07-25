@@ -256,11 +256,11 @@ def test_accuracy_cumsum(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         ref_inp = to_reference(inp, True)
 
-#     ref_out = torch.cumsum(ref_inp, dim=dim)
-#     with flag_gems.use_gems():
-#         res_out = torch.cumsum(inp, dim=dim)
+    ref_out = torch.cumsum(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cumsum(inp, dim=dim)
 
-#     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
 CUMMIN_SHAPES = (
