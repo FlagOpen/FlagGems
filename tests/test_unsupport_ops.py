@@ -266,23 +266,24 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     embedding = torch.randn(
         (EmbeddingSize, N), device="musa", dtype=dtype, requires_grad=True
     )
+    ref_indices = to_reference(indices)
     ref_embedding = to_reference(embedding)
 
-    res_out = torch.nn.functional.embedding(
-        indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+    ref_out = torch.nn.functional.embedding(
+        ref_indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
     with flag_gems.use_gems():
-        ref_out = torch.nn.functional.embedding(
-            indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+        res_out = torch.nn.functional.embedding(
+            indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
         )
-    out_grad = torch.randn_like(ref_out)
+    out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
 
-    gems_assert_close(ref_out, res_out, dtype)
-    gems_assert_close(ref_in_grad, res_in_grad, dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 # ------------------------ test_unary_pointwise_ops.py -------------------------------
