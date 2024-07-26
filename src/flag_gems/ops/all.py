@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from ..utils import dim_compress, libentry, cfggen_reduce_op2, TOTAL_CORE_NUM
 
 
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
@@ -55,13 +55,14 @@ def all_kernel_dim(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
 @triton.jit
 def all_kernel_1(
     inp,
     out,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ITER_NUM: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(axis=0)
@@ -75,8 +76,11 @@ def all_kernel_1(
         inp_val = tl.load(inp + offset, mask=mask, other=1.0)
         _tmp = _tmp and (inp_val !=0 )
 
-    all_val = tl.reduce(_tmp != 0, axis=0, combine_fn=reduce_all)
-    tl.atomic_and(out, all_val.to(tl.int32))
+    # Reset to original reduce programming mode after optimizing the tl.reduce.
+    for x in tl.static_range(1, int(ITER_NUM), 1):
+        _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] and _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
+
+    tl.atomic_and(out, _tmp[0].to(tl.int32))
 
 
 def all(inp):

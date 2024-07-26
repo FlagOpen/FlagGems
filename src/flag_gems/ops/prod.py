@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from ..utils import libentry, cfggen_reduce_op2, TOTAL_CORE_NUM
 
 
 @triton.jit
@@ -14,13 +14,14 @@ def reduce_mul(a, b):
 
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(configs=cfggen_reduce_op2(), key=["M"])
 @triton.jit
 def prod_kernel_mid(
     inp,
     mid,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ITER_NUM: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(axis=0)
@@ -34,20 +35,25 @@ def prod_kernel_mid(
         inp_val = tl.load(inp + offset, mask=mask, other=1.0).to(tl.float32)
         _tmp = inp_val * _tmp
 
-    mid_value = tl.reduce(_tmp, axis=0, combine_fn=reduce_mul)
+    # Reset to original reduce programming mode after optimizing the tl.reduce.
+    for x in tl.static_range(1, int(ITER_NUM), 1):
+        _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
+
     mid_ptr = mid + pid
-    tl.store(mid_ptr, mid_value)
+    tl.store(mid_ptr, _tmp[0])
 
 
 @libentry()
 @triton.jit
-def prod_kernel_result(mid, out, mid_size: tl.constexpr, half_mid: tl.constexpr):
-    offset1 = tl.arange(0, half_mid)
-    offset2 = tl.arange(half_mid, mid_size)
-    first_half = tl.load(mid + offset1)
-    second_half = tl.load(mid + offset2)
-    prod_tmp = first_half * second_half
-    prod_val = tl.reduce(prod_tmp, axis=0, combine_fn=reduce_mul)
+def prod_kernel_result(mid, out, mid_size: tl.constexpr, loop_num: tl.constexpr):
+    offset = tl.arange(0, mid_size)
+    mid_val = tl.load(mid + offset)
+
+    # Reset to original reduce programming mode after optimizing the tl.reduce.
+    for x in tl.static_range(1, loop_num, 1):
+        mid_val[:mid_size // (2 ** x)] = mid_val[:mid_size // (2 ** x)] * mid_val[mid_size // (2 ** x):mid_size // (2 ** (x - 1))]
+
+    prod_val = tl.reduce(mid_val[:mid_size // (2 ** (loop_num - 1))], axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
 
 
@@ -57,15 +63,16 @@ def prod(inp, *, dtype=None):
         dtype = inp.dtype
 
     M = inp.numel()
+    grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     mid_size = TOTAL_CORE_NUM
-    half_mid = mid_size // 2
+    loop_num = int(math.log2(mid_size))
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    mid = torch.ones((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch.mlu.device(inp.device):
-        prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M)
-        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, half_mid)
+        prod_kernel_mid[grid](inp, mid, M)
+        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, loop_num)
     return out
 
 
