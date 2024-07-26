@@ -222,3 +222,12 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_exponential_(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        res_out = x.exponential_(lambd=0.5)
+    assert res_out.min() > 0
