@@ -17,6 +17,8 @@ for i in `ls test_*.py `; do
 	((ind++))
 	ind=$((ind%cardnum))
 done
+other="performance_keyops.py"
+pytest $other  -s 2>&1 | tee ${dirp}/${other%.*}.log
 
 # wait
 echo "finish date: "$(date +"%Y-%m-%d_%H-%M-%S")

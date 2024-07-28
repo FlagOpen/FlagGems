@@ -26,6 +26,7 @@ def enable(lib=aten_lib):
     lib.impl("cumsum", cumsum, "PrivateUse1")
     lib.impl("div.Tensor", div, "PrivateUse1")
     lib.impl("native_dropout", native_dropout, "AutogradPrivateUse1")
+    lib.impl("erf", erf, "PrivateUse1")
     lib.impl("embedding", embedding, "AutogradPrivateUse1")
     lib.impl("eq.Tensor", eq, "PrivateUse1")
     lib.impl("eq.Scalar", eq_scalar, "PrivateUse1")

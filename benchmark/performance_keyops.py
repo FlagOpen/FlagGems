@@ -4,6 +4,7 @@ import torch
 import triton
 
 import flag_gems
+
 from .conftest import CPU_MODE, DEVICE
 
 WARMUP = 100
@@ -66,6 +67,34 @@ class Benchmark:
         return latency
 
     def run(self):
+        for size in self.sizes:
+            kep = []
+            for dtype in self.dtypes:
+                args = ()
+                if self.arg_func is not None:
+                    args = self.arg_func(dtype, self.batch, size)
+
+                kwargs = {}
+                if self.kwargs_func is not None:
+                    kwargs = self.kwargs_func(dtype, self.batch, size)
+
+                torch_perf = self.profile(self.torch_op, *args, **kwargs)
+                if self.gems_op:
+                    gems_perf = self.profile(self.gems_op, *args, **kwargs)
+                else:
+                    with flag_gems.use_gems():
+                        gems_perf = self.profile(self.torch_op, *args, **kwargs)
+                speedup = torch_perf / gems_perf
+                # print(f"\t{speedup}", end="")
+                kep.append(speedup)
+            print(
+                f"\nOperator_Speedup_Test_Result("
+                + ":".join([str(x) for x in self.dtypes])
+                + f"):\t{self.op_name}\t{str(size)}\t"
+                + "\t".join([str(x) for x in kep])
+            )
+
+    def run(self):
         kep = []
         for dtype in self.dtypes:
             # print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
@@ -100,14 +129,8 @@ class Benchmark:
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-INT_DTYPES = [torch.int16, torch.int32]
-
-
-DEFAULT_BATCH = 1
-POINTWISE_BATCH = 1024
-REDUCTION_BATCH = 1024
-BLAS_BATCH = 16
-SIZES = [i * 64 for i in range(1, 22, 5)]
+BATCH = 1024
+SIZES = [32, 96, 8192, 20480, 32768]
 
 
 def unary_arg(dtype, batch, size):
@@ -115,31 +138,74 @@ def unary_arg(dtype, batch, size):
     return (inp,)
 
 
-def unary_int_arg(dtype, batch, size):
-    inp = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
-    return (inp,)
+def test_perf_gelu():
+    bench = Benchmark(
+        op_name="gelu",
+        torch_op=torch.nn.functional.gelu,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-def binary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    return inp1, inp2
+def test_perf_sigmoid():
+    bench = Benchmark(
+        op_name="sigmoid",
+        torch_op=torch.sigmoid,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-def binary_int_args(dtype, batch, size):
-    inp1 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
-    inp2 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
-    return inp1, inp2
+def test_perf_layernorm():
+    def layer_norm_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                size,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                size,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return (
+            inp,
+            [
+                size,
+            ],
+            weight,
+            bias,
+        )
+
+    bench = Benchmark(
+        op_name="layernorm",
+        torch_op=torch.layer_norm,
+        arg_func=layer_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-def ternary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp3 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    return inp1, inp2, inp3
+def test_perf_softmax():
+    bench = Benchmark(
+        op_name="softmax",
+        torch_op=torch.nn.functional.softmax,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
