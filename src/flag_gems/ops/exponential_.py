@@ -54,11 +54,9 @@ def fused_exponential_kernel(
         y0 = transform_exponential(d0, lambd, eps)
         y1 = transform_exponential(d1, lambd, eps)
         UNROLL = 2
-        start = tl.program_id(0) * BLOCK * UNROLL
-        off_0 = tl.arange(0, BLOCK)
+        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
+        off_0 = start + tl.arange(0, BLOCK)
         off_1 = off_0 + BLOCK
-        out_ptr += start
-        N -= start
         tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
         tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
     else:
@@ -71,13 +69,11 @@ def fused_exponential_kernel(
         y2 = transform_exponential(f2, lambd, eps)
         y3 = transform_exponential(f3, lambd, eps)
         UNROLL = 4
-        start = tl.program_id(0) * BLOCK * UNROLL
-        off_0 = tl.arange(0, BLOCK)
+        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
+        off_0 = start + tl.arange(0, BLOCK)
         off_1 = off_0 + BLOCK
         off_2 = off_1 + BLOCK
         off_3 = off_2 + BLOCK
-        out_ptr += start
-        N -= start
         tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
         tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
         tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
