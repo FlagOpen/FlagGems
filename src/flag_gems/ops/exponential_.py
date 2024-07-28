@@ -29,17 +29,17 @@ def heur_num_warps(args):
         "num_warps": heur_num_warps,
     }
 )
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,
     N,
+    is_double,
     lambd,
     eps,
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL: tl.constexpr = 4
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -48,34 +48,56 @@ def fused_exponential_kernel(
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
-    off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-    r0 = transform_exponential(r0, lambd, eps)
-    r0 = transform_exponential(r1, lambd, eps)
-    r0 = transform_exponential(r2, lambd, eps)
-    r0 = transform_exponential(r3, lambd, eps)
-    tl.store(out_ptr + off_0, r0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_1, r1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_2, r2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_3, r3, mask=off_3 < N, eviction_policy="evict_first")
+    if is_double:
+        d0 = uint_to_uniform_float(paste_u64(r0, r2))
+        d1 = uint_to_uniform_float(paste_u64(r1, r3))
+        y0 = transform_exponential(d0, lambd, eps)
+        y1 = transform_exponential(d1, lambd, eps)
+        UNROLL = 2
+        start = tl.program_id(0) * BLOCK * UNROLL
+        off_0 = tl.arange(0, BLOCK)
+        off_1 = off_0 + BLOCK
+        out_ptr += start
+        N -= start
+        tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
+    else:
+        f0 = uint_to_uniform_float(r0)
+        f1 = uint_to_uniform_float(r1)
+        f2 = uint_to_uniform_float(r2)
+        f3 = uint_to_uniform_float(r3)
+        y0 = transform_exponential(f0, lambd, eps)
+        y1 = transform_exponential(f1, lambd, eps)
+        y2 = transform_exponential(f2, lambd, eps)
+        y3 = transform_exponential(f3, lambd, eps)
+        UNROLL = 4
+        start = tl.program_id(0) * BLOCK * UNROLL
+        off_0 = tl.arange(0, BLOCK)
+        off_1 = off_0 + BLOCK
+        off_2 = off_1 + BLOCK
+        off_3 = off_2 + BLOCK
+        out_ptr += start
+        N -= start
+        tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
+        tl.store(out_ptr + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
+
+
+@triton.jit
+def paste_u64(hi: tl.uint32, lo: tl.uint32):
+    hi = hi.to(tl.uint64) << 32
+    x = hi | lo.to(tl.uint64)
+    return x
 
 
 @triton.jit
 def transform_exponential(u, lambd, eps):
     eps1 = -0.5 * eps
-    is_subnormal = u > 1.0 + eps1
-    log = tl.where(is_subnormal, eps1, tl.math.log(u))
+    is_min = u >= 1.0 + eps1
+    log = tl.where(is_min, eps1, tl.math.log(u))
     v = -1.0 / lambd * log
     return v
-
-
-UNROLL = 4
 
 
 def exponential_(x, lambd: float = 1.0, gen=None):
@@ -84,6 +106,8 @@ def exponential_(x, lambd: float = 1.0, gen=None):
     device = x.device
     inplace = x.is_contiguous()
     assert dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+    is_double = dtype in (torch.float64,)
+    UNROLL = 2 if is_double else 4
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
@@ -93,7 +117,9 @@ def exponential_(x, lambd: float = 1.0, gen=None):
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch.cuda.device(device):
-        fused_exponential_kernel[grid_fn](x_, N, lambd, eps, philox_seed, philox_offset)
+        fused_exponential_kernel[grid_fn](
+            x_, N, is_double, lambd, eps, philox_seed, philox_offset
+        )
     if not inplace:
         x.copy_(x_)
     return x

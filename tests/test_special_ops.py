@@ -1,6 +1,8 @@
 from typing import Optional
 
+import numpy as np
 import pytest
+import scipy
 import torch
 
 import flag_gems
@@ -227,7 +229,19 @@ def test_accuracy_rand_like(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_exponential_(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
-        res_out = x.exponential_(lambd=0.5)
-    assert res_out.min() > 0
+        x.exponential_()
+    assert x.min() > 0
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES[:1])
+@pytest.mark.parametrize("dtype", (torch.float32,))
+@pytest.mark.parametrize("lambd", (0.01, 0.5, 100.0))
+def test_accuracy_exponential_pvalue(shape, dtype, lambd):
+    x = torch.empty(size=shape, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        x.exponential_(lambd=lambd)
+    expo_cdf = lambda x: np.where(x < 0, 0, 1.0 - np.exp(-lambd * x))
+    pvalue = scipy.stats.kstest(x.cpu().numpy().flatten(), expo_cdf).pvalue
+    assert pvalue > 0.05
