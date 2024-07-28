@@ -100,7 +100,7 @@ def transform_exponential(u, lambd, eps):
     return v
 
 
-def exponential_(x, lambd: float = 1.0, gen=None):
+def exponential_(x, lambd: float = 1.0, *, gen=None):
     logging.debug("GEMS EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
