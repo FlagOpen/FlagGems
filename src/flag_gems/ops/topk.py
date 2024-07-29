@@ -14,7 +14,10 @@ from triton.language.standard import (
     zeros_like,
 )
 
+from ..utils import libentry
 
+
+@libentry()
 @triton.jit
 def topk_stage1_kernel(
     y_ptr,
@@ -144,6 +147,7 @@ def argsort(x, ids, dim: core.constexpr = None, descending: core.constexpr = 0):
     return x, ids
 
 
+@libentry()
 @triton.jit
 def topk_stage2_kernel(
     y_ptr,
