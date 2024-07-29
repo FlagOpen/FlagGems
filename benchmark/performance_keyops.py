@@ -74,39 +74,13 @@ class Benchmark:
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)
 
-                kwargs = {}
-                if self.kwargs_func is not None:
-                    kwargs = self.kwargs_func(dtype, self.batch, size)
-
-                torch_perf = self.profile(self.torch_op, *args, **kwargs)
-                if self.gems_op:
-                    gems_perf = self.profile(self.gems_op, *args, **kwargs)
-                else:
-                    with flag_gems.use_gems():
-                        gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                speedup = torch_perf / gems_perf
-                # print(f"\t{speedup}", end="")
-                kep.append(speedup)
-            print(
-                f"\nOperator_Speedup_Test_Result("
-                + ":".join([str(x) for x in self.dtypes])
-                + f"):\t{self.op_name}\t{str(size)}\t"
-                + "\t".join([str(x) for x in kep])
-            )
-
-    def run(self):
-        kep = []
-        for dtype in self.dtypes:
-            # print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
-            speedup = 0
-            for size in self.sizes:
-                args = ()
-                if self.arg_func is not None:
-                    args = self.arg_func(dtype, self.batch, size)
                 if self.is_backward:
                     args = tuple(
-                        a.clone().requires_grad_() if torch.is_tensor(a) and torch.is_floating_point(a)
-                        else a
+                        (
+                            a.clone().requires_grad_()
+                            if torch.is_tensor(a) and torch.is_floating_point(a)
+                            else a
+                        )
                         for a in args
                     )
 
@@ -120,12 +94,15 @@ class Benchmark:
                 else:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                spd = torch_perf / gems_perf
-                speedup += spd
-            speedup /= len(self.sizes)
-            kep.append(speedup)
-        print(f"\nOperator_Speedup_Test_Result(" + ":".join(
-            [str(x) for x in self.dtypes]) + f"):\t{self.op_name}\t" + "\t".join([str(x) for x in kep]))
+                speedup = torch_perf / gems_perf
+
+                kep.append(speedup)
+            print(
+                f"\nOperator_Speedup_Test_Result("
+                + ":".join([str(x) for x in self.dtypes])
+                + f"):\t{self.op_name}\t{str(size)}\t"
+                + "\t".join([str(x) for x in kep])
+            )
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
