@@ -72,7 +72,7 @@ cnpipe {
             pushd tests
 
             for i in `ls test_*.py `; do
-                if [ "$i" != "test_blas_ops.py" ] && [ "$i" != "test_big_shapes.py" ]; then
+                if [ "$i" != "test_blas_ops.py" ] && [ "$i" != "test_big_shapes.py" ] && [ "$i" != "test_special_ops.py" ]; then
                     echo "testing file : "$i
                     pytest -vs $i -n 8
                 fi
@@ -117,6 +117,8 @@ cnpipe {
             pushd tests
 
             pytest -vs test_blas_ops.py -n 10
+
+            pytest -vs test_special_ops.py -n 10
 
             popd
             echo "------------ run op test success -----------------"
