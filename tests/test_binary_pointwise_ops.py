@@ -1153,38 +1153,38 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
                 else 0
             )
 
-#     ref_inp1 = to_reference(inp1, False)
-#     ref_inp2 = to_reference(inp2, False)
-#     logging.debug(
-#         "shape={}, dtype={}, rtol={}, atol={}".format(shape, dtype, rtol, atol)
-#     )
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+    logging.debug(
+        "shape={}, dtype={}, rtol={}, atol={}".format(shape, dtype, rtol, atol)
+    )
 
-#     with flag_gems.use_gems():
-#         res_out = torch.isclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
-#     ref_out = torch.isclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
+    with flag_gems.use_gems():
+        res_out = torch.isclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
+    ref_out = torch.isclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
-#     inp1_flat = inp1.view(-1)
-#     inp2_flat = inp2.view(-1)
-#     ref_flat = ref_out.view(-1)
-#     res_flat = res_out.view(-1)
-#     if dtype in FLOAT_DTYPES and gen_nan:
-#         logging.debug(
-#             "equal_nan={}, gen_nan={}: inp1={}, inp2={}, res={}, ref={}".format(
-#                 equal_nan,
-#                 gen_nan,
-#                 inp1_flat[0],
-#                 inp2_flat[0],
-#                 res_flat[0],
-#                 ref_flat[0],
-#             )
-#         )
-#     if inp1.numel() > 2 and dtype in [torch.int64, torch.int32]:
-#         assert (
-#             res_flat[1] == ref_flat[1] and res_flat[2] == ref_flat[2]
-#         ), "res vs ref: {} vs {}, {} vs {}".format(
-#             res_flat[1], ref_flat[1], res_flat[2], ref_flat[2]
-#         )
-#     gems_assert_equal(res_out, ref_out)
+    inp1_flat = inp1.view(-1)
+    inp2_flat = inp2.view(-1)
+    ref_flat = ref_out.view(-1)
+    res_flat = res_out.view(-1)
+    if dtype in FLOAT_DTYPES and gen_nan:
+        logging.debug(
+            "equal_nan={}, gen_nan={}: inp1={}, inp2={}, res={}, ref={}".format(
+                equal_nan,
+                gen_nan,
+                inp1_flat[0],
+                inp2_flat[0],
+                res_flat[0],
+                ref_flat[0],
+            )
+        )
+    if inp1.numel() > 2 and dtype in [torch.int64, torch.int32]:
+        assert (
+            res_flat[1] == ref_flat[1] and res_flat[2] == ref_flat[2]
+        ), "res vs ref: {} vs {}, {} vs {}".format(
+            res_flat[1], ref_flat[1], res_flat[2], ref_flat[2]
+        )
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.allclose
@@ -1221,15 +1221,15 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
         inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
         inp2 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
 
-#     ref_inp1 = to_reference(inp1, False)
-#     ref_inp2 = to_reference(inp2, False)
-#     logging.debug(
-#         "shape={}, dtype={}, rtol={}, atol={}".format(shape, dtype, rtol, atol)
-#     )
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+    logging.debug(
+        "shape={}, dtype={}, rtol={}, atol={}".format(shape, dtype, rtol, atol)
+    )
 
-#     with flag_gems.use_gems():
-#         res_out = torch.allclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
-#     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
+    with flag_gems.use_gems():
+        res_out = torch.allclose(inp1, inp2, rtol, atol, equal_nan=equal_nan)
+    ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
     assert res_out == ref_out
 
