@@ -74,7 +74,7 @@ def test_triton_pad(x, pad):
     for i in range(ndim):
         dst_shape[i] += pad_before[i] + pad_after[i]
 
-    out = torch.empty(dst_shape, device=x.device, dtype=x.dtype) * 2
+    out = torch.empty(dst_shape, device=x.device, dtype=x.dtype)
 
     valid_dim0_start = pad_before[0]
     valid_dim0_end = dst_shape[0] - pad_before[0]
