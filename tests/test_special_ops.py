@@ -222,3 +222,49 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_normal(shape, dtype):
+    loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device="cuda")
+    scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        res_out = torch.distributions.normal.Normal(loc, scale).sample()
+    mean = torch.mean(res_out)
+    std = torch.std(res_out)
+    assert torch.abs(mean - 3.0) < 0.05
+    assert torch.abs(std - 10.0) < 0.05
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_uniform(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        x.uniform_(-3, 3)
+    assert (x <= 3.0).all()
+    assert (x >= -3.0).all()
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_neg(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    z = y.imag
+    assert z.is_neg()
+    with flag_gems.use_gems():
+        out = z.resolve_neg()
+    assert not out.is_neg()
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_conj(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    assert y.is_conj()
+    with flag_gems.use_gems():
+        z = y.resolve_conj()
+    assert not z.is_conj()

@@ -72,3 +72,68 @@ def test_perf_embedding():
         kwargs_func=embedding_kwargs,
     )
     bench.run()
+
+
+def test_perf_normal():
+    def normal_arg(dtype, batch, size):
+        loc = torch.full(size=(size, batch), fill_value=3.0, dtype=dtype, device="cuda")
+        scale = torch.full(
+            size=(size, batch), fill_value=10.0, dtype=dtype, device="cuda"
+        )
+        return loc, scale
+
+    bench = Benchmark(
+        op_name="distributions.normal.Normal",
+        torch_op=torch.distributions.normal.Normal,
+        arg_func=normal_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_uniform():
+    bench = Benchmark(
+        op_name="uniform_",
+        torch_op=torch.Tensor.uniform_,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_resolve_neg():
+    def resolve_neg_arg(dtype, batch, size):
+        x = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        y = x.conj()
+        z = y.imag
+        return (z,)
+
+    bench = Benchmark(
+        op_name="resolve_neg",
+        torch_op=torch.resolve_neg,
+        arg_func=resolve_neg_arg,
+        dtypes=[torch.cfloat],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_resolve_conj():
+    def resolve_conj_arg(dtype, batch, size):
+        x = torch.randn(size=(size, batch), dtype=dtype, device="cuda")
+        return (x.conj(),)
+
+    bench = Benchmark(
+        op_name="resolve_conj",
+        torch_op=torch.resolve_conj,
+        arg_func=resolve_conj_arg,
+        dtypes=[torch.cfloat],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
