@@ -2,6 +2,7 @@ import logging
 
 import torch
 import triton
+import copy
 import triton.language as tl
 import triton.backends.mlu.driver as driver
 
@@ -119,23 +120,34 @@ def softmax_kernel_non_inner(
 
 
 def config_prune(configs, named_args, **kwargs):
-    N = named_args['N']
+    N = named_args["N"]
     configs_map = {}
     for config in configs:
         kw = config.kwargs
-        BLOCK_M, BLOCK_N, num_warps, num_stages = \
-            kw['BLOCK_M'], kw['BLOCK_N'], config.num_warps, config.num_stages
+        BLOCK_M, BLOCK_N, num_warps, num_stages = (
+            kw["BLOCK_M"],
+            kw["BLOCK_N"],
+            config.num_warps,
+            config.num_stages,
+        )
         # When N is less than MAX_C_MLU_SOFTMAX_FORWARD, no reduction loops
-        if N < MAX_C_MLU_SOFTMAX_FORWARD:
-            BLOCK_N = kw['BLOCK_N'] = N
-            num_stages = config.num_stages = 1
+        doopt = N < MAX_C_MLU_SOFTMAX_FORWARD
+        if doopt:
+            BLOCK_N = N
+            num_stages = 1
         key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
-        # Only keep one config for the same key
+        if key in configs_map:
+            continue
+        # change config
+        if doopt:
+            config = copy.deepcopy(config)
+            config.kwargs["BLOCK_N"] = N
+            config.num_stages = 1
+        # keep config
         configs_map.setdefault(key, config)
     pruned_configs = []
     for k, v in configs_map.items():
         pruned_configs.append(v)
-    configs = pruned_configs
     return pruned_configs
 
 
@@ -157,7 +169,7 @@ def config_prune(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "ONE_TILE_PER_CTA": lambda args: args["N"] < MAX_C_MLU_SOFTMAX_FORWARD,
+        "ONE_TILE_PER_CTA": lambda args: args["N"] <= args["BLOCK_N"],
     }, )
 @triton.jit
 def softmax_kernel_inner(
@@ -304,7 +316,6 @@ def softmax_backward_kernel_non_inner(
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             offsets_n += TILE_N
             offsets += TILE_N * K
-
 
 
 @libentry()

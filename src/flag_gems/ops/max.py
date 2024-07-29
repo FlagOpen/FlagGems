@@ -16,6 +16,7 @@ def max_kernel_1(
     inp,
     out,
     M,
+    FILL_VALUE,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -27,7 +28,32 @@ def max_kernel_1(
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
+        _tmp = tl.where((_tmp < inp_val), inp_val, _tmp)
+
+    max_val = tl.max(_tmp)
+    tl.atomic_max(out, max_val)
+
+@libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.jit
+def max_kernel_1_int(
+    inp,
+    out,
+    M,
+    FILL_VALUE,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = tl.full([BLOCK_SIZE], value=-2**31, dtype=tl.int32)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
         _tmp = tl.where((_tmp < inp_val), inp_val, _tmp)
 
     max_val = tl.max(_tmp)
@@ -97,10 +123,15 @@ def max(inp):
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     dtype = inp.dtype
 
-    out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
-
     with torch.mlu.device(inp.device):
-        max_kernel_1[grid](inp, out, M)
+        if torch.is_floating_point(inp):
+            fill_value = torch.finfo(inp.dtype).min
+            out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
+            max_kernel_1[grid](inp, out, M, fill_value)
+        else:
+            fill_value = torch.iinfo(inp.dtype).min
+            out = torch.full([], -2**31, dtype=torch.int32, device=inp.device)
+            max_kernel_1_int[grid](inp, out, M, fill_value)
     return out.to(dtype)
 
 

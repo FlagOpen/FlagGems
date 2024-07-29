@@ -767,16 +767,15 @@ def generate_code(
     destination_passing_func_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    doopt: bool,
 ) -> IndentedBuffer:
     assert (
         len(inputs) == op_desc.num_inputs()
     ), "the number of inputs does not match {str(op_desc)}"
     input_tensor_ids = [i for i in range(op_desc.num_inputs()) if op_desc.is_tensor(i)]
     tensor_shapes = [inputs[i].shape for i in input_tensor_ids]
-    same_shapes = all_shapes_same(tensor_shapes)
     shape = [math.prod(tensor_shapes[0])]
     rank = 1
-    doopt = same_shapes and scalar_fn.__name__ != "flip_func"
     if not doopt:
       shape = broadcast_shapes(tensor_shapes)
       rank = len(shape)
@@ -810,9 +809,20 @@ class PointwiseDynamicFunction:
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
+    def do_optimization(
+        self, op_desc: OPDesc, inputs: Tuple[Any], scalar_fn: JITFunction
+    ) -> bool:
+        input_tensor_ids = [
+            i for i in range(op_desc.num_inputs()) if op_desc.is_tensor(i)
+        ]
+        tensor_shapes = [inputs[i].shape for i in input_tensor_ids]
+        same_shapes = all_shapes_same(tensor_shapes)
+        return same_shapes and scalar_fn.__name__ not in ["flip_func"]
+
     def __call__(self, *args, **kwargs):
         # note: kwargs should not be used in JITFunction directly
-        key = f"{self.arg_key(*args)}"
+        doopt = self.do_optimization(self._op_desc, args, self._scalar_fn)
+        key = f"{self.arg_key(doopt, *args)}"
         if key in self.overloads:
             overload = self.overloads[key]
         else:
@@ -826,6 +836,7 @@ class PointwiseDynamicFunction:
                 "_wrapper_out",
                 "_jit_function",
                 code,
+                doopt,
             )
 
             file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
@@ -845,10 +856,10 @@ class PointwiseDynamicFunction:
             self.overloads[key] = overload
         return overload(*args, **kwargs)
 
-    def arg_key(self, *args):
+    def arg_key(self, doopt, *args):
         tensors = [item for item in args if torch.is_tensor(item)]
         max_rank = max(item.ndim for item in tensors)
-        return max_rank
+        return f"{max_rank}_opt_{int(doopt)}"
 
 
 def pointwise_dynamic(
