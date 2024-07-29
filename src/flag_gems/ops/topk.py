@@ -73,7 +73,6 @@ def _compare_and_swap(x, ids, desc_mask, n_dims: core.constexpr, idx: core.const
     l_int_idx = l_idx
     r_int_idx = r_idx
 
-    # tl.device_print(x)
     if x.dtype.is_floating():
         if core.constexpr(x.dtype.primitive_bitwidth) == 16:
             dtype_int = core.int16
@@ -179,6 +178,10 @@ def topk_stage2_kernel(
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logging.debug("GEMS TOPK")
+    # If dim equals to last dim, we set it to -1.
+    if dim == x.ndim - 1:
+        dim = -1
+
     assert dim == -1, "Currently only support topk in last dimension"
     assert largest, "Currently only support largest == True"
     assert sorted, "Currently only support sorted == True"
@@ -186,7 +189,12 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     topk_elem_cnt = x.shape[dim]
     batch_size = math.prod(x.shape) // topk_elem_cnt
 
-    chunk_size = 128
+    # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
+    if topk_elem_cnt < 1024:
+        chunk_size = 256
+    else:
+        chunk_size = 1024
+
     chunk_num = triton.cdiv(topk_elem_cnt, chunk_size)
 
     stage1_out = torch.empty(batch_size * chunk_num * k, device=x.device, dtype=x.dtype)
@@ -198,35 +206,31 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
     stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int32)
 
-    topk_stage1_kernel[
-        batch_size,
-        chunk_num,
-    ](
-        stage1_out,  # pointer to the output
-        stage1_out_idx,  # pointer to the output
-        x,  # pointer to the input
-        k,
-        topk_elem_cnt,
-        chunk_size,
-    )
+    with torch.cuda.device(x.device):
+        topk_stage1_kernel[
+            batch_size,
+            chunk_num,
+        ](
+            stage1_out,  # pointer to the output
+            stage1_out_idx,  # pointer to the output
+            x,  # pointer to the input
+            k,
+            topk_elem_cnt,
+            chunk_size,
+        )
 
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-    print(stage2_out.shape, stage2_out.dtype)
-    print(stage2_out_idx.shape, stage2_out_idx.dtype)
-
-    print(stage1_out.shape, stage1_out.dtype)
-    print(stage1_out_idx.shape, stage1_out_idx.dtype)
-
-    topk_stage2_kernel[batch_size,](
-        stage2_out,
-        stage2_out_idx,
-        stage1_out,
-        stage1_out_idx,
-        k,
-        stage2_elem_cnt,
-        BLOCK_SIZE,
-    )
+    with torch.cuda.device(x.device):
+        topk_stage2_kernel[batch_size,](
+            stage2_out,
+            stage2_out_idx,
+            stage1_out,
+            stage1_out_idx,
+            k,
+            stage2_elem_cnt,
+            BLOCK_SIZE,
+        )
 
     return (stage2_out, stage2_out_idx)
