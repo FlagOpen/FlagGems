@@ -83,6 +83,31 @@ def test_perf_cross_entropy_loss():
     bench.run()
 
 
+def test_perf_cross_entropy_loss_backward():
+    def cross_entropy_loss_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        target = torch.randint(
+            0,
+            size,
+            [
+                batch,
+            ],
+            device=DEVICE,
+        )
+        return inp, target
+
+    bench = Benchmark(
+        op_name="cross_entropy_loss",
+        torch_op=torch.nn.CrossEntropyLoss(),
+        arg_func=cross_entropy_loss_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 def test_perf_cumsum():
     def cumsum_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)

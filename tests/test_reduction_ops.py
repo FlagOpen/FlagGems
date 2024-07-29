@@ -7,6 +7,8 @@ from .accuracy_utils import (
     DIM_LIST,
     DIMS_LIST,
     FLOAT_DTYPES,
+    ALL_INT_DTYPES,
+    INT_DTYPES,
     REDUCTION_SHAPES,
     DEVICE,
     gems_assert_close,
@@ -377,6 +379,18 @@ def test_accuracy_log_softmax(shape, dtype, dim):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.max(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.max(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + [[1]])
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_accuracy_max_int(shape, dtype):
+    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to(DEVICE)
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
