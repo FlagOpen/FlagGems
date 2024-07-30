@@ -208,6 +208,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     embedding = torch.randn(
         (EmbeddingSize, N), device="cuda", dtype=dtype, requires_grad=True
     )
+    ref_indices = to_reference(indices)
     ref_embedding = to_reference(embedding)
     ref_indices = to_reference(indices)
 
@@ -223,6 +224,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
+    res_in_grad = to_reference(res_in_grad)
 
     gems_assert_close(res_out, ref_out, dtype)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
