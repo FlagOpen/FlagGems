@@ -225,22 +225,29 @@ def test_accuracy_rand_like(shape, dtype):
     assert (res_out >= 0.0).all()
 
 
-@pytest.mark.parametrize("batch_size", [4])
+@pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128])
-@pytest.mark.parametrize("topk", [2])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("topk", [5])
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_topk(
     batch_size,
     hiddensize,
     topk,
+    largest,
     dtype,
 ):
-    x = torch.randn((batch_size, hiddensize), dtype=dtype, device="cuda")
-
-    ref_value, ref_index = torch.topk(x, topk)
+    # Note(Zhengzekang): here I use arange is to generate unique array
+    # Due to fp16 and bf16 has lower precision, it maybe generate the same number, which cause topk index is not equal.
+    x = torch.arange(batch_size * hiddensize, dtype=dtype, device="cuda").reshape(
+        batch_size, hiddensize
+    )
+    indices = torch.randperm(x.size(1))
+    x = x[:, indices]
+    ref_value, ref_index = torch.topk(x, topk, largest=largest)
 
     with flag_gems.use_gems():
-        res_value, res_index = torch.topk(x, topk)
+        res_value, res_index = torch.topk(x, topk, largest=largest)
 
     gems_assert_close(ref_value, res_value, dtype)
     gems_assert_equal(ref_index, res_index)

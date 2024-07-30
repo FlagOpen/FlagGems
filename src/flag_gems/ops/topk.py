@@ -16,6 +16,37 @@ from triton.language.standard import (
 
 from ..utils import libentry
 
+_MIN_FLOAT32_VAL = torch.finfo(torch.float32).min
+_MAX_FLOAT32_VAL = torch.finfo(torch.float32).max
+_MIN_FLOAT16_VAL = torch.finfo(torch.float16).min
+_MAX_FLOAT16_VAL = torch.finfo(torch.float16).max
+_MIN_BFLOAT16_VAL = torch.finfo(torch.bfloat16).min
+_MAX_BFLOAT16_VAL = torch.finfo(torch.bfloat16).max
+_MIN_INT32_VAL = torch.iinfo(torch.int32).min
+_MAX_INT32_VAL = torch.iinfo(torch.int32).max
+
+
+@triton.jit
+def _get_finfo_val(
+    dtype,
+    return_max,
+):
+    if dtype is tl.float32:
+        if return_max:
+            return _MAX_FLOAT32_VAL
+        else:
+            return _MIN_FLOAT32_VAL
+    elif dtype is tl.float16:
+        if return_max:
+            return _MAX_FLOAT16_VAL
+        else:
+            return _MIN_FLOAT16_VAL
+    elif dtype is tl.bfloat16:
+        if return_max:
+            return _MAX_BFLOAT16_VAL
+        else:
+            return _MIN_BFLOAT16_VAL
+
 
 @libentry()
 @triton.jit
@@ -26,6 +57,7 @@ def topk_stage1_kernel(
     k,
     N: tl.constexpr,
     CHUNK_SIZE: tl.constexpr,
+    DESCENDING: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     cur_chunk_idx = tl.program_id(1)
@@ -40,13 +72,31 @@ def topk_stage1_kernel(
     cols = tl.arange(0, CHUNK_SIZE)
     mask = (chunk_offset + cols) < N
 
-    x_val = tl.load(x_ptr + cols, mask=mask, other=-10000.0).to(tl.float32)
+    mask_val = _get_finfo_val(x_ptr.dtype.element_ty, return_max=not DESCENDING)
+    x_val = tl.load(x_ptr + cols, mask=mask, other=mask_val).to(tl.float32)
     for k_idx in range(k):
-        chunk_max_val = tl.max(x_val)
-        chunk_max_idx = tl.argmax(x_val, axis=0)
-        tl.store(y_ptr + k_idx, chunk_max_val)
-        tl.store(index_ptr + k_idx, chunk_max_idx + chunk_offset)
-        x_val = tl.where(cols == chunk_max_idx, -10000.0, x_val)
+        if DESCENDING:
+            chunk_select_val = tl.max(x_val)
+            chunk_select_idx = tl.argmax(x_val, axis=0)
+        else:
+            chunk_select_val = tl.min(x_val)
+            chunk_select_idx = tl.argmin(x_val, axis=0)
+
+        tl.store(y_ptr + k_idx, chunk_select_val)
+        tl.store(index_ptr + k_idx, chunk_select_idx + chunk_offset)
+
+        if DESCENDING:
+            x_val = tl.where(
+                cols == chunk_select_idx,
+                _get_finfo_val(tl.float32, return_max=False),
+                x_val,
+            )
+        else:
+            x_val = tl.where(
+                cols == chunk_select_idx,
+                _get_finfo_val(tl.float32, return_max=True),
+                x_val,
+            )
 
 
 """
@@ -156,6 +206,7 @@ def topk_stage2_kernel(
     k: tl.constexpr,
     N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    DESCENDING: tl.constexpr,
 ):
     cur_batch = tl.program_id(0)
     chunk_x += cur_batch * N
@@ -166,11 +217,14 @@ def topk_stage2_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
     mask = cols < N
 
-    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=-10000.0).to(tl.float32)
-    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=-10000)
+    mask_val = _get_finfo_val(chunk_x.dtype.element_ty, return_max=not DESCENDING)
+    mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
+
+    chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(tl.float32)
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val)
 
     sorted_chunk_x, sorted_chunk_index = argsort(
-        chunk_x_val, chunk_index_val, descending=True
+        chunk_x_val, chunk_index_val, descending=DESCENDING
     )
     tl.store(y_ptr + cols, sorted_chunk_x, mask=cols < k)
     tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < k)
@@ -183,8 +237,11 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         dim = -1
 
     assert dim == -1, "Currently only support topk in last dimension"
-    assert largest, "Currently only support largest == True"
     assert sorted, "Currently only support sorted == True"
+
+    descending = True
+    if not largest:
+        descending = False
 
     topk_elem_cnt = x.shape[dim]
     batch_size = math.prod(x.shape) // topk_elem_cnt
@@ -217,6 +274,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             k,
             topk_elem_cnt,
             chunk_size,
+            descending,
         )
 
     stage2_elem_cnt = chunk_num * k
@@ -231,6 +289,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             k,
             stage2_elem_cnt,
             BLOCK_SIZE,
+            descending,
         )
 
     return (stage2_out, stage2_out_idx)
