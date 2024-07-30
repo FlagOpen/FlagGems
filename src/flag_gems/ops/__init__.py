@@ -13,6 +13,7 @@ from .bitwise_and import (
 from .bitwise_not import bitwise_not
 from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_tensor
 from .bmm import bmm
+from .cat import cat
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
@@ -108,6 +109,7 @@ __all__ = [
     "bitwise_or_scalar",
     "bitwise_or_scalar_tensor",
     "bmm",
+    "cat",
     "clamp",
     "clamp_tensor",
     "cos",
