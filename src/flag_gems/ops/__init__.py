@@ -41,6 +41,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm
 from .mul import mul
+from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
@@ -117,6 +118,7 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "multinomial",
     "rand",
     "randn",
     "rand_like",

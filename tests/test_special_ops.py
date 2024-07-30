@@ -222,3 +222,21 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (100,),
+    ],
+)  # (1024, 2000)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("n_samples", [129, 2048])
+def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
+    dist = torch.zeros(size=shape, dtype=dtype, device="cuda")
+    Index = (42, 13, 5)
+    dist[..., Index] = 1
+    with flag_gems.use_gems():
+        res_out = torch.multinomial(dist, n_samples, True)
+    print(res_out)
+    print(torch.sum(torch.isin(res_out, torch.tensor(Index, device="cuda"))))
