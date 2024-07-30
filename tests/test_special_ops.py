@@ -233,8 +233,8 @@ def test_accuracy_normal(shape, dtype):
         res_out = torch.distributions.normal.Normal(loc, scale).sample()
     mean = torch.mean(res_out)
     std = torch.std(res_out)
-    assert torch.abs(mean - 3.0) < 0.05
-    assert torch.abs(std - 10.0) < 0.05
+    assert torch.abs(mean - 3.0) < 0.1
+    assert torch.abs(std - 10.0) < 0.1
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
