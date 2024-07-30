@@ -33,7 +33,6 @@ class Benchmark:
         self.dtypes = dtypes
         self.batch = batch
         self.sizes = sizes
-        self.gems_op = None
         self.is_backward = is_backward
 
     def set_gems(self, gems_op):
