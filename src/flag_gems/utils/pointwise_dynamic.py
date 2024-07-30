@@ -330,14 +330,19 @@ def generate_functional_pointwise_wrapper(
         for i in range(op_desc.num_outputs()):
             type_promotion_args = ith_parameter_for_type_promotion(op_desc, i)
             k_type_promotion = op_desc.ith_type_promotion_kind(i)
-            code.writeline(
-                (
-                    f"out{num_output_tensor_index} = "
-                    f"torch.empty(shape, dtype=type_promotion"
-                    f"({type_promotion_args}, type_promotion=utils.{k_type_promotion})[1], "
-                    f"device=in0.device)"
+            code.writeline(f"if 'out{i}' in kwargs:")
+            with code.indent():
+                code.writeline(f"out{i} = kwargs.pop('out{i}')")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(
+                    (
+                        f"out{num_output_tensor_index} = "
+                        f"torch.empty(shape, dtype=type_promotion"
+                        f"({type_promotion_args}, type_promotion=utils.{k_type_promotion})[1], "
+                        f"device=in0.device)"
+                    )
                 )
-            )
             num_output_tensor_index += 1
 
         # call destination_passing_func
