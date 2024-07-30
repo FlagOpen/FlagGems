@@ -24,6 +24,8 @@ from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
 from .flip import flip
+from .full import full
+from .full_like import full_like
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -45,6 +47,8 @@ from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
 from .normal import normal
+from .ones import ones
+from .ones_like import ones_like
 from .outer import outer
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
@@ -69,6 +73,8 @@ from .uniform import uniform_
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
+from .zeros import zeros
+from .zeros_like import zeros_like
 
 __all__ = [
     "all",
@@ -94,6 +100,9 @@ __all__ = [
     "cos",
     "cumsum",
     "div",
+    "zeros",
+    "ones",
+    "full",
     "native_dropout",
     "erf",
     "embedding",
@@ -101,6 +110,9 @@ __all__ = [
     "eq_scalar",
     "exp",
     "flip",
+    "ones_like",
+    "full_like",
+    "zeros_like",
     "ge",
     "ge_scalar",
     "gelu",
