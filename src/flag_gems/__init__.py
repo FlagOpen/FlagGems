@@ -98,6 +98,8 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("slice_scatter", slice_scatter, "CUDA")
+    lib.impl("select_scatter", select_scatter, "CUDA")
 
 
 class use_gems:
