@@ -334,10 +334,10 @@ def test_accuracy_isfinite(shape, dtype):
     inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
     ref_inp = to_reference(inp)
 
-#     ref_out = torch.isfinite(ref_inp)
-#     with flag_gems.use_gems():
-#         res_out = torch.isfinite(inp)
-#     gems_assert_equal(res_out, ref_out)
+    ref_out = torch.isfinite(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.isfinite(inp)
+    gems_assert_equal(res_out, ref_out)
 
 
 def get_max_ndim(shape, dims):

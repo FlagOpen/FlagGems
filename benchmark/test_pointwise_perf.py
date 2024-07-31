@@ -465,52 +465,52 @@ def test_perf_where():
     bench.run()
 
 
-# def test_perf_isclose():
-#     bench = Benchmark(
-#         op_name="isclose",
-#         torch_op=torch.isclose,
-#         arg_func=binary_args,
-#         dtypes=FLOAT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_isclose():
+    bench = Benchmark(
+        op_name="isclose",
+        torch_op=torch.isclose,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-# def test_perf_isclose_int():
-#     bench = Benchmark(
-#         op_name="isclose_int",
-#         torch_op=torch.isclose,
-#         arg_func=binary_int_args,
-#         dtypes=INT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_isclose_int():
+    bench = Benchmark(
+        op_name="isclose_int",
+        torch_op=torch.isclose,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-# def test_perf_allclose():
-#     bench = Benchmark(
-#         op_name="allclose",
-#         torch_op=torch.allclose,
-#         arg_func=binary_args,
-#         dtypes=FLOAT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_allclose():
+    bench = Benchmark(
+        op_name="allclose",
+        torch_op=torch.allclose,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-# def test_perf_allclose_int():
-#     bench = Benchmark(
-#         op_name="allclose_int",
-#         torch_op=torch.allclose,
-#         arg_func=binary_int_args,
-#         dtypes=INT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_allclose_int():
+    bench = Benchmark(
+        op_name="allclose_int",
+        torch_op=torch.allclose,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
 def test_perf_erf():
@@ -525,28 +525,28 @@ def test_perf_erf():
     bench.run()
 
 
-# def test_perf_isfinite():
-#     bench = Benchmark(
-#         op_name="isfinite",
-#         torch_op=torch.isfinite,
-#         arg_func=unary_arg,
-#         dtypes=FLOAT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_isfinite():
+    bench = Benchmark(
+        op_name="isfinite",
+        torch_op=torch.isfinite,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
-# def test_perf_isfinite_int():
-#     bench = Benchmark(
-#         op_name="isfinite_int",
-#         torch_op=torch.isfinite,
-#         arg_func=unary_int_arg,
-#         dtypes=INT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_isfinite_int():
+    bench = Benchmark(
+        op_name="isfinite_int",
+        torch_op=torch.isfinite,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
 def test_perf_flip():
