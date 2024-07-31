@@ -286,3 +286,21 @@ def test_perf_vector_norm():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_masked_fill():
+    def masked_fill_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        value = 1024
+        return (inp, mask, value)
+
+    bench = Benchmark(
+        op_name="masked_fill",
+        torch_op=torch.masked_fill,
+        arg_func=masked_fill_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
