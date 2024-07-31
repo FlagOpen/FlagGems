@@ -6,6 +6,8 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    ALL_FLOAT_DTYPES,
+    INT_DTYPES,
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     RESOLUTION,
@@ -254,3 +256,86 @@ def test_accuracy_resolve_conj(shape, dtype):
     with flag_gems.use_gems():
         z = y.resolve_conj()
     assert not z.is_conj()
+
+
+#@pytest.mark.parametrize("shape", [(161,)])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(8192, 65536 + 8192 + 11,), (256 * 65536,), (1280, 1280 * 21)])
+#@pytest.mark.parametrize("dtype", [torch.int32])
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("sorted", [True])
+#@pytest.mark.parametrize("return_inverse", [False])
+@pytest.mark.parametrize("return_inverse", [True, False])
+#@pytest.mark.parametrize("return_counts", [True])
+@pytest.mark.parametrize("return_counts", [False, True])
+def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
+    #torch.set_printoptions(threshold=float('inf'))
+    torch.manual_seed(0)
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(-10, 10, shape, device="cuda").to(dtype)
+    #inp = torch.tensor([[12, 10, 11], [12, 11, 14]], dtype=dtype, device="cuda")
+    #inp = torch.tensor([1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5], dtype=dtype, device="cuda")
+    #inp = torch.tensor([1, 2, 2, 3,  4, 4, 5, 5,  5, 5, 5, 5,  5, 5, 5, 5,  5, 5, 6, 7,  7, 7, 7, 7,  7], dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, False)
+
+    if return_counts:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_unique_order, res_counts = torch.unique(inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            ref_out, ref_unique_order, ref_counts = torch.unique(ref_inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            assert res_out.numel() == ref_out.numel()
+            gems_assert_equal(res_unique_order, ref_unique_order)
+        else:
+            with flag_gems.use_gems():
+                res_out, res_counts = torch.unique(inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            ref_out, ref_counts = torch.unique(ref_inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            assert res_out.numel() == ref_out.numel()
+        gems_assert_equal(res_counts, ref_counts)
+    else:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_unique_order = torch.unique(inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            ref_out, ref_unique_order = torch.unique(ref_inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            assert res_out.numel() == ref_out.numel()
+            gems_assert_equal(res_unique_order, ref_unique_order)
+        else:
+            with flag_gems.use_gems():
+                res_out = torch.unique(inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            ref_out = torch.unique(ref_inp, sorted=sorted, return_inverse=return_inverse, return_counts=return_counts)
+            assert res_out.numel() == ref_out.numel()
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", [(1024, 1024)])
+#@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.int32])
+#@pytest.mark.parametrize("dtype", [torch.float16, torch.float32] + ALL_INT_DTYPES)
+#@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64] + ALL_INT_DTYPES)
+@pytest.mark.parametrize("assume_unique", [False])
+@pytest.mark.parametrize("invert", [False])
+#@pytest.mark.parametrize("invert", [False, True])
+def test_accuracy_isin(shape, dtype, assume_unique, invert):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+        test_numel = int(inp1.numel() ** 0.1)
+        test_shape = (test_numel,)
+        #test_shape = ((test_numel + 7) // 8, 8)
+        inp2 = torch.randn(test_shape, dtype=dtype, device="cuda")
+    else:
+        inp1 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+        #test_numel = int(inp1.numel())
+        test_numel = int(inp1.numel() ** 0.1)
+        test_shape = (test_numel,)
+        #test_shape = ((test_numel + 7) // 8, 8)
+        inp2 = torch.randint(-1000, 1000, test_shape, device="cuda").to(dtype)
+    inp1 = torch.tensor([[12, 10, 11], [12, 11, 14]], dtype=dtype, device="cuda")
+    inp2 = torch.tensor([[13, 11], [13, 11]], dtype=dtype, device="cuda")
+    #inp2 = torch.tensor([13, 11, 13, 11], dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    with flag_gems.use_gems():
+        res_out = torch.isin(inp1, inp2, assume_unique=assume_unique, invert=invert)
+    ref_out = torch.isin(ref_inp1, ref_inp2, assume_unique=assume_unique, invert=invert)
+    gems_assert_equal(res_out, ref_out)
