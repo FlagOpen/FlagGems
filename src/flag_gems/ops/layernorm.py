@@ -10,24 +10,28 @@ from ..utils import libentry, TOTAL_CORE_NUM
 MAX_C_MLU_LAYERNORM_BACKWARD = 8192
 
 def cfggen():
-    block_m = [i for i in range(1, 36, 4)]  #[1, 2, 4]
-    block_n = [i for i in range(64, 193, 64)]
-    warps = [1]
-    num_stages = [1, 3]
+    block_m = [3, 6, 11, 22]  #[1, 2, 4]
+    block_n = [64, 128, 192, 256, 512]
     configs = [
         triton.Config({
             "BLOCK_ROW_SIZE": m,
             "BLOCK_COL_SIZE": n
-        },
-                      num_warps=w,
-                      num_stages=s) for m in block_m for n in block_n
-        for w in warps for s in num_stages
+        }) for m in block_m for n in block_n
     ]
     return configs
 
+def num_stages(args):
+    return 3
+
+def num_warps(args):
+    return 1
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics({
+    'num_stages': lambda args: num_stages(args),
+    'num_warps': lambda args: num_warps(args),
+})
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel(
     X,

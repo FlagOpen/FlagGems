@@ -155,6 +155,37 @@ def test_perf_groupnorm():
     )
     bench.run()
 
+def test_perf_groupnorm_backward():
+    def group_norm_args(dtype, batch, size):
+        C = 16
+        G = 16
+        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return inp, G, weight, bias
+
+    bench = Benchmark(
+        op_name="groupnorm",
+        torch_op=torch.nn.functional.group_norm,
+        arg_func=group_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=BLAS_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
