@@ -286,3 +286,28 @@ def test_perf_vector_norm():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_index_add():
+    def index_add_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        import random
+
+        dim = random.choice([0, 1])
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max // 2
+        index = torch.randint(0, index_max, (index_len,), device="cuda")
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        return (inp, dim, index, src)
+
+    bench = Benchmark(
+        op_name="index_add",
+        torch_op=torch.index_add,
+        arg_func=index_add_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
