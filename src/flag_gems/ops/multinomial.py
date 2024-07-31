@@ -30,10 +30,10 @@ def multinomial_with_replacement(
     rv, _, _, _ = uniform(philox_seed, philox_offset, y_off + n)
 
     # Do a binary search for each random variable on the cdf
+    cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K
-    steps = tl.math.log2(K.to(tl.float32)).to(tl.int32)
-    cdf_ptr += tl.program_id(1) * K
+    steps = tl.math.log2(K.to(tl.float32)).to(tl.int32) + 1
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
