@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils.shape_utils import volume
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["fill_value"])
 def full_kernel(
     output_ptr,
     n_elements,
