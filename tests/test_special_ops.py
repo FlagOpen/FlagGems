@@ -246,18 +246,30 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
     assert pvalue > 0.05
 
 
-@pytest.mark.parametrize("shape", [(1000,)])
+@pytest.mark.parametrize(
+    "pool",
+    [
+        100,
+    ],
+)
 @pytest.mark.parametrize("dtype", [torch.float32])
-@pytest.mark.parametrize("n_samples", [1000])
-def test_accuracy_multinomial_without_replacement(shape, dtype, n_samples):
-    dist = torch.zeros(size=shape, dtype=dtype, device="cuda")
-    Index = torch.randperm(1000, device="cuda")[:10]
-    dist[..., Index] = torch.exp2(torch.arange(10, 0, -1, device="cuda"))
+@pytest.mark.parametrize("n_samples", [10])
+def test_accuracy_multinomial_without_replacement(pool, dtype, n_samples):
+    n_draws = 1000
+    dist = torch.empty((n_draws, pool), device="cuda")
+    dist[:] = torch.rand(size=(pool,), dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.multinomial(dist, n_samples, False)
     # Verifies uniqueness
-    assert res_out.unique().size() == res_out.size()
-    # A ballpark verification that the sample keeps the order of input probabilities
-    _, expected_order = torch.sort(Index)
-    _, observed_order = torch.sort(res_out[:10])
-    assert torch.mean(torch.abs(expected_order - observed_order).to(torch.float)) < 2
+    for draw in range(n_draws):
+        assert res_out[draw].unique().size(0) == res_out.size(1)
+    # Chi-square tests
+    samples, count = res_out.unique(return_counts=True)
+    dist = dist[0][samples]
+    dist = dist / dist.sum()
+    # The expected number of samples must equal the observed number of samples exactly
+    observed_samples = n_samples * n_draws
+    expected_count = torch.round(dist * n_samples * n_draws)
+    expected_count[0] += observed_samples - expected_count.sum()
+    chi2, pvalue = scipy.stats.chisquare(count.tolist(), expected_count.tolist())
+    assert pvalue > 0.05
