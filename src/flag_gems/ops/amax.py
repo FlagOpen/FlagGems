@@ -15,8 +15,11 @@ def amax_kernel_1(
     mid,
     M,
     BLOCK_SIZE: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
+    if INT64_INDEX:
+        pid = pid.to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -55,9 +58,12 @@ def amax_kernel(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0)
+    if INT64_INDEX:
+        pid = pid.to(tl.int64)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -73,6 +79,13 @@ def amax_kernel(
         _all = tl.maximum(_all, a)
     all = tl.max(_all, axis=1)[:, None]
     tl.store(out, all, row_mask)
+
+
+INT32_MAX = torch.iinfo(torch.int32).max
+
+
+def size_in_bytes(a: torch.Tensor) -> int:
+    return a.numel() * a.element_size()
 
 
 def amax(inp, dim=None, keepdim=False):
@@ -92,8 +105,12 @@ def amax(inp, dim=None, keepdim=False):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch.cuda.device(inp.device):
-            amax_kernel_1[(mid_size, 1)](inp, mid, M, block_size)
-            amax_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+            amax_kernel_1[(mid_size, 1)](
+                inp, mid, M, block_size, INT64_INDEX=size_in_bytes(inp) > INT32_MAX
+            )
+            amax_kernel_2[(1, 1)](
+                mid, out, mid_size, block_mid
+            )  # max block size is 128k, so mid does not requires int64 index
         return out
     else:
         if isinstance(dim, int):
@@ -114,7 +131,9 @@ def amax(inp, dim=None, keepdim=False):
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch.cuda.device(inp.device):
-            amax_kernel[grid](inp, out, M, N)
+            amax_kernel[grid](
+                inp, out, M, N, INT64_INDEX=size_in_bytes(inp) > INT32_MAX
+            )
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out
