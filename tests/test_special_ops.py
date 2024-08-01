@@ -1,6 +1,8 @@
 from typing import Optional
 
+import numpy as np
 import pytest
+import scipy
 import torch
 
 import flag_gems
@@ -224,19 +226,38 @@ def test_accuracy_rand_like(shape, dtype):
     assert (res_out >= 0.0).all()
 
 
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (100,),
-    ],
-)  # (1024, 2000)])
-@pytest.mark.parametrize("dtype", [torch.float32])
-@pytest.mark.parametrize("n_samples", [129, 2048])
+@pytest.mark.parametrize("shape", [(1000,), (100, 1000)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("n_samples", [2048])
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
     dist = torch.zeros(size=shape, dtype=dtype, device="cuda")
-    Index = (42, 13, 5)
+    Index = [5, 13, 42]
     dist[..., Index] = 1
     with flag_gems.use_gems():
         res_out = torch.multinomial(dist, n_samples, True)
-    print(res_out)
-    print(torch.sum(torch.isin(res_out, torch.tensor(Index, device="cuda"))))
+    index, tally = torch.unique(res_out, sorted=True, return_counts=True)
+    assert index.tolist() == Index
+    # Do a simple Chi-square test
+    tally = np.array(tally.tolist())
+    expected = tally
+    expected[:] = tally.mean()
+    observed = tally
+    chi2, pvalue = scipy.stats.chisquare(observed, expected)
+    assert pvalue > 0.05
+
+
+@pytest.mark.parametrize("shape", [(1000,)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("n_samples", [1000])
+def test_accuracy_multinomial_without_replacement(shape, dtype, n_samples):
+    dist = torch.zeros(size=shape, dtype=dtype, device="cuda")
+    Index = torch.randperm(1000, device="cuda")[:10]
+    dist[..., Index] = torch.exp2(torch.arange(10, 0, -1, device="cuda"))
+    with flag_gems.use_gems():
+        res_out = torch.multinomial(dist, n_samples, False)
+    # Verifies uniqueness
+    assert res_out.unique().size() == res_out.size()
+    # A ballpark verification that the sample keeps the order of input probabilities
+    _, expected_order = torch.sort(Index)
+    _, observed_order = torch.sort(res_out[:10])
+    assert torch.mean(torch.abs(expected_order - observed_order).to(torch.float)) < 2
