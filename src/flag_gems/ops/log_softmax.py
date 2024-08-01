@@ -76,6 +76,7 @@ def log_softmax_kernel_non_inner(
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
 
+    log2e = 1.442695
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
@@ -85,7 +86,8 @@ def log_softmax_kernel_non_inner(
         m = tl.max(inp, 0)
         e = tl.exp(inp - m[None, :])
         z = tl.sum(e, 0)
-        out = e / z
+        o = e / z
+        out = tl.log2(o) / log2e
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:
@@ -106,7 +108,6 @@ def log_softmax_kernel_non_inner(
         m_reduced = tl.max(m, 0)  # (TILE_K,)
         z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)  # (TILE_K, )
         m = m_reduced
-        log2e = 1.442695
         # specialization does not improve performance inn this example, as tested
         previous_multiple = prev_multiple_of(N, TILE_N)
         for start_n in range(0, N, TILE_N):
