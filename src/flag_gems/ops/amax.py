@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
+from ..utils.shape_utils import can_use_int32_index
 
 
 @libentry()
@@ -81,13 +82,6 @@ def amax_kernel(
     tl.store(out, all, row_mask)
 
 
-INT32_MAX = torch.iinfo(torch.int32).max
-
-
-def size_in_bytes(a: torch.Tensor) -> int:
-    return a.numel() * a.element_size()
-
-
 def amax(inp, dim=None, keepdim=False):
     logging.debug("GEMS AMAX")
     if dim is None or len(dim) == 0:
@@ -97,6 +91,7 @@ def amax(inp, dim=None, keepdim=False):
         block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
         mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+        use_int64_index = not can_use_int32_index(inp)
         if not keepdim:
             out = torch.empty([], dtype=dtype, device=inp.device)
         else:
@@ -106,7 +101,7 @@ def amax(inp, dim=None, keepdim=False):
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch.cuda.device(inp.device):
             amax_kernel_1[(mid_size, 1)](
-                inp, mid, M, block_size, INT64_INDEX=size_in_bytes(inp) > INT32_MAX
+                inp, mid, M, block_size, INT64_INDEX=use_int64_index
             )
             amax_kernel_2[(1, 1)](
                 mid, out, mid_size, block_mid
@@ -121,6 +116,7 @@ def amax(inp, dim=None, keepdim=False):
         shape = list(inp.shape)
         dim = [d % inp.ndim for d in dim]
         inp = dim_compress(inp, dim)
+        use_int64_index = not can_use_int32_index(inp)
         N = 1
         for i in dim:
             N *= shape[i]
@@ -131,9 +127,7 @@ def amax(inp, dim=None, keepdim=False):
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch.cuda.device(inp.device):
-            amax_kernel[grid](
-                inp, out, M, N, INT64_INDEX=size_in_bytes(inp) > INT32_MAX
-            )
+            amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out

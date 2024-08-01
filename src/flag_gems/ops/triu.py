@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils.shape_utils import can_use_int32_index
 
 
 def cfggen():
@@ -98,7 +99,7 @@ def triu(A, diagonal=0):
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
-    use_int64_index = A.numel() > INT32_MAX or A.element_size() * A.numel() > INT32_MAX
+    use_int64_index = not can_use_int32_index(A)
     M, N = A.shape[-2:]
     with torch.cuda.device(A.device):
         if len(A.shape) == 2:

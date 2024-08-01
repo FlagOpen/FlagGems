@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils.shape_utils import can_use_int32_index
 
 
 @libentry()
@@ -109,13 +110,6 @@ def argmax_kernel(
     tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 
-INT32_MAX = torch.iinfo(torch.int32).max
-
-
-def size_in_bytes(a: torch.Tensor) -> int:
-    return a.numel() * a.element_size()
-
-
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logging.debug("GEMS ARGMAX")
     if dim is None:
@@ -125,6 +119,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
+        use_int64_index = not can_use_int32_index(inp)
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
@@ -143,7 +138,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 mid_index,
                 M,
                 block_size,
-                INT64_INDEX=size_in_bytes(inp) > INT32_MAX,
+                INT64_INDEX=use_int64_index,
             )
             argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
@@ -156,6 +151,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         K = inp.numel() // M // N
 
         inp = inp.contiguous()
+        use_int64_index = not can_use_int32_index(inp)
 
         shape_list = list(shape)
         shape_list[dim] = 1
@@ -169,7 +165,12 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         )
         with torch.cuda.device(inp.device):
             argmax_kernel[grid](
-                inp, out_index, M, N, K, INT64_INDEX=size_in_bytes(inp) > INT32_MAX
+                inp,
+                out_index,
+                M,
+                N,
+                K,
+                INT64_INDEX=use_int64_index,
             )
 
         return out_index
