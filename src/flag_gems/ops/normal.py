@@ -43,7 +43,7 @@ def transform_func_float_float(val, std, mean):
     return val * std + mean
 
 
-def get_std_normal(mean, std, *, generator=None):
+def normal_distribution(mean, std, *, generator=None):
     shape = broadcast_shapes([mean.shape, std.shape])
     out = torch.empty(shape, device=mean.device, dtype=torch.float32)
     N = volume(shape)
@@ -58,23 +58,23 @@ def get_std_normal(mean, std, *, generator=None):
 
 def normal_tensor_tensor(mean, std, *, generator=None):
     logging.debug("GEMS NORMAL_TENSOR_TENSOR")
-    out = get_std_normal(mean, std)
+    out = normal_distribution(mean, std)
     return transform_func_tensor_tensor(out, std, mean)
 
 
 def normal_tensor_float(mean, std, *, generator=None):
     logging.debug("GEMS NORMAL_TENSOR_FLOAT")
-    out = get_std_normal(mean, std)
+    out = normal_distribution(mean, std)
     return transform_func_tensor_float(out, std, mean)
 
 
 def normal_float_tensor(mean, std, *, generator=None):
     logging.debug("GEMS NORMAL_FLOAT_TENSOR")
-    out = get_std_normal(mean, std)
+    out = normal_distribution(mean, std)
     return transform_func_float_tensor(out, std, mean)
 
 
 def normal_float_float(mean, std, *, generator=None):
     logging.debug("GEMS NORMAL_FLOAT_FLOAT")
-    out = get_std_normal(mean, std)
+    out = normal_distribution(mean, std)
     return transform_func_float_float(out, std, mean)

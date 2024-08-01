@@ -9,6 +9,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 
@@ -275,7 +276,7 @@ def test_accuracy_resolve_conj(shape, dtype):
 def test_accuracy_zeros(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.zeros(shape, dtype=dtype, device="cuda")
-    assert torch.equal(res_out, torch.zeros(shape, dtype=dtype, device="cuda"))
+    gems_assert_equal(res_out, torch.zeros(shape, dtype=dtype, device="cuda"))
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -283,7 +284,7 @@ def test_accuracy_zeros(shape, dtype):
 def test_accuracy_ones(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.ones(shape, dtype=dtype, device="cuda")
-    assert torch.equal(res_out, torch.ones(shape, dtype=dtype, device="cuda"))
+    gems_assert_equal(res_out, torch.ones(shape, dtype=dtype, device="cuda"))
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -291,9 +292,7 @@ def test_accuracy_ones(shape, dtype):
 def test_accuracy_full(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.full(shape, 3.1415926, dtype=dtype, device="cuda")
-    assert torch.equal(
-        res_out, torch.full(shape, 3.1415926, dtype=dtype, device="cuda")
-    )
+    gems_assert_equal(res_out, torch.full(shape, 3.1415926, dtype=dtype, device="cuda"))
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -302,7 +301,7 @@ def test_accuracy_zeros_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.zeros_like(x)
-    assert torch.equal(res_out, torch.zeros_like(x))
+    gems_assert_equal(res_out, torch.zeros_like(x))
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -311,7 +310,7 @@ def test_accuracy_ones_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.ones_like(x)
-    assert torch.equal(res_out, torch.ones_like(x))
+    gems_assert_equal(res_out, torch.ones_like(x))
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -320,4 +319,4 @@ def test_accuracy_full_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.full_like(x, 3.1415926)
-    assert torch.equal(res_out, torch.full_like(x, 3.1415926))
+    gems_assert_equal(res_out, torch.full_like(x, 3.1415926))
