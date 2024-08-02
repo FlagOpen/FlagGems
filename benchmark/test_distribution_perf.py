@@ -82,3 +82,15 @@ def test_perf_uniform():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_exponential_():
+    bench = Benchmark(
+        op_name="exponential_",
+        torch_op=torch.Tensor.exponential_,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()

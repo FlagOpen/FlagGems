@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import scipy
 import torch
@@ -75,4 +76,25 @@ def test_accuracy_uniform(shape, dtype):
         x.cpu().numpy().flatten(),
         lambda x: scipy.stats.uniform.cdf(x, loc=-3.0, scale=6.0),
     ).pvalue
+    assert pvalue > 0.05
+
+
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_exponential_(shape, dtype):
+    x = torch.empty(size=shape, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        x.exponential_()
+    assert x.min() > 0
+
+
+@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", (torch.float32,))
+@pytest.mark.parametrize("lambd", (0.01, 0.5, 100.0))
+def test_accuracy_exponential_pvalue(shape, dtype, lambd):
+    x = torch.empty(size=shape, dtype=dtype, device="cuda")
+    with flag_gems.use_gems():
+        x.exponential_(lambd=lambd)
+    expo_cdf = lambda x: np.where(x < 0, 0, 1.0 - np.exp(-lambd * x))
+    pvalue = scipy.stats.kstest(x.cpu().numpy().flatten(), expo_cdf).pvalue
     assert pvalue > 0.05
