@@ -31,6 +31,7 @@ def enable(lib=aten_lib):
     lib.impl("eq.Tensor", eq, "CUDA")
     lib.impl("eq.Scalar", eq_scalar, "CUDA")
     lib.impl("exp", exp, "CUDA")
+    lib.impl("exponential_", exponential_, "CUDA")
     lib.impl("ge.Tensor", ge, "CUDA")
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
