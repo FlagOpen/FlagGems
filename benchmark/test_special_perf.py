@@ -2,10 +2,13 @@ import torch
 
 from .performance_utils import (
     FLOAT_DTYPES,
+    INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
+    WIDE_RANGE_SIZES,
     Benchmark,
     unary_arg,
+    unary_int_arg,
 )
 
 
@@ -82,5 +85,69 @@ def test_perf_embedding():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=embedding_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_unique():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": False, "return_counts": False}
+
+    bench = Benchmark(
+        op_name="unique",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=WIDE_RANGE_SIZES,
+        kwargs_func=unique_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_unique_return_counts():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": False, "return_counts": True}
+
+    bench = Benchmark(
+        op_name="unique_return_counts",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=WIDE_RANGE_SIZES,
+        kwargs_func=unique_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_unique_return_inverse():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": True, "return_counts": False}
+
+    bench = Benchmark(
+        op_name="unique_return_inverse",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=WIDE_RANGE_SIZES,
+        kwargs_func=unique_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_unique_return_inverse_counts():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": True, "return_counts": True}
+
+    bench = Benchmark(
+        op_name="unique_return_inverse_counts",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=WIDE_RANGE_SIZES,
+        kwargs_func=unique_kwargs,
     )
     bench.run()

@@ -104,6 +104,11 @@ POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
 SIZES = [i * 1024 for i in range(1, 81, 5)]
+WIDE_RANGE_SIZES = (
+    [2**i for i in range(0, 10, 2)]
+    + [2 ** (i // 2) + 2 ** (i // 2 - 1) * (i % 2) for i in range(20, 39)]
+    + [2**19 + 16384]
+)
 
 
 def unary_arg(dtype, batch, size):
