@@ -404,21 +404,7 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = volume(shape)")
 
-        tile_size = 16384
-        if rank > 0:
-            if same_shapes:
-                code.writeline(f"tile_size = min({tile_size}, triton.next_power_of_2(num_tasks))")
-            else:
-                code.writeline(f"tile_size = min({tile_size//2}, triton.next_power_of_2(num_tasks))")
-            code.writeline("num_warps = 1")
-            code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
-            code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
-            )
-        else:
-            code.writeline("num_warps = 1")
-            code.writeline("num_ctas = 1")
-        code.writeline("grid = (num_ctas, 1, 1)")
+        code.writeline("grid = lambda meta: (min(48, triton.cdiv(num_tasks, meta['tile_size'])),)")
         code.newline()
 
         # input strides for each input tensor w.r.t. the task index space
@@ -480,10 +466,6 @@ def generate_destination_passing_pointwise_wrapper(
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
-                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                    code.writeline("tile_size=tile_size,")
-                    code.writeline("one_tile_per_cta=tiles_per_cta==1,")
-                code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
         # return
@@ -506,8 +488,17 @@ def generate_pointwise_kernel(
     code.writeline(f"inlined_f = {fn_name}._scalar_fn")
     code.newline()
 
-    # the decorators
     code.writeline("@libentry()")
+
+    # the decorators
+    code.writeline("@triton.autotune(")
+    with code.indent():
+        code.writeline("configs=[")
+        with code.indent():
+            code.writeline("triton.Config({'tile_size':1024}, num_stages=3, num_warps=1), triton.Config({'tile_size':2048}, num_stages=3, num_warps=1), triton.Config({'tile_size':4096}, num_stages=3, num_warps=1), triton.Config({'tile_size':16384}, num_stages=3, num_warps=1), triton.Config({'tile_size':21760}, num_stages=3, num_warps=1), triton.Config({'tile_size':32768}, num_stages=3, num_warps=1)")
+        code.writeline("],")
+        code.writeline("key=['num_tasks'],")
+    code.writeline(")")
     if op_desc.num_non_tensor_args() > 0:
         # we do not specialize non tensor args since they are passed into the inlined function
         # which means that their values may not deserve specialization
@@ -582,14 +573,9 @@ def generate_pointwise_kernel(
 
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
-            code.writeline("tiles_per_cta,")
-            function_ns.create_name("tiles_per_cta")
-
             code.writeline("tile_size: tl.constexpr,")
             function_ns.create_name("tile_size")
 
-            code.writeline("one_tile_per_cta: tl.constexpr,")
-            function_ns.create_name("one_tile_per_cta")
     code.writeline("):")
 
     # input & output names
@@ -640,17 +626,13 @@ def generate_pointwise_kernel(
 
         code.writeline("num_ctas = tl.num_programs(0)")
         function_ns.create_name("num_ctas")
+        code.writeline("step = num_ctas * tile_size")
 
-        # get tid (a.k.a task id)
-        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
-        code.writeline(tid_stmt)
-        function_ns.create_name("init_tid")
-
-        # one-tile-per-cta, monolithic kernel style
-        code.writeline("if one_tile_per_cta: # monolitic kernel style")
+        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+        code.writeline("for start in range(pid * tile_size, num_tasks, step):")
+        function_ns.create_name("j")
         with code.indent():
-            tid_stmt = "tid = init_tid"
-            code.writeline(tid_stmt)
+            code.writeline("tid = start + tl.arange(0, tile_size)")
             function_ns.create_name("tid")
 
             # only apply masking when rank > 0
@@ -677,7 +659,6 @@ def generate_pointwise_kernel(
                 ptrs_expr: str = " + ".join(
                     f"i{j} * in{i}_stride{j}" for j in range(rank)
                 )
-
                 ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
                 load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
                 function_ns.create_name(f"in{i}")  # add to the namespace
@@ -686,7 +667,9 @@ def generate_pointwise_kernel(
 
             # compute
             code.writeline("# compute")
-            code.writeline(f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})")
+            code.writeline(
+                f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})"
+            )
             code.newline()
 
             # stores
@@ -698,64 +681,6 @@ def generate_pointwise_kernel(
                 ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
                 store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
                 code.writeline(store_stmt)
-
-        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-        code.writeline("else: # grid-stride-loop style kernel")
-        with code.indent():
-            code.writeline("for j in range(0, tiles_per_cta):")
-            function_ns.create_name("j")
-            with code.indent():
-                tid_stmt = "tid = init_tid + j * tile_size * num_ctas"
-                code.writeline(tid_stmt)
-                function_ns.create_name("tid")
-
-                # only apply masking when rank > 0
-                # since we only load a value instead of a block of values when the rank is 0
-                mask_stmt: str = "mask = tid < num_tasks"
-                code.writeline(mask_stmt)
-                function_ns.create_name("mask")
-                code.newline()
-
-                # reconstruct multi index
-                code.writeline("# multi index recontruction")
-                for i in reversed(range(rank)):
-                    if i > 0:
-                        code.writeline(f"i{i} = tid % s{i}")
-                        code.writeline(f"tid //= s{i}")
-                    else:
-                        code.writeline(f"i{i} = tid")
-                    function_ns.create_name(f"{i}")
-                code.newline()
-
-                # loads
-                code.writeline("# loads")
-                for i in range(op_desc.num_input_tensors()):
-                    ptrs_expr: str = " + ".join(
-                        f"i{j} * in{i}_stride{j}" for j in range(rank)
-                    )
-                    ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
-                    load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
-                    function_ns.create_name(f"in{i}")  # add to the namespace
-                    code.writeline(load_stmt)
-                code.newline()
-
-                # compute
-                code.writeline("# compute")
-                code.writeline(
-                    f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})"
-                )
-                code.newline()
-
-                # stores
-                code.writeline("# stores")
-                for i in range(op_desc.num_output_tensors()):
-                    ptrs_expr: str = " + ".join(
-                        f"i{j} * out{i}_stride{j}" for j in range(rank)
-                    )
-                    ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
-                    store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
-                    code.writeline(store_stmt)
-                code.newline()
     return code
 
 
