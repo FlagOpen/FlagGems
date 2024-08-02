@@ -608,6 +608,11 @@ def global_cumsum_flat_impl(
         idx_mask = ((i0 == 0) | ne_result_i1) & mask
         tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
 
+    # tile_sum
+    if global_pid == global_num_ctas - 1:
+        last_tile_sum_mask = p == global_pid
+        tl.store(tile_sum_ptr + p, total + tl.sum(ne_result), mask=last_tile_sum_mask)
+
     return total
 
 

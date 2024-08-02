@@ -5,6 +5,7 @@ from .performance_utils import (
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
+    WIDE_RANGE_SIZES,
     Benchmark,
     unary_int_arg,
 )
@@ -158,3 +159,20 @@ def test_perf_arange():
         kwargs_func=arange_kwargs,
     )
     bench.run()
+
+
+def test_perf_unique():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": True, "return_counts": False}
+
+    bench = Benchmark(
+        op_name="unique",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=[torch.int16],
+        batch=POINTWISE_BATCH,
+        sizes=[1,],
+        kwargs_func=unique_kwargs,
+    )
+    bench.run()
+

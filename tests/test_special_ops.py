@@ -8,7 +8,6 @@ import flag_gems
 
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
-    INT_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
