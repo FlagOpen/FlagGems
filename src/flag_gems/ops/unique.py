@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -7,10 +5,55 @@ import triton.language as tl
 from flag_gems.utils.libentry import libentry
 
 
+@libentry()
+@triton.jit
+def simple_unique_flat_kernel(
+    sorted_data_ptr: tl.tensor,
+    sorted_indices_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,
+    inverse_indices_ptr: tl.tensor,
+    idx_ptr: tl.tensor,
+    unique_size_ptr: tl.tensor,  # out
+    return_inverse: tl.constexpr,
+    return_counts: tl.constexpr,
+    num_tasks: int,
+    tile_size: tl.constexpr,
+):
+    i0 = tl.arange(0, tile_size)
+    mask = i0 < num_tasks
+
+    # load
+    a = tl.load(sorted_data_ptr + i0, mask=mask)
+    i0_prev = tl.where(i0 > 0, i0 - 1, 0)
+    b = tl.load(sorted_data_ptr + i0_prev, mask=mask)
+
+    # ne & cumsum
+    ne_result = tl.where(i0 > 0, a != b, 0)
+    cumsum = tl.cumsum(ne_result)
+
+    # unique_size
+    unique_size = tl.sum(ne_result)
+    tl.store(unique_size_ptr, unique_size)
+
+    # data_out: scatter_(to=cumsum, sorted_data)
+    tl.store(data_out_ptr + cumsum, a, mask=mask)
+
+    # inverse_indices: scatter_(to=sorted_indices, cumsum)
+    if return_inverse:
+        sorted_indices = tl.load(sorted_indices_ptr + i0, mask=mask)
+        tl.store(inverse_indices_ptr + sorted_indices, cumsum, mask=mask)
+
+    # idx
+    if return_counts:
+        idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & mask
+        tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
+
+
 @triton.jit
 def output_counts_flat_impl(
     global_pid,
-    idx_ptr: tl.tensor, origin_num_tasks: int,  # in
+    idx_ptr: tl.tensor,
+    origin_num_tasks: int,  # in
     counts_ptr: tl.tensor,  # out
     num_tasks: int,
     tile_size: tl.constexpr,
@@ -37,7 +80,8 @@ def output_counts_flat_impl(
 @libentry()
 @triton.jit
 def output_counts_flat_kernel(
-    idx_ptr: tl.tensor, origin_num_tasks: int,  # in
+    idx_ptr: tl.tensor,
+    origin_num_tasks: int,  # in
     counts_ptr: tl.tensor,  # out
     num_tasks: int,
     tiles_per_cta: int,
@@ -49,26 +93,33 @@ def output_counts_flat_kernel(
     if one_tile_per_cta:  # monolitic kernel style
         output_counts_flat_impl(
             pid,
-            idx_ptr, origin_num_tasks,  # in
+            idx_ptr,
+            origin_num_tasks,  # in
             counts_ptr,  # out
-            num_tasks, tile_size,
+            num_tasks,
+            tile_size,
         )
     else:  # grid-stride-loop style kernel
         for j in range(0, tiles_per_cta):
             global_pid = pid + j * num_ctas if j > 0 else pid
             output_counts_flat_impl(
                 global_pid,
-                idx_ptr, origin_num_tasks,  # in
+                idx_ptr,
+                origin_num_tasks,  # in
                 counts_ptr,  # out
-                num_tasks, tile_size,
+                num_tasks,
+                tile_size,
             )
 
 
 @triton.jit
 def quick_output_flat_impl(
     global_pid,
-    sorted_data_ptr: tl.tensor, idx_ptr: tl.tensor, origin_num_tasks: int,  # in
-    data_out_ptr: tl.tensor, counts_ptr: tl.tensor,  # out
+    sorted_data_ptr: tl.tensor,
+    idx_ptr: tl.tensor,
+    origin_num_tasks: int,  # in
+    data_out_ptr: tl.tensor,
+    counts_ptr: tl.tensor,  # out
     num_tasks: int,
     tile_size: tl.constexpr,
 ):
@@ -89,7 +140,7 @@ def quick_output_flat_impl(
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
-    
+
     # data_out: gather(sorted_data, from=idx)
     sorted_data = tl.load(sorted_data_ptr + idx, mask=mask)
     tl.store(data_out_ptr + i0, sorted_data, mask=mask)
@@ -98,8 +149,11 @@ def quick_output_flat_impl(
 @libentry()
 @triton.jit
 def quick_output_flat_kernel(
-    sorted_data_ptr: tl.tensor, idx_ptr: tl.tensor, origin_num_tasks: int,  # in
-    data_out_ptr: tl.tensor, counts_ptr: tl.tensor,  # out
+    sorted_data_ptr: tl.tensor,
+    idx_ptr: tl.tensor,
+    origin_num_tasks: int,  # in
+    data_out_ptr: tl.tensor,
+    counts_ptr: tl.tensor,  # out
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
@@ -110,18 +164,26 @@ def quick_output_flat_kernel(
     if one_tile_per_cta:  # monolitic kernel style
         quick_output_flat_impl(
             pid,
-            sorted_data_ptr, idx_ptr, origin_num_tasks,  # in
-            data_out_ptr, counts_ptr,  # out
-            num_tasks, tile_size,
+            sorted_data_ptr,
+            idx_ptr,
+            origin_num_tasks,  # in
+            data_out_ptr,
+            counts_ptr,  # out
+            num_tasks,
+            tile_size,
         )
     else:  # grid-stride-loop style kernel
         for j in range(0, tiles_per_cta):
             global_pid = pid + j * num_ctas if j > 0 else pid
             quick_output_flat_impl(
                 global_pid,
-                sorted_data_ptr, idx_ptr, origin_num_tasks,  # in
-                data_out_ptr, counts_ptr,  # out
-                num_tasks, tile_size,
+                sorted_data_ptr,
+                idx_ptr,
+                origin_num_tasks,  # in
+                data_out_ptr,
+                counts_ptr,  # out
+                num_tasks,
+                tile_size,
             )
 
 
@@ -129,7 +191,9 @@ def quick_output_flat_kernel(
 def local_quick_unique_flat_impl(
     global_pid,
     sorted_data_ptr: tl.tensor,  # in
-    local_unique_ptr: tl.tensor, origin_idx_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # out
+    local_unique_ptr: tl.tensor,
+    origin_idx_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # out
     global_num_ctas: int,
     num_tasks: int,
     tile_size: tl.constexpr,
@@ -156,10 +220,16 @@ def local_quick_unique_flat_impl(
         # origin_idx: scatter_(to=cumsum, r + offset)
         origin_idx = r + offset
         origin_idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & local_unique_mask
-        tl.store(origin_idx_ptr + (offset + local_unique_offset), origin_idx, mask=origin_idx_mask)
+        tl.store(
+            origin_idx_ptr + (offset + local_unique_offset),
+            origin_idx,
+            mask=origin_idx_mask,
+        )
     else:
         # local_unique: scatter_(to=cumsum, sorted_data)
-        tl.store(local_unique_ptr + (offset + local_unique_offset), a, mask=local_unique_mask)
+        tl.store(
+            local_unique_ptr + (offset + local_unique_offset), a, mask=local_unique_mask
+        )
 
     # tile_sum
     tile_sum = tl.sum(tl.where(r == tile_size - 1, cumsum, 0))
@@ -172,7 +242,9 @@ def local_quick_unique_flat_impl(
 @triton.jit
 def local_quick_unique_flat_kernel(
     sorted_data_ptr: tl.tensor,  # in
-    local_unique_ptr: tl.tensor, origin_idx_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # out
+    local_unique_ptr: tl.tensor,
+    origin_idx_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # out
     global_num_ctas: int,
     num_tasks: int,
     tiles_per_cta: int,
@@ -186,9 +258,12 @@ def local_quick_unique_flat_kernel(
         local_quick_unique_flat_impl(
             pid,
             sorted_data_ptr,  # in
-            local_unique_ptr, origin_idx_ptr, tile_sum_ptr,  # out
+            local_unique_ptr,
+            origin_idx_ptr,
+            tile_sum_ptr,  # out
             global_num_ctas,
-            num_tasks, tile_size,
+            num_tasks,
+            tile_size,
             return_counts,
         )
     else:  # grid-stride-loop style kernel
@@ -197,20 +272,28 @@ def local_quick_unique_flat_kernel(
             local_quick_unique_flat_impl(
                 global_pid,
                 sorted_data_ptr,  # in
-                local_unique_ptr, origin_idx_ptr, tile_sum_ptr,  # out
+                local_unique_ptr,
+                origin_idx_ptr,
+                tile_sum_ptr,  # out
                 global_num_ctas,
-                num_tasks, tile_size,
+                num_tasks,
+                tile_size,
                 return_counts,
             )
 
 
 @triton.jit
 def global_quick_unique_flat_impl(
-    global_pid, total,
-    local_unique_ptr: tl.tensor, origin_idx_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor, idx_ptr: tl.tensor,  # out
+    global_pid,
+    total,
+    local_unique_ptr: tl.tensor,
+    origin_idx_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,
+    idx_ptr: tl.tensor,  # out
     num_ctas: int,
-    global_num_ctas: int, next_power_global_num_ctas: tl.constexpr,
+    global_num_ctas: int,
+    next_power_global_num_ctas: tl.constexpr,
     num_tasks: int,
     tile_size: tl.constexpr,
     return_counts: tl.constexpr,
@@ -221,7 +304,12 @@ def global_quick_unique_flat_impl(
 
     # load tile_sum
     p = tl.arange(0, next_power_global_num_ctas)
-    pre_tile_sum_mask = (p >= global_pid - num_ctas) & (p < global_pid) & (p >= 0) & (p < global_num_ctas)
+    pre_tile_sum_mask = (
+        (p >= global_pid - num_ctas)
+        & (p < global_pid)
+        & (p >= 0)
+        & (p < global_num_ctas)
+    )
     pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
     cur_tile_sum_mask = global_pid < global_num_ctas
     cur_tile_sum = tl.load(tile_sum_ptr + global_pid, mask=cur_tile_sum_mask)
@@ -250,10 +338,14 @@ def global_quick_unique_flat_impl(
 @libentry()
 @triton.jit
 def global_quick_unique_flat_kernel(
-    local_unique_ptr: tl.tensor, origin_idx_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor, idx_ptr: tl.tensor,  # out
+    local_unique_ptr: tl.tensor,
+    origin_idx_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,
+    idx_ptr: tl.tensor,  # out
     num_ctas: int,
-    global_num_ctas: int, next_power_global_num_ctas: tl.constexpr,
+    global_num_ctas: int,
+    next_power_global_num_ctas: tl.constexpr,
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
@@ -264,11 +356,18 @@ def global_quick_unique_flat_kernel(
     num_ctas = tl.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_quick_unique_flat_impl(
-            pid, 0,
-            local_unique_ptr, origin_idx_ptr, tile_sum_ptr,  # in
-            data_out_ptr, idx_ptr,  # out
-            num_ctas, global_num_ctas, next_power_global_num_ctas,
-            num_tasks, tile_size,
+            pid,
+            0,
+            local_unique_ptr,
+            origin_idx_ptr,
+            tile_sum_ptr,  # in
+            data_out_ptr,
+            idx_ptr,  # out
+            num_ctas,
+            global_num_ctas,
+            next_power_global_num_ctas,
+            num_tasks,
+            tile_size,
             return_counts,
         )
     else:  # grid-stride-loop style kernel
@@ -276,85 +375,102 @@ def global_quick_unique_flat_kernel(
         for j in range(0, tiles_per_cta):
             global_pid = pid + j * num_ctas
             total = global_quick_unique_flat_impl(
-                global_pid, total,
-                local_unique_ptr, origin_idx_ptr, tile_sum_ptr,  # in
-                data_out_ptr, idx_ptr,  # out
-                num_ctas, global_num_ctas, next_power_global_num_ctas,
-                num_tasks, tile_size,
+                global_pid,
+                total,
+                local_unique_ptr,
+                origin_idx_ptr,
+                tile_sum_ptr,  # in
+                data_out_ptr,
+                idx_ptr,  # out
+                num_ctas,
+                global_num_ctas,
+                next_power_global_num_ctas,
+                num_tasks,
+                tile_size,
                 return_counts,
             )
 
 
 def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
-    if return_counts:
-        local_unique = torch.empty([0], dtype=sorted_data.dtype, device=sorted_data.device)
-        origin_idx = torch.empty_like(sorted_data, dtype=torch.int32)
-    else:
-        local_unique = torch.empty_like(sorted_data)
-        origin_idx = torch.empty([0], dtype=torch.int32, device=sorted_data.device)
-        counts = torch.empty_like(origin_idx)
-    data_out = torch.empty_like(sorted_data)
-    idx = torch.empty_like(origin_idx)
     num_tasks = sorted_data.numel()
-    #tile_size = min(4, triton.next_power_of_2(num_tasks))
-    tile_size = min(8192, triton.next_power_of_2(num_tasks))
+    next_power_num_tasks = triton.next_power_of_2(num_tasks)
+    tile_size = min(8192, next_power_num_tasks)
     global_num_ctas = triton.cdiv(num_tasks, tile_size)
-    if global_num_ctas > 8 and global_num_ctas <= 8192:
-        tile_size = max(32, min(triton.next_power_of_2(global_num_ctas), triton.next_power_of_2(num_tasks)))
+    if global_num_ctas <= 8192:
+        tile_size = max(
+            32, min(triton.next_power_of_2(global_num_ctas), next_power_num_tasks)
+        )
         global_num_ctas = triton.cdiv(num_tasks, tile_size)
     next_power_global_num_ctas = triton.next_power_of_2(global_num_ctas)
-    tile_sum = torch.empty((global_num_ctas,), dtype=torch.int32, device=sorted_data.device)
-    #num_ctas = min(4, global_num_ctas)
     num_ctas = global_num_ctas if global_num_ctas < 65536 else 2048
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)
     num_warps = 8 if tiles_per_cta == 1 else 32
     grid = (num_ctas, 1, 1)
-    #logging.debug("tile_size={}, num_ctas={}, tiles_per_cta={}".format(tile_size, num_ctas, tiles_per_cta))
+
+    # allocate tensor
+    if return_counts:
+        local_unique = None
+        origin_idx = torch.empty_like(sorted_data, dtype=torch.int32)
+        idx = torch.empty_like(origin_idx)
+    else:
+        local_unique = torch.empty_like(sorted_data)
+        origin_idx = None
+        idx = None
+        counts = None
+    tile_sum = torch.empty(
+        (global_num_ctas,), dtype=torch.int32, device=sorted_data.device
+    )
+    data_out = torch.empty_like(sorted_data)
+
+    # launch kernel
     with torch.cuda.device(sorted_data.device.index):
         local_quick_unique_flat_kernel[grid](
             sorted_data,  # in
-            local_unique, origin_idx, tile_sum,  # out
+            local_unique,
+            origin_idx,
+            tile_sum,  # out
             global_num_ctas,
             num_tasks,
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta==1,
+            one_tile_per_cta=tiles_per_cta == 1,
             return_counts=return_counts,
             num_warps=num_warps,
         )
-        #logging.debug(" # local tile_sum={}".format(tile_sum))
-        #logging.debug(" # local_unique={}".format(local_unique))
-        #logging.debug(" # origin_idx={}".format(origin_idx))
-        #logging.debug(" # num_tasks={}".format(num_tasks))
         global_quick_unique_flat_kernel[grid](
-            local_unique, origin_idx, tile_sum,  # in
-            data_out, idx,  # out
-            num_ctas, global_num_ctas, next_power_global_num_ctas,
+            local_unique,
+            origin_idx,
+            tile_sum,  # in
+            data_out,
+            idx,  # out
+            num_ctas,
+            global_num_ctas,
+            next_power_global_num_ctas,
             num_tasks,
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta==1,
+            one_tile_per_cta=tiles_per_cta == 1,
             return_counts=return_counts,
             num_warps=num_warps,
         )
         out_size = tile_sum[-1].item()
-        #counts = torch.concat((idx[1:], torch.tensor([num_tasks], device=idx.device))) - idx[:]
         if return_counts:
             idx = idx[:out_size]
             counts = origin_idx[:out_size]
             quick_output_flat_kernel[grid](
-                sorted_data, idx, num_tasks,  # in
-                data_out, counts,  # out
+                sorted_data,
+                idx,
+                num_tasks,  # in
+                data_out,
+                counts,  # out
                 out_size,
-                tiles_per_cta, tile_size, one_tile_per_cta=tiles_per_cta==1,
+                tiles_per_cta,
+                tile_size,
+                one_tile_per_cta=tiles_per_cta == 1,
                 num_warps=num_warps,
             )
 
-    #logging.debug(" # out_size=tile_sum[-1]={}".format(out_size))
-    #logging.debug(" # idx={}".format(idx))
-    #logging.debug(" # data_out={}".format(data_out[:out_size]))
     if return_counts:
-        #logging.debug(" # counts={}".format(counts[:out_size]))
         return data_out[:out_size], None, counts
     else:
         return data_out[:out_size], None, None
@@ -364,7 +480,8 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
 def local_ne_flat_impl(
     global_pid,
     sorted_data_ptr: tl.tensor,  # in
-    ne_result_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # out
+    ne_result_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # out
     global_num_ctas: int,
     num_tasks: int,
     tile_size: tl.constexpr,
@@ -394,7 +511,8 @@ def local_ne_flat_impl(
 @triton.jit
 def local_ne_flat_kernel(
     sorted_data_ptr: tl.tensor,  # in
-    ne_result_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # out
+    ne_result_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # out
     global_num_ctas: int,
     num_tasks: int,
     tiles_per_cta: int,
@@ -407,9 +525,11 @@ def local_ne_flat_kernel(
         local_ne_flat_impl(
             pid,
             sorted_data_ptr,  # in
-            ne_result_ptr, tile_sum_ptr,  # out
+            ne_result_ptr,
+            tile_sum_ptr,  # out
             global_num_ctas,
-            num_tasks, tile_size
+            num_tasks,
+            tile_size,
         )
     else:  # grid-stride-loop style kernel
         for j in range(0, tiles_per_cta):
@@ -417,20 +537,28 @@ def local_ne_flat_kernel(
             local_ne_flat_impl(
                 global_pid,
                 sorted_data_ptr,  # in
-                ne_result_ptr, tile_sum_ptr,  # out
+                ne_result_ptr,
+                tile_sum_ptr,  # out
                 global_num_ctas,
-                num_tasks, tile_size
+                num_tasks,
+                tile_size,
             )
 
 
 @triton.jit
 def global_cumsum_flat_impl(
-    global_pid, total,
-    ne_result_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # in
-    sorted_data_ptr: tl.tensor, sorted_indices_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor, inverse_indices_ptr: tl.tensor, idx_ptr: tl.tensor,  # out
+    global_pid,
+    total,
+    ne_result_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # in
+    sorted_data_ptr: tl.tensor,
+    sorted_indices_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,
+    inverse_indices_ptr: tl.tensor,
+    idx_ptr: tl.tensor,  # out
     num_ctas: tl.constexpr,
-    global_num_ctas: int, next_power_global_num_ctas: tl.constexpr,
+    global_num_ctas: int,
+    next_power_global_num_ctas: tl.constexpr,
     num_tasks: int,
     tile_size: tl.constexpr,
     return_counts: tl.constexpr,
@@ -446,7 +574,12 @@ def global_cumsum_flat_impl(
 
     # load tile_sum
     p = tl.arange(0, next_power_global_num_ctas)
-    pre_tile_sum_mask = (p >= global_pid - num_ctas) & (p < global_pid) & (p >= 0) & (p < global_num_ctas)
+    pre_tile_sum_mask = (
+        (p >= global_pid - num_ctas)
+        & (p < global_pid)
+        & (p >= 0)
+        & (p < global_num_ctas)
+    )
     pre_tile_sum = tl.load(tile_sum_ptr + p, mask=pre_tile_sum_mask, other=0)
 
     # cumsum
@@ -456,9 +589,6 @@ def global_cumsum_flat_impl(
     ne_result = ne_result.to(tl.int32)
     cumsum = tl.cumsum(ne_result)
     cumsum += total
-    if global_pid == global_num_ctas - 1:
-        last_tile_sum_mask = p == global_pid
-        tl.store(tile_sum_ptr + p, total + tl.sum(ne_result), mask=last_tile_sum_mask)
 
     # data_out: scatter_(to=cumsum, sorted_data)
     tl.store(data_out_ptr + cumsum, sorted_data, mask=mask)
@@ -472,17 +602,27 @@ def global_cumsum_flat_impl(
         idx_mask = ((i0 == 0) | ne_result_i1) & mask
         tl.store(idx_ptr + cumsum, idx, mask=idx_mask)
 
+    # tile_sum
+    if global_pid == global_num_ctas - 1:
+        last_tile_sum_mask = p == global_pid
+        tl.store(tile_sum_ptr + p, total + tl.sum(ne_result), mask=last_tile_sum_mask)
+
     return total
 
 
 @libentry()
 @triton.jit
 def global_cumsum_flat_kernel(
-    ne_result_ptr: tl.tensor, tile_sum_ptr: tl.tensor,  # in
-    sorted_data_ptr: tl.tensor, sorted_indices_ptr: tl.tensor,  # in
-    data_out_ptr: tl.tensor, inverse_indices_ptr: tl.tensor, idx_ptr: tl.tensor,  # out
+    ne_result_ptr: tl.tensor,
+    tile_sum_ptr: tl.tensor,  # in
+    sorted_data_ptr: tl.tensor,
+    sorted_indices_ptr: tl.tensor,  # in
+    data_out_ptr: tl.tensor,
+    inverse_indices_ptr: tl.tensor,
+    idx_ptr: tl.tensor,  # out
     num_ctas: int,
-    global_num_ctas: int, next_power_global_num_ctas: tl.constexpr,
+    global_num_ctas: int,
+    next_power_global_num_ctas: tl.constexpr,
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
@@ -493,95 +633,178 @@ def global_cumsum_flat_kernel(
     num_ctas = tl.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_cumsum_flat_impl(
-            pid, 0,
-            ne_result_ptr, tile_sum_ptr,  # in
-            sorted_data_ptr, sorted_indices_ptr,  # in
-            data_out_ptr, inverse_indices_ptr, idx_ptr,  # out
-            num_ctas, global_num_ctas, next_power_global_num_ctas,
-            num_tasks, tile_size, return_counts,
+            pid,
+            0,
+            ne_result_ptr,
+            tile_sum_ptr,  # in
+            sorted_data_ptr,
+            sorted_indices_ptr,  # in
+            data_out_ptr,
+            inverse_indices_ptr,
+            idx_ptr,  # out
+            num_ctas,
+            global_num_ctas,
+            next_power_global_num_ctas,
+            num_tasks,
+            tile_size,
+            return_counts,
         )
     else:  # grid-stride-loop style kernel
         total = tl.zeros([1], dtype=tl.int64)
         for j in range(0, tiles_per_cta):
             global_pid = pid + j * num_ctas
             total = global_cumsum_flat_impl(
-                global_pid, total,
-                ne_result_ptr, tile_sum_ptr,  # in
-                sorted_data_ptr, sorted_indices_ptr,  # in
-                data_out_ptr, inverse_indices_ptr, idx_ptr,  # out
-                num_ctas, global_num_ctas, next_power_global_num_ctas,
-                num_tasks, tile_size, return_counts,
+                global_pid,
+                total,
+                ne_result_ptr,
+                tile_sum_ptr,  # in
+                sorted_data_ptr,
+                sorted_indices_ptr,  # in
+                data_out_ptr,
+                inverse_indices_ptr,
+                idx_ptr,  # out
+                num_ctas,
+                global_num_ctas,
+                next_power_global_num_ctas,
+                num_tasks,
+                tile_size,
+                return_counts,
             )
 
 
-def sorted_indices_unique_flat(sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool):
-    ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
+def sorted_indices_unique_flat(
+    sorted_data: torch.Tensor, sorted_indices: torch.Tensor, return_counts: bool
+):
     num_tasks = sorted_data.numel()
-    #tile_size = min(4, triton.next_power_of_2(num_tasks))
-    tile_size = min(8192, triton.next_power_of_2(num_tasks))
+    next_power_num_tasks = triton.next_power_of_2(num_tasks)
+    tile_size = min(8192, next_power_num_tasks)
     global_num_ctas = triton.cdiv(num_tasks, tile_size)
     if global_num_ctas <= 8192:
-        if global_num_ctas > 32:
-            tile_size = max(512, min(triton.next_power_of_2(global_num_ctas), triton.next_power_of_2(num_tasks)))
-        else:
-            tile_size = max(256, min(triton.next_power_of_2(global_num_ctas), triton.next_power_of_2(num_tasks)))
+        min_tile_size = 512 if global_num_ctas > 32 else 256
+        tile_size = max(
+            min_tile_size,
+            min(triton.next_power_of_2(global_num_ctas), next_power_num_tasks),
+        )
         global_num_ctas = triton.cdiv(num_tasks, tile_size)
     next_power_global_num_ctas = triton.next_power_of_2(global_num_ctas)
-    tile_sum = torch.empty((global_num_ctas,), dtype=torch.int32, device=sorted_data.device)
-    #num_ctas = min(4, global_num_ctas)
     num_ctas = global_num_ctas if global_num_ctas < 32768 else 8192
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)
     num_warps = 8 if tiles_per_cta == 1 else 32
     grid = (num_ctas, 1, 1)
-    #logging.debug("tile_size={}, num_ctas={}, tiles_per_cta={}".format(tile_size, num_ctas, tiles_per_cta))
+
+    # allocate tensor
+    ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
+    tile_sum = torch.empty(
+        (global_num_ctas,), dtype=torch.int32, device=sorted_data.device
+    )
     data_out = torch.empty_like(sorted_data)
     inverse_indices = torch.empty_like(sorted_data, dtype=torch.int32)
+    idx = None
     if return_counts:
         idx = torch.empty_like(inverse_indices)
-    else:
-        #idx = torch.empty_like(inverse_indices)
-        idx = torch.empty([0], dtype=torch.int32, device=sorted_data.device)
+
+    # launch kernel
     with torch.cuda.device(sorted_data.device.index):
         local_ne_flat_kernel[grid](
-            sorted_data, ne_result, tile_sum,
+            sorted_data,  # in
+            ne_result,
+            tile_sum,  # out
             global_num_ctas,
             num_tasks,
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta==1,
+            one_tile_per_cta=tiles_per_cta == 1,
             num_warps=num_warps,
         )
-        #logging.debug(" # local ne_result={}".format(ne_result))
         global_cumsum_flat_kernel[grid](
-            ne_result, tile_sum,  # in
-            sorted_data, sorted_indices,  # in
-            data_out, inverse_indices, idx,  # out
-            num_ctas, global_num_ctas, next_power_global_num_ctas,
+            ne_result,
+            tile_sum,  # in
+            sorted_data,
+            sorted_indices,  # in
+            data_out,
+            inverse_indices,
+            idx,  # out
+            num_ctas,
+            global_num_ctas,
+            next_power_global_num_ctas,
             num_tasks,
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta==1,
+            one_tile_per_cta=tiles_per_cta == 1,
             return_counts=return_counts,
             num_warps=num_warps,
         )
-        #logging.debug(" # tile_sum={}".format(tile_sum))
         out_size = tile_sum[-1].item() + 1
-        #logging.debug(" # out_size={}".format(out_size))
+        counts = None
         if return_counts:
             idx = idx[:out_size]
             counts = torch.empty_like(idx)
             output_counts_flat_kernel[grid](
-                idx, num_tasks,  # in
+                idx,
+                num_tasks,  # in
                 counts,  # out
                 out_size,
-                tiles_per_cta, tile_size, one_tile_per_cta=tiles_per_cta==1,
+                tiles_per_cta,
+                tile_size,
+                one_tile_per_cta=tiles_per_cta == 1,
                 num_warps=num_warps,
             )
-        else:
-            counts = None
 
-    #logging.debug(" # data_out={}".format(data_out))
-    #logging.debug(" # inverse_indices={}".format(inverse_indices))
+    return data_out[:out_size], inverse_indices, counts
+
+
+def simple_unique_flat(
+    sorted_data: torch.Tensor,
+    sorted_indices: torch.Tensor,
+    return_inverse: bool,
+    return_counts: bool,
+):
+    num_tasks = sorted_data.numel()
+    grid = (1, 1, 1)
+
+    # allocate tensor
+    data_out = torch.empty_like(sorted_data)
+    if return_inverse:
+        inverse_indices = torch.empty_like(sorted_data, dtype=torch.int32)
+    else:
+        inverse_indices = None
+    if return_counts:
+        idx = torch.empty_like(sorted_data, dtype=torch.int32)
+    else:
+        idx = None
+    unique_size = torch.empty([1], dtype=torch.int32, device=sorted_data.device)
+
+    # launch kernel
+    with torch.cuda.device(sorted_data.device.index):
+        simple_unique_flat_kernel[grid](
+            sorted_data,
+            sorted_indices,  # in
+            data_out,
+            inverse_indices,
+            idx,
+            unique_size,  # out
+            return_inverse,
+            return_counts,
+            num_tasks,
+            tile_size=triton.next_power_of_2(num_tasks),
+            num_warps=8,
+        )
+    out_size = unique_size.item() + 1
+    counts = None
+    if return_counts:
+        idx = idx[:out_size]
+        counts = torch.empty_like(idx)
+        with torch.cuda.device(sorted_data.device.index):
+            output_counts_flat_kernel[grid](
+                idx,
+                num_tasks,  # in
+                counts,  # out
+                num_tasks=out_size,
+                tiles_per_cta=1,
+                tile_size=triton.next_power_of_2(out_size),
+                one_tile_per_cta=True,
+                num_warps=8,
+            )
     return data_out[:out_size], inverse_indices, counts
 
 
@@ -591,15 +814,21 @@ def unique_flat(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
-    #logging.debug(" # in0={}".format(in0))
-    if return_inverse:
+    if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
-        #logging.debug(" # sorted_data={}, sorted_indices={}".format(sorted_data, sorted_indices))
-        data_out, inverse_indices, counts = sorted_indices_unique_flat(sorted_data, sorted_indices, return_counts)
+        data_out, inverse_indices, counts = simple_unique_flat(
+            sorted_data, sorted_indices, return_inverse, return_counts
+        )
+    elif return_inverse:
+        sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
+        data_out, inverse_indices, counts = sorted_indices_unique_flat(
+            sorted_data, sorted_indices, return_counts
+        )
     else:
         sorted_data, _ = torch.sort(in0.ravel(), stable=False)
-        #logging.debug(" # sorted_data={}".format(sorted_data))
-        data_out, inverse_indices, counts = sorted_quick_unique_flat(sorted_data, return_counts)
+        data_out, inverse_indices, counts = sorted_quick_unique_flat(
+            sorted_data, return_counts
+        )
     return data_out, inverse_indices, counts
 
 
@@ -609,5 +838,11 @@ def unique(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
-    data_out, inverse_indices, counts = unique_flat(in0, sorted, return_inverse, return_counts)
-    return data_out, inverse_indices if inverse_indices is None else inverse_indices.view_as(in0), counts
+    data_out, inverse_indices, counts = unique_flat(
+        in0, sorted, return_inverse, return_counts
+    )
+    return (
+        data_out,
+        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
+        counts,
+    )
