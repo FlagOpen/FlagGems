@@ -98,8 +98,11 @@ def argmax_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-        local_max = tl.max(inp_vals, 1)
-        local_argmax = tl.argmax(inp_vals, 1)
+        local_max, local_argmax = tl.max(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        # if return indices is not supported, call a tl.argmax in addition
+        # local_argmax = tl.argmax(inp_vals, 1)
         update = local_max > max_values
         max_values = tl.where(update, local_max, max_values)
         argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
