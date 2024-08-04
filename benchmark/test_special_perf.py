@@ -72,3 +72,20 @@ def test_perf_embedding():
         kwargs_func=embedding_kwargs,
     )
     bench.run()
+
+
+def test_multinomial_with_replacement():
+    def multinomial_args(dtype, batch, size):
+        dist = torch.rand((batch, size), dtype=dtype, device="cuda")
+        n_samples = 10000
+        return (dist, n_samples, True)
+
+    bench = Benchmark(
+        op_name="multinomial",
+        torch_op=torch.multinomial,
+        arg_func=multinomial_args,
+        dtypes=(torch.float16, torch.float32),
+        batch=POINTWISE_BATCH,
+        sizes=(100, 1024, 30000),
+    )
+    bench.run()
