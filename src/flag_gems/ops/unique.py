@@ -217,12 +217,11 @@ def local_quick_unique_flat_impl(
     local_unique_offset = cumsum - (1 if global_pid > 0 else 0)
     local_unique_mask = (local_unique_offset >= 0) & mask
     if return_counts:
-        # origin_idx: scatter_(to=cumsum, r + offset)
-        origin_idx = r + offset
+        # origin_idx: scatter_(to=cumsum, i0)
         origin_idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & local_unique_mask
         tl.store(
             origin_idx_ptr + (offset + local_unique_offset),
-            origin_idx,
+            i0,
             mask=origin_idx_mask,
         )
     else:
