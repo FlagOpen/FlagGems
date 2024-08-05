@@ -5,7 +5,6 @@ from .performance_utils import (
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
-    WIDE_RANGE_SIZES,
     Benchmark,
     unary_int_arg,
 )
@@ -169,9 +168,9 @@ def test_perf_unique():
         op_name="unique",
         torch_op=torch.unique,
         arg_func=unary_int_arg,
-        dtypes=[torch.int16],
+        dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=[1,],
+        sizes=SIZES,
         kwargs_func=unique_kwargs,
     )
     bench.run()

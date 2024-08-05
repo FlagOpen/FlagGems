@@ -210,7 +210,6 @@ __all__ = [
     "argmax",
     "prod",
     "prod_dim",
-    "unique",
     "var_mean",
     "vector_norm",
     "log_softmax",
