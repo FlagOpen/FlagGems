@@ -33,8 +33,7 @@ def simple_unique_flat_kernel(
 
     # unique_size
     unique_size_mask = i0 == tile_size - 1
-    unique_size = tl.where(unique_size_mask, cumsum + 1, cumsum)
-    tl.store(unique_size_ptr + i0 * 0, unique_size, mask=unique_size_mask)
+    tl.store(unique_size_ptr + i0 * 0, cumsum, mask=unique_size_mask)
 
     # data_out: scatter_(to=cumsum, sorted_data)
     tl.store(data_out_ptr + cumsum, a, mask=mask)
@@ -788,22 +787,23 @@ def simple_unique_flat(
             tile_size=triton.next_power_of_2(num_tasks),
             num_warps=8,
         )
+    out_size = unique_size.item() + 1
     counts = None
     if return_counts:
-        idx = idx.resize_(unique_size)
+        idx = idx[:out_size]
         counts = torch.empty_like(idx)
         with torch.cuda.device(sorted_data.device.index):
             output_counts_flat_kernel[grid](
                 idx,
                 num_tasks,  # in
                 counts,  # out
-                num_tasks=unique_size.item(),
+                num_tasks=out_size,
                 tiles_per_cta=1,
-                tile_size=triton.next_power_of_2(unique_size.item()),
+                tile_size=triton.next_power_of_2(out_size),
                 one_tile_per_cta=True,
                 num_warps=8,
             )
-    return data_out.resize_(unique_size), inverse_indices, counts
+    return data_out[:out_size], inverse_indices, counts
 
 
 def _unique2(
