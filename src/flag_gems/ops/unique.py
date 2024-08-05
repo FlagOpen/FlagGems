@@ -608,11 +608,6 @@ def global_cumsum_flat_impl(
         idx_mask = ((i0 == 0) | ne_result_i1) & mask
         tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
 
-    # tile_sum
-    if global_pid == global_num_ctas - 1:
-        last_tile_sum_mask = p == global_pid
-        tl.store(tile_sum_ptr + p, total + tl.sum(ne_result), mask=last_tile_sum_mask)
-
     return total
 
 
@@ -795,23 +790,22 @@ def simple_unique_flat(
             tile_size=triton.next_power_of_2(num_tasks),
             num_warps=8,
         )
-    out_size = unique_size.item() + 1
     counts = None
     if return_counts:
-        idx = idx[:out_size]
+        idx = idx.resize_(unique_size)
         counts = torch.empty_like(idx)
         with torch.cuda.device(sorted_data.device.index):
             output_counts_flat_kernel[grid](
                 idx,
                 num_tasks,  # in
                 counts,  # out
-                num_tasks=out_size,
+                num_tasks=unique_size.item(),
                 tiles_per_cta=1,
-                tile_size=triton.next_power_of_2(out_size),
+                tile_size=triton.next_power_of_2(unique_size.item()),
                 one_tile_per_cta=True,
                 num_warps=8,
             )
-    return data_out[:out_size], inverse_indices, counts
+    return data_out.resize_(unique_size), inverse_indices, counts
 
 
 def _unique2(
