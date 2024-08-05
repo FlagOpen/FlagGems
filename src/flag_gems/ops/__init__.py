@@ -79,7 +79,7 @@ from .tanh import tanh
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
-from .unique import unique
+from .unique import _unique2
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
@@ -183,7 +183,6 @@ __all__ = [
     "argmax",
     "prod",
     "prod_dim",
-    "unique",
     "var_mean",
     "vector_norm",
     "log_softmax",
@@ -193,4 +192,5 @@ __all__ = [
     "where_scalar_self",
     "where_scalar_other",
     "masked_fill",
+    "_unique2",
 ]
