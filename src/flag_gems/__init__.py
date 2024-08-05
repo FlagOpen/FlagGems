@@ -23,6 +23,7 @@ def enable(lib=aten_lib):
     lib.impl("clamp", clamp, "CUDA")
     lib.impl("clamp.Tensor", clamp_tensor, "CUDA")
     lib.impl("cos", cos, "CUDA")
+    lib.impl("pad", pad, "CUDA")
     lib.impl("cumsum", cumsum, "CUDA")
     lib.impl("div.Tensor", div, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
