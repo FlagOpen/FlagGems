@@ -232,8 +232,8 @@ def local_quick_unique_flat_impl(
         )
 
     # tile_sum
-    tile_sum = tl.sum(tl.where(r == tile_size - 1, cumsum, 0))
-    tile_sum += tl.where(global_pid == 0, 1, 0)
+    tile_sum = tl.sum(ne_result)
+    tile_sum += tl.where(global_pid > 0, 0, 1)
     tile_sum_mask = global_pid < global_num_ctas
     tl.store(tile_sum_ptr + global_pid, tile_sum, mask=tile_sum_mask)
 
