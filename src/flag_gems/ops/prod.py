@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, cfggen_reduce_op2, TOTAL_CORE_NUM
+from ..utils import libentry, cfggen_reduce_op2, TOTAL_CORE_NUM, count_divisible_by_2
 
 
 @triton.jit
@@ -37,7 +37,7 @@ def prod_kernel_mid(
 
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, int(ITER_NUM), 1):
-        _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
+        _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] * _tmp[BLOCK_SIZE // (2 ** x):(BLOCK_SIZE // (2 ** x)) * 2]
 
     mid_ptr = mid + pid
     tl.store(mid_ptr, _tmp[0])
@@ -51,7 +51,7 @@ def prod_kernel_result(mid, out, mid_size: tl.constexpr, loop_num: tl.constexpr)
 
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, loop_num, 1):
-        mid_val[:mid_size // (2 ** x)] = mid_val[:mid_size // (2 ** x)] * mid_val[mid_size // (2 ** x):mid_size // (2 ** (x - 1))]
+        mid_val[:mid_size // (2 ** x)] = mid_val[:mid_size // (2 ** x)] * mid_val[mid_size // (2 ** x):(mid_size // (2 ** x)) * 2]
 
     prod_val = tl.reduce(mid_val[:mid_size // (2 ** (loop_num - 1))], axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
@@ -65,7 +65,7 @@ def prod(inp, *, dtype=None):
     M = inp.numel()
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     mid_size = TOTAL_CORE_NUM
-    loop_num = int(math.log2(mid_size))
+    loop_num = count_divisible_by_2(mid_size) + 1
 
     mid = torch.ones((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)

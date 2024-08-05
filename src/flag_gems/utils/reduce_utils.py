@@ -18,3 +18,10 @@ def cfggen_reduce_op2():
         triton.Config({"BLOCK_SIZE": m, "ITER_NUM": math.log2(m) + 1}, num_warps=1, num_stages=s) for m in block_size for s in num_stage
     ]
     return configs
+
+def count_divisible_by_2(x):
+    count = 0
+    while x > 0 and x % 2 == 0:
+        x //= 2
+        count += 1
+    return count
