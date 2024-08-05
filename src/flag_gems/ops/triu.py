@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
+from ..utils.shape_utils import can_use_int32_index
 
 
 def cfggen():
@@ -37,8 +38,11 @@ def triu_kernel(
     M_BLOCK_SIZE: tl.constexpr,
     N_BLOCK_SIZE: tl.constexpr,
     NEED_LOOP: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
+    if INT64_INDEX:
+        pid = pid.to(tl.int64)
     num_jobs = tl.num_programs(0)
     m_block_step = M_BLOCK_SIZE * num_jobs
 
@@ -84,9 +88,13 @@ def triu_batch_kernel(
     diagonal,
     BATCH_BLOCK_SIZE: tl.constexpr,
     MN_BLOCK_SIZE: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     batch_id = tl.program_id(0)
     mn_id = tl.program_id(1)
+    if INT64_INDEX:
+        batch_id = batch_id.to(tl.int64)
+        mn_id = mn_id.to(tl.int64)
     row = batch_id * BATCH_BLOCK_SIZE + tl.arange(0, BATCH_BLOCK_SIZE)[:, None]
     batch_mask = row < batch
     X += row * MN
@@ -102,11 +110,15 @@ def triu_batch_kernel(
     tl.store(Y + cols, y, mask=mask)
 
 
+INT32_MAX = torch.iinfo(torch.int32).max
+
+
 def triu(A, diagonal=0):
     logging.debug("GEMS TRIU")
     A = A.contiguous()
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
+    use_int64_index = not can_use_int32_index(A)
     M, N = A.shape[-2:]
     with torch.mlu.device(A.device):
         if len(A.shape) == 2:
@@ -117,7 +129,14 @@ def triu(A, diagonal=0):
             # based on real-world conditions.
             n_block = min(8192, N)
             need_loop = n_block < N
-            triu_kernel[grid](A, out, M, N, diagonal, N_BLOCK_SIZE=n_block, NEED_LOOP=need_loop)
+            triu_kernel[grid](A,
+                              out,
+                              M,
+                              N,
+                              diagonal,
+                              N_BLOCK_SIZE=n_block,
+                              NEED_LOOP=need_loop,
+                              INT64_INDEX=use_int64_index)
         else:
             batch = int(torch.numel(A) / M / N)
             B = A.view(batch, -1)
@@ -125,6 +144,12 @@ def triu(A, diagonal=0):
                 triton.cdiv(batch, meta["BATCH_BLOCK_SIZE"]),
                 triton.cdiv(M * N, meta["MN_BLOCK_SIZE"]),
             )
-            triu_batch_kernel[grid](B, out, batch, M * N, N, diagonal)
+            triu_batch_kernel[grid](B,
+                                    out,
+                                    batch,
+                                    M * N,
+                                    N,
+                                    diagonal,
+                                    INT64_INDEX=use_int64_index)
             out = out.view(A.shape)
     return out

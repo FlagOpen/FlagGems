@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from ..utils.shape_utils import can_use_int32_index
 
 
 @libentry()
@@ -16,8 +17,11 @@ def argmax_kernel_1(
     out,
     M,
     BLOCK_SIZE: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
+    if INT64_INDEX:
+        pid = pid.to(tl.int64)
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
@@ -34,7 +38,7 @@ def argmax_kernel_1(
 
 
 def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
+    return min(4096, triton.next_power_of_2(args["N"]))
 
 
 @libentry()
@@ -67,23 +71,37 @@ def argmax_kernel(
     K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     # set offset
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
+    if INT64_INDEX:
+        pid_m = pid_m.to(tl.int64)
+        pid_k = pid_k.to(tl.int64)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    result_index = tl.argmax(inp_vals, axis=1)
 
+    max_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("-inf"))
+    argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+        local_max, local_argmax = tl.max(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        # if return indices is not supported, call a tl.argmax in addition
+        # local_argmax = tl.argmax(inp_vals, 1)
+        update = local_max > max_values
+        max_values = tl.where(update, local_max, max_values)
+        argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+
+    offset_index = m_offset * K + pid_k
     out_index_ptrs = out_index + offset_index
-    tl.store(out_index_ptrs, result_index, mask=mask1)
+    mask1 = m_offset < M
+    tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
@@ -92,6 +110,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
+        use_int64_index = not can_use_int32_index(inp)
 
         grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM),)
         if keepdim:
@@ -103,7 +122,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
 
         with torch.mlu.device(inp.device):
-            argmax_kernel_1[grid](inp, out, M)
+            argmax_kernel_1[grid](inp, out, M, INT64_INDEX=use_int64_index)
         return out.to(torch.int64)
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -114,6 +133,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         K = inp.numel() // M // N
 
         inp = inp.contiguous()
+        use_int64_index = not can_use_int32_index(inp)
 
         shape_list = list(shape)
         shape_list[dim] = 1
@@ -126,6 +146,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             K,
         )
         with torch.mlu.device(inp.device):
-            argmax_kernel[grid](inp, out_index, M, N, K)
+            argmax_kernel[grid](inp, out_index, M, N, K, INT64_INDEX=use_int64_index)
 
         return out_index

@@ -3,6 +3,11 @@ import torch
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
+
 __version__ = "2.0"
 
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -31,6 +36,7 @@ def enable(lib=aten_lib):
     lib.impl("eq.Tensor", eq, "PrivateUse1")
     lib.impl("eq.Scalar", eq_scalar, "PrivateUse1")
     lib.impl("exp", exp, "PrivateUse1")
+    lib.impl("exponential_", exponential_, "PrivateUse1")
     lib.impl("ge.Tensor", ge, "PrivateUse1")
     lib.impl("ge.Scalar", ge_scalar, "PrivateUse1")
     lib.impl("gelu", gelu, "PrivateUse1")
@@ -49,7 +55,6 @@ def enable(lib=aten_lib):
     lib.impl("rand", rand, "PrivateUse1")
     lib.impl("randn", randn, "PrivateUse1")
     lib.impl("rand_like", rand_like, "PrivateUse1")
-
     lib.impl("mean", mean, "PrivateUse1")
     lib.impl("mean.dim", mean_dim, "PrivateUse1")
     lib.impl("mm", mm, "PrivateUse1")

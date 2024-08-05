@@ -28,7 +28,6 @@ class Benchmark:
         if is_backward:
             self.op_name += " backward"
         self.torch_op = torch_op
-        self.gems_op = None
         self.arg_func = arg_func
         self.kwargs_func = kwargs_func
         self.dtypes = dtypes
@@ -100,7 +99,7 @@ class Benchmark:
             print(
                 f"\nOperator_Speedup_Test_Result("
                 + ":".join([str(x) for x in self.dtypes])
-                + f"):\t{self.op_name}\t{str(size)}\t"
+                + f"):\t{self.op_name}\t{self.batch}x{str(size)}\t"
                 + "\t".join([str(x) for x in kep])
             )
 
