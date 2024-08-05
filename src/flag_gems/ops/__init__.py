@@ -45,6 +45,7 @@ from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
 from .outer import outer
+from .pad import pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
@@ -88,6 +89,7 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "pad",
     "cumsum",
     "div",
     "native_dropout",

@@ -1,5 +1,6 @@
 from typing import Optional
 
+import numpy as np
 import pytest
 import torch
 
@@ -9,6 +10,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
 
@@ -222,3 +224,20 @@ def test_accuracy_rand_like(shape, dtype):
         res_out = torch.rand_like(x)
     assert (res_out <= 1.0).all()
     assert (res_out >= 0.0).all()
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_constant_pad(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    ref_x = to_reference(x)
+
+    rank = x.ndim
+    pad_params = tuple(np.random.randint(0, 10, rank * 2))
+
+    pad_value = np.random.randint(0, 1024, 1)[0]
+    ref_out = torch.nn.functional.pad(x, pad_params, "constant", pad_value)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.pad(ref_x, pad_params, "constant", pad_value)
+
+    gems_assert_equal(ref_out, res_out)

@@ -381,15 +381,9 @@ class PadFunction:
 def pad(self, pad, mode="constant", value=None):
     logging.debug("GEMS CONSTANT PAD ND")
     assert mode == "constant", "currently only support constant pad"
-    print(self.dtype)
-    print(self.shape)
-    print(self.device)
-    print(pad)
-    print(value)
 
     if value is None:
         value = 0.0
 
     out = PadFunction()(self, pad, float(value))
-    print("out is: ", out)
     return out
