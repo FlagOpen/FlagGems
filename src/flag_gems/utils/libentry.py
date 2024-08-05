@@ -91,16 +91,13 @@ class LibEntry(triton.KernelInterface):
 
         entry_key = self.key(spec_args, dns_args, const_args)
         device = torch.cuda.current_device()
-        # print('thread', threading.get_native_id(), 'current device =', device)
         cache = self.kernel_cache[device]
         while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
             # because Triton runtime is currently not threadsafe.
             with self.lock:
-                # print('thread', threading.get_native_id(), 'grabs lock.')
                 if entry_key in cache:
                     break
-                # print('thread', threading.get_native_id(), 'first run for device', device)
                 kernel = self.fn.run(*args, **kwargs)
                 fn = self.fn
                 # collect constexpr arguments for grid computation
@@ -128,7 +125,6 @@ class LibEntry(triton.KernelInterface):
                     if p.is_constexpr and p.name not in constexprs:
                         constexprs[p.name] = p.default
                 cache[entry_key] = (kernel, constexprs)
-            # print('thread', threading.get_native_id(), 'releases lock.')
             return kernel, constexprs
 
         kernel, constexprs = cache[entry_key]
@@ -143,7 +139,6 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        # print("thread", threading.get_native_id(), "run cached function.")
         kernel[grid[0:3]](*k_args)
         return kernel, constexprs
 
