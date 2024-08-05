@@ -830,7 +830,7 @@ def unique_flat(
     return data_out, inverse_indices, counts
 
 
-def unique(
+def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
     return_inverse: bool = False,
