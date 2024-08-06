@@ -683,7 +683,7 @@ def test_accuracy_select_scatter(shape, dim, dtype):
 
     src_shape = list(inp.shape)
     del src_shape[dim]
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    src = to_reference(torch.randn(src_shape, dtype=dtype, device="cuda"))
 
     ref_inp = to_reference(inp)
     ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=src)
@@ -719,7 +719,7 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     valid_shape = list(inp.shape)
     valid_shape[dim] = (range + (step - 1)) // step
 
-    src = torch.randn(valid_shape, dtype=dtype, device="cuda")
+    src = to_reference(torch.randn(valid_shape, dtype=dtype, device="cuda"))
 
     ref_inp = to_reference(inp)
     ref_out = torch.slice_scatter(

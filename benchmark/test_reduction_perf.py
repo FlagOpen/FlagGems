@@ -292,12 +292,11 @@ def test_perf_slice_scatter():
     def slice_scatter_args(dtype, batch, size):
         shape = [batch, size]
         inp = torch.randn(shape, dtype=dtype, device="cuda")
-        import random
 
-        dim = random.choice([0, 1])
-        start = random.choice([16, 32, 64])
-        end = random.choice([32, 64, 128, 256])
-        step = random.choice([1, 3, 6])
+        dim = 1
+        start = 32
+        end = 128
+        step = 3
         size_dim = shape[dim]
         if start is None:
             start = 0
@@ -333,10 +332,9 @@ def test_perf_select_scatter():
     def select_scatter_args(dtype, batch, size):
         shape = [batch, size]
         inp = torch.randn(shape, dtype=dtype, device="cuda")
-        import random
 
-        dim = random.choice([0, 1])
-        index = random.randint(0, shape[dim])
+        dim = 1
+        index = 32
         src_shape = shape
         del src_shape[dim]
         src = torch.randn(src_shape, dtype=dtype, device="cuda")
