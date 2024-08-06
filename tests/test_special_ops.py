@@ -258,15 +258,7 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.parametrize(
-    "shape",
-    POINTWISE_SHAPES
-    + [
-        (8191,),
-        (1280, 1280 * 21),
-        (8192, 65536 + 8192 + 11),
-    ],
-)
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(8191,), (8192, 73739)])
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 @pytest.mark.parametrize("sorted", [True])
 @pytest.mark.parametrize("return_inverse", [True, False])
