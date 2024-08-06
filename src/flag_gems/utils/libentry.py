@@ -15,6 +15,7 @@ except ImportError:
 getdeviceprob = lambda x: driver.BangUtils().get_device_properties(torch.mlu.current_device()).get(x)
 TOTAL_CLUSTER_NUM = getdeviceprob('cluster_num')
 TOTAL_CORE_NUM = TOTAL_CLUSTER_NUM * getdeviceprob("core_num_per_cluster")
+MAX_NRAM_SIZE = getdeviceprob('max_nram_size')
 DEVICE_COUNT = torch.cuda.device_count()
 
 
