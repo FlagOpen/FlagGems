@@ -51,7 +51,7 @@ class Benchmark:
 
     def run(self):
         for size in self.sizes:
-            print(f"{size: <20}", end="")
+            print(f"{BATCH}x{size}", end="")
             for dtype in self.dtypes:
                 args = ()
                 if self.arg_func is not None:
@@ -68,7 +68,7 @@ class Benchmark:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
                 speedup = torch_perf / gems_perf
-                print(f"{speedup: >20.6}", end="")
+                print(f", {speedup}", end="")
             print()
 
 
