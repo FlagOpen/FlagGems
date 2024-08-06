@@ -63,6 +63,7 @@ from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
 from .triu import triu
+from .unique import _unique2
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
@@ -157,4 +158,5 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "_unique2",
 ]
