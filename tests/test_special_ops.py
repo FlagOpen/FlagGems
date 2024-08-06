@@ -6,7 +6,6 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    ALL_FLOAT_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
@@ -264,7 +263,7 @@ def test_accuracy_resolve_conj(shape, dtype):
 @pytest.mark.parametrize("return_inverse", [True, False])
 @pytest.mark.parametrize("return_counts", [False, True])
 def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
-    if dtype in ALL_FLOAT_DTYPES:
+    if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
     else:
         inp = torch.randint(-10, 10, shape, device="cuda").to(dtype)
