@@ -542,10 +542,9 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_maximum(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
-    ref_out = torch.maximum(ref_inp1, inp2)
+    ref_out = torch.maximum(inp1, inp2)
     with flag_gems.use_gems():
         res_out = torch.maximum(inp1, inp2)
 
