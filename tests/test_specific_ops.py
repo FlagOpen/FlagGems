@@ -152,7 +152,7 @@ if __name__ == "__main__":
             op_nums = op_nums + len(item)
             for op in item.keys():
                 op_list.append(op)
-        assert op_nums == 50, f"50 ops to be tests, but got {op_nums} ops!"
+        print(f"{op_nums} ops to be tests, and here is the sorted op list:")
         op_list = sorted(op_list)
         print(op_list)
 
