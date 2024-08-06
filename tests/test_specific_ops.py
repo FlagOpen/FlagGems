@@ -1,4 +1,10 @@
+import argparse
+import logging
+
 import pytest
+
+# This is a collection of unit test by op name for testing the
+# accuracy of each op.
 
 blas_ops_ut_map = {
     "linear": ("test_accuracy_addmm",),
@@ -132,18 +138,41 @@ op_name_2_unit_test_maps = {
 
 
 if __name__ == "__main__":
-    op_nums = 0
-    op_list = []
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--all", action="store_true", help="test for all ops in the op list"
+    )
+    parser.add_argument("--name", type=str, help="test for a specific op")
+    args = parser.parse_args()
 
-    for item in op_name_2_unit_test_maps.values():
-        op_nums = op_nums + len(item)
-        for op in item.keys():
-            op_list.append(op)
-    assert op_nums == 50, f"50 ops to be tests, but got {op_nums} ops!"
-    op_list = sorted(op_list)
+    if args.all:
+        op_nums = 0
+        op_list = []
+        for item in op_name_2_unit_test_maps.values():
+            op_nums = op_nums + len(item)
+            for op in item.keys():
+                op_list.append(op)
+        print(f"{op_nums} ops to test, and here is the sorted op list:")
+        op_list = sorted(op_list)
+        print(op_list)
 
-    for file_name, collection in op_name_2_unit_test_maps.items():
-        for op, uts in collection.items():
-            for ut in uts:
-                cmd = f"{file_name}::{ut}"
-                result = pytest.main(["-s", cmd])
+        for file_name, collection in op_name_2_unit_test_maps.items():
+            for op, uts in collection.items():
+                for ut in uts:
+                    cmd = f"{file_name}::{ut}"
+                    result = pytest.main(["-s", cmd])
+
+    if args.name:
+        exec_flag = False
+        for file_name, collection in op_name_2_unit_test_maps.items():
+            for op, uts in collection.items():
+                if op == args.name:
+                    print(op)
+                    for ut in uts:
+                        cmd = f"{file_name}::{ut}"
+                        print(cmd)
+                        result = pytest.main(["-s", cmd])
+                        exec_flag = True
+
+        if exec_flag is False:
+            logging.fatal(f"No op named {args.name} found! Check the name and list!")
