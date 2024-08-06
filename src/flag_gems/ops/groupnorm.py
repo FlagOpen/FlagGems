@@ -68,30 +68,6 @@ def group_norm_kernel(
     tl.store(Mean_ptr, mean)
     tl.store(Rstd_ptr, rstd)
 
-def split(num_groups, hw):
-    if num_groups <= 4: 
-        split = num_groups
-    elif num_groups <= 16:
-        split = 6
-    else:
-        split = 8
-    if num_groups // split == 0:
-        return num_groups
-    return split
-
-def num_stages(args):
-    return 3
-
-def num_warps(args):
-    return 1
-
-#@libentry()
-#@triton.heuristics({ 'SPLIT': lambda args: split(args['num_groups'], args["HW"]) })
-#@triton.heuristics({
-#    'num_stages': lambda args: num_stages(args),
-#    'num_warps': lambda args: num_warps(args)
-#})
-
 @libentry()
 @triton.autotune(
     configs=[
