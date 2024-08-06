@@ -131,15 +131,12 @@ def group_norm_kernel_opt(
 
         weight = tl.load(W_ptr + group_offset, cache_modifier=".cg")[:, None]
         bias = tl.load(B_ptr + group_offset, cache_modifier=".cg")[:, None]
-        #var = var * weight
-        #bias = - mean * var + bias
 
         for idy in range(0, hw_iter):
             xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
             tmp = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             tmp = (tmp - mean) * var
             tmp = tmp * weight + bias
-            #tmp = tmp * var + bias
             tl.store(Y + idy * BLOCK_HW_SIZE + xy_offset, tmp, mask=xy_mask)
 
         xy_offset += real_num_elements 
