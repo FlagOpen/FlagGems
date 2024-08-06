@@ -38,8 +38,10 @@ from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
 from .max import max, max_dim
+from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .minimum import minimum
 from .mm import mm
 from .mul import mul
 from .mv import mv
@@ -157,4 +159,6 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "maximum",
+    "minimum",
 ]
