@@ -6,7 +6,9 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 0, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, True], dtypes=[float, float], promotion_methods=[(0, 1, "DEFAULT")]
+)
 @triton.jit
 def maximum_kernel(X, Y):
     return tl.maximum(X, Y)
