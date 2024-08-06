@@ -1,7 +1,8 @@
 import logging
-import torch
+
 import triton
 import triton.language as tl
+
 from flag_gems.utils import pointwise_dynamic
 
 
@@ -10,11 +11,9 @@ from flag_gems.utils import pointwise_dynamic
 def maximum_kernel(X, Y):
     return tl.maximum(X, Y)
 
+
 def maximum(X, Y):
     logging.debug("GEMS MAXIMUM")
     assert X.is_cuda and Y.is_cuda
     assert X.ndim == 1 and Y.ndim == 1 and X.size(0) == Y.size(0)
-    return maximum_kernel(A, B)
-
-
-
+    return maximum_kernel(X, Y)
