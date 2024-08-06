@@ -14,6 +14,8 @@ fi
 
 echo "Detected $gpu_count GPUs."
 
+nvidia-smi
+
 while true; do
     # Query GPU memory usage and total memory
     memory_usage=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)
