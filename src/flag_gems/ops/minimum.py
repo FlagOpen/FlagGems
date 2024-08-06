@@ -6,7 +6,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 0, "DEFAULT")])
 @triton.jit
 def minimum_kernel(X, Y):
     return tl.minimum(X, Y)
