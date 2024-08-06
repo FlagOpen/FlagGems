@@ -239,12 +239,7 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
     assert pvalue > 0.05
 
 
-@pytest.mark.parametrize(
-    "pool",
-    [https://github.com/FlagOpen/FlagGems/pull/141/conflict?name=tests%252Ftest_special_ops.py&ancestor_oid=3e734fc43910511a00e9d491c52ec514647fb9e0&base_oid=72077a21674b76bae6d0f3d5782f54a3b9da59e8&head_oid=a155788e7945c409573a37673d7af238c147859c
-        100,
-    ],
-)
+@pytest.mark.parametrize("pool", [100])
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("n_samples", [10])
 def test_accuracy_multinomial_without_replacement(pool, dtype, n_samples):
@@ -269,4 +264,3 @@ def test_accuracy_multinomial_without_replacement(pool, dtype, n_samples):
     expected_count[0] += observed_samples - expected_count.sum()
     chi2, pvalue = scipy.stats.chisquare(count.tolist(), expected_count.tolist())
     assert pvalue > 0.05
-
