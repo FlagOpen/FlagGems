@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# memory MB
 # Configuration parameters
 memory_usage_max=30000     # Maximum memory usage limit (MB)
 sleep_time=120             # Wait time (seconds), default is 2 minutes
