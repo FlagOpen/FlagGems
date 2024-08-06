@@ -138,9 +138,11 @@ op_name_2_unit_test_maps = {
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="处理命令行参数的示例")
-    parser.add_argument("--all", action="store_true", help="启用全部选项")
-    parser.add_argument("--name", type=str, help="指定名称")
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--all", action="store_true", help="test for all ops in the op list"
+    )
+    parser.add_argument("--name", type=str, help="test for a specific op")
     args = parser.parse_args()
 
     if args.all:
