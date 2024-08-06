@@ -54,6 +54,9 @@ def masked_fill(inp, mask, value):
         mask_shape, inp_shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
+    inp = inp.contiguous()
+    mask = mask.contiguous()
+    value = value.contiguous()
     expand_mask = mask.expand(inp.shape)
     out = torch.empty_like(inp, dtype=inp.dtype, device=inp.device)
 
