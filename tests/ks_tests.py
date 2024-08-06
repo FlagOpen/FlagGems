@@ -13,7 +13,7 @@ from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_normal(shape, dtype):
+def test_accuracy_normal_pvalue(shape, dtype):
     loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device="cuda")
     scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
@@ -27,7 +27,7 @@ def test_accuracy_normal(shape, dtype):
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_uniform(shape, dtype):
+def test_accuracy_uniform_pvalue(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         x.uniform_(-3, 3)
@@ -36,15 +36,6 @@ def test_accuracy_uniform(shape, dtype):
         lambda x: scipy.stats.uniform.cdf(x, loc=-3.0, scale=6.0),
     ).pvalue
     assert pvalue > 0.05
-
-
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_exponential_(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cuda")
-    with flag_gems.use_gems():
-        x.exponential_()
-    assert x.min() > 0
 
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
@@ -61,7 +52,7 @@ def test_accuracy_exponential_pvalue(shape, dtype, lambd):
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_rand(shape, dtype):
+def test_accuracy_rand_pvalue(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.rand(shape, dtype=dtype, device="cuda")
     pvalue = scipy.stats.kstest(
@@ -72,7 +63,7 @@ def test_accuracy_rand(shape, dtype):
 
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_accuracy_randn(shape, dtype):
+def test_accuracy_randn_pvalue(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device="cuda")
     pvalue = scipy.stats.kstest(
