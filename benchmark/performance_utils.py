@@ -6,7 +6,7 @@ import triton
 import flag_gems
 from .conftest import CPU_MODE, DEVICE
 
-WARMUP = 100
+WARMUP = 10
 REPETITION = 1000
 torch.backends.mlu.matmul.allow_tf32 = False
 
@@ -99,7 +99,7 @@ class Benchmark:
     def run_speedup(self):
         kep = []
         for dtype in self.dtypes:
-            # print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
+            print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
             speedup = 0
             for size in self.sizes:
                 args = ()
@@ -123,6 +123,7 @@ class Benchmark:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
                 spd = torch_perf / gems_perf
+                print(f"({size}) torch: {torch_perf} ms, gem: {gems_perf} ms  acc: {spd}")
                 speedup += spd
             speedup /= len(self.sizes)
             kep.append(speedup)
