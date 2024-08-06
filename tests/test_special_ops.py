@@ -7,7 +7,6 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    ALL_FLOAT_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
