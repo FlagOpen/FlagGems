@@ -507,6 +507,20 @@ def test_accuracy_pow(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_maximum(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.maximum(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.maximum(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
