@@ -85,12 +85,25 @@ def num_stages(args):
 def num_warps(args):
     return 1
 
+#@libentry()
+#@triton.heuristics({ 'SPLIT': lambda args: split(args['num_groups'], args["HW"]) })
+#@triton.heuristics({
+#    'num_stages': lambda args: num_stages(args),
+#    'num_warps': lambda args: num_warps(args)
+#})
+
 @libentry()
-@triton.heuristics({ 'SPLIT': lambda args: split(args['num_groups'], args["HW"]) })
-@triton.heuristics({
-    'num_stages': lambda args: num_stages(args),
-    'num_warps': lambda args: num_warps(args)
-})
+@triton.autotune(
+    configs=[
+        triton.Config({'SPLIT': 1}, num_stages=3, num_warps=1),
+        triton.Config({'SPLIT': 2}, num_stages=3, num_warps=1),
+        triton.Config({'SPLIT': 4}, num_stages=3, num_warps=1),
+        triton.Config({'SPLIT': 6}, num_stages=3, num_warps=1),
+        triton.Config({'SPLIT': 8}, num_stages=3, num_warps=1),
+        triton.Config({'SPLIT': 16}, num_stages=3, num_warps=1),
+    ],
+    key=["group_size", "C", "HW", "num_groups"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def group_norm_kernel_opt(
     X,
@@ -124,27 +137,24 @@ def group_norm_kernel_opt(
     Mean_ptr = Mean + split_n * num_groups + split_group * SPLIT
     Rstd_ptr = Rstd + split_n * num_groups + split_group * SPLIT
 
-    xy_offset = split_n * real_num_elements * num_groups + split_group * SPLIT * real_num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-
-    xy_mask = group_offset[:, None] < C and hw_offset[None, :] < HW
-    wb_mask = group_offset < C
+    xy_offset = split_n * C * HW + split_group * SPLIT * real_num_elements + group_offset[:, None] * HW + hw_offset[None, :]
 
     ub = SPLIT
     if (div_mod != 0) and ((split_group+1) == div_v):
         ub = div_mod
     for idx in range(0, ub):
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
-        weight = tl.load(W_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
-        bias = tl.load(B_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
+        X_val = tl.load(X + xy_offset, cache_modifier=".cg").to(tl.float32)
+        weight = tl.load(W_ptr + group_offset, cache_modifier=".cg")[:, None]
+        bias = tl.load(B_ptr + group_offset, cache_modifier=".cg")[:, None]
 
         mean = tl.sum(X_val) / real_num_elements
-        x = tl.where(xy_mask, X_val - mean, 0.0)
+        x = X_val - mean
         var = tl.sum(x * x) / real_num_elements
         rstd = tl.rsqrt(var + eps)
         x_hat = x * rstd
 
         Y_val = x_hat * weight + bias
-        tl.store(Y + xy_offset, Y_val, mask=xy_mask)
+        tl.store(Y + xy_offset, Y_val)
         xy_offset += real_num_elements 
         group_offset += group_size
 
@@ -397,8 +407,8 @@ class GroupNorm(torch.autograd.Function):
                 HW,
                 num_groups,
                 eps,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
-                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+                BLOCK_GROUP_SIZE=group_size,
+                BLOCK_HW_SIZE=HW,
             )
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.num_groups = num_groups
