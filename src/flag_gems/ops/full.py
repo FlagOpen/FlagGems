@@ -26,11 +26,11 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device("cuda")
+        device = torch.device("musa")
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch.cuda.device(device):
+    with torch.musa.device(device):
         full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=1024)
     return out

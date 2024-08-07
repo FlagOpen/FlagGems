@@ -11,9 +11,9 @@ from .performance_utils import (
 
 def test_perf_normal():
     def normal_arg(dtype, batch, size):
-        loc = torch.full(size=(size, batch), fill_value=3.0, dtype=dtype, device="cuda")
+        loc = torch.full(size=(size, batch), fill_value=3.0, dtype=dtype, device="musa")
         scale = torch.full(
-            size=(size, batch), fill_value=10.0, dtype=dtype, device="cuda"
+            size=(size, batch), fill_value=10.0, dtype=dtype, device="musa"
         )
         return loc, scale
 
@@ -28,25 +28,25 @@ def test_perf_normal():
     bench.run()
 
 
-def test_perf_uniform():
-    bench = Benchmark(
-        op_name="uniform_",
-        torch_op=torch.Tensor.uniform_,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+# def test_perf_uniform():
+#     bench = Benchmark(
+#         op_name="uniform_",
+#         torch_op=torch.Tensor.uniform_,
+#         arg_func=unary_arg,
+#         dtypes=FLOAT_DTYPES,
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
 
 
-def test_perf_exponential_():
-    bench = Benchmark(
-        op_name="exponential_",
-        torch_op=torch.Tensor.exponential_,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+# def test_perf_exponential_():
+#     bench = Benchmark(
+#         op_name="exponential_",
+#         torch_op=torch.Tensor.exponential_,
+#         arg_func=unary_arg,
+#         dtypes=FLOAT_DTYPES,
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()

@@ -211,6 +211,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     embedding = torch.randn(
         (EmbeddingSize, N), device="musa", dtype=dtype, requires_grad=True
     )
+    ref_indices = to_reference(indices)
     ref_embedding = to_reference(embedding)
     ref_indices = to_reference(indices)
 

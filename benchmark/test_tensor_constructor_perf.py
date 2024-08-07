@@ -67,7 +67,7 @@ def test_perf_randn_like():
 
 def test_perf_ones():
     def ones_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
+        return {"size": (batch, size), "dtype": dtype, "device": "musa"}
 
     bench = Benchmark(
         op_name="ones",
@@ -83,7 +83,7 @@ def test_perf_ones():
 
 def test_perf_zeros():
     def zeros_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
+        return {"size": (batch, size), "dtype": dtype, "device": "musa"}
 
     bench = Benchmark(
         op_name="zeros",
@@ -103,7 +103,7 @@ def test_perf_full():
             "size": (batch, size),
             "fill_value": 3.1415926,
             "dtype": dtype,
-            "device": "cuda",
+            "device": "musa",
         }
 
     bench = Benchmark(
@@ -145,7 +145,7 @@ def test_perf_zeros_like():
 def test_perf_full_like():
     def full_kwargs(dtype, batch, size):
         return {
-            "input": torch.randn([batch, size], dtype=dtype, device="cuda"),
+            "input": torch.randn([batch, size], dtype=dtype, device="musa"),
             "fill_value": 3.1415926,
         }
 

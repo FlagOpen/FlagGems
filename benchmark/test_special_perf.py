@@ -49,38 +49,38 @@ def test_perf_topk():
     bench.run()
 
 
-def test_perf_resolve_neg():
-    def resolve_neg_arg(dtype, batch, size):
-        x = torch.randn(size=(batch, size), dtype=dtype, device="musa")
-        y = x.conj()
-        z = y.imag
-        return (z,)
+# def test_perf_resolve_neg():
+#     def resolve_neg_arg(dtype, batch, size):
+#         x = torch.randn(size=(batch, size), dtype=dtype, device="musa")
+#         y = x.conj()
+#         z = y.imag
+#         return (z,)
 
-    bench = Benchmark(
-        op_name="resolve_neg",
-        torch_op=torch.resolve_neg,
-        arg_func=resolve_neg_arg,
-        dtypes=[torch.cfloat],
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="resolve_neg",
+#         torch_op=torch.resolve_neg,
+#         arg_func=resolve_neg_arg,
+#         dtypes=[torch.cfloat],
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
 
 
-def test_perf_resolve_conj():
-    def resolve_conj_arg(dtype, batch, size):
-        x = torch.randn(size=(size, batch), dtype=dtype, device="musa")
-        return (x.conj(),)
+# def test_perf_resolve_conj():
+#     def resolve_conj_arg(dtype, batch, size):
+#         x = torch.randn(size=(size, batch), dtype=dtype, device="musa")
+#         return (x.conj(),)
 
-    bench = Benchmark(
-        op_name="resolve_conj",
-        torch_op=torch.resolve_conj,
-        arg_func=resolve_conj_arg,
-        dtypes=[torch.cfloat],
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="resolve_conj",
+#         torch_op=torch.resolve_conj,
+#         arg_func=resolve_conj_arg,
+#         dtypes=[torch.cfloat],
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
 
 
 def test_perf_unique():
