@@ -20,6 +20,9 @@ done
 other="performance_keyops.py"
 pytest $other  -s 2>&1 | tee ${dirp}/${other%.*}.log
 
+flagperf="performance_flagperf.py"
+pytest $flagperf  -s 2>&1 | tee ${dirp}/${flagperf%.*}.log
+
 # wait
 echo "finish date: "$(date +"%Y-%m-%d_%H-%M-%S")
 echo "saved logs to: "$dirp
