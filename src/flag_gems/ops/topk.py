@@ -6,11 +6,9 @@ import triton
 import triton.language as tl
 import triton.language.core as core
 from triton.language.standard import (
-    _get_sort_dim,
-    _indicator,
     _is_power_of_two,
     _log2,
-    _take_slice,
+    _unwrap_if_constexpr,
     zeros_like,
 )
 
@@ -24,6 +22,44 @@ _MIN_BFLOAT16_VAL = torch.finfo(torch.bfloat16).min
 _MAX_BFLOAT16_VAL = torch.finfo(torch.bfloat16).max
 _MIN_INT32_VAL = torch.iinfo(torch.int32).min
 _MAX_INT32_VAL = torch.iinfo(torch.int32).max
+
+
+def _get_sort_dim(dim, shape):
+    dim = _unwrap_if_constexpr(dim)
+    shape = _unwrap_if_constexpr(shape)
+    if dim is None:
+        dim = len(shape) - 1
+    assert dim == len(shape) - 1, "Currently only support sorting on the last dimension"
+    return core.constexpr(dim)
+
+
+@triton.jit
+def _indicator(n_dims: core.constexpr, idx: core.constexpr, pos: core.constexpr):
+    core.static_assert(idx < n_dims)
+    core.static_assert((pos == 0) or (pos == 1))
+    y = core.arange(0, 2)
+    if pos == 0:
+        y = 1 - y
+
+    for n in core.static_range(0, n_dims):
+        if n != n_dims - 1 - idx:
+            y = core.expand_dims(y, n)
+    return y
+
+
+@triton.jit
+def _take_slice(
+    x,
+    n_dims: core.constexpr,
+    idx: core.constexpr,
+    pos: core.constexpr,
+    keep_dim: core.constexpr = True,
+):
+    y = triton.language.standard.sum(x * _indicator(n_dims, idx, pos), n_dims - 1 - idx)
+    if keep_dim:
+        y = core.expand_dims(y, n_dims - 1 - idx)
+
+    return y
 
 
 @triton.jit
