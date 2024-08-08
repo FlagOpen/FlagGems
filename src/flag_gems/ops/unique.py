@@ -591,7 +591,11 @@ def global_cumsum_flat_impl(
     if global_pid == global_num_ctas - 1:
         last_tile_sum_mask = i0 == num_tasks - 1
         tile_sum = tl.where(last_tile_sum_mask, total + cumsum, cumsum)
-        tl.store(tile_sum_ptr + global_pid + tl.zeros_like(r), tile_sum, mask=last_tile_sum_mask)
+        tl.store(
+            tile_sum_ptr + global_pid + tl.zeros_like(r),
+            tile_sum,
+            mask=last_tile_sum_mask,
+        )
     cumsum += total
 
     # data_out: scatter_(to=cumsum, sorted_data)
