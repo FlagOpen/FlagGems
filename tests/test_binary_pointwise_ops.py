@@ -514,10 +514,8 @@ def test_accuracy_maximum(shape, dtype):
         return
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
 
-    ref_out = torch.maximum(ref_inp1, ref_inp2)
+    ref_out = torch.maximum(inp1, inp2)
     with flag_gems.use_gems():
         res_out = torch.maximum(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -530,10 +528,8 @@ def test_accuracy_minimum(shape, dtype):
         return
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
 
-    ref_out = torch.minimum(ref_inp1, ref_inp2)
+    ref_out = torch.minimum(inp1, inp2)
     with flag_gems.use_gems():
         res_out = torch.minimum(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
