@@ -61,6 +61,7 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .tile import tile
 from .triu import triu
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -136,6 +137,7 @@ __all__ = [
     "softmax",
     "sub",
     "tanh",
+    "tile",
     "triu",
     "max",
     "max_dim",
