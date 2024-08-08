@@ -518,7 +518,7 @@ def test_accuracy_maximum(shape, dtype):
     ref_out = torch.maximum(inp1, inp2)
     with flag_gems.use_gems():
         res_out = torch.maximum(inp1, inp2)
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -532,7 +532,7 @@ def test_accuracy_minimum(shape, dtype):
     ref_out = torch.minimum(inp1, inp2)
     with flag_gems.use_gems():
         res_out = torch.minimum(inp1, inp2)
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("scalar", SCALARS)
