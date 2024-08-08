@@ -330,14 +330,19 @@ def generate_functional_pointwise_wrapper(
         for i in range(op_desc.num_outputs()):
             type_promotion_args = ith_parameter_for_type_promotion(op_desc, i)
             k_type_promotion = op_desc.ith_type_promotion_kind(i)
-            code.writeline(
-                (
-                    f"out{num_output_tensor_index} = "
-                    f"torch.empty(shape, dtype=type_promotion"
-                    f"({type_promotion_args}, type_promotion=utils.{k_type_promotion})[1], "
-                    f"device=in0.device)"
+            code.writeline(f"if 'out{i}' in kwargs:")
+            with code.indent():
+                code.writeline(f"out{i} = kwargs.pop('out{i}')")
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(
+                    (
+                        f"out{num_output_tensor_index} = "
+                        f"torch.empty(shape, dtype=type_promotion"
+                        f"({type_promotion_args}, type_promotion=utils.{k_type_promotion})[1], "
+                        f"device=in0.device)"
+                    )
                 )
-            )
             num_output_tensor_index += 1
 
         # call destination_passing_func
@@ -393,9 +398,18 @@ def generate_destination_passing_pointwise_wrapper(
         if rank > 0:
             code.writeline("# strides of each tensor argument w.r.t the task space")
             for i in range(op_desc.num_input_tensors()):
-                code.writeline(
-                    f"in{i}_strides = broadcasted_stride(in{i}.shape, in{i}.stride(), shape)"
-                )
+                code.writeline(f"if 'in{i}_shape' in kwargs:")
+                with code.indent():
+                    code.writeline(f"in{i}_strides = in{i}.stride()")
+                    code.writeline(f"in{i}_shape = kwargs['in{i}_shape']")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(
+                        f"in{i}_strides = broadcasted_stride(in{i}.shape, in{i}.stride(), shape)"
+                    )
+                    code.writeline(
+                        f"in{i}_shape = [(num_tasks + 1) for _ in range(len(shape))]"
+                    )
             for i in range(op_desc.num_output_tensors()):
                 code.writeline(f"if 'out{i}_offset' in kwargs:")
                 with code.indent():
@@ -447,6 +461,12 @@ def generate_destination_passing_pointwise_wrapper(
 
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
                     code.writeline(f"{shape_args}, # task indexing space")
+                    in_shape_args: str = ", ".join(
+                        f"in0_shape[{i}]" for i in range(rank)
+                    )
+                    code.writeline(
+                        f"{in_shape_args}, # task indexing space used when input and ouput tensor has different shape"
+                    )
                     code.writeline("num_tasks, # num tasks")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
@@ -543,6 +563,12 @@ def generate_pointwise_kernel(
             for i in range(rank):
                 function_ns.create_name(f"s{i}")
             code.writeline(f"{task_space_args}, # task_space")
+            task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
+            for i in range(rank):
+                function_ns.create_name(f"in_s{i}")
+            code.writeline(
+                f"{task_space_args2}, # task_space used when input and ouput tensor has different shape"
+            )
 
             # number of tasks, used to compute mask
             code.writeline("num_tasks: int,")
@@ -643,7 +669,7 @@ def generate_pointwise_kernel(
             code.writeline("# loads")
             for i in range(op_desc.num_input_tensors()):
                 ptrs_expr: str = " + ".join(
-                    f"i{j} * in{i}_stride{j}" for j in range(rank)
+                    f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
                 )
                 ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
                 load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
@@ -698,7 +724,7 @@ def generate_pointwise_kernel(
                 code.writeline("# loads")
                 for i in range(op_desc.num_input_tensors()):
                     ptrs_expr: str = " + ".join(
-                        f"i{j} * in{i}_stride{j}" for j in range(rank)
+                        f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
                     )
                     ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
                     load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
