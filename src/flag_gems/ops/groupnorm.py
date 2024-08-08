@@ -93,9 +93,10 @@ def num_warps(args):
         triton.Config({'SPLIT': 4}, num_stages=3, num_warps=1),
         triton.Config({'SPLIT': 6}, num_stages=3, num_warps=1),
         triton.Config({'SPLIT': 8}, num_stages=3, num_warps=1),
+        triton.Config({'SPLIT': 10}, num_stages=3, num_warps=1),
         triton.Config({'SPLIT': 16}, num_stages=3, num_warps=1),
     ],
-    key=["group_size", "C", "HW", "num_groups"],
+    key=["X", "group_size", "C", "HW", "num_groups"],
 )
 @triton.jit(do_not_specialize=["eps"])
 def group_norm_kernel_opt(
