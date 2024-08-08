@@ -21,12 +21,12 @@ def sum_kernel_1(
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
-    _tmp = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    _tmp = tl.zeros([BLOCK_SIZE], dtype=inp.dtype.element_ty)
     block_start = block_start.to(tl.int64)
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+        inp_val = tl.load(inp + offset, mask=mask, other=0.0)
         _tmp = inp_val + _tmp
 
     sum_val = tl.sum(_tmp)

@@ -15,6 +15,7 @@ from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 def min_kernel_1(
     inp,
     out,
+    FILL_VALUE,
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -22,12 +23,12 @@ def min_kernel_1(
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
-    _tmp = tl.full([BLOCK_SIZE], value=float("inf"), dtype=tl.float32)
+    _tmp = tl.full([BLOCK_SIZE], value=FILL_VALUE, dtype=inp.dtype.element_ty)
     block_start = block_start.to(tl.int64)
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=float("inf"))
+        inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
         _tmp = tl.where((inp_val < _tmp), inp_val, _tmp)
 
     min_val = tl.min(_tmp)
@@ -97,10 +98,11 @@ def min(inp):
     mid_size = TOTAL_CORE_NUM
 
     dtype = inp.dtype
+    fill_value = torch.finfo(inp.dtype).max
     out = torch.full([], float("inf"), dtype=torch.float32, device=inp.device)
 
     with torch.mlu.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](inp, out, M)
+        min_kernel_1[(mid_size, 1, 1)](inp, out, fill_value, M)
     return out.to(dtype)
 
 

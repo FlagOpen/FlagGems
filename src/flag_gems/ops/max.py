@@ -23,7 +23,7 @@ def max_kernel_1(
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
-    _tmp = tl.full([BLOCK_SIZE], value=-float("inf"), dtype=tl.float32)
+    _tmp = tl.full([BLOCK_SIZE], value=FILL_VALUE, dtype=inp.dtype.element_ty)
     block_start = block_start.to(tl.int64)
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)

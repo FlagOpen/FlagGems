@@ -15,6 +15,7 @@ from ..utils.shape_utils import can_use_int32_index
 def argmax_kernel_1(
     inp,
     out,
+    FILL_VALUE,
     M,
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
@@ -25,12 +26,12 @@ def argmax_kernel_1(
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
-    _tmp = tl.full([BLOCK_SIZE], value=-float("inf"), dtype=tl.float32)
+    _tmp = tl.full([BLOCK_SIZE], value=FILL_VALUE, dtype=inp.dtype.element_ty)
     block_start = block_start.to(tl.int64)
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
         _tmp = tl.where((_tmp < inp_val), inp_val, _tmp)
 
     max_val = tl.max(_tmp, axis=0, return_indices=False)
@@ -122,7 +123,8 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
 
         with torch.mlu.device(inp.device):
-            argmax_kernel_1[grid](inp, out, M, INT64_INDEX=use_int64_index)
+            fill_value = torch.finfo(inp.dtype).min
+            argmax_kernel_1[grid](inp, out, fill_value, M, INT64_INDEX=use_int64_index)
         return out.to(torch.int64)
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
