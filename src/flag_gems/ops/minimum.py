@@ -12,6 +12,7 @@ def minimum_kernel(X, Y):
     if X.dtype == tl.bfloat16:
         X = X.to(tl.float32)
         Y = Y.to(tl.float32)
+    return tl.minimum(X, Y)
 
 
 def minimum(X, Y):

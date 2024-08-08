@@ -3,7 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils import pointwise_dynamic
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
