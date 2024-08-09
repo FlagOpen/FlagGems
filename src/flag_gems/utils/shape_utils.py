@@ -203,7 +203,7 @@ def add_on_kernel(
     block_mask = rows_mask and cols_mask
 
     offsets = rows_offset * N + cols_offset
-    cur_idx = tl.load(idx + offsets, mask=block_mask, other=0)
+    cur_idx = tl.load(idx + offsets, mask=block_mask, other=1)
     mod = cur_idx % cur_shape
     res = mod * cur_strides
     tl.store(add_on + offsets, res, mask=block_mask)
