@@ -81,7 +81,7 @@ def fused_exponential_kernel(
 
 
 @triton.jit
-def paste_u64(hi: tl.uint32, lo: tl.uint32):
+def paste_u64(hi, lo):
     hi = hi.to(tl.uint64) << 32
     x = hi | lo.to(tl.uint64)
     return x
