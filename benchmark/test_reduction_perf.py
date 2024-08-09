@@ -297,19 +297,7 @@ def test_perf_slice_scatter():
         start = 32
         end = 128
         step = 3
-        size_dim = shape[dim]
-        if start is None:
-            start = 0
-        if end is None:
-            end = size_dim
         range = end - start
-        if end < start:
-            range = 0
-            end = start = 0
-        elif (end - start) > size_dim:
-            range = size_dim
-            start = 0
-            end = size_dim
 
         valid_shape = shape
         valid_shape[dim] = (range + (step - 1)) // step
