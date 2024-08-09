@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import libentry, offset_calculator, restride_dim
 
 
 def cfggen():
@@ -144,19 +144,19 @@ def scatter(inp, dim, index, src, reduction=None):
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()
-    out = inp.clone().contiguous()
+    out = inp.clone()
 
-    src_strided = src.as_strided(index.shape, src.stride()).contiguous()
+    src_strided = src.as_strided(index.shape, src.stride())
     inp_strided = restride_dim(inp, dim, index.shape)
     # FIXME: Are there any other way to get the "flatten offset" of a tensor?
     idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
-    # Temporarily call offsetCalculator() outside the block(although it can actually proceed in parallel),
+    # Temporarily call offset_calculator() outside the block(although it can actually proceed in parallel),
     # because the triton jit.function cannot accept Tuple as input in version 2.2.0(in 3.0.0, it's available),
     # and we do need **the whole stride[]** to accomplish this calculation!
     # FIXME: If stride[] can be wholely passed to triton jit.function, we can do this calculation in the kernel
     # so that the offset calculation can proceed in parallel
-    inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
-    idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
+    inp_offsets = offset_calculator(inp_strided, idx, inp.stride(), dim, isInp=True)
+    idx_offsets = offset_calculator(index, idx, index.stride(), dim, isInp=False)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 
