@@ -66,11 +66,10 @@ class Benchmark:
         return latency
 
     def run(self):
-        for dtype in self.dtypes:
-            print(f"Operator {self.op_name} Performance Test ({dtype})")
-            print("Size        Torch Latency (ms)   Gems Latency (ms)")
-            print("--------------------------------------------------")
-            for size in self.sizes:
+        print(f"{self.op_name}")
+        for size in self.sizes:
+            print(f"{size}", end="")
+            for dtype in self.dtypes:
                 args = ()
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)
@@ -92,7 +91,8 @@ class Benchmark:
                 else:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
+                print(f", {torch_perf}, {gems_perf}", end="")
+            print()
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -103,7 +103,7 @@ DEFAULT_BATCH = 1
 POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
-SIZES = [i * 1024 for i in range(1, 81, 5)]
+SIZES = [i * 64 for i in range(1, 22, 5)]
 
 
 def unary_arg(dtype, batch, size):
