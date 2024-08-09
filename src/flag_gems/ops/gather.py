@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import libentry, offset_calculator, restride_dim
 
 
 def cfggen():
@@ -63,9 +63,9 @@ def gather(inp, dim, index, sparse_grad=False):
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
-    out = torch.empty_like(index, dtype=inp.dtype, device=inp.device).contiguous()
     inp = inp.contiguous()
     index = index.contiguous()
+    out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
 
     inp_strided = restride_dim(inp, dim, index.shape)
     # FIXME: Are there any other way to get the "flatten offset" of a tensor?
@@ -75,8 +75,8 @@ def gather(inp, dim, index, sparse_grad=False):
     # and we do need **the whole stride[]** to accomplish this calculation!
     # FIXME: If stride[] can be wholely passed to triton jit.function, we can do this calculation in the kernel
     # so that the offset calculation can proceed in parallel
-    inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
-    idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
+    inp_offsets = offset_calculator(inp_strided, idx, inp.stride(), dim, isInp=True)
+    idx_offsets = offset_calculator(index, idx, index.stride(), dim, isInp=False)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 
@@ -118,8 +118,8 @@ def gather_out(inp, dim, index, sparse_grad=False, out=None):
     # and we do need **the whole stride[]** to accomplish this calculation!
     # FIXME: If stride[] can be wholely passed to triton jit.function, we can do this calculation in the kernel
     # so that the offset calculation can proceed in parallel
-    inp_offsets = offsetCalculator(inp_strided, idx, inp.stride(), dim, isInp=True)
-    idx_offsets = offsetCalculator(index, idx, index.stride(), dim, isInp=False)
+    inp_offsets = offset_calculator(inp_strided, idx, inp.stride(), dim, isInp=True)
+    idx_offsets = offset_calculator(index, idx, index.stride(), dim, isInp=False)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
 

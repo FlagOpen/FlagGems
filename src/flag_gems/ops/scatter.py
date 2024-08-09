@@ -144,7 +144,7 @@ def scatter(inp, dim, index, src, reduction=None):
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()
-    out = inp.clone().contiguous()
+    out = inp.clone()
 
     src_strided = src.as_strided(index.shape, src.stride()).contiguous()
     inp_strided = restride_dim(inp, dim, index.shape)
