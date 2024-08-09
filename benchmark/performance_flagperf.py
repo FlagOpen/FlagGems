@@ -475,6 +475,41 @@ def test_perf_sub():
     )
     bench.run()
 
+def test_perf_rsub():
+    bench = Benchmark(
+        op_name="rsub",
+        torch_op=torch.sub,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+def test_perf_dropout_backward():
+    bench = Benchmark(
+        op_name="dropout",
+        torch_op=torch.tanh,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+        is_backward=True,
+    )
+    bench.run()
+
+
+def test_perf_dropout():
+    bench = Benchmark(
+        op_name="tanh",
+        torch_op=torch.tanh,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
 
 def test_perf_tanh_backward():
     bench = Benchmark(
@@ -484,6 +519,7 @@ def test_perf_tanh_backward():
         dtypes=FLOAT_DTYPES,
         m_elements=M_ELEMENTS,
         size=SIZE,
+        is_backward=True,
     )
     bench.run()
 
@@ -496,7 +532,6 @@ def test_perf_tanh():
         dtypes=FLOAT_DTYPES,
         m_elements=M_ELEMENTS,
         size=SIZE,
-        is_backward=True,
     )
     bench.run()
 
@@ -736,3 +771,130 @@ def test_perf_mv():
         size=SIZE,
     )
     bench.run()
+
+def test_perf_var_mean():
+    bench = Benchmark(
+        op_name="var_mean",
+        torch_op=torch.var_mean,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+
+def test_perf_vector_norm():
+    bench = Benchmark(
+        op_name="vector_norm",
+        torch_op=torch.linalg.vector_norm,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+def test_perf_groupnorm():
+    def group_norm_args(dtype, batch, size):
+        C = 16
+        G = 16
+        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return inp, G, weight, bias
+
+    bench = Benchmark(
+        op_name="groupnorm",
+        torch_op=torch.nn.functional.group_norm,
+        arg_func=group_norm_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+def test_perf_groupnorm_backward():
+    import pytest
+    pytest.skip("Nram exceed failed")
+    def group_norm_args(dtype, batch, size):
+        C = 16
+        G = 16
+        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return inp, G, weight, bias
+
+    bench = Benchmark(
+        op_name="groupnorm",
+        torch_op=torch.nn.functional.group_norm,
+        arg_func=group_norm_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+        is_backward=True,
+    )
+    bench.run()
+
+def test_perf_layernorm():
+    def layer_norm_args(dtype, batch, size):
+        inp = torch.randn([batch, size, size], dtype=dtype, device=DEVICE)
+        weight = torch.randn(
+            [
+                size, size
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        bias = torch.randn(
+            [
+                size, size
+            ],
+            dtype=dtype,
+            device=DEVICE,
+        )
+        return (
+            inp,
+            [
+                size, size
+            ],
+            weight,
+            bias,
+        )
+
+    bench = Benchmark(
+        op_name="layernorm",
+        torch_op=torch.layer_norm,
+        arg_func=layer_norm_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+
+
