@@ -146,11 +146,11 @@ def scatter(inp, dim, index, src, reduction=None):
     src = src.contiguous()
     out = inp.clone()
 
-    src_strided = src.as_strided(index.shape, src.stride())
+    src_strided = src.as_strided(index.shape, src.stride()).contiguous()
     inp_strided = restride_dim(inp, dim, index.shape)
     # FIXME: Are there any other way to get the "flatten offset" of a tensor?
     idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
-    # Temporarily call offset_calculator() outside the block(although it can actually proceed in parallel),
+    # Temporarily call offsetCalculator() outside the block(although it can actually proceed in parallel),
     # because the triton jit.function cannot accept Tuple as input in version 2.2.0(in 3.0.0, it's available),
     # and we do need **the whole stride[]** to accomplish this calculation!
     # FIXME: If stride[] can be wholely passed to triton jit.function, we can do this calculation in the kernel
