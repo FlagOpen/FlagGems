@@ -8,9 +8,14 @@ from ..utils import broadcastable_to, libentry
 
 
 def cfggen():
-    block_m = [1, 2, 4, 8]
+    block_m = [1, 2, 4]
+    block_n = [1024, 2048, 4096]
+    warps = [4, 8, 16]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 128}, num_warps=4) for m in block_m
+        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
+        for m in block_m
+        for n in block_n
+        for w in warps
     ]
     return configs
 
@@ -21,22 +26,19 @@ def cfggen():
 def masked_fill_kernel(
     inp, expand_mask, value, out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
 ):
-    pid = tl.program_id(0)
-    rows_offset = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    rows_mask = rows_offset < M
+    pid_x = tl.program_id(axis=0)
+    pid_y = tl.program_id(axis=1)
+    rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols_offset = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = rows_offset < M and cols_offset < N
 
-    for off in range(0, N, BLOCK_N):
-        cols_offset = off + tl.arange(0, BLOCK_N)[None, :]
-        cols_mask = cols_offset < N
-        block_mask = rows_mask and cols_mask
+    offsets = rows_offset * N + cols_offset
+    fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
+    cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and mask, other=0)
+    tl.store(out + offsets, cur_inp, (not fill_mask) and mask)
 
-        offsets = rows_offset * N + cols_offset
-        fill_mask = tl.load(expand_mask + offsets, mask=block_mask, other=0).to(tl.int1)
-        cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and block_mask, other=0)
-        tl.store(out + offsets, cur_inp, (not fill_mask) and block_mask)
-
-        cur_val = tl.full((BLOCK_M, BLOCK_N), value, dtype=cur_inp.dtype)
-        tl.store(out + offsets, cur_val, fill_mask and block_mask)
+    cur_val = tl.full((BLOCK_M, BLOCK_N), value, dtype=cur_inp.dtype)
+    tl.store(out + offsets, cur_val, fill_mask and mask)
 
 
 def masked_fill(inp, mask, value):
@@ -62,6 +64,9 @@ def masked_fill(inp, mask, value):
 
     N = inp.size(inp.ndim - 1)
     M = inp.numel() // N
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
+    )
     masked_fill_kernel[grid](inp, expand_mask.to(torch.int), value, out, M, N)
     return out
