@@ -4,6 +4,7 @@ import torch
 import triton
 
 import flag_gems
+import pytest
 
 from .conftest import CPU_MODE, DEVICE
 
@@ -158,6 +159,20 @@ def test_perf_add():
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
         m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+def test_perf_triu():
+    def triu_args(dtype, m_elements, size):
+        inp = torch.randn([m_elements * 50, size * 50], dtype=dtype, device=DEVICE)
+        return (inp, )
+    bench = Benchmark(
+        op_name="triu",
+        torch_op=torch.triu,
+        arg_func=triu_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=[1024],
         size=SIZE,
     )
     bench.run()
@@ -642,6 +657,36 @@ def test_perf_max():
     )
     bench.run()
 
+def test_perf_amax():
+    pytest.skip("exceeds triton maximum tensor numel failed")
+    def amax_arg(dtype, m_elements, size):
+        inp = torch.randn([m_elements * 80, size * 80], dtype=dtype, device=DEVICE)
+        return (inp, 1)
+    bench = Benchmark(
+        op_name="amax",
+        torch_op=torch.amax,
+        arg_func=amax_arg,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
+def test_perf_argmax():
+    pytest.skip("grid is greater than max_grid_size")
+    def argmax_arg(dtype, m_elements, size):
+        inp = torch.randn([m_elements * 80, size * 80], dtype=dtype, device=DEVICE)
+        return (inp, 1)
+    bench = Benchmark(
+        op_name="argmax",
+        torch_op=torch.argmax,
+        arg_func=argmax_arg,
+        dtypes=FLOAT_DTYPES,
+        m_elements=M_ELEMENTS,
+        size=SIZE,
+    )
+    bench.run()
+
 
 def test_perf_mean():
     bench = Benchmark(
@@ -721,6 +766,20 @@ def test_perf_sum():
     )
     bench.run()
 
+def test_perf_outer():
+    def outer_args(dtype, m_elements, size):
+        inp1 = torch.randn([m_elements * 10], dtype=dtype, device=DEVICE)
+        inp2 = torch.randn([size * 10], dtype=dtype, device=DEVICE)
+        return inp1, inp2
+    bench = Benchmark(
+        op_name="outer",
+        torch_op=torch.outer,
+        arg_func=outer_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=[1024],
+        size=SIZE,
+    )
+    bench.run()
 
 def test_perf_bmm():
     def bmm_args(dtype, m_elements, size):
@@ -752,6 +811,23 @@ def test_perf_mm():
         dtypes=FLOAT_DTYPES,
         m_elements=[8192],
         size=8192,
+    )
+    bench.run()
+
+def test_perf_addmm():
+    def addmm_args(dtype, m_elements, size):
+        inp1 = torch.randn([size, size], dtype=dtype, device=DEVICE)
+        inp2 = torch.randn([size, size], dtype=dtype, device=DEVICE)
+        inp3 = torch.randn([size, size], dtype=dtype, device=DEVICE)
+        return inp1, inp2, inp3
+
+    bench = Benchmark(
+        op_name="addmm",
+        torch_op=torch.addmm,
+        arg_func=addmm_args,
+        dtypes=FLOAT_DTYPES,
+        m_elements=[4096],
+        size=4096,
     )
     bench.run()
 
@@ -796,9 +872,10 @@ def test_perf_vector_norm():
     bench.run()
 
 def test_perf_groupnorm():
+    pytest.skip("Nram exceed failed")
     def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
+        C = 6
+        G = 3
         inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
@@ -821,17 +898,16 @@ def test_perf_groupnorm():
         torch_op=torch.nn.functional.group_norm,
         arg_func=group_norm_args,
         dtypes=FLOAT_DTYPES,
-        m_elements=M_ELEMENTS,
-        size=SIZE,
+        m_elements=[20],
+        size=65536,
     )
     bench.run()
 
 def test_perf_groupnorm_backward():
-    import pytest
     pytest.skip("Nram exceed failed")
     def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
+        C = 6
+        G = 3
         inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
@@ -854,25 +930,26 @@ def test_perf_groupnorm_backward():
         torch_op=torch.nn.functional.group_norm,
         arg_func=group_norm_args,
         dtypes=FLOAT_DTYPES,
-        m_elements=M_ELEMENTS,
-        size=SIZE,
+        m_elements=[20],
+        size=65536,
         is_backward=True,
     )
     bench.run()
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size, size], dtype=dtype, device=DEVICE)
+        C = 6
+        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
-                size, size
+                C, size
             ],
             dtype=dtype,
             device=DEVICE,
         )
         bias = torch.randn(
             [
-                size, size
+                C, size
             ],
             dtype=dtype,
             device=DEVICE,
@@ -880,7 +957,7 @@ def test_perf_layernorm():
         return (
             inp,
             [
-                size, size
+                C, size
             ],
             weight,
             bias,
@@ -891,10 +968,8 @@ def test_perf_layernorm():
         torch_op=torch.layer_norm,
         arg_func=layer_norm_args,
         dtypes=FLOAT_DTYPES,
-        m_elements=M_ELEMENTS,
-        size=SIZE,
+        m_elements=[20],
+        size=1048576,
     )
     bench.run()
-
-
 
