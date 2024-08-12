@@ -384,10 +384,10 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=x.dtype, device=x.device)
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
         if N <= MAX_C_MLU_LAYERNORM_FORWARD:
-            with torch.mlu.device(x.device):
+            with torch.cuda.device(x.device):
                 layer_norm_kernel_non_inner[grid](x, y, weight, bias, mean, rstd, M, N, eps, BLOCK_COL_SIZE=N)
         else:
-            with torch.mlu.device(x.device):
+            with torch.cuda.device(x.device):
                 layer_norm_kernel_inner[grid](x, y, weight, bias, mean, rstd, M, N, eps)
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
@@ -407,7 +407,7 @@ class LayerNorm(torch.autograd.Function):
             # enqueue kernel using forward pass heuristics
             # also compute partial sums for DW and DB
             grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), TOTAL_CORE_NUM),)
-            with torch.mlu.device(x.device):
+            with torch.cuda.device(x.device):
                 layer_norm_backward_kernel[grid](
                     in_grad,
                     out_grad,
@@ -439,7 +439,7 @@ class LayerNorm(torch.autograd.Function):
             weight_grad = torch.empty_like(weight)
             bias_grad = torch.empty_like(weight)
             grid = lambda META: (min(triton.cdiv(N, META['BLOCK_COL_SIZE']), TOTAL_CORE_NUM),)
-            with torch.mlu.device(x.device):
+            with torch.cuda.device(x.device):
                 weight_bias_backward_kernel[grid](
                     out_grad,
                     x,

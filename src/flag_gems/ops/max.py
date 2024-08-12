@@ -123,7 +123,7 @@ def max(inp):
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     dtype = inp.dtype
 
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         if torch.is_floating_point(inp):
             fill_value = torch.finfo(inp.dtype).min
             out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
@@ -159,7 +159,7 @@ def max_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         max_kernel[grid](inp, out_value, out_index, M, N, K)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)

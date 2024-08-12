@@ -5,7 +5,7 @@ import triton
 
 import flag_gems
 
-from .conftest import CPU_MODE, DEVICE
+from .conftest import CPU_MODE
 
 WARMUP = 50
 REPETITION = 100
@@ -112,30 +112,30 @@ class Benchmark:
 
 
 def unary_arg(dtype, m_elements, size):
-    inp = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
+    inp = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
     return (inp,)
 
 
 def unary_int_arg(dtype, m_elements, size):
     inp = torch.randint(
         low=0, high=0x7FFF, size=[m_elements, size, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     return (inp,)
 
 
 def binary_args(dtype, m_elements, size):
-    inp1 = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
+    inp1 = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
     return inp1, inp2
 
 
 def binary_int_args(dtype, m_elements, size):
     inp1 = torch.randint(
         low=0, high=0x7FFF, size=[m_elements, size, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     inp2 = torch.randint(
         low=0, high=0x7FFF, size=[m_elements, size, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     return inp1, inp2
 
 
@@ -538,7 +538,7 @@ def test_perf_tanh():
 
 def test_perf_all():
     def all_arg(dtype, m_elements, size):
-        inp = torch.arange(0, m_elements * size * size, dtype=dtype, device=DEVICE)
+        inp = torch.arange(0, m_elements * size * size, dtype=dtype, device="cuda")
         return (inp,)
     bench = Benchmark(
         op_name="all",
@@ -553,14 +553,14 @@ def test_perf_all():
 
 def test_perf_cross_entropy_loss():
     def cross_entropy_loss_args(dtype, m_elements, size):
-        inp = torch.randn([m_elements, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([m_elements, size], dtype=dtype, device="cuda")
         target = torch.randint(
             0,
             size,
             [
                 m_elements,
             ],
-            device=DEVICE,
+            device="cuda",
         )
         return inp, target
 
@@ -577,14 +577,14 @@ def test_perf_cross_entropy_loss():
 
 def test_perf_cross_entropy_loss_backward():
     def cross_entropy_loss_args(dtype, m_elements, size):
-        inp = torch.randn([m_elements, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([m_elements, size], dtype=dtype, device="cuda")
         target = torch.randint(
             0,
             size,
             [
                 m_elements,
             ],
-            device=DEVICE,
+            device="cuda",
         )
         return inp, target
 
@@ -602,7 +602,7 @@ def test_perf_cross_entropy_loss_backward():
 
 def test_perf_log_softmax():
     def log_softmax_arg(dtype, m_elements, size):
-        inp = torch.randn([m_elements * 1024, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([m_elements * 1024, size], dtype=dtype, device="cuda")
         return (inp,)
     bench = Benchmark(
         op_name="log_softmax",
@@ -617,7 +617,7 @@ def test_perf_log_softmax():
 
 def test_perf_log_softmax_backward():
     def log_softmax_arg(dtype, m_elements, size):
-        inp = torch.randn([m_elements * 1024, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([m_elements * 1024, size], dtype=dtype, device="cuda")
         return (inp,)
     bench = Benchmark(
         op_name="log_softmax",
@@ -681,7 +681,7 @@ def test_perf_prod():
 
 def test_perf_softmax():
     def softmax_arg(dtype, m_elements, size):
-        inp = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
         return inp, 1
     bench = Benchmark(
         op_name="softmax",
@@ -696,7 +696,7 @@ def test_perf_softmax():
 
 def test_perf_softmax_backward():
     def softmax_arg(dtype, m_elements, size):
-        inp = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
         return inp, 1
     bench = Benchmark(
         op_name="softmax",
@@ -724,8 +724,8 @@ def test_perf_sum():
 
 def test_perf_bmm():
     def bmm_args(dtype, m_elements, size):
-        inp1 = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
-        inp2 = torch.randn([m_elements, size, size], dtype=dtype, device=DEVICE)
+        inp1 = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([m_elements, size, size], dtype=dtype, device="cuda")
         return inp1, inp2
 
     bench = Benchmark(
@@ -741,8 +741,8 @@ def test_perf_bmm():
 
 def test_perf_mm():
     def mm_args(dtype, m_elements, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device=DEVICE)
-        inp2 = torch.randn([size, size], dtype=dtype, device=DEVICE)
+        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
         return inp1, inp2
 
     bench = Benchmark(
@@ -758,8 +758,8 @@ def test_perf_mm():
 
 def test_perf_mv():
     def mv_args(dtype, m_elements, size):
-        inp1 = torch.randn([m_elements, size], dtype=dtype, device=DEVICE)
-        inp2 = torch.randn([size], dtype=dtype, device=DEVICE)
+        inp1 = torch.randn([m_elements, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([size], dtype=dtype, device="cuda")
         return inp1, inp2
 
     bench = Benchmark(
@@ -799,20 +799,20 @@ def test_perf_groupnorm():
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return inp, G, weight, bias
 
@@ -832,20 +832,20 @@ def test_perf_groupnorm_backward():
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return inp, G, weight, bias
 
@@ -862,20 +862,20 @@ def test_perf_groupnorm_backward():
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, size, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 size, size
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 size, size
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return (
             inp,

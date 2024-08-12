@@ -70,7 +70,7 @@ def prod(inp, *, dtype=None):
     mid = torch.ones((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         prod_kernel_mid[grid](inp, mid, M)
         prod_kernel_result[(1, 1, 1)](mid, out, mid_size, loop_num)
     return out
@@ -153,7 +153,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         prod_kernel[grid](inp, out, M, N, K)
 
     return out

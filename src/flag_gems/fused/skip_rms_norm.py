@@ -77,7 +77,7 @@ class SkipRmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        with torch.mlu.device(x.device):
+        with torch.cuda.device(x.device):
             skip_rms_norm_kernel[TOTAL_CORE_NUM,](
                 x, y, residual, weight, eps, x.stride(0), M, N
             )

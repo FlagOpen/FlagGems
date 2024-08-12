@@ -6,11 +6,6 @@ import triton
 import flag_gems
 from .conftest import CPU_MODE, DEVICE
 
-try:
-    from torch_mlu.utils.model_transfer import transfer
-except ImportError:
-    pass
-
 WARMUP = 100
 REPETITION = 1000
 torch.backends.mlu.matmul.allow_tf32 = False
@@ -147,35 +142,35 @@ SIZES = [i * 64 for i in range(1, 22, 5)]
 
 
 def unary_arg(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
     return (inp,)
 
 
 def unary_int_arg(dtype, batch, size):
     inp = torch.randint(
         low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     return (inp,)
 
 
 def binary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
     return inp1, inp2
 
 
 def binary_int_args(dtype, batch, size):
     inp1 = torch.randint(
         low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     inp2 = torch.randint(
         low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     return inp1, inp2
 
 
 def ternary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp3 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    inp3 = torch.randn([batch, size], dtype=dtype, device="cuda")
     return inp1, inp2, inp3

@@ -614,7 +614,7 @@ class Softmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N  # post_dim
 
-        with torch.mlu.device(inp.device):
+        with torch.cuda.device(inp.device):
             if K > 1:
                 logging.debug("GEMS SOFTMAX USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
@@ -654,7 +654,7 @@ class Softmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch.mlu.device(in_grad.device):
+        with torch.cuda.device(in_grad.device):
             if K > 1:
                 logging.debug("GEMS SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)

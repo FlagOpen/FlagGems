@@ -170,19 +170,19 @@ def softmax_kernel_inner(
 def test_decorator_cascade():
     # to test inner decorator can use arguments supplied by outer decorator
     # and grid function can use arguments supplied by all the decorator
-    x = torch.randn((128, 128, 128), device=DEVICE)
+    x = torch.randn((128, 128, 128), device="cuda")
     with not_raises(KeyError):
         _ = softmax_inner_decorator_cascade(x, dim=2)
 
 
 def test_pass_kernel_arg_via_kw():
-    x = torch.randn((128, 128, 128), device=DEVICE)
+    x = torch.randn((128, 128, 128), device="cuda")
     with not_raises(KeyError):
         _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
 
 
 def test_kernel_arg_apply_default():
-    x = torch.randn((128, 128, 128), device=DEVICE)
+    x = torch.randn((128, 128, 128), device="cuda")
     with not_raises(KeyError):
         _ = softmax_inner_kernel_arg_apply_default(x, dim=2)
 

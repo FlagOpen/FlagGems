@@ -8,7 +8,6 @@ from .accuracy_utils import (
     DIMS_LIST,
     FLOAT_DTYPES,
     BIG_REDUCTION_SHAPES,
-    DEVICE,
     gems_assert_close,
     gems_assert_equal,
     skip_expr,
@@ -20,7 +19,7 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
@@ -34,7 +33,7 @@ def test_accuracy_cumsum(shape, dtype):
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_log_softmax_forward(shape, dtype, dim):
     torch.manual_seed(2)
-    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
@@ -47,7 +46,7 @@ def test_accuracy_log_softmax_forward(shape, dtype, dim):
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_log_softmax_backward(shape, dtype, dim):
     # Here we set input all ones to avoid random effect.
-    inp = torch.ones(shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    inp = torch.ones(shape, dtype=dtype, device="cuda", requires_grad=True)
     # UpCast is set to False to keep same precision data for backward.
     ref_inp = to_reference(inp, False)
 
@@ -67,7 +66,7 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1])
 def test_accuracy_softmax(shape, dtype, dim):
-    inp = torch.randn(shape, dtype=dtype, device=DEVICE, requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)

@@ -6,7 +6,6 @@ from .performance_utils import (
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
-    DEVICE,
     Benchmark,
     binary_args,
     binary_int_args,
@@ -394,8 +393,8 @@ def test_perf_triu():
 
 def test_perf_where():
     def where_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-        inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
         condition = inp1 > 0
         return condition, inp1, inp2
 

@@ -6,6 +6,10 @@ from transformers import AutoProcessor, LlavaForConditionalGeneration
 
 import flag_gems
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
 
 @pytest.mark.parametrize(
     "prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"]
@@ -22,9 +26,9 @@ def test_accuracy_llava(prompt, url):
     model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf")
     processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
     torch.manual_seed(1234)
-    model.to("mlu").eval()
+    model.to("cuda").eval()
     image = Image.open(requests.get(url, stream=True).raw)
-    inputs = processor(text=prompt, images=image, return_tensors="pt").to(device="mlu")
+    inputs = processor(text=prompt, images=image, return_tensors="pt").to(device="cuda")
 
     with torch.no_grad():
         ref_output = model(**inputs).logits

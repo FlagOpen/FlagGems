@@ -3,12 +3,12 @@ import time
 import triton
 import copy, pytest
 import flag_gems
-from .conftest import CPU_MODE, DEVICE
 from .performance_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
+    CPU_MODE,
 )
 from PIL import Image
 import requests
@@ -122,11 +122,11 @@ PROMPTS = [
 def test_perf_model_bert(dtype):
     config = BertConfig()
     model = BertModel(config)
-    model.to(DEVICE).to(dtype).eval()
+    model.to("cuda").to(dtype).eval()
     tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
 
     def token_kargs(batch, inpstr, dtype):
-        inputs = tokenizer(inpstr, return_tensors="pt").to(DEVICE).to(dtype)
+        inputs = tokenizer(inpstr, return_tensors="pt").to("cuda").to(dtype)
         return inputs
 
     bench = ModelBenchmark(
@@ -145,14 +145,14 @@ def test_perf_model_bert(dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_model_llama(dtype):
     model = AutoModelForCausalLM.from_pretrained("sharpbai/Llama-2-7b-hf")
-    model.to(DEVICE).to(dtype).eval()
+    model.to("cuda").to(dtype).eval()
     tokenizer = AutoTokenizer.from_pretrained("sharpbai/Llama-2-7b-hf")
 
     def model_run(model):
         return model.generate
 
     def token_kargs(batch, inpstr, dtype):
-        inputs = tokenizer(inpstr, return_tensors="pt").to(DEVICE).to(dtype)
+        inputs = tokenizer(inpstr, return_tensors="pt").to("cuda").to(dtype)
         inputs["max_length"] = 100
         inputs["num_beams"] = 5
         return inputs
@@ -181,14 +181,14 @@ urls_llava = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_perf_model_llava(dtype):
     model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf")
-    model.to(DEVICE).to(dtype).eval()
+    model.to("cuda").to(dtype).eval()
     processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
 
     def token_kargs(batch, inputs, dtype):
         prompt, url = inputs
         torch.manual_seed(1234)
         image = Image.open(requests.get(url, stream=True).raw)
-        inputs = processor(text=prompt, images=image, return_tensors="pt").to(DEVICE).to(dtype)
+        inputs = processor(text=prompt, images=image, return_tensors="pt").to("cuda").to(dtype)
         return inputs
 
     bench = ModelBenchmark(

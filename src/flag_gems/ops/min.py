@@ -101,7 +101,7 @@ def min(inp):
     fill_value = torch.finfo(inp.dtype).max
     out = torch.full([], float("inf"), dtype=torch.float32, device=inp.device)
 
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         min_kernel_1[(mid_size, 1, 1)](inp, out, fill_value, M)
     return out.to(dtype)
 
@@ -130,7 +130,7 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N, K)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)

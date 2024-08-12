@@ -486,20 +486,20 @@ class CrossEntropyLoss(torch.autograd.Function):
 
         if tgt.ndim == dim:
             # target probabilities
-            with torch.mlu.device(inp.device):
+            with torch.cuda.device(inp.device):
                 celoss_probability_kernel[grid](
                     inp, tgt, weight, out, label_smoothing, N, C, D
                 )
         elif label_smoothing == 0:
             # target indices
             w_tgt = torch.zeros(shape, dtype=torch.float32, device=inp.device)
-            with torch.mlu.device(inp.device):
+            with torch.cuda.device(inp.device):
                 celoss_indice_kernel[grid](
                     inp, tgt, weight, out, w_tgt, ignore_index, N, C, D
                 )
         else:
             w_tgt = torch.zeros(shape, dtype=torch.float32, device=inp.device)
-            with torch.mlu.device(inp.device):
+            with torch.cuda.device(inp.device):
                 celoss_indice_smooth_kernel[grid](
                     inp, tgt, weight, out, w_tgt, ignore_index, label_smoothing, N, C, D
                 )

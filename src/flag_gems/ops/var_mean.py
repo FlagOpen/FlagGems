@@ -163,7 +163,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         acc = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         average = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         count = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
-        with torch.mlu.device(x.device):
+        with torch.cuda.device(x.device):
             var_mean_kernel_1[(TOTAL_CORE_NUM,)](x, acc, average, count, M)
             var_mean_kernel_2[(1,)](
                 acc, average, count, var, mean, M, correction, BLOCK_NUM=TOTAL_CORE_NUM)
@@ -180,7 +180,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
         grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), TOTAL_CORE_NUM),)
-        with torch.mlu.device(x.device):
+        with torch.cuda.device(x.device):
             var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 
     if not keepdim:
