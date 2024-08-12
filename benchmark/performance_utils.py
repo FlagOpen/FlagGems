@@ -6,6 +6,11 @@ import triton
 import flag_gems
 from .conftest import CPU_MODE, DEVICE
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
+
 WARMUP = 100
 REPETITION = 1000
 torch.backends.mlu.matmul.allow_tf32 = False
@@ -63,10 +68,10 @@ class Benchmark:
             )
         # average latency in ms
         return latency
-    
+
     def run(self):
         return self.run_rawdata()
-    
+
     def run_rawdata(self):
         print(f"\nOperator_Speedup_Test_Result\t{self.op_name}")
         for size in self.sizes:

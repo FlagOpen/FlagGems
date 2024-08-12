@@ -18,6 +18,8 @@ TOTAL_CORE_NUM = TOTAL_CLUSTER_NUM * getdeviceprob("core_num_per_cluster")
 MAX_NRAM_SIZE = getdeviceprob('max_nram_size')
 DEVICE_COUNT = torch.cuda.device_count()
 
+DEVICE_COUNT = torch.cuda.device_count()
+
 
 class LibEntry(triton.KernelInterface):
     def __init__(
