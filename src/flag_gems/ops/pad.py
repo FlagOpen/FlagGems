@@ -18,6 +18,7 @@ def parameter_for_wrapper() -> str:
 
     parameters.append("in0")
     parameters.append("pad")
+    parameters.append("mode")
     parameters.append("value=0")
     return ", ".join(parameters)
 
@@ -33,6 +34,7 @@ def parameter_for_wrapper_out() -> str:
     parameters.append("dst_shape")
     parameters.append("pad_before")
     parameters.append("pad_after")
+    parameters.append("mode")
     parameters.append("value=0")
 
     return ", ".join(parameters)
@@ -49,6 +51,7 @@ def parameter_ref_for_wrapper() -> str:
     parameters.append("dst_shape")
     parameters.append("pad_before")
     parameters.append("pad_after")
+    parameters.append("mode")
     parameters.append("value")
 
     return ", ".join(parameters)
@@ -151,6 +154,14 @@ def generate_destination_passing_padding_wrapper(
 
         code.newline()
 
+        code.writeline("IS_CONSTANT = mode == 'constant'")
+        code.writeline("IS_REFLECT = mode == 'reflect'")
+        code.writeline("IS_REPLICATE = mode == 'replicate'")
+        code.writeline("IS_CIRCULAR = mode == 'circular'")
+
+
+        code.newline()
+
         # grid
         code.writeline("# kernel launch")
 
@@ -182,6 +193,10 @@ def generate_destination_passing_padding_wrapper(
                     code.writeline("in0.numel(), ")
                     code.writeline("out0.numel(), ")
                     code.writeline("value, ")
+                    code.writeline("IS_CONSTANT, ")
+                    code.writeline("IS_REFLECT, ")
+                    code.writeline("IS_REPLICATE, ")
+                    code.writeline("IS_CIRCULAR, ")
                     code.writeline("BLOCK_SIZE, ")
             code.writeline(")")
 
@@ -245,10 +260,14 @@ def generate_pad_kernel(
             stride_args = ", ".join(f"valid_dim{j}_end: int" for j in range(rank))
             code.writeline(f"{stride_args}, # valid dim end")
 
-            code.writeline("in_elem_cnt: tl.constexpr, # valid dim end")
-            code.writeline("out_elem_cnt: tl.constexpr, # valid dim end")
+            code.writeline("in_elem_cnt: tl.constexpr, ")
+            code.writeline("out_elem_cnt: tl.constexpr, ")
             code.writeline("value, # padding value")
-            code.writeline("BLOCK_SIZE: tl.constexpr, # valid dim end")
+            code.writeline("IS_CONSTANT, ")
+            code.writeline("IS_REFLECT, ")
+            code.writeline("IS_REPLICATE, ")
+            code.writeline("IS_CIRCULAR, ")
+            code.writeline("BLOCK_SIZE: tl.constexpr, ")
 
     code.writeline("):")
 
@@ -291,15 +310,61 @@ def generate_pad_kernel(
             code.writeline(
                 f"src_index_{i} = tl.where(src_index_{i} < 0, 0, src_index_{i})"
             )
+        
+        code.newline()
+        code.writeline("if IS_REFLECT: ")
+        with code.indent():
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, valid_dim{i}_start - dst_index_{i}, src_index_{i})"
+                )
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"
+                )
+
+        code.newline()
+        code.writeline("if IS_REPLICATE: ")
+        with code.indent():
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, 0, src_index_{i})"
+                )
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, x_shape{i} - 1, src_index_{i})"
+                )
+
+        code.newline()
+        code.writeline("if IS_CIRCULAR: ")
+        with code.indent():
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"
+                )
+            for i in range(rank):
+                code.writeline(
+                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, dst_index_{i} - valid_dim{i}_end, src_index_{i})"
+                )
+
+        code.newline()
+
 
         code.writeline("src_offset = src_index_0 * in_strides0")
         for i in range(1, rank):
             code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
 
         code.writeline("load_cond = src_offset < in_elem_cnt")
-        code.writeline(
-            "x_val = tl.load(in0_ptr + src_offset, mask=(not if_pad) and load_cond, other=value)"
-        )
+        code.writeline("if IS_CONSTANT: ")
+        with code.indent():
+            code.writeline(
+                "x_val = tl.load(in0_ptr + src_offset, mask=(not if_pad) and load_cond, other=value)"
+            )
+        code.writeline("else: ")
+        with code.indent():
+            code.writeline(
+                "x_val = tl.load(in0_ptr + src_offset, mask=load_cond, other=0)"
+            )
         code.writeline("tl.store(out0_ptr + offset, x_val, mask=offset < out_elem_cnt)")
 
     return code
@@ -380,10 +445,9 @@ class PadFunction:
 
 def pad(self, pad, mode="constant", value=None):
     logging.debug("GEMS CONSTANT PAD ND")
-    assert mode == "constant", "currently only support constant pad"
 
     if value is None:
         value = 0.0
 
-    out = PadFunction()(self, pad, float(value))
+    out = PadFunction()(self, pad, mode, float(value))
     return out
