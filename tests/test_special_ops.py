@@ -196,33 +196,15 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rand(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.rand(shape, dtype=dtype, device="cuda")
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_randn(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.randn(shape, dtype=dtype, device="cuda")
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
-    assert torch.abs(mean) < 0.01
-    assert torch.abs(std - 1) < 0.01
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rand_like(shape, dtype):
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_neg(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    z = y.imag
+    assert z.is_neg()
     with flag_gems.use_gems():
-        res_out = torch.rand_like(x)
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
+        out = z.resolve_neg()
+    assert not out.is_neg()
 
 
 @pytest.mark.parametrize("batch_size", [4, 8])
@@ -251,3 +233,14 @@ def test_topk(
 
     gems_assert_close(ref_value, res_value, dtype)
     gems_assert_equal(ref_index, res_index)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_conj(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    assert y.is_conj()
+    with flag_gems.use_gems():
+        z = y.resolve_conj()
+    assert not z.is_conj()

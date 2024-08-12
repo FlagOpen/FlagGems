@@ -31,6 +31,7 @@ def enable(lib=aten_lib):
     lib.impl("eq.Tensor", eq, "CUDA")
     lib.impl("eq.Scalar", eq_scalar, "CUDA")
     lib.impl("exp", exp, "CUDA")
+    lib.impl("exponential_", exponential_, "CUDA")
     lib.impl("ge.Tensor", ge, "CUDA")
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
     lib.impl("gelu", gelu, "CUDA")
@@ -49,7 +50,19 @@ def enable(lib=aten_lib):
     lib.impl("rand", rand, "CUDA")
     lib.impl("randn", randn, "CUDA")
     lib.impl("rand_like", rand_like, "CUDA")
-
+    lib.impl("zeros", zeros, "CUDA")
+    lib.impl("ones", ones, "CUDA")
+    lib.impl("full", full, "CUDA")
+    lib.impl("zeros_like", zeros_like, "CUDA")
+    lib.impl("ones_like", ones_like, "CUDA")
+    lib.impl("full_like", full_like, "CUDA")
+    lib.impl("resolve_neg", resolve_neg, "CUDA")
+    lib.impl("resolve_conj", resolve_conj, "CUDA")
+    lib.impl("normal.Tensor_float", normal_tensor_float, "CUDA")
+    lib.impl("normal.float_Tensor", normal_float_tensor, "CUDA")
+    lib.impl("normal.Tensor_Tensor", normal_tensor_tensor, "CUDA")
+    lib.impl("normal.float_float", normal_float_float, "CUDA")
+    lib.impl("uniform_", uniform_, "CUDA")
     lib.impl("mean", mean, "CUDA")
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
@@ -99,6 +112,7 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("masked_fill", masked_fill, "CUDA")
 
 
 class use_gems:
