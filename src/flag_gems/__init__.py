@@ -115,6 +115,7 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("masked_fill", masked_fill, "CUDA")
 
 
 class use_gems:
