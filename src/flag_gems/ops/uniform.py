@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import philox_mlu_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 
@@ -71,7 +71,7 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+    philox_seed, philox_offset = philox_mlu_seed_offset(increment)
     with torch.cuda.device(self.device):
         uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to)
     return self
