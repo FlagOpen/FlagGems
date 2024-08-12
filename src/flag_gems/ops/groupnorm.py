@@ -131,12 +131,13 @@ def group_norm_kernel_opt(
 
         weight = tl.load(W_ptr + group_offset, cache_modifier=".cg")[:, None]
         bias = tl.load(B_ptr + group_offset, cache_modifier=".cg")[:, None]
+        var = var * weight
+        bias = - mean * var + bias
 
         for idy in range(0, hw_iter):
             xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
             tmp = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
-            tmp = (tmp - mean) * var
-            tmp = tmp * weight + bias
+            tmp = tmp * var + bias
             tl.store(Y + idy * BLOCK_HW_SIZE + xy_offset, tmp, mask=xy_mask)
 
         xy_offset += real_num_elements 
@@ -255,7 +256,7 @@ def group_norm_backward_kernel_opt(
             dY_val = tl.load(grad_y + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             X_val = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             dx_hat += weight * dY_val
-            x += X_val - mean
+            x += tl.where(xy_mask, X_val - mean, 0.0)
             dx_hat_x += dx_hat * x
 
         grad_std = tl.sum(dx_hat_x)
@@ -270,11 +271,11 @@ def group_norm_backward_kernel_opt(
             dY_val = tl.load(grad_y + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             X_val = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             dx_hat = weight * dY_val
-            x = X_val - mean
+            x = tl.where(xy_mask, X_val - mean, 0.0)
             grad_distance = 2 * x * grad_var
             grad_centered_mean = dx_hat * rstd + grad_distance
             grad_X = grad_centered_mean + grad_mean
-            tl.store(grad_x + idy * BLOCK_HW_SIZE + xy_offset, grad_X, mask=xy_mask, cache_modifier=".cg")
+            tl.store(grad_x + idy * BLOCK_HW_SIZE + xy_offset, grad_X, mask=xy_mask)
 
         xy_offset += real_num_elements
         group_offset += group_size
@@ -327,7 +328,7 @@ def weight_bias_backward_kernel(
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
-        for size in [512, 1024, 2048, 4096]
+        for size in [64, 512, 1024, 2048, 4096]
     ],
     key=["X", "N", "C","HW", "num_groups"],
 )
