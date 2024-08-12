@@ -68,28 +68,11 @@ def group_norm_kernel(
     tl.store(Mean_ptr, mean)
     tl.store(Rstd_ptr, rstd)
 
-def split(num_groups, hw):
-    if num_groups <= 4: 
-        split = num_groups
-    elif num_groups <= 16:
-        split = 6
-    else:
-        split = 8
-    if num_groups // split == 0:
-        return num_groups
-    return split
-
-def num_stages(args):
-    return 3
-
-def num_warps(args):
-    return 1
-
 @libentry()
 @triton.autotune(
     configs=[
         triton.Config({'SPLIT':  s, 'BLOCK_HW_SIZE': size}, num_stages=3, num_warps=1)
-        for size in [64, 256, 512, 1024, 4096] for s in [1, 4, 6, 8, 16]
+        for size in [512, 4096] for s in [1, 4, 6, 8, 16]
     ],
     key=["X", "group_size", "C", "HW", "num_groups"],
 )
@@ -213,11 +196,13 @@ def group_norm_backward_kernel(
     grad_X = grad_centered_mean + grad_mean
     tl.store(dX_ptr, grad_X, mask=xy_mask)
 
-@triton.heuristics({ 'SPLIT': lambda args: split(args['num_groups'], args["HW"]) })
-@triton.heuristics({
-    'num_stages': lambda args: num_stages(args),
-    'num_warps': lambda args: num_warps(args)
-})
+@triton.autotune(
+    configs=[
+        triton.Config({'SPLIT': s, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
+        for s in [1, 4, 6, 8, 16] for size in [512, 4096]
+    ],
+    key=["X", "group_size", "C", "HW", "num_groups"],
+)
 @triton.jit()
 def group_norm_backward_kernel_opt(
     grad_y,
@@ -240,6 +225,7 @@ def group_norm_backward_kernel_opt(
     split_group = pid % div_v
     split_n = pid // div_v
     real_num_elements = group_size * HW
+    hw_iter = tl.cdiv(HW, BLOCK_HW_SIZE)
 
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
     hw_offset = tl.arange(0, BLOCK_HW_SIZE)
@@ -251,31 +237,45 @@ def group_norm_backward_kernel_opt(
 
     xy_offset = split_n * real_num_elements * num_groups + split_group * SPLIT * real_num_elements + group_offset[:, None] * HW + hw_offset[None, :]
 
-    xy_mask = group_offset[:, None] < C and hw_offset[None, :] < HW
-    wb_mask = group_offset < C
-    
     ub = SPLIT
     if (div_mod != 0) and ((split_group+1) == div_v):
         ub = div_mod
     for idx in range(0, ub):
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
-        weight = tl.load(W_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg").to(tl.float32)[:, None]
+
+        weight = tl.load(W_ptr + group_offset, cache_modifier=".cg").to(tl.float32)[:, None]
         rstd = tl.load(Rstd_ptr + idx).to(tl.float32)
         mean = tl.load(Mean_ptr + idx).to(tl.float32)
 
-        dx_hat = weight * dY_val
-        
-        x = tl.where(xy_mask, X_val - mean, 0.0)
-        
-        grad_std = tl.sum(dx_hat * x)
-        grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
+
+        dx_hat = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
+        x = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
+        dx_hat_x = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
+        for idy in range(0, hw_iter):
+            xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+            dY_val = tl.load(grad_y + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+            X_val = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+            dx_hat += weight * dY_val
+            x += X_val - mean
+            dx_hat_x += dx_hat * x
+
+        grad_std = tl.sum(dx_hat_x)
+        grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / real_num_elements
+
         grad_distance = 2 * x * grad_var
         grad_centered_mean = dx_hat * rstd + grad_distance
         grad_mean = -tl.sum(grad_centered_mean) / real_num_elements
-        grad_X = grad_centered_mean + grad_mean
 
-        tl.store(grad_x + xy_offset, grad_X, mask=xy_mask)
+        for idy in range(0, hw_iter):
+            xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+            dY_val = tl.load(grad_y + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+            X_val = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+            dx_hat = weight * dY_val
+            x = X_val - mean
+            grad_distance = 2 * x * grad_var
+            grad_centered_mean = dx_hat * rstd + grad_distance
+            grad_X = grad_centered_mean + grad_mean
+            tl.store(grad_x + idy * BLOCK_HW_SIZE + xy_offset, grad_X, mask=xy_mask, cache_modifier=".cg")
+
         xy_offset += real_num_elements
         group_offset += group_size
 
@@ -326,10 +326,10 @@ def weight_bias_backward_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({}, num_stages=s, num_warps=1)
-        for s in [1, 3]
+        triton.Config({"BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
+        for size in [512, 1024, 2048, 4096]
     ],
-    key=["N", "HW"],
+    key=["X", "N", "C","HW", "num_groups"],
 )
 @triton.jit
 def weight_bias_backward_kernel_opt(
@@ -345,35 +345,46 @@ def weight_bias_backward_kernel_opt(
     C,
     HW,
     BLOCK_N: tl.constexpr,
-    BLOCK_HW: tl.constexpr,
+    BLOCK_HW_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     pnum = tl.num_programs(axis=0)
     C_SPLIT = tl.cdiv(C, pnum)
+    hw_iter = tl.cdiv(HW, BLOCK_HW_SIZE)
 
     n_offset = tl.arange(0, BLOCK_N)
-    hw_offset = tl.arange(0, BLOCK_HW)
-    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
-    mr_mask = n_offset < N
+    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
 
     lb = pid * C_SPLIT
     ub = tl.minimum((pid + 1) * C_SPLIT, C)
     for c_start in range(lb, ub):
-        dY_ptr = dY + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-        x_ptr = X + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-        grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
-
-        x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
-        x_f32 = x.to(tl.float32)
-        
         mean_ptr = Mean + c_start // group_size + n_offset * num_groups
         rstd_ptr = Rstd + c_start // group_size + n_offset * num_groups
         
-        mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
-        rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
+        mean = tl.load(mean_ptr, cache_modifier=".cg").to(tl.float32)[:, None]
+        rstd = tl.load(rstd_ptr, cache_modifier=".cg").to(tl.float32)[:, None]
 
+        xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+        dY_ptr = dY + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+        x_ptr = X + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+
+        grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+        x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
+        x_f32 = x.to(tl.float32)
         dB_val = tl.sum(grad_y)
         dW_val = tl.sum((x_f32 - mean) * rstd * grad_y)
+
+        for idx in range(1, hw_iter):
+            xy_mask = n_offset[:, None] < N and (idx * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+            dY_ptr = dY + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :] + idx * BLOCK_HW_SIZE
+            x_ptr = X + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :] + idx * BLOCK_HW_SIZE
+
+            grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
+            x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
+            x_f32 = x.to(tl.float32)
+            dB_val += tl.sum(grad_y)
+            dW_val += tl.sum((x_f32 - mean) * rstd * grad_y)
+
         tl.store(dW + c_start, dW_val.to(x.dtype))
         tl.store(dB + c_start, dB_val.to(x.dtype))
 
@@ -441,8 +452,7 @@ class GroupNorm(torch.autograd.Function):
                 x_grad,
                 C,
                 HW,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
-                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+                BLOCK_GROUP_SIZE=group_size,
             )
         weight_bias_backward_kernel_opt[(TOTAL_CORE_NUM, 1, 1)](
             y_grad,
@@ -456,8 +466,7 @@ class GroupNorm(torch.autograd.Function):
             N,
             C,
             HW,
-            BLOCK_N=triton.next_power_of_2(N),
-            BLOCK_HW=triton.next_power_of_2(HW),
+            BLOCK_N=N,
         )
         return x_grad, weight_grad, bias_grad, None, None, None, None, None
 

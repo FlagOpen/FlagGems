@@ -126,8 +126,10 @@ def test_perf_cumsum():
 
 def test_perf_groupnorm():
     def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
+        C = 6
+        G = C // 2
+        #C = 16
+        #G = 16
         inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
         weight = torch.randn(
             [
@@ -150,13 +152,18 @@ def test_perf_groupnorm():
         torch_op=torch.nn.functional.group_norm,
         arg_func=group_norm_args,
         dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=SIZES,
+        #batch=BLAS_BATCH,
+        #batch=REDUCTION_BATCH,
+        batch=20,
+        #sizes=SIZES,
+        sizes=[65536],
     )
     bench.run()
 
 def test_perf_groupnorm_backward():
     def group_norm_args(dtype, batch, size):
+        #C = 6
+        #G = C // 2
         C = 16
         G = 16
         inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
@@ -182,7 +189,10 @@ def test_perf_groupnorm_backward():
         arg_func=group_norm_args,
         dtypes=FLOAT_DTYPES,
         batch=BLAS_BATCH,
+        #batch=REDUCTION_BATCH,
+        #batch=20,
         sizes=SIZES,
+        #sizes=[65536],
         is_backward=True,
     )
     bench.run()
