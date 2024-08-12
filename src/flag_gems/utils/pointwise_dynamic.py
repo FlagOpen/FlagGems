@@ -1,5 +1,6 @@
 import importlib
 import os
+import threading
 from typing import Any, Callable, List, Mapping, Optional, Tuple
 
 import torch
@@ -10,7 +11,6 @@ from triton.runtime.jit import JITFunction
 
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
-from flag_gems.utils.inliner import inline_function
 from flag_gems.utils.shape_utils import broadcast_shapes
 
 
@@ -200,6 +200,8 @@ def parameter_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str
             parameters.append(f"out{output_tensor_index}: torch.Tensor")
             output_tensor_index += 1
 
+    parameters.append("**kwargs")
+
     return ", ".join(parameters)
 
 
@@ -228,9 +230,14 @@ def ith_parameter_for_type_promotion(op_desc: OPDesc, ith: int) -> str:
     return ", ".join(parameters)
 
 
-def parameter_ref_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) -> str:
+def parameter_ref_for_wrapper(
+    op_desc: OPDesc,
+    include_outputs: bool = False,
+    include_offset: bool = False,
+    include_kwargs: bool = False,
+) -> str:
     """Generate parameter reference for wrapper function.
-    Example: in0, val0, out0
+    Example: in0, val0, out0, out0_offset
     """
     parameters: List[str] = []
 
@@ -248,7 +255,12 @@ def parameter_ref_for_wrapper(op_desc: OPDesc, include_outputs: bool = False) ->
         output_tensor_index = 0
         for i in range(op_desc.num_outputs()):
             parameters.append(f"out{output_tensor_index}")
+            if include_offset:
+                parameters.append(f"out{output_tensor_index}_offset")
             output_tensor_index += 1
+
+    if include_kwargs:
+        parameters.append("**kwargs")
 
     return ", ".join(parameters)
 
@@ -332,7 +344,7 @@ def generate_functional_pointwise_wrapper(
         output_names: str = output_ref_for_wrapper(op_desc)
         call_str = (
             f"{output_names} = {destination_passing_func_name}"
-            f"({parameter_ref_for_wrapper(op_desc, include_outputs=True)})"
+            f"({parameter_ref_for_wrapper(op_desc, include_outputs=True, include_offset=False, include_kwargs=True)})"
         )
         code.writeline(call_str)
 
@@ -365,10 +377,8 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(8192, triton.next_power_of_2(num_tasks))")
-            code.writeline(
-                "num_warps = 4 if tile_size <= 1024 else (8 if tile_size <= 4096 else 16)"
-            )
+            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
+            code.writeline("num_warps = 4")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
@@ -386,24 +396,44 @@ def generate_destination_passing_pointwise_wrapper(
                 code.writeline(
                     f"in{i}_strides = broadcasted_stride(in{i}.shape, in{i}.stride(), shape)"
                 )
-
             for i in range(op_desc.num_output_tensors()):
-                code.writeline(f"out{i}_strides = out{i}.stride()")
+                code.writeline(f"if 'out{i}_offset' in kwargs:")
+                with code.indent():
+                    code.writeline(f"out{i}_offset = kwargs['out{i}_offset']")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(f"out{i}_offset = 0")
 
-            code.newline()
+                code.writeline(f"if 'out{i}_strides' in kwargs:")
+                with code.indent():
+                    code.writeline(f"out{i}_strides = kwargs['out{i}_strides']")
+                code.writeline("else:")
+                with code.indent():
+                    code.writeline(f"out{i}_strides = out{i}.stride()")
+        else:
+            for i in range(op_desc.num_output_tensors()):
+                code.writeline(f"out{i}_offset = 0")
+        code.newline()
 
         # grid
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device):")
+        code.writeline("with torch.cuda.device(in0.device.index):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)
 
             with code.indent():
                 code.writeline(
-                    f"{parameter_ref_for_wrapper(op_desc, include_outputs=True)},"
+                    "{},".format(
+                        parameter_ref_for_wrapper(
+                            op_desc,
+                            include_outputs=True,
+                            include_offset=True,
+                            include_kwargs=False,
+                        )
+                    )
                 )
 
                 if rank > 0:
@@ -420,6 +450,7 @@ def generate_destination_passing_pointwise_wrapper(
                     code.writeline("num_tasks, # num tasks")
                     code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
                     code.writeline("tile_size=tile_size,")
+                    code.writeline("one_tile_per_cta=tiles_per_cta==1,")
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
@@ -437,23 +468,32 @@ def generate_pointwise_kernel(
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
+    # make the inlined function visible in the context
+    fn_name = scalar_fn.__name__
+    code.writeline(f"from {scalar_fn.__module__} import {fn_name}")
+    code.writeline(f"inlined_f = {fn_name}._scalar_fn")
+    code.newline()
+
+    # the decorators
     code.writeline("@libentry()")
     if op_desc.num_non_tensor_args() > 0:
+        # we do not specialize non tensor args since they are passed into the inlined function
+        # which means that their values may not deserve specialization
         non_specialize_arg_names = [
             f"val{i}" for i in range(op_desc.num_non_tensor_args())
         ]
         code.writeline(f"@triton.jit(do_not_specialize={non_specialize_arg_names})")
     else:
         code.writeline("@triton.jit")
-    code.writeline(f"def {kernel_name}(")
 
-    function_ns = NameSpace()
     # signature
+    code.writeline(f"def {kernel_name}(")
+    function_ns = NameSpace()
     with code.indent():
         input_tensor_index = 0
         non_tensor_index = 0
         output_tensor_index = 0
-        # inputs ptrs & non tensor inputs
+        # signature: inputs ptrs & non tensor inputs
         for i in range(op_desc.num_inputs()):
             if op_desc.is_tensor(i):
                 code.writeline(
@@ -471,14 +511,18 @@ def generate_pointwise_kernel(
                 function_ns.create_name(f"val{non_tensor_index}")
                 non_tensor_index += 1
 
-        # output ptrs
+        # signature: output ptrs
         for i in range(op_desc.num_outputs()):
             code.writeline(
                 f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
             )
+            code.writeline(f"out{output_tensor_index}_offset: int,")
             function_ns.create_name(f"out{output_tensor_index}_ptr")
+            function_ns.create_name(f"out{output_tensor_index}_offset")
             output_tensor_index += 1
 
+        # signature: strides, for each tensor arguments
+        # only add this arguments when rank > 0
         if rank > 0:
             # strides for inputs
             for i in range(op_desc.num_input_tensors()):
@@ -504,41 +548,134 @@ def generate_pointwise_kernel(
             code.writeline("num_tasks: int,")
             function_ns.create_name("num_tasks")
 
+        # tile size & tiles_per_cta, gsl style
+        if rank > 0:
+            code.writeline("tiles_per_cta,")
+            function_ns.create_name("tiles_per_cta")
+
             code.writeline("tile_size: tl.constexpr,")
             function_ns.create_name("tile_size")
 
-            code.writeline("tiles_per_cta,")
-            function_ns.create_name("tiles_per_cta")
+            code.writeline("one_tile_per_cta: tl.constexpr,")
+            function_ns.create_name("one_tile_per_cta")
     code.writeline("):")
 
-    # function body
+    # input & output names
+    inputs_to_scalar_fn = []
+    input_tensor_index = 0
+    non_tensor_index = 0
+    for i in range(op_desc.num_inputs()):
+        if op_desc.is_tensor(i):
+            inputs_to_scalar_fn.append(f"in{input_tensor_index}")
+            input_tensor_index += 1
+        else:
+            inputs_to_scalar_fn.append(f"val{non_tensor_index}")
+            non_tensor_index += 1
+    inputs_to_scalar_fn: str = ", ".join(inputs_to_scalar_fn)
+
+    outputs_to_scalar_fn = [f"out{i}" for i in range(op_desc.num_outputs())]
+    outputs_to_scalar_fn: str = ", ".join(outputs_to_scalar_fn)
+
+    # function body for rank-0
+    if rank == 0:
+        with code.indent():
+            code.writeline("# loads")
+            for i in range(op_desc.num_input_tensors()):
+                ptrs_expr: str = f"in{i}_ptr"
+                load_stmt: str = f"in{i} = tl.load({ptrs_expr})"
+                function_ns.create_name(f"in{i}")  # add to the namespace
+                code.writeline(load_stmt)
+            code.newline()
+
+            code.writeline("# compute")
+            code.writeline(f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})")
+            code.newline()
+
+            code.writeline("# stores")
+            for i in range(op_desc.num_output_tensors()):
+                ptrs_expr: str = f"out{i}_ptr + out{i}_offset"
+                store_stmt: str = f"tl.store({ptrs_expr}, out{i})"
+                code.writeline(store_stmt)
+            code.newline()
+            return code
+
     with code.indent():
         # get pid
-        if rank > 0:
-            code.writeline("# task id & masking")
-            pid_stmt = "pid = tl.program_id(0)"
-            code.writeline(pid_stmt)
-            function_ns.create_name("pid")
+        code.writeline("# task id & masking")
+        pid_stmt = "pid = tl.program_id(0)"
+        code.writeline(pid_stmt)
+        function_ns.create_name("pid")
 
-            code.writeline("num_ctas = tl.num_programs(0)")
-            function_ns.create_name("num_ctas")
+        code.writeline("num_ctas = tl.num_programs(0)")
+        function_ns.create_name("num_ctas")
 
         # get tid (a.k.a task id)
-        if rank > 0:
-            tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
-            code.writeline(tid_stmt)
-            function_ns.create_name("init_tid")
+        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
+        code.writeline(tid_stmt)
+        function_ns.create_name("init_tid")
 
-        if rank > 0:
+        # one-tile-per-cta, monolithic kernel style
+        code.writeline("if one_tile_per_cta: # monolitic kernel style")
+        with code.indent():
+            tid_stmt = "tid = init_tid"
+            code.writeline(tid_stmt)
+            function_ns.create_name("tid")
+
+            # only apply masking when rank > 0
+            # since we only load a value instead of a block of values when the rank is 0
+            mask_stmt: str = "mask = tid < num_tasks"
+            code.writeline(mask_stmt)
+            function_ns.create_name("mask")
+            code.newline()
+
+            # reconstruct multi index
+            code.writeline("# multi index recontruction")
+            for i in reversed(range(rank)):
+                if i > 0:
+                    code.writeline(f"i{i} = tid % s{i}")
+                    code.writeline(f"tid //= s{i}")
+                else:
+                    code.writeline(f"i{i} = tid")
+                function_ns.create_name(f"{i}")
+            code.newline()
+
+            # loads
+            code.writeline("# loads")
+            for i in range(op_desc.num_input_tensors()):
+                ptrs_expr: str = " + ".join(
+                    f"i{j} * in{i}_stride{j}" for j in range(rank)
+                )
+                ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
+                load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
+                function_ns.create_name(f"in{i}")  # add to the namespace
+                code.writeline(load_stmt)
+            code.newline()
+
+            # compute
+            code.writeline("# compute")
+            code.writeline(f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})")
+            code.newline()
+
+            # stores
+            code.writeline("# stores")
+            for i in range(op_desc.num_output_tensors()):
+                ptrs_expr: str = " + ".join(
+                    f"i{j} * out{i}_stride{j}" for j in range(rank)
+                )
+                ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
+                store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
+                code.writeline(store_stmt)
+
+        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+        code.writeline("else: # grid-stride-loop style kernel")
+        with code.indent():
             code.writeline("for j in range(0, tiles_per_cta):")
             function_ns.create_name("j")
-        with code.indent(int(rank > 0)):
-            if rank > 0:
+            with code.indent():
                 tid_stmt = "tid = init_tid + j * tile_size * num_ctas"
                 code.writeline(tid_stmt)
                 function_ns.create_name("tid")
 
-            if rank > 0:
                 # only apply masking when rank > 0
                 # since we only load a value instead of a block of values when the rank is 0
                 mask_stmt: str = "mask = tid < num_tasks"
@@ -549,68 +686,43 @@ def generate_pointwise_kernel(
                 # reconstruct multi index
                 code.writeline("# multi index recontruction")
                 for i in reversed(range(rank)):
-                    code.writeline(f"i{i} = tid % s{i}")
-                    function_ns.create_name(f"{i}")
                     if i > 0:
+                        code.writeline(f"i{i} = tid % s{i}")
                         code.writeline(f"tid //= s{i}")
+                    else:
+                        code.writeline(f"i{i} = tid")
+                    function_ns.create_name(f"{i}")
                 code.newline()
 
-            # loads
-            code.writeline("# loads")
-            for i in range(op_desc.num_input_tensors()):
-                if rank > 0:
+                # loads
+                code.writeline("# loads")
+                for i in range(op_desc.num_input_tensors()):
                     ptrs_expr: str = " + ".join(
                         f"i{j} * in{i}_stride{j}" for j in range(rank)
                     )
                     ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
                     load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
-                else:
-                    ptrs_expr: str = f"in{i}_ptr"
-                    load_stmt: str = f"in{i} = tl.load({ptrs_expr})"
-                function_ns.create_name(f"in{i}")  # add to the namespace
-                code.writeline(load_stmt)
-            code.newline()
+                    function_ns.create_name(f"in{i}")  # add to the namespace
+                    code.writeline(load_stmt)
+                code.newline()
 
-            # compute
-            code.writeline("# compute")
+                # compute
+                code.writeline("# compute")
+                code.writeline(
+                    f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})"
+                )
+                code.newline()
 
-            inputs_to_scalar_fn = []
-            input_tensor_index = 0
-            non_tensor_index = 0
-            for i in range(op_desc.num_inputs()):
-                if op_desc.is_tensor(i):
-                    inputs_to_scalar_fn.append(f"in{input_tensor_index}")
-                    input_tensor_index += 1
-                else:
-                    inputs_to_scalar_fn.append(f"val{non_tensor_index}")
-                    non_tensor_index += 1
-
-            outputs_to_scalar_fn = [f"out{i}" for i in range(op_desc.num_outputs())]
-
-            compute_body = inline_function(
-                scalar_fn,
-                inputs_to_scalar_fn,
-                outputs_to_scalar_fn,
-                function_ns,
-            )
-            for line in compute_body.strip().splitlines():
-                code.writeline(line)
-            code.newline()
-
-            # stores
-            code.writeline("# stores")
-            for i in range(op_desc.num_output_tensors()):
-                if rank > 0:
+                # stores
+                code.writeline("# stores")
+                for i in range(op_desc.num_output_tensors()):
                     ptrs_expr: str = " + ".join(
                         f"i{j} * out{i}_stride{j}" for j in range(rank)
                     )
-                    ptrs_expr: str = f"out{i}_ptr + {ptrs_expr}"
+                    ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
                     store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
-                else:
-                    ptrs_expr: str = f"out{i}_ptr"
-                    store_stmt: str = f"tl.store({ptrs_expr}, out{i})"
-                code.writeline(store_stmt)
-            code.newline()
+                    code.writeline(store_stmt)
+                code.newline()
     return code
 
 
@@ -656,44 +768,52 @@ class PointwiseDynamicFunction:
         self._scalar_fn = scalar_fn
         self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
+        self.lock = threading.Lock()
 
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
-    def __call__(self, *args):
-        # It does not accept kwargs
+    def __call__(self, *args, **kwargs):
+        # note: kwargs should not be used in JITFunction directly
         key = f"{self.arg_key(*args)}"
-        if key in self.overloads:
-            overload = self.overloads[key]
-        else:
+        cache = self.overloads
+        lock = self.lock
+
+        while key not in cache:
             # generate file & import it
-            code = IndentedBuffer()
-            code = generate_code(
-                self._op_desc,
-                self._scalar_fn,
-                args,
-                "_wrapper",
-                "_wrapper_out",
-                "_jit_function",
-                code,
-            )
+            with lock:
+                if key in cache:
+                    break
+                code = IndentedBuffer()
+                code = generate_code(
+                    self._op_desc,
+                    self._scalar_fn,
+                    args,
+                    "_wrapper",
+                    "_wrapper_out",
+                    "_jit_function",
+                    code,
+                )
 
-            file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
+                file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
 
-            # load
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
-                f.name,
-            )
-            m = importlib.util.module_from_spec(spec)
-            # do not expose it to sys.modules
-            # sys.modules["_add_module"] = m
-            spec.loader.exec_module(m)
-            overload = getattr(m, "_wrapper")
-            self.overloads[key] = overload
-        return overload(*args)
+                with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+                    f.write(code.getvalue())
+
+                # load
+                spec = importlib.util.spec_from_file_location(
+                    f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
+                    f.name,
+                )
+                m = importlib.util.module_from_spec(spec)
+                # do not expose it to sys.modules
+                # sys.modules["_add_module"] = m
+                spec.loader.exec_module(m)
+                overload = getattr(m, "_wrapper")
+                cache[key] = overload
+
+        overload = self.overloads[key]
+        return overload(*args, **kwargs)
 
     def arg_key(self, *args):
         tensors = [item for item in args if torch.is_tensor(item)]

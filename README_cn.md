@@ -88,7 +88,7 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
 
 ### 依赖
 
-1. Triton >= 2.2.0
+1. Triton >= 2.2.0, <3.0.0
 2. PyTorch >= 2.1.2
 3. Transformers >= 4.40.2
 
@@ -134,8 +134,8 @@ pip install .
 1. 算子正确性测试
     - 在CUDA上运行参考实现
         ```shell
-        cd tests/flag_gems
-        pytest op_accu_test.py
+        cd tests
+        pytest test_xx_ops.py
         ```
     - 在CPU上运行参考实现
         ```shell
@@ -174,6 +174,7 @@ pip install .
 
 - Bert-base-uncased
 - Llama-2-7b
+- Llava-1.5-7b
 
 ## 支持平台
 
@@ -185,7 +186,7 @@ pip install .
 
 FlagGems相比Torch Eager模式下ATen算子库的加速比如下图所示。其中，每个算子的加速比综合了多个形状测例的数据，代表该算子的整体性能。
 
-![算子加速比](./assets/speedup-0624-chn.png)
+![算子加速比](./assets/speedup-0708-chn.png)
 
 ## 贡献代码
 

@@ -38,6 +38,10 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, min_val)
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -54,7 +58,9 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def min_kernel(
@@ -99,8 +105,9 @@ def min(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-    min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    with torch.cuda.device(inp.device):
+        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 
 
@@ -128,7 +135,8 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    min_kernel[grid](inp, out_value, out_index, M, N, K)
+    with torch.cuda.device(inp.device):
+        min_kernel[grid](inp, out_value, out_index, M, N, K)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)
     return out

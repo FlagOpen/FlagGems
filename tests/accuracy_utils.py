@@ -14,11 +14,22 @@ RESOLUTION = {
 }
 
 POINTWISE_SHAPES = [(1024, 1024), (16, 1024, 256), (16, 128, 64, 64), (20, 320, 15)]
+DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(4096, 256 * i) for i in range(1, 10, 2)]
 MNK_SHAPES = [15, 160, 1024]
 
+DIM_POINTWISE_SHAPES = [
+    (1024, 1024, 1),
+    (16, 1024, 256),
+    (16, 7, 128, 64, 64),
+    (20, 320, 15),
+]
+DIMS = [[0], [-2], [2], [0, 2], [2, 1], [0, -1, 1]]
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+ALL_FLOAT_DTYPES = [torch.float16, torch.float32, torch.float64, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
+ALL_INT_DTYPES = [torch.int16, torch.int32, torch.int64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [0, 1]

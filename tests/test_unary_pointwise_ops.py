@@ -4,6 +4,10 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    ALL_FLOAT_DTYPES,
+    ALL_INT_DTYPES,
+    DIM_POINTWISE_SHAPES,
+    DIMS,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
@@ -251,4 +255,51 @@ def test_accuracy_triu(shape, diagonal, dtype):
     with flag_gems.use_gems():
         res_out = torch.triu(inp, diagonal)
 
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_erf(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.erf(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.erf(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_isfinite(shape, dtype):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
+        inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
+        inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
+    else:
+        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.isfinite(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.isfinite(inp)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dims", DIMS)
+def test_accuracy_flip(shape, dtype, dims):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    ref_inp = to_reference(inp, False)
+
+    with flag_gems.use_gems():
+        res_out = torch.flip(inp, dims)
+    ref_out = torch.flip(ref_inp, dims)
     gems_assert_equal(res_out, ref_out)

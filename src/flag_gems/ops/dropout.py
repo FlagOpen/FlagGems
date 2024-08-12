@@ -4,41 +4,29 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils.random_utils import philox_cuda_seed_offset
-
-try:
-    uint_to_uniform_float = tl.uint_to_uniform_float
-except AttributeError:
-    # Copied from triton.language package for compatibility
-    @triton.jit
-    def uint_to_uniform_float(x):
-        """
-        Numerically stable function to convert a random uint into a random float uniformly sampled in [0, 1).
-        """
-        # TODO: fix frontend issues and cleanup
-        # conditions can be simplified
-        # scale is ((2**23 - 1) / 2**23) * 2**(N_BITS - 1)
-        if tl.constexpr(x.dtype == tl.uint32) or tl.constexpr(x.dtype == tl.int32):
-            # maximum value such that `MAX_INT * scale < 1.0` (with float rounding)
-            x = x.to(tl.int32, bitcast=True)
-            scale = 4.6566127342e-10
-        else:
-            tl.static_assert(
-                tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
-            )
-            x = x.to(tl.int64, bitcast=True)
-            scale = 1.0842020432385337e-19
-        x = tl.where(x < 0, -x - 1, x)
-        return x * scale
+from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 
 
-UNROLL = 4
+def heur_block(args):
+    if args["N"] <= 512:
+        return 512
+    else:
+        return 1024
+
+
+def heur_num_warps(args):
+    if args["N"] <= 512:
+        return 4
+    elif args["N"] <= 1024:
+        return 8
+    else:
+        return 16
 
 
 @triton.heuristics(
-    values={
-        "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
-        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
+    {
+        "BLOCK": heur_block,
+        "num_warps": heur_num_warps,
     }
 )
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
@@ -51,6 +39,7 @@ def dropout_forward_kernel(
     philox_offset,
     BLOCK: tl.constexpr,
 ):
+    UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -92,9 +81,9 @@ def dropout_forward_kernel(
 
 
 @triton.heuristics(
-    values={
-        "BLOCK": lambda args: 512 if args["N"] <= 512 else 1024,
-        "num_warps": lambda args: 4 if args["N"] <= 512 else 8 if args["N"] <= 1024 else 16,  # fmt: skip
+    {
+        "BLOCK": heur_block,
+        "num_warps": heur_num_warps,
     }
 )
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
@@ -145,6 +134,9 @@ def dropout_backward_kernel(
     tl.store(DX + off_1, dx_1, mask=off_1 < N, eviction_policy="evict_first")
     tl.store(DX + off_2, dx_2, mask=off_2 < N, eviction_policy="evict_first")
     tl.store(DX + off_3, dx_3, mask=off_3 < N, eviction_policy="evict_first")
+
+
+UNROLL = 4
 
 
 class NativeDropout(torch.autograd.Function):
