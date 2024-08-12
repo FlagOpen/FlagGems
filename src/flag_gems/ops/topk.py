@@ -14,52 +14,14 @@ from triton.language.standard import (
 
 from ..utils import libentry
 
-_MIN_FLOAT32_VAL = torch.finfo(torch.float32).min
-_MAX_FLOAT32_VAL = torch.finfo(torch.float32).max
-_MIN_FLOAT16_VAL = torch.finfo(torch.float16).min
-_MAX_FLOAT16_VAL = torch.finfo(torch.float16).max
-_MIN_BFLOAT16_VAL = torch.finfo(torch.bfloat16).min
-_MAX_BFLOAT16_VAL = torch.finfo(torch.bfloat16).max
-_MIN_INT32_VAL = torch.iinfo(torch.int32).min
-_MAX_INT32_VAL = torch.iinfo(torch.int32).max
-
-
-def _get_sort_dim(dim, shape):
-    dim = _unwrap_if_constexpr(dim)
-    shape = _unwrap_if_constexpr(shape)
-    if dim is None:
-        dim = len(shape) - 1
-    assert dim == len(shape) - 1, "Currently only support sorting on the last dimension"
-    return core.constexpr(dim)
-
-
-@triton.jit
-def _indicator(n_dims: core.constexpr, idx: core.constexpr, pos: core.constexpr):
-    core.static_assert(idx < n_dims)
-    core.static_assert((pos == 0) or (pos == 1))
-    y = core.arange(0, 2)
-    if pos == 0:
-        y = 1 - y
-
-    for n in core.static_range(0, n_dims):
-        if n != n_dims - 1 - idx:
-            y = core.expand_dims(y, n)
-    return y
-
-
-@triton.jit
-def _take_slice(
-    x,
-    n_dims: core.constexpr,
-    idx: core.constexpr,
-    pos: core.constexpr,
-    keep_dim: core.constexpr = True,
-):
-    y = triton.language.standard.sum(x * _indicator(n_dims, idx, pos), n_dims - 1 - idx)
-    if keep_dim:
-        y = core.expand_dims(y, n_dims - 1 - idx)
-
-    return y
+_MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
+_MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
+_MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
+_MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
+_MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
+_MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
+_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
+_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
 
 
 @triton.jit
@@ -142,94 +104,94 @@ https://github.com/triton-lang/triton/blob/release/2.2.x/python/triton/language/
 Just add indices to sort with values.
 """
 
+@triton.jit
+def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
+    n_outer: core.constexpr = x.numel >> n_dims
+    shape: core.constexpr = [n_outer * 2**i, 2, 2**(n_dims - i - 1)]
+
+    # tl.device_print("shape is: ", shape)
+    y = core.reshape(x, shape)
+    y_idx = core.reshape(ids, shape)
+
+    # slice left/right with 'stride' 2**(n_dims - i - 1)
+    mask = core.arange(0, 2)[None, :, None]
+    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape)
+    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape)
+    left = core.reshape(left, x.shape)
+    right = core.reshape(right, x.shape)
+
+    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape)
+    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape)
+    left_idx = core.reshape(left_idx, ids.shape)
+    right_idx = core.reshape(right_idx, ids.shape)
+
+    # actual compare-and-swap
+    if core.constexpr(x.dtype.primitive_bitwidth) == 16: 
+        idtype = core.int16
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 32:
+        idtype = core.int32
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 64:
+        idtype = core.int64
+    else:
+        raise ValueError("Unsupported dtype")
+
+    ileft = left.to(idtype, bitcast=True)
+    iright = right.to(idtype, bitcast=True)
+    ix = x.to(idtype, bitcast=True)
+
+    cond = (left > right) ^ flip
+    ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
+
+    if core.constexpr(ids.dtype.primitive_bitwidth) == 16: 
+        idx_dtype = core.int16
+    elif core.constexpr(ids.dtype.primitive_bitwidth) == 32:
+        idx_dtype = core.int32
+    elif core.constexpr(ids.dtype.primitive_bitwidth) == 64:
+        idx_dtype = core.int64
+    else:
+        raise ValueError("Unsupported dtype")
+
+    ileft_idx = left_idx.to(idx_dtype, bitcast=True)
+    iright_idx = right_idx.to(idx_dtype, bitcast=True)
+    ix_idx = ids.to(idx_dtype, bitcast=True)
+    ret_idx = ix_idx ^ core.where(cond, ileft_idx ^ iright_idx, zeros_like(ix_idx))
+
+    return ret.to(x.dtype, bitcast=True), ret_idx.to(ids.dtype, bitcast=True)
+
 
 @triton.jit
-def _compare_and_swap(x, ids, desc_mask, n_dims: core.constexpr, idx: core.constexpr):
-    l_slice = _take_slice(x, n_dims, idx, 0)
-    r_slice = _take_slice(x, n_dims, idx, 1)
-
-    x_int = x
-    l_int = l_slice
-    r_int = r_slice
-
-    l_idx = _take_slice(ids, n_dims, idx, 0)
-    r_idx = _take_slice(ids, n_dims, idx, 1)
-
-    idx_int = ids
-    l_int_idx = l_idx
-    r_int_idx = r_idx
-
-    if x.dtype.is_floating():
-        if core.constexpr(x.dtype.primitive_bitwidth) == 16:
-            dtype_int = core.int16
-        elif core.constexpr(x.dtype.primitive_bitwidth) == 32:
-            dtype_int = core.int32
-        elif core.constexpr(x.dtype.primitive_bitwidth) == 64:
-            dtype_int = core.int64
-        else:
-            raise ValueError("Unsupported dtype")
-        x_int = x.to(dtype_int, bitcast=True)
-        l_int = l_slice.to(dtype_int, bitcast=True)
-        r_int = r_slice.to(dtype_int, bitcast=True)
-
-    desc_mask = desc_mask.to(x_int.dtype)
-    zero = zeros_like(x_int)
-    cond = (l_slice > r_slice) ^ desc_mask
-    y = x_int ^ core.where(cond, l_int ^ r_int, zero)
-    y = y.to(x.dtype, bitcast=True)
-
-    idx = idx_int ^ core.where(cond, l_int_idx ^ r_int_idx, zeros_like(ids))
-    return y, idx
-
-
-@triton.jit
-def _bitonic_merge(
-    x,
-    ids,
-    n_dims: core.constexpr,
-    active_dims: core.constexpr,
-    order_type: core.constexpr,
-):
-    """
+def _bitonic_merge(x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr):
+    '''
     order_type 0 == ascending
     order_type 1 == descending
     order_type 2 == alternating
-    """
-    core.static_assert(active_dims <= n_dims)
-
-    if order_type == 2:
-        desc_mask = _indicator(n_dims, active_dims, 1)
+    '''
+    n_outer: core.constexpr = x.numel >> n_dims
+    core.static_assert(stage <= n_dims)
+    # flip denotes whether to re-arrange sub-sequences of elements in ascending or
+    # descending order.
+    # if flip = 00000000... then all elements will be re-arranged ascendingly at this stage
+    # if flip = 00110011... then all the elements will be re-arranged alternatingly (with
+    # a stride of 2) at this stage
+    if order == 2:
+        shape: core.constexpr = [n_outer * 2**(n_dims - 1 - stage), 2, 2**stage]
+        flip = core.reshape(core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape)
     else:
-        desc_mask = order_type
-
-    for i in core.static_range(active_dims):
-        x, ids = _compare_and_swap(x, ids, desc_mask, n_dims, active_dims - 1 - i)
-
+        flip = order
+    # perform `stage` rounds of `compare-and-swap`
+    for i in core.static_range(stage):
+        x, ids = _compare_and_swap(x, ids, flip, i + (n_dims - stage), n_dims)
     return x, ids
 
 
 @triton.jit
-def argsort(x, ids, dim: core.constexpr = None, descending: core.constexpr = 0):
-    core.static_assert(_is_power_of_two(x.shape[_get_sort_dim(dim, x.shape)]))
-    core.static_assert(_is_power_of_two(x.numel))
-    # reshape the tensor to have all dimensions be 2.
-    # TODO: We shouldn't have to change the dimensions not sorted.
-    y = core.reshape(x, [2] * _log2(x.numel))
-    y_ids = core.reshape(ids, [2] * _log2(ids.numel))
-
-    for i in core.static_range(1, _log2(x.shape[_get_sort_dim(dim, x.shape)]) + 1):
-        y, y_ids = _bitonic_merge(
-            y,
-            y_ids,
-            _log2(x.numel),
-            i,
-            (descending if (i == _log2(x.shape[_get_sort_dim(dim, x.shape)])) else 2),
-        )
-
-    x = core.reshape(y, x.shape)
-    ids = core.reshape(y_ids, ids.shape)
-
-    return x, ids
+def argsort(x, ids, dim: tl.constexpr, descending: core.constexpr):
+    # handle default dimension or check that it is the most minor dim
+    _dim: core.constexpr  = dim
+    n_dims: core.constexpr = _log2(x.shape[_dim])
+    for i in core.static_range(1, n_dims + 1):
+        x, ids = _bitonic_merge(x, ids, i, 2 if i < n_dims else descending, n_dims)
+    return x, ids 
 
 
 @libentry()
@@ -239,6 +201,7 @@ def topk_stage2_kernel(
     index_ptr,
     chunk_x,
     chunk_index,
+    sort_dim: tl.constexpr,
     k: tl.constexpr,
     N: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
@@ -257,10 +220,10 @@ def topk_stage2_kernel(
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
     chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(tl.float32)
-    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val)
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(tl.int32)
 
     sorted_chunk_x, sorted_chunk_index = argsort(
-        chunk_x_val, chunk_index_val, descending=DESCENDING
+        chunk_x_val, chunk_index_val, 0, descending=DESCENDING
     )
     tl.store(y_ptr + cols, sorted_chunk_x, mask=cols < k)
     tl.store(index_ptr + cols, sorted_chunk_index, mask=cols < k)
@@ -269,10 +232,10 @@ def topk_stage2_kernel(
 def topk(x, k, dim=-1, largest=True, sorted=True):
     logging.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
-    if dim == x.ndim - 1:
-        dim = -1
+    if dim < 0:
+        dim = dim + x.ndim
 
-    assert dim == -1, "Currently only support topk in last dimension"
+    assert dim == x.ndim - 1, "Currently only support topk in last dimension"
     assert sorted, "Currently only support sorted == True"
 
     descending = True
@@ -312,7 +275,6 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             chunk_size,
             descending,
         )
-
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
@@ -322,6 +284,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             stage2_out_idx,
             stage1_out,
             stage1_out_idx,
+            dim, 
             k,
             stage2_elem_cnt,
             BLOCK_SIZE,
