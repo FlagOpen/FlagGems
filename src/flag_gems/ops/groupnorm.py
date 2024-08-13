@@ -197,6 +197,7 @@ def group_norm_backward_kernel(
     grad_X = grad_centered_mean + grad_mean
     tl.store(dX_ptr, grad_X, mask=xy_mask)
 
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({'SPLIT': s, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
@@ -252,12 +253,14 @@ def group_norm_backward_kernel_opt(
         x = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
         dx_hat_x = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], tl.float32)
         for idy in range(0, hw_iter):
-            xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+            xy_mask = group_offset[:, None] < C and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
             dY_val = tl.load(grad_y + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             X_val = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
-            dx_hat += weight * dY_val
-            x += tl.where(xy_mask, X_val - mean, 0.0)
-            dx_hat_x += dx_hat * x
+            dx_hat_tmp = weight * dY_val
+            dx_hat += dx_hat_tmp
+            x_tmp = tl.where(xy_mask, X_val - mean, 0.0)
+            x += x_tmp
+            dx_hat_x += dx_hat_tmp * x_tmp
 
         grad_std = tl.sum(dx_hat_x)
         grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / real_num_elements
@@ -267,7 +270,7 @@ def group_norm_backward_kernel_opt(
         grad_mean = -tl.sum(grad_centered_mean) / real_num_elements
 
         for idy in range(0, hw_iter):
-            xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
+            xy_mask = group_offset[:, None] < C and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
             dY_val = tl.load(grad_y + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             X_val = tl.load(X + idy * BLOCK_HW_SIZE + xy_offset, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
             dx_hat = weight * dY_val
@@ -373,7 +376,9 @@ def weight_bias_backward_kernel_opt(
         x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
         x_f32 = x.to(tl.float32)
         dB_val = tl.sum(grad_y)
-        dW_val = tl.sum((x_f32 - mean) * rstd * grad_y)
+
+        x_f32 = tl.where(xy_mask, x_f32 - mean, 0.0)
+        dW_val = tl.sum(x_f32 * rstd * grad_y)
 
         for idx in range(1, hw_iter):
             xy_mask = n_offset[:, None] < N and (idx * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
@@ -384,7 +389,8 @@ def weight_bias_backward_kernel_opt(
             x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
             x_f32 = x.to(tl.float32)
             dB_val += tl.sum(grad_y)
-            dW_val += tl.sum((x_f32 - mean) * rstd * grad_y)
+            x_f32 = tl.where(xy_mask, x_f32 - mean, 0.0)
+            dW_val += tl.sum(x_f32 * rstd * grad_y)
 
         tl.store(dW + c_start, dW_val.to(x.dtype))
         tl.store(dB + c_start, dB_val.to(x.dtype))
