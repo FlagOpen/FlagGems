@@ -10,9 +10,12 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
+    RESOLUTION,
     gems_assert_close,
+    gems_assert_equal,
     to_reference,
 )
+from .conftest import TO_CPU
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -37,14 +40,21 @@ def test_accuracy_dropout(shape, p, dtype):
 
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
-    assert (
-        abs(num_equal - exp_equal) / exp_equal <= 0.05
-    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+    if TO_CPU:
+        zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
+        num_zero = torch.sum(zero_equal).item()
+        assert abs(num_zero / inp.numel() - p) <= 0.05
+        scale_equal = torch.isclose(res_out, ref_inp / (1 - p), rtol=RESOLUTION[dtype])
+        assert torch.all(torch.logical_or(zero_equal, scale_equal))
+    else:
+        assert (
+            abs(num_equal - exp_equal) / exp_equal <= 0.05
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
-    num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
-    assert (
-        abs(num_equal - exp_equal) / exp_equal <= 0.05
-    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+        num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
+        assert (
+            abs(num_equal - exp_equal) / exp_equal <= 0.05
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
 def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
@@ -206,6 +216,35 @@ def test_accuracy_resolve_neg(shape, dtype):
     with flag_gems.use_gems():
         out = z.resolve_neg()
     assert not out.is_neg()
+
+
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [128])
+@pytest.mark.parametrize("topk", [5])
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_topk(
+    batch_size,
+    hiddensize,
+    topk,
+    largest,
+    dtype,
+):
+    x = torch.arange(hiddensize, dtype=dtype, device="cuda")
+    x = x.repeat(batch_size).reshape(batch_size, hiddensize)
+
+    # Each row use different shuffled index.
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(x.size(1))
+        x[bsz, :] = x[bsz, col_indices]
+
+    ref_value, ref_index = torch.topk(x, topk, largest=largest)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, largest=largest)
+
+    gems_assert_close(ref_value, res_value, dtype)
+    gems_assert_equal(ref_index, res_index)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)

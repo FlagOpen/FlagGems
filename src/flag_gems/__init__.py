@@ -89,6 +89,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "PrivateUse1")
     lib.impl("tanh", tanh, "AutogradPrivateUse1")
     lib.impl("triu", triu, "PrivateUse1")
+    lib.impl("topk", topk, "PrivateUse1")
     lib.impl("var_mean.correction", var_mean, "PrivateUse1")
     lib.impl("linalg_vector_norm", vector_norm, "PrivateUse1")
     lib.impl("where.self", where_self, "PrivateUse1")
@@ -116,6 +117,7 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "PrivateUse1")
     lib.impl("allclose", allclose, "PrivateUse1")
     lib.impl("flip", flip, "PrivateUse1")
+    lib.impl("masked_fill", masked_fill, "PrivateUse1")
 
 
 class use_gems:

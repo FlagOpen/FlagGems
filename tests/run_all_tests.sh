@@ -17,6 +17,8 @@ for i in `ls test_*.py `; do
 	((ind++))
 	ind=$((ind%cardnum))
 done
+otherf=ks_tests.py
+MLU_VISIBLE_DEVICES=$ind pytest $otherf   --capture=no --log-cli-level debug 2>&1 | tee ${dirp}/${otherf%.*}.log &
 
 wait
 echo "finish date: "$(date +"%Y-%m-%d_%H-%M-%S")

@@ -39,6 +39,7 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
+from .masked_fill import masked_fill
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -74,6 +75,7 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .topk import topk
 from .triu import triu
 from .uniform import uniform_
 from .var_mean import var_mean
@@ -167,6 +169,7 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
+    "topk",
     "max",
     "max_dim",
     "min",
@@ -185,4 +188,5 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "masked_fill",
 ]
