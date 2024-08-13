@@ -159,7 +159,6 @@ def generate_destination_passing_padding_wrapper(
         code.writeline("IS_REPLICATE = mode == 'replicate'")
         code.writeline("IS_CIRCULAR = mode == 'circular'")
 
-
         code.newline()
 
         # grid
@@ -310,17 +309,19 @@ def generate_pad_kernel(
             code.writeline(
                 f"src_index_{i} = tl.where(src_index_{i} < 0, 0, src_index_{i})"
             )
-        
+
         code.newline()
         code.writeline("if IS_REFLECT: ")
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, valid_dim{i}_start - dst_index_{i}, src_index_{i})"
+                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, \
+                      valid_dim{i}_start - dst_index_{i}, src_index_{i})"
                 )
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"
+                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, \
+                      (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"
                 )
 
         code.newline()
@@ -340,15 +341,16 @@ def generate_pad_kernel(
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"
+                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, \
+                      dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"
                 )
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, dst_index_{i} - valid_dim{i}_end, src_index_{i})"
+                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, \
+                      dst_index_{i} - valid_dim{i}_end, src_index_{i})"
                 )
 
         code.newline()
-
 
         code.writeline("src_offset = src_index_0 * in_strides0")
         for i in range(1, rank):
