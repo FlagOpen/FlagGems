@@ -14,7 +14,6 @@ def cfggen():
         triton.Config({"M_BLOCK_SIZE": 4}, num_warps=1, num_stages=3),
         triton.Config({"M_BLOCK_SIZE": 8}, num_warps=1, num_stages=3),
         triton.Config({"M_BLOCK_SIZE": 16}, num_warps=1, num_stages=3),
-        triton.Config({"M_BLOCK_SIZE": 32}, num_warps=1, num_stages=3),
     ]
     return configs
 
@@ -127,7 +126,8 @@ def triu(A, diagonal=0):
             # causing the compilation to fail. Therefore, a conservative upper limit of 8192
             # is currently set, but the actual maximum achievable value should be confirmed
             # based on real-world conditions.
-            n_block = min(8192, N)
+            elements_bytes = torch.finfo(A.dtype).bits // 8
+            n_block = min(256 * 1024 // elements_bytes, N)
             need_loop = n_block < N
             triu_kernel[grid](A,
                               out,

@@ -9,6 +9,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     ALL_INT_DTYPES,
     INT_DTYPES,
+    DEVICE,
     REDUCTION_SHAPES,
     gems_assert_close,
     gems_assert_equal,
@@ -666,7 +667,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
-    if "cuda" != "mlu":
+    if "mlu" not in str(inp.device):
         ref_out = torch.linalg.vector_norm(inp.to(torch.float64), ord, dim, keepdim)
     else:
         if ord in [float("inf"), -float("inf")]:
