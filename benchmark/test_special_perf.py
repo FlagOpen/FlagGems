@@ -1,6 +1,6 @@
 import torch
 
-from .performance_utils import POINTWISE_BATCH, SIZES, Benchmark
+from .performance_utils import FLOAT_DTYPES, POINTWISE_BATCH, SIZES, Benchmark
 
 
 def test_perf_embedding():

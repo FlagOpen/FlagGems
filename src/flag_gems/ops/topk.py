@@ -5,12 +5,7 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.core as core
-from triton.language.standard import (
-    _is_power_of_two,
-    _log2,
-    _unwrap_if_constexpr,
-    zeros_like,
-)
+from triton.language.standard import _log2, zeros_like
 
 from ..utils import libentry
 
@@ -104,10 +99,11 @@ https://github.com/triton-lang/triton/blob/release/2.2.x/python/triton/language/
 Just add indices to sort with values.
 """
 
+
 @triton.jit
 def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     n_outer: core.constexpr = x.numel >> n_dims
-    shape: core.constexpr = [n_outer * 2**i, 2, 2**(n_dims - i - 1)]
+    shape: core.constexpr = [n_outer * 2**i, 2, 2 ** (n_dims - i - 1)]
 
     # tl.device_print("shape is: ", shape)
     y = core.reshape(x, shape)
@@ -126,7 +122,7 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     right_idx = core.reshape(right_idx, ids.shape)
 
     # actual compare-and-swap
-    if core.constexpr(x.dtype.primitive_bitwidth) == 16: 
+    if core.constexpr(x.dtype.primitive_bitwidth) == 16:
         idtype = core.int16
     elif core.constexpr(x.dtype.primitive_bitwidth) == 32:
         idtype = core.int32
@@ -142,7 +138,7 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     cond = (left > right) ^ flip
     ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
 
-    if core.constexpr(ids.dtype.primitive_bitwidth) == 16: 
+    if core.constexpr(ids.dtype.primitive_bitwidth) == 16:
         idx_dtype = core.int16
     elif core.constexpr(ids.dtype.primitive_bitwidth) == 32:
         idx_dtype = core.int32
@@ -160,12 +156,14 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
 
 @triton.jit
-def _bitonic_merge(x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr):
-    '''
+def _bitonic_merge(
+    x, ids, stage: core.constexpr, order: core.constexpr, n_dims: core.constexpr
+):
+    """
     order_type 0 == ascending
     order_type 1 == descending
     order_type 2 == alternating
-    '''
+    """
     n_outer: core.constexpr = x.numel >> n_dims
     core.static_assert(stage <= n_dims)
     # flip denotes whether to re-arrange sub-sequences of elements in ascending or
@@ -174,8 +172,10 @@ def _bitonic_merge(x, ids, stage: core.constexpr, order: core.constexpr, n_dims:
     # if flip = 00110011... then all the elements will be re-arranged alternatingly (with
     # a stride of 2) at this stage
     if order == 2:
-        shape: core.constexpr = [n_outer * 2**(n_dims - 1 - stage), 2, 2**stage]
-        flip = core.reshape(core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape)
+        shape: core.constexpr = [n_outer * 2 ** (n_dims - 1 - stage), 2, 2**stage]
+        flip = core.reshape(
+            core.broadcast_to(core.arange(0, 2)[None, :, None], shape), x.shape
+        )
     else:
         flip = order
     # perform `stage` rounds of `compare-and-swap`
@@ -187,11 +187,11 @@ def _bitonic_merge(x, ids, stage: core.constexpr, order: core.constexpr, n_dims:
 @triton.jit
 def argsort(x, ids, dim: tl.constexpr, descending: core.constexpr):
     # handle default dimension or check that it is the most minor dim
-    _dim: core.constexpr  = dim
+    _dim: core.constexpr = dim
     n_dims: core.constexpr = _log2(x.shape[_dim])
     for i in core.static_range(1, n_dims + 1):
         x, ids = _bitonic_merge(x, ids, i, 2 if i < n_dims else descending, n_dims)
-    return x, ids 
+    return x, ids
 
 
 @libentry()
@@ -220,7 +220,9 @@ def topk_stage2_kernel(
     mask_index_val = _MIN_INT32_VAL if DESCENDING else _MAX_INT32_VAL
 
     chunk_x_val = tl.load(chunk_x + cols, mask=mask, other=mask_val).to(tl.float32)
-    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(tl.int32)
+    chunk_index_val = tl.load(chunk_index + cols, mask=mask, other=mask_index_val).to(
+        tl.int32
+    )
 
     sorted_chunk_x, sorted_chunk_index = argsort(
         chunk_x_val, chunk_index_val, 0, descending=DESCENDING
@@ -284,7 +286,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             stage2_out_idx,
             stage1_out,
             stage1_out_idx,
-            dim, 
+            dim,
             k,
             stage2_elem_cnt,
             BLOCK_SIZE,
