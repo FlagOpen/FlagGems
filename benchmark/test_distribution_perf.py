@@ -28,16 +28,16 @@ def test_perf_normal():
     bench.run()
 
 
-# def test_perf_uniform():
-#     bench = Benchmark(
-#         op_name="uniform_",
-#         torch_op=torch.Tensor.uniform_,
-#         arg_func=unary_arg,
-#         dtypes=FLOAT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#     )
-#     bench.run()
+def test_perf_uniform():
+    bench = Benchmark(
+        op_name="uniform_",
+        torch_op=torch.Tensor.uniform_,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
 # def test_perf_exponential_():

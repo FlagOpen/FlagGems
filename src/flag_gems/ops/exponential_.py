@@ -20,7 +20,8 @@ def heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        # num_warps cannot be larger than 8 because warp size is 128 on mtgpu.
+        return 8
 
 
 @triton.heuristics(
@@ -79,9 +80,14 @@ def fused_exponential_kernel(
         tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
         tl.store(out_ptr + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
 
+# workaround collecting index of constexprs for triton 2.1
+# @triton.jit
+# def paste_u64(hi: tl.uint32, lo: tl.uint32):
+#     hi = hi.to(tl.uint64) << 32
+#     x = hi | lo.to(tl.uint64)
+#     return x
 
 @triton.jit
-# def paste_u64(hi: tl.uint32, lo: tl.uint32):
 def paste_u64(hi, lo):
     hi = hi.to(tl.uint64) << 32
     x = hi | lo.to(tl.uint64)

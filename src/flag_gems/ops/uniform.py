@@ -21,7 +21,8 @@ def heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        # num_warps cannot be larger than 8 because warp size is 128 on mtgpu.
+        return 8
 
 
 @triton.heuristics(
