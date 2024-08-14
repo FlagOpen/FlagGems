@@ -9,7 +9,7 @@ import triton.language as tl
 from ..utils import libentry, TOTAL_CORE_NUM
 
 MAX_C_MLU_LAYERNORM_FORWARD = 1400
-MAX_C_MLU_LAYERNORM_BACKWARD = 8192
+MAX_C_MLU_LAYERNORM_BACKWARD = 5120
 
 def config_prune(configs, named_args, **kwargs):
     M = named_args["M"]
@@ -160,17 +160,35 @@ def layer_norm_kernel_inner(
 
 def cfggen_bw():
     configs = [
-        triton.Config({"BLOCK_ROW_SIZE": 1}, num_warps=1, num_stages=1),
         triton.Config({"BLOCK_ROW_SIZE": 1}, num_warps=1, num_stages=3),
-        triton.Config({"BLOCK_ROW_SIZE": 4}, num_warps=1, num_stages=1),
         triton.Config({"BLOCK_ROW_SIZE": 4}, num_warps=1, num_stages=3),
-        triton.Config({"BLOCK_ROW_SIZE": 16}, num_warps=1, num_stages=1),
-        triton.Config({"BLOCK_ROW_SIZE": 32}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 8}, num_warps=1, num_stages=3),
+        triton.Config({"BLOCK_ROW_SIZE": 16}, num_warps=1, num_stages=3),
+        triton.Config({"BLOCK_ROW_SIZE": 22}, num_warps=1, num_stages=4),
+        triton.Config({"BLOCK_ROW_SIZE": 32}, num_warps=1, num_stages=3),
     ]
     return configs
 
+def prune_bw_config(configs, named_args, **kwargs):
+    M = named_args["M"]
+    N = named_args["N"]
+    pruned_configs = []
+    for config in configs:
+        BLOCK_M = config.kwargs["BLOCK_ROW_SIZE"]
+        if (M // BLOCK_M < 1):
+            continue
+        if (N >= 1024 and BLOCK_M > 4) or (N < 1024 and BLOCK_M <=4) or (N <= 512 and BLOCK_M < 8):
+            continue
+        pruned_configs.append(config)
+    return pruned_configs
+
 @libentry()
-@triton.autotune(configs=cfggen_bw(), key=["M", "N"], reset_to_zero=["DW", "DB"])
+@triton.autotune(
+      configs=cfggen_bw(),
+      prune_configs_by={'early_config_prune': prune_bw_config},
+      key=["M", "N"],
+      reset_to_zero=["DW", "DB"]
+)
 @triton.jit
 def layer_norm_backward_kernel(
         DX,  # pointer to the input gradient
@@ -228,18 +246,33 @@ def layer_norm_backward_kernel(
     tl.atomic_add(DB + cols, db)
 
 
-def cfggen_input_bw():
-    block_m = [1, 4, 16, 32]
-    block_n = [32, 256, 1024, 2048]
-    num_stages = [1, 3]
-    configs = [triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n},
-                             num_warps=1,
-                             num_stages=s) for m in block_m for n in block_n for s in num_stages
+def cfggen_in_wb_bw():
+    configs = [
+        triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 4096}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_ROW_SIZE": 4, "BLOCK_COL_SIZE": 1024}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_ROW_SIZE": 4, "BLOCK_COL_SIZE": 2048}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_ROW_SIZE": 8, "BLOCK_COL_SIZE": 1024}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_ROW_SIZE": 22, "BLOCK_COL_SIZE": 512}, num_warps=1, num_stages=5),
+        triton.Config({"BLOCK_ROW_SIZE": 32, "BLOCK_COL_SIZE": 256}, num_warps=1, num_stages=5),
     ]
     return configs
 
+def prune_in_wb_config(configs, named_args, **kwargs):
+    M = named_args["M"]
+    pruned_configs = []
+    for config in configs:
+        BLOCK_M = config.kwargs["BLOCK_ROW_SIZE"]
+        if (M // BLOCK_M < 1):
+            continue
+        pruned_configs.append(config)
+    return pruned_configs
+
 @libentry()
-@triton.autotune(configs=cfggen_input_bw(), key=["M", "N"])
+@triton.autotune(
+    configs=cfggen_in_wb_bw(),
+    prune_configs_by={'early_config_prune': prune_in_wb_config},
+    key=["M", "N"]
+)
 @triton.jit
 def input_backward_kernel(
     dY,
@@ -301,18 +334,12 @@ def input_backward_kernel(
             tl.store(new_DX + cols, dx.to(x.dtype), mask=mask)
 
 
-def cfggen_wb_bw():
-    block_m = [32, 64, 128, 512, 1024]
-    block_n = [1, 4, 16, 32]
-    num_stages = [1, 3]
-    configs = [triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n},
-                             num_warps=1,
-                             num_stages=s) for m in block_m for n in block_n for s in num_stages
-    ]
-    return configs
-
 @libentry()
-@triton.autotune(configs=cfggen_wb_bw(), key=["M", "N"])
+@triton.autotune(
+    configs=cfggen_in_wb_bw(),
+    prune_configs_by={'early_config_prune': prune_in_wb_config},
+    key=["M", "N"]
+)
 @triton.jit
 def weight_bias_backward_kernel(
     dY,
