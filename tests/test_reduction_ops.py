@@ -704,6 +704,7 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     valid_shape = list(inp.shape)
+    range = end - start
     valid_shape[dim] = (range + (step - 1)) // step
 
     src = torch.randn(valid_shape, dtype=dtype, device="cuda")
