@@ -124,78 +124,176 @@ def test_perf_cumsum():
     bench.run()
 
 
-def test_perf_groupnorm():
-    def group_norm_args(dtype, batch, size):
-        C = 6
-        G = C // 2
-        #C = 16
-        #G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
-        weight = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device=DEVICE,
-        )
-        bias = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device=DEVICE,
-        )
-        return inp, G, weight, bias
+import os
+import shutil
+def reset_tmp_dir():
+    tmpdir = ".tmp"
+    os.environ["TRITON_CACHE_DIR"] = tmpdir
+    if os.path.exists(tmpdir):
+        shutil.rmtree(tmpdir)
 
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        dtypes=FLOAT_DTYPES,
-        #batch=BLAS_BATCH,
-        #batch=REDUCTION_BATCH,
-        batch=20,
-        #sizes=SIZES,
-        sizes=[65536],
-    )
-    bench.run()
+def test_perf_groupnorm():
+    #def group_norm_args(dtype, batch, size):
+    #    C = 6
+    #    G = C // 2
+    #    #C = 16
+    #    #G = 16
+    #    inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+    #    weight = torch.randn(
+    #        [
+    #            C,
+    #        ],
+    #        dtype=dtype,
+    #        device=DEVICE,
+    #    )
+    #    bias = torch.randn(
+    #        [
+    #            C,
+    #        ],
+    #        dtype=dtype,
+    #        device=DEVICE,
+    #    )
+    #    return inp, G, weight, bias
+
+    #bench = Benchmark(
+    #    op_name="groupnorm",
+    #    torch_op=torch.nn.functional.group_norm,
+    #    arg_func=group_norm_args,
+    #    dtypes=FLOAT_DTYPES,
+    #    #batch=BLAS_BATCH,
+    #    #batch=REDUCTION_BATCH,
+    #    batch=20,
+    #    #sizes=SIZES,
+    #    sizes=[65536],
+    #)
+    #bench.run()
+    print(">>> perf gn fwd:   ")
+    def test(C, G, arg_batch, arg_sizes):
+        def group_norm_args(dtype, batch, size):
+            inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+            weight = torch.randn(
+                [
+                    C,
+                ],
+                dtype=dtype,
+                device=DEVICE,
+            )
+            bias = torch.randn(
+                [
+                    C,
+                ],
+                dtype=dtype,
+                device=DEVICE,
+            )
+            return inp, G, weight, bias
+
+        bench = Benchmark(
+            op_name="groupnorm",
+            torch_op=torch.nn.functional.group_norm,
+            arg_func=group_norm_args,
+            dtypes=FLOAT_DTYPES,
+            batch=arg_batch,
+            sizes=arg_sizes,
+        )
+        bench.run()
+    # new perf test
+    reset_tmp_dir()
+    print("new perf test: ")
+    test(C=6, G=6//2, arg_batch=20, arg_sizes=[65536])
+    print("\n\n")
+    # old perf
+    print("old perf: ")
+    test(C=16, G=16, arg_batch=BLAS_BATCH, arg_sizes=SIZES)
+    reset_tmp_dir()
+    print("\n\n")
+    # long n perf
+    print("long n perf: ")
+    test(C=16, G=16, arg_batch=REDUCTION_BATCH, arg_sizes=SIZES)
+
 
 def test_perf_groupnorm_backward():
-    def group_norm_args(dtype, batch, size):
-        #C = 6
-        #G = C // 2
-        C = 16
-        G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
-        weight = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device=DEVICE,
-        )
-        bias = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device=DEVICE,
-        )
-        return inp, G, weight, bias
+    #def group_norm_args(dtype, batch, size):
+    #    #C = 6
+    #    #G = C // 2
+    #    C = 16
+    #    G = 16
+    #    inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+    #    weight = torch.randn(
+    #        [
+    #            C,
+    #        ],
+    #        dtype=dtype,
+    #        device=DEVICE,
+    #    )
+    #    bias = torch.randn(
+    #        [
+    #            C,
+    #        ],
+    #        dtype=dtype,
+    #        device=DEVICE,
+    #    )
+    #    return inp, G, weight, bias
 
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        #batch=REDUCTION_BATCH,
-        #batch=20,
-        sizes=SIZES,
-        #sizes=[65536],
-        is_backward=True,
-    )
-    bench.run()
+    #bench = Benchmark(
+    #    op_name="groupnorm",
+    #    torch_op=torch.nn.functional.group_norm,
+    #    arg_func=group_norm_args,
+    #    dtypes=FLOAT_DTYPES,
+    #    batch=BLAS_BATCH,
+    #    #batch=REDUCTION_BATCH,
+    #    #batch=20,
+    #    sizes=SIZES,
+    #    #sizes=[65536],
+    #    is_backward=True,
+    #)
+    #bench.run()
+
+    print(">>> perf gn bwd:   ")
+    def test(C, G, arg_batch, arg_sizes):
+        def group_norm_args(dtype, batch, size):
+            #C = 16
+            #G = 16
+            inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+            weight = torch.randn(
+                [
+                    C,
+                ],
+                dtype=dtype,
+                device=DEVICE,
+            )
+            bias = torch.randn(
+                [
+                    C,
+                ],
+                dtype=dtype,
+                device=DEVICE,
+            )
+            return inp, G, weight, bias
+
+        bench = Benchmark(
+            op_name="groupnorm",
+            torch_op=torch.nn.functional.group_norm,
+            arg_func=group_norm_args,
+            dtypes=FLOAT_DTYPES,
+            batch=arg_batch,
+            sizes=arg_sizes,
+            is_backward=True,
+        )
+        bench.run()
+    # new perf test
+    #reset_tmp_dir()
+    #print("new perf test: ")
+    #test(C=6, G=6//2, arg_batch=20, arg_sizes=[65536])
+    #print("\n\n")
+    ## old perf
+    #print("old perf: ")
+    #test(C=16, G=16, arg_batch=BLAS_BATCH, arg_sizes=SIZES)
+    #print("\n\n")
+    #reset_tmp_dir()
+    # long n perf
+    print("long n perf: ")
+    test(C=16, G=16, arg_batch=REDUCTION_BATCH, arg_sizes=SIZES)
+
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
