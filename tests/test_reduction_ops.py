@@ -678,7 +678,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 def test_accuracy_select_scatter(shape, dim, dtype):
     import random
 
-    index = random.randint(0, shape[dim])
+    index = random.randint(0, shape[dim] - 1)
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     src_shape = list(inp.shape)
@@ -704,10 +704,6 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     size_dim = shape[dim]
 
-    if start is None:
-        start = 0
-    if end is None:
-        end = size_dim
     range = end - start
     if end < start:
         range = 0
