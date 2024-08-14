@@ -75,6 +75,7 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .tile import tile
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
@@ -168,6 +169,7 @@ __all__ = [
     "softmax",
     "sub",
     "tanh",
+    "tile",
     "triu",
     "topk",
     "max",
