@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -13,11 +12,11 @@ except ImportError:
     try:
         from triton.language.math import pow
     except ImportError:
-        from triton.language.libdevice import pow
+        from triton.language.libdevice_xpu import pow
 
 
 def cfggen():
-    block_m = [1, 2, 4, 8]
+    block_m = [512]
     configs = [
         triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
     ]
@@ -57,7 +56,7 @@ def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(x * x)
+    mid = tl.sum(x * x, axis=0)
     tl.store(Mid, mid)
 
 
@@ -68,7 +67,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.sqrt(tl.sum(mid))
+    out = tl.sqrt(tl.sum(mid, axis=0))
     tl.store(Out, out)
 
 
@@ -105,7 +104,7 @@ def max_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.max(tl.abs(x))
+    mid = tl.max(tl.abs(x), axis=0)
     tl.store(Mid, mid)
 
 
@@ -116,7 +115,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.max(mid)
+    out = tl.max(mid, axis=0)
     tl.store(Out, out)
 
 
@@ -153,7 +152,7 @@ def min_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=float("inf")).to(tl.float32)
-    mid = tl.min(tl.abs(x))
+    mid = tl.min(tl.abs(x), axis=0)
     tl.store(Mid, mid)
 
 
@@ -164,7 +163,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=float("inf")).to(tl.float32)
-    out = tl.min(mid)
+    out = tl.min(mid, axis=0)
     tl.store(Out, out)
 
 
@@ -201,7 +200,7 @@ def l0_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr):
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
     cnt = (x != 0).to(tl.float32)
-    mid = tl.sum(cnt)
+    mid = tl.sum(cnt, axis=0)
     tl.store(Mid, mid)
 
 
@@ -212,7 +211,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = tl.sum(mid)
+    out = tl.sum(mid, axis=0)
     tl.store(Out, out)
 
 
@@ -248,7 +247,7 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
     mask = offset < M
 
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
-    mid = tl.sum(pow(tl.abs(x), ord))
+    mid = tl.sum(pow(tl.abs(x), ord), axis=0)
     tl.store(Mid, mid)
 
 
@@ -259,7 +258,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
     Mid = Mid + offset
     mask = offset < MID_SIZE
     mid = tl.load(Mid, mask=mask, other=0.0).to(tl.float32)
-    out = pow(tl.sum(mid), 1 / ord)
+    out = pow(tl.sum(mid, axis=0), 1 / ord)
     tl.store(Out, out)
 
 
@@ -278,11 +277,15 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             shape = [1] * x.ndim
             x = dim_compress(x, dim)
             M = x.numel()
-            BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-            MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
+            # BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+            # MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
+            MID_SIZE = 8
+            BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(M, MID_SIZE))
             BLOCK_MID = triton.next_power_of_2(MID_SIZE)
 
-            mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device)
+            mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device).to(
+                torch.float32
+            )  # ?
             out = torch.empty(shape, dtype=dtype, device=x.device)
             if ord == 2:
                 l2_norm_kernel_1[(MID_SIZE,)](x, mid, M, BLOCK_SIZE)

@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def erf_func(x):
-    output = tl.math.erf(x.to(tl.float32))
+    output = tl.libdevice.erf(x.to(tl.float32))
     return output
 
 

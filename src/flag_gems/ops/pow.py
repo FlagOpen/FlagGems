@@ -11,7 +11,7 @@ except ImportError:
     try:
         from triton.language.math import pow as _pow
     except ImportError:
-        from triton.language.libdevice import pow as _pow
+        from triton.language.libdevice_xpu import pow as _pow
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])

@@ -19,9 +19,9 @@ except AttributeError:
             x = x.to(tl.int32, bitcast=True)
             scale = 4.6566127342e-10
         else:
-            tl.static_assert(
-                tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
-            )
+            # tl.static_assert(
+            #     tl.constexpr(x.dtype == tl.uint64) or tl.constexpr(x.dtype == tl.int64)
+            # )
             x = x.to(tl.int64, bitcast=True)
             scale = 1.0842020432385337e-19
         x = tl.where(x < 0, -x - 1, x)
@@ -36,7 +36,7 @@ def philox_cuda_seed_offset(increment, device=None):
     device = device or torch.cuda.current_device()
     gen = torch.cuda.default_generators[device]
     state_copy = gen.get_state()
-    c0, c1 = state_copy.view(torch.int64)
+    c0, c1 = state_copy.view(torch.int64)[-2], state_copy.view(torch.int64)[-1]
     seed, offset = int(c0), int(c1)
     increment = (increment + 3) // 4 * 4
     c1 += increment

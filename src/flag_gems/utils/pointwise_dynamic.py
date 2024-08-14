@@ -1,3 +1,4 @@
+import hashlib
 import importlib
 import os
 import threading
@@ -377,12 +378,12 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
-            code.writeline("num_warps = 4")
-            code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
+            code.writeline("num_ctas = 12 # CLUSTER_NUM")
+            code.writeline("tiles_per_cta = 1")
             code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
+                "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_ctas))"
             )
+            code.writeline("num_warps = 4")
         else:
             code.writeline("num_warps = 1")
             code.writeline("num_ctas = 1")
@@ -496,9 +497,7 @@ def generate_pointwise_kernel(
         # signature: inputs ptrs & non tensor inputs
         for i in range(op_desc.num_inputs()):
             if op_desc.is_tensor(i):
-                code.writeline(
-                    f"in{input_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
-                )
+                code.writeline(f"in{input_tensor_index}_ptr, # of tl.pointer_type")
                 function_ns.create_name(f"in{input_tensor_index}_ptr")
                 input_tensor_index += 1
             else:
@@ -513,10 +512,8 @@ def generate_pointwise_kernel(
 
         # signature: output ptrs
         for i in range(op_desc.num_outputs()):
-            code.writeline(
-                f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
-            )
-            code.writeline(f"out{output_tensor_index}_offset: int,")
+            code.writeline(f"out{output_tensor_index}_ptr, # of tl.pointer_type")
+            code.writeline(f"out{output_tensor_index}_offset: tl.constexpr,")
             function_ns.create_name(f"out{output_tensor_index}_ptr")
             function_ns.create_name(f"out{output_tensor_index}_offset")
             output_tensor_index += 1
@@ -528,18 +525,22 @@ def generate_pointwise_kernel(
             for i in range(op_desc.num_input_tensors()):
                 for j in range(rank):
                     function_ns.create_name(f"in{i}_stride{j}")
-                stride_args = ", ".join(f"in{i}_stride{j}: int" for j in range(rank))
+                stride_args = ", ".join(
+                    f"in{i}_stride{j}: tl.constexpr" for j in range(rank)
+                )
                 code.writeline(f"{stride_args}, # strides for in{i}")
 
             # strides for outputs
             for i in range(op_desc.num_output_tensors()):
                 for j in range(rank):
                     function_ns.create_name(f"out{i}_stride{j}")
-                stride_args = ", ".join(f"out{i}_stride{j}: int" for j in range(rank))
+                stride_args = ", ".join(
+                    f"out{i}_stride{j}: tl.constexpr" for j in range(rank)
+                )
                 code.writeline(f"{stride_args}, # strides for out{i}")
 
             # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+            task_space_args = ", ".join(f"s{i}: tl.constexpr" for i in range(rank))
             for i in range(rank):
                 function_ns.create_name(f"s{i}")
             code.writeline(f"{task_space_args}, # task_space")
@@ -755,6 +756,10 @@ def generate_code(
     return code
 
 
+def generate_short_hash(input_string):
+    return hashlib.md5(input_string.encode()).hexdigest()
+
+
 class PointwiseDynamicFunction:
     """Utility to generate function for general pointwise operation. It generate wrapper & JITFunction
     which are specialized according to the rank of the task space(the broadcasted shape of all input tensors).
@@ -766,7 +771,7 @@ class PointwiseDynamicFunction:
 
         assert isinstance(scalar_fn, JITFunction)
         self._scalar_fn = scalar_fn
-        self._scalar_fn_cache_key = scalar_fn.cache_key
+        self._scalar_fn_cache_key = generate_short_hash(scalar_fn.cache_key)
         self.pid = os.getpid()
         self.lock = threading.Lock()
 

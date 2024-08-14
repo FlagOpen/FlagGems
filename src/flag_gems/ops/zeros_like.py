@@ -17,6 +17,7 @@ def zeros_like(
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = triton.cdiv(N, 8)  # CLUSTER_NUM=8  empty has dirty data
     with torch.cuda.device(x.device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=BLOCK_SIZE)
     return out

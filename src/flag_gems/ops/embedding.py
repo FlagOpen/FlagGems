@@ -121,6 +121,8 @@ class Embedding(torch.autograd.Function):
             (*indices.shape, N), device=indices.device, dtype=weight.dtype
         )
 
+        if M >= 12:
+            raise AssertionError(f"embedding_kernel M = {M}!")
         with torch.cuda.device(weight.device):
             embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
@@ -154,7 +156,10 @@ class Embedding(torch.autograd.Function):
             )
             INDICE_BLOCK_SIZE = 256
             indice_grid = lambda meta: (triton.cdiv(ctx.M, INDICE_BLOCK_SIZE),)
-
+            if triton.cdiv(ctx.M, INDICE_BLOCK_SIZE) >= 12:
+                raise AssertionError(
+                    f"indice_freq_kernel gridX = {triton.cdiv(ctx.M, INDICE_BLOCK_SIZE)}!"
+                )
             with torch.cuda.device(grad_outputs.device):
                 indice_freq_kernel[indice_grid](
                     indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE

@@ -8,21 +8,21 @@ import triton.language as tl
 from ..utils import libentry
 
 
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
+def heur_block_row_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 8))
+
+
+def heur_block_col_size(args):
+    return 256
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_row_size,
+        "BLOCK_COL_SIZE": heur_block_col_size,
+    },
+)
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel(
     X,
@@ -31,9 +31,9 @@ def layer_norm_kernel(
     B,
     Mean,  # pointer to the mean
     Rstd,  # pointer to the 1/std
-    M,
-    N,
-    eps,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    eps: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -52,6 +52,7 @@ def layer_norm_kernel(
         mask = row_mask and col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        a = tl.where(mask, a, 0.0)  # we don't have other value
         _mean += a
     mean = tl.sum(_mean, axis=1) / N
     mean = mean[:, None]
@@ -82,6 +83,7 @@ def layer_norm_kernel(
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+        x = tl.where(mask, x, 0.0)
         x = tl.where(col_mask, x - mean, 0.0)
         x_hat = x * rstd
         y = x_hat * w + b
@@ -91,11 +93,7 @@ def layer_norm_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
-    ],
+    configs=[triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 256}, num_warps=4)],
     key=["M", "N"],
 )
 @triton.jit
@@ -106,8 +104,8 @@ def layer_norm_backward_kernel(
     Mean,
     Rstd,
     dX,
-    M,
-    N,
+    M: tl.constexpr,
+    N: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -131,15 +129,15 @@ def layer_norm_backward_kernel(
         mask = row_mask and col_mask
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
-        x = tl.where(mask, x - mean, 0.0)
+        x = tl.where(col_mask, x - mean, 0.0)
         x_hat = x * rstd
         w = tl.load(W + cols, mask=cols < N).to(tl.float32)
         dx_hat = dy * w
         dx_part2 += dx_hat
         dx_part3 += dx_hat * x_hat
 
-    dx_2 = tl.sum(dx_part2, axis=1)[:, None]
-    dx_3 = tl.sum(dx_part3, axis=1)[:, None]
+    dx_2 = tl.sum(dx_part2, axis=1)
+    dx_3 = tl.sum(dx_part3, axis=1)
 
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + tl.arange(0, BLOCK_COL_SIZE)
@@ -148,7 +146,7 @@ def layer_norm_backward_kernel(
         dy = tl.load(dY + cols[None, :], mask).to(tl.float32)
         x = tl.load(X + cols[None, :], mask).to(tl.float32)
         w = tl.load(W + cols, mask=cols < N).to(tl.float32)
-        x = tl.where(mask, x - mean, 0.0)
+        x = tl.where(col_mask, x - mean, 0.0)
         x_hat = x * rstd
         dx_hat = dy * w
         dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / N)
@@ -157,11 +155,7 @@ def layer_norm_backward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for n in [1, 2, 4, 8]
-        for w in [4, 8]
-    ],
+    configs=[triton.Config({"BLOCK_ROW_SIZE": 1, "BLOCK_COL_SIZE": 256}, num_warps=4)],
     key=["N"],
 )
 @triton.jit
@@ -172,8 +166,8 @@ def weight_bias_backward_kernel(
     Rstd,
     dW,
     dB,
-    M,
-    N,
+    M: tl.constexpr,
+    N: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -197,10 +191,8 @@ def weight_bias_backward_kernel(
         x_hat = x * rstd
         accW += dy * x_hat
         accB += dy
-    dw = tl.sum(accW, axis=0)
-    db = tl.sum(accB, axis=0)
-    tl.store(dW, dw[None, :], mask=col_mask)
-    tl.store(dB, db[None, :], mask=col_mask)
+    tl.store(dW, accW, mask=col_mask)
+    tl.store(dB, accB, mask=col_mask)
 
 
 class LayerNorm(torch.autograd.Function):

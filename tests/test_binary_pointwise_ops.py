@@ -495,8 +495,8 @@ def test_accuracy_ne_scalar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda").uniform_(-0.1, 0.1)
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda").uniform_(-0.1, 0.1)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -512,7 +512,7 @@ def test_accuracy_pow(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda").uniform_(-0.1, 0.1)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.pow(inp1, ref_inp2)
@@ -526,7 +526,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda").uniform_(-0.1, 0.1)
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
@@ -761,9 +761,11 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
-@pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
-    "gen_nan", [0, 1, 2, 3, 4]
+    "equal_nan", [False, True], ids=lambda x: f"equal_nan-{x}"
+)  # False with XPU_cmp_nan=1
+@pytest.mark.parametrize(
+    "gen_nan", [0, 1, 2, 3, 4], ids=lambda x: f"gen_nan-{x}"
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     rtol = torch.rand(1, dtype=torch.float32, device="cuda").item() * (

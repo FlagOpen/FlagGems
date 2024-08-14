@@ -21,7 +21,8 @@ def sum_kernel_1(
     inp_ptrs = inp + offset
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0).to(tl.float32)
-    sum_val = tl.sum(inp_val)
+    # inp_val = tl.where(mask < M, inp_val, 0.0)
+    sum_val = tl.sum(inp_val, axis=0)
     mid_ptr = mid + pid
     tl.store(mid_ptr, sum_val)
 
@@ -33,12 +34,13 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mid_ptrs = mid + offset
     mask = offset < mid_size
     mid_val = tl.load(mid_ptrs, mask=mask, other=0.0).to(tl.float32)
-    sum_val = tl.sum(mid_val)
+    # mid_val = tl.where(mask, mid_val, 0.0)
+    sum_val = tl.sum(mid_val, axis=0)
     tl.store(out, sum_val)
 
 
 def cfggen():
-    block_m = [1, 2, 4, 8]
+    block_m = [512]
     configs = [
         triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
     ]
@@ -82,16 +84,19 @@ def sum(inp, *, dtype=None):
         if dtype is torch.bool:
             inp = inp.to(torch.int64)
             dtype = torch.int64
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # mid_size = triton.cdiv(M, block_size)
+    mid_size = 12  # CLUSTER_NUM
+    block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
     block_mid = triton.next_power_of_2(mid_size)
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
+    final_mid_size = min(math.ceil(inp.numel() / block_size), min(mid_size, M))
 
     with torch.cuda.device(inp.device):
         sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        sum_kernel_2[(1, 1, 1)](mid, out, final_mid_size, block_mid)
     return out
 
 

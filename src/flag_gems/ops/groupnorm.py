@@ -6,14 +6,6 @@ import triton.language as tl
 
 from ..utils import libentry
 
-try:
-    from triton.language.extra.cuda.libdevice import rsqrt
-except ImportError:
-    try:
-        from triton.language.math import rsqrt
-    except ImportError:
-        from triton.language.libdevice import rsqrt
-
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -52,12 +44,32 @@ def group_norm_kernel(
     X_ptr = X + xy_offset
     Y_ptr = Y + xy_offset
 
-    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    mean = tl.sum(X_val) / num_elements
-    x = tl.where(xy_mask, X_val - mean, 0.0)
+    mean_base = 0.0
+    for xoffset in range(pid * group_size, pid * group_size + group_size, 1):
+        for yoffset in range(0, HW, 1):
+            row_mask = xoffset < C * num_groups
+            col_mask = yoffset < HW
+            rcmask = row_mask and col_mask
+            offset = xoffset * HW + yoffset
+            X_val = tl.load(X + offset, rcmask)
+            mean_base = mean_base + X_val
+    mean = mean_base / num_elements
 
-    var = tl.sum(x * x) / num_elements
-    rstd = rsqrt(var + eps)
+    var_base = 0.0
+    for xoffset in range(pid * group_size, pid * group_size + group_size, 1):
+        for yoffset in range(0, HW, 1):
+            row_mask = xoffset < C * num_groups
+            col_mask = yoffset < HW
+            rcmask = row_mask and col_mask
+            offset = xoffset * HW + yoffset
+            X_val = tl.load(X + offset, rcmask)
+            x = tl.where(rcmask, X_val - mean, 0.0)
+            var_base = var_base + x * x
+    var = var_base / num_elements
+    rstd = tl.libdevice.rsqrt(var + eps)
+
+    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+    x = tl.where(xy_mask, X_val - mean, 0.0)
     x_hat = x * rstd
 
     weight = tl.load(W_ptr, mask=wb_mask, other=0.0)[:, None]
@@ -89,39 +101,66 @@ def group_norm_backward_kernel(
     group = pid % num_groups
     num_elements = group_size * HW
 
-    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
-    hw_offset = tl.arange(0, BLOCK_HW_SIZE)
-    wb_offset = group * group_size + group_offset
-
-    wb_mask = wb_offset < C
-    W_ptr = W + wb_offset
-
-    xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-    xy_mask = wb_offset[:, None] < C and hw_offset[None, :] < HW
-
     Mean_ptr = Mean + pid
     Rstd_ptr = Rstd + pid
-    X_ptr = X + xy_offset
-    dY_ptr = grad_y + xy_offset
-    dX_ptr = grad_x + xy_offset
 
     rstd = tl.load(Rstd_ptr).to(tl.float32)
     mean = tl.load(Mean_ptr).to(tl.float32)
-    dY_val = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    X_val = tl.load(X_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    weight = tl.load(W_ptr, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
-    dx_hat = weight * dY_val
+    grad_std = 0.0
+    for xoffset in range(pid * group_size, pid * group_size + BLOCK_GROUP_SIZE, 1):
+        row_mask = xoffset < C * num_groups
+        w_offset = group * group_size + (xoffset - pid * group_size)
+        weight = tl.load(W + w_offset, row_mask).to(tl.float32)
+        for yoffset in range(0, HW, 1):
+            col_mask = yoffset < HW
+            rc_mask = row_mask and col_mask
+            offset = xoffset * HW + yoffset
+            dY_val = tl.load(grad_y + offset, rc_mask).to(tl.float32)
+            X_val = tl.load(X + offset, rc_mask).to(tl.float32)
+            dx_hat = weight * dY_val
+            x = tl.where(rc_mask, X_val - mean, 0.0)
+            grad_std = grad_std + dx_hat * x
 
-    x = tl.where(xy_mask, X_val - mean, 0.0)
+    grad_centered_mean = 0.0
+    for xoffset in range(pid * group_size, pid * group_size + BLOCK_GROUP_SIZE, 1):
+        row_mask = xoffset < C * num_groups
+        w_offset = group * group_size + (xoffset - pid * group_size)
+        weight = tl.load(W + w_offset, row_mask).to(tl.float32)
+        for yoffset in range(0, HW, 1):
+            col_mask = yoffset < HW
+            rc_mask = row_mask and col_mask
+            offset = xoffset * HW + yoffset
+            dY_val = tl.load(grad_y + offset, rc_mask).to(tl.float32)
+            X_val = tl.load(X + offset, rc_mask).to(tl.float32)
 
-    grad_std = tl.sum(dx_hat * x)
-    grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
-    grad_distance = 2 * x * grad_var
-    grad_centered_mean = dx_hat * rstd + grad_distance
-    grad_mean = -tl.sum(grad_centered_mean) / num_elements
-    grad_X = grad_centered_mean + grad_mean
-    tl.store(dX_ptr, grad_X, mask=xy_mask)
+            dx_hat = weight * dY_val
+            x = tl.where(rc_mask, X_val - mean, 0.0)
+
+            grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
+            grad_distance = 2 * x * grad_var
+            grad_centered_mean += dx_hat * rstd + grad_distance
+    grad_mean = -grad_centered_mean / num_elements
+
+    for xoffset in range(pid * group_size, pid * group_size + BLOCK_GROUP_SIZE, 1):
+        row_mask = xoffset < C * num_groups
+        w_offset = group * group_size + (xoffset - pid * group_size)
+        weight = tl.load(W + w_offset, row_mask).to(tl.float32)
+        for yoffset in range(0, HW, 1):
+            col_mask = yoffset < HW
+            rc_mask = row_mask and col_mask
+            offset = xoffset * HW + yoffset
+            dY_val = tl.load(grad_y + offset, rc_mask).to(tl.float32)
+            X_val = tl.load(X + offset, rc_mask).to(tl.float32)
+
+            dx_hat = weight * dY_val
+            x = tl.where(rc_mask, X_val - mean, 0.0)
+
+            grad_var = grad_std * -(0.5 * rstd * rstd * rstd) / (HW * group_size)
+            grad_distance = 2 * x * grad_var
+            grad_centered_mean = dx_hat * rstd + grad_distance
+            grad_X = grad_centered_mean + grad_mean
+            tl.store(grad_x + offset, grad_X, rc_mask)
 
 
 @libentry()
@@ -143,30 +182,29 @@ def weight_bias_backward_kernel(
 ):
     pid = tl.program_id(0)
     group = pid // group_size
-    n_offset = tl.arange(0, BLOCK_N)
-    hw_offset = tl.arange(0, BLOCK_HW)
-    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
-    mr_mask = n_offset < N
 
-    dW_ptr = dW + pid
-    dB_ptr = dB + pid
+    dB_base = 0.0
+    for xoffset in range(pid, pid + C + 1, C):
+        x_mask = xoffset < C * BLOCK_N
+        for yoffset in range(0, HW, 1):
+            offset = xoffset * HW + yoffset
+            grad_y = tl.load(dY + offset, x_mask).to(tl.float32)
+            dB_base = dB_base + grad_y
+    tl.store(dB + pid, dB_base)
 
-    mean_ptr = Mean + group + n_offset * num_groups
-    rstd_ptr = Rstd + group + n_offset * num_groups
-
-    dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-    x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-
-    grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    x = tl.load(x_ptr, mask=xy_mask, other=0.0)
-    x_f32 = x.to(tl.float32)
-    mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
-    rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
-
-    dB = tl.sum(grad_y)
-    dW = tl.sum((x_f32 - mean) * rstd * grad_y)
-    tl.store(dW_ptr, dW.to(x.dtype))
-    tl.store(dB_ptr, dB.to(x.dtype))
+    dW_base = 0.0
+    for xoffset in range(pid, pid + C + 1, C):
+        mr_offset = group + (xoffset // C) * num_groups
+        rstd = tl.load(Rstd + mr_offset).to(tl.float32)
+        mean = tl.load(Mean + mr_offset).to(tl.float32)
+        x_mask = xoffset < C * BLOCK_N
+        for yoffset in range(0, HW, 1):
+            offset = xoffset * HW + yoffset
+            grad_y = tl.load(dY + offset, x_mask).to(tl.float32)
+            x = tl.load(X + offset, x_mask)
+            x_f32 = x.to(tl.float32)
+            dW_base = dW_base + (x_f32 - mean) * rstd * grad_y
+    tl.store(dW + pid, dW_base)
 
 
 class GroupNorm(torch.autograd.Function):

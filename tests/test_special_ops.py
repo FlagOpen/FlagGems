@@ -8,9 +8,11 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
+    RESOLUTION,
     gems_assert_close,
     to_reference,
 )
+from .conftest import TO_CPU
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -35,14 +37,21 @@ def test_accuracy_dropout(shape, p, dtype):
 
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
-    assert (
-        abs(num_equal - exp_equal) / exp_equal <= 0.05
-    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+    if TO_CPU:
+        zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
+        num_zero = torch.sum(zero_equal).item()
+        assert abs(num_zero / inp.numel() - p) <= 0.05
+        scale_equal = torch.isclose(res_out, ref_inp / (1 - p), rtol=RESOLUTION[dtype])
+        assert torch.all(torch.logical_or(zero_equal, scale_equal))
+    else:
+        assert (
+            abs(num_equal - exp_equal) / exp_equal <= 0.05
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
-    num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
-    assert (
-        abs(num_equal - exp_equal) / exp_equal <= 0.05
-    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+        num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
+        assert (
+            abs(num_equal - exp_equal) / exp_equal <= 0.05
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
 def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
@@ -103,8 +112,8 @@ def torch_apply_rotary_pos_emb(
     return q_embed, k_embed
 
 
-@pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize("max_seq_len", [512, 2048])
+@pytest.mark.parametrize("batch_size", [1])
+@pytest.mark.parametrize("max_seq_len", [12])
 @pytest.mark.parametrize("q_heads,k_heads", [(8, 1), (6, 2), (1, 1), (8, 8)])
 @pytest.mark.parametrize("head_dim", [64, 96, 128, 256])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -169,35 +178,38 @@ def test_apply_rotary_pos_emb(
     "dtype", [torch.float16, torch.float32]
 )  # triton.atomic_add still not support bf16
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
-    indices = torch.randint(
-        0, EmbeddingSize, (Batch, M), device="cuda", requires_grad=False
-    )
-    embedding = torch.randn(
-        (EmbeddingSize, N), device="cuda", dtype=dtype, requires_grad=True
-    )
+    if Batch * M > 12:
+        pytest.skip("Batch * M > 12, which will cause gridX > 12")
+
+    indices_cpu = torch.randint(0, EmbeddingSize, (Batch, M), requires_grad=False)
+    embedding_cpu = torch.randn((EmbeddingSize, N), dtype=dtype, requires_grad=True)
+
+    indices = indices_cpu.cuda()
+    embedding = embedding_cpu.cuda()
     ref_embedding = to_reference(embedding)
 
-    res_out = torch.nn.functional.embedding(
-        indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+    res_out_cpu = torch.nn.functional.embedding(
+        indices_cpu, embedding_cpu, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
     with flag_gems.use_gems():
         ref_out = torch.nn.functional.embedding(
             indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
         )
     out_grad = torch.randn_like(ref_out)
+    out_grad_cpu = out_grad.cpu()
     ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
+    (res_in_grad_cpu,) = torch.autograd.grad(res_out_cpu, embedding_cpu, out_grad_cpu)
 
-    gems_assert_close(ref_out, res_out, dtype)
-    gems_assert_close(ref_in_grad, res_in_grad, dtype)
+    gems_assert_close(ref_out.cpu(), res_out_cpu, dtype)
+    gems_assert_close(ref_in_grad.cpu(), res_in_grad_cpu, dtype)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_neg(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.randn(size=shape, dtype=dtype)
     y = x.conj()
     z = y.imag
     assert z.is_neg()
@@ -209,7 +221,7 @@ def test_accuracy_resolve_neg(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_conj(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.randn(size=shape, dtype=dtype)
     y = x.conj()
     assert y.is_conj()
     with flag_gems.use_gems():

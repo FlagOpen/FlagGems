@@ -7,6 +7,10 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 8))
+
+
 def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
@@ -21,24 +25,9 @@ def heur_num_warps(args):
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
     }
@@ -47,9 +36,9 @@ def heur_num_warps(args):
 def log_softmax_kernel(
     output_ptr,
     input_ptr,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -70,24 +59,9 @@ def log_softmax_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
     }
@@ -97,9 +71,9 @@ def log_softmax_backward_kernel(
     out_ptr,
     out_grad_ptr,
     in_grad_ptr,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):

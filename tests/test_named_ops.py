@@ -22,10 +22,7 @@ reduction_ops_ut_map = {
         "test_accuracy_all_dim",
         "test_accuracy_all_dims",
     ),
-    "cross_entropy_loss": (
-        "test_accuracy_cross_entropy_loss_indices",
-        "test_accuracy_cross_entropy_loss_probabilities",
-    ),
+    "cross_entropy_loss": ("test_accuracy_cross_entropy_loss"),
     "group_norm": ("test_accuracy_groupnorm",),
     "native_group_norm": ("test_accuracy_groupnorm",),
     "layer_norm": ("test_accuracy_layernorm",),

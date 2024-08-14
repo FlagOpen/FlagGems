@@ -9,18 +9,20 @@ from ..utils.shape_utils import can_use_int32_index
 
 
 def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
+    warps = [1]
     configs = [
-        triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=w)
+        triton.Config({"M_BLOCK_SIZE": 128, "N_BLOCK_SIZE": 2048}, num_warps=w)
         for w in warps
     ]
     return configs
 
 
 def cfggen_batch():
-    warps = [1, 2, 4, 8, 16, 32]
+    warps = [1]
     configs = [
-        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=w)
+        triton.Config(
+            {"BATCH_BLOCK_SIZE": 256, "MN_BLOCK_SIZE": 512 * 8192}, num_warps=w
+        )
         for w in warps
     ]
     return configs
@@ -57,8 +59,21 @@ def triu_kernel(
         tl.store(Y + cols, y, mask=mask)
 
 
+def heur_batch_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["batch"], 8))  # cluster_num
+
+
+def heur_mn_block_size(args):
+    return args["MN"]
+
+
 @libentry()
-@triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+@triton.heuristics(
+    {
+        "BATCH_BLOCK_SIZE": heur_batch_block_size,
+        "MN_BLOCK_SIZE": heur_mn_block_size,
+    }
+)
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,

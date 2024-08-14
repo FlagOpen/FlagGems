@@ -9,10 +9,7 @@ from flag_gems.utils.shape_utils import volume
 
 
 def heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # CLUSTER_NUM = 12
 
 
 def heur_num_warps(args):

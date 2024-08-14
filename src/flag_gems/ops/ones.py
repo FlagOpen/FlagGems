@@ -30,6 +30,7 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = triton.cdiv(N, 8)  # CLUSTER_NUM=8  empty has dirty data
     with torch.cuda.device(device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        ones_kernel[grid_fn](out, N, BLOCK_SIZE=BLOCK_SIZE)
     return out

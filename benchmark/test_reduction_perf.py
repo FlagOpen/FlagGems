@@ -6,6 +6,9 @@ from .performance_utils import (
     REDUCTION_BATCH,
     SIZES,
     Benchmark,
+    cross_entropy_loss_args,
+    cumsum_args,
+    layer_norm_args,
     unary_arg,
 )
 
@@ -59,18 +62,6 @@ def test_perf_argmax():
 
 
 def test_perf_cross_entropy_loss():
-    def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        target = torch.randint(
-            0,
-            size,
-            [
-                batch,
-            ],
-            device="cuda",
-        )
-        return inp, target
-
     bench = Benchmark(
         op_name="cross_entropy_loss",
         torch_op=torch.nn.CrossEntropyLoss(),
@@ -83,10 +74,6 @@ def test_perf_cross_entropy_loss():
 
 
 def test_perf_cumsum():
-    def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        return inp, 1
-
     bench = Benchmark(
         op_name="cumsum",
         torch_op=torch.cumsum,
@@ -131,31 +118,6 @@ def test_perf_groupnorm():
 
 
 def test_perf_layernorm():
-    def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return (
-            inp,
-            [
-                size,
-            ],
-            weight,
-            bias,
-        )
-
     bench = Benchmark(
         op_name="layernorm",
         torch_op=torch.layer_norm,

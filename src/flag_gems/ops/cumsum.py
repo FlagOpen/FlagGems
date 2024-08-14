@@ -14,12 +14,12 @@ def heur_block_n(args):
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
+        # triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
+        # triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
+        # triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
+        # triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
+        # triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=5),
     ],
     key=[
         "M",
@@ -42,16 +42,18 @@ def cumsum_kernel(
     BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None, None] * N * K + n_offset[None, :, None] * K + pid_k
-    mask = m_offset[:, None, None] < M and n_offset[None, :, None] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask).to(tl.float32)
-    result = tl.cumsum(inp_vals, axis=1)
-    out_ptrs = out + offset
-    tl.store(out_ptrs, result, mask=mask)
+
+    for xoffset in range(pid_m * BLOCK_M, pid_m * BLOCK_M + BLOCK_M, 1):
+        row_mask = xoffset < M
+        sum_base = 0.0
+        for yoffset in range(0, BLOCK_N, 1):
+            col_mask = yoffset < N
+            mask = row_mask and col_mask
+            inp_ptrs = inp + xoffset * N + yoffset
+            inp_vals = tl.load(inp_ptrs, mask).to(tl.float32)
+            sum_base = sum_base + inp_vals
+            out_ptrs = out + xoffset * N + yoffset
+            tl.store(out_ptrs, sum_base, mask)
 
 
 def cumsum(inp, dim=1, *, dtype=None):

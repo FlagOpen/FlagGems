@@ -12,7 +12,7 @@ except ImportError:
     try:
         from triton.language.math import erf, pow, tanh
     except ImportError:
-        from triton.language.libdevice import erf, pow, tanh
+        from triton.language.libdevice_xpu import erf, pow, tanh
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])

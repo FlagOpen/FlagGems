@@ -11,10 +11,10 @@ from ..utils import libentry
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=w)
-        for m in [32, 64, 128]
-        for n in [1, 2, 4, 8]
-        for s in [3, 4]
-        for w in [4, 8]
+        for m in [128]
+        for n in [128]
+        for s in [4]
+        for w in [8]
     ],
     key=["M", "N"],
 )
@@ -23,12 +23,12 @@ def mv_kernel(
     A,
     B,
     C,
-    N,
-    M,
-    stride_an,
-    stride_am,
-    stride_bm,
-    stride_cn,
+    N: tl.constexpr,
+    M: tl.constexpr,
+    stride_an: tl.constexpr,
+    stride_am: tl.constexpr,
+    stride_bm: tl.constexpr,
+    stride_cn: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
@@ -42,7 +42,9 @@ def mv_kernel(
     for m in range(0, M, BLOCK_M):
         m_mask = m + offset_m < M
         a = tl.load(A_ptrs, mask=n_mask & m_mask, other=0.0).to(tl.float32)
+        a = tl.where(n_mask & m_mask, a, 0.0)
         b = tl.load(B_ptrs, mask=m_mask, other=0.0).to(tl.float32)
+        b = tl.where(m_mask, b, 0.0)
         acc += a * b
         A_ptrs += BLOCK_M * stride_am
         B_ptrs += BLOCK_M * stride_bm

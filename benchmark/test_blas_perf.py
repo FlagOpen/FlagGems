@@ -1,6 +1,13 @@
 import torch
 
-from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, SIZES, Benchmark
+from .performance_utils import (
+    BLAS_BATCH,
+    DEFAULT_BATCH,
+    FLOAT_DTYPES,
+    SIZES,
+    Benchmark,
+    mv_args,
+)
 
 
 def test_perf_addmm():
@@ -62,11 +69,6 @@ def test_perf_mm():
 
 
 def test_perf_mv():
-    def mv_args(dtype, batch, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([size], dtype=dtype, device="cuda")
-        return inp1, inp2
-
     bench = Benchmark(
         op_name="mv",
         torch_op=torch.mv,

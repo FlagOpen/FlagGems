@@ -11,7 +11,7 @@ except ImportError:
     try:
         from triton.language.math import isnan as _isnan
     except ImportError:
-        from triton.language.libdevice import isnan as _isnan
+        from triton.language.libdevice_xpu import isnan as _isnan
 
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])

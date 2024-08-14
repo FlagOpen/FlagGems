@@ -4,139 +4,72 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from ..utils import libentry
 
 
-def heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+def heur_n_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # CLUSTER_NUM = 12
 
 
-def heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
-
-
+@libentry()
 @triton.heuristics(
     {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
+        "N_BLOCK_SIZE": heur_n_block_size,
     }
 )
-@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
+@triton.jit
 def dropout_forward_kernel(
     X,
     Y,
-    N,
-    p,
-    philox_seed,
-    philox_offset,
-    BLOCK: tl.constexpr,
+    Mask,
+    N: tl.constexpr,
+    p: tl.constexpr,
+    N_BLOCK_SIZE: tl.constexpr,
 ):
-    UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
+    pid = tl.program_id(0) * N_BLOCK_SIZE
+    offset = pid + tl.arange(0, N_BLOCK_SIZE)
+    mask = offset < N
+    X_ptr = X + offset
+    Y_ptr = Y + offset
+    Mask_ptr = Mask + offset
 
-    mask0 = r0 > p
-    mask1 = r1 > p
-    mask2 = r2 > p
-    mask3 = r3 > p
-    p = 1.0 / (1.0 - p)
-
-    off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-
-    x0 = tl.load(X + off_0, mask=off_0 < N, other=0.0, eviction_policy="evict_first")
-    x1 = tl.load(X + off_1, mask=off_1 < N, other=0.0, eviction_policy="evict_first")
-    x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0, eviction_policy="evict_first")
-    x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0, eviction_policy="evict_first")
-
-    y0 = x0 * p * mask0  # tl.where(mask0, x0 * p, 0.0)
-    y1 = x1 * p * mask1  # tl.where(mask1, x1 * p, 0.0)
-    y2 = x2 * p * mask2  # tl.where(mask2, x2 * p, 0.0)
-    y3 = x3 * p * mask3  # tl.where(mask3, x3 * p, 0.0)
-
-    tl.store(Y + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(Y + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(Y + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(Y + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
+    inp = tl.load(X_ptr, mask=mask, other=0.0)
+    # random seed (lucky number)
+    seed = 7
+    pmask = tl.rand(seed, offset) > p
+    output = tl.where(pmask, inp, 0.0)
+    output = output * (1.0 / (1.0 - p))
+    tl.store(Y_ptr, output.to(inp.dtype), mask=mask)
+    tl.store(Mask_ptr, pmask.to(tl.int8), mask=mask)
 
 
+@libentry()
 @triton.heuristics(
     {
-        "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
+        "N_BLOCK_SIZE": heur_n_block_size,
     }
 )
-@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
+@triton.jit
 def dropout_backward_kernel(
     DY,
+    MASK,
     DX,
-    N,
-    p,
-    philox_seed,
-    philox_offset,
-    BLOCK: tl.constexpr,
+    N: tl.constexpr,
+    scale: tl.constexpr,
+    N_BLOCK_SIZE: tl.constexpr,
 ):
-    UNROLL = 4
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
+    pid = tl.program_id(0) * N_BLOCK_SIZE
+    offset = pid + tl.arange(0, N_BLOCK_SIZE)
+    mask = offset < N
+    DY_ptr = DY + offset
+    MASK_ptr = MASK + offset
+    DX_ptr = DX + offset
 
-    mask0 = r0 > p
-    mask1 = r1 > p
-    mask2 = r2 > p
-    mask3 = r3 > p
-    off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
-
-    dy_0 = tl.load(DY + off_0, mask=off_0 < N, other=0.0, eviction_policy="evict_first")
-    dy_1 = tl.load(DY + off_1, mask=off_1 < N, other=0.0, eviction_policy="evict_first")
-    dy_2 = tl.load(DY + off_2, mask=off_2 < N, other=0.0, eviction_policy="evict_first")
-    dy_3 = tl.load(DY + off_3, mask=off_3 < N, other=0.0, eviction_policy="evict_first")
-
-    p = 1.0 / (1.0 - p)
-    dx_0 = p * dy_0 * mask0
-    dx_1 = p * dy_1 * mask1
-    dx_2 = p * dy_2 * mask2
-    dx_3 = p * dy_3 * mask3
-
-    tl.store(DX + off_0, dx_0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(DX + off_1, dx_1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(DX + off_2, dx_2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(DX + off_3, dx_3, mask=off_3 < N, eviction_policy="evict_first")
-
-
-UNROLL = 4
+    dy = tl.load(DY_ptr, mask=mask, other=0.0)
+    Mask = tl.load(MASK_ptr, mask=mask, other=0.0)
+    output = dy * Mask
+    output = output * scale
+    tl.store(DX_ptr, output.to(dy.dtype), mask=mask)
 
 
 class NativeDropout(torch.autograd.Function):
@@ -144,34 +77,26 @@ class NativeDropout(torch.autograd.Function):
     def forward(ctx, x, p, train):
         logging.debug("GEMS NATIVE DROPOUT FORWARD")
         assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
-        device = x.device
         x = x.contiguous()
-        out = torch.empty_like(x)
+        output = torch.empty_like(x)
+        Mask = torch.empty(x.shape, dtype=torch.bool, device=x.device)
         N = x.numel()
-        grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
-        # hence we cannot obtain the per thread offset as in Pytorch.
-        increment = triton.cdiv(N, UNROLL)
-        with torch.cuda.device(device):
-            philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-            dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
+        grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
+        dropout_forward_kernel[grid_fn](x, output, Mask, N, p)
+        ctx.save_for_backward(Mask)
         ctx.p = p
-        ctx.philox_seed = philox_seed
-        ctx.philox_offset = philox_offset
-        return out, None
+        return output, Mask
 
     @staticmethod
     def backward(ctx, grad_outputs, kwargs):
         logging.debug("GEMS NATIVE DROPOUT BACKWARD")
-        device = grad_outputs.device
+        (Mask,) = ctx.saved_tensors
+        scale = 1.0 / (1.0 - ctx.p)
         grad_outputs = grad_outputs.contiguous()
         grad_inputs = torch.empty_like(grad_outputs)
         N = grad_outputs.numel()
-        grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-        with torch.cuda.device(device):
-            dropout_backward_kernel[grid_fn](
-                grad_outputs, grad_inputs, N, ctx.p, ctx.philox_seed, ctx.philox_offset
-            )
+        grid_fn = lambda meta: (triton.cdiv(N, meta["N_BLOCK_SIZE"]),)
+        dropout_backward_kernel[grid_fn](grad_outputs, Mask, grad_inputs, N, scale)
         return grad_inputs, None, None
 
 

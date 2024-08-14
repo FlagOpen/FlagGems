@@ -1,6 +1,6 @@
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode",
+        "--fg_mode",
         action="store",
         default="cuda",
         required=False,
@@ -10,6 +10,6 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    value = config.getoption("--mode")
+    value = config.getoption("--fg_mode")
     global CPU_MODE
     CPU_MODE = value == "cpu"

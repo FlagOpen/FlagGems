@@ -51,7 +51,7 @@ def apply_rotary_pos_emb_kernel(
     sin_ptr += pos_id * sin_stride_s
 
     # note: set TRITON_DEBUG=1 to enable this check
-    tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
+    # tl.device_assert(pos_id < MAX_POSITION_EMBEDDINGS, "position id out of bound")
 
     ordered_block = tl.arange(0, PADDED_HEAD_DIM)
     mask = ordered_block < HEAD_DIM

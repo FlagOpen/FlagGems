@@ -8,10 +8,7 @@ from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_unifor
 
 
 def heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # CLUSTER_NUM = 12
 
 
 def heur_num_warps(args):
@@ -33,7 +30,7 @@ def heur_num_warps(args):
 def fused_exponential_kernel(
     out_ptr,
     N,
-    is_double,
+    is_double: tl.constexpr,
     lambd,
     eps,
     philox_seed,
@@ -81,7 +78,7 @@ def fused_exponential_kernel(
 
 
 @triton.jit
-def paste_u64(hi: tl.uint32, lo: tl.uint32):
+def paste_u64(hi, lo):  # sig err
     hi = hi.to(tl.uint64) << 32
     x = hi | lo.to(tl.uint64)
     return x
@@ -91,7 +88,7 @@ def paste_u64(hi: tl.uint32, lo: tl.uint32):
 def transform_exponential(u, lambd, eps):
     eps1 = -0.5 * eps
     is_min = u >= 1.0 + eps1
-    log = tl.where(is_min, eps1, tl.math.log(u))
+    log = tl.where(is_min, eps1, tl.libdevice.log2(u))
     v = -1.0 / lambd * log
     return v
 

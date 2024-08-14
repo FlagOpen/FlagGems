@@ -9,6 +9,9 @@ from flag_gems.utils.shape_utils import volume
 
 
 def heur_block(args):
+    return triton.next_power_of_2(
+        triton.cdiv(args["N"], 12 * UNROLL)
+    )  # CLUSTER_NUM = 12
     if args["N"] <= 512:
         return 512
     else:
