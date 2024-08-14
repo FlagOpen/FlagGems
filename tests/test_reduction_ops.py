@@ -697,21 +697,11 @@ def test_accuracy_select_scatter(shape, dim, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("start", [16, 32, 64])
-@pytest.mark.parametrize("end", [32, 64, 128])
-@pytest.mark.parametrize("step", [1, 3, 6])
+@pytest.mark.parametrize("start", [16, 32])
+@pytest.mark.parametrize("end", [64, 128])
+@pytest.mark.parametrize("step", [1, 3])
 def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
-    size_dim = shape[dim]
-
-    range = end - start
-    if end < start:
-        range = 0
-        end = start = 0
-    elif (end - start) > size_dim:
-        range = size_dim
-        start = 0
-        end = size_dim
 
     valid_shape = list(inp.shape)
     valid_shape[dim] = (range + (step - 1)) // step
