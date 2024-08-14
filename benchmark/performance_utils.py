@@ -27,7 +27,6 @@ class Benchmark:
         if is_backward:
             self.op_name += " backward"
         self.torch_op = torch_op
-        self.gems_op = None
         self.arg_func = arg_func
         self.kwargs_func = kwargs_func
         self.dtypes = dtypes
@@ -66,6 +65,38 @@ class Benchmark:
         return latency
 
     def run(self):
+        return self.run_rawdata()
+
+    def run_rawdata(self):
+        print(f"\nOperator_Speedup_Test_Result\t{self.op_name}")
+        for size in self.sizes:
+            print(f"Operator_Speedup_Test_Result\t{size}\t", end="")
+            for dtype in self.dtypes:
+                args = ()
+                if self.arg_func is not None:
+                    args = self.arg_func(dtype, self.batch, size)
+                if self.is_backward:
+                    args = tuple(
+                        a.clone().requires_grad_()
+                        if torch.is_tensor(a) and torch.is_floating_point(a)
+                        else a
+                        for a in args
+                    )
+
+                kwargs = {}
+                if self.kwargs_func is not None:
+                    kwargs = self.kwargs_func(dtype, self.batch, size)
+
+                torch_perf = self.profile(self.torch_op, *args, **kwargs)
+                if self.gems_op:
+                    gems_perf = self.profile(self.gems_op, *args, **kwargs)
+                else:
+                    with flag_gems.use_gems():
+                        gems_perf = self.profile(self.torch_op, *args, **kwargs)
+                print(f"{torch_perf}\t{gems_perf}\t", end="")
+            print()
+
+    def run_speedup(self):
         kep = []
         for dtype in self.dtypes:
             # print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
@@ -111,35 +142,35 @@ SIZES = [i * 64 for i in range(1, 22, 5)]
 
 
 def unary_arg(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
     return (inp,)
 
 
 def unary_int_arg(dtype, batch, size):
     inp = torch.randint(
         low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     return (inp,)
 
 
 def binary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
     return inp1, inp2
 
 
 def binary_int_args(dtype, batch, size):
     inp1 = torch.randint(
         low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     inp2 = torch.randint(
         low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
-    ).to(DEVICE)
+    ).to("cuda")
     return inp1, inp2
 
 
 def ternary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-    inp3 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    inp3 = torch.randn([batch, size], dtype=dtype, device="cuda")
     return inp1, inp2, inp3

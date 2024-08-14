@@ -6,7 +6,6 @@ from .performance_utils import (
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
-    DEVICE,
     Benchmark,
     binary_args,
     binary_int_args,
@@ -394,8 +393,8 @@ def test_perf_triu():
 
 def test_perf_where():
     def where_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-        inp2 = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
         condition = inp1 > 0
         return condition, inp1, inp2
 
@@ -522,5 +521,23 @@ def test_perf_flip_int():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=flip_kwargs,
+    )
+    bench.run()
+
+
+def test_masked_fill():
+    def masked_fill_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        value = 1024
+        return (inp, mask, value)
+
+    bench = Benchmark(
+        op_name="masked_fill",
+        torch_op=torch.masked_fill,
+        arg_func=masked_fill_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
     )
     bench.run()

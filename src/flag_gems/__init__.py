@@ -3,6 +3,11 @@ import torch
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
+
 __version__ = "2.0"
 
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -31,6 +36,7 @@ def enable(lib=aten_lib):
     lib.impl("eq.Tensor", eq, "PrivateUse1")
     lib.impl("eq.Scalar", eq_scalar, "PrivateUse1")
     lib.impl("exp", exp, "PrivateUse1")
+    lib.impl("exponential_", exponential_, "PrivateUse1")
     lib.impl("ge.Tensor", ge, "PrivateUse1")
     lib.impl("ge.Scalar", ge_scalar, "PrivateUse1")
     lib.impl("gelu", gelu, "PrivateUse1")
@@ -49,7 +55,19 @@ def enable(lib=aten_lib):
     lib.impl("rand", rand, "PrivateUse1")
     lib.impl("randn", randn, "PrivateUse1")
     lib.impl("rand_like", rand_like, "PrivateUse1")
-
+    lib.impl("zeros", zeros, "PrivateUse1")
+    lib.impl("ones", ones, "PrivateUse1")
+    lib.impl("full", full, "PrivateUse1")
+    lib.impl("zeros_like", zeros_like, "PrivateUse1")
+    lib.impl("ones_like", ones_like, "PrivateUse1")
+    lib.impl("full_like", full_like, "PrivateUse1")
+    lib.impl("resolve_neg", resolve_neg, "PrivateUse1")
+    lib.impl("resolve_conj", resolve_conj, "PrivateUse1")
+    lib.impl("normal.Tensor_float", normal_tensor_float, "PrivateUse1")
+    lib.impl("normal.float_Tensor", normal_float_tensor, "PrivateUse1")
+    lib.impl("normal.Tensor_Tensor", normal_tensor_tensor, "PrivateUse1")
+    lib.impl("normal.float_float", normal_float_float, "PrivateUse1")
+    lib.impl("uniform_", uniform_, "PrivateUse1")
     lib.impl("mean", mean, "PrivateUse1")
     lib.impl("mean.dim", mean_dim, "PrivateUse1")
     lib.impl("mm", mm, "PrivateUse1")
@@ -71,6 +89,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "PrivateUse1")
     lib.impl("tanh", tanh, "AutogradPrivateUse1")
     lib.impl("triu", triu, "PrivateUse1")
+    lib.impl("topk", topk, "PrivateUse1")
     lib.impl("var_mean.correction", var_mean, "PrivateUse1")
     lib.impl("linalg_vector_norm", vector_norm, "PrivateUse1")
     lib.impl("where.self", where_self, "PrivateUse1")
@@ -98,6 +117,7 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "PrivateUse1")
     lib.impl("allclose", allclose, "PrivateUse1")
     lib.impl("flip", flip, "PrivateUse1")
+    lib.impl("masked_fill", masked_fill, "PrivateUse1")
 
 
 class use_gems:

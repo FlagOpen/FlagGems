@@ -78,7 +78,7 @@ def all_kernel_1(
 
     # Reset to original reduce programming mode after optimizing the tl.reduce.
     for x in tl.static_range(1, int(ITER_NUM), 1):
-        _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] and _tmp[BLOCK_SIZE // (2 ** x):BLOCK_SIZE // (2 ** (x - 1))]
+        _tmp[:BLOCK_SIZE // (2 ** x)] = _tmp[:BLOCK_SIZE // (2 ** x)] and _tmp[BLOCK_SIZE // (2 ** x):(BLOCK_SIZE // (2 ** x)) * 2]
 
     tl.atomic_and(out, _tmp[0].to(tl.int32))
 
@@ -90,7 +90,7 @@ def all(inp):
 
     out = torch.ones([], dtype=torch.int32, device=inp.device)
 
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         all_kernel_1[grid](inp, out, M)
 
     return out.to(torch.bool)
@@ -114,7 +114,7 @@ def all_dim(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch.mlu.device(inp.device):
+        with torch.cuda.device(inp.device):
             all_kernel_dim[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
@@ -139,7 +139,7 @@ def all_dims(inp, dim=None, keepdim=False):
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)

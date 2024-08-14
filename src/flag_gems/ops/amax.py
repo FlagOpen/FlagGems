@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from ..utils.shape_utils import can_use_int32_index
 
 
 @libentry()
@@ -14,19 +15,23 @@ from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 def amax_kernel_1(
     inp,
     out,
+    FILL_VALUE,
     M,
     BLOCK_SIZE: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
+    if INT64_INDEX:
+        pid = pid.to(tl.int64)
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
-    _tmp = tl.full([BLOCK_SIZE], value=-float("inf"), dtype=tl.float32)
+    _tmp = tl.full([BLOCK_SIZE], value=FILL_VALUE, dtype=inp.dtype.element_ty)
     block_start = block_start.to(tl.int64)
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
         _tmp = tl.where((_tmp < inp_val), inp_val, _tmp)
 
     amax_val = tl.max(_tmp)
@@ -51,9 +56,12 @@ def amax_kernel(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tl.program_id(0)
+    if INT64_INDEX:
+        pid = pid.to(tl.int64)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + rows * N
     out = out + rows
@@ -77,6 +85,7 @@ def amax(inp, dim=None, keepdim=False):
         M = inp.numel()
         grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
         dtype = inp.dtype
+        use_int64_index = not can_use_int32_index(inp)
         if not keepdim:
             out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
         else:
@@ -84,8 +93,9 @@ def amax(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.full(shape, float("-inf"), dtype=torch.float32, device=inp.device)
-        with torch.mlu.device(inp.device):
-            amax_kernel_1[grid](inp, out, M)
+        with torch.cuda.device(inp.device):
+            fill_value = torch.finfo(inp.dtype).min
+            amax_kernel_1[grid](inp, out, fill_value, M, INT64_INDEX=use_int64_index)
         return out.to(dtype)
     else:
         if isinstance(dim, int):
@@ -96,6 +106,7 @@ def amax(inp, dim=None, keepdim=False):
         shape = list(inp.shape)
         dim = [d % inp.ndim for d in dim]
         inp = dim_compress(inp, dim)
+        use_int64_index = not can_use_int32_index(inp)
         N = 1
         for i in dim:
             N *= shape[i]
@@ -105,8 +116,8 @@ def amax(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch.mlu.device(inp.device):
-            amax_kernel[grid](inp, out, M, N)
+        with torch.cuda.device(inp.device):
+            amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out

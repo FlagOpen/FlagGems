@@ -6,6 +6,10 @@ from transformers import AutoTokenizer, BertConfig, BertModel
 
 import flag_gems
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
 
 @pytest.mark.parametrize(
     "prompt",
@@ -16,16 +20,16 @@ def test_accuracy_bert(prompt, dtype):
     config = BertConfig()
     model = BertModel(config)
     tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
-    inputs = tokenizer(prompt, return_tensors="pt").to("mlu")
+    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
     ref_model = copy.deepcopy(model)
-    ref_model.to(torch.float32).to("mlu").eval()
+    ref_model.to(torch.float32).to("cuda").eval()
     ref_inputs = copy.deepcopy(inputs).to(torch.float32)
     with torch.no_grad():
         ref_outputs = ref_model(**ref_inputs).last_hidden_state.to(dtype)
 
     res_model = copy.deepcopy(model)
-    res_model.to(dtype).to("mlu").eval()
+    res_model.to(dtype).to("cuda").eval()
     res_inputs = copy.deepcopy(inputs).to(dtype)
     with flag_gems.use_gems():
         with torch.no_grad():

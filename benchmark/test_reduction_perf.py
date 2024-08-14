@@ -5,7 +5,6 @@ from .performance_utils import (
     FLOAT_DTYPES,
     REDUCTION_BATCH,
     SIZES,
-    DEVICE,
     Benchmark,
     unary_arg,
 )
@@ -61,14 +60,14 @@ def test_perf_argmax():
 
 def test_perf_cross_entropy_loss():
     def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         target = torch.randint(
             0,
             size,
             [
                 batch,
             ],
-            device=DEVICE,
+            device="cuda",
         )
         return inp, target
 
@@ -85,14 +84,14 @@ def test_perf_cross_entropy_loss():
 
 def test_perf_cross_entropy_loss_backward():
     def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         target = torch.randint(
             0,
             size,
             [
                 batch,
             ],
-            device=DEVICE,
+            device="cuda",
         )
         return inp, target
 
@@ -110,7 +109,7 @@ def test_perf_cross_entropy_loss_backward():
 
 def test_perf_cumsum():
     def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         return inp, 1
 
     bench = Benchmark(
@@ -128,20 +127,20 @@ def test_perf_groupnorm():
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return inp, G, weight, bias
 
@@ -159,20 +158,20 @@ def test_perf_groupnorm_backward():
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return inp, G, weight, bias
 
@@ -189,20 +188,20 @@ def test_perf_groupnorm_backward():
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return (
             inp,
@@ -226,9 +225,9 @@ def test_perf_layernorm():
 
 def test_perf_layernorm_backward():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
-        weight = torch.randn([size,], dtype=dtype, device=DEVICE,)
-        bias = torch.randn([size,], dtype=dtype, device=DEVICE,)
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        weight = torch.randn([size,], dtype=dtype, device="cuda",)
+        bias = torch.randn([size,], dtype=dtype, device="cuda",)
         return (inp, [size,], weight, bias,)
     bench = Benchmark(
         op_name="layernorm",

@@ -26,7 +26,7 @@ def sum_kernel_1(
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
         mask = offset < M
-        inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+        inp_val = tl.load(inp + offset, mask=mask, other=0.0)
         _tmp = inp_val + _tmp
 
     sum_val = tl.sum(_tmp)
@@ -82,7 +82,7 @@ def sum(inp, *, dtype=None):
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     out = torch.zeros([], dtype=torch.float32, device=inp.device)
 
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         sum_kernel_1[grid](inp, out, M)
     return out.to(dtype)
 
@@ -106,7 +106,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         sum_kernel[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)

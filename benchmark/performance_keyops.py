@@ -5,7 +5,7 @@ import triton
 
 import flag_gems
 
-from .conftest import CPU_MODE, DEVICE
+from .conftest import CPU_MODE
 
 WARMUP = 100
 REPETITION = 1000
@@ -28,7 +28,6 @@ class Benchmark:
         if is_backward:
             self.op_name += " backward"
         self.torch_op = torch_op
-        self.gems_op = None
         self.arg_func = arg_func
         self.kwargs_func = kwargs_func
         self.dtypes = dtypes
@@ -100,7 +99,7 @@ class Benchmark:
             print(
                 f"\nOperator_Speedup_Test_Result("
                 + ":".join([str(x) for x in self.dtypes])
-                + f"):\t{self.op_name}\t{str(size)}\t"
+                + f"):\t{self.op_name}\t{self.batch}x{str(size)}\t"
                 + "\t".join([str(x) for x in kep])
             )
 
@@ -111,7 +110,7 @@ SIZES = [32, 96, 8192, 20480, 32768]
 
 
 def unary_arg(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
     return (inp,)
 
 
@@ -141,20 +140,20 @@ def test_perf_sigmoid():
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device=DEVICE)
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         bias = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device=DEVICE,
+            device="cuda",
         )
         return (
             inp,

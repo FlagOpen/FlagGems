@@ -51,7 +51,7 @@ class RmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        with torch.mlu.device(x.device):
+        with torch.cuda.device(x.device):
             rms_norm_kernel[M,](y, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
         return y
 

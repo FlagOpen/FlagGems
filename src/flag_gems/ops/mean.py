@@ -43,7 +43,7 @@ def mean(inp, *, dtype=None):
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     out = torch.zeros([], dtype=torch.float32, device=inp.device)
 
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         mean_kernel_1[grid](inp, out, M)
     return out.to(dtype)
 
@@ -103,7 +103,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), TOTAL_CORE_NUM),)
-    with torch.mlu.device(x.device):
+    with torch.cuda.device(x.device):
         mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
         out = out.squeeze(dim)

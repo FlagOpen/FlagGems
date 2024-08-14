@@ -3,37 +3,106 @@ import math
 
 import torch
 import triton
+import copy
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
 
+MAX_C_MLU_LAYERNORM_FORWARD = 1400
 MAX_C_MLU_LAYERNORM_BACKWARD = 8192
 
+def config_prune(configs, named_args, **kwargs):
+    M = named_args["M"]
+    pruned_configs = []
+    for config in configs:
+        BLOCK_M = config.kwargs["BLOCK_ROW_SIZE"]
+        if (M >= 1024 and BLOCK_M >= 22) or (M < 1024 and BLOCK_M < 22):
+            pruned_configs.append(config)
+    return pruned_configs
+
 def cfggen():
-    block_m = [3, 6, 11, 22]  #[1, 2, 4]
-    block_n = [64, 128, 192, 256, 512]
+    configs = [
+        triton.Config({"BLOCK_ROW_SIZE": 2}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 8}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 14}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 22}, num_warps=1, num_stages=1),
+        triton.Config({"BLOCK_ROW_SIZE": 32}, num_warps=1, num_stages=1),
+    ]
+    return configs
+
+@libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"], prune_configs_by={'early_config_prune': config_prune})
+@triton.jit(do_not_specialize=["eps"])
+def layer_norm_kernel_non_inner(
+    X,
+    Y,
+    W,
+    B,
+    Mean,  # pointer to the mean
+    Rstd,  # pointer to the 1/std
+    M,
+    N,
+    eps,
+    BLOCK_ROW_SIZE: tl.constexpr,
+    BLOCK_COL_SIZE: tl.constexpr
+):
+    # Map the program id to the row of X and Y it should compute.
+    pid = tl.program_id(0)
+    row = pid * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    row_mask = row < M
+    X += row * N
+    Y += row * N
+    # BLOCK_COL_SIZE = N
+
+    # Compute mean
+    _mean = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    # Compute variance
+    _var = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
+    # for off in range(0, N, BLOCK_COL_SIZE):
+    cols = tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    col_mask = cols < N
+    mask = row_mask and col_mask
+    a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
+    _mean += a
+    _var += a * a
+    mean = tl.sum(_mean, axis=1) / N
+    mean_bc = mean[:, None]
+
+    a = tl.where(col_mask, a - mean_bc, 0.0)
+    # Write mean / rstd
+    tl.store(Mean + row, mean_bc, row_mask)
+    var = tl.sum(_var, axis=1) / N - (mean * mean)
+    var = var[:, None]
+    rstd = 1 / tl.sqrt(var + eps)
+    x_hat = a * rstd
+    tl.store(Rstd + row, rstd, row_mask)
+
+    # Normalize and apply linear transformation
+    w = tl.load(W + cols, col_mask)
+    b = tl.load(B + cols, col_mask)
+    y = x_hat * w + b
+    # Write output
+    tl.store(Y + cols, y, mask=mask)
+
+def cfggen1():
+    block_m = [2, 8, 14, 22]
+    block_n = [i for i in range(64, 513, 64)]
+    warps = [1]
+    num_stages = [5]
     configs = [
         triton.Config({
             "BLOCK_ROW_SIZE": m,
             "BLOCK_COL_SIZE": n
-        }) for m in block_m for n in block_n
+        },
+                      num_warps=w,
+                      num_stages=s) for m in block_m for n in block_n
+        for w in warps for s in num_stages
     ]
     return configs
-
-def num_stages(args):
-    return 3
-
-def num_warps(args):
-    return 1
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
-@triton.heuristics({
-    'num_stages': lambda args: num_stages(args),
-    'num_warps': lambda args: num_warps(args),
-})
+@triton.autotune(configs=cfggen1(), key=["M", "N"], prune_configs_by={'early_config_prune': config_prune})
 @triton.jit(do_not_specialize=["eps"])
-def layer_norm_kernel(
+def layer_norm_kernel_inner(
     X,
     Y,
     W,
@@ -61,7 +130,6 @@ def layer_norm_kernel(
         cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
-
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
         _var += a * a
@@ -80,7 +148,6 @@ def layer_norm_kernel(
         cols = off + tl.arange(0, BLOCK_COL_SIZE)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
-
         w = tl.load(W + cols, col_mask)
         b = tl.load(B + cols, col_mask)
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
@@ -316,9 +383,12 @@ class LayerNorm(torch.autograd.Function):
         mean = torch.empty(M, dtype=x.dtype, device=x.device)
         rstd = torch.empty(M, dtype=x.dtype, device=x.device)
         grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-
-        with torch.mlu.device(x.device):
-            layer_norm_kernel[grid](x, y, weight, bias, mean, rstd, M, N, eps)
+        if N <= MAX_C_MLU_LAYERNORM_FORWARD:
+            with torch.cuda.device(x.device):
+                layer_norm_kernel_non_inner[grid](x, y, weight, bias, mean, rstd, M, N, eps, BLOCK_COL_SIZE=N)
+        else:
+            with torch.cuda.device(x.device):
+                layer_norm_kernel_inner[grid](x, y, weight, bias, mean, rstd, M, N, eps)
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
         ctx.N = N
@@ -337,7 +407,7 @@ class LayerNorm(torch.autograd.Function):
             # enqueue kernel using forward pass heuristics
             # also compute partial sums for DW and DB
             grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), TOTAL_CORE_NUM),)
-            with torch.mlu.device(x.device):
+            with torch.cuda.device(x.device):
                 layer_norm_backward_kernel[grid](
                     in_grad,
                     out_grad,
@@ -369,7 +439,7 @@ class LayerNorm(torch.autograd.Function):
             weight_grad = torch.empty_like(weight)
             bias_grad = torch.empty_like(weight)
             grid = lambda META: (min(triton.cdiv(N, META['BLOCK_COL_SIZE']), TOTAL_CORE_NUM),)
-            with torch.mlu.device(x.device):
+            with torch.cuda.device(x.device):
                 weight_bias_backward_kernel[grid](
                     out_grad,
                     x,

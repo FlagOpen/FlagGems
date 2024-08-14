@@ -187,6 +187,6 @@ def cumsum(inp, dim=1, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.mlu.device(inp.device):
+    with torch.cuda.device(inp.device):
         cumsum_blelloch[grid](inp, out, M, N, K)
     return out
