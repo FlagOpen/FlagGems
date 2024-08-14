@@ -333,6 +333,26 @@ def test_perf_select_scatter():
         op_name="slice_scatter",
         torch_op=torch.select_scatter,
         arg_func=select_scatter_args,
+
+
+def test_perf_index_select():
+    def index_select_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+
+        threshold = 0.1
+        dim = 0
+        index_size = inp.size(dim)
+        from math import floor
+
+        index = torch.randint(
+            0, index_size, [floor(index_size * threshold)], device="cuda"
+        )
+        return (inp, dim, index)
+
+    bench = Benchmark(
+        op_name="index_select",
+        torch_op=torch.index_select,
+        arg_func=index_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
