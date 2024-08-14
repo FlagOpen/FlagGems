@@ -5,8 +5,17 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils.shape_utils import volume
+from ..utils import TOTAL_CORE_NUM
 
-
+@triton.autotune(
+    configs=[
+        triton.Config(kwargs={'BLOCK_SIZE': 1024}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={'BLOCK_SIZE': 4096}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={'BLOCK_SIZE': 16384}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={'BLOCK_SIZE': 65536}, num_stages=1, num_warps=1),
+    ],
+    key=['n_elements'],
+)
 @triton.jit
 def zeros_kernel(
     output_ptr,
@@ -14,10 +23,14 @@ def zeros_kernel(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)  # We use a 1D launch grid so axis is 0.
+    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    tl.store(output_ptr + offsets, 0.0, mask=mask)
+    step = num_jobs * BLOCK_SIZE
+    block_start = block_start.to(tl.int64)
+    for block_start_offset in range(block_start, n_elements, step):
+        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        tl.store(output_ptr + offsets, 0.0, mask=mask)
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
@@ -29,7 +42,7 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch.cuda.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        zeros_kernel[grid_fn](out, N)
     return out
