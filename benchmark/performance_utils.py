@@ -102,6 +102,7 @@ class Benchmark:
             print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
             speedup = 0
             for size in self.sizes:
+                print(f"Operator_Speedup_Test_Result\t{size}\t", end="")
                 args = ()
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)

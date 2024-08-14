@@ -152,7 +152,8 @@ def test_perf_groupnorm():
         batch=BLAS_BATCH,
         sizes=SIZES,
     )
-    bench.run()
+    #bench.run()
+    bench.run_speedup()
 
 def test_perf_groupnorm_backward():
     def group_norm_args(dtype, batch, size):
@@ -180,11 +181,13 @@ def test_perf_groupnorm_backward():
         torch_op=torch.nn.functional.group_norm,
         arg_func=group_norm_args,
         dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
+        #batch=BLAS_BATCH,
+        batch=REDUCTION_BATCH,
         sizes=SIZES,
         is_backward=True,
     )
-    bench.run()
+    #bench.run()
+    bench.run_speedup()
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
