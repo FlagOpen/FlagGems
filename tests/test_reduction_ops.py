@@ -721,6 +721,9 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_select(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     index_size = inp.size(dim)
