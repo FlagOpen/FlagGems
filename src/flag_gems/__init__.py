@@ -84,6 +84,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("tanh", tanh, "AutogradCUDA")
     lib.impl("triu", triu, "CUDA")
+    lib.impl("topk", topk, "CUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
     lib.impl("linalg_vector_norm", vector_norm, "CUDA")
     lib.impl("where.self", where_self, "CUDA")
@@ -113,6 +114,7 @@ def enable(lib=aten_lib):
     lib.impl("flip", flip, "CUDA")
     lib.impl("slice_scatter", slice_scatter, "CUDA")
     lib.impl("select_scatter", select_scatter, "CUDA")
+    lib.impl("masked_fill", masked_fill, "CUDA")
 
 
 class use_gems:
