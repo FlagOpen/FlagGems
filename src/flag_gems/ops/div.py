@@ -99,7 +99,7 @@ def floor_divide(A, B):
         return A // B
 
 
-def div(A, B, rounding_mode=None):
+def div_mode(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide(A, B)
     elif rounding_mode == "trunc":

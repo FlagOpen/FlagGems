@@ -17,7 +17,7 @@ from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum
-from .div import div
+from .div import div_mode, floor_divide, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
@@ -108,7 +108,9 @@ __all__ = [
     "clamp_tensor",
     "cos",
     "cumsum",
-    "div",
+    "true_divide",
+    "div_mode",
+    "floor_divide",
     "zeros",
     "ones",
     "full",
