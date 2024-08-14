@@ -50,6 +50,7 @@ def enable(lib=aten_lib):
     lib.impl("rand", rand, "CUDA")
     lib.impl("randn", randn, "CUDA")
     lib.impl("rand_like", rand_like, "CUDA")
+    lib.impl("randn_like", randn_like, "CUDA")
     lib.impl("zeros", zeros, "CUDA")
     lib.impl("ones", ones, "CUDA")
     lib.impl("full", full, "CUDA")

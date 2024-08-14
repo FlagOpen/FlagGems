@@ -62,6 +62,7 @@ from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
+from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .resolve_conj import resolve_conj
@@ -144,6 +145,8 @@ __all__ = [
     "mul",
     "rand",
     "randn",
+    "rand_like",
+    "randn_like",
     "resolve_neg",
     "resolve_conj",
     "normal_tensor_float",
@@ -151,7 +154,6 @@ __all__ = [
     "normal_tensor_tensor",
     "normal_float_float",
     "uniform_",
-    "rand_like",
     "mv",
     "ne",
     "ne_scalar",
