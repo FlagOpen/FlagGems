@@ -816,7 +816,7 @@ def test_perf_mm():
 
 def test_perf_addmm():
     def addmm_args(dtype, m_elements, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device=DEVICE)
+        inp1 = torch.randn([size], dtype=dtype, device=DEVICE)
         inp2 = torch.randn([size, size], dtype=dtype, device=DEVICE)
         inp3 = torch.randn([size, size], dtype=dtype, device=DEVICE)
         return inp1, inp2, inp3

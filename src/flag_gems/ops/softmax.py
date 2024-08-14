@@ -64,9 +64,9 @@ def config_prune1(configs, named_args, **kwargs):
     pruned_configs.append(extra_config)
     return pruned_configs
 
-def softmax_tile_mode1(args):
-    one_tile_k = args["TILE_K"] * max(TOTAL_CORE_NUM // args["M"], 1) >= args["K"]
-    one_tile_n = args["TILE_N"] >= args["N"]
+def softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
+    one_tile_k = TILE_K * max(TOTAL_CORE_NUM // M, 1) >= K
+    one_tile_n = TILE_N >= N
     if one_tile_n and one_tile_k:
         return 0
     elif one_tile_n and not one_tile_k:
@@ -92,8 +92,11 @@ def softmax_tile_mode1(args):
 )
 @triton.heuristics(
     values={
-        "TILE_MODE": lambda args: softmax_tile_mode1(args),
-    }, )
+        "TILE_MODE": lambda args: softmax_tile_mode_for_non_inner(
+            args['M'], args['N'], args['K'], args['TILE_N'], args['TILE_K']
+        ),
+    },
+)
 @triton.jit
 def softmax_kernel_non_inner(
     output_ptr,
@@ -222,7 +225,7 @@ def config_prune2(configs, named_args, **kwargs):
     pruned_configs.append(extra_config)
     return pruned_configs
 
-def softmax_tile_mode2(args):
+def softmax_tile_mode_for_inner(args):
     one_tile_m = args["BLOCK_M"] * TOTAL_CORE_NUM >= args["M"]
     one_tile_n = args["BLOCK_N"] >= args["N"]
     if one_tile_n and one_tile_m:
@@ -250,7 +253,7 @@ def softmax_tile_mode2(args):
 )
 @triton.heuristics(
     values={
-        "TILE_MODE": lambda args: softmax_tile_mode2(args),
+        "TILE_MODE": lambda args: softmax_tile_mode_for_inner(args),
     }, )
 @triton.jit
 def softmax_kernel_inner(
@@ -336,64 +339,68 @@ def softmax_kernel_inner(
 
 # ------------------------  backward -------------------------------
 
+def nram_usage_for_backward_non_inner(bn, bk, tile_mode, num_stages, dtype):
+    coef = 1
+    if tile_mode == 0:
+        coef = 3
+    elif tile_mode == 1:
+        if num_stages == 1:
+            coef = 3
+        else:
+            if dtype == torch.float32:
+                coef = 7
+            else:
+                coef = 6
+    else:
+        if num_stages == 1:
+            coef = 5
+        else:
+            if dtype == torch.float32:
+                coef = 13
+            else:
+                coef = 10
+    return (coef * bn + 1) * bk * 4
+
 def config_prune3(configs, named_args, **kwargs):
     M = named_args["M"]
     N = named_args["N"]
     K = named_args["K"]
-    output = named_args["out_ptr"]
-    configs_map = {}
+    output = named_args["output_ptr"]
+    dtype = output.dtype
+    k_per_core = math.ceil(K / max(TOTAL_CORE_NUM // M, 1))
+    # No need for any loop.
+    if nram_usage_for_backward_non_inner(N, k_per_core, 0, 1, dtype) < MAX_NRAM_SIZE:
+        config = copy.deepcopy(configs[0])
+        config.kwargs["TILE_K"] = k_per_core
+        config.kwargs["TILE_N"] = N
+        config.num_stages = 1
+        return [config]
+    align_num = 256 // 4 if dtype == torch.float32 else 256 // 2
+    pruned_configs = []
     for config in configs:
         kw = config.kwargs
         TILE_K, TILE_N, num_warps, num_stages = \
             kw['TILE_K'], kw['TILE_N'], config.num_warps, config.num_stages
-        if N < MAX_N:
-            config = copy.deepcopy(config)
-            TILE_N = config.kwargs["TILE_N"] = N
-            k_per_core = math.ceil(K / max(TOTAL_CORE_NUM // M, 1))
-            nram_usage = (3 * TILE_N + 1) * k_per_core * 4
-            if nram_usage < MAX_NRAM_SIZE:
-                TILE_K = config.kwargs["TILE_K"] = k_per_core
-                num_stages = config.num_stages = 1
-                key = (TILE_K, TILE_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
-            else:
-                max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (3 * TILE_N + 1)
-                TILE_K = config.kwargs["TILE_K"] = align(max_tile_k_without_pipe)
-                num_stages = config.num_stages = 1
-                key = (TILE_K, TILE_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
-
-                config = copy.deepcopy(config)
-                max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (6 * TILE_N + 1)
-                if output.dtype == torch.float32:
-                    max_tile_k_without_pipe = MAX_NRAM_SIZE // 4 // (7 * TILE_N + 1)
-                TILE_K = config.kwargs["TILE_K"] = align(max_tile_k_without_pipe)
-                num_stages = config.num_stages = 3
-                key = (TILE_K, TILE_N, num_warps, num_stages)
-                configs_map.setdefault(key, config)
-        else:
-            key = (TILE_K, TILE_N, num_warps, num_stages)
-            configs_map.setdefault(key, config)
-    pruned_configs = []
-    for k, v in configs_map.items():
-        pruned_configs.append(v)
-    extra_config = copy.deepcopy(pruned_configs[0])
-    extra_config.kwargs["TILE_K"] = 1
-    extra_config.kwargs["TILE_N"] = N
-    extra_config.num_warps = 1
-    extra_config.num_stages = 3
-    pruned_configs.append(extra_config)
+        # Align the lowest dimension to 256B while loading/storing data.
+        if TILE_K % align_num != 0:
+            continue
+        # nram usage shoule be smaller than MAX_NRAM_SIZE
+        mode = softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K)
+        nram = nram_usage_for_backward_non_inner(TILE_N, TILE_K, mode, num_stages, dtype)
+        if nram > MAX_NRAM_SIZE or nram < MAX_NRAM_SIZE // 2:
+            continue
+        pruned_configs.append(config)
     return pruned_configs
 
 @triton.autotune(
     configs=[
         triton.Config({
-            "TILE_K": k,
+            "TILE_K": 64 * k,
             "TILE_N": 2**n
         },
-                      num_stages=s,
-                      num_warps=1) for k in [1, 2, 4, 8]
-        for n in range(10, 15, 1) for s in [1, 3]
+        num_stages=s,
+        num_warps=1) for k in range(1, 17)
+        for n in range(3, 10, 1) for s in [1, 3]
     ],
     key=[
         "N",
@@ -403,11 +410,14 @@ def config_prune3(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_MODE": lambda args: softmax_tile_mode1(args),
-    }, )
+        "TILE_MODE": lambda args: softmax_tile_mode_for_non_inner(
+            args['M'], args['N'], args['K'], args['TILE_N'], args['TILE_K']
+        ),
+    },
+)
 @triton.jit
 def softmax_backward_kernel_non_inner(
-    out_ptr,
+    output_ptr,
     out_grad_ptr,
     in_grad_ptr,
     M,
@@ -429,7 +439,7 @@ def softmax_backward_kernel_non_inner(
         k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
         offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
         mask = (n_offset[:, None] < N) & (k_offset[None, :] < K)
-        out_tile = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
+        out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
         out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, axis=0)
         in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
@@ -440,7 +450,7 @@ def softmax_backward_kernel_non_inner(
             n_offset = tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
             mask = k_offset[None, :] < K and n_offset[:, None] < N
-            out_tile = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
+            out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
             scale = tl.sum(out_tile * out_grad_tile, axis=0)
             in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
@@ -454,7 +464,7 @@ def softmax_backward_kernel_non_inner(
                 n_offset = start_n + tl.arange(0, TILE_N)
                 offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
                 mask = (n_offset[:, None] < N) & (k_offset[None, :] < K)
-                out_tile = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
+                out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
                 out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
                 scale += out_tile * out_grad_tile
             scale = tl.sum(scale, axis=0)
@@ -462,7 +472,7 @@ def softmax_backward_kernel_non_inner(
                 n_offset = start_n + tl.arange(0, TILE_N)
                 offset = pid_m * N * K + n_offset[:, None] * K + k_offset[None, :]
                 mask = (n_offset[:, None] < N) & (k_offset[None, :] < K)
-                out_tile = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
+                out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
                 out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
                 in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
                 tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
@@ -471,7 +481,7 @@ def softmax_backward_kernel_non_inner(
 def config_prune4(configs, named_args, **kwargs):
     M = named_args["M"]
     N = named_args["N"]
-    output = named_args["out_ptr"]
+    output = named_args["output_ptr"]
     configs_map = {}
     # When N is less than MAX_C_MLU_SOFTMAX_FORWARD, no reduction loops
     for config in configs:
@@ -536,11 +546,11 @@ def config_prune4(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_MODE": lambda args: softmax_tile_mode2(args),
+        "TILE_MODE": lambda args: softmax_tile_mode_for_inner(args),
     }, )
 @triton.jit
 def softmax_backward_kernel_inner(
-    out_ptr,
+    output_ptr,
     out_grad_ptr,
     in_grad_ptr,
     M,
@@ -559,7 +569,7 @@ def softmax_backward_kernel_inner(
         n_offset = tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
         mask = m_offset[:, None] < M and n_offset[None, :] < N
-        out_tile = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
+        out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
         out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
         scale = tl.sum(out_tile * out_grad_tile, 1)
         in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
@@ -570,7 +580,7 @@ def softmax_backward_kernel_inner(
             n_offset = tl.arange(0, BLOCK_N)
             offset = m_offset[:, None] * N + n_offset[None, :]
             mask = m_offset[:, None] < M and n_offset[None, :] < N
-            out_tile = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
+            out_tile = tl.load(output_ptr + offset, mask=mask).to(tl.float32)
             out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
             scale = tl.sum(out_tile * out_grad_tile, 1)
             in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
@@ -583,7 +593,7 @@ def softmax_backward_kernel_inner(
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 mask = m_offset[:, None] < M and n_offset[None, :] < N
-                out_tile = tl.load(out_ptr + offset, mask=mask, eviction_policy="evict_last").to(tl.float32)
+                out_tile = tl.load(output_ptr + offset, mask=mask, eviction_policy="evict_last").to(tl.float32)
                 out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
                 scale += out_tile * out_grad_tile
             scale = tl.sum(scale, 1)
@@ -591,7 +601,7 @@ def softmax_backward_kernel_inner(
                 n_offset = start_n + tl.arange(0, BLOCK_N)
                 offset = m_offset[:, None] * N + n_offset[None, :]
                 mask = m_offset[:, None] < M and n_offset[None, :] < N
-                out_tile = tl.load(out_ptr + offset, mask=mask, eviction_policy="evict_first").to(tl.float32)
+                out_tile = tl.load(output_ptr + offset, mask=mask, eviction_policy="evict_first").to(tl.float32)
                 out_grad_tile = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
                 in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
                 tl.store(in_grad_ptr + offset, in_grad_tile, mask=mask)
