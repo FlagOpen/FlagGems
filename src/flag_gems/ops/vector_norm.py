@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from ..utils import dim_compress, libentry, cfggen_reduce_op, prune_reduce_config, TOTAL_CORE_NUM
 
 try:
     from triton.language.extra.mlu.libdevice import pow
@@ -53,41 +53,52 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         tl.store(Out_ptr, out, row_mask)
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by={'early_config_prune': prune_reduce_config},
+    reset_to_zero=['Out']
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
+)
 @triton.jit
 def l2_norm_kernel_1(
     X,
-    Mid,
+    Out,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
 
-    _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, M, step):
-        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+    mid = 0.0
+    if ONE_TILE_PER_CTA:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offsets < M
         x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
-        _tmp = _tmp + x * x
+        mid = tl.sum(x * x)
+    else:
+        _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for block_start_offset in range(block_start, M, step):
+            offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < M
+            x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+            _tmp = _tmp + x * x
+        mid = tl.sum(_tmp)
 
-    mid = tl.sum(_tmp)
-    Mid = Mid + pid
-    tl.store(Mid, mid)
+    tl.atomic_add(Out, mid.to(tl.float32))
 
 @libentry()
 @triton.jit
 def l2_norm_kernel_2(
-    Mid,
     Out,
-    BLOCK_NUM: tl.constexpr
 ):
-    offset = tl.arange(0, BLOCK_NUM)
-    Mid = Mid + offset
-    mid = tl.load(Mid)
-    out = tl.sqrt(tl.sum(mid))
+    out = tl.load(Out)
+    out = tl.sqrt(out)
     tl.store(Out, out)
 
 
@@ -122,28 +133,43 @@ def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by={'early_config_prune': prune_reduce_config}
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
+)
 @triton.jit
 def max_norm_kernel_1(
     X,
     Out,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
 
-    _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, M, step):
-        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+    mid = 0.0
+    if ONE_TILE_PER_CTA:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offsets < M
         x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
-        _x = tl.abs(x)
-        _tmp = tl.where(_tmp > _x, _tmp, _x)
+        mid = tl.max(tl.abs(x))
+    else:
+        _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for block_start_offset in range(block_start, M, step):
+            offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < M
+            x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+            _x = tl.abs(x)
+            _tmp = tl.where(_tmp > _x, _tmp, _x)
+        mid = tl.max(_tmp)
 
-    mid = tl.max(_tmp)
     tl.atomic_max(Out, mid.to(tl.float32))
 
 
@@ -178,28 +204,42 @@ def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
         tl.store(Out_ptr, out, row_mask)
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by={'early_config_prune': prune_reduce_config}
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
+)
 @triton.jit
 def min_norm_kernel_1(
     X,
     Out,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
 
-    _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, M, step):
-        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+    if ONE_TILE_PER_CTA:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offsets < M
-        x = tl.load(X + offsets, mask, other=float("inf")).to(tl.float32)
-        _x = tl.abs(x)
-        _tmp = tl.where(_tmp < _x, _tmp, _x)
+        x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+        mid = tl.min(tl.abs(x))
+    else:
+        _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for block_start_offset in range(block_start, M, step):
+            offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < M
+            x = tl.load(X + offsets, mask, other=float("inf")).to(tl.float32)
+            _x = tl.abs(x)
+            _tmp = tl.where(_tmp < _x, _tmp, _x)
+        mid = tl.min(_tmp)
 
-    mid = tl.min(_tmp)
     tl.atomic_min(Out, mid.to(tl.float32))
 
 
@@ -233,27 +273,42 @@ def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=['Out'])
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by={'early_config_prune': prune_reduce_config},
+    reset_to_zero=['Out']
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
+)
 @triton.jit
 def l0_norm_kernel_1(
     X,
     Out,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
 
-    _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, M, step):
-        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+    if ONE_TILE_PER_CTA:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offsets < M
         x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
-        _tmp = _tmp + (x != 0).to(tl.float32)
+        mid = tl.sum((x != 0).to(tl.float32))
+    else:
+        _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for block_start_offset in range(block_start, M, step):
+            offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < M
+            x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+            _tmp = _tmp + (x != 0).to(tl.float32)
+        mid = tl.sum(_tmp)
 
-    mid = tl.sum(_tmp)
     tl.atomic_add(Out, mid.to(tl.float32))
 
 
@@ -286,44 +341,55 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by={'early_config_prune': prune_reduce_config},
+    reset_to_zero=['Out']
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
+)
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_1(
     X,
-    Mid,
+    Out,
     M,
     ord,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
 
-    _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, M, step):
-        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+    mid = 0.0
+    if ONE_TILE_PER_CTA:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offsets < M
         x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
-        _tmp = _tmp + pow(tl.abs(x), ord)
+        mid = tl.sum(pow(tl.abs(x), ord))
+    else:
+        _tmp = tl.zeros([BLOCK_SIZE], tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for block_start_offset in range(block_start, M, step):
+            offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < M
+            x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+            _tmp = _tmp + pow(tl.abs(x), ord)
+        mid = tl.sum(_tmp)
 
-    mid = tl.sum(_tmp)
-    Mid = Mid + pid
-    tl.store(Mid, mid)
+    tl.atomic_add(Out, mid.to(tl.float32))
 
 
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_2(
-    Mid,
     Out,
     ord,
-    BLOCK_NUM: tl.constexpr
 ):
-    offset = tl.arange(0, BLOCK_NUM)
-    Mid = Mid + offset
-    mid = tl.load(Mid)
-    out = pow(tl.sum(mid), 1 / ord)
+    out = tl.load(Out)
+    out = pow(out, 1 / ord)
     tl.store(Out, out)
 
 
@@ -344,11 +410,10 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             M = x.numel()
 
             grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
-            mid = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
             out = torch.zeros(shape, dtype=torch.float, device=x.device)
             if ord == 2:
-                l2_norm_kernel_1[(TOTAL_CORE_NUM,)](x, mid, M)
-                l2_norm_kernel_2[(1,)](mid, out, BLOCK_NUM=TOTAL_CORE_NUM)
+                l2_norm_kernel_1[grid](x, out, M)
+                l2_norm_kernel_2[(1,)](out)
             elif ord == float("inf"):
                 max_norm_kernel_1[grid](x, out, M)
             elif ord == -float("inf"):
@@ -356,8 +421,8 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             elif ord == 0:
                 l0_norm_kernel_1[grid](x, out, M)
             else:
-                l1_norm_kernel_1[(TOTAL_CORE_NUM,)](x, mid, M, ord)
-                l1_norm_kernel_2[(1,)](mid, out, ord, BLOCK_NUM=TOTAL_CORE_NUM)
+                l1_norm_kernel_1[grid](x, out, M, ord)
+                l1_norm_kernel_2[(1,)](out, ord,)
             out = out.to(dtype)
         else:
             shape = list(x.shape)

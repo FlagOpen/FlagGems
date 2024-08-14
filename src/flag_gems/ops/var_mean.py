@@ -3,9 +3,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
-import logging
-from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
-
+from ..utils import dim_compress, libentry, cfggen_reduce_op, prune_reduce_config, count_divisible_by_2
+from ..utils import TOTAL_CORE_NUM, MAX_NRAM_SIZE
 
 def cfggen():
     block_m = [1, 2, 4, 8]
@@ -78,8 +77,40 @@ def var_mean_welford_kernel(
         tl.store(Var_ptr, var, row_mask)
 
 
+def prune_varmean_config(configs, named_args, **kwargs):
+    M = named_args["M"]
+    pruned_configs = []
+    for config in configs:
+        BLOCK_SIZE = config.kwargs["BLOCK_SIZE"]
+        num_stages = config.num_stages
+        num_block = M // BLOCK_SIZE
+        if (num_block < 1):
+            continue
+        if (num_block < TOTAL_CORE_NUM):
+            # A core must process a BLOCK_SIZE of data.
+            if (num_stages > 1):
+                continue
+            alloc_num = 3
+        else:
+            alloc_num = 6
+        # Set f32 as the default type.
+        if (BLOCK_SIZE * 4 * alloc_num < MAX_NRAM_SIZE):
+            pruned_configs.append(config)
+    # If M < 512, append the default config.
+    if (len(pruned_configs) == 0):
+        prune_configs.append(triton.Config({"BLOCK_SIZE": 512}, num_warps=1, num_stages=1))
+    return pruned_configs
+
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    prune_configs_by={'early_config_prune': prune_varmean_config},
+    key=["M"],
+    reset_to_zero=['Acc', 'Average', 'Count']
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM},
+)
 @triton.jit
 def var_mean_kernel_1(
     X,
@@ -88,29 +119,39 @@ def var_mean_kernel_1(
     Count,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
 
     # Map the program id to the row of X it should compute.
     pid = tl.program_id(0)
-    num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
-    step = num_jobs * BLOCK_SIZE
 
     count = 0.0
-    _tmp1 = tl.zeros([BLOCK_SIZE], tl.float32)
-    _tmp2 = tl.zeros([BLOCK_SIZE], tl.float32)
-    for block_start_offset in range(block_start, M, step):
-        offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+    average = 0.0
+    acc = 0.0
+    if ONE_TILE_PER_CTA:
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
         mask = offsets < M
         x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
-        _count = tl.sum(mask.to(tl.float32))
-        count = count + _count
-        _tmp1 = _tmp1 + x
-        _tmp2 = _tmp2 + x * x
-
-    count = tl.maximum(count, 1)
-    average = tl.sum(_tmp1) / count
-    acc = tl.sum(_tmp2) - count * average * average
+        count = tl.sum(mask.to(tl.float32))
+        average = tl.sum(x) / count
+        acc = tl.sum(x * x) - count * average * average
+    else:
+        _tmp1 = tl.zeros([BLOCK_SIZE], tl.float32)
+        _tmp2 = tl.zeros([BLOCK_SIZE], tl.float32)
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        for block_start_offset in range(block_start, M, step):
+            offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < M
+            x = tl.load(X + offsets, mask, other=0.0).to(tl.float32)
+            _count = tl.sum(mask.to(tl.float32))
+            count = count + _count
+            _tmp1 = _tmp1 + x
+            _tmp2 = _tmp2 + x * x
+        count = tl.maximum(count, 1)
+        average = tl.sum(_tmp1) / count
+        acc = tl.sum(_tmp2) - count * average * average
 
     Acc = Acc + pid
     Average = Average + pid
@@ -132,6 +173,7 @@ def var_mean_kernel_2(
     M,
     correction,
     BLOCK_NUM: tl.constexpr,
+    ITER_NUM: tl.constexpr,
 ):
     offset = tl.arange(0, BLOCK_NUM)
     Acc = Acc + offset
@@ -140,7 +182,19 @@ def var_mean_kernel_2(
     acc = tl.load(Acc)
     average = tl.load(Average)
     count = tl.load(Count)
-    mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
+
+    for x in tl.static_range(1, ITER_NUM, 1):
+      average[:BLOCK_NUM // (2 ** x)], count[:BLOCK_NUM // (2 ** x)], acc[:BLOCK_NUM // (2 ** x)] = welford_func(
+          average[:BLOCK_NUM // (2 ** x)], count[:BLOCK_NUM // (2 ** x)], acc[:BLOCK_NUM // (2 ** x)],
+          average[BLOCK_NUM // (2 ** x):(BLOCK_NUM // (2 ** x)) * 2],
+          count[BLOCK_NUM // (2 ** x):(BLOCK_NUM // (2 ** x)) * 2],
+          acc[BLOCK_NUM // (2 ** x):(BLOCK_NUM // (2 ** x)) * 2])
+    mean, _, nvar = tl.reduce((average[:BLOCK_NUM // (2 ** (ITER_NUM - 1))],
+                               count[:BLOCK_NUM // (2 ** (ITER_NUM - 1))],
+                               acc[:BLOCK_NUM // (2 ** (ITER_NUM - 1))]), axis=0, combine_fn=welford_func)
+
+    # FIXME: Reset to original reduce programming mode after optimizing the tl.reduce.
+    # mean, _, nvar = tl.reduce((average, count, acc), axis=0, combine_fn=welford_func)
 
     var = nvar / (M - correction)
     tl.store(Mean, mean)
@@ -160,13 +214,15 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
-        acc = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
-        average = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
-        count = torch.empty([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
+        acc = torch.zeros([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
+        average = torch.zeros([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
+        count = torch.zeros([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
+        loop_num = count_divisible_by_2(TOTAL_CORE_NUM) + 1
+
         with torch.cuda.device(x.device):
-            var_mean_kernel_1[(TOTAL_CORE_NUM,)](x, acc, average, count, M)
+            var_mean_kernel_1[grid](x, acc, average, count, M)
             var_mean_kernel_2[(1,)](
-                acc, average, count, var, mean, M, correction, BLOCK_NUM=TOTAL_CORE_NUM)
+                acc, average, count, var, mean, M, correction, BLOCK_NUM=TOTAL_CORE_NUM, ITER_NUM=loop_num)
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
