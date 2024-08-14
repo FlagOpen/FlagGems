@@ -333,6 +333,11 @@ def test_perf_select_scatter():
         op_name="slice_scatter",
         torch_op=torch.select_scatter,
         arg_func=select_scatter_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
 
 
 def test_perf_index_select():
