@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import dim_compress, libentry
 
 
 def cfggen():
@@ -52,18 +52,20 @@ def index_select(inp, dim, index):
         index = index.unsqueeze(0)
     dim = dim % inp.ndim
     inp_shape = list(inp.shape)
+    index_len = index.numel()
 
-    """
     # with dim_compress
     inp = dim_compress(inp, dim)
     N = inp_shape[dim]
     M = inp.numel() // N
-    index_len = index.numel()
     out_shape = list(inp.shape)
-    out_shape[inp.ndim - 1] = index.numel()
+    out_shape[inp.ndim - 1] = index_len
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]), triton.cdiv(N, meta["BLOCK_N"]))
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(index_len, meta["BLOCK_N"]),
+    )
     index_select_kernel[grid](inp, out, M, N, index, index_len)
     if dim != out.ndim - 1:
         order = [i for i in range(out.ndim - 1)]
@@ -71,13 +73,3 @@ def index_select(inp, dim, index):
         return out.permute(order)
     else:
         return out
-    """
-    # with gather
-    new_index_shape = [1] * inp.ndim
-    new_index_shape[dim] = index.size(0)
-    index_ = index.view(new_index_shape)
-    new_index_shape = inp_shape
-    new_index_shape[dim] = index.size(0)
-    index_ = index_.expand(new_index_shape)
-
-    return torch.gather(inp, dim, index_)
