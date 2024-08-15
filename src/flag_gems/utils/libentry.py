@@ -109,7 +109,8 @@ class LibEntry(triton.KernelInterface):
                         config = fn.best_config
                         constexprs["num_warps"] = config.num_warps
                         constexprs["num_stages"] = config.num_stages
-                        constexprs["num_ctas"] = config.num_ctas
+                        if "num_ctas" in constexprs.keys():
+                            constexprs["num_ctas"] = config.num_ctas
                         constexprs = {**constexprs, **config.kwargs}
                     elif isinstance(fn, triton.runtime.Heuristics):
                         for v, heur in fn.values.items():
