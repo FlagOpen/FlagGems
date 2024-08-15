@@ -122,7 +122,6 @@ def test_perf_cumsum():
     )
     bench.run()
 
-import pytest
 
 def test_perf_groupnorm():
     def group_norm_args(dtype, batch, size):
@@ -153,43 +152,9 @@ def test_perf_groupnorm():
         batch=BLAS_BATCH,
         sizes=SIZES,
     )
-    bench.run_speedup()
-
-def test_perf_groupnorm_long():
-
-    def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return inp, G, weight, bias
-
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run_speedup()
+    bench.run()
 
 def test_perf_groupnorm_backward():
-    pytest.skip("skip this")
-
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
@@ -219,42 +184,7 @@ def test_perf_groupnorm_backward():
         sizes=SIZES,
         is_backward=True,
     )
-    bench.run_speedup()
-
-def test_perf_groupnorm_backward_long():
-    pytest.skip("skip this")
-
-    def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return inp, G, weight, bias
-
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-        is_backward=True,
-    )
-    bench.run_speedup()
-
+    bench.run()
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):

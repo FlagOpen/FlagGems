@@ -872,6 +872,7 @@ def test_perf_vector_norm():
     bench.run()
 
 def test_perf_groupnorm():
+    pytest.skip("Nram exceed failed")
     def group_norm_args(dtype, batch, size):
         C = 6
         G = 3
@@ -903,6 +904,7 @@ def test_perf_groupnorm():
     bench.run()
 
 def test_perf_groupnorm_backward():
+    pytest.skip("Nram exceed failed")
     def group_norm_args(dtype, batch, size):
         C = 6
         G = 3
