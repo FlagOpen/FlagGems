@@ -106,6 +106,16 @@ def heur_even_k(args):
             num_stages=5,
             num_warps=2,
         ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            num_stages=2,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_M": 256, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
+            num_stages=2,
+            num_warps=8,
+        ),
     ],
     key=["M", "N", "K"],
 )
