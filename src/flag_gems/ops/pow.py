@@ -22,6 +22,8 @@ def pow_func(x, exponent):
 
 def pow_tensor_tensor(A, exponent):
     logging.debug("GEMS POW_TENSOR_TENSOR")
+    if exponent == 2:
+        return A * A
     return pow_func(A, exponent)
 
 
@@ -33,6 +35,8 @@ def pow_func_tensor_scalar(x, exponent):
 
 def pow_tensor_scalar(A, exponent):
     logging.debug("GEMS POW_TENSOR_SCALAR")
+    if exponent == 2:
+        return A * A
     return pow_func_tensor_scalar(A, exponent)
 
 

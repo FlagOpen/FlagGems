@@ -13,24 +13,21 @@ def heur_block_n(args):
 
 def heur_num_warps(args):
     if args["N"] <= 1024:
-        return 4
+        return 1
     elif args["N"] <= 2048:
-        return 8
+        return 4
     else:
-        return 16
+        return 8
 
 
 @libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
         triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
         triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
         triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
+        triton.Config({"BLOCK_M": 16}, num_stages=4),
     ],
     key=[
         "M",
@@ -54,10 +51,9 @@ def log_softmax_kernel(
     BLOCK_N: tl.constexpr,
 ):
     pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     input_ptrs = input_ptr + offset
     inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
