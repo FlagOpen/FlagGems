@@ -57,7 +57,7 @@ def prod(inp, *, dtype=None):
     block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device).to(torch.float32)
     out = torch.empty([], dtype=dtype, device=inp.device)
     final_mid_size = min(math.ceil(inp.numel() / block_size), min(mid_size, M))
 

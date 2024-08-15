@@ -39,7 +39,7 @@ def softmax_kernel(
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     input_ptrs = input_ptr + offset
-    inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+    inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
     row_minus_max = inp - tl.max(inp, axis=1)[:, None]
     numerator = tl.exp(row_minus_max)
     denominator = tl.sum(numerator, axis=1)[:, None]
@@ -73,9 +73,9 @@ def softmax_backward_kernel(
     offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     out_ptrs = out_ptr + offsets
-    out = tl.load(out_ptrs, mask=mask)
+    out = tl.load(out_ptrs, mask=mask).to(tl.float32)
     out_grad_ptrs = out_grad_ptr + offsets
-    out_grad = tl.load(out_grad_ptrs, mask=mask)
+    out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
 
     scale = tl.sum(out * out_grad, 1)
     in_grad = out * (out_grad - scale[:, None])

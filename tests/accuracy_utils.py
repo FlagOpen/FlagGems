@@ -71,8 +71,8 @@ XPU_POINTWISE_2D_SHAPES_8192 = [
     (16, 1024, 8)
 ]  # SHAPE[-1] * SHAPE[-2] <= 8192(core_num * buffer_size limit)
 
-FLOAT_DTYPES = [torch.float32, torch.float16]  # miss torch.bfloat16
-ALL_FLOAT_DTYPES = [torch.float32, torch.float16]  # miss torch.bfloat16
+FLOAT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
+ALL_FLOAT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 ALL_INT_DTYPES = [torch.int32, torch.int16]  # miss torch.int64
 
 # vendor-test shape
