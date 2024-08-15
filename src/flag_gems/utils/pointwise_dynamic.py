@@ -377,11 +377,11 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
+            code.writeline("tile_size = min(1024, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 4")
-            code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
+            code.writeline("num_ctas = triton.cdiv(num_tasks, tile_size)")
             code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
+                "tiles_per_cta = 1"
             )
         else:
             code.writeline("num_warps = 1")
@@ -539,7 +539,10 @@ def generate_pointwise_kernel(
                 code.writeline(f"{stride_args}, # strides for out{i}")
 
             # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+            if os.getenv("TRITON_CONST_ARGS_OPT", False):
+                task_space_args = ", ".join(f"s{i}: tl.constexpr" for i in range(rank))
+            else:
+                task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
             for i in range(rank):
                 function_ns.create_name(f"s{i}")
             code.writeline(f"{task_space_args}, # task_space")
