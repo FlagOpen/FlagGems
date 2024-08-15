@@ -22,7 +22,11 @@ def pow_func(x, exponent):
 
 def pow_tensor_tensor(A, exponent):
     logging.debug("GEMS POW_TENSOR_TENSOR")
+<<<<<<< HEAD
     if isinstance(exponent, (int, float)) and exponent == 2:
+=======
+    if exponent == 2:
+>>>>>>> f8bf1e6 (Update kernel)
         return A * A
     return pow_func(A, exponent)
 
