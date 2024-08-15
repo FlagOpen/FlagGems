@@ -1,8 +1,9 @@
 import functools
 import operator
-from typing import Iterable, Tuple
+from typing import Iterable, Sequence, Tuple
 
 import torch
+import triton
 
 Shape = Tuple[int]
 Stride = Tuple[int]
@@ -125,9 +126,65 @@ def c_contiguous_stride(shape: Shape) -> Stride:
     s = 1
     for size in reversed(shape):
         strides.append(s)
-        s *= size
-
+        s *= min(size, 1)  # treat size 0 as size 1
     return tuple(reversed(strides))
+
+
+def f_contiguous_stride(shape: Shape) -> Stride:
+    strides = []
+    s = 1
+    for size in shape:
+        strides.append(s)
+        s *= min(size, 1)  # treat size 0 as size 1
+    return tuple(strides)
+
+
+def ordered_stride(shape: Shape, order: Perm) -> Stride:
+    strides = [0] * len(shape)
+    s = 1
+    for i in order:
+        strides[i] = s
+        s *= min(shape[i], 1)  # treat size 0 as size 1
+    return tuple(strides)
+
+
+def all_the_same_shape(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    shape = tensors[0].shape
+    return all(item.shape == shape for item in tensors[1:])
+
+
+def all_the_same_stride(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    stride = tensors[0].stride()
+    return all(item.stride() == stride for item in tensors[1:])
+
+
+def all_c_contiguous(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    return all(tensor.is_contiguous() for tensor in tensors)
+
+
+def heuristics_for_tile_size(max_tile_size, *sizes):
+    tile_sizes = []
+    for size in sizes:
+        tile_size = min(max_tile_size, triton.next_power_of_2(size))
+        tile_sizes.append(tile_size)
+        max_tile_size = max(1, max_tile_size // tile_size)
+    return tuple(tile_sizes)
+
+
+# This should be part of CodeGenConfig
+def heuristics_for_num_warps(tile_size):
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 
 def dim_compress(inp, dims):

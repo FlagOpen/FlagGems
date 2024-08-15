@@ -6,6 +6,7 @@ import flag_gems
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
+    BOOL_TYPES,
     DIM_POINTWISE_SHAPES,
     DIMS,
     FLOAT_DTYPES,
@@ -31,11 +32,14 @@ def test_accuracy_abs(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
 def test_accuracy_bitwisenot(shape, dtype):
-    inp = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+    if dtype in BOOL_TYPES:
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        )
     ref_inp = to_reference(inp)
 
     ref_out = torch.bitwise_not(ref_inp)
