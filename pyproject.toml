@@ -17,8 +17,8 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "triton>=2.2.0",
-    "torch>=2.2.0",
+    "triton>=2.1.0",
+    "torch>=2.1.0",
     "transformers>=4.40.2"
 ]
 

@@ -82,6 +82,16 @@ def heur_divisible_k(args):
             num_warps=4,
             num_stages=3,
         ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+            num_stages=2,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"TILE_M": 256, "TILE_N": 256, "TILE_K": 32, "GROUP_M": 2},
+            num_stages=2,
+            num_warps=8,
+        ),
     ],
     key=["M", "N", "K"],
 )
