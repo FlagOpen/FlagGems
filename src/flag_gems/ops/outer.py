@@ -9,7 +9,6 @@ from .mv import mv
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
-        logging.debug("GEMS OUTER")
         assert inp.ndim == 1 and weight.ndim == 1, "Invalid input"
         inp1 = inp[:, None]
         weight1 = weight[None, :]
