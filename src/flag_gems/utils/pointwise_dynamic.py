@@ -508,7 +508,9 @@ class WrapperGenerator:
         params: List[str] = []
         for i in range(schema.num_inputs()):
             if schema.is_tensor(i):
-                params.append(f"{self.input_name(i)}: StridedBuffer")
+                params.append(
+                    f"{self.input_name(i)}: Union[torch.Tensor, StridedBuffer]"
+                )
             else:
                 arg_type = schema.input_type(i)
                 if arg_type is not None:
@@ -530,14 +532,23 @@ class WrapperGenerator:
         # names form the scalar function, since it does not have output parameters.
         params.append("/")
         params.append("*")  # output params must be passed by keyword
+
         for i in range(schema.num_output_tensors()):
-            params.append(f"{self.output_name(i)}: StridedBuffer=None")
-        code.writeline(f"def {self.name}({_cs(params)}):")
+            params.append(f"{self.output_name(i)}: Union[torch.Tensor, StridedBuffer]")
+        code.writeline(f"def {self.name}({_cs(params)}): ")
 
     def gen_docstring(self, code: IndentedBuffer):
         schema = self.fx
         doc = f'"""Generated wrapper function with {schema.signature(outputs_in_arg=True)}"""'
         code.writeline(doc)
+
+    def gen_same_shape_check(self, code: IndentedBuffer):
+        schema: FunctionSchema = self.fx
+        params = [f"in{i}.shape" for i in range(schema.num_input_tensors())] + [
+            f"out{i}.shape" for i in range(schema.num_output_tensors())
+        ]
+        check: str = " == ".join(params)
+        code.writeline(f"assert {check}, 'operand shapes mismatch'")
 
     def gen_task_partition(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
@@ -618,6 +629,7 @@ class WrapperGenerator:
 
         with code.indent():
             self.gen_docstring(code)
+            self.gen_same_shape_check(code)
             self.gen_task_partition(code)
             self.gen_kernel_launch(code)
             self.gen_return(code)
@@ -643,13 +655,10 @@ class ModuleGenerator:
     @staticmethod
     def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
         code.writeline("import math")
-        code.writeline("from typing import Optional")
+        code.writeline("from typing import Union")
         code.writeline("import torch")
         code.writeline("import triton")
         code.writeline("from triton import language as tl")
-        code.writeline(
-            "from torch._prims_common import ELEMENTWISE_TYPE_PROMOTION_KIND, elementwise_dtypes"
-        )
         code.newline()
         code.writeline("from flag_gems.utils.shape_utils import (")
         code.writeline("    heuristics_for_tile_size,")
@@ -695,7 +704,13 @@ class PointwiseDynamicFunction:
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)
         out = overload(*args, **kwargs)
-        return self.unwrap(out)
+        # NOTE: overload keeps the type of outputs:
+        # if a pre-defiend output is a Tensor or StridedBuffer, the corresponding
+        # output is also a Tensor StridedBuffer, respectively
+        # since prepare_args Wraps all the arguments, the outputs are all StridedBuffer
+        # but if manually instantiated overload is directly called, take care of
+        # that manually
+        return self._unwrap(out)
 
     @staticmethod
     def use_fast_path(tensors):
@@ -804,9 +819,11 @@ class PointwiseDynamicFunction:
                 )
         return (ndim, args, kwargs)
 
-    def unwrap(self, tensors):
+    def _unwrap(self, tensors):
+        # unwrap StridedBuffer to get Tensor
         if self.fx.num_output_tensors() == 1:
-            return tensors.unwrap()
+            item = tensors
+            return item.unwrap()
         return tuple(item.unwrap() for item in tensors)
 
     def instantiate(self, ndim):

@@ -3,6 +3,7 @@ import torch
 import triton
 
 from flag_gems.utils.pointwise_dynamic import FunctionSchema, pointwise_dynamic
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 
 def test_function_schema_with_non_tensor_input():
@@ -335,3 +336,89 @@ def test_dynamic_function_with_nd_buffer():
     assert out0 is o
     torch.testing.assert_close(out0, alpha * x + y)
     torch.testing.assert_close(out1, alpha * x - y)
+
+
+def test_dynamic_function_manual_instantiation_mixing_strided_buffer_and_tensor():
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    SIZE = 10
+    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
+    y = torch.randn([SIZE, SIZE, SIZE], device="cuda")
+    alpha = 2.0
+    _out0 = torch.empty([SIZE, SIZE, SIZE], device="cuda")
+    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device="cuda"))
+    out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
+
+    assert isinstance(out0, torch.Tensor)
+    assert isinstance(out1, StridedBuffer)
+
+
+def test_dynamic_function_manual_instantiation_does_not_support_broadcasting1():
+    # manually instantiated overload does not support broadcasting of operands
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    SIZE = 10
+    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
+    y = torch.randn([1, SIZE], device="cuda")
+    alpha = 2.0
+    _out0 = torch.empty([SIZE, SIZE, SIZE], device="cuda")
+    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device="cuda"))
+
+    with pytest.raises(Exception):
+        out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
+
+
+def test_dynamic_function_manual_instantiation_does_not_support_broadcasting2():
+    # manually instantiated overload does not support broadcasting of operands
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    SIZE = 10
+    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
+    y = torch.randn([SIZE, 1, SIZE], device="cuda")
+    alpha = 2.0
+    _out0 = torch.empty([SIZE, SIZE, SIZE], device="cuda")
+    _out1 = StridedBuffer(torch.empty([SIZE, SIZE, SIZE], device="cuda"))
+
+    with pytest.raises(Exception):
+        out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
+
+
+def test_dynamic_function_manual_instantiation_does_not_allocate_output():
+    # manually instantiated overload does not support broadcasting of operands
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    SIZE = 10
+    x = torch.randn([SIZE, SIZE, SIZE], device="cuda")
+    y = torch.randn([SIZE, 1, SIZE], device="cuda")
+    alpha = 2.0
+
+    with pytest.raises(Exception):
+        out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha)
