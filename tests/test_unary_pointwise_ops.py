@@ -309,6 +309,25 @@ def test_accuracy_flip(shape, dtype, dims):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dims", DIMS)
+def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
+    shape_dialted = tuple(item * 2 for item in shape)
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape_dialted, dtype=dtype, device="cuda")[::2, ::2]
+    else:
+        inp = torch.randint(-1000, 1000, shape_dialted, device="cuda").to(dtype)[
+            ::2, ::2
+        ]
+    ref_inp = to_reference(inp, False)
+
+    with flag_gems.use_gems():
+        res_out = torch.flip(inp, dims)
+    ref_out = torch.flip(ref_inp, dims)
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
