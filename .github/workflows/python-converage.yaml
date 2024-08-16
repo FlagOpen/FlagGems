@@ -1,0 +1,21 @@
+# https://github.com/marketplace/actions/python-coverage
+
+name: coverage
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+    coverage:
+        runs-on:  [self-hosted, docker]
+        steps:
+          - name: Get Cover
+            uses: orgoro/coverage@v3.2
+            with:
+                coverageFile: coverage.xml
+                thresholdNew: 0.8
+                thresholdModified: 0.0
+                token: ${{ secrets.GITHUB_TOKEN }}
