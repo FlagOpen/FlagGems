@@ -675,13 +675,17 @@ class PointwiseDynamicFunction:
     The generated code are written out to the cache directory (defaults to ~/.flaggems).
     """
 
-    def __init__(self, op_desc: FunctionSchema, scalar_fn: JITFunction):
+    def __init__(self, op_desc: FunctionSchema, scalar_fn: JITFunction, config=None):
         self.fx = op_desc
 
         assert isinstance(scalar_fn, JITFunction)
         self._scalar_fn = scalar_fn
         self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
+
+        self.config: CodeGenConfig = config or CodeGenConfig(
+            8192, (65536, 65536, 65536), 32, True, False
+        )
 
         # instantiated & cached overloads
         self.overloads: Mapping[int, Callable] = {}
@@ -814,14 +818,14 @@ class PointwiseDynamicFunction:
 
         key = str(ndim)
         code = IndentedBuffer()
-        config = CodeGenConfig(8192, (65536, 65536, 65536), 32, True, False)
+
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
             ndim,
             "_kernel",
             "_wrapper",
-            config,
+            self.config,
         )
         module_gen.codegen(code)
 
