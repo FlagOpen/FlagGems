@@ -52,8 +52,8 @@ class StridedBuffer:
         else:
             offset = self.dtype.itemsize * offset
             self._data_ptr = self._base.data_ptr() + offset
-        self.shape = shape if shape is not None else self._base.shape
-        self._strides = strides if strides is not None else self._base.stride()
+        self.shape = tuple(shape if shape is not None else self._base.shape)
+        self._strides = tuple(strides if strides is not None else self._base.stride())
         self.device = self._base.device
         self.ndim = len(self.shape)
 

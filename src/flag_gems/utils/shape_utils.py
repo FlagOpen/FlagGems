@@ -148,6 +148,11 @@ def ordered_stride(shape: Shape, order: Perm) -> Stride:
     return tuple(strides)
 
 
+def stride_order(strides):
+    # we also handle negative strides
+    return sorted(range(len(strides)), key=lambda i: abs(strides[i]))
+
+
 def all_the_same_shape(tensors: Sequence[torch.Tensor]) -> bool:
     if len(tensors) == 0:
         return True
@@ -169,10 +174,12 @@ def all_c_contiguous(tensors: Sequence[torch.Tensor]) -> bool:
 
 
 def heuristics_for_tile_size(max_tile_size, *sizes):
-    tile_sizes = []
-    for size in sizes:
+    ndim = len(sizes)
+    tile_sizes = [0 for _ in range(ndim)]
+    for i in range(ndim):
+        size = sizes[ndim - 1 - i]
         tile_size = min(max_tile_size, triton.next_power_of_2(size))
-        tile_sizes.append(tile_size)
+        tile_sizes[ndim - 1 - i] = tile_size
         max_tile_size = max(1, max_tile_size // tile_size)
     return tuple(tile_sizes)
 

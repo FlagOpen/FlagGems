@@ -302,11 +302,19 @@ class KernelGenerator:
                 for i in range(schema.num_input_tensors()):
                     stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
+                    stride_order_args = _cs(
+                        f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
+                    )
+                    code.writeline(f"{stride_order_args}, # stride order for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
                     stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
+                    stride_order_args = _cs(
+                        f"out{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
+                    )
+                    code.writeline(f"{stride_order_args}, # stride order for out{i}")
 
                 # task space, used to reconstruct multi index
                 task_space_args = _cs(f"s{i}: int" for i in range(ndim))
@@ -370,7 +378,6 @@ class KernelGenerator:
         shape = _tuple_content(tuple(f"s{i}" for i in range(ndim)))
         offsets = _tuple_content(tuple(f"offset{i}" for i in range(ndim)))
         tile_sizes = _tuple_content(tuple(f"tile_size{i}" for i in range(ndim)))
-        order = _tuple_content(tuple(str(i) for i in reversed(range(ndim))))
 
         # reconstruct pid multi index
         code.writeline(
@@ -393,6 +400,7 @@ class KernelGenerator:
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
             strides = _tuple_content(tuple(f"in{i}_stride{j}" for j in range(ndim)))
+            order = _tuple_content(tuple(f"in{i}_stride_order{j}" for j in range(ndim)))
             code.writeline(
                 f"in{i}_bptr = tl.make_block_ptr("
                 f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
@@ -424,6 +432,9 @@ class KernelGenerator:
         )
         for i in range(schema.num_output_tensors()):
             strides = _tuple_content(tuple(f"out{i}_stride{j}" for j in range(ndim)))
+            order = _tuple_content(
+                tuple(f"out{i}_stride_order{j}" for j in range(ndim))
+            )
             code.writeline(
                 f"out{i}_bptr = tl.make_block_ptr("
                 f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
@@ -582,8 +593,10 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
+            code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
+            code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
 
         code.writeline("with torch.cuda.device(in0.device):")
         with code.indent():
@@ -605,10 +618,18 @@ class WrapperGenerator:
                     for i in range(schema.num_input_tensors()):
                         s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for in{i}")
+                        order = ", ".join(
+                            f"in{i}_stride_order[{j}]" for j in range(ndim)
+                        )
+                        code.writeline(f"{order}, # stride order for in{i}")
 
                     for i in range(schema.num_output_tensors()):
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for out{i}")
+                        order = ", ".join(
+                            f"out{i}_stride_order[{j}]" for j in range(ndim)
+                        )
+                        code.writeline(f"{order}, # stride orderfor out{i}")
 
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
@@ -663,6 +684,7 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.shape_utils import (")
         code.writeline("    heuristics_for_tile_size,")
         code.writeline("    heuristics_for_num_warps,")
+        code.writeline("    stride_order,")
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
@@ -693,7 +715,7 @@ class PointwiseDynamicFunction:
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or CodeGenConfig(
-            8192, (65536, 65536, 65536), 32, True, False
+            512, (65536, 65536, 65536), 32, True, False
         )
 
         # instantiated & cached overloads

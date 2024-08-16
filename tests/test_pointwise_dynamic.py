@@ -189,6 +189,9 @@ def test_dynamic_function_with_multiple_outputs():
 
 
 def test_dynamic_function_with_broadcasting():
+    # NOTE: [misaligned address]
+    # triton 2.2 may cause Misaligned address when using 3d block pointer in some
+    # cases with some zero strides
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
@@ -207,6 +210,7 @@ def test_dynamic_function_with_broadcasting():
 
 
 def test_dynamic_function_with_broadcasting2():
+    # NOTE: See note [misaligned address]
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
