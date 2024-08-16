@@ -97,7 +97,6 @@ def group_norm_kernel_opt_prune(configs, named_args, **kwargs):
 @triton.autotune(
     configs=[
         triton.Config({'SPLIT':  s, 'BLOCK_HW_SIZE': size}, num_stages=3, num_warps=1)
-        #for size in [5120] for s in [1]
         for size in [64, 256, 512, 1024, 2048, 4096, 5120] for s in [1, 4, 6, 8, 16]
     ],
     key=["X", "group_size", "C", "HW", "num_groups"],
@@ -148,13 +147,16 @@ def group_norm_kernel_opt(
         if BLOCK_HW_SIZE >= HW:
             tmp = tl.load(X + xy_offset, cache_modifier=".cg").to(tl.float32)
             mean = tl.sum(tmp) / real_num_elements
-            var = tl.sum(tmp)  / real_num_elements - (mean * mean)
+            x = tmp - mean
+            var = tl.sum(x * x)  / real_num_elements
             var = tl.rsqrt(var + eps)
-            tl.store(Mean_ptr, mean)
-            tl.store(Rstd_ptr, var)
 
-            weight = tl.load(W_ptr + group_offset, cache_modifier=".cg")[:, None]
-            bias = tl.load(B_ptr + group_offset, cache_modifier=".cg")[:, None]
+            tl.store(Mean_ptr + idx, mean)
+            tl.store(Rstd_ptr + idx, var)
+
+            wb_mask = group_offset < C
+            weight = tl.load(W_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
+            bias = tl.load(B_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
             tmp = (tmp - mean) * var
             tmp = tmp * weight + bias
             tl.store(Y + xy_offset, tmp)
@@ -172,8 +174,8 @@ def group_norm_kernel_opt(
             tl.store(Mean_ptr + idx, mean)
             tl.store(Rstd_ptr + idx, var)
 
-            weight = tl.load(W_ptr + group_offset, cache_modifier=".cg")[:, None]
-            bias = tl.load(B_ptr + group_offset, cache_modifier=".cg")[:, None]
+            weight = tl.load(W_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
+            bias = tl.load(B_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg")[:, None]
 
             for idy in range(0, hw_iter):
                 xy_mask = group_offset[:, None] < group_size and (idy * BLOCK_HW_SIZE + hw_offset[None, :]) < HW
@@ -265,8 +267,7 @@ def group_norm_backward_kernel_opt_prune(configs, named_args, **kwargs):
 @triton.autotune(
     configs=[
         triton.Config({'SPLIT': s, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
-        #for s in [1] for size in [2048] # for new shape
-        for s in [1, 4, 6, 8] for size in [64, 512, 1024, 2048]
+        for s in [1, 4, 6, 8] for size in [64, 256, 512, 1024, 2048]
     ],
     prune_configs_by={"early_config_prune": group_norm_backward_kernel_opt_prune},
     key=["X", "group_size", "C", "HW", "num_groups"],
@@ -297,7 +298,7 @@ def group_norm_backward_kernel_opt(
 
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
     hw_offset = tl.arange(0, BLOCK_HW_SIZE)
-    if BLOCK_GROUP_SIZE >= HW:
+    if BLOCK_HW_SIZE >= HW:
         hw_offset = tl.arange(0, HW)
 
     W_ptr = W + split_group * SPLIT * group_size
@@ -311,7 +312,8 @@ def group_norm_backward_kernel_opt(
     if (div_mod != 0) and ((split_group+1) == div_v):
         ub = div_mod
     for idx in range(0, ub):
-        weight = tl.load(W_ptr + group_offset, cache_modifier=".cg").to(tl.float32)[:, None]
+        wb_mask = group_offset < C
+        weight = tl.load(W_ptr + group_offset, mask=wb_mask, other=0.0, cache_modifier=".cg").to(tl.float32)[:, None]
         rstd = tl.load(Rstd_ptr + idx).to(tl.float32)
         mean = tl.load(Mean_ptr + idx).to(tl.float32)
 
@@ -413,6 +415,8 @@ def weight_bias_backward_kernel(
 
 def weight_bias_backward_kernel_opt_prune(configs, named_args, **kwargs):
     pruned_configs = []
+    pruned_configs_cached = []
+    n = named_args["N"]
     hw = kwargs["HW"]
     all_sizes = []
     for config in configs:
@@ -423,22 +427,26 @@ def weight_bias_backward_kernel_opt_prune(configs, named_args, **kwargs):
         BLOCK_HW_SIZE = config.kwargs["BLOCK_HW_SIZE"]
         BLOCK_N = config.kwargs["BLOCK_N"]
         if (hw > 2048) and (BLOCK_HW_SIZE >= 2048) and (BLOCK_N <= 4):
-            pruned_configs.append(config)
+            pruned_configs_cached.append(config)
         elif (BLOCK_HW_SIZE > hw):
             not_step_bigger = False
             for size in all_sizes:
                 if (size < BLOCK_HW_SIZE) and (size > hw):
                     not_step_bigger = True
             if not not_step_bigger:
-                pruned_configs.append(config)
+                pruned_configs_cached.append(config)
+    # remove some block n
+    for config in pruned_configs_cached:
+        block_n = config.kwargs["BLOCK_N"]
+        if n % block_n == 0:
+            pruned_configs.append(config)
     return pruned_configs
 
 @libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_N":  bn, "BLOCK_HW_SIZE": size}, num_stages=3, num_warps=1)
-        #for bn in [4] for size in [1024] # for new shape
-        for bn in [1, 4, 6, 8, 16] for size in [512, 1024, 2048]
+        for bn in [1, 4, 8, 16] for size in [512, 1024, 2048]
     ],
     prune_configs_by={"early_config_prune": weight_bias_backward_kernel_opt_prune},
     key=["X", "N", "C", "HW", "num_groups"],
@@ -513,7 +521,6 @@ def weight_bias_backward_kernel_opt(
             tl.store(dB + c_start, dB_val.to(x.dtype))
         else:
             xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
-            mr_mask = n_offset < N
 
             dY_ptr = dY + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
             x_ptr = X + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
@@ -536,9 +543,6 @@ def weight_bias_backward_kernel_opt(
                 dY_ptr = dY + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :] + idx * BLOCK_HW_SIZE
                 x_ptr = X + c_start * HW + n_offset[:, None] * C * HW + hw_offset[None, :] + idx * BLOCK_HW_SIZE
             
-                #mean = tl.load(mean_ptr, cache_modifier=".cg").to(tl.float32)[:, None]
-                #rstd = tl.load(rstd_ptr, cache_modifier=".cg").to(tl.float32)[:, None]
-
                 grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
                 x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
                 x_f32 = x.to(tl.float32)
@@ -550,7 +554,6 @@ def weight_bias_backward_kernel_opt(
             for n_start in range(1, N_SPLIT):
                 new_n_offset = n_start * BLOCK_N + n_offset
                 xy_mask = new_n_offset[:, None] < N and hw_offset[None, :] < HW
-                mr_mask = new_n_offset < N
 
                 dY_ptr = dY + c_start * HW + new_n_offset[:, None] * C * HW + hw_offset[None, :]
                 x_ptr = X + c_start * HW + new_n_offset[:, None] * C * HW + hw_offset[None, :]
@@ -562,8 +565,8 @@ def weight_bias_backward_kernel_opt(
                 mean_ptr = Mean + c_start // group_size + new_n_offset * num_groups
                 rstd_ptr = Rstd + c_start // group_size + new_n_offset * num_groups
                 
-                mean = tl.load(mean_ptr, mask=mr_mask, other=0.0, cache_modifier=".cg").to(tl.float32)[:, None]
-                rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0, cache_modifier=".cg").to(tl.float32)[:, None]
+                mean = tl.load(mean_ptr, cache_modifier=".cg").to(tl.float32)[:, None]
+                rstd = tl.load(rstd_ptr, cache_modifier=".cg").to(tl.float32)[:, None]
 
                 dB_val += tl.sum(grad_y)
                 dW_val += tl.sum((x_f32 - mean) * rstd * grad_y)
@@ -573,9 +576,6 @@ def weight_bias_backward_kernel_opt(
                     dY_ptr = dY + c_start * HW + new_n_offset[:, None] * C * HW + hw_offset[None, :] + idx * BLOCK_HW_SIZE
                     x_ptr = X + c_start * HW + new_n_offset[:, None] * C * HW + hw_offset[None, :] + idx * BLOCK_HW_SIZE
             
-                    #mean = tl.load(mean_ptr, mask=mr_mask, other=0.0, cache_modifier=".cg").to(tl.float32)[:, None]
-                    #rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0, cache_modifier=".cg").to(tl.float32)[:, None]
-
                     grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg").to(tl.float32)
                     x = tl.load(x_ptr, mask=xy_mask, other=0.0, cache_modifier=".cg")
                     x_f32 = x.to(tl.float32)
