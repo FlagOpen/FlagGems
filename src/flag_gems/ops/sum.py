@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 
@@ -92,7 +93,9 @@ def sum(inp, *, dtype=None):
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
-    final_mid_size = min(math.ceil(inp.numel() / block_size), min(mid_size, M))
+    final_mid_size = builtins.min(
+        math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
+    )
 
     with torch.cuda.device(inp.device):
         sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)

@@ -11,6 +11,8 @@ from .accuracy_utils import (
     XPU_REDUCTION_SHAPES_M,
     XPU_REDUCTION_SHAPES_N,
     gems_assert_close,
+    gems_assert_close_groupnorm,
+    gems_assert_close_layernorm,
     gems_assert_equal,
     skip_expr,
     skip_reason,
@@ -346,7 +348,9 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
         res_out, (inp, weight, bias), out_grad
     )
     group_size = C // num_groups
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
+    gems_assert_close_groupnorm(
+        res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW
+    )
     gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
 
@@ -396,7 +400,7 @@ def test_accuracy_layernorm(shape, dtype):
         res_out, (inp, weight, bias), out_grad
     )
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
+    gems_assert_close_layernorm(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 

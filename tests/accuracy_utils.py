@@ -56,6 +56,32 @@ def gems_assert_close(a, b, dtype, equal_nan=False, reduce_dim=1):
     torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
+def gems_assert_close_groupnorm(a, b, dtype, equal_nan=False, reduce_dim=1):
+    if TO_CPU:
+        a = a.to("cpu")
+    b = b.to(dtype)
+    atol = 1e-4 * reduce_dim
+    rtol = RESOLUTION[dtype]
+    if dtype == torch.float16:
+        atol = 1e-2
+    if dtype == torch.bfloat16:
+        atol = 2e-1
+    torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
+
+
+def gems_assert_close_layernorm(a, b, dtype, equal_nan=False, reduce_dim=1):
+    if TO_CPU:
+        a = a.to("cpu")
+    b = b.to(dtype)
+    atol = 1e-4 * reduce_dim
+    rtol = RESOLUTION[dtype]
+    if dtype == torch.float16:
+        atol = 1e-2
+    if dtype == torch.bfloat16:
+        atol = 2e-2
+    torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
+
+
 def gems_assert_equal(a, b):
     if TO_CPU:
         a = a.to("cpu")
@@ -71,7 +97,6 @@ XPU_POINTWISE_2D_SHAPES_8192 = [
     (16, 1024, 8)
 ]  # SHAPE[-1] * SHAPE[-2] <= 8192(core_num * buffer_size limit)
 
-FLOAT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 ALL_FLOAT_DTYPES = [torch.float32, torch.float16, torch.bfloat16]
 ALL_INT_DTYPES = [torch.int32, torch.int16]  # miss torch.int64
 

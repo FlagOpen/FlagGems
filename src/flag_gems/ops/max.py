@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 from collections import namedtuple
@@ -14,7 +15,7 @@ from ..utils import libentry
 def max_kernel_1(
     inp,
     mid,
-    M,
+    M: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -30,7 +31,7 @@ def max_kernel_1(
 
 @libentry()
 @triton.jit
-def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def max_kernel_2(mid, out, mid_size: tl.constexpr, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
@@ -69,9 +70,9 @@ def max_kernel(
     inp,
     out_value,
     out_index,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -109,7 +110,9 @@ def max(inp):
     dtype = inp.dtype
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
-    final_mid_size = min(math.ceil(inp.numel() / block_size), min(mid_size, M))
+    final_mid_size = builtins.min(
+        math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
+    )
 
     with torch.cuda.device(inp.device):
         max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)

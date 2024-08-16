@@ -193,7 +193,7 @@ def mv_args(dtype, batch, size):
 
 class BenchmarkMock:
     def __init__(self):
-        self.op = {self.torch_op.__module__}.
+        self.op = {self.torch_op.__module__}.\\
         {self.torch_op.__name__ if hasattr(self.torch_op, '__name__') else self.torch_op.__class__.__name__}
         self.arg_func = {self.arg_func_map.get(self.arg_func, "unknown")}
         self.kwargs_func = {self.kwags_func_map.get(self.kwargs_func, "None")}

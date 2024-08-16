@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 
@@ -90,7 +91,9 @@ def amax(inp, dim=None, keepdim=False):
         # mid_size = triton.cdiv(M, block_size)
         mid_size = 12  # CLUSTER_NUM
         block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
-        final_mid_size = min(math.ceil(inp.numel() / block_size), min(mid_size, M))
+        final_mid_size = builtins.min(
+            math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
+        )
 
         block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype

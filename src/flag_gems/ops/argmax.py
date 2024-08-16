@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 
@@ -15,7 +16,7 @@ def argmax_kernel_1(
     inp,
     mid_value,
     mid_index,
-    M,
+    M: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
 ):
@@ -37,7 +38,9 @@ def argmax_kernel_1(
 
 @libentry()
 @triton.jit
-def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
+def argmax_kernel_2(
+    mid_value, mid_index, out, mid_size: tl.constexpr, BLOCK_MID: tl.constexpr
+):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
@@ -71,9 +74,9 @@ def heur_block_n(args):
 def argmax_kernel(
     inp,
     out_index,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -104,7 +107,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         # mid_size = triton.cdiv(M, block_size)
         mid_size = 12  # CLUSTER_NUM
         block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
-        final_mid_size = min(math.ceil(inp.numel() / block_size), min(mid_size, M))
+        final_mid_size = builtins.min(
+            math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
+        )
 
         block_mid = triton.next_power_of_2(mid_size)
         use_int64_index = not can_use_int32_index(inp)

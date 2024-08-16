@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 from collections import namedtuple
@@ -14,7 +15,7 @@ from ..utils import libentry
 def min_kernel_1(
     inp,
     mid,
-    M,
+    M: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -29,7 +30,7 @@ def min_kernel_1(
 
 @libentry()
 @triton.jit
-def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def min_kernel_2(mid, out, mid_size: tl.constexpr, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
@@ -67,9 +68,9 @@ def min_kernel(
     inp,
     out_value,
     out_index,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -109,10 +110,13 @@ def min(inp):
     dtype = inp.dtype
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
+    final_mid_size = builtins.min(
+        math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
+    )
 
     with torch.cuda.device(inp.device):
         min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        min_kernel_2[(1, 1, 1)](mid, out, final_mid_size, block_mid)
     return out
 
 
