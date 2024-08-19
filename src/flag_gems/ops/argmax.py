@@ -54,7 +54,11 @@ def heur_block_n(args):
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
+        triton.Config({"BLOCK_M": 2}, num_warps=8),
+        triton.Config({"BLOCK_M": 4}, num_warps=4),
+        triton.Config({"BLOCK_M": 8}, num_warps=2),
+        triton.Config({"BLOCK_M": 8}, num_warps=4),
+        # triton.Config({"BLOCK_M": 8}, num_warps=8),
         # triton.Config({"BLOCK_M": 16}, num_warps=8),
         # triton.Config({"BLOCK_M": 32}, num_warps=8),
     ],
@@ -94,7 +98,7 @@ def argmax_kernel(
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         local_max, local_argmax = tl.max(
             inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
         )
