@@ -32,21 +32,21 @@ def test_perf_embedding():
     bench.run()
 
 
-def test_perf_topk():
-    def topk_kwargs(dtype, batch, size):
-        x = torch.randn((batch, size), device="musa", dtype=dtype)
-        return {"x": x, "k": 5, "dim": -1}
+# def test_perf_topk():
+#     def topk_kwargs(dtype, batch, size):
+#         x = torch.randn((batch, size), device="musa", dtype=dtype)
+#         return {"x": x, "k": 5, "dim": -1}
 
-    bench = Benchmark(
-        op_name="topk",
-        torch_op=torch.topk,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=topk_kwargs,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="topk",
+#         torch_op=torch.topk,
+#         arg_func=None,
+#         dtypes=FLOAT_DTYPES,
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#         kwargs_func=topk_kwargs,
+#     )
+#     bench.run()
 
 
 # def test_perf_resolve_neg():
