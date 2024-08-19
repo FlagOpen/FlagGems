@@ -1,5 +1,5 @@
 import torch
-
+import pytest
 from .performance_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
@@ -30,7 +30,7 @@ def test_perf_embedding():
     )
     bench.run()
 
-
+@pytest.mark.skip(reason="not supported in trition 2.1")
 def test_perf_topk():
     def topk_kwargs(dtype, batch, size):
         x = torch.randn((batch, size), device="cuda", dtype=dtype)
