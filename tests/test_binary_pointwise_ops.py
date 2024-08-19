@@ -510,8 +510,6 @@ def test_accuracy_pow(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_maximum(shape, dtype):
-    if dtype == torch.bfloat16:
-        return
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
@@ -524,8 +522,6 @@ def test_accuracy_maximum(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_minimum(shape, dtype):
-    if dtype == torch.bfloat16:
-        return
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
 
