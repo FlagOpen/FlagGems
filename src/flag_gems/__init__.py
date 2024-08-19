@@ -41,6 +41,8 @@ def enable(lib=aten_lib):
     lib.impl("isfinite", isfinite, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
+    lib.impl("minimum", minimum, "CUDA")
+    lib.impl("maximum", maximum, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
     lib.impl("le.Tensor", le, "CUDA")
     lib.impl("le.Scalar", le_scalar, "CUDA")
@@ -85,6 +87,7 @@ def enable(lib=aten_lib):
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("tanh", tanh, "AutogradCUDA")
     lib.impl("triu", triu, "CUDA")
+    lib.impl("topk", topk, "CUDA")
     lib.impl("var_mean.correction", var_mean, "CUDA")
     lib.impl("linalg_vector_norm", vector_norm, "CUDA")
     lib.impl("where.self", where_self, "CUDA")
@@ -112,6 +115,8 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("index_select", index_select, "CUDA")
+    lib.impl("masked_fill", masked_fill, "CUDA")
 
 
 class use_gems:

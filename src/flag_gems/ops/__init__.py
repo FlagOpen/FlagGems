@@ -31,6 +31,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isinf import isinf
@@ -39,9 +40,12 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
+from .masked_fill import masked_fill
 from .max import max, max_dim
+from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .minimum import minimum
 from .mm import mm
 from .mul import mul
 from .multinomial import multinomial
@@ -75,6 +79,7 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .topk import topk
 from .triu import triu
 from .uniform import uniform_
 from .var_mean import var_mean
@@ -128,6 +133,7 @@ __all__ = [
     "group_norm",
     "gt",
     "gt_scalar",
+    "index_select",
     "isclose",
     "isfinite",
     "isinf",
@@ -143,6 +149,8 @@ __all__ = [
     "mm",
     "mul",
     "multinomial",
+    "maximum",
+    "minimum",
     "rand",
     "randn",
     "resolve_neg",
@@ -170,6 +178,7 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
+    "topk",
     "max",
     "max_dim",
     "min",
@@ -188,4 +197,5 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "masked_fill",
 ]
