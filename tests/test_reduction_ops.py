@@ -351,7 +351,9 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     gems_assert_close_groupnorm(
         res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW
     )
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
+    gems_assert_close_groupnorm(
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW
+    )
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
 
 
