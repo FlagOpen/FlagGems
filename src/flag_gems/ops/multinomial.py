@@ -36,6 +36,7 @@ def multinomial_with_replacement(
     # This error happens when the tossed random number is also zero. To avoid
     # this mistake, we simply perturb random variable with a small number.
     rv += 0.0001
+    rv = tl.where(rv > 0.9999, 0.9999, rv)
 
     cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)

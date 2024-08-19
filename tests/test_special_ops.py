@@ -221,7 +221,7 @@ def test_accuracy_resolve_conj(shape, dtype):
 
 @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("n_samples", [100])
+@pytest.mark.parametrize("n_samples", [1000])
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
     if shape[-1] == 1:
         dist = torch.rand(size=shape, dtype=dtype, device="cuda")

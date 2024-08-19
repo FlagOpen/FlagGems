@@ -70,6 +70,6 @@ def test_multinomial_with_replacement():
         arg_func=multinomial_args,
         dtypes=(torch.float16, torch.float32),
         batch=POINTWISE_BATCH,
-        sizes=(100, 1024, 30000),
+        sizes=(100, 1024, 2048, 4096, 8192),
     )
     bench.run()

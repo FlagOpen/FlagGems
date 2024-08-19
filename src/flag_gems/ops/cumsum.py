@@ -98,6 +98,7 @@ def fused_renorm_cumsum(inp, dim=-1):
     assert dim == inp.ndim - 1, "Currently only supports the last dimension."
     inp = inp.contiguous()
     K = inp.size(dim)
+    assert K <= 8192, "The largest category number is 8192."
     N = inp.numel()
     out = torch.empty_like(inp)
     with torch.cuda.device(inp.device.index):
