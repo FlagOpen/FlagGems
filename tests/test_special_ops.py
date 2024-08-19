@@ -230,7 +230,7 @@ def test_accuracy_resolve_neg(shape, dtype):
         out = z.resolve_neg()
     assert not out.is_neg()
 
-
+@pytest.mark.skip(reason="not supported in trition 2.1")
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
 @pytest.mark.parametrize("topk", [5])
