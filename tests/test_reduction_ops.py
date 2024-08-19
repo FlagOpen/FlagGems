@@ -692,3 +692,22 @@ def test_accuracy_index_add(shape, dim, dtype):
         res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
 
     gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    index_size = inp.size(dim)
+    from math import floor
+
+    index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
+
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    with flag_gems.use_gems():
+        res_out = torch.index_select(inp, dim, index)
+
+    gems_assert_equal(res_out, ref_out)

@@ -17,14 +17,16 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
 ]
 dependencies = [
-    "triton>=2.2.0, <3.0.0",
-    "torch>=2.1.2",
+    "triton>=2.2.0",
+    "torch>=2.2.0",
     "transformers>=4.40.2"
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=7.1.0",
+    "numpy>=1.26",
+    "scipy>=1.14"
 ]
 
 [project.urls]
