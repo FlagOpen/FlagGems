@@ -83,12 +83,12 @@ def cumsum(inp, dim=1, *, dtype=None):
 
 @triton.jit(do_not_specialize=["K"])
 def fused_renorm_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
-    row_start = inp + tl.program_id(0) * K
+    row_start = tl.program_id(0) * K
     row_off = tl.arange(0, BLOCK)
-    x = tl.load(row_start + row_off, mask=row_off < K)
+    x = tl.load(inp + row_start + row_off, mask=row_off < K)
     normed_x = x / tl.sum(x, 0)
     y = tl.cumsum(normed_x, 0)
-    tl.store(out + row_off, y, mask=row_off < K)
+    tl.store(out + row_start + row_off, y, mask=row_off < K)
 
 
 def fused_renorm_cumsum(inp, dim=-1):

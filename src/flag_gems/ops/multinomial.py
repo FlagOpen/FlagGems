@@ -44,16 +44,13 @@ def multinomial_with_replacement(
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
-        start = tl.where(x < rv.to(x.dtype), mid + 1, start)
+        start = tl.where(x < rv, mid + 1, start)
         # start = tl.where(start == end, start, new_start)
-        end = tl.where(x < rv.to(x.dtype), end, mid)
+        end = tl.where(x < rv, end, mid)
 
     # Returns the last index in case of an overflow
-    start = tl.where(start == K, start - 1, start)
+    start = tl.where(start >= K, K - 1, start)
     tl.store(out_ptr + y_off + n, start, mask=n < N)
-
-    # rv_ptr += y_off
-    # tl.store(rv_ptr + n, rv, mask=n < N)
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):

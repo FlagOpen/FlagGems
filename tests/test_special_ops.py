@@ -219,20 +219,26 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.parametrize("shape", [(2, 10)])
-@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("n_samples", [100])
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
-    dist = torch.rand(size=shape, dtype=dtype, device="cuda")
-    # Mask 60% off all categories and test the sampling results fall in the rest
-    dist[torch.rand(shape) < 0.6] = 0
-    print(dist)
-    with flag_gems.use_gems():
-        res_out = torch.multinomial(dist, n_samples, True)
-
-    print(res_out)
-    res_dist = torch.gather(dist, -1, res_out)
-    assert torch.all(res_dist)
+    if shape[-1] == 1:
+        dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+        with flag_gems.use_gems():
+            res_out = torch.multinomial(dist, n_samples, True)
+        assert torch.all(res_out == 0)
+    else:
+        # Mask p% off of the categories and test the sampling results fall in the rest
+        for p in (0.1, 0.5, 0.9):
+            dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+            dist[torch.rand(shape) < p] = 0
+            # Make sure there's at least one non-zero probability
+            dist[..., -1] = 0.5
+            with flag_gems.use_gems():
+                res_out = torch.multinomial(dist, n_samples, True)
+            res_dist = torch.gather(dist, -1, res_out)
+            assert torch.all(res_dist)
 
 
 @pytest.mark.parametrize("pool", UT_SHAPES_1D + UT_SHAPES_2D)
