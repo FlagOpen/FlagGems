@@ -79,3 +79,30 @@ def cumsum(inp, dim=1, *, dtype=None):
     with torch.cuda.device(inp.device):
         cumsum_kernel[grid](inp, out, M, N, K)
     return out
+
+
+@triton.jit(do_not_specialize=["K"])
+def fused_renorm_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
+    row_start = inp + tl.program_id(0) * K
+    row_off = tl.arange(0, BLOCK)
+    x = tl.load(row_start + row_off, mask=row_off < K)
+    normed_x = x / tl.sum(x, 0)
+    y = tl.cumsum(normed_x, 0)
+    tl.store(out + row_off, y, mask=row_off < K)
+
+
+def fused_renorm_cumsum(inp, dim=-1):
+    logging.debug("GEMS RENORM_CUMSUM")
+    assert inp.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
+    dim = dim % inp.ndim
+    assert dim == inp.ndim - 1, "Currently only supports the last dimension."
+    inp = inp.contiguous()
+    K = inp.size(dim)
+    N = inp.numel()
+    out = torch.empty_like(inp)
+    with torch.cuda.device(inp.device.index):
+        grid = lambda meta: (N // K,)
+        BLOCK = triton.next_power_of_2(K)
+        fused_renorm_cumsum_kernel[grid](inp, out, K, BLOCK=BLOCK)
+
+    return out

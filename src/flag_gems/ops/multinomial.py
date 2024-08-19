@@ -29,7 +29,14 @@ def multinomial_with_replacement(
     n = tl.program_id(0) * NBLOCK + tl.arange(0, NBLOCK)
     rv, _, _, _ = uniform(philox_seed, philox_offset, y_off + n)
 
-    # Do a binary search for each random variable on the cdf
+    # Do a binary search for each random number on the cumulative probabilities.
+    # Each random number always selects the leftmost index of the data greater
+    # than or equal to itself. However, this is likely to give a wrong result
+    # in case the first probability is zero which is not expected to selected.
+    # This error happens when the tossed random number is also zero. To avoid
+    # this mistake, we simply perturb random variable with a small number.
+    rv += 0.0001
+
     cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K
@@ -37,15 +44,16 @@ def multinomial_with_replacement(
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
-        start = tl.where(x < rv, mid + 1, start)
-        end = tl.where(x < rv, end, mid)
+        start = tl.where(x < rv.to(x.dtype), mid + 1, start)
+        # start = tl.where(start == end, start, new_start)
+        end = tl.where(x < rv.to(x.dtype), end, mid)
 
     # Returns the last index in case of an overflow
     start = tl.where(start == K, start - 1, start)
+    tl.store(out_ptr + y_off + n, start, mask=n < N)
 
-    y_off = tl.program_id(1) * N
-    out_ptr += y_off
-    tl.store(out_ptr + n, start, mask=n < N)
+    # rv_ptr += y_off
+    # tl.store(rv_ptr + n, rv, mask=n < N)
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
@@ -71,23 +79,22 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
             vals, indices = torch.topk(s, n_samples, dim=-1)
             return indices
 
-    # Sampling with replacement
-    normed_prob = torch.empty_like(prob, memory_format=torch.contiguous_format)
-    normed_prob.copy_(prob)
-    if normed_prob.dim() == 1:
-        normed_prob = normed_prob.view(1, -1)
-    normed_prob = torch.div(
-        normed_prob, normed_prob.sum(-1, keepdim=True), out=normed_prob
-    )
-    cdf = torch.cumsum(normed_prob, -1, out=normed_prob)
-    n_dist = normed_prob.size(0)
-    out = torch.empty((n_dist, n_samples), device=prob.device, dtype=torch.int32)
+    from flag_gems.ops import fused_renorm_cumsum as renorm_cumsum
+
+    cum_prob = renorm_cumsum(prob, dim=-1)
+
+    if cum_prob.dim() == 1:
+        n_dist = 1
+        out = torch.empty((n_samples,), device=prob.device, dtype=torch.int64)
+    else:
+        n_dist = cum_prob.size(0)
+        out = torch.empty((n_dist, n_samples), device=prob.device, dtype=torch.int64)
     # The CTA level parallelism is framed in a 2d grid of blocks with grid.y
     # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
     philox_seed, philox_offset = philox_cuda_seed_offset(increment)
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
     multinomial_with_replacement[grid](
-        cdf, out, n_categories, n_samples, philox_seed, philox_offset
+        cum_prob, out, n_categories, n_samples, philox_seed, philox_offset
     )
     return out

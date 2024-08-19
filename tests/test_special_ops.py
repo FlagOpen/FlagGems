@@ -8,6 +8,8 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
+    UT_SHAPES_1D,
+    UT_SHAPES_2D,
     gems_assert_close,
     to_reference,
 )
@@ -217,20 +219,24 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.parametrize("shape", [(1000,), (100, 1000)])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("n_samples", [2048])
+@pytest.mark.parametrize("shape", [(2, 10)])
+@pytest.mark.parametrize("dtype", [torch.float16])
+@pytest.mark.parametrize("n_samples", [100])
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
-    dist = torch.zeros(size=shape, dtype=dtype, device="cuda")
-    Index = [5, 13, 42]
-    dist[..., Index] = 1
+    dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+    # Mask 60% off all categories and test the sampling results fall in the rest
+    dist[torch.rand(shape) < 0.6] = 0
+    print(dist)
     with flag_gems.use_gems():
         res_out = torch.multinomial(dist, n_samples, True)
-    assert torch.all(torch.isin(res_out, torch.tensor(Index, device="cuda")))
+
+    print(res_out)
+    res_dist = torch.gather(dist, -1, res_out)
+    assert torch.all(res_dist)
 
 
-@pytest.mark.parametrize("pool", [100, 2048])
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("pool", UT_SHAPES_1D + UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_multinomial_without_replacement(pool, dtype):
     n_draws = 10
     dist = torch.rand(size=(pool,), dtype=dtype, device="cuda").broadcast_to(

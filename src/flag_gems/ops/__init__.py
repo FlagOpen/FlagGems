@@ -16,7 +16,7 @@ from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
-from .cumsum import cumsum
+from .cumsum import cumsum, fused_renorm_cumsum
 from .div import div
 from .dropout import native_dropout
 from .embedding import embedding
@@ -106,6 +106,7 @@ __all__ = [
     "clamp_tensor",
     "cos",
     "cumsum",
+    "fused_renorm_cumsum",
     "div",
     "zeros",
     "ones",
