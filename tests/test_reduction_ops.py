@@ -701,10 +701,10 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_src = to_reference(src)
-    ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src)
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    # ref_src = to_reference(src)
+    ref_out = torch.scatter(inp, dim, index, src)
     with flag_gems.use_gems():
         from src.flag_gems.ops import scatter_src
 
@@ -743,10 +743,10 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_src = to_reference(src)
-    ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    # ref_src = to_reference(src)
+    ref_out = torch.scatter(inp, dim, index, src, reduce="add")
     with flag_gems.use_gems():
         from src.flag_gems.ops import scatter_reduce
 
@@ -785,10 +785,10 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_src = to_reference(src)
-    ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="multiply")
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    # ref_src = to_reference(src)
+    ref_out = torch.scatter(inp, dim, index, src, reduce="multiply")
     with flag_gems.use_gems():
         from src.flag_gems.ops import scatter_reduce
 
@@ -825,9 +825,9 @@ def test_accuracy_gather(inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_out = torch.gather(ref_inp, dim, ref_index)
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    ref_out = torch.gather(inp, dim, index)
     with flag_gems.use_gems():
         from src.flag_gems.ops import gather
 
@@ -866,15 +866,15 @@ def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_out = torch.gather(ref_inp, dim, ref_index, sparse_grad=False, out=out)
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    ref_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
     with flag_gems.use_gems():
         from src.flag_gems.ops import gather_out
 
         # res_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
         res_out = gather_out(inp, dim, index, sparse_grad=False, out=out)
-    
+
     gems_assert_equal(res_out, ref_out)
 
 
@@ -888,9 +888,9 @@ def test_accuracy_index_select(shape, dim, dtype):
 
     index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    ref_out = torch.index_select(inp, dim, index)
     with flag_gems.use_gems():
         res_out = torch.index_select(inp, dim, index)
 
