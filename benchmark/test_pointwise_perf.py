@@ -583,8 +583,8 @@ def test_perf_flip_int():
 
 def test_masked_fill():
     def masked_fill_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        inp = torch.randn([batch, size], dtype=dtype, device="musa")
+        mask = torch.randn([batch, size], dtype=dtype, device="musa") < 0.3
         value = 1024
         return (inp, mask, value)
 
