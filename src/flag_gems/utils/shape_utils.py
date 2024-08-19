@@ -126,7 +126,7 @@ def c_contiguous_stride(shape: Shape) -> Stride:
     s = 1
     for size in reversed(shape):
         strides.append(s)
-        s *= min(size, 1)  # treat size 0 as size 1
+        s *= max(size, 1)  # treat size 0 as size 1
     return tuple(reversed(strides))
 
 
@@ -135,7 +135,7 @@ def f_contiguous_stride(shape: Shape) -> Stride:
     s = 1
     for size in shape:
         strides.append(s)
-        s *= min(size, 1)  # treat size 0 as size 1
+        s *= max(size, 1)  # treat size 0 as size 1
     return tuple(strides)
 
 
@@ -144,7 +144,7 @@ def ordered_stride(shape: Shape, order: Perm) -> Stride:
     s = 1
     for i in order:
         strides[i] = s
-        s *= min(shape[i], 1)  # treat size 0 as size 1
+        s *= max(shape[i], 1)  # treat size 0 as size 1
     return tuple(strides)
 
 
