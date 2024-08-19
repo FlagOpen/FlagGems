@@ -258,7 +258,7 @@ def test_topk(
     largest,
     dtype,
 ):
-    x = torch.arange(hiddensize, dtype=dtype, device="cuda")
+    x = torch.arange(hiddensize, dtype=dtype, device="musa")
     x = x.repeat(batch_size).reshape(batch_size, hiddensize)
 
     # Each row use different shuffled index.

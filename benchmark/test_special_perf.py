@@ -34,7 +34,7 @@ def test_perf_embedding():
 
 def test_perf_topk():
     def topk_kwargs(dtype, batch, size):
-        x = torch.randn((batch, size), device="cuda", dtype=dtype)
+        x = torch.randn((batch, size), device="musa", dtype=dtype)
         return {"x": x, "k": 5, "dim": -1}
 
     bench = Benchmark(

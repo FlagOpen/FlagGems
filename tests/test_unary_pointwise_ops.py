@@ -382,8 +382,8 @@ def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
 def test_accuracy_masked_fill(shape, dtype, threshold):
-    inp = torch.zeros(shape, dtype=dtype, device="cuda")
-    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+    inp = torch.zeros(shape, dtype=dtype, device="musa")
+    mask = torch.randn(shape, dtype=dtype, device="musa") < threshold
     value = 1024
 
     ref_inp = to_reference(inp)

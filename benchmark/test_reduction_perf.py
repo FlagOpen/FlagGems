@@ -350,7 +350,7 @@ def test_perf_vector_norm():
 
 def test_perf_index_select():
     def index_select_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device="musa")
 
         threshold = 0.1
         dim = 0
@@ -358,7 +358,7 @@ def test_perf_index_select():
         from math import floor
 
         index = torch.randint(
-            0, index_size, [floor(index_size * threshold)], device="cuda"
+            0, index_size, [floor(index_size * threshold)], device="musa"
         )
         return (inp, dim, index)
 
