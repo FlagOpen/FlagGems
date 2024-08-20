@@ -21,7 +21,11 @@ jobs:
       options: --gpus all --hostname flag-gems_cicd_coverage
     steps:
 
+      - name: check-gpu-free
+        run: tests/scripts/gpu_check.sh
+
       - name: run-pytest
+        shell: bash
         run: |
           cmds=(
             "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode -m pytest -s tests/test_unary_pointwise_ops.py &"
@@ -49,6 +53,7 @@ jobs:
           done
 
           echo "Exit statuses of all tasks: ${exit_statuses[@]}"
+
           coverage combine --append
           coverage report -m
           coverage xml -o coverage.xml
