@@ -259,8 +259,12 @@ def test_accuracy_resolve_conj(shape, dtype):
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
-def test_pad(shape, dtype, pad_mode):
+@pytest.mark.parametrize("contiguous", [True, False])
+def test_pad(shape, dtype, pad_mode, contiguous):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    if not contiguous:
+        x = x[::2, ::2]
+
     ref_x = to_reference(x)
 
     rank = x.ndim
