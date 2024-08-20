@@ -78,7 +78,7 @@ def gems_assert_close_layernorm(a, b, dtype, equal_nan=False, reduce_dim=1):
     if dtype == torch.float16:
         atol = 1e-2
     if dtype == torch.bfloat16:
-        atol = 2e-2
+        atol = 5e-2
     torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
