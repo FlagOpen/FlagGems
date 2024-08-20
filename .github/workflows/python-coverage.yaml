@@ -54,11 +54,13 @@ jobs:
 
           echo "Exit statuses of all tasks: ${exit_statuses[@]}"
 
+      - name: get-coverage
+        run: |
           coverage combine --append
           coverage report -m
           coverage xml -o coverage.xml
 
-      - name: get-coverage
+      - name: report-coverage
         uses: orgoro/coverage@v3.2
         with:
             coverageFile: coverage.xml
