@@ -1,23 +1,11 @@
 name: code-format-check
+
 on:
   push:
     branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
-permissions:
-  actions: write
-  checks: write
-  contents: write
-  deployments: read
-  id-token: write
-  issues: write
-  discussions: write
-  packages: read
-  pages: read
-  pull-requests: write
-  repository-projects: read
-  security-events: write
-  statuses: write
+
 jobs:
   pre-commit:
     runs-on: ubuntu-latest
