@@ -263,8 +263,10 @@ def test_constant_pad(shape, dtype):
     ref_x = to_reference(x)
 
     rank = x.ndim
-    pad_params = tuple(torch.randint(0, 10, rank * 2))
-    pad_value = float(torch.randint(0, 1024, 1))
+    pad_params = tuple(
+        torch.randint(0, 10, (rank * 2,), dtype=torch.int32, device="cpu")
+    )
+    pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
     ref_out = torch.nn.functional.pad(x, pad_params, "constant", pad_value)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.pad(ref_x, pad_params, "constant", pad_value)
