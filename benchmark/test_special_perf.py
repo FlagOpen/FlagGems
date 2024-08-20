@@ -82,44 +82,12 @@ def test_perf_resolve_conj():
     bench.run()
 
 
-def test_perf_unique_default():
-    def unique_kwargs(dtype, batch, size):
-        return {"sorted": True, "return_inverse": False, "return_counts": False}
-
-    bench = Benchmark(
-        op_name="unique_default",
-        torch_op=torch.unique,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=unique_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_unique_return_inverse():
+def test_perf_unique():
     def unique_kwargs(dtype, batch, size):
         return {"sorted": True, "return_inverse": True, "return_counts": False}
 
     bench = Benchmark(
-        op_name="unique_return_inverse",
-        torch_op=torch.unique,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=unique_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_unique_return_inverse_counts():
-    def unique_kwargs(dtype, batch, size):
-        return {"sorted": True, "return_inverse": True, "return_counts": True}
-
-    bench = Benchmark(
-        op_name="unique_return_inverse_counts",
+        op_name="unique",
         torch_op=torch.unique,
         arg_func=unary_int_arg,
         dtypes=INT_DTYPES,
