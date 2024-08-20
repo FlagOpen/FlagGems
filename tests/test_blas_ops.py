@@ -1,3 +1,4 @@
+import os
 import pytest
 import torch
 
@@ -41,8 +42,10 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
     batch = 4
-    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    if not os.getenv("GEMS_DISABLE_FIX_SEED", False):
+        torch.manual_seed(0)
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device="cuda")
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device="cuda")
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 

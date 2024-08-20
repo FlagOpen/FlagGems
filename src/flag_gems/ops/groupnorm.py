@@ -84,7 +84,7 @@ def group_norm_backward_kernel(
 ):
     pid = tle.program_id(0)
     group = pid % num_groups
-    num_elements = group_size * HW
+    num_elements = group_size * BLOCK_HW_SIZE
 
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
     hw_offset = tl.arange(0, BLOCK_HW_SIZE)
@@ -151,8 +151,8 @@ def weight_bias_backward_kernel(
     mean_ptr = Mean + group + n_offset * num_groups
     rstd_ptr = Rstd + group + n_offset * num_groups
 
-    dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-    x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+    dY_ptr = dY + pid * BLOCK_HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+    x_ptr = X + pid * BLOCK_HW + n_offset[:, None] * C * HW + hw_offset[None, :]
 
     grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
     x = tl.load(x_ptr, mask=xy_mask, other=0.0)
@@ -160,8 +160,10 @@ def weight_bias_backward_kernel(
     mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
     rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
 
-    dB = tl.sum(grad_y)
-    dW = tl.sum((x_f32 - mean) * rstd * grad_y)
+    dB = tl.sum(grad_y, 1)
+    dB = tl.sum(dB)
+    dW = tl.sum((x_f32 - mean) * rstd * grad_y, 1)
+    dW = tl.sum(dW)
     tl.store(dW_ptr, dW.to(x.dtype))
     tl.store(dB_ptr, dB.to(x.dtype))
 

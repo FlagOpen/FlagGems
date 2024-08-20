@@ -82,7 +82,9 @@ def argmax_kernel(
     argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K
+        if USE_K:
+            offset += pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
@@ -95,7 +97,9 @@ def argmax_kernel(
         max_values = tl.where(update, local_max, max_values)
         argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
 
-    offset_index = m_offset * K + pid_k
+    offset_index = m_offset * K
+    if USE_K:
+        offset_index += pid_k
     out_index_ptrs = out_index + offset_index
     mask1 = m_offset < M
     tl.store(out_index_ptrs, argmax_values, mask=mask1)
@@ -138,6 +142,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
+        USE_K = K != 1
 
         inp = inp.contiguous()
 

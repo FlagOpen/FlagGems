@@ -30,7 +30,7 @@ def pow_func_tensor_scalar(x, exponent):
 
 def pow_tensor_scalar(A, exponent):
     logging.debug("GEMS POW_TENSOR_SCALAR")
-    if exponent == 2:
+    if isinstance(exponent, (int, float)) and exponent == 2:
         return A * A
     return pow_func_tensor_scalar(A, exponent)
 
