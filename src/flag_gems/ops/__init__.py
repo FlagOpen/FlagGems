@@ -25,10 +25,13 @@ from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
 from .flip import flip
+from .full import full
+from .full_like import full_like
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isinf import isinf
@@ -37,14 +40,25 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
+from .masked_fill import masked_fill
 from .max import max, max_dim
+from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .minimum import minimum
 from .mm import mm
 from .mul import mul
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .normal import (
+    normal_float_float,
+    normal_float_tensor,
+    normal_tensor_float,
+    normal_tensor_tensor,
+)
+from .ones import ones
+from .ones_like import ones_like
 from .outer import outer
 from .pad import pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
@@ -54,6 +68,8 @@ from .rand_like import rand_like
 from .randn import randn
 from .reciprocal import reciprocal
 from .relu import relu
+from .resolve_conj import resolve_conj
+from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
 from .sigmoid import sigmoid
@@ -63,10 +79,14 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .topk import topk
 from .triu import triu
+from .uniform import uniform_
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
+from .zeros import zeros
+from .zeros_like import zeros_like
 
 __all__ = [
     "all",
@@ -93,6 +113,9 @@ __all__ = [
     "pad",
     "cumsum",
     "div",
+    "zeros",
+    "ones",
+    "full",
     "native_dropout",
     "erf",
     "embedding",
@@ -101,12 +124,16 @@ __all__ = [
     "exp",
     "exponential_",
     "flip",
+    "ones_like",
+    "full_like",
+    "zeros_like",
     "ge",
     "ge_scalar",
     "gelu",
     "group_norm",
     "gt",
     "gt_scalar",
+    "index_select",
     "isclose",
     "isfinite",
     "isinf",
@@ -121,8 +148,17 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "maximum",
+    "minimum",
     "rand",
     "randn",
+    "resolve_neg",
+    "resolve_conj",
+    "normal_tensor_float",
+    "normal_float_tensor",
+    "normal_tensor_tensor",
+    "normal_float_float",
+    "uniform_",
     "rand_like",
     "mv",
     "ne",
@@ -141,6 +177,7 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
+    "topk",
     "max",
     "max_dim",
     "min",
@@ -159,4 +196,5 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "masked_fill",
 ]

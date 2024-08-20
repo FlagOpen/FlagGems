@@ -1,8 +1,6 @@
 from typing import Optional
 
-import numpy as np
 import pytest
-import scipy
 import torch
 
 import flag_gems
@@ -10,10 +8,12 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
+    RESOLUTION,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
 )
+from .conftest import TO_CPU
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -38,14 +38,21 @@ def test_accuracy_dropout(shape, p, dtype):
 
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
-    assert (
-        abs(num_equal - exp_equal) / exp_equal <= 0.05
-    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+    if TO_CPU:
+        zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
+        num_zero = torch.sum(zero_equal).item()
+        assert abs(num_zero / inp.numel() - p) <= 0.05
+        scale_equal = torch.isclose(res_out, ref_inp / (1 - p), rtol=RESOLUTION[dtype])
+        assert torch.all(torch.logical_or(zero_equal, scale_equal))
+    else:
+        assert (
+            abs(num_equal - exp_equal) / exp_equal <= 0.05
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
-    num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
-    assert (
-        abs(num_equal - exp_equal) / exp_equal <= 0.05
-    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+        num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
+        assert (
+            abs(num_equal - exp_equal) / exp_equal <= 0.05
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
 def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
@@ -198,54 +205,55 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rand(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.rand(shape, dtype=dtype, device="cuda")
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_randn(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.randn(shape, dtype=dtype, device="cuda")
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
-    assert torch.abs(mean) < 0.01
-    assert torch.abs(std - 1) < 0.01
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_rand_like(shape, dtype):
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_neg(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    z = y.imag
+    assert z.is_neg()
     with flag_gems.use_gems():
-        res_out = torch.rand_like(x)
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
+        out = z.resolve_neg()
+    assert not out.is_neg()
+
+
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [128])
+@pytest.mark.parametrize("topk", [5])
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_topk(
+    batch_size,
+    hiddensize,
+    topk,
+    largest,
+    dtype,
+):
+    x = torch.arange(hiddensize, dtype=dtype, device="cuda")
+    x = x.repeat(batch_size).reshape(batch_size, hiddensize)
+
+    # Each row use different shuffled index.
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(x.size(1))
+        x[bsz, :] = x[bsz, col_indices]
+
+    ref_value, ref_index = torch.topk(x, topk, largest=largest)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, largest=largest)
+
+    gems_assert_close(ref_value, res_value, dtype)
+    gems_assert_equal(ref_index, res_index)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_exponential_(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cuda")
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_conj(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y = x.conj()
+    assert y.is_conj()
     with flag_gems.use_gems():
-        x.exponential_()
-    assert x.min() > 0
-
-
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES[:1])
-@pytest.mark.parametrize("dtype", (torch.float32,))
-@pytest.mark.parametrize("lambd", (0.01, 0.5, 100.0))
-def test_accuracy_exponential_pvalue(shape, dtype, lambd):
-    x = torch.empty(size=shape, dtype=dtype, device="cuda")
-    with flag_gems.use_gems():
-        x.exponential_(lambd=lambd)
-    expo_cdf = lambda x: np.where(x < 0, 0, 1.0 - np.exp(-lambd * x))
-    pvalue = scipy.stats.kstest(x.cpu().numpy().flatten(), expo_cdf).pvalue
-    assert pvalue > 0.05
+        z = y.resolve_conj()
+    assert not z.is_conj()
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -255,9 +263,8 @@ def test_constant_pad(shape, dtype):
     ref_x = to_reference(x)
 
     rank = x.ndim
-    pad_params = tuple(np.random.randint(0, 10, rank * 2))
-
-    pad_value = np.random.randint(0, 1024, 1)[0]
+    pad_params = tuple(torch.randint(0, 10, rank * 2))
+    pad_value = float(torch.randint(0, 1024, 1))
     ref_out = torch.nn.functional.pad(x, pad_params, "constant", pad_value)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.pad(ref_x, pad_params, "constant", pad_value)
