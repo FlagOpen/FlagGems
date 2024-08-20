@@ -356,7 +356,10 @@ def generate_pad_kernel(
         for i in range(1, rank):
             code.writeline(f"src_offset += src_index_{i} * in_strides{i}")
 
-        code.writeline("load_cond = src_offset < in_elem_cnt")
+        code.writeline(f"load_cond = src_index_{i} < x_shape{i}")
+        for i in range(1, rank):
+            code.writeline(f"load_cond &= src_index_{i} < x_shape{i}")
+
         code.writeline("if IS_CONSTANT: ")
         with code.indent():
             code.writeline(

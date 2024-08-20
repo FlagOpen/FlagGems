@@ -256,19 +256,27 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_constant_pad(shape, dtype):
+@pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
+def test_pad(shape, dtype, pad_mode):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
     ref_x = to_reference(x)
 
     rank = x.ndim
-    pad_params = tuple(
+    pad_params = list(
         torch.randint(0, 10, (rank * 2,), dtype=torch.int32, device="cpu")
+        if pad_mode == "constant"
+        else torch.randint(0, 10, (rank,), dtype=torch.int32, device="cpu")
     )
     pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
-    ref_out = torch.nn.functional.pad(x, pad_params, "constant", pad_value)
+
+    if pad_mode != "constant":
+        pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
+        pad_value = None
+
+    ref_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.pad(ref_x, pad_params, "constant", pad_value)
+        res_out = torch.nn.functional.pad(ref_x, pad_params, pad_mode, pad_value)
 
     gems_assert_equal(ref_out, res_out)
