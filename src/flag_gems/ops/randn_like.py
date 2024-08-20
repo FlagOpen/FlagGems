@@ -14,7 +14,7 @@ def randn_like(
 ):
     logging.debug("GEMS RANDN_LIKE")
     if device is None:
-        device = x.device
+        device = x.device.index
     if dtype is None:
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
