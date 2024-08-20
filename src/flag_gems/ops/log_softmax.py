@@ -49,11 +49,15 @@ def log_softmax_kernel(
     K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    USE_K: tl.constexpr
 ):
     pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_offset = tl.arange(0, BLOCK_N)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K
+    if USE_K:
+        offset += pid_k
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     input_ptrs = input_ptr + offset
     inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
@@ -130,6 +134,7 @@ class LogSoftmax(torch.autograd.Function):
             dtype = x.dtype
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N
+        USE_K = K != 1
 
         grid = lambda meta: (
             triton.cdiv(M, meta["BLOCK_M"]),
@@ -142,6 +147,7 @@ class LogSoftmax(torch.autograd.Function):
                 M,
                 N,
                 K,
+                USE_K=USE_K
             )
         ctx.save_for_backward(out)
         ctx.dim = dim
