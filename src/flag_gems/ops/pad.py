@@ -315,13 +315,13 @@ def generate_pad_kernel(
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, \
-                      valid_dim{i}_start - dst_index_{i}, src_index_{i})"
+                    f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
+                        valid_dim{i}_start - dst_index_{i}, src_index_{i})"""
                 )
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, \
-                      (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"
+                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
+                    (x_shape{i} + valid_dim{i}_start - 1) * 2 - dst_index_{i} - valid_dim{i}_start, src_index_{i})"""
                 )
 
         code.newline()
@@ -341,13 +341,13 @@ def generate_pad_kernel(
         with code.indent():
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start, \
-                      dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"
+                    f"""src_index_{i} = tl.where(dst_index_{i} < valid_dim{i}_start,
+                        dst_index_{i} + x_shape{i} - valid_dim{i}_start, src_index_{i})"""
                 )
             for i in range(rank):
                 code.writeline(
-                    f"src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end, \
-                      dst_index_{i} - valid_dim{i}_end, src_index_{i})"
+                    f"""src_index_{i} = tl.where(dst_index_{i} >= valid_dim{i}_end,
+                        dst_index_{i} - valid_dim{i}_end, src_index_{i})"""
                 )
 
         code.newline()
