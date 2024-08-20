@@ -108,7 +108,7 @@ def test_multinomial_with_replacement():
         op_name="multinomial",
         torch_op=torch.multinomial,
         arg_func=multinomial_args,
-        dtypes=(torch.float16, torch.float32),
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=(100, 1024, 2048, 4096, 8192),
     )
