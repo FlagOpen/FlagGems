@@ -533,7 +533,7 @@ class WrapperGenerator:
         # in0, in1, val0, val1, ..., So passing these parameters by keyword is wierd
         # So we enforce that these parameters must be passed by position.
         # maybe we can fix it later
-        # output parameters: must be passed by keywore, since the scalar function
+        # output parameters: must be passed by keyword, since the scalar function
         # do not have output parameters(think of it as some scalar function, output
         # parameter does not make sense in this case.) They are added to allow destination
         # passing style API. Output parameter is convenient in cases where we want
@@ -858,12 +858,13 @@ class PointwiseDynamicFunction:
         key = str(ndim)
         code = IndentedBuffer()
 
+        scalar_fn_name = self._scalar_fn.__name__
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
             ndim,
-            "_kernel",
-            "_wrapper",
+            f"{scalar_fn_name}_kernel_rank_{ndim}",
+            f"{scalar_fn_name}_wrapper_rank_{ndim}",
             self.config,
         )
         module_gen.codegen(code)

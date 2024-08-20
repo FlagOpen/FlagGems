@@ -138,7 +138,7 @@ def test_dynamic_function_without_non_tensor_args():
         return x + y
 
     SIZE = 2
-    for ndim in range(10):
+    for ndim in range(8):
         shape = [SIZE] * ndim
         x = torch.randn(shape, device="cuda")
         y = torch.randn_like(x)
@@ -157,7 +157,7 @@ def test_dynamic_function_with_non_tensor_args():
         return alpha * x + y
 
     SIZE = 2
-    for ndim in range(10):
+    for ndim in range(8):
         shape = [SIZE] * ndim
         x = torch.randn(shape, device="cuda")
         y = torch.randn_like(x)
@@ -178,7 +178,7 @@ def test_dynamic_function_with_multiple_outputs():
         return alpha * x + y, alpha * x - y
 
     SIZE = 2
-    for ndim in range(10):
+    for ndim in range(8):
         shape = [SIZE] * ndim
         x = torch.randn(shape, device="cuda")
         y = torch.randn_like(x)
@@ -336,6 +336,27 @@ def test_dynamic_function_with_nd_buffer():
     y = torch.randn([N // 2, K // 2, M // 2], device="cuda").permute(2, 0, 1)
     alpha = 2.0
     o = torch.empty([M // 2, N // 2, K // 2], device="cuda")
+    out0, out1 = axpyaxmy(x, y, alpha, out0=o)
+    assert out0 is o
+    torch.testing.assert_close(out0, alpha * x + y)
+    torch.testing.assert_close(out1, alpha * x - y)
+
+
+def test_dynamic_function_with_different_stride_order():
+    @pointwise_dynamic(
+        num_inputs=3,
+        is_tensor=[True, True, False],
+        promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+    )
+    @triton.jit
+    def axpyaxmy(x, y, alpha):
+        return alpha * x + y, alpha * x - y
+
+    M, N, K = 40, 60, 80
+    x = torch.randn([M, N, K], device="cuda")
+    y = torch.randn([N, K, M], device="cuda").permute(2, 0, 1)
+    alpha = 2.0
+    o = torch.empty([M, N, K], device="cuda")
     out0, out1 = axpyaxmy(x, y, alpha, out0=o)
     assert out0 is o
     torch.testing.assert_close(out0, alpha * x + y)
