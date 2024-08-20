@@ -52,6 +52,7 @@ def log_softmax_kernel(
     USE_K: tl.constexpr
 ):
     pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     n_offset = tl.arange(0, BLOCK_N)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K
