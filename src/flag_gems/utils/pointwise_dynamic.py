@@ -123,7 +123,6 @@ class FunctionSchema:
             self._num_outputs = num_outputs
             _check_sized_list(promotion_methods, num_outputs)
         else:
-            self._num_outputs = 1
             self._num_outputs = len(promotion_methods)
 
         assert self._num_inputs >= 1
