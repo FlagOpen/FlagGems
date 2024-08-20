@@ -859,12 +859,14 @@ class PointwiseDynamicFunction:
         code = IndentedBuffer()
 
         scalar_fn_name = self._scalar_fn.__name__
+        kernel_name = f"{scalar_fn_name}_kernel_rank_{ndim}"
+        wrapper_name = f"{scalar_fn_name}_wrapper_rank_{ndim}"
         module_gen = ModuleGenerator(
             self.fx,
             self._scalar_fn,
             ndim,
-            f"{scalar_fn_name}_kernel_rank_{ndim}",
-            f"{scalar_fn_name}_wrapper_rank_{ndim}",
+            kernel_name,
+            wrapper_name,
             self.config,
         )
         module_gen.codegen(code)
@@ -900,7 +902,7 @@ class PointwiseDynamicFunction:
         m.__dict__.update(self._scalar_fn.__globals__)
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
-        overload = getattr(m, "_wrapper")
+        overload = getattr(m, wrapper_name)
         self.overloads[key] = overload
         return overload
 
