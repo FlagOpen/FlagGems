@@ -23,9 +23,36 @@ jobs:
 
       - name: run-pytest
         run: |
-          CUDA_VISIBLE_DEVICES=0 coverage run -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_add
+          cmds=(
+            "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode -m pytest -s tests/test_unary_pointwise_ops.py &"
+            "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode -m pytest -s tests/test_pointwise_type_promotion.py &"
+            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode -m pytest -s tests/test_binary_pointwise_ops.py &"
+            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode -m pytest -s tests/test_tensor_constructor_ops.py &"
+            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode -m pytest -s tests/test_distribution_ops.py &"
+            "CUDA_VISIBLE_DEVICES=2 coverage run --parallel-mode -m pytest -s tests/test_blas_ops.py &"
+            "CUDA_VISIBLE_DEVICES=3 coverage run --parallel-mode -m pytest -s tests/test_reduction_ops.py &"
+            "CUDA_VISIBLE_DEVICES=4 coverage run --parallel-mode -m pytest -s tests/test_special_ops.py &"
+            "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode -m pytest -s tests/test_libentry.py &"
+            "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode -m pytest -s examples/model_bert_test.py &"
+          )
+
+          declare -a exit_statuses
+
+          for cmd in "${cmds[@]}"; do
+            eval "$cmd"
+          done
+
+          for job in $(jobs -p); do
+            wait $job
+            exit_statuses+=($?)
+            echo "Task $pid completed with exit status ${exit_statuses[-1]}"
+          done
+
+          echo "Exit statuses of all tasks: ${exit_statuses[@]}"
+          coverage combine --append
           coverage report -m
           coverage xml -o coverage.xml
+
       - name: get-coverage
         uses: orgoro/coverage@v3.2
         with:
