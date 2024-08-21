@@ -87,15 +87,9 @@ def nll_loss_bwd_kernel(
     ignore_mask = (tgt != ignore_index)[None, :]
 
     w_ptrs = w_ptr + tgt
-    w_tgt = (
-        tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :].to(tl.float32)
-    )
+    w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
-    out_grad = (
-        (tl.load(out_grad_ptrs, mask=tgt_mask, other=0))
-        .to(tl.float32)[None, :]
-        .to(tl.float32)
-    )
+    out_grad = (tl.load(out_grad_ptrs, mask=tgt_mask, other=0)).to(tl.float32)[None, :]
 
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
@@ -105,7 +99,7 @@ def nll_loss_bwd_kernel(
         inp_grad_ptrs = (
             inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         )
-        tl.store(inp_grad_ptrs, inp_grad, mask=(inp_mask & ignore_mask))
+        tl.store(inp_grad_ptrs, inp_grad.to(tl.float32), mask=(inp_mask & ignore_mask))
 
 
 class NLLLoss(torch.autograd.Function):

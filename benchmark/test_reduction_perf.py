@@ -82,6 +82,32 @@ def test_perf_cross_entropy_loss():
     bench.run()
 
 
+def test_perf_nll_loss():
+    def nll_loss_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        m = torch.nn.LogSoftmax(dim=1)
+        inp = m(inp)
+        target = torch.randint(
+            0,
+            size,
+            [
+                batch,
+            ],
+            device="cuda",
+        )
+        return inp, target
+
+    bench = Benchmark(
+        op_name="cross_entropy_loss",
+        torch_op=torch.nn.NLLLoss(),
+        arg_func=nll_loss_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_cumsum():
     def cumsum_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device="cuda")
