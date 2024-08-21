@@ -1,56 +1,41 @@
 #!/usr/bin/env python
 
-"""
-usage: coverage_lines.py info_file expected
-"""
 import os
 import sys
 
 
 def get_lines(info_file):
-    hits = 0.0
-    total = 0.0
-
-    with open(info_file) as info_file:
-        for line in info_file:
+    hits, total = 0.0, 0.0
+    with open(info_file) as f:
+        for line in f:
             line = line.strip()
-
             if not line.startswith("DA:"):
                 continue
-
-            line = line[3:]
-
             total += 1
-
-            if int(line.split(",")[1]) > 0:
+            if int(line[3:].split(",")[1]) > 0:
                 hits += 1
-
     if total == 0:
         print("no data found")
         sys.exit()
-
     return hits / total
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        sys.exit()
+        print("Usage: coverage_lines.py info_file expected")
+        sys.exit(1)
 
-    info_file = sys.argv[1]
-    expected = float(sys.argv[2])
+    info_file, expected = sys.argv[1], float(sys.argv[2])
 
     if not os.path.isfile(info_file):
         print(f"info file {info_file} is not exists, ignored")
-        sys.exit()
-
-    actual = get_lines(info_file)
-    actual = round(actual, 3)
+        sys.exit(1)
+    actual = round(get_lines(info_file), 3)
 
     if actual < expected:
         print(
             f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, failed"
         )
-
         sys.exit(1)
 
     print(

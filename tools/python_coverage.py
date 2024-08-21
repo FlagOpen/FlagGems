@@ -7,55 +7,49 @@ usage: python_coverage.py > python-coverage.info
 from os import path
 from xml.etree import ElementTree
 
-tree = ElementTree.parse("python-coverage.xml")
-root = tree.getroot()
 
-sources = root.findall("sources/source")
+def process_coverage_file(xml_file):
+    tree = ElementTree.parse(xml_file)
+    root = tree.getroot()
 
-source = sources[-1].text
+    sources = root.findall("sources/source")
 
-for clazz in root.findall("packages/package/classes/class"):
-    clazz_filename = clazz.attrib.get("filename")
-    clazz_filename = path.join(source, clazz_filename)
+    source = sources[-1].text
 
-    if clazz_filename.startswith("/paddle/build/python/"):
-        clazz_filename = (
-            "/paddle/python/" + clazz_filename[len("/paddle/build/python/") :]
-        )
+    for cls in root.findall("packages/package/classes/class"):
+        cls_filename = cls.attrib.get("filename")
+        cls_filename = path.join(source, cls_filename)
 
-    if not path.exists(clazz_filename):
-        continue
+        if not path.exists(cls_filename):
+            continue
 
-    print("TN:")
-    print(f"SF:{clazz_filename}")
+        print("TN:")
+        print(f"SF:{cls_filename}")
 
-    branch_index = 0
+        branch_index = 0
+        for line in cls.findall("lines/line"):
+            line_hits = line.attrib.get("hits")
+            line_number = line.attrib.get("number")
+            line_branch = line.attrib.get("branch")
+            line_condition_coverage = line.attrib.get("condition-coverage")
+            line_missing_branches = line.attrib.get("missing-branches")
 
-    for line in clazz.findall("lines/line"):
-        line_hits = line.attrib.get("hits")
-        line_number = line.attrib.get("number")
-
-        line_branch = line.attrib.get("branch")
-        line_condition_coverage = line.attrib.get("condition-coverage")
-        line_missing_branches = line.attrib.get("missing-branches")
-
-        if line_branch == "true":
-            line_condition_coverage = line_condition_coverage.split()
-            line_condition_coverage = line_condition_coverage[1].strip("()")
-            line_condition_coverage = line_condition_coverage.split("/")
-
-            taken = line_condition_coverage[0]
-            taken = int(taken)
-
-            for _ in range(taken):
-                print(f"BRDA:{line_number},{0},{branch_index},{line_hits}")
-                branch_index += 1
-
-            if line_missing_branches:
-                for missing_branch in line_missing_branches.split(","):
-                    print(f"BRDA:{line_number},{0},{branch_index},{0}")
+            if line_branch == "true":
+                line_condition_coverage = (
+                    line_condition_coverage.split()[1].strip("()").split("/")
+                )
+                taken = int(line_condition_coverage[0])
+                for _ in range(taken):
+                    print(f"BRDA:{line_number},{0},{branch_index},{line_hits}")
                     branch_index += 1
+                if line_missing_branches:
+                    for _ in line_missing_branches.split(","):
+                        print(f"BRDA:{line_number},{0},{branch_index},{0}")
+                        branch_index += 1
+            print(f"DA:{line_number},{line_hits}")
 
-        print(f"DA:{line_number},{line_hits}")
+        print("end_of_record")
 
-    print("end_of_record")
+
+if __name__ == "__main__":
+    process_coverage_file("python-coverage.xml")
