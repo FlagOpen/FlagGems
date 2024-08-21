@@ -854,7 +854,6 @@ class PointwiseDynamicFunction:
         if ndim in self.overloads:
             return self.overloads[ndim]
 
-        key = str(ndim)
         code = IndentedBuffer()
 
         scalar_fn_name = self._scalar_fn.__name__
@@ -877,13 +876,13 @@ class PointwiseDynamicFunction:
         # created via exec string. We can help inspect to find the source by hacking linecache
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
-        file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
+        file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{ndim}_pid_{self.pid}.py"
         with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
             f.write(code.getvalue())
 
         # load
         spec = importlib.util.spec_from_file_location(
-            f"_gen_module_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}",
+            f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}_pid_{self.pid}",
             f.name,
         )
         m = importlib.util.module_from_spec(spec)
@@ -902,7 +901,7 @@ class PointwiseDynamicFunction:
         m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
         overload = getattr(m, wrapper_name)
-        self.overloads[key] = overload
+        self.overloads[ndim] = overload
         return overload
 
 
