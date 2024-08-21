@@ -370,4 +370,6 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
         res_out = torch.multinomial(dist, n_samples, False)
     # Verifies uniqueness
     sorted_samples, _ = res_out.sort(dim=-1)
-    gems_assert_equal(sorted_samples, torch.arange(pool[-1], device="cuda"))
+    gems_assert_equal(
+        sorted_samples, torch.arange(pool[-1], device="cuda").broadcast_to(pool)
+    )
