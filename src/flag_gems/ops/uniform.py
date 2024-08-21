@@ -31,11 +31,13 @@ def heur_num_warps(args):
     }
 )
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
-def rand_kernel(
+def uniform_kernel(
     out_ptr,
     N,
     philox_seed,
     philox_offset,
+    from_,
+    to,
     BLOCK: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
@@ -46,10 +48,10 @@ def rand_kernel(
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
+    r0 = uint_to_uniform_float(r0) * (to - from_) + from_
+    r1 = uint_to_uniform_float(r1) * (to - from_) + from_
+    r2 = uint_to_uniform_float(r2) * (to - from_) + from_
+    r3 = uint_to_uniform_float(r3) * (to - from_) + from_
     off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
@@ -63,20 +65,13 @@ def rand_kernel(
 UNROLL = 4
 
 
-def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS RAND")
-    if dtype is None:
-        dtype = torch.get_default_dtype()
-    if device is None:
-        device = torch.device("cuda")
-
-    out = torch.empty(size, device=device, dtype=dtype)
-    N = volume(size)
+def uniform_(self, from_=0.0, to=1.0, *, generator=None):
+    logging.debug("GEMS UNIFORM")
+    N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-    # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
-    # hence we cannot obtain the per thread offset as in Pytorch.
+
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(device):
-        rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
-    return out
+    with torch.cuda.device(self.device):
+        uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to)
+    return self

@@ -239,6 +239,19 @@ def test_perf_softmax():
     bench.run()
 
 
+def test_perf_softmax_backward():
+    bench = Benchmark(
+        op_name="softmax",
+        torch_op=torch.nn.functional.softmax,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 def test_perf_sum():
     bench = Benchmark(
         op_name="sum",
@@ -278,10 +291,9 @@ def test_perf_vector_norm():
 def test_perf_index_select():
     def index_select_args(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        import random
 
         threshold = 0.1
-        dim = random.choice([0, 1])
+        dim = 0
         index_size = inp.size(dim)
         from math import floor
 

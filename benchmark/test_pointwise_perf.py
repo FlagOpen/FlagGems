@@ -134,6 +134,30 @@ def test_perf_eq():
     bench.run()
 
 
+def test_perf_maximum():
+    bench = Benchmark(
+        op_name="maximum",
+        torch_op=torch.maximum,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_minimum():
+    bench = Benchmark(
+        op_name="minimum",
+        torch_op=torch.minimum,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_exp():
     bench = Benchmark(
         op_name="exp",
@@ -452,6 +476,18 @@ def test_perf_allclose_int():
     bench.run()
 
 
+def test_perf_erf():
+    bench = Benchmark(
+        op_name="erf",
+        torch_op=torch.erf,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_isfinite():
     bench = Benchmark(
         op_name="isfinite",
@@ -470,6 +506,56 @@ def test_perf_isfinite_int():
         torch_op=torch.isfinite,
         arg_func=unary_int_arg,
         dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_flip():
+    def flip_kwargs(dtype, batch, size):
+        return {"dims": [0, 1]}
+
+    bench = Benchmark(
+        op_name="flip",
+        torch_op=torch.flip,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=flip_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_flip_int():
+    def flip_kwargs(dtype, batch, size):
+        return {"dims": [0, 1]}
+
+    bench = Benchmark(
+        op_name="flip",
+        torch_op=torch.flip,
+        arg_func=unary_int_arg,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=flip_kwargs,
+    )
+    bench.run()
+
+
+def test_masked_fill():
+    def masked_fill_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        value = 1024
+        return (inp, mask, value)
+
+    bench = Benchmark(
+        op_name="masked_fill",
+        torch_op=torch.masked_fill,
+        arg_func=masked_fill_args,
+        dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )

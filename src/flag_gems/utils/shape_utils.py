@@ -143,6 +143,23 @@ def dim_compress(inp, dims):
     return inp.permute(order).contiguous()
 
 
+def size_in_bytes(a):
+    return a.numel() * a.element_size()
+
+
+def can_use_int32_index(a):
+    INT32_MAX = torch.iinfo(torch.int32).max
+    if a.is_contiguous():
+        return size_in_bytes(a) <= INT32_MAX
+
+    max_offset = 0
+    for size, stride in zip(a.shape, a.stride()):
+        max_offset += size * stride
+        if max_offset > INT32_MAX:
+            return False
+    return True
+
+
 def offsetCalculator(inp, idx, strides, dim, isInp):
     ndim = inp.ndim
     shape = list(inp.shape)
