@@ -56,9 +56,9 @@ def nll_loss_fwd_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=1)
-        for c in [2]
-        for d in [1]
+        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
+        for c in [256, 512, 1024]
+        for d in [1, 4, 16]
     ],
     key=["C", "D"],
 )
