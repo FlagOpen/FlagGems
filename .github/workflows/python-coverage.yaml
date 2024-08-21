@@ -22,7 +22,7 @@ jobs:
     steps:
 
       - name: check-gpu-free
-        run: tests/scripts/gpu_check.sh
+        run: tools/gpu_check.sh
 
       - name: run-pytest
         shell: bash

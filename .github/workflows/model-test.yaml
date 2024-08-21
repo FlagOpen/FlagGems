@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: check-gpu-free
-        run: tests/scripts/gpu_check.sh
+        run: tools/gpu_check.sh
 
       - name: examples-flag-gems
         run: |
