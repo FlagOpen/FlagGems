@@ -116,7 +116,7 @@ class FunctionSchema:
                 self._is_tensor = [item is None for item in dtypes]
         else:
             raise ValueError(
-                "Cannot make OPDesc when none of (num_inputs, is_tensor, dtypes) is specified."
+                "Cannot create FunctionSchema when none of (num_inputs, is_tensor, dtypes) is specified."
             )
 
         if num_outputs is not None:
