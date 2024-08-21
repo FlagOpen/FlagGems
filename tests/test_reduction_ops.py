@@ -689,7 +689,10 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     ref_src = to_reference(src)
     ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=ref_src)
     with flag_gems.use_gems():
-        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
+        from src.flag_gems.ops import select_scatter
+
+        res_out = select_scatter(inp, dim=dim, index=index, src=src)
+        # res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -715,9 +718,17 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
         ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
     )
     with flag_gems.use_gems():
+        from src.flag_gems.ops import slice_scatter
+
+        res_out = slice_scatter(
+            ref_inp, dim=dim, src=src, start=start, end=end, step=step
+        )
+        """
         res_out = torch.slice_scatter(
             ref_inp, dim=dim, src=src, start=start, end=end, step=step
         )
+        """
+
     gems_assert_equal(res_out, ref_out)
 
 
@@ -735,6 +746,9 @@ def test_accuracy_index_select(shape, dim, dtype):
     ref_index = to_reference(index)
     ref_out = torch.index_select(ref_inp, dim, ref_index)
     with flag_gems.use_gems():
-        res_out = torch.index_select(inp, dim, index)
+        from src.flag_gems.ops import index_select
+
+        res_out = index_select(inp, dim, index)
+        # res_out = torch.index_select(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
