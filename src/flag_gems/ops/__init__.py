@@ -53,6 +53,7 @@ from .mul import mul
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nllloss import nll_loss
 from .normal import (
     normal_float_float,
     normal_float_tensor,
@@ -216,4 +217,5 @@ __all__ = [
     "select",
     "select_scatter",
     "slice_scatter",
+    "nll_loss",
 ]
