@@ -41,6 +41,8 @@ def enable(lib=aten_lib):
     lib.impl("isfinite", isfinite, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
+    lib.impl("minimum", minimum, "CUDA")
+    lib.impl("maximum", maximum, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
     lib.impl("le.Tensor", le, "CUDA")
     lib.impl("le.Scalar", le_scalar, "CUDA")
@@ -116,6 +118,7 @@ def enable(lib=aten_lib):
     # lib.impl("select_scatter", select_scatter, "CUDA")
     # lib.impl("index_select", index_select, "CUDA")
     lib.impl("masked_fill", masked_fill, "CUDA")
+    lib.impl("_unique2", _unique2, "CUDA")
 
 
 class use_gems:

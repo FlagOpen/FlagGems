@@ -42,8 +42,10 @@ from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill
 from .max import max, max_dim
+from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .minimum import minimum
 from .mm import mm
 from .mul import mul
 from .mv import mv
@@ -81,6 +83,7 @@ from .tanh import tanh
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
+from .unique import _unique2
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
@@ -146,6 +149,8 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "maximum",
+    "minimum",
     "rand",
     "randn",
     "resolve_neg",
@@ -195,4 +200,5 @@ __all__ = [
     "select_scatter",
     "slice_scatter",
     "masked_fill",
+    "_unique2",
 ]
