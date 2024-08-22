@@ -8,11 +8,9 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
-    RESOLUTION,
     gems_assert_close,
     to_reference,
 )
-from .conftest import TO_CPU
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -20,38 +18,28 @@ from .conftest import TO_CPU
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout(shape, p, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    ref_inp = to_reference(inp, upcast=True)
+    ref_inp = inp  # cpu don't support fp16 & bf16
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, upcast=True)
+    ref_grad = out_grad
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    res_out = to_reference(res_out, upcast=True)
-    res_in_grad = to_reference(res_in_grad, upcast=True)
-
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
-    if TO_CPU:
-        zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
-        num_zero = torch.sum(zero_equal).item()
-        assert abs(num_zero / inp.numel() - p) <= 0.05
-        scale_equal = torch.isclose(res_out, ref_inp / (1 - p), rtol=RESOLUTION[dtype])
-        assert torch.all(torch.logical_or(zero_equal, scale_equal))
-    else:
-        assert (
-            abs(num_equal - exp_equal) / exp_equal <= 0.05
-        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+    assert (
+        abs(num_equal - exp_equal) / exp_equal <= 0.05
+    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
-        num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
-        assert (
-            abs(num_equal - exp_equal) / exp_equal <= 0.05
-        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+    num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
+    assert (
+        abs(num_equal - exp_equal) / exp_equal <= 0.05
+    ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
 def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
