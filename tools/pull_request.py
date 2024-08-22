@@ -22,7 +22,7 @@ def get_pull(pull_id):
 def get_files(args):
     pull = get_pull(args.pull_id)
     for file in pull.get_files():
-        print(f"/FlagGems/{file.filename}")
+        print(f"/work/FlagGems/{file.filename}")
 
 
 def show_diff(args):

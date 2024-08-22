@@ -9,14 +9,15 @@ PR_ID=$1
 FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../" && pwd )"
 echo ${FlagGemsROOT}
 
-CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_special_ops.py::test_accuracy_unique
+CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_tensor_constructor_ops.py::test_accuracy_randn_like
+CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_trunc_div
+CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_floor_div
 
 coverage combine
 coverage report -m
 coverage xml -i -o python-coverage.xml
 
 python3.11 ${FlagGemsROOT}/tools/python_coverage.py > python-coverage.info
-sed -i 's/work\/FlagGems/FlagGems/g' python-coverage.info
 
 lcov --extract python-coverage.info \
     '*FlagGems*' \
@@ -30,7 +31,7 @@ genhtml -o python-coverage-full \
     --ignore-errors source \
     python-coverage-full.info
 
-# git
+# git test PR 168
 COVERAGE_DIFF_PATTERN="`python3.11 ${FlagGemsROOT}/tools/pull_request.py files ${PR_ID}`"
 python3.11 ${FlagGemsROOT}/tools/pull_request.py diff ${PR_ID} > python-git-diff.out
 
@@ -42,10 +43,6 @@ lcov --extract python-coverage-full.info \
 
 python3.11 ${FlagGemsROOT}/tools/coverage_diff.py python-coverage-diff.info python-git-diff.out > python-coverage-diff.tmp
 mv -f python-coverage-diff.tmp python-coverage-diff.info
-
-sed -i 's/FlagGems/work\/FlagGems/g' python-coverage-diff.info
-
-
 
 genhtml -o python-coverage-diff \
     -t 'Python Diff Coverage' \
