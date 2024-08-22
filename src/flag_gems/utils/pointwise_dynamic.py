@@ -219,6 +219,8 @@ class CodeGenConfig:
     prefer_block_pointer: bool
     # TODO: add 1d tile back
     prefer_1d_tile: bool
+    # gen_configs: -> configs
+    # prune_config: (as jit function, ) cofigs -> configs
 
 
 class KernelGenerator:
@@ -592,12 +594,18 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
-            code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
+            if ndim >= 2:  # where ndim is 1, we don't need to compute stride order
+                code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
+            else:
+                code.writeline(f"in{i}_stride_order = (0,)")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
-            code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
+            if ndim >= 2:
+                code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
+            else:
+                code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch.cuda.device(in0.device):")
+        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
