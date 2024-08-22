@@ -53,7 +53,7 @@ python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_sum" --device
 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_softmax" --device cpu > zlog/test_accuracy_softmax.log 2>&1
 
 
-python -m pytest -sv tests/test_special_ops.py -k "test_accuracy_dropout" --device cuda > zlog/test_accuracy_dropout.log 2>&1
+python -m pytest -sv tests/test_special_ops.py -k "test_accuracy_dropout" --device cpu > zlog/test_accuracy_dropout.log 2>&1
 # python -m pytest -sv tests/test_special_ops.py -k "native_dropout" --device cpu > zlog/native_dropout.log 2>&1
 
 

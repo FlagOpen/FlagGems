@@ -110,7 +110,7 @@ def prod_kernel(
     for xoffset in range(pid_m * BLOCK_M, pid_m * BLOCK_M + BLOCK_M, 1):
         row_mask = xoffset < M
         prod_base = 1.0
-        for yoffset in range(0, BLOCK_N, 1):
+        for yoffset in range(0, N, 1):
             col_mask = yoffset < N
             mask = row_mask and col_mask
             inp_ptrs = inp + xoffset * N + yoffset

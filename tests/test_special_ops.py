@@ -20,20 +20,20 @@ from .conftest import TO_CPU
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout(shape, p, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, upcast=True)
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     with flag_gems.use_gems():
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad)
+    ref_grad = to_reference(out_grad, upcast=True)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    res_out = to_reference(res_out)
-    res_in_grad = to_reference(res_in_grad)
+    res_out = to_reference(res_out, upcast=True)
+    res_in_grad = to_reference(res_in_grad, upcast=True)
 
     exp_equal = (p * p + (1 - p) * (1 - p)) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
