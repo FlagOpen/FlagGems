@@ -13,7 +13,7 @@ FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
 echo ${FlagGemsROOT}
 
 cmds=(
-   "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_unary_pointwise_ops.py &"
+   "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests,./tools/code_coverage -m pytest -s tests/test_unary_pointwise_ops.py::test_accuracy_abs &"
 #    "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_pointwise_type_promotion.py &"
 #    "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_binary_pointwise_ops.py &"
 #    "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_tensor_constructor_ops.py &"

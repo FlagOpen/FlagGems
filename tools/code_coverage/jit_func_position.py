@@ -69,6 +69,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     for filename in args.files:
+        if not filename.endswith(".py"):
+            continue
         logging.debug(filename)
         with open(filename, "r") as file:
             source_code = file.read()
