@@ -67,6 +67,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .rsub import rsub
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -160,6 +161,7 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
+    "rsub",
     "sigmoid",
     "silu",
     "sin",

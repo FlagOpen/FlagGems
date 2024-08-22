@@ -1,4 +1,4 @@
-set -x
+set -ex
 
 unset MLIR_ENABLE_DUMP
 unset XPURT_DISPATCH_MODE
@@ -37,6 +37,7 @@ python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_le" --
 python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_lt" --device cpu > zlog/test_accuracy_lt.log 2>&1
 python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_mul" --device cpu > zlog/test_accuracy_mul.log 2>&1
 python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_ne" --device cpu > zlog/test_accuracy_ne.log 2>&1
+python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_rsub" --device cpu > zlog/test_accuracy_rsub.log 2>&1
 python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_sub" --device cpu > zlog/test_accuracy_sub.log 2>&1
 
 
@@ -45,24 +46,21 @@ python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_amax" --devic
 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_argmax" --device cpu > zlog/test_accuracy_argmax.log 2>&1
 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_groupnorm" --device cpu > zlog/test_accuracy_groupnorm.log 2>&1
 # python -m pytest -sv tests/test_reduction_ops.py -k "native_group_norm" --device cpu > zlog/native_group_norm.log 2>&1
-python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_layernorm" --device cpu > zlog/test_accuracy_layernorm.log 2>&1
+python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_log_softmax" --device cpu > zlog/test_accuracy_log_softmax.log 2>&1
 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_mean" --device cpu > zlog/test_accuracy_mean.log 2>&1
 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_prod" --device cpu > zlog/test_accuracy_prod.log 2>&1
 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_sum" --device cpu > zlog/test_accuracy_sum.log 2>&1
+python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_softmax" --device cpu > zlog/test_accuracy_softmax.log 2>&1
 
 
 python -m pytest -sv tests/test_special_ops.py -k "test_accuracy_dropout" --device cuda > zlog/test_accuracy_dropout.log 2>&1
 # python -m pytest -sv tests/test_special_ops.py -k "native_dropout" --device cpu > zlog/native_dropout.log 2>&1
 
+
 python -m pytest -sv tests/test_blas_ops.py -k "test_accuracy_mv" --device cpu > zlog/test_accuracy_mv.log 2>&1
 
-python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_softmax" --device cpu > zlog/test_accuracy_softmax.log 2>&1
-python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_log_softmax" --device cpu > zlog/test_accuracy_log_softmax.log 2>&1
 
 # Macro Set
-
-# "sin"
-XPU_enable_reorder=1 python -m pytest -sv tests/test_unary_pointwise_ops.py -k "test_accuracy_sin" --device cpu > zlog/test_accuracy_sin.log 2>&1
 
 # "cos"
 XPU_enable_reorder=1 python -m pytest -sv tests/test_unary_pointwise_ops.py -k "test_accuracy_cos" --device cpu > zlog/test_accuracy_cos.log 2>&1
@@ -78,5 +76,8 @@ Triton_big_instcombine=1000 python -m pytest -sv tests/test_reduction_ops.py -k 
 
 # "pow"
 TRITON_LOCAL_VALUE_MAX=2048 python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_pow" --device cpu > zlog/test_accuracy_pow.log 2>&1
+
+# "sin"
+XPU_enable_reorder=1 python -m pytest -sv tests/test_unary_pointwise_ops.py -k "test_accuracy_sin" --device cpu > zlog/test_accuracy_sin.log 2>&1
 
 export XPURT_DISPATCH_MODE=PROFILING

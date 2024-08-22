@@ -1,4 +1,6 @@
+import builtins
 import logging
+import math
 
 import torch
 import triton
@@ -98,10 +100,13 @@ def all(inp):
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
+    final_mid_size = builtins.min(
+        math.ceil(inp.numel() / block_size), builtins.min(mid_size, inp.numel())
+    )
 
     with torch.cuda.device(inp.device):
         all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-        all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+        all_kernel_2[(1, 1)](mid, out, final_mid_size, block_mid)
 
     return out
 

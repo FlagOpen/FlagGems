@@ -90,12 +90,12 @@ def sum(inp, *, dtype=None):
     mid_size = 12  # CLUSTER_NUM
     block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
     block_mid = triton.next_power_of_2(mid_size)
+    final_mid_size = builtins.min(
+        math.ceil(inp.numel() / block_size), builtins.min(mid_size, inp.numel())
+    )
 
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
-    final_mid_size = builtins.min(
-        math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
-    )
 
     with torch.cuda.device(inp.device):
         sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)

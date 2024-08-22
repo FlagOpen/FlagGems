@@ -9,32 +9,40 @@ import triton.language as tl
 from ..utils import libentry
 
 
+@triton.jit
+def reduce_mul(a, b):
+    return a * b
+
+
 @libentry()
 @triton.jit
 def prod_kernel_mid(
     inp,
     mid,
-    M: tl.constexpr,
+    M,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
+    offset = pid * BLOCK_SIZE
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
-    mid_value = tl.prod(inp_val, axis=0)
+    mid_value = 1.0
+    for roffset in range(0, BLOCK_SIZE, 1):
+        inp_ptrs = inp + offset + roffset
+        inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+        mid_value = mid_value * inp_val
     mid_ptr = mid + pid
-    tl.store(mid_ptr, mid_value.to(inp_val.dtype))
+    tl.store(mid_ptr, mid_value)
 
 
 @libentry()
 @triton.jit
-def prod_kernel_result(mid, out, mid_size: tl.constexpr, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1.0).to(tl.float32)
-    prod_val = tl.prod(mid_val, axis=0)
+def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+    prod_val = 1.0
+    for roffset in range(0, mid_size, 1):
+        mask = roffset < mid_size
+        mid_ptrs = mid + roffset
+        mid_val = tl.load(mid_ptrs, mask=mask, other=1.0).to(tl.float32)
+        prod_val = prod_val * mid_val
     tl.store(out, prod_val)
 
 
@@ -50,10 +58,10 @@ def prod(inp, *, dtype=None):
     block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device).to(torch.float32)
     out = torch.empty([], dtype=dtype, device=inp.device)
     final_mid_size = builtins.min(
-        math.ceil(inp.numel() / block_size), builtins.min(mid_size, M)
+        math.ceil(inp.numel() / block_size), builtins.min(mid_size, inp.numel())
     )
 
     with torch.cuda.device(inp.device):
@@ -69,7 +77,12 @@ def heur_block_n(args):
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=4),
+        # triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
+        # triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
+        # triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
+        # triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
+        # triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
+        triton.Config({"BLOCK_M": 512}, num_warps=8, num_stages=5),
     ],
     key=[
         "M",
@@ -85,28 +98,26 @@ def heur_block_n(args):
 def prod_kernel(
     inp,
     out,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
+    M,
+    N,
+    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     # set offset
     pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
-    result_index = tl.prod(inp_vals, axis=1)
 
-    out_ptrs = out + offset_index
-    tl.store(out_ptrs, result_index, mask=mask1)
+    for xoffset in range(pid_m * BLOCK_M, pid_m * BLOCK_M + BLOCK_M, 1):
+        row_mask = xoffset < M
+        prod_base = 1.0
+        for yoffset in range(0, BLOCK_N, 1):
+            col_mask = yoffset < N
+            mask = row_mask and col_mask
+            inp_ptrs = inp + xoffset * N + yoffset
+            inp_vals = tl.load(inp_ptrs, mask).to(tl.float32)
+            prod_base = prod_base * inp_vals
+        out_ptrs = out + xoffset
+        tl.store(out_ptrs, prod_base, row_mask)
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
