@@ -26,4 +26,4 @@ jobs:
 
       - name: run-pytest
         shell: bash
-        run: bash tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
+        run: tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
