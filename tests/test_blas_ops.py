@@ -38,7 +38,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
 @pytest.mark.parametrize("K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
-    batch = 4
+    batch = 12
     mat1 = torch.randn((batch, M, K), dtype=dtype, device="cuda")
     mat2 = torch.randn((batch, K, N), dtype=dtype, device="cuda")
     ref_mat1 = to_reference(mat1, True)

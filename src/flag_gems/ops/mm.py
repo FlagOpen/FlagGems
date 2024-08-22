@@ -7,110 +7,29 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_block_m(args):
+    return args["M"]
+
+def heur_block_n(args):
+    return args["N"]
+
+def heur_block_k(args):
+    return args["K"]
+
+def heur_split_k(args):
+    return 1
+
 def heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        # basic configs for compute-bound matmuls
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=5,
-            num_warps=2,
-        ),
-        # good for int8
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=5,
-            num_warps=2,
-        ),
-    ],
-    key=["M", "N", "K"],
-)
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+        "BLOCK_K": heur_block_k,
+        "SPLIT_K": heur_split_k,
         "EVEN_K": heur_even_k,
     }
 )
@@ -137,7 +56,7 @@ def mm_kernel(
     EVEN_K: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tl.program_id(0)
+    pid = 0
     pid_z = tl.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
@@ -150,12 +69,10 @@ def mm_kernel(
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
     rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
     # pointers
-    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+    A = A + (rm[:, None] * stride_am + rk[None, :] * stride_ak)
+    B = B + (rk[:, None] * stride_bk + rn[None, :] * stride_bn)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
     for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
@@ -169,7 +86,7 @@ def mm_kernel(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        acc += tl.dot(a, b, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)

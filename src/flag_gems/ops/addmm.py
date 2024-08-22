@@ -7,51 +7,22 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_block_m(args):
+    return args["M"]
+
+def heur_block_n(args):
+    return args["N"]
+
+def heur_block_k(args):
+    return args["K"]
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
-            num_stages=5,
-            num_warps=2,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
-            num_stages=5,
-            num_warps=2,
-        ),
-    ],
-    key=["M", "N", "K"],
+@triton.heuristics(
+    {
+        "BLOCK_SIZE_M": heur_block_m,
+        "BLOCK_SIZE_N": heur_block_n,
+        "BLOCK_SIZE_K": heur_block_k,
+    }
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
@@ -74,7 +45,7 @@ def addmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
+    pid_m = 0
     pid_n = tl.program_id(1)
 
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
@@ -86,20 +57,12 @@ def addmm_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(
-            a_ptrs,
-            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
-            other=0.0,
-        )
-        b = tl.load(
-            b_ptrs,
-            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
-            other=0.0,
-        )
+        a = tl.load(a_ptrs)
+        b = tl.load(b_ptrs)
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
-    bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0)
+    bias = tl.load(bias_ptrs)
     accumulator = accumulator * alpha + bias * beta
     c = accumulator.to(bias.dtype)
 
@@ -110,7 +73,7 @@ def addmm_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
+def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
     logging.debug("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
