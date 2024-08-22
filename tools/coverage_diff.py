@@ -38,7 +38,7 @@ def get_info_file_lines(info_file, diff_file):
         for line in f:
             line = line.strip()
             if line.startswith("SF:"):
-                current_file = line.lstrip("SF:")
+                current_file = line[3:]
                 if current_file.startswith(base_path):
                     current_file = current_file[len(base_path) :]
                 current_lines = diff_file_lines.get(current_file, [])

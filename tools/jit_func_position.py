@@ -1,3 +1,4 @@
+import argparse
 import ast
 import logging
 
@@ -61,16 +62,28 @@ class DecoratorFinder(ast.NodeVisitor):
 
 
 if __name__ == "__main__":
-    filename = "/work/FlagGems/src/flag_gems/ops/div.py"
-    logging.debug(filename)
-    with open(filename, "r") as file:
-        source_code = file.read()
+    parser = argparse.ArgumentParser(description="Process a list of arguments.")
+    parser.add_argument(
+        "files", nargs="+", help="List of files or arguments to process"
+    )
+    args = parser.parse_args()
 
-    tree = ast.parse(source_code)
-    decorator_name = "triton.jit"
-    target_decorator = decorator_name.split(".")
+    for filename in args.files:
+        logging.debug(filename)
+        with open(filename, "r") as file:
+            source_code = file.read()
 
-    finder = DecoratorFinder(target_decorator)
-    finder.visit(tree)
-    for item in finder.functions_with_decorator:
-        print(item)
+        tree = ast.parse(source_code)
+        decorator_name = "triton.jit"
+        target_decorator = decorator_name.split(".")
+
+        finder = DecoratorFinder(target_decorator)
+        finder.visit(tree)
+        if len(finder.functions_with_decorator) != 0:
+            print(filename)
+            for item in finder.functions_with_decorator:
+                logging.debug(item)
+                logging.debug(
+                    f"{filename} {item['name']}  {item['start_line']}:{item['end_line']}"
+                )
+                print(f"--- {item['start_line']} : {item['end_line']}")

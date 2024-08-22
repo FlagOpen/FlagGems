@@ -31,8 +31,9 @@ genhtml -o python-coverage-full \
     --ignore-errors source \
     python-coverage-full.info
 
-# git test PR 168
+# git
 COVERAGE_DIFF_PATTERN="`python3.11 ${FlagGemsROOT}/tools/pull_request.py files ${PR_ID}`"
+echo ${COVERAGE_DIFF_PATTERN}
 python3.11 ${FlagGemsROOT}/tools/pull_request.py diff ${PR_ID} > python-git-diff.out
 
 # bash
@@ -51,4 +52,14 @@ genhtml -o python-coverage-diff \
     --ignore-errors source \
     python-coverage-diff.info
 
-python3.11 tools/coverage_lines.py python-coverage-diff.info 0.9
+python3.11 /work/FlagGems/tools/jit_func_position.py ${COVERAGE_DIFF_PATTERN} > python-triton-jit-position.info
+python3.11 /work/FlagGems/tools/coverage_diff_discard.py python-coverage-diff.info python-triton-jit-position.info > python-coverage-discard-diff.info
+
+genhtml -o python-coverage-diff-discard \
+    -t 'Python Diff Coverage Discard JIT' \
+    --no-function-coverage \
+    --no-branch-coverage \
+    --ignore-errors source \
+    python-coverage-discard-diff.info
+
+python3.11 tools/coverage_lines.py  python-coverage-discard-diff.info 0.9
