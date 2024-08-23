@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 """
-usage: pull_request.py files/diff pull_id
+usage: pull_request.py [files|diff] pull_id
 """
 
 import argparse
@@ -21,8 +21,9 @@ def get_pull(pull_id):
 
 def get_files(args):
     pull = get_pull(args.pull_id)
+    flag_gems_root = os.environ.get("FlagGemsROOT")
     for file in pull.get_files():
-        print(f"/work/FlagGems/{file.filename}")
+        print(f"{flag_gems_root}/{file.filename}")
 
 
 def show_diff(args):

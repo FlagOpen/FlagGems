@@ -36,8 +36,10 @@ if __name__ == "__main__":
         print(
             f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, failed"
         )
+        print("\n================================================================")
         sys.exit(1)
 
     print(
         f"expected >= {round(expected * 100, 1)} %, actual {round(actual * 100, 1)} %, passed"
     )
+    print("\n================================================================")

@@ -8,6 +8,7 @@ from os import path
 from xml.etree import ElementTree
 
 
+# This will generate a file use lcov data format
 def process_coverage_file(xml_file):
     tree = ElementTree.parse(xml_file)
     root = tree.getroot()

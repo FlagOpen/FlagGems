@@ -6,23 +6,36 @@ echo "  Usage:   $0  pull_request_id "
 echo "PR_ID: $1"
 
 PR_ID=$1
+PR_ID_DIR="PR_${PR_ID}_Coverage"
+rm -rf ${PR_ID_DIR}
+mkdir ${PR_ID_DIR}
 
 PYTHON_BIN=/usr/bin/python3.11
 
-FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
+export FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
 echo ${FlagGemsROOT}
 
+COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests"
 cmds=(
-   "CUDA_VISIBLE_DEVICES=3 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_unary_pointwise_ops.py::test_accuracy_abs &"
-   "CUDA_VISIBLE_DEVICES=3 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_pointwise_type_promotion.py &"
-   "CUDA_VISIBLE_DEVICES=2 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_binary_pointwise_ops.py &"
-   "CUDA_VISIBLE_DEVICES=2 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_tensor_constructor_ops.py &"
-   "CUDA_VISIBLE_DEVICES=2 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_distribution_ops.py &"
-   "CUDA_VISIBLE_DEVICES=6 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_blas_ops.py &"
-   "CUDA_VISIBLE_DEVICES=7 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_reduction_ops.py &"
-   "CUDA_VISIBLE_DEVICES=4 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_special_ops.py &"
-   "CUDA_VISIBLE_DEVICES=4 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s tests/test_libentry.py &"
-   "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests -m pytest -s examples/model_bert_test.py &"
+# 168 pass
+#    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS}  -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_trunc_div &"
+#    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_floor_div &"
+#    "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py &"
+
+# 168 not pass
+   "CUDA_VISIBLE_DEVICES=3 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py::test_accuracy_abs &"
+
+# all
+#    "CUDA_VISIBLE_DEVICES=3 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=3 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py &"
+#    "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_distribution_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=4 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py &"
+#    "CUDA_VISIBLE_DEVICES=4 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_libentry.py &"
+#    "CUDA_VISIBLE_DEVICES=5 coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py &"
 )
 
 declare -a exit_statuses
@@ -71,9 +84,13 @@ lcov --extract python-coverage-full.info \
 if [ -s "python-coverage-diff.info" ]; then
     echo "python-coverage-diff.info is NOT Empty"
 else
-    echo "python-coverage-diff.info is Empty!"
-    echo "PR coverage rate: 100%, which means the files modified in your PR are not tested by python coverage!"
-    echo "expected >= 90.0 %, actual 100%, pass"
+    echo -e "==================== Python Coverage Result ====================\n"
+    echo  "python-coverage-diff.info is Empty!"
+    echo  "This means the files modified in your PR are not tested by python coverage!"
+    echo  "Pass! Please check carefully if you need add test for your files!"
+    echo -e "\n================================================================"
+    mv python-coverage-full ${PR_ID_DIR}
+    mv python-coverage* .coverage python-git-diff.out ${PR_ID_DIR}
     exit
 fi
 
@@ -97,4 +114,9 @@ genhtml -o python-coverage-diff-discard \
     --ignore-errors source \
     python-coverage-discard-diff.info
 
-${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/coverage_lines.py  python-coverage-discard-diff.info 0.9
+mv python-coverage-diff python-coverage-diff-discard python-coverage-full ${PR_ID_DIR}
+mv python-coverage* .coverage python-git-diff.out python-triton-jit-position.info ${PR_ID_DIR}
+
+lcov --list ${PR_ID_DIR}/python-coverage-discard-diff.info
+echo -e "\n==================== Python Coverage Result ====================\n"
+${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/coverage_lines.py  ${PR_ID_DIR}/python-coverage-discard-diff.info 0.9

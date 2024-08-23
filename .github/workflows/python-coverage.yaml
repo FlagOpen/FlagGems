@@ -8,9 +8,6 @@ on:
   pull_request:
     branches: [ "master" ]
 
-permissions:
-  pull-requests: write
-
 jobs:
   container-coverage-test:
     runs-on: [self-hosted, docker]

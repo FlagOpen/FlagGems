@@ -6,12 +6,13 @@ import sys
 
 
 def get_discard_file_lines(discard_file):
+    flag_gems_root = os.environ.get("FlagGemsROOT")
     dicard_file_lines = {}
     with open(discard_file) as f:
         for line in f:
             line = line.strip()
 
-            if line.startswith("/work/FlagGems/"):
+            if line.startswith(flag_gems_root + "/"):
                 current_file = line[15:]
                 dicard_file_lines[current_file] = []
                 continue
@@ -32,7 +33,7 @@ def get_info_file_lines(info_file, discard_file):
     discard_file_lines = get_discard_file_lines(discard_file)
     discard_lines = []
     num_rm_lines = 0
-    base_path = "/work/FlagGems/"
+    base_path = os.environ.get("FlagGemsROOT") + "/"
 
     with open(info_file) as f:
         for line in f:

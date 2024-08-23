@@ -2,7 +2,7 @@
 
 # Configuration parameters
 memory_usage_max=40000     # Maximum memory usage limit (MB)
-sleep_time=30             # Wait time (seconds), default is 2 minutes
+sleep_time=60             # Wait time (seconds), default is 1 minutes
 
 # Get the number of GPUs
 gpu_count=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)

@@ -32,7 +32,7 @@ def get_info_file_lines(info_file, diff_file):
     diff_file_lines = get_diff_file_lines(diff_file)
     current_lines = []
     current_lf = current_lh = 0
-    base_path = "/work/FlagGems/"
+    base_path = os.environ.get("FlagGemsROOT") + "/"
 
     with open(info_file) as f:
         for line in f:
