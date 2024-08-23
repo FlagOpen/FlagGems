@@ -1,6 +1,6 @@
 # https://github.com/marketplace/actions/python-coverage
 
-name: python-coverage
+name: model-test
 
 on:
   workflow_run:

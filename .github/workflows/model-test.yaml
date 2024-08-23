@@ -10,7 +10,7 @@ on:
     branches: [ "master" ]
 
 jobs:
-  container-model-test:
+  model-test:
     runs-on: [self-hosted, docker]
     container:
       image: localhost:5000/flag-gems-ci:v1.0
