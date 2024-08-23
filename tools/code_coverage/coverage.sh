@@ -3,16 +3,10 @@
 set -e
 
 echo "  Usage:  $0  pull_request_id "
-echo "PR_ID: $1"
-
 PR_ID=$1
+echo "PR_ID: $PR_ID"
 
-export PR_ID=173
-export GITHUB_SHA=a1b2c3d4e5f6g7h8i9j0k
-export GITHUB_RUN_ATTEMPT=2
 ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
-
-PR_ID_DIR="PR_${PR_ID}_Coverage"
 
 PYTHON_BIN=/usr/bin/python3.11
 

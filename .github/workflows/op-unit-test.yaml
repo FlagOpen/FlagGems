@@ -24,4 +24,4 @@ jobs:
 
       - name: unit_test-flag-gems
         shell: bash
-        run: tools/op-unit-test.sh
+        run: tools/op-unit-test.sh ${{ github.event.pull_request.number }}
