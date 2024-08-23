@@ -11,11 +11,10 @@ from .sum import sum
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_N": n, "BLOCK_C": c}, num_warps=4)
+        triton.Config({"BLOCK_N": n}, num_warps=4)
         for n in [256, 512, 1024]
-        for c in [1, 4, 16]
     ],
-    key=["N", "C"],
+    key=["N"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_2d_fwd_kernel(
@@ -28,15 +27,11 @@ def nll_loss_2d_fwd_kernel(
     N,
     C,
     BLOCK_N: tl.constexpr,
-    BLOCK_C: tl.constexpr,
 ):
     pid_n = tl.program_id(0)
-    pid_c = tl.program_id(1)
-    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
-    offsets_c = pid_c + tl.arange(0, BLOCK_C)[None, :]
+    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
     mask_n = offsets_n < N
-    mask_c = offsets_c < C
 
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
     ignore_mask = not (tgt == ignore_index)
@@ -46,7 +41,7 @@ def nll_loss_2d_fwd_kernel(
     w_tgt = tl.load(w_ptrs, mask=mask_n, other=0).to(tl.float32)
     tl.store(w_tgt_ptr + offsets_n, w_tgt, mask=(mask_n & ignore_mask))
 
-    inp_tgt_ptrs = offsets_n + tgt * C
+    inp_tgt_ptrs = inp_ptr + offsets_n + tgt * C
     inp_tgt = tl.load(inp_tgt_ptrs, mask=mask_n & mask_tgt, other=-float("inf")).to(
         tl.float32
     )
@@ -214,7 +209,7 @@ class NLLLoss(torch.autograd.Function):
                 )
         else:
             grid = lambda meta: (
-                triton.cdiv(N, meta["BLOCK_N"], triton.cdiv(C, meta["BLOCK_C"]))
+                triton.cdiv(N, meta["BLOCK_N"],)
             )
             with torch.cuda.device(inp.device):
                 nll_loss_2d_fwd_kernel[grid](
