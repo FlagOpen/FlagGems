@@ -24,6 +24,7 @@ jobs:
 
       - name: Get commit ID
         run: |
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
           COMMIT_ID=$(git rev-parse HEAD)
           echo "Commit ID is $COMMIT_ID"
 
