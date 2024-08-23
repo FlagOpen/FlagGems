@@ -22,8 +22,24 @@ jobs:
       - name: Print commit ID
         run: echo "Commit ID is $GITHUB_SHA"
 
+      - name: Get commit ID
+        run: |
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "Commit ID is $COMMIT_ID"
+
       - name: checkout-code
         uses: actions/checkout@v4
+
+
+
+      - name: Print commit ID AF
+        run: echo "Commit ID is $GITHUB_SHA"
+
+      - name: Get commit ID af
+        run: |
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "Commit ID is $COMMIT_ID"
+
 
       - name: check-gpu-free
         shell: bash
