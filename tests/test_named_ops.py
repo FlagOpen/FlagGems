@@ -193,7 +193,17 @@ if __name__ == "__main__":
         "--all", action="store_true", help="test for all ops in the op list"
     )
     parser.add_argument("--name", type=str, help="test for a specific op")
+    parser.add_argument(
+        "--device",
+        action="store",
+        default="cuda",
+        choices=["cuda", "cpu"],
+        help="device to run reference tests on. Choose 'cuda' or 'cpu'. Default is 'cuda'.",
+    )
     args = parser.parse_args()
+
+    device = args.device
+    print(f"Running tests on device: {device}...")
 
     op_nums = 0
     op_list = []
