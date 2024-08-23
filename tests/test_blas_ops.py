@@ -8,6 +8,7 @@ from .accuracy_utils import (
     MNK_SHAPES,
     SCALARS,
     gems_assert_close,
+    gems_assert_close_blas,
     to_reference,
 )
 
@@ -30,7 +31,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     with flag_gems.use_gems():
         res_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close_blas(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)
@@ -48,7 +49,7 @@ def test_accuracy_bmm(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.bmm(mat1, mat2)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close_blas(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)
@@ -65,7 +66,7 @@ def test_accuracy_mm(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close_blas(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)
