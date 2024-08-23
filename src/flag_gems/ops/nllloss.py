@@ -11,6 +11,79 @@ from .sum import sum
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_N": n, "BLOCK_C": c}, num_warps=4)
+        for n in [256, 512, 1024]
+        for c in [1, 4, 16]
+    ],
+    key=["N", "C"],
+)
+@triton.jit(do_not_specialize=["ignore_index"])
+def nll_loss_2d_fwd_kernel(
+    inp_ptr,
+    tgt_ptr,
+    w_ptr,
+    w_tgt_ptr,
+    out_ptr,
+    ignore_index,
+    N,
+    C,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    pid_n = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
+    offsets_c = pid_c + tl.arange(0, BLOCK_C)[None, :]
+
+    mask_n = offsets_n < N
+    mask_c = offsets_c < C
+
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
+    ignore_mask = not (tgt == ignore_index)
+    mask_tgt = tgt < C
+
+    w_ptrs = w_ptr + tgt
+    w_tgt = tl.load(w_ptrs, mask=mask_n, other=0).to(tl.float32)
+    tl.store(w_tgt_ptr + offsets_n, w_tgt, mask=(mask_n & ignore_mask))
+
+    inp_tgt_ptrs = offsets_n + tgt * C
+    inp_tgt = tl.load(inp_tgt_ptrs, mask=mask_n & mask_tgt, other=-float("inf")).to(
+        tl.float32
+    )
+    out = inp_tgt * w_tgt * -1
+    tl.store(out_ptr + offsets_n, out, mask=mask_n & mask_tgt & ignore_mask)
+
+
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_N": n, "BLOCK_C": c}, num_warps=4)
+        for n in [256, 512, 1024]
+        for c in [1, 4, 16]
+    ],
+    key=["N", "C"],
+)
+@triton.jit(do_not_specialize=["ignore_index"])
+def nll_loss_2d_bwd_kernel(
+    inp_ptr,
+    tgt_ptr,
+    w_ptr,
+    w_tgt_ptr,
+    out_ptr,
+    ignore_index,
+    N,
+    C,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    pid_n = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    # TODO
+
+
+@libentry()
+@triton.autotune(
+    configs=[
         triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
         for c in [256, 512, 1024]
         for d in [1, 4, 16]
@@ -18,7 +91,7 @@ from .sum import sum
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
-def nll_loss_fwd_kernel(
+def nll_loss_multi_fwd_kernel(
     inp_ptr,
     tgt_ptr,
     w_ptr,
@@ -63,7 +136,7 @@ def nll_loss_fwd_kernel(
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "total_weight"])
-def nll_loss_bwd_kernel(
+def nll_loss_multi_bwd_kernel(
     out_grad_ptr,
     tgt_ptr,
     w_ptr,
@@ -116,6 +189,7 @@ class NLLLoss(torch.autograd.Function):
 
         assert ((i >= 0 and i < C) for i in target), "Target is out of bounds"
         assert list(target.shape) == shape, "Invalid target size"
+        assert inp.ndim >= 1, "Invalid input ndim"
 
         if weight is None:
             weight = torch.ones(
@@ -131,10 +205,21 @@ class NLLLoss(torch.autograd.Function):
         w = weight.contiguous()
         out = torch.zeros(shape, dtype=torch.float32, device=inp.device)
         w_tgt = torch.zeros(shape, dtype=torch.float32, device=inp.device)
-        grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
 
-        with torch.cuda.device(inp.device):
-            nll_loss_fwd_kernel[grid](inp, tgt, w, w_tgt, out, ignore_index, N, C, D)
+        if inp.ndim > 2:
+            grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+            with torch.cuda.device(inp.device):
+                nll_loss_multi_fwd_kernel[grid](
+                    inp, tgt, w, w_tgt, out, ignore_index, N, C, D
+                )
+        else:
+            grid = lambda meta: (
+                triton.cdiv(N, meta["BLOCK_N"], triton.cdiv(C, meta["BLOCK_C"]))
+            )
+            with torch.cuda.device(inp.device):
+                nll_loss_2d_fwd_kernel[grid](
+                    inp, tgt, w, w_tgt, out, ignore_index, N, C, D
+                )
 
         ctx.save_for_backward(inp, tgt, w)
         ctx.N = N
@@ -168,12 +253,21 @@ class NLLLoss(torch.autograd.Function):
         shape = ctx.shape
 
         out_grad = out_grad.broadcast_to(shape).contiguous()
-
         inp_grad = torch.zeros(inp.shape, dtype=inp.dtype, device=inp.device)
-        grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
-        nll_loss_bwd_kernel[grid](
-            out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C, D
-        )
+
+        if inp.ndim > 2:
+            grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+            nll_loss_multi_bwd_kernel[grid](
+                out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C, D
+            )
+        else:
+            grid = lambda meta: (
+                triton.cdiv(N, meta["BLOCK_N"]),
+                triton.cdiv(C, meta["BLOCK_C"]),
+            )
+            nll_loss_2d_bwd_kernel[grid](
+                out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C, D
+            )
 
         return inp_grad, None, None, None, None, None
 
