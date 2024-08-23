@@ -22,4 +22,4 @@ jobs:
     steps:
       - name: get-python-coverage
         shell: bash
-        run: tools/code_coverage/coverage.sh 168 #${{ github.event.pull_request.number }}
+        run: tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
