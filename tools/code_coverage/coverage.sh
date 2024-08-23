@@ -3,7 +3,7 @@
 set -e
 
 echo "  Usage:  $0  pull_request_id "
-PR_ID=$1
+export PR_ID=$1
 echo "PR_ID: $PR_ID"
 
 ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
