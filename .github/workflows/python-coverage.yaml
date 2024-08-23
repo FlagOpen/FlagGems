@@ -1,12 +1,14 @@
 name: python-coverage
 
 on:
-  workflow_run:
-    workflows: [model-test]
-    types:
-      - completed
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
 
 jobs:
+  xxx:
+    ./.github/workflows/op-unit-test.yaml
   container-coverage-test:
     runs-on: [self-hosted, docker]
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
