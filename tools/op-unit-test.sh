@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# PR_ID=$1
-PR_ID=168
-GITHUB_SHA=a1b2c3d4e5f6g7h8i9j0k
-GITHUB_RUN_ATTEMPT=2
+PR_ID=$1
 PR_ID_DIR="PR_${PR_ID}_Coverage"
 
 ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+echo ID_SHA_ATTEMPT $ID_SHA_ATTEMPT
 
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA_ATTEMPT}-op"
 cmds=(
@@ -47,7 +45,7 @@ for status in "${exit_statuses[@]}"; do
     fi
 done
 
-mkdir -p "PR_${PR_ID}_Coverage"/${ID_SHA_ATTEMPT}
-mv ${ID_SHA_ATTEMPT}* "PR_${PR_ID}_Coverage"/${ID_SHA_ATTEMPT}
+mkdir -p /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
+mv ${ID_SHA_ATTEMPT}* /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
 
 exit $overall_status

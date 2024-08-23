@@ -18,7 +18,7 @@ jobs:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 81
-      options: --gpus all --hostname flag-gems_cicd_coverage
+      options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
       - name: get-python-coverage
         shell: bash

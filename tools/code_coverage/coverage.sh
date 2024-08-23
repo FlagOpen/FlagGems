@@ -13,7 +13,7 @@ PYTHON_BIN=/usr/bin/python3.11
 export FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
 echo ${FlagGemsROOT}
 
-FILES="PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}*"
+FILES="/PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}*"
 coverage combine -q --keep --data-file=${ID_SHA_ATTEMPT} $FILES
 coverage report -m --data-file=${ID_SHA_ATTEMPT}
 coverage xml -i --data-file=${ID_SHA_ATTEMPT} -o ${ID_SHA_ATTEMPT}-python-coverage.xml

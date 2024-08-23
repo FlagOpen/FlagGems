@@ -13,7 +13,7 @@ jobs:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 81
-      options: --gpus all --hostname flag-gems_cicd_ut
+      options: --gpus all --hostname flag-gems_cicd_ut -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
       - name: checkout-code
         uses: actions/checkout@v4
