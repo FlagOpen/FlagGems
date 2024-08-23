@@ -15,6 +15,10 @@ jobs:
         - 82
       options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface
     steps:
+      - name: echo attempt num
+        shell: bash
+        run: echo $GITHUB_RUN_ATTEMPT
+
       - name: checkout-code
         uses: actions/checkout@v4
 
