@@ -1,8 +1,19 @@
 #!/bin/bash
 
-COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests"
+# PR_ID=$1
+PR_ID=${{ github.event.pull_request.number }}
+PR_ID_DIR="PR_${PR_ID}_Coverage"
+
+ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+echo ID_SHA_ATTEMPT
+echo $ID_SHA_ATTEMPT
+
+COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA_ATTEMPT}-model"
 cmds=(
-   "CUDA_VISIBLE_DEVICES=5 coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py &"
+#    "CUDA_VISIBLE_DEVICES=5 coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py &"
+    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_floor_div &"
+   "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py &"
+
 )
 
 declare -a exit_statuses
@@ -26,4 +37,8 @@ for status in "${exit_statuses[@]}"; do
         break
     fi
 done
+
+mkdir -p "PR_${PR_ID}_Coverage"/${ID_SHA_ATTEMPT}
+mv ${ID_SHA_ATTEMPT}* "PR_${PR_ID}_Coverage"/${ID_SHA_ATTEMPT}
+
 exit $overall_status

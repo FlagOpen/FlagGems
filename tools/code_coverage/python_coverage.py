@@ -4,7 +4,7 @@
 usage: python_coverage.py > python-coverage.info
 """
 
-from os import path
+from os import getenv, path
 from xml.etree import ElementTree
 
 
@@ -53,4 +53,7 @@ def process_coverage_file(xml_file):
 
 
 if __name__ == "__main__":
-    process_coverage_file("python-coverage.xml")
+    id = getenv("PR_ID")
+    sha = getenv("GITHUB_SHA")
+    attempt = getenv("GITHUB_RUN_ATTEMPT")
+    process_coverage_file(f"{id}-{sha}-{attempt}-python-coverage.xml")
