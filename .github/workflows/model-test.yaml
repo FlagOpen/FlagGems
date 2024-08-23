@@ -29,4 +29,4 @@ jobs:
         run: tools/gpu_check.sh
 
       - name: examples-flag-gems
-        run: tools/model-test.sh ${{ github.event.pull_request.number }}
+        run: tools/model-test.sh $168 #${{ github.event.pull_request.number }}
