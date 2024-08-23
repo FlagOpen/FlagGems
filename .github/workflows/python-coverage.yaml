@@ -7,22 +7,19 @@ on:
     branches: [ "master" ]
 
 jobs:
-  xxxxxxxx:
+  op-unit-test:
     uses: ./.github/workflows/op-unit-test.yaml
+  model-test:
+    uses: ./.github/workflows/model-test.yaml
   container-coverage-test:
     runs-on: [self-hosted, docker]
-    needs: [xxxxxxxx]
+    needs: [op-unit-test]
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
         - 81
       options: --gpus all --hostname flag-gems_cicd_coverage
     steps:
-
-      - name: check-gpu-free
-        shell: bash
-        run: tools/gpu_check.sh
-
-      - name: run-pytest
+      - name: get-python-coverage
         shell: bash
         run: tools/code_coverage/coverage.sh 168 #${{ github.event.pull_request.number }}
