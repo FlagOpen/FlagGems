@@ -51,6 +51,7 @@ from .mul import mul
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nonzero import nonzero
 from .normal import (
     normal_float_float,
     normal_float_tensor,
@@ -201,4 +202,5 @@ __all__ = [
     "where_scalar_other",
     "masked_fill",
     "_unique2",
+    "nonzero",
 ]
