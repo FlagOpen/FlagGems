@@ -3,12 +3,8 @@
 name: python-coverage
 
 on:
-  # push:
-  #   branches: [ "master" ]
-  # pull_request:
-  #   branches: [ "master" ]
   workflow_run:
-    workflows: ["op-unit-test"]
+    workflows: [op-unit-test]
     types:
       - completed
 
