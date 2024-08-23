@@ -1,10 +1,8 @@
-# https://github.com/marketplace/actions/python-coverage
-
-name: model-test
+name: python-coverage
 
 on:
   workflow_run:
-    workflows: [op-unit-test]
+    workflows: [model-test]
     types:
       - completed
 
