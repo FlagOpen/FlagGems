@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 PR_ID=$1
 PR_ID_DIR="PR_${PR_ID}_Coverage"
 
