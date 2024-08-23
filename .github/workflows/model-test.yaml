@@ -19,6 +19,9 @@ jobs:
         shell: bash
         run: echo $GITHUB_RUN_ATTEMPT
 
+      - name: Print commit ID
+        run: echo "Commit ID is $GITHUB_SHA"
+
       - name: checkout-code
         uses: actions/checkout@v4
 
