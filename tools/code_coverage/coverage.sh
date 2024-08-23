@@ -78,6 +78,6 @@ genhtml -o ${ID_SHA_ATTEMPT}-python-coverage-diff-discard \
 
 mv -f ${ID_SHA_ATTEMPT}* /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
 
-lcov --list PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}-python-coverage-discard-diff.info
+lcov --list /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}-python-coverage-discard-diff.info
 echo -e "\n==================== Python Coverage Result ====================\n"
-${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/coverage_lines.py  PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}-python-coverage-discard-diff.info 0.9
+${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/coverage_lines.py  /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}-python-coverage-discard-diff.info 0.9
