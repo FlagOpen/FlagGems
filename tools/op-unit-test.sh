@@ -3,12 +3,9 @@
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests"
 cmds=(
 # 168 pass
-#    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS}  -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_trunc_div &"
-#    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_floor_div &"
-#    "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py &"
-
-# 168 not pass
-   "CUDA_VISIBLE_DEVICES=3 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py::test_accuracy_abs &"
+   "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS}  -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_trunc_div &"
+   "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py::test_accuracy_floor_div &"
+   "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py &"
 
 # all
 #    "CUDA_VISIBLE_DEVICES=3 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py &"

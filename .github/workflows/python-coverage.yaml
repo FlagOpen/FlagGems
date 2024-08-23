@@ -13,7 +13,7 @@ jobs:
     uses: ./.github/workflows/model-test.yaml
   container-coverage-test:
     runs-on: [self-hosted, docker]
-    needs: [op-unit-test]
+    needs: [op-unit-test, model-test]
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:
