@@ -52,7 +52,7 @@ else
     echo  "This means the files modified in your PR are not tested by python coverage!"
     echo  "Pass! Please check carefully if you need add test for your files!"
     echo -e "\n================================================================"
-    mv -f ${ID_SHA_ATTEMPT}* PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
+    mv -f ${ID_SHA_ATTEMPT}* /PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
     exit
 fi
 
@@ -76,7 +76,7 @@ genhtml -o ${ID_SHA_ATTEMPT}-python-coverage-diff-discard \
     --ignore-errors source \
     ${ID_SHA_ATTEMPT}-python-coverage-discard-diff.info
 
-mv -f ${ID_SHA_ATTEMPT}* PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
+mv -f /PR_Coverage/${ID_SHA_ATTEMPT}* PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}
 
 lcov --list PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}-python-coverage-discard-diff.info
 echo -e "\n==================== Python Coverage Result ====================\n"
