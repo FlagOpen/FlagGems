@@ -15,7 +15,7 @@ ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
 PYTHON_BIN=/usr/bin/python3.11
 
 export FlagGemsROOT="$( cd "$( dirname "${BASH_SOURCE[0]}")/../../" && pwd )"
-echo ${FlagGemsROOT}
+echo FlagGemsROOT ${FlagGemsROOT}
 
 FILES="/PR_Coverage/PR_${PR_ID}_Coverage/${ID_SHA_ATTEMPT}/${ID_SHA_ATTEMPT}*"
 coverage combine -q --keep --data-file=${ID_SHA_ATTEMPT} $FILES
@@ -39,7 +39,7 @@ genhtml -o ${ID_SHA_ATTEMPT}-python-coverage-full \
 
 # git
 COVERAGE_DIFF_PATTERN="`${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/pull_request.py files ${PR_ID}`"
-echo ${COVERAGE_DIFF_PATTERN}
+echo COVERAGE_DIFF_PATTERN ${COVERAGE_DIFF_PATTERN}
 ${PYTHON_BIN} ${FlagGemsROOT}/tools/code_coverage/pull_request.py diff ${PR_ID} > ${ID_SHA_ATTEMPT}-python-git-diff.out
 
 # bash
