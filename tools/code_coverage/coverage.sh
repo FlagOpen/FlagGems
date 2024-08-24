@@ -6,11 +6,8 @@ echo "  Usage:  $0  pull_request_id "
 export PR_ID=$1
 echo "PR_ID: $PR_ID"
 
-export PR_ID=168
-export GITHUB_SHA=111
-export GITHUB_RUN_ATTEMPT=222
-
 ID_SHA_ATTEMPT="${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}"
+echo ID_SHA_ATTEMPT $ID_SHA_ATTEMPT
 
 PYTHON_BIN=/usr/bin/python3.11
 
