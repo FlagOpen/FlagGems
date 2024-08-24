@@ -13,7 +13,7 @@ def get_discard_file_lines(discard_file):
             line = line.strip()
 
             if line.startswith(flag_gems_root + "/"):
-                current_file = line[15:]
+                current_file = line[len(flag_gems_root) + 1 :]
                 dicard_file_lines[current_file] = []
                 continue
 
