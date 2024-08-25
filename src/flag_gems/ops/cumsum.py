@@ -81,29 +81,39 @@ def cumsum(inp, dim=1, *, dtype=None):
     return out
 
 
+@triton.jit
+def combine_sum(s0, s1):
+    return s0 + s1
+
+
 @triton.jit(do_not_specialize=["K"])
 def fused_renorm_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
     row_start = tl.program_id(0) * K
     row_off = tl.arange(0, BLOCK)
-    x = tl.load(inp + row_start + row_off, mask=row_off < K)
-    normed_x = x / tl.sum(x, 0)
-    y = tl.cumsum(normed_x, 0)
+    x = tl.load(inp + row_start + row_off, mask=row_off < K, other=0)
+    if x.dtype.is_fp16():
+        x = x.to(tl.float32)
+
+    y_sum = tl.sum(x, 0)
+    y = tl.cumsum(x, 0)
+    # tl.store(tmp_out + tl.program_id(0) + row_start + row_off, y, cache_modifier='.cg')
+    # y_sum = tl.load(tmp_out + tl.program_id(0) + row_start + K - 1, cache_modifier='.cg')
+    y = y / y_sum
     tl.store(out + row_start + row_off, y, mask=row_off < K)
 
 
 def fused_renorm_cumsum(inp, dim=-1):
     logging.debug("GEMS RENORM_CUMSUM")
-    assert inp.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
+    assert inp.dtype in (torch.float16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     assert dim == inp.ndim - 1, "Currently only supports the last dimension."
     inp = inp.contiguous()
     K = inp.size(dim)
-    assert K <= 8192, "The largest category number is 8192."
+    assert K <= 32768, "The largest category number tuned is 32768."
     N = inp.numel()
     out = torch.empty_like(inp)
     with torch.cuda.device(inp.device.index):
         grid = lambda meta: (N // K,)
         BLOCK = triton.next_power_of_2(K)
         fused_renorm_cumsum_kernel[grid](inp, out, K, BLOCK=BLOCK)
-
     return out

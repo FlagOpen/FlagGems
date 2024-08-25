@@ -51,12 +51,13 @@ def multinomial_with_replacement(
 
     # Returns the last index in case of an overflow
     start = tl.where(start >= K, K - 1, start)
+
     tl.store(out_ptr + y_off + n, start, mask=n < N)
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     logging.debug("GEMS MULTINOMIAL")
-    assert prob.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+    assert prob.dtype in (torch.float16, torch.float32, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
     n_categories = prob.size(-1)
     assert n_categories <= (1 << 24), "number of categories cannot exceed 2^24"
@@ -80,6 +81,8 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     from flag_gems.ops import fused_renorm_cumsum as renorm_cumsum
 
     cum_prob = renorm_cumsum(prob, dim=-1)
+    # normed_prob = prob / prob.sum(-1, keepdim=True)
+    # cum_prob = torch.cumsum(normed_prob, -1)
 
     if cum_prob.dim() == 1:
         n_dist = 1
