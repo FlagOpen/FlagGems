@@ -1,0 +1,32 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: model-test
+
+on:
+  workflow_call:
+
+jobs:
+  model-test:
+    runs-on: [self-hosted, docker]
+    container:
+      image: localhost:5000/flag-gems-ci:v1.0
+      ports:
+        - 82
+      options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
+    steps:
+      - name: Get commit ID
+        run: |
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
+          COMMIT_ID=$(git rev-parse HEAD)
+          echo "Commit ID is $COMMIT_ID"
+
+      - name: checkout-code
+        uses: actions/checkout@v4
+
+      - name: check-gpu-free
+        shell: bash
+        run: tools/gpu_check.sh
+
+      - name: examples-flag-gems
+        run: tools/model-test.sh ${{ github.event.pull_request.number }}
