@@ -1014,7 +1014,10 @@ class PointwiseDynamicFunction:
         # created via exec string. We can help inspect to find the source by hacking linecache
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
-        file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{ndim}_pid_{self.pid}.py"
+        file_name = (
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{ndim}_"
+            f"{'bptr' if self.config.prefer_block_pointer else ''}_pid_{self.pid}.py"
+        )
         with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
             f.write(code.getvalue())
 
