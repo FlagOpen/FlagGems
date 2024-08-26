@@ -1,0 +1,25 @@
+name: python-coverage
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  op-unit-test:
+    uses: ./.github/workflows/op-unit-test.yaml
+  model-test:
+    uses: ./.github/workflows/model-test.yaml
+  container-coverage-test:
+    runs-on: [self-hosted, docker]
+    needs: [op-unit-test, model-test]
+    container:
+      image: localhost:5000/flag-gems-ci:v1.0
+      ports:
+        - 81
+      options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
+    steps:
+      - name: get-python-coverage
+        shell: bash
+        run: tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
