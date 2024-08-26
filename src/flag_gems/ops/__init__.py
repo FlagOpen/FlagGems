@@ -17,7 +17,7 @@ from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum
-from .div import div
+from .div import div_mode, floor_divide, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
@@ -42,8 +42,10 @@ from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill
 from .max import max, max_dim
+from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .minimum import minimum
 from .mm import mm
 from .mul import mul
 from .mv import mv
@@ -63,6 +65,7 @@ from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
+from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .resolve_conj import resolve_conj
@@ -76,9 +79,11 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .tile import tile
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
+from .unique import _unique2
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
@@ -108,7 +113,9 @@ __all__ = [
     "clamp_tensor",
     "cos",
     "cumsum",
-    "div",
+    "true_divide",
+    "div_mode",
+    "floor_divide",
     "zeros",
     "ones",
     "full",
@@ -144,8 +151,12 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "maximum",
+    "minimum",
     "rand",
     "randn",
+    "rand_like",
+    "randn_like",
     "resolve_neg",
     "resolve_conj",
     "normal_tensor_float",
@@ -153,7 +164,6 @@ __all__ = [
     "normal_tensor_tensor",
     "normal_float_float",
     "uniform_",
-    "rand_like",
     "mv",
     "ne",
     "ne_scalar",
@@ -170,6 +180,7 @@ __all__ = [
     "softmax",
     "sub",
     "tanh",
+    "tile",
     "triu",
     "topk",
     "max",
@@ -191,4 +202,5 @@ __all__ = [
     "where_scalar_self",
     "where_scalar_other",
     "masked_fill",
+    "_unique2",
 ]

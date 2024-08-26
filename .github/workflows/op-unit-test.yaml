@@ -1,0 +1,27 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: op-unit-test
+
+on:
+  workflow_call:
+
+jobs:
+  container-unit-test:
+    runs-on: [self-hosted, docker]
+    container:
+      image: localhost:5000/flag-gems-ci:v1.0
+      ports:
+        - 81
+      options: --gpus all --hostname flag-gems_cicd_ut -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
+    steps:
+      - name: checkout-code
+        uses: actions/checkout@v4
+
+      - name: check-gpu-free
+        shell: bash
+        run: tools/gpu_check.sh
+
+      - name: unit_test-flag-gems
+        shell: bash
+        run: tools/op-unit-test.sh ${{ github.event.pull_request.number }}
