@@ -76,13 +76,11 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
             return torch.argmax(s, dim=-1)
         else:
             vals, indices = torch.topk(s, n_samples, dim=-1)
-            return indices
+            return indices.to(torch.int64)
 
     from flag_gems.ops import fused_renorm_cumsum as renorm_cumsum
 
     cum_prob = renorm_cumsum(prob, dim=-1)
-    # normed_prob = prob / prob.sum(-1, keepdim=True)
-    # cum_prob = torch.cumsum(normed_prob, -1)
 
     if cum_prob.dim() == 1:
         n_dist = 1

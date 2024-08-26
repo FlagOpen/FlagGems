@@ -93,11 +93,10 @@ def fused_renorm_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
     x = tl.load(inp + row_start + row_off, mask=row_off < K, other=0)
     if x.dtype.is_fp16():
         x = x.to(tl.float32)
-
     y_sum = tl.sum(x, 0)
     y = tl.cumsum(x, 0)
-    # tl.store(tmp_out + tl.program_id(0) + row_start + row_off, y, cache_modifier='.cg')
-    # y_sum = tl.load(tmp_out + tl.program_id(0) + row_start + K - 1, cache_modifier='.cg')
+    # tl.store(tmp_out + tl.program_id(0) + row_start + row_off, y, mask=row_off == (BLOCK - 1), cache_modifier='.cg')
+    # y_sum = tl.load(tmp_out + tl.program_id(0) + row_start + BLOCK - 1, cache_modifier='.cg')
     y = y / y_sum
     tl.store(out + row_start + row_off, y, mask=row_off < K)
 

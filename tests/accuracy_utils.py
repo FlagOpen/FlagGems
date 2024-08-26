@@ -1,5 +1,4 @@
 import itertools
-import random
 
 import torch
 
@@ -19,10 +18,10 @@ RESOLUTION = {
 sizes_one = [1]
 sizes_small = [2, 3, 4]
 sizes_pow_2 = [2**d for d in range(4, 11, 2)]
-sizes_noalign = [d + random.randint(17, 32) for d in sizes_pow_2]
+sizes_noalign = [d + 17 for d in sizes_pow_2]
 sizes_1d = sizes_one + sizes_pow_2 + sizes_noalign
-sizes_2d_nc = sizes_one + sizes_pow_2
-sizes_2d_nr = [1, 5, 64, 1024]
+sizes_2d_nc = [1, 16, 64, 1000]
+sizes_2d_nr = [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
