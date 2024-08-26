@@ -52,6 +52,11 @@ def _cs(strings: Iterable[str]) -> str:
     return ", ".join(strings)
 
 
+def _broadcast_vec(i, ndim):
+    axes = [":" if j == i else "None" for j in range(ndim)]
+    return f"[{_cs(axes)}]"
+
+
 class FunctionSchema:
     _num_inputs: int
     _is_tensor: List[bool]
@@ -230,11 +235,13 @@ class KernelGenerator:
         scalar_fn: triton.JITFunction,
         rank: int,
         name: str,
+        config: CodeGenConfig,
     ):
         self.fx = function_schema
         self.fn = scalar_fn
         self.ndim = rank
         self.name = name
+        self.config = config
 
         self.fn_name = scalar_fn.__name__
         self.fn_module = scalar_fn.__module__
@@ -265,7 +272,7 @@ class KernelGenerator:
     def output_name(self, i):
         return f"out{i}"
 
-    def gen_signature(self, code):
+    def gen_signature(self, code, with_block_pointer=False):
         code.writeline(f"def {self.name}(")
         with code.indent():
             input_tensor_index = 0
@@ -303,19 +310,23 @@ class KernelGenerator:
                 for i in range(schema.num_input_tensors()):
                     stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
-                    stride_order_args = _cs(
-                        f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
-                    )
-                    code.writeline(f"{stride_order_args}, # stride order for in{i}")
+                    if with_block_pointer:
+                        stride_order_args = _cs(
+                            f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
+                        )
+                        code.writeline(f"{stride_order_args}, # stride order for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
                     stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
-                    stride_order_args = _cs(
-                        f"out{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
-                    )
-                    code.writeline(f"{stride_order_args}, # stride order for out{i}")
+                    if with_block_pointer:
+                        stride_order_args = _cs(
+                            f"out{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
+                        )
+                        code.writeline(
+                            f"{stride_order_args}, # stride order for out{i}"
+                        )
 
                 # task space, used to reconstruct multi index
                 task_space_args = _cs(f"s{i}: int" for i in range(ndim))
@@ -371,7 +382,7 @@ class KernelGenerator:
         return code
 
     # nd tile 1d grid kernel with block pointer
-    def gen_body_one_tile_per_cta_bptr(self, code):
+    def gen_body_one_tile_per_cta_with_bptr(self, code):
         ndim = self.ndim
         schema = self.fx
 
@@ -444,25 +455,94 @@ class KernelGenerator:
                 f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
             )
 
-    def gen_body_gsl_bptr(self, code):
+    def gen_body_gsl_with_bptr(self, code):
         code.writeline("num_ctas = tl.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
-            self.gen_body_one_tile_per_cta_bptr(code)
+            self.gen_body_one_tile_per_cta_with_bptr(code)
 
-    # nd tile 1d grid kernel with block of pointers
-    def gen_body_one_tile_per_cta(self, code):
-        pass
+    def gen_body_one_tile_per_cta_without_bptr(self, code):
+        ndim = self.ndim
+        schema = self.fx
 
-    def gen_body_gsl(self, code):
-        pass
+        # reconstruct pid multi index
+        code.writeline(
+            "# pid multi index recontruction: we use c ordering, right axes changes fastest"
+        )
+        for i in reversed(range(ndim)):
+            if i > 0:
+                code.writeline(f"tile_id{i} = tile_id % num_tiles{i}")
+                code.writeline(f"tile_id //= num_tiles{i}")
+            else:
+                code.writeline(f"tile_id{i} = tile_id")
+        code.newline()
 
-    def codegen_nd_tile(self, code):
+        # offsets
+        for i in range(ndim):
+            code.writeline(
+                f"offsets{i} = tile_id{i} * tile_size{i} + tl.arange(0, tile_size{i})"
+            )
+
+        # masks
+        for i in range(ndim):
+            code.writeline(f"mask{i} = offsets{i} < s{i}")
+        masks = tuple(f"mask{i}{_broadcast_vec(i, ndim)}" for i in range(ndim))
+        mask_combine = " & ".join(masks)
+        code.writeline(f"mask = {mask_combine}")
+
+        # loads
+        code.writeline("# loads")
+        for i in range(schema.num_input_tensors()):
+            offsets = tuple(
+                f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                for j in range(ndim)
+            )
+            offset_combine = " + ".join(offsets)
+            code.writeline(
+                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+            )
+
+        code.newline()
+
+        # compute
+        # TODO: sepearate this part
+        inputs_to_scalar_fn = [self.input_name(i) for i in range(schema.num_inputs())]
+        outputs_to_scalar_fn = [
+            self.output_name(i) for i in range(schema.num_output_tensors())
+        ]
+        inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
+        outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+
+        code.writeline("# compute")
+        code.writeline(
+            f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
+        )
+        code.newline()
+
+        # stores
+        for i in range(schema.num_output_tensors()):
+            offsets = tuple(
+                f"offsets{j}{_broadcast_vec(j, ndim)} * out{i}_stride{j}"
+                for j in range(ndim)
+            )
+            offset_combine = " + ".join(offsets)
+            code.writeline(
+                f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
+            )
+
+    def gen_body_gsl_without_bptr(self, code):
+        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("for j in range(0, tiles_per_cta):")
+        with code.indent():
+            code.writeline("tile_id = pid + j * num_ctas")
+            self.gen_body_one_tile_per_cta_without_bptr(code)
+
+    def codegen_nd_tile_with_bptr(self, code):
         """Generate kernel nd tile & 1d grid with gsl support with block pointer."""
         self.gen_import_function(code)
         self.gen_decorators(code)
-        self.gen_signature(code)
+        self.gen_signature(code, with_block_pointer=True)
 
         # function body for rank-0
         if self.ndim == 0:
@@ -477,12 +557,46 @@ class KernelGenerator:
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
             with code.indent():
                 code.writeline("tile_id = pid")
-                self.gen_body_one_tile_per_cta_bptr(code)
+                self.gen_body_one_tile_per_cta_with_bptr(code)
             # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
             code.writeline("else: # grid-stride-loop style kernel")
             with code.indent():
-                self.gen_body_gsl_bptr(code)
+                self.gen_body_gsl_with_bptr(code)
         code.newline()
+        return code
+
+    def codegen_nd_tile_without_bptr(self, code):
+        self.gen_import_function(code)
+        self.gen_decorators(code)
+        self.gen_signature(code, with_block_pointer=False)
+
+        # function body for rank-0
+        if self.ndim == 0:
+            with code.indent():
+                self.gen_body_for_0d(code)
+            return code
+
+        with code.indent():
+            code.writeline("pid = tl.program_id(0)")
+            self.gen_num_tiles(code)
+            # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
+            code.writeline("if one_tile_per_cta: # monolitic kernel style")
+            with code.indent():
+                code.writeline("tile_id = pid")
+                self.gen_body_one_tile_per_cta_without_bptr(code)
+            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+            code.writeline("else: # grid-stride-loop style kernel")
+            with code.indent():
+                self.gen_body_gsl_without_bptr(code)
+        code.newline()
+        return code
+
+    def codegen_nd_tile(self, code):
+        use_block_pointer = self.config.prefer_block_pointer
+        if use_block_pointer:
+            self.codegen_nd_tile_with_bptr(code)
+        else:
+            self.codegen_nd_tile_without_bptr(code)
         return code
 
     def codegen_1d_tile(self, code):
@@ -587,19 +701,28 @@ class WrapperGenerator:
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
 
-    def gen_kernel_launch(self, code: IndentedBuffer):
+    def gen_kernel_launch(
+        self,
+        code: IndentedBuffer,
+    ):
         schema = self.fx
         ndim = self.ndim
+
+        with_block_pointer = self.config.prefer_block_pointer
 
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
+            if not with_block_pointer:
+                continue
             if ndim >= 2:  # where ndim is 1, we don't need to compute stride order
                 code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
             else:
                 code.writeline(f"in{i}_stride_order = (0,)")
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
+            if not with_block_pointer:
+                continue
             if ndim >= 2:
                 code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
             else:
@@ -625,6 +748,8 @@ class WrapperGenerator:
                     for i in range(schema.num_input_tensors()):
                         s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for in{i}")
+                        if not with_block_pointer:
+                            continue
                         order = ", ".join(
                             f"in{i}_stride_order[{j}]" for j in range(ndim)
                         )
@@ -633,6 +758,8 @@ class WrapperGenerator:
                     for i in range(schema.num_output_tensors()):
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for out{i}")
+                        if not with_block_pointer:
+                            continue
                         order = ", ".join(
                             f"out{i}_stride_order[{j}]" for j in range(ndim)
                         )
@@ -675,10 +802,13 @@ class ModuleGenerator:
         wrapper_name: str,
         config: CodeGenConfig,
     ):
+        self.config = config
         self.wrapper_gen = WrapperGenerator(
             function_schema, jit_fn_name, ndim, wrapper_name, config
         )
-        self.kernel_gen = KernelGenerator(function_schema, scalar_fn, ndim, jit_fn_name)
+        self.kernel_gen = KernelGenerator(
+            function_schema, scalar_fn, ndim, jit_fn_name, config
+        )
 
     @staticmethod
     def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -722,7 +852,7 @@ class PointwiseDynamicFunction:
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or CodeGenConfig(
-            512, (65536, 65536, 65536), 32, True, False
+            512, (65536, 65536, 65536), 32, False, False
         )
 
         # instantiated & cached overloads
@@ -921,6 +1051,7 @@ def pointwise_dynamic(
     dtypes: Optional[List[Optional[type]]] = None,
     num_outputs: Optional[int] = None,
     promotion_methods: Optional[Tuple[int, ...]] = None,
+    config: Optional[CodeGenConfig] = None,
 ):
     def decorator(fn):
         nonlocal num_inputs
@@ -933,7 +1064,7 @@ def pointwise_dynamic(
             num_outputs=num_outputs,
             promotion_methods=promotion_methods,
         )
-        return PointwiseDynamicFunction(op_desc, fn)
+        return PointwiseDynamicFunction(op_desc, fn, config)
 
     if f is not None:
         return decorator(f)

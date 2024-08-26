@@ -2,8 +2,14 @@ import pytest
 import torch
 import triton
 
-from flag_gems.utils.pointwise_dynamic import FunctionSchema, pointwise_dynamic
+from flag_gems.utils.pointwise_dynamic import (
+    CodeGenConfig,
+    FunctionSchema,
+    pointwise_dynamic,
+)
 from flag_gems.utils.tensor_wrapper import StridedBuffer
+
+USE_BLOCK_POINTER = [True, False] if int(triton.__version__[0]) >= 3 else [False]
 
 
 def test_function_schema_with_non_tensor_input():
@@ -131,8 +137,19 @@ def test_function_schema_multiple_outputs():
     _ = schema
 
 
-def test_dynamic_function_without_non_tensor_args():
-    @pointwise_dynamic(num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_without_non_tensor_args(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
+    )
     @triton.jit
     def add(x, y):
         return x + y
@@ -146,11 +163,21 @@ def test_dynamic_function_without_non_tensor_args():
         torch.testing.assert_close(out, x + y)
 
 
-def test_dynamic_function_with_non_tensor_args():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_non_tensor_args(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpy(x, y, alpha):
@@ -166,12 +193,22 @@ def test_dynamic_function_with_non_tensor_args():
         torch.testing.assert_close(out, alpha * x + y)
 
 
-def test_dynamic_function_with_multiple_outputs():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_multiple_outputs(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         num_outputs=2,
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def multiple_out(x, y, alpha):
@@ -188,7 +225,16 @@ def test_dynamic_function_with_multiple_outputs():
         torch.testing.assert_close(out1, alpha * x - y)
 
 
-def test_dynamic_function_with_broadcasting():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_broadcasting(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     # NOTE: [misaligned address]
     # triton 2.2 may cause Misaligned address when using 3d block pointer in some
     # cases with some zero strides
@@ -196,6 +242,7 @@ def test_dynamic_function_with_broadcasting():
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpy(x, y, alpha):
@@ -209,12 +256,22 @@ def test_dynamic_function_with_broadcasting():
     torch.testing.assert_close(out, alpha * x + y)
 
 
-def test_dynamic_function_with_broadcasting2():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_broadcasting2(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     # NOTE: See note [misaligned address]
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpy(x, y, alpha):
@@ -228,11 +285,21 @@ def test_dynamic_function_with_broadcasting2():
     torch.testing.assert_close(out, alpha * x + y)
 
 
-def test_dynamic_function_with_predefined_out():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_predefined_out(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpy(x, y, alpha):
@@ -247,11 +314,21 @@ def test_dynamic_function_with_predefined_out():
     torch.testing.assert_close(out, alpha * x + y)
 
 
-def test_dynamic_function_with_some_predefined_out1():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_some_predefined_out1(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -268,11 +345,21 @@ def test_dynamic_function_with_some_predefined_out1():
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-def test_dynamic_function_with_some_predefined_out2():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_some_predefined_out2(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -289,9 +376,21 @@ def test_dynamic_function_with_some_predefined_out2():
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-def test_dynamic_function_with_bool_input_and_output():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_bool_input_and_output(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
-        num_inputs=1, is_tensor=[True], promotion_methods=[(0, "DEFAULT")]
+        num_inputs=1,
+        is_tensor=[True],
+        promotion_methods=[(0, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def invert(x):
@@ -304,9 +403,21 @@ def test_dynamic_function_with_bool_input_and_output():
     torch.testing.assert_close(notx, ~x)
 
 
-def test_dynamic_function_manual_instantiation():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_manual_instantiation(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
-        num_inputs=1, is_tensor=[True], promotion_methods=[(0, "DEFAULT")]
+        num_inputs=1,
+        is_tensor=[True],
+        promotion_methods=[(0, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def invert(x):
@@ -321,11 +432,21 @@ def test_dynamic_function_manual_instantiation():
     torch.testing.assert_close(notx, ~x)
 
 
-def test_dynamic_function_with_nd_buffer():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_nd_buffer(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -342,11 +463,21 @@ def test_dynamic_function_with_nd_buffer():
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-def test_dynamic_function_with_different_stride_order():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_different_stride_order(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -363,11 +494,23 @@ def test_dynamic_function_with_different_stride_order():
     torch.testing.assert_close(out1, alpha * x - y)
 
 
-def test_dynamic_function_manual_instantiation_mixing_strided_buffer_and_tensor():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_manual_instantiation_mixing_strided_buffer_and_tensor(
+    use_block_pointer,
+):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -385,12 +528,24 @@ def test_dynamic_function_manual_instantiation_mixing_strided_buffer_and_tensor(
     assert isinstance(out1, StridedBuffer)
 
 
-def test_dynamic_function_manual_instantiation_does_not_support_broadcasting1():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_manual_instantiation_does_not_support_broadcasting1(
+    use_block_pointer,
+):
     # manually instantiated overload does not support broadcasting of operands
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -407,12 +562,24 @@ def test_dynamic_function_manual_instantiation_does_not_support_broadcasting1():
         out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
 
 
-def test_dynamic_function_manual_instantiation_does_not_support_broadcasting2():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_manual_instantiation_does_not_support_broadcasting2(
+    use_block_pointer,
+):
     # manually instantiated overload does not support broadcasting of operands
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -429,12 +596,24 @@ def test_dynamic_function_manual_instantiation_does_not_support_broadcasting2():
         out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha, out0=_out0, out1=_out1)
 
 
-def test_dynamic_function_manual_instantiation_does_not_allocate_output():
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_manual_instantiation_does_not_allocate_output(
+    use_block_pointer,
+):
     # manually instantiated overload does not support broadcasting of operands
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
     @pointwise_dynamic(
         num_inputs=3,
         is_tensor=[True, True, False],
         promotion_methods=[(0, 1, "DEFAULT"), (0, 1, "DEFAULT")],
+        config=config,
     )
     @triton.jit
     def axpyaxmy(x, y, alpha):
@@ -447,3 +626,29 @@ def test_dynamic_function_manual_instantiation_does_not_allocate_output():
 
     with pytest.raises(Exception):
         out0, out1 = axpyaxmy.instantiate(3)(x, y, alpha)
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_gsl(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=512,
+        max_grid_size=(80, 1, 1),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
+    )
+    @triton.jit
+    def add(x, y):
+        return x + y
+
+    SIZE = 2
+    for ndim in range(8):
+        shape = [SIZE] * ndim
+        x = torch.randn(shape, device="cuda")
+        y = torch.randn_like(x)
+        out = add(x, y)
+        torch.testing.assert_close(out, x + y)
