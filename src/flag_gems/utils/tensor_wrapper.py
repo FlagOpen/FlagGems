@@ -5,7 +5,7 @@ import torch
 
 class TypedPtr:
     """This is a minimal requirement for a type to be treated as a tensor in triton jit
-    function. Basically it is ia typed pointer, withou knowning the device, size, shape,
+    function. Basically it is ia typed pointer, without knowning the device, size, shape,
     strides, etc.
     """
 
