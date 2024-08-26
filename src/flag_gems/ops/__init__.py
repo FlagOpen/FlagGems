@@ -79,7 +79,7 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
-from .topk import topk
+# from .topk import topk
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
