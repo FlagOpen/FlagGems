@@ -16,7 +16,6 @@ RESOLUTION = {
 }
 
 sizes_one = [1]
-sizes_small = [2, 3, 4]
 sizes_pow_2 = [2**d for d in range(4, 11, 2)]
 sizes_noalign = [d + 17 for d in sizes_pow_2]
 sizes_1d = sizes_one + sizes_pow_2 + sizes_noalign

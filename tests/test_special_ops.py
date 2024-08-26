@@ -365,13 +365,12 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
 @pytest.mark.parametrize("pool", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_multinomial_without_replacement(pool, dtype):
-    n_draws = 10
-    dist = torch.rand(size=(pool,), dtype=dtype, device="cuda").broadcast_to(
-        n_draws, pool
-    )
-    n_samples = pool
+    dist = torch.rand(size=pool, dtype=dtype, device="cuda")
+    n_samples = pool[-1]
     with flag_gems.use_gems():
         res_out = torch.multinomial(dist, n_samples, False)
     # Verifies uniqueness
     sorted_samples, _ = res_out.sort(dim=-1)
-    assert torch.all(sorted_samples == torch.arange(pool, device="cuda"))
+    gems_assert_equal(
+        sorted_samples, torch.arange(pool[-1], device="cuda").broadcast_to(pool)
+    )

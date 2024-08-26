@@ -73,7 +73,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
         q = torch.empty_like(prob).exponential_(1.0)
         s = torch.div(prob, q, out=q)
         if n_samples == 1:
-            return torch.argmax(s, dim=-1)
+            return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
         else:
             vals, indices = torch.topk(s, n_samples, dim=-1)
             return indices.to(torch.int64)
