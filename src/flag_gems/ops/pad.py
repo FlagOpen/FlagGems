@@ -286,9 +286,6 @@ def generate_pad_kernel(
         code.writeline("if_pad_false_mask = tl.zeros((BLOCK_SIZE, ), dtype=tl.int32)")
         code.writeline("if_pad_true_mask = tl.full((BLOCK_SIZE, ), 1, dtype=tl.int32)")
 
-        for i in range(rank):
-            code.writeline(f"src_index_{i} = tl.zeros((BLOCK_SIZE, ), dtype=tl.int32)")
-
         code.writeline(
             "cond = (dst_index_0 >= valid_dim0_start and dst_index_0 < valid_dim0_end) "
         )
@@ -451,8 +448,39 @@ class PadFunction:
 def pad(self, pad, mode="constant", value=None):
     logging.debug("GEMS CONSTANT PAD ND")
 
+    ndim = self.ndim
+
     if value is None:
         value = 0.0
+
+    if mode == "reflect":
+        ndim //= 2
+        assert (
+            len(pad) == 2 * ndim
+        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+
+        for i in range(ndim):
+            pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
+            input_l, input_r = (
+                self.shape[ndim - (2 * i + 1) - 1],
+                self.shape[ndim - (2 * i + 1)],
+            )
+            assert (
+                pad_l < input_l and pad_r < input_r
+            ), f"padding size should be less than the corresponding input dimension, \
+                 but got padding size: {pad_l}, {pad_r}, input size: {self.shape}"
+
+    if mode == "circular":
+        ndim //= 2
+        assert (
+            len(pad) == 2 * ndim
+        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+        for i in range(ndim):
+            pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
+            input_size = self.shape[ndim - i - 1]
+            assert (
+                pad_l <= input_size and pad_r <= input_size
+            ), "Padding value causes wrapping around more than once."
 
     out = PadFunction()(self, pad, mode, float(value))
     return out
