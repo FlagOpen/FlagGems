@@ -6,6 +6,10 @@ name: model-test
 on:
   workflow_call:
 
+concurrency:
+  group: ${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   model-test:
     runs-on: [self-hosted, docker]
