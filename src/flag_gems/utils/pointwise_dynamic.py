@@ -343,6 +343,64 @@ class KernelGenerator:
                 code.writeline("one_tile_per_cta: tl.constexpr,")
         code.writeline("):")
 
+    def gen_signature_1d_tile(self, code):
+        code.writeline(f"def {self.name}(")
+        with code.indent():
+            input_tensor_index = 0
+            non_tensor_index = 0
+            output_tensor_index = 0
+
+            schema = self.fx
+            # signature: inputs ptrs & non tensor inputs
+            for i in range(schema.num_inputs()):
+                if schema.is_tensor(i):
+                    code.writeline(
+                        f"in{input_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
+                    )
+                    input_tensor_index += 1
+                else:
+                    if schema.input_type(i) is not None:
+                        code.writeline(
+                            f"val{non_tensor_index}: {_type_name(schema.input_type(i))},"
+                        )
+                    else:
+                        code.writeline(f"val{non_tensor_index},")
+                    non_tensor_index += 1
+
+            # signature: output ptrs
+            for i in range(schema.num_outputs()):
+                code.writeline(
+                    f"out{output_tensor_index}_ptr: tl.tensor, # of tl.pointer_type"
+                )
+                output_tensor_index += 1
+
+            # signature: strides, for each tensor arguments
+            ndim = self.ndim
+            if ndim > 0:
+                # strides for inputs
+                for i in range(schema.num_input_tensors()):
+                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    code.writeline(f"{stride_args}, # strides for in{i}")
+
+                # strides for outputs
+                for i in range(schema.num_output_tensors()):
+                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    code.writeline(f"{stride_args}, # strides for out{i}")
+
+                # task space, used to reconstruct multi index
+                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                code.writeline(f"{task_space_args}, # task_space")
+
+                # number of tasks, used to compute mask
+                code.writeline("num_tasks: int,")
+
+            # tile size & tiles_per_cta, gsl style
+            if ndim > 0:
+                code.writeline("tiles_per_cta: int,")
+                code.writeline("tile_size: tl.constexpr,")
+                code.writeline("one_tile_per_cta: tl.constexpr,")
+        code.writeline("):")
+
     def gen_num_tiles(self, code):
         # tile-grid size
         ndim = self.ndim
@@ -599,9 +657,90 @@ class KernelGenerator:
             self.codegen_nd_tile_without_bptr(code)
         return code
 
+    def gen_body_one_tile_per_cta_1d_tile(self, code):
+        ndim = self.ndim
+        schema = self.fx
+
+        # tile id
+        code.writeline("tid = tile_id * tile_size + tl.arange(0, tile_size)")
+        code.writeline("mask = tid < num_tasks")
+
+        # multi index reconstruction
+        for i in reversed(range(ndim)):
+            if i > 0:
+                code.writeline(f"i{i} = tid % s{i}")
+                code.writeline(f"tid //= s{i}")
+            else:
+                code.writeline(f"i{i} = tid")
+        code.newline()
+
+        # loads
+        code.writeline("# loads")
+        for i in range(schema.num_input_tensors()):
+            offsets = tuple(f"i{j} * in{i}_stride{j}" for j in range(ndim))
+            offset_combine = " + ".join(offsets)
+            code.writeline(
+                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+            )
+
+        code.newline()
+
+        # compute
+        # TODO: sepearate this part
+        inputs_to_scalar_fn = [self.input_name(i) for i in range(schema.num_inputs())]
+        outputs_to_scalar_fn = [
+            self.output_name(i) for i in range(schema.num_output_tensors())
+        ]
+        inputs_to_scalar_fn = _cs(inputs_to_scalar_fn)
+        outputs_to_scalar_fn = _cs(outputs_to_scalar_fn)
+
+        code.writeline("# compute")
+        code.writeline(
+            f"{outputs_to_scalar_fn} = {self.fn_name}({inputs_to_scalar_fn})"
+        )
+        code.newline()
+
+        # stores
+        for i in range(schema.num_output_tensors()):
+            offsets = tuple(f"i{j} * out{i}_stride{j}" for j in range(ndim))
+            offset_combine = " + ".join(offsets)
+            code.writeline(
+                f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
+            )
+
+    def gen_body_gsl_1d_tile(self, code):
+        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("for j in range(0, tiles_per_cta):")
+        with code.indent():
+            code.writeline("tile_id = pid + j * num_ctas")
+            self.gen_body_one_tile_per_cta_1d_tile(code)
+
     def codegen_1d_tile(self, code):
         """Generate kernel 1d tile & 1d grid with gsl support."""
-        pass
+        self.gen_import_function(code)
+        self.gen_decorators(code)
+        self.gen_signature_1d_tile(code)
+
+        # function body for rank-0
+        if self.ndim == 0:
+            with code.indent():
+                self.gen_body_for_0d(code)
+            return code
+
+        with code.indent():
+            code.writeline("pid = tl.program_id(0)")
+            code.writeline("tile_id = pid")
+            # code.writeline("num_ctas = tl.num_programs(0)")
+            # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
+            code.writeline("if one_tile_per_cta: # monolitic kernel style")
+            with code.indent():
+                self.gen_body_one_tile_per_cta_1d_tile(code)
+            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+            code.writeline("else: # grid-stride-loop style kernel")
+            with code.indent():
+                self.gen_body_gsl_1d_tile(code)
+        code.newline()
+        return code
 
 
 class WrapperGenerator:
@@ -701,6 +840,29 @@ class WrapperGenerator:
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
 
+    def gen_task_partition_1d(self, code: IndentedBuffer):
+        code.writeline("# task partitioning")
+        ndim = self.ndim
+        if ndim == 0:
+            code.writeline("num_warps = 1")
+            code.writeline("num_ctas = 1")
+        else:
+            code.writeline("shape = out0.shape")
+            code.writeline("num_tasks = out0.numel()")
+            max_tile_size = self.config.max_tile_size
+            code.writeline(
+                f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
+            )
+            code.writeline("tile_size = tile_sizes[0]")
+            code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
+            max_grid_size0 = self.config.max_grid_size[0]
+            code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+
+            code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
+            code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
+            code.writeline("one_tile_per_cta = tiles_per_cta==1")
+        code.writeline("grid = (num_ctas, 1, 1)")
+
     def gen_kernel_launch(
         self,
         code: IndentedBuffer,
@@ -775,6 +937,52 @@ class WrapperGenerator:
                 code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
+    def gen_kernel_launch_1d(
+        self,
+        code: IndentedBuffer,
+    ):
+        schema = self.fx
+        ndim = self.ndim
+
+        code.writeline("# kernel launch")
+        for i in range(schema.num_input_tensors()):
+            code.writeline(f"in{i}_strides = in{i}.stride()")
+        for i in range(schema.num_output_tensors()):
+            code.writeline(f"out{i}_strides = out{i}.stride()")
+
+        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
+        with code.indent():
+            code.writeline(f"{self.jit_fn_name}[grid](")
+            with code.indent():
+                params = []
+                # NOTE: WRAP
+                for i in range(schema.num_inputs()):
+                    if schema.is_tensor(i):
+                        params.append(f"{self.input_name(i)}")
+                    else:
+                        params.append(self.input_name(i))
+                for i in range(schema.num_output_tensors()):
+                    params.append(f"{self.output_name(i)}")
+
+                code.writeline(f"{_cs(params)},")
+
+                if ndim > 0:
+                    for i in range(schema.num_input_tensors()):
+                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                        code.writeline(f"{s}, # stride for in{i}")
+                    for i in range(schema.num_output_tensors()):
+                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
+                        code.writeline(f"{s}, # stride for out{i}")
+
+                    shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
+                    code.writeline(f"{shape_args}, # task indexing space")
+                    code.writeline("num_tasks, # num tasks")
+                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                    code.writeline("tile_size=tile_size,")
+                    code.writeline("one_tile_per_cta=one_tile_per_cta,")
+                code.writeline("num_warps=num_warps,")
+            code.writeline(")")
+
     def gen_return(self, code: IndentedBuffer):
         return_exprs = _cs(f"out{i}" for i in range(self.fx.num_output_tensors()))
         code.writeline(f"return {return_exprs}")
@@ -787,6 +995,18 @@ class WrapperGenerator:
             self.gen_same_shape_check(code)
             self.gen_task_partition(code)
             self.gen_kernel_launch(code)
+            self.gen_return(code)
+        code.newline()
+        return code
+
+    def codegen_1d_tile(self, code):
+        self.gen_signature(code)
+
+        with code.indent():
+            self.gen_docstring(code)
+            self.gen_same_shape_check(code)
+            self.gen_task_partition_1d(code)
+            self.gen_kernel_launch_1d(code)
             self.gen_return(code)
         code.newline()
         return code
@@ -832,8 +1052,12 @@ class ModuleGenerator:
     def codegen(self, code: IndentedBuffer):
         # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
-        code = self.wrapper_gen.codegen_nd_tile(code)
-        code = self.kernel_gen.codegen_nd_tile(code)
+        if self.config.prefer_1d_tile:
+            code = self.wrapper_gen.codegen_1d_tile(code)
+            code = self.kernel_gen.codegen_1d_tile(code)
+        else:
+            code = self.wrapper_gen.codegen_nd_tile(code)
+            code = self.kernel_gen.codegen_nd_tile(code)
         return code
 
 
@@ -1016,7 +1240,9 @@ class PointwiseDynamicFunction:
         # the kernel and the wrapper, and the wrapper calls the kernel.
         file_name = (
             f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{ndim}_"
-            f"{'bptr' if self.config.prefer_block_pointer else ''}_pid_{self.pid}.py"
+            f"{'1d_tile_' if self.config.prefer_1d_tile else ''}"
+            f"{'bptr_' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
+            f"pid_{self.pid}.py"
         )
         with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
             f.write(code.getvalue())

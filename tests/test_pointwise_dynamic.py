@@ -232,7 +232,7 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
         max_grid_size=(65536, 65536, 65536),
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
-        prefer_1d_tile=False,
+        prefer_1d_tile=True,
     )
 
     # NOTE: [misaligned address]
@@ -263,7 +263,7 @@ def test_dynamic_function_with_broadcasting2(use_block_pointer):
         max_grid_size=(65536, 65536, 65536),
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
-        prefer_1d_tile=False,
+        prefer_1d_tile=True,
     )
 
     # NOTE: See note [misaligned address]
@@ -432,14 +432,15 @@ def test_dynamic_function_manual_instantiation(use_block_pointer):
     torch.testing.assert_close(notx, ~x)
 
 
+@pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-def test_dynamic_function_with_nd_buffer(use_block_pointer):
+def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
         max_grid_size=(65536, 65536, 65536),
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
-        prefer_1d_tile=False,
+        prefer_1d_tile=use_1d_tile,
     )
 
     @pointwise_dynamic(
@@ -677,3 +678,28 @@ def test_dynamic_function_int64_index(use_block_pointer):
     y1 = f(x)
     y2 = x * 2.0
     torch.testing.assert_close(y1, y2)
+
+
+@pytest.mark.parametrize("use_1d_tile", [True, False])
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 65536, 65536),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=use_1d_tile,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
+    )
+    @triton.jit
+    def add(x, y):
+        return x + y
+
+    shape = ()
+    x = torch.randn(shape, device="cuda")
+    y = torch.randn_like(x)
+    out = add(x, y)
+    torch.testing.assert_close(out, x + y)
