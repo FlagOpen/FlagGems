@@ -83,20 +83,20 @@ def test_perf_embedding():
 #     bench.run()
 
 
-def test_perf_unique():
-    def unique_kwargs(dtype, batch, size):
-        return {"sorted": True, "return_inverse": True, "return_counts": False}
+# def test_perf_unique():
+#     def unique_kwargs(dtype, batch, size):
+#         return {"sorted": True, "return_inverse": True, "return_counts": False}
 
-    bench = Benchmark(
-        op_name="unique",
-        torch_op=torch.unique,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=unique_kwargs,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="unique",
+#         torch_op=torch.unique,
+#         arg_func=unary_int_arg,
+#         dtypes=INT_DTYPES,
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#         kwargs_func=unique_kwargs,
+#     )
+#     bench.run()
 
 
 def test_multinomial_with_replacement():

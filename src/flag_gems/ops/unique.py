@@ -388,7 +388,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         data_out = torch.empty_like(sorted_data)
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch.musa.device(sorted_data.device.index):
         local_quick_unique_flat_kernel[grid](
             sorted_data,  # in
             local_unique,
@@ -663,7 +663,7 @@ def sorted_indices_unique_flat(
         idx = torch.empty_like(inverse_indices)
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch.musa.device(sorted_data.device.index):
         local_ne_flat_kernel[grid](
             sorted_data,  # in
             ne_result,
@@ -732,7 +732,7 @@ def simple_unique_flat(
     unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch.musa.device(sorted_data.device.index):
         simple_unique_flat_kernel[grid](
             sorted_data,
             sorted_indices,  # in
@@ -751,7 +751,7 @@ def simple_unique_flat(
     if return_counts:
         idx = idx[:out_size]
         counts = torch.empty_like(idx)
-        with torch.cuda.device(sorted_data.device.index):
+        with torch.musa.device(sorted_data.device.index):
             output_counts_flat_kernel[grid](
                 idx,
                 num_tasks,  # in

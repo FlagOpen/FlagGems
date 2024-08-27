@@ -17,5 +17,5 @@ def minimum_kernel(X, Y):
 
 def minimum(X, Y):
     logging.debug("GEMS MINIMUM")
-    assert X.is_cuda and Y.is_cuda
+    assert X.is_musa and Y.is_musa
     return minimum_kernel(X, Y)
