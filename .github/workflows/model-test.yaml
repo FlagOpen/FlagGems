@@ -29,6 +29,7 @@ jobs:
         run: tools/gpu_check.sh
 
       - name: FlagGems examples
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
