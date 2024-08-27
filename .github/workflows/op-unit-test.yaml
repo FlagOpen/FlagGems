@@ -6,10 +6,6 @@ name: op-unit-test
 on:
   workflow_call:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
   container-unit-test:
     runs-on: [self-hosted, docker]
