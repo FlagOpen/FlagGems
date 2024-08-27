@@ -652,3 +652,28 @@ def test_dynamic_function_gsl(use_block_pointer):
         y = torch.randn_like(x)
         out = add(x, y)
         torch.testing.assert_close(out, x + y)
+
+
+@pytest.mark.skipif(
+    torch.cuda.get_device_properties(0).total_memory < (36 * 1024**3),
+    reason="This test requires a lot of memory.",
+)
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_int64_index(use_block_pointer):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=(65536, 1, 1),
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")], config=config)
+    @triton.jit
+    def f(x):
+        return x * 2.0
+
+    x = torch.randn((2, 1024, 1024, 1024), dtype=torch.float16, device="cuda")
+    y1 = f(x)
+    y2 = x * 2.0
+    torch.testing.assert_close(y1, y2)
