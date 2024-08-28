@@ -113,3 +113,28 @@ def test_multinomial_with_replacement():
         sizes=(100, 1024, 2048, 4096, 8192, 16384),
     )
     bench.run()
+
+
+def test_perf_pad():
+    def padding_kwargs(dtype, batch, size):
+        input = torch.randn((batch, size), device="cuda", dtype=dtype)
+        rank = input.ndim
+        pad_params = tuple(torch.randint(0, 10, [rank * 2]))
+        pad_value = float(torch.randint(0, 1024, [1]))
+        return {
+            "input": input,
+            "pad": pad_params,
+            "mode": "constant",
+            "value": pad_value,
+        }
+
+    bench = Benchmark(
+        op_name="padding",
+        torch_op=torch.nn.functional.pad,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=padding_kwargs,
+    )
+    bench.run()
