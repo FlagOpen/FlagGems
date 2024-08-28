@@ -26,11 +26,11 @@ def isin_by_comparation_impl(
     global_pid,
     in0_ravel_ptr: tl.tensor,
     in1_ravel_ptr: tl.tensor,  # in
-    out_ptr: tl.tensor,        # out
-    M: int,                    # num_tasks
-    N: int,                    # num_tasks_1
-    BLOCK_M: tl.constexpr,     # tile_size
-    BLOCK_N: tl.constexpr,     # tile_size_1
+    out_ptr: tl.tensor,  # out
+    M: int,  # num_tasks
+    N: int,  # num_tasks_1
+    BLOCK_M: tl.constexpr,  # tile_size
+    BLOCK_N: tl.constexpr,  # tile_size_1
     invert: tl.constexpr,
 ):
     row_off = global_pid * BLOCK_M
@@ -47,7 +47,11 @@ def isin_by_comparation_impl(
         col_mask = cols < N
         mask = row_mask and col_mask
         in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
-        block = tl.where(mask, tl.where(invert, block and (in0 != in1), block or (in0 == in1)), invert)
+        block = tl.where(
+            mask,
+            tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
+            invert,
+        )
     out = tl.reduce(block, axis=1, combine_fn=(all_fn if invert else any_fn))
     tl.store(out_ptr, out[:, None], row_mask)
 
@@ -57,11 +61,11 @@ def isin_by_comparation_impl(
 def isin_by_comparation_kernel(
     in0_ravel_ptr: tl.tensor,
     in1_ravel_ptr: tl.tensor,  # in
-    out_ptr: tl.tensor,        # out
-    M: int,                    # num_tasks
-    N: int,                    # num_tasks_1
-    BLOCK_M: tl.constexpr,     # tile_size
-    BLOCK_N: tl.constexpr,     # tile_size_1
+    out_ptr: tl.tensor,  # out
+    M: int,  # num_tasks
+    N: int,  # num_tasks_1
+    BLOCK_M: tl.constexpr,  # tile_size
+    BLOCK_N: tl.constexpr,  # tile_size_1
     tiles_per_cta: int,
     one_tile_per_cta: tl.constexpr,
     invert: tl.constexpr,
@@ -74,7 +78,10 @@ def isin_by_comparation_kernel(
             in0_ravel_ptr,
             in1_ravel_ptr,  # in
             out_ptr,  # out
-            M, N, BLOCK_M, BLOCK_N,
+            M,
+            N,
+            BLOCK_M,
+            BLOCK_N,
             invert,
         )
     else:  # grid-stride-loop style kernel
@@ -85,13 +92,17 @@ def isin_by_comparation_kernel(
                 in0_ravel_ptr,
                 in1_ravel_ptr,  # in
                 out_ptr,  # out
-                M, N, BLOCK_M, BLOCK_N,
+                M,
+                N,
+                BLOCK_M,
+                BLOCK_N,
                 invert,
             )
 
 
 def isin_by_comparation(
-    in0: torch.tensor, in1: torch.tensor,
+    in0: torch.tensor,
+    in1: torch.tensor,
     invert: bool,
 ):
     in0_ravel = in0.ravel()
@@ -134,10 +145,10 @@ def isin_by_search_impl(
     global_pid,
     in0_ravel_ptr: tl.tensor,
     in1_sorted_ptr: tl.tensor,  # in
-    out_ptr: tl.tensor,         # out
-    M: int,                     # num_tasks
-    N: int,                     # num_tasks_1
-    BLOCK_M: tl.constexpr,      # tile_size
+    out_ptr: tl.tensor,  # out
+    M: int,  # num_tasks
+    N: int,  # num_tasks_1
+    BLOCK_M: tl.constexpr,  # tile_size
     invert: tl.constexpr,
 ):
     r = tl.arange(0, BLOCK_M)
@@ -169,10 +180,10 @@ def isin_by_search_impl(
 def isin_by_search_kernel(
     in0_ravel_ptr: tl.tensor,
     in1_sorted_ptr: tl.tensor,  # in
-    out_ptr: tl.tensor,         # out
-    M: int,                     # num_tasks
-    N: int,                     # num_tasks_1
-    BLOCK_M: tl.constexpr,      # tile_size
+    out_ptr: tl.tensor,  # out
+    M: int,  # num_tasks
+    N: int,  # num_tasks_1
+    BLOCK_M: tl.constexpr,  # tile_size
     tiles_per_cta: int,
     one_tile_per_cta: tl.constexpr,
     invert: tl.constexpr,
@@ -185,7 +196,8 @@ def isin_by_search_kernel(
             in0_ravel_ptr,
             in1_sorted_ptr,  # in
             out_ptr,  # out
-            M, N,
+            M,
+            N,
             BLOCK_M,
             invert,
         )
@@ -197,33 +209,41 @@ def isin_by_search_kernel(
                 in0_ravel_ptr,
                 in1_sorted_ptr,  # in
                 out_ptr,  # out
-                M, N,
+                M,
+                N,
                 BLOCK_M,
                 invert,
             )
 
 
 def isin_by_search(
-    in0: torch.tensor, in1: torch.tensor,
-    invert: bool, unique_in0: bool, unique_in1: bool,
+    in0: torch.tensor,
+    in1: torch.tensor,
+    invert: bool,
+    unique_in0: bool,
+    unique_in1: bool,
 ):
     # unique or sort or ravel
     if unique_in0:
-        in0_ravel, unique_order, _ = _unique2(in0, sorted=True, return_inverse=True, return_counts=False)
+        in0_ravel, unique_order, _ = _unique2(
+            in0, sorted=True, return_inverse=True, return_counts=False
+        )
     else:
         in0_ravel = in0.ravel()
     if unique_in1:
-        in1_ravel, _, _ = _unique2(in1, sorted=True, return_inverse=False, return_counts=False)
+        in1_ravel, _, _ = _unique2(
+            in1, sorted=True, return_inverse=False, return_counts=False
+        )
     else:
         in1_ravel, _ = torch.sort(in1.ravel())
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()
-    if M <= 1048576:      # 2 ** 20 = 1024 * 1024
+    if M <= 1048576:  # 2 ** 20 = 1024 * 1024
         _, BLOCK_M, num_warps = launch_arg(None, 512, M, 8)
-    elif M <= 4194304:    # 2 ** 22 = 1024 * 4096
+    elif M <= 4194304:  # 2 ** 22 = 1024 * 4096
         _, BLOCK_M, num_warps = launch_arg(None, 1024, M, 8)
-    elif M <= 8388608:    # 2 ** 23 = 1024 * 8192
+    elif M <= 8388608:  # 2 ** 23 = 1024 * 8192
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
     elif M <= 268435456:  # 2 ** 28 = 1024 * 262144
         _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 32)
@@ -238,7 +258,8 @@ def isin_by_search(
             in0_ravel,
             in1_ravel,  # in
             out,  # out
-            M, N,
+            M,
+            N,
             BLOCK_M,
             tiles_per_cta=tiles_per_cta,
             one_tile_per_cta=tiles_per_cta == 1,
@@ -251,7 +272,9 @@ def isin_by_search(
 
 
 def isin(
-    in0, in1, *,
+    in0,
+    in1,
+    *,
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
