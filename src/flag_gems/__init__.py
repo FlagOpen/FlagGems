@@ -55,6 +55,8 @@ def enable(lib=aten_lib):
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
     lib.impl("isfinite", isfinite, "CUDA")
     lib.impl("isin.Tensor_Tensor", isin, "CUDA")
+    lib.impl("isin.Scalar_Tensor", isin, "CUDA")
+    lib.impl("isin.Tensor_Scalar", isin, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("minimum", minimum, "CUDA")

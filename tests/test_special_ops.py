@@ -459,3 +459,14 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     ref_out = torch.isin(ref_inp1, ref_inp2, assume_unique=assume_unique, invert=invert)
     gems_assert_equal(res_out, ref_out)
 
+    inp1_scalar = inp1.ravel()[0].item()
+    with flag_gems.use_gems():
+        res1_out = torch.isin(inp1_scalar, inp2, assume_unique=assume_unique, invert=invert)
+    ref1_out = torch.isin(inp1_scalar, ref_inp2, assume_unique=assume_unique, invert=invert)
+    gems_assert_equal(res1_out, ref1_out)
+
+    inp2_scalar = inp2.ravel()[0].item()
+    with flag_gems.use_gems():
+        res2_out = torch.isin(inp1, inp2_scalar, assume_unique=assume_unique, invert=invert)
+    ref2_out = torch.isin(ref_inp1, inp2_scalar, assume_unique=assume_unique, invert=invert)
+    gems_assert_equal(res2_out, ref2_out)

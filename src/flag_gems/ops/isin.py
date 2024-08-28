@@ -278,11 +278,17 @@ def isin(
     assume_unique: bool = False,
     invert: bool = False,
 ) -> torch.Tensor:
+    if not torch.is_tensor(in0):
+        assert torch.is_tensor(in1)
+        in0 = torch.tensor(in0, device=in1.device)
+    elif not torch.is_tensor(in1):
+        assert torch.is_tensor(in0)
+        in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
-    elif in0.numel() <= 12288:  # 1024 * 12
+    elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
         return isin_by_comparation(in0, in1, invert)
-    elif assume_unique or in0.numel() <= 4194304:  # 1024 * 4096
+    elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)
