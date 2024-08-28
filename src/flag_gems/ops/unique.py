@@ -455,7 +455,9 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         )
         out_size = tile_sum[-1].item()
         if return_counts:
-            data_out = torch.empty_like(sorted_data, shape=(sorted_data,))
+            data_out = torch.empty(
+                (out_size,), dtype=sorted_data.dtype, device=sorted_data.device
+            )
             idx = idx[:out_size]
             counts = origin_idx[:out_size]
             quick_output_flat_kernel[grid](
