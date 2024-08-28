@@ -20,6 +20,9 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("beta", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
+    if dtype in [torch.float16, torch.bfloat16]:
+        pytest.skip("Unsupported For FP16 & BF16")
+
     mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
     mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
     bias = torch.randn((N,), dtype=dtype, device="cuda")

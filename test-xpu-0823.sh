@@ -3,12 +3,6 @@ set -ex
 unset MLIR_ENABLE_DUMP
 unset XPURT_DISPATCH_MODE
 
-# Unsupported
-# "linear"
-# "addmm"
-# "bmm"
-# "mm"
-
 
 python -m pytest -sv tests/test_unary_pointwise_ops.py -k "test_accuracy_abs" --device cpu > zlog/test_accuracy_abs.log 2>&1
 python -m pytest -sv tests/test_unary_pointwise_ops.py -k "test_accuracy_bitwisenot" --device cpu > zlog/test_accuracy_bitwisenot.log 2>&1
@@ -57,6 +51,10 @@ python -m pytest -sv tests/test_special_ops.py -k "test_accuracy_dropout" --devi
 # python -m pytest -sv tests/test_special_ops.py -k "native_dropout" --device cpu > zlog/native_dropout.log 2>&1
 
 
+python -m pytest -sv tests/test_blas_ops.py -k "test_accuracy_addmm" --device cpu > zlog/test_accuracy_addmm.log 2>&1
+# python -m pytest -sv tests/test_blas_ops.py -k "test_accuracy_addmm" --device cpu > zlog/test_accuracy_linear.log 2>&1
+python -m pytest -sv tests/test_blas_ops.py -k "test_accuracy_bmm" --device cpu > zlog/test_accuracy_bmm.log 2>&1
+python -m pytest -sv tests/test_blas_ops.py -k "test_accuracy_mm" --device cpu > zlog/test_accuracy_mm.log 2>&1
 python -m pytest -sv tests/test_blas_ops.py -k "test_accuracy_mv" --device cpu > zlog/test_accuracy_mv.log 2>&1
 
 
@@ -69,10 +67,10 @@ XPU_enable_reorder=1 python -m pytest -sv tests/test_unary_pointwise_ops.py -k "
 TRITONXPU_BUFFER_SIZE=128 python -m pytest -sv tests/test_reduction_ops.py::test_accuracy_cross_entropy_loss --device cpu > zlog/test_accuracy_cross_entropy_loss.log 2>&1
 
 # "max"
-Triton_big_instcombine=1000 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_max" --device cpu > zlog/test_accuracy_max.log 2>&1
+INST_COMBINE_LOOP_THRESHOLD=1000 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_max" --device cpu > zlog/test_accuracy_max.log 2>&1
 
 # "min"
-Triton_big_instcombine=1000 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_min" --device cpu > zlog/test_accuracy_min.log 2>&1
+INST_COMBINE_LOOP_THRESHOLD=1000 python -m pytest -sv tests/test_reduction_ops.py -k "test_accuracy_min" --device cpu > zlog/test_accuracy_min.log 2>&1
 
 # "pow"
 TRITON_LOCAL_VALUE_MAX=2048 python -m pytest -sv tests/test_binary_pointwise_ops.py -k "test_accuracy_pow" --device cpu > zlog/test_accuracy_pow.log 2>&1

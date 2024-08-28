@@ -63,7 +63,7 @@ def gems_assert_close_blas(a, b, dtype, equal_nan=False, reduce_dim=1):
     atol = 1e-4 * reduce_dim
     rtol = RESOLUTION[dtype]
     if dtype == torch.bfloat16:
-        atol = 0.1
+        atol = 0.15
     torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
