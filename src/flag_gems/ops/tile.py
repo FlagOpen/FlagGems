@@ -460,8 +460,11 @@ class TileFunction:
         return max_rank
 
 
+_tile_func = TileFunction()
+
+
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
     logging.debug("GEMS TILE")
 
-    out = TileFunction()(inp, dims)
+    out = _tile_func(inp, dims)
     return out
