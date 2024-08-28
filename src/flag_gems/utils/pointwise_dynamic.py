@@ -729,11 +729,11 @@ class KernelGenerator:
 
         with code.indent():
             code.writeline("pid = tl.program_id(0)")
-            code.writeline("tile_id = pid")
             # code.writeline("num_ctas = tl.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
             with code.indent():
+                code.writeline("tile_id = pid")
                 self.gen_body_one_tile_per_cta_1d_tile(code)
             # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
             code.writeline("else: # grid-stride-loop style kernel")
