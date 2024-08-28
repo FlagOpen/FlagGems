@@ -436,3 +436,26 @@ def test_arange(start, step, end, dtype, device, pin_memory):
         )
 
     gems_assert_equal(ref_out, res_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("assume_unique", [False, True])
+@pytest.mark.parametrize("invert", [False, True])
+def test_accuracy_isin(shape, dtype, assume_unique, invert):
+    inp1 = torch.randint(-100, 100, shape, device="cuda").to(dtype)
+    test_numel = inp1.numel() // 2
+    test_shape = (test_numel,)
+    inp2 = torch.randint(-10, 10, test_shape, device="cuda").to(dtype)
+    inp1.ravel()[-1] = 0
+    if assume_unique:
+        inp1 = torch.unique(inp1)
+        inp2 = torch.unique(inp2)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    with flag_gems.use_gems():
+        res_out = torch.isin(inp1, inp2, assume_unique=assume_unique, invert=invert)
+    ref_out = torch.isin(ref_inp1, ref_inp2, assume_unique=assume_unique, invert=invert)
+    gems_assert_equal(res_out, ref_out)
+

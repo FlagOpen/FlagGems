@@ -140,6 +140,7 @@ def quick_output_flat_impl(
 
     # store counts
     tl.store(counts_ptr + i0, counts, mask=mask)
+
     # data_out: gather(sorted_data, from=idx)
     sorted_data = tl.load(sorted_data_ptr + idx, mask=mask)
     tl.store(data_out_ptr + i0, sorted_data, mask=mask)
