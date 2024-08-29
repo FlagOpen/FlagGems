@@ -5,7 +5,7 @@
 <!-- [ Bug Fix | New Feature | Performance Optimization | Refactor | Documentation Update | Other] -->
 
 ### Description
-<!-- Briefly describe the changes made and the purpose of the changes.-->
+<!-- Briefly describe the changes and the purpose of the changes.-->
 
 ### Issue
 
