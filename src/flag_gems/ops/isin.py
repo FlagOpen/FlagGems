@@ -105,8 +105,8 @@ def isin_by_comparation(
     in1: torch.tensor,
     invert: bool,
 ):
-    in0_ravel = in0.ravel()
-    in1_ravel = in1.ravel()
+    in0_ravel = in0.contiguous().ravel()
+    in1_ravel = in1.contiguous().ravel()
     M = in0.numel()
     N = in1.numel()
     if M <= 1024:
@@ -229,7 +229,7 @@ def isin_by_search(
             in0, sorted=True, return_inverse=True, return_counts=False
         )
     else:
-        in0_ravel = in0.ravel()
+        in0_ravel = in0.contiguous().ravel()
     if unique_in1:
         in1_ravel, _, _ = _unique2(
             in1, sorted=True, return_inverse=False, return_counts=False
