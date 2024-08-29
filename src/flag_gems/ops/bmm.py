@@ -154,9 +154,9 @@ def bmm(A, B):
     out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
+        batch,
         triton.cdiv(meta["M"], meta["TILE_M"]),
         triton.cdiv(meta["N"], meta["TILE_N"]),
-        batch,
     )
     with torch.cuda.device(A.device):
         bmm_kernel[grid_fn](A, B, out, M, N, K)
