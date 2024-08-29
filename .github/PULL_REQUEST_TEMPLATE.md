@@ -17,7 +17,7 @@ List any related issues that this PR resolves, if applicable, for example:
 
 ### Progress
 
-- [ ] Change is properly reviewed (1 required, 2 recommended).
+- [ ] Change is properly reviewed (1 reviewer required, 2 recommended).
 - [ ] Change is responded to an issue.
 - [ ] Change is fully covered by a UT.
 

@@ -18,11 +18,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Check Commit Message
+        id: check_commit_message
+        run: echo "::set-output name=skip_check::$(echo ${{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false)"
+
       - name: Check GPU free
+        if: steps.check_commit_message.outputs.skip_check != 'true'
         shell: bash
         run: tools/gpu_check.sh
 
       - name: FlagGems unit test
+        if: steps.check_commit_message.outputs.skip_check != 'true'
         shell: bash
         run: |
           git config --global --add safe.directory /__w/FlagGems/FlagGems

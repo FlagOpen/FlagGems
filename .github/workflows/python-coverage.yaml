@@ -19,9 +19,9 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/model-test.yaml
 
-  container-coverage-test:
+  coverage-test:
     concurrency:
-      group: container-coverage-test-${{ github.event.pull_request.number || github.ref }}
+      group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: [self-hosted, docker]
     needs: [op-unit-test, model-test]
