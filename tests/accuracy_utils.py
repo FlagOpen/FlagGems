@@ -56,15 +56,6 @@ def gems_assert_close(a, b, dtype, equal_nan=False, reduce_dim=1):
     torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
-def gems_assert_close_blas(a, b, dtype, equal_nan=False, reduce_dim=1):
-    if TO_CPU:
-        a = a.to("cpu")
-    b = b.to(dtype)
-    atol = 1e-4 * reduce_dim
-    rtol = RESOLUTION[dtype]
-    torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
-
-
 def gems_assert_close_groupnorm(a, b, dtype, equal_nan=False, reduce_dim=1):
     if TO_CPU:
         a = a.to("cpu")

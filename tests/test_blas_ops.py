@@ -8,7 +8,6 @@ from .accuracy_utils import (
     MNK_SHAPES,
     SCALARS,
     gems_assert_close,
-    gems_assert_close_blas,
     to_reference,
 )
 
@@ -20,9 +19,6 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("beta", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
-    if dtype in [torch.float16, torch.bfloat16]:
-        pytest.skip("Unsupported For FP16 & BF16")
-
     mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
     mat2 = torch.randn((K, N), dtype=dtype, device="cuda")
     bias = torch.randn((N,), dtype=dtype, device="cuda")
@@ -34,7 +30,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
     with flag_gems.use_gems():
         res_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
-    gems_assert_close_blas(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)
@@ -52,7 +48,7 @@ def test_accuracy_bmm(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.bmm(mat1, mat2)
 
-    gems_assert_close_blas(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)
@@ -69,7 +65,7 @@ def test_accuracy_mm(M, N, K, dtype):
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
 
-    gems_assert_close_blas(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.parametrize("M", MNK_SHAPES)
