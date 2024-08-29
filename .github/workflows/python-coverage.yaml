@@ -34,6 +34,7 @@ jobs:
       - name: Get python coverage
         shell: bash
         run: |
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             bash tools/code_coverage/coverage.sh ${{ github.event.pull_request.number }}
