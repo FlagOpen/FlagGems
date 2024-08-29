@@ -21,8 +21,9 @@ jobs:
       - name: Check Commit Message
         shell: bash
         run: |
-          echo "$(echo ${{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "DeBug $(echo ${{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false)"
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
+          git log -5 --pretty=format:'%s'
+          echo "$(echo skip_check=${{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false)" >> $GITHUB_OUTPUT
 
       - name: Check GPU free
         if: env.skip_check != 'true'
