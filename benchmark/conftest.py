@@ -1,11 +1,18 @@
+DEVICE = "mlu"
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    DEVICE = "cuda"
+
+
 def pytest_addoption(parser):
     parser.addoption(
         "--mode",
         action="store",
-        default="cuda",
+        default="mlu",
         required=False,
-        choices=["cuda", "cpu"],
-        help="record latency in cuda or cpu",
+        choices=["cuda", "cpu", "mlu"],
+        help="record latency in cuda or cpu or mlu",
     )
 
 

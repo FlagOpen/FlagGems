@@ -110,7 +110,7 @@ def test_type_promotion_bool_to_long(shape, float_dtype):
     inp1 = torch.randn(shape, dtype=float_dtype, device="cuda")
     inp2 = torch.randint(0, 10, shape, device="cuda")
     # arg0: float  arg1: int
-    ref_out = torch.pow(inp1, inp2)
+    ref_out = torch.pow(inp1.cpu(), inp2.cpu()).to("cuda")
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
     logging.debug(ref_out.dtype)
@@ -118,7 +118,7 @@ def test_type_promotion_bool_to_long(shape, float_dtype):
     gems_assert_close(res_out, ref_out, float_dtype, equal_nan=True)
 
     # arg0: int  arg1: float
-    ref_out = torch.pow(inp2, inp1)
+    ref_out = torch.pow(inp2.cpu(), inp1.cpu()).to("cuda")
     with flag_gems.use_gems():
         res_out = torch.pow(inp2, inp1)
     logging.debug(ref_out.dtype)

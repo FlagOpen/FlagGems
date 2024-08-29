@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import philox_mlu_seed_offset, uint_to_uniform_float
 
 
 def heur_block(args):
@@ -109,7 +109,7 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+    philox_seed, philox_offset = philox_mlu_seed_offset(increment)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch.cuda.device(device):

@@ -7,6 +7,9 @@ from .accuracy_utils import (
     DIM_LIST,
     DIMS_LIST,
     FLOAT_DTYPES,
+    ALL_INT_DTYPES,
+    INT_DTYPES,
+    DEVICE,
     REDUCTION_SHAPES,
     gems_assert_close,
     gems_assert_equal,
@@ -15,7 +18,6 @@ from .accuracy_utils import (
     to_reference,
 )
 
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
@@ -23,7 +25,7 @@ def test_accuracy_all(shape, dtype, kind):
     if kind == "allTrue":
         inp = torch.ones(shape, dtype=dtype, device="cuda")
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device="cuda").to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp)
@@ -43,7 +45,7 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
     if kind == "allTrue":
         inp = torch.ones(shape, dtype=dtype, device="cuda")
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device="cuda").to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp, dim=dim, keepdim=keepdim)
@@ -62,7 +64,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allTrue":
         inp = torch.ones(shape, dtype=dtype, device="cuda")
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device="cuda").to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.all(ref_inp, dim=dim, keepdim=keepdim)
@@ -93,7 +95,7 @@ def test_accuracy_any(shape, dtype, kind):
     if kind == "allFalse":
         inp = torch.zeros(shape, dtype=dtype, device="cuda")
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device="cuda").to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp)
@@ -113,7 +115,7 @@ def test_accuracy_any_dim(shape, dim, keepdim, dtype, kind):
     if kind == "allFalse":
         inp = torch.zeros(shape, dtype=dtype, device="cuda")
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device="cuda").to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
@@ -132,7 +134,7 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     if kind == "allFalse":
         inp = torch.zeros(shape, dtype=dtype, device="cuda")
     else:
-        inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        inp = torch.randint(0, 2, shape, dtype=torch.int32, device="cuda").to(dtype)
     ref_inp = to_reference(inp)
 
     ref_out = torch.any(ref_inp, dim=dim, keepdim=keepdim)
@@ -142,7 +144,7 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dim", DIM_LIST + [None])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_argmax(shape, dim, keepdim, dtype):
@@ -253,6 +255,7 @@ def test_accuracy_cumsum(shape, dtype):
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
+        (20, 6, 256, 256, 3),
         (16, 3, 16, 16, 1),
         (32, 32, 32, 32, 8),
         (1, 32, 32, 32, 8),
@@ -355,8 +358,8 @@ def test_accuracy_layernorm(shape, dtype):
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_log_softmax(shape, dtype):
-    dim = 1
+@pytest.mark.parametrize("dim", [0, 1])
+def test_accuracy_log_softmax(shape, dtype, dim):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp, True)
 
@@ -377,6 +380,18 @@ def test_accuracy_log_softmax(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.max(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.max(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + [[1]])
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_max_int(shape, dtype):
+    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to("cuda")
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
@@ -415,26 +430,23 @@ def test_accuracy_mean(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dim", DIMS_LIST)
-@pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp = to_reference(inp, True)
-
-    ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_min(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.min(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.min(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES + [[1]])
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES)
+def test_accuracy_min_int(shape, dtype):
+    inp = torch.randint(-1000, 1000, shape, dtype=dtype, device="cpu").to("cuda")
     ref_inp = to_reference(inp)
 
     ref_out = torch.min(ref_inp)
@@ -634,8 +646,20 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
         _dim *= shape[d]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIMS_LIST)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.mean(ref_inp, dim, keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.mean(inp, dim, keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+@pytest.mark.parametrize("shape",REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("correction", [0, 1])
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -655,7 +679,6 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     gems_assert_close(res_mean, ref_mean, dtype)
     gems_assert_close(res_var, ref_var, dtype)
 
-
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("ord", [2, float("inf"), -float("inf"), 0, 1])
 @pytest.mark.parametrize("dim", DIMS_LIST)
@@ -664,9 +687,34 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
-
-    ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
+    if "mlu" not in str(inp.device):
+        ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
+    else:
+        if ord in [float("inf"), -float("inf")]:
+            # FIXME: torch can't support type with inf.
+            ref_out = torch.linalg.vector_norm(ref_inp.to("cpu"), ord, dim, keepdim).to(ref_inp.device)
+        else:
+            ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
     with flag_gems.use_gems():
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    index_size = inp.size(dim)
+    from math import floor
+
+    index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
+
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    with flag_gems.use_gems():
+        res_out = torch.index_select(inp, dim, index)
+
+    gems_assert_equal(res_out, ref_out)

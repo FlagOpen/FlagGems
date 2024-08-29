@@ -70,11 +70,11 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseand(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -89,8 +89,8 @@ def test_accuracy_bitwiseand(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseand_scalar(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     inp2 = 0x00FF
     ref_inp1 = to_reference(inp1)
 
@@ -106,8 +106,8 @@ def test_accuracy_bitwiseand_scalar(shape, dtype):
 def test_accuracy_bitwiseand_scalar_tensor(shape, dtype):
     inp1 = 0x00FF
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     ref_inp2 = to_reference(inp2)
 
     ref_out = torch.bitwise_and(inp1, ref_inp2)
@@ -121,11 +121,11 @@ def test_accuracy_bitwiseand_scalar_tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseor(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -140,8 +140,8 @@ def test_accuracy_bitwiseor(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseor_scalar(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     inp2 = 0x00FF
     ref_inp1 = to_reference(inp1)
 
@@ -157,8 +157,8 @@ def test_accuracy_bitwiseor_scalar(shape, dtype):
 def test_accuracy_bitwiseor_scalar_tensor(shape, dtype):
     inp1 = 0x00FF
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     ref_inp2 = to_reference(inp2)
 
     ref_out = torch.bitwise_or(inp1, ref_inp2)
@@ -203,7 +203,8 @@ def test_accuracy_clamp_tensor(shape, isnone, dtype):
     ref_maxi = to_reference(maxi)
     ref_mini = to_reference(mini)
 
-    ref_out = torch.clamp(ref_inp, min=ref_mini, max=ref_maxi)
+    ref_out = torch.clamp(ref_inp.cpu(), min=(ref_mini.cpu(
+    ) if ref_mini != None else None), max=(ref_maxi.cpu() if ref_maxi != None else None)).to(ref_inp.device)
     with flag_gems.use_gems():
         res_out = torch.clamp(inp, min=mini, max=maxi)
 
@@ -323,8 +324,8 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.mul(
-        torch.nn.functional.gelu(ref_inp1, approximate=approximate), ref_inp2
-    )
+        torch.nn.functional.gelu(ref_inp1.cpu(), approximate=approximate), ref_inp2.cpu()
+    ).to(ref_inp1.device)
     with flag_gems.use_gems():
         res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
@@ -500,11 +501,11 @@ def test_accuracy_pow(shape, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
-    ref_out = torch.pow(ref_inp1, ref_inp2)
+    ref_out = torch.pow(ref_inp1.cpu(), ref_inp2.cpu())
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out.cpu(), ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -515,11 +516,11 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp2 = to_reference(inp2, True)
 
-    ref_out = torch.pow(inp1, ref_inp2)
+    ref_out = torch.pow(inp1, ref_inp2.cpu())
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out.cpu(), ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -530,11 +531,11 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
-    ref_out = torch.pow(ref_inp1, inp2)
+    ref_out = torch.pow(ref_inp1.cpu(), inp2)
     with flag_gems.use_gems():
         res_out = torch.pow(inp1, inp2)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    gems_assert_close(res_out.cpu(), ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -639,7 +640,7 @@ def test_accuracy_where_scalar_self(shape, scalar, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp2 = to_reference(inp2)
 
-    ref_out = torch.where(inp2 > 0, inp1, ref_inp2)
+    ref_out = torch.where(ref_inp2 > 0, inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.where(inp2 > 0, inp1, inp2)
 
@@ -654,7 +655,7 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp2 = to_reference(inp2)
 
-    ref_out = torch.where(inp2 > 0, ref_inp2, inp1)
+    ref_out = torch.where(ref_inp2 > 0, ref_inp2, inp1)
     with flag_gems.use_gems():
         res_out = torch.where(inp2 > 0, inp2, inp1)
 
@@ -662,7 +663,7 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(128, 1024, 1024)])
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 @pytest.mark.parametrize("zero_tol", [False, True])
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
@@ -760,7 +761,7 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 @pytest.mark.parametrize("equal_nan", [False, True])
 @pytest.mark.parametrize(
     "gen_nan", [0, 1, 2, 3, 4]

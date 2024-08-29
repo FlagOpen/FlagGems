@@ -5,11 +5,12 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 from ..utils.shape_utils import can_use_int32_index
 
 
 @libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def argmax_kernel_1(
     inp,
@@ -22,54 +23,56 @@ def argmax_kernel_1(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
-    max_index = max_index + pid * BLOCK_SIZE
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    max_tmp = -float("inf")
+    index_tmp = tl.full([], value=0, dtype=tl.int64)
+    block_start = block_start.to(tl.int64)
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
+        if max_val > max_tmp:
+            max_tmp = max_val.to(tl.float32)
+            index_tmp = max_index + off
     mid_value_ptr = mid_value + pid
     max_index_ptr = mid_index + pid
-    tl.store(mid_value_ptr, max_val)
-    tl.store(max_index_ptr, max_index)
+    tl.store(mid_value_ptr, max_tmp)
+    tl.store(max_index_ptr, index_tmp)
 
 
 @libentry()
 @triton.jit
-def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
+def argmax_kernel_2(mid_value, mid_index, out, mid_size: tl.constexpr):
+    offset = tl.arange(0, mid_size)
     mid_ptrs = mid_value + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
-    index_val = tl.argmax(mid_val, axis=0)
-    mid_index_ptrs = mid_index + index_val
-    out_val = tl.load(mid_index_ptrs)
+    index_ptrs = mid_index + offset
+
+    mid_val = tl.load(mid_ptrs)
+    max_val = tl.max(mid_val, axis=0)
+    mask = mid_val == max_val
+    indexs = tl.load(index_ptrs, mask=mask, other=1<<31)
+    out_val = tl.min(indexs)
     tl.store(out, out_val)
-
-
-def heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
 
 
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_N": n
+        },
+        num_stages=3,
+        num_warps=1) for m in [4, 8]
+        for n in [4096, 8192, 16384]
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
 )
 @triton.jit
 def argmax_kernel(
@@ -119,13 +122,13 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
-        use_int64_index = not can_use_int32_index(inp)
 
-        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
+        use_int64_index = not can_use_int32_index(inp)
+        grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM),)
+        mid_size = TOTAL_CORE_NUM
+        mid_value = torch.full((mid_size,), -float("inf"), dtype=torch.float32, device=inp.device)
+        mid_index = torch.zeros((mid_size,), dtype=torch.int64, device=inp.device)
+
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
@@ -135,15 +138,14 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
         with torch.cuda.device(inp.device):
-            argmax_kernel_1[(mid_size, 1, 1)](
+            argmax_kernel_1[grid](
                 inp,
                 mid_value,
                 mid_index,
                 M,
-                block_size,
                 INT64_INDEX=use_int64_index,
             )
-            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -167,13 +169,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             K,
         )
         with torch.cuda.device(inp.device):
-            argmax_kernel[grid](
-                inp,
-                out_index,
-                M,
-                N,
-                K,
-                INT64_INDEX=use_int64_index,
-            )
+            argmax_kernel[grid](inp, out_index, M, N, K, INT64_INDEX=use_int64_index)
 
         return out_index

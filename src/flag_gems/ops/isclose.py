@@ -7,21 +7,21 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 from .all import all
 
-try:
-    from triton.language.extra.cuda.libdevice import isfinited as _isfinited
-except ImportError:
-    try:
-        from triton.language.math import isfinited as _isfinited
-    except ImportError:
-        from triton.language.libdevice import isfinited as _isfinited
+# try:
+#     from triton.language.extra.mlu.libdevice import isfinited as _isfinited
+# except ImportError:
+#     try:
+#         from triton.language.math import isfinited as _isfinited
+#     except ImportError:
+#         from triton.language.libdevice import isfinited as _isfinited
 
-try:
-    from triton.language.extra.cuda.libdevice import finitef as _finitef
-except ImportError:
-    try:
-        from triton.language.math import finitef as _finitef
-    except ImportError:
-        from triton.language.libdevice import finitef as _finitef
+# try:
+#     from triton.language.extra.mlu.libdevice import finitef as _finitef
+# except ImportError:
+#     try:
+#         from triton.language.math import finitef as _finitef
+#     except ImportError:
+#         from triton.language.libdevice import finitef as _finitef
 
 
 @pointwise_dynamic(
@@ -48,7 +48,13 @@ def isclose_func(
     if not zero_tol:
         allowed = atol + tl.abs(rtol * cast_y)
         actual = tl.abs(cast_x - cast_y)
-        actual_finite = _isfinited(actual) if x.dtype.is_fp64() else _finitef(actual)
+        # actual_finite = _isfinited(actual) if x.dtype.is_fp64() else _finitef(actual)
+        actual_finite = ((actual.to(tl.int32, bitcast = True) & 0x7fffffff) < 0x7f800000) if actual.dtype.is_fp32() else (
+            ((actual.to(tl.int16, bitcast = True) & 0x7fff) < 0x7c00) if actual.dtype.is_fp16() else (
+                actual.to(tl.int16, bitcast = True) & 0x7fff < 0x7f80
+            )
+        )
+        
         close |= actual_finite.to(tl.int1) & (actual <= allowed)
     return close
 

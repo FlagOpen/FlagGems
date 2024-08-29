@@ -6,36 +6,140 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, cfggen_reduce_op, prune_reduce_config, TOTAL_CORE_NUM
 
 
 @libentry()
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by = {'early_config_prune': prune_reduce_config}
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM}
+)
 @triton.jit
-def min_kernel_1(
+def min_kernel_float(
     inp,
-    mid,
+    out,
+    FILL_VALUE,
     M,
     BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
 ):
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=float("inf"))
-    min_val = tl.min(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, min_val)
+    block_start = pid * BLOCK_SIZE
+    res = FILL_VALUE
+    if ONE_TILE_PER_CTA:
+        offset = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask = mask, other=FILL_VALUE)
+        res = tl.min(inp_val)
+    else:
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        block_start = block_start.to(tl.int64)
+        _tmp = tl.full([BLOCK_SIZE], value=FILL_VALUE, dtype=inp.dtype.element_ty)
+        block_start = block_start.to(tl.int64)
+        for off in range(block_start, M, step):
+            offset = off + tl.arange(0, BLOCK_SIZE)
+            mask = offset < M
+            inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
+            _tmp = tl.where((inp_val < _tmp), inp_val, _tmp)
+        res = tl.min(_tmp)
+    tl.atomic_min(out, res)
 
 
 @libentry()
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by = {'early_config_prune': prune_reduce_config}
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM}
+)
 @triton.jit
-def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=float("inf"))
-    min_val = tl.min(mid_val)
-    tl.store(out, min_val)
+def min_kernel_int(
+    inp,
+    out,
+    FILL_VALUE,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    res = FILL_VALUE
+    if ONE_TILE_PER_CTA:
+        offset = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask = mask, other=FILL_VALUE)
+        res = tl.min(inp_val)
+    else:
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        block_start = block_start.to(tl.int64)
+        _tmp = tl.full([BLOCK_SIZE], value=2**31 - 1, dtype=tl.int32)
+        for off in range(block_start, M, step):
+            offset = off + tl.arange(0, BLOCK_SIZE)
+            mask = offset < M
+            inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
+            _tmp = tl.where((inp_val < _tmp), inp_val, _tmp)
+        res = tl.min(_tmp)
+    tl.atomic_min(out, res)
+
+
+@libentry()
+@triton.autotune(
+    configs=cfggen_reduce_op(),
+    key=["M"],
+    prune_configs_by = {'early_config_prune': prune_reduce_config}
+)
+@triton.heuristics(
+    values={"ONE_TILE_PER_CTA": lambda args: args["M"] <= args["BLOCK_SIZE"] * TOTAL_CORE_NUM}
+)
+@triton.jit
+def min_kernel_int64_1(
+    inp,
+    mid,
+    FILL_VALUE,
+    M,
+    BLOCK_SIZE: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK_SIZE
+    res = FILL_VALUE
+    if ONE_TILE_PER_CTA:
+        offset = block_start + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask = mask, other=FILL_VALUE)
+        res = tl.min(inp_val)
+    else:
+        num_jobs = tl.num_programs(axis=0)
+        step = num_jobs * BLOCK_SIZE
+        block_start = block_start.to(tl.int64)
+        _tmp = tl.full([BLOCK_SIZE], value=FILL_VALUE, dtype=tl.int64)
+        for off in range(block_start, M, step):
+            offset = off + tl.arange(0, BLOCK_SIZE)
+            mask = offset < M
+            inp_val = tl.load(inp + offset, mask=mask, other=FILL_VALUE)
+            _tmp = tl.where((inp_val < _tmp), inp_val, _tmp)
+        res = tl.min(_tmp)
+    tl.store(mid + pid, res)
+
+@libentry()
+@triton.jit
+def min_kernel_int64_2(
+    mid,
+    out,
+    BLOCK_NUM: tl.constexpr
+):
+    offset = tl.arange(0, BLOCK_NUM)
+    mid_val = tl.load(mid + offset)
+    out_val = tl.min(mid_val)
+    tl.store(out, out_val)
 
 
 def heur_block_n(args):
@@ -45,6 +149,7 @@ def heur_block_n(args):
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_M": 4}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
         triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
         triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
@@ -97,18 +202,27 @@ def min_kernel(
 def min(inp):
     logging.debug("GEMS MIN")
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-
+    mid_size = TOTAL_CORE_NUM
     dtype = inp.dtype
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    device = inp.device
 
-    with torch.cuda.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
-    return out
+    with torch.cuda.device(device):
+        if torch.is_floating_point(inp):
+            fill_value = torch.finfo(dtype).max
+            out = torch.full([], float("inf"), dtype=torch.float32, device=device)
+            min_kernel_float[(mid_size, 1, 1)](inp, out, fill_value, M)
+        elif dtype == torch.int64:
+            fill_value = torch.iinfo(dtype).max
+            mid = torch.empty([mid_size], dtype=dtype, device=device)
+            out = torch.empty([], dtype=dtype, device=device)
+            # Because atomic op don't support i64, use two kernels.
+            min_kernel_int64_1[(mid_size, 1, 1)](inp, mid, fill_value, M, enable_soft_i64=True)
+            min_kernel_int64_2[(1, 1, 1)](mid, out, BLOCK_NUM=mid_size, enable_soft_i64=True)
+        else:
+            fill_value = torch.iinfo(dtype).max
+            out = torch.full([], 2**31 - 1, dtype=torch.int32, device=device)
+            min_kernel_int[(mid_size, 1, 1)](inp, out, fill_value, M)
+    return out.to(dtype)
 
 
 def min_dim(inp, dim=None, keepdim=False):

@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import exp2
+    from triton.language.extra.mlu.libdevice import exp2
 except ImportError:
     try:
         from triton.language.math import exp2
@@ -21,8 +21,8 @@ def sigmoid_forward(x):
     # log2e: tl.constexpr = math.log2(math.e)
     # triton 3.0.0 disallow calling non-jitted function inside jitted function, even if it is in
     # the rhs of an assignment to a constexpr, so we use numeric literal instead to work around this.
-    log2e: tl.constexpr = 1.4426950408889634
-    return 1 / (1 + exp2(-x.to(tl.float32) * log2e))
+    log2e: tl.constexpr = -1.4426950408889634
+    return 1 / (1 + exp2(x.to(tl.float32) * log2e))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -48,6 +48,7 @@ class Sigmoid(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS SIGMOID BACKWARD")
+        out_grad = out_grad.contiguous()
         (out,) = ctx.saved_tensors
         in_grad = sigmoid_backward(out, out_grad)
         return in_grad

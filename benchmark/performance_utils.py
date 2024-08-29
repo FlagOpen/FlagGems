@@ -4,12 +4,11 @@ import torch
 import triton
 
 import flag_gems
-
-from .conftest import CPU_MODE
+from .conftest import CPU_MODE, DEVICE
 
 WARMUP = 100
 REPETITION = 1000
-torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.mlu.matmul.allow_tf32 = False
 
 
 class Benchmark:
@@ -48,11 +47,11 @@ class Benchmark:
         if CPU_MODE:
             for i in range(WARMUP):
                 fn()
-            torch.cuda.synchronize()
+            torch.mlu.synchronize()
             start = time.time()
             for i in range(REPETITION):
                 fn()
-            torch.cuda.synchronize()
+            torch.mlu.synchronize()
             end = time.time()
             latency = (end - start) / REPETITION * 1000
         else:
@@ -66,11 +65,13 @@ class Benchmark:
         return latency
 
     def run(self):
-        for dtype in self.dtypes:
-            print(f"Operator {self.op_name} Performance Test ({dtype})")
-            print("Size        Torch Latency (ms)   Gems Latency (ms)")
-            print("--------------------------------------------------")
-            for size in self.sizes:
+        return self.run_rawdata()
+
+    def run_rawdata(self):
+        print(f"\nOperator_Speedup_Test_Result\t{self.op_name}")
+        for size in self.sizes:
+            print(f"Operator_Speedup_Test_Result\t{size}\t", end="")
+            for dtype in self.dtypes:
                 args = ()
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)
@@ -92,7 +93,71 @@ class Benchmark:
                 else:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
+                print(f"{torch_perf}\t{gems_perf}\t", end="")
+            print()
+
+    def run_speedup(self):
+        kep = []
+        for dtype in self.dtypes:
+            # print(f"\nOperator {self.op_name} Speedup Test ({dtype})")
+            speedup = 0
+            for size in self.sizes:
+                args = ()
+                if self.arg_func is not None:
+                    args = self.arg_func(dtype, self.batch, size)
+                if self.is_backward:
+                    args = tuple(
+                        a.clone().requires_grad_() if torch.is_tensor(a) and torch.is_floating_point(a)
+                        else a
+                        for a in args
+                    )
+
+                kwargs = {}
+                if self.kwargs_func is not None:
+                    kwargs = self.kwargs_func(dtype, self.batch, size)
+
+                torch_perf = self.profile(self.torch_op, *args, **kwargs)
+                if self.gems_op:
+                    gems_perf = self.profile(self.gems_op, *args, **kwargs)
+                else:
+                    with flag_gems.use_gems():
+                        gems_perf = self.profile(self.torch_op, *args, **kwargs)
+                spd = torch_perf / gems_perf
+                speedup += spd
+            speedup /= len(self.sizes)
+            kep.append(speedup)
+        print(f"\nOperator_Speedup_Test_Result(" + ":".join(
+            [str(x) for x in self.dtypes]) + f"):\t{self.op_name}\t" + "\t".join([str(x) for x in kep]))
+
+    def run_speedup_models(self):
+        for size in self.sizes:
+            kep = []
+            for dtype in self.dtypes:
+                args = ()
+                if self.arg_func is not None:
+                    args = self.arg_func(dtype, self.batch, size)
+                if self.is_backward:
+                    args = tuple(
+                        a.clone().requires_grad_() if torch.is_tensor(a)
+                        and torch.is_floating_point(a) else a for a in args)
+
+                kwargs = {}
+                if self.kwargs_func is not None:
+                    kwargs = self.kwargs_func(dtype, self.batch, size)
+
+                torch_perf = self.profile(self.torch_op, *args, **kwargs)
+                if self.gems_op:
+                    gems_perf = self.profile(self.gems_op, *args, **kwargs)
+                else:
+                    with flag_gems.use_gems():
+                        gems_perf = self.profile(self.torch_op, *args,
+                                                 **kwargs)
+                spd = torch_perf / gems_perf
+                kep.append(spd)
+            print(f"\nOperator_Speedup_Test_Result(" +
+                  ":".join([str(x) for x in self.dtypes]) +
+                  f"):\t{self.op_name}\t{ self.batch + size}\t" +
+                  "\t".join([str(x) for x in kep]))
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -103,7 +168,7 @@ DEFAULT_BATCH = 1
 POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
-SIZES = [i * 1024 for i in range(1, 81, 5)]
+SIZES = [i * 64 for i in range(1, 22, 5)]
 
 
 def unary_arg(dtype, batch, size):
@@ -113,8 +178,8 @@ def unary_arg(dtype, batch, size):
 
 def unary_int_arg(dtype, batch, size):
     inp = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-    )
+        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
+    ).to("cuda")
     return (inp,)
 
 
@@ -126,11 +191,11 @@ def binary_args(dtype, batch, size):
 
 def binary_int_args(dtype, batch, size):
     inp1 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-    )
+        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
+    ).to("cuda")
     inp2 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-    )
+        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cpu"
+    ).to("cuda")
     return inp1, inp2
 
 
@@ -139,3 +204,28 @@ def ternary_args(dtype, batch, size):
     inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
     inp3 = torch.randn([batch, size], dtype=dtype, device="cuda")
     return inp1, inp2, inp3
+
+
+# for ops in model perf tests
+def binary_args_model_elementwise(dtype, batch, size):
+    inp1 = torch.randn(batch + size, dtype=dtype, device="cuda")
+    inp2 = torch.randn(batch + size, dtype=dtype, device="cuda")
+    return inp1, inp2
+
+
+def binary_args_model_scalar(dtype, batch, size):
+    inp1 = torch.randn(batch + size, dtype=dtype, device="cuda")
+    inp2 = torch.randn([], dtype=dtype, device="cuda")
+    return inp1, inp2
+
+
+def unary_arg_model(dtype, batch, size):
+    inp = torch.randn(batch + size, dtype=dtype, device="cuda")
+    return (inp, )
+
+
+def binary_args_model_vector(dtype, batch, size):
+    size1, size2 = size
+    inp1 = torch.randn(batch + size1, dtype=dtype, device="cuda")
+    inp2 = torch.randn(batch + size2, dtype=dtype, device="cuda")
+    return inp1, inp2

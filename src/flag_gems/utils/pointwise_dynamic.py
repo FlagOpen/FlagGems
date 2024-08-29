@@ -6,6 +6,7 @@ from typing import Any, Callable, List, Mapping, Optional, Tuple
 import torch
 import torch._prims_common as utils
 import triton
+import math
 from triton import language as tl
 from triton.runtime.jit import JITFunction
 
@@ -14,7 +15,24 @@ from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 from flag_gems.utils.shape_utils import broadcast_shapes
 
 
+DEVICE = "cpu"
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+else:
+    try:
+        import torch_mlu
+        if torch.mlu.is_available():
+            DEVICE = "mlu"
+    except ImportError:
+        ...
+
+
 # ------------------ Operation Description ---------------------------
+def all_shapes_same(shapes):
+    if len(shapes) == 0:
+        return False
+    return all(shape == shapes[0] for shape in shapes)
+
 def _type_name(type) -> str:
     "Render typename as string, work for both (bool, int, float, str) and torch.dtype object"
     if type in (bool, int, float, str):
@@ -296,7 +314,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("    volume,")
     code.writeline("    Stride,")
     code.writeline(")")
-    code.writeline("from flag_gems.utils.libentry import libentry")
+    code.writeline("from flag_gems.utils.libentry import libentry, TOTAL_CORE_NUM")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
     code.writeline("import torch._prims_common as utils")
     code.newline()
@@ -309,6 +327,7 @@ def generate_functional_pointwise_wrapper(
     wrapper_name: str,
     destination_passing_func_name: str,
     code: IndentedBuffer,
+    same_shapes: bool
 ) -> IndentedBuffer:
     # wrapper signature
     parameters: str = parameter_for_wrapper(op_desc, include_outputs=False)
@@ -323,7 +342,13 @@ def generate_functional_pointwise_wrapper(
         shapes_str = ", ".join(
             f"in{i}.shape" for i in range(op_desc.num_input_tensors())
         )
-        code.writeline(f"shape = broadcast_shapes([{shapes_str}])")
+        if same_shapes:
+            code.writeline("ori_shape = in0.shape")
+            for i in range(op_desc.num_input_tensors()):
+                code.writeline(f"in{i} = in{i}.flatten()")
+            code.writeline(f"shape = in0.shape")
+        else:
+            code.writeline(f"shape = broadcast_shapes([{shapes_str}])")
 
         # output allocation
         num_output_tensor_index = 0
@@ -348,7 +373,10 @@ def generate_functional_pointwise_wrapper(
         )
         code.writeline(call_str)
 
-        return_str = f"return {output_names}"
+        if same_shapes:
+            return_str = f"return {output_names}.view(ori_shape)"
+        else:
+            return_str = f"return {output_names}"
         code.writeline(return_str)
         code.newline()
         code.newline()
@@ -361,6 +389,7 @@ def generate_destination_passing_pointwise_wrapper(
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    same_shapes: bool
 ) -> IndentedBuffer:
     # wrapper signature
     parameters: str = parameter_for_wrapper(op_desc, include_outputs=True)
@@ -376,17 +405,7 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = volume(shape)")
 
-        if rank > 0:
-            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
-            code.writeline("num_warps = 4")
-            code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
-            code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
-            )
-        else:
-            code.writeline("num_warps = 1")
-            code.writeline("num_ctas = 1")
-        code.writeline("grid = (num_ctas, 1, 1)")
+        code.writeline("grid = lambda meta: (min(TOTAL_CORE_NUM, triton.cdiv(num_tasks, meta['tile_size'])),)")
         code.newline()
 
         # input strides for each input tensor w.r.t. the task index space
@@ -448,10 +467,6 @@ def generate_destination_passing_pointwise_wrapper(
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
-                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                    code.writeline("tile_size=tile_size,")
-                    code.writeline("one_tile_per_cta=tiles_per_cta==1,")
-                code.writeline("num_warps=num_warps,")
             code.writeline(")")
 
         # return
@@ -474,8 +489,17 @@ def generate_pointwise_kernel(
     code.writeline(f"inlined_f = {fn_name}._scalar_fn")
     code.newline()
 
-    # the decorators
     code.writeline("@libentry()")
+
+    # the decorators
+    code.writeline("@triton.autotune(")
+    with code.indent():
+        code.writeline("configs=[")
+        with code.indent():
+            code.writeline("triton.Config({'tile_size':1024}, num_stages=3, num_warps=1), triton.Config({'tile_size':2048}, num_stages=3, num_warps=1), triton.Config({'tile_size':4096}, num_stages=3, num_warps=1), triton.Config({'tile_size':8192}, num_stages=3, num_warps=1), triton.Config({'tile_size':16384}, num_stages=3, num_warps=1), triton.Config({'tile_size':21760}, num_stages=3, num_warps=1), triton.Config({'tile_size':32768}, num_stages=3, num_warps=1)")
+        code.writeline("],")
+        code.writeline("key=['num_tasks'],")
+    code.writeline(")")
     if op_desc.num_non_tensor_args() > 0:
         # we do not specialize non tensor args since they are passed into the inlined function
         # which means that their values may not deserve specialization
@@ -550,14 +574,9 @@ def generate_pointwise_kernel(
 
         # tile size & tiles_per_cta, gsl style
         if rank > 0:
-            code.writeline("tiles_per_cta,")
-            function_ns.create_name("tiles_per_cta")
-
             code.writeline("tile_size: tl.constexpr,")
             function_ns.create_name("tile_size")
 
-            code.writeline("one_tile_per_cta: tl.constexpr,")
-            function_ns.create_name("one_tile_per_cta")
     code.writeline("):")
 
     # input & output names
@@ -608,17 +627,13 @@ def generate_pointwise_kernel(
 
         code.writeline("num_ctas = tl.num_programs(0)")
         function_ns.create_name("num_ctas")
+        code.writeline("step = num_ctas * tile_size")
 
-        # get tid (a.k.a task id)
-        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
-        code.writeline(tid_stmt)
-        function_ns.create_name("init_tid")
-
-        # one-tile-per-cta, monolithic kernel style
-        code.writeline("if one_tile_per_cta: # monolitic kernel style")
+        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
+        code.writeline("for start in range(pid * tile_size, num_tasks, step):")
+        function_ns.create_name("j")
         with code.indent():
-            tid_stmt = "tid = init_tid"
-            code.writeline(tid_stmt)
+            code.writeline("tid = start + tl.arange(0, tile_size)")
             function_ns.create_name("tid")
 
             # only apply masking when rank > 0
@@ -653,7 +668,9 @@ def generate_pointwise_kernel(
 
             # compute
             code.writeline("# compute")
-            code.writeline(f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})")
+            code.writeline(
+                f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})"
+            )
             code.newline()
 
             # stores
@@ -665,64 +682,6 @@ def generate_pointwise_kernel(
                 ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
                 store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
                 code.writeline(store_stmt)
-
-        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-        code.writeline("else: # grid-stride-loop style kernel")
-        with code.indent():
-            code.writeline("for j in range(0, tiles_per_cta):")
-            function_ns.create_name("j")
-            with code.indent():
-                tid_stmt = "tid = init_tid + j * tile_size * num_ctas"
-                code.writeline(tid_stmt)
-                function_ns.create_name("tid")
-
-                # only apply masking when rank > 0
-                # since we only load a value instead of a block of values when the rank is 0
-                mask_stmt: str = "mask = tid < num_tasks"
-                code.writeline(mask_stmt)
-                function_ns.create_name("mask")
-                code.newline()
-
-                # reconstruct multi index
-                code.writeline("# multi index recontruction")
-                for i in reversed(range(rank)):
-                    if i > 0:
-                        code.writeline(f"i{i} = tid % s{i}")
-                        code.writeline(f"tid //= s{i}")
-                    else:
-                        code.writeline(f"i{i} = tid")
-                    function_ns.create_name(f"{i}")
-                code.newline()
-
-                # loads
-                code.writeline("# loads")
-                for i in range(op_desc.num_input_tensors()):
-                    ptrs_expr: str = " + ".join(
-                        f"i{j} * in{i}_stride{j}" for j in range(rank)
-                    )
-                    ptrs_expr: str = f"in{i}_ptr + {ptrs_expr}"
-                    load_stmt: str = f"in{i} = tl.load({ptrs_expr}, mask=mask)"
-                    function_ns.create_name(f"in{i}")  # add to the namespace
-                    code.writeline(load_stmt)
-                code.newline()
-
-                # compute
-                code.writeline("# compute")
-                code.writeline(
-                    f"{outputs_to_scalar_fn} = inlined_f({inputs_to_scalar_fn})"
-                )
-                code.newline()
-
-                # stores
-                code.writeline("# stores")
-                for i in range(op_desc.num_output_tensors()):
-                    ptrs_expr: str = " + ".join(
-                        f"i{j} * out{i}_stride{j}" for j in range(rank)
-                    )
-                    ptrs_expr: str = f"out{i}_ptr + out{i}_offset + {ptrs_expr}"
-                    store_stmt: str = f"tl.store({ptrs_expr}, out{i}, mask=mask)"
-                    code.writeline(store_stmt)
-                code.newline()
     return code
 
 
@@ -734,22 +693,26 @@ def generate_code(
     destination_passing_func_name: str,
     kernel_name: str,
     code: IndentedBuffer,
+    doopt: bool,
 ) -> IndentedBuffer:
     assert (
         len(inputs) == op_desc.num_inputs()
     ), "the number of inputs does not match {str(op_desc)}"
     input_tensor_ids = [i for i in range(op_desc.num_inputs()) if op_desc.is_tensor(i)]
     tensor_shapes = [inputs[i].shape for i in input_tensor_ids]
-    shape = broadcast_shapes(tensor_shapes)
-    rank = len(shape)
+    shape = [math.prod(tensor_shapes[0])]
+    rank = 1
+    if not doopt:
+      shape = broadcast_shapes(tensor_shapes)
+      rank = len(shape)
 
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
     code = generate_functional_pointwise_wrapper(
-        op_desc, wrapper_name, destination_passing_func_name, code
+        op_desc, wrapper_name, destination_passing_func_name, code, doopt
     )
     code = generate_destination_passing_pointwise_wrapper(
-        op_desc, rank, destination_passing_func_name, kernel_name, code
+        op_desc, rank, destination_passing_func_name, kernel_name, code, doopt
     )
     code = generate_pointwise_kernel(op_desc, scalar_fn, rank, kernel_name, code)
     return code
@@ -773,9 +736,20 @@ class PointwiseDynamicFunction:
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
+    def do_optimization(
+        self, op_desc: OPDesc, inputs: Tuple[Any], scalar_fn: JITFunction
+    ) -> bool:
+        input_tensor_ids = [
+            i for i in range(op_desc.num_inputs()) if op_desc.is_tensor(i)
+        ]
+        tensor_shapes = [inputs[i].shape for i in input_tensor_ids]
+        same_shapes = all_shapes_same(tensor_shapes)
+        return same_shapes and scalar_fn.__name__ not in ["flip_func"]
+
     def __call__(self, *args, **kwargs):
         # note: kwargs should not be used in JITFunction directly
-        key = f"{self.arg_key(*args)}"
+        doopt = self.do_optimization(self._op_desc, args, self._scalar_fn)
+        key = f"{self.arg_key(doopt, *args)}"
         cache = self.overloads
         lock = self.lock
 
@@ -793,6 +767,7 @@ class PointwiseDynamicFunction:
                     "_wrapper_out",
                     "_jit_function",
                     code,
+                    doopt,
                 )
 
                 file_name = f"pointwise_dynamic_{self._scalar_fn_cache_key}_rank_{key}_pid_{self.pid}.py"
@@ -815,10 +790,10 @@ class PointwiseDynamicFunction:
         overload = self.overloads[key]
         return overload(*args, **kwargs)
 
-    def arg_key(self, *args):
+    def arg_key(self, doopt, *args):
         tensors = [item for item in args if torch.is_tensor(item)]
         max_rank = max(item.ndim for item in tensors)
-        return max_rank
+        return f"{max_rank}_opt_{int(doopt)}"
 
 
 def pointwise_dynamic(
@@ -859,8 +834,8 @@ if __name__ == "__main__":
     def saxpy(x, alpha, y):
         return x * alpha + y
 
-    x = torch.randn((3, 4), device="cuda")
-    y = torch.randn((4,), device="cuda")
+    x = torch.randn((3, 4), device=DEVICE)
+    y = torch.randn((4,), device=DEVICE)
     out1 = saxpy(x, 2.0, y)
     out2 = x * 2.0 + y
     print(out1)
@@ -923,8 +898,8 @@ if __name__ == "__main__":
     def ordinary2(x, y):
         return tl.sin(x) + tl.cos(y)
 
-    x = torch.tensor(1.0, device="cuda")
-    y = torch.tensor(2.0, device="cuda")
+    x = torch.tensor(1.0, device=DEVICE)
+    y = torch.tensor(2.0, device=DEVICE)
     out1 = ordinary2(x, y)
     out2 = torch.sin(x) + torch.cos(y)
     print(out1)
@@ -941,7 +916,7 @@ if __name__ == "__main__":
             tl.float32
         )  # ensures that y is not used for specialization
 
-    x = torch.arange(10, device="cuda")
+    x = torch.arange(10, device=DEVICE)
     y = 1
     # by default value 1 is treated as constexpr even thought it is not marked as constexpr
     # do_not_specialize avoids this

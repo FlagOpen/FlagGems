@@ -8,6 +8,7 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     POINTWISE_SHAPES,
     gems_assert_equal,
+    to_reference,
 )
 
 
@@ -23,6 +24,7 @@ def test_accuracy_rand(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_randn(shape, dtype):
+    torch.manual_seed(42)
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device="cuda")
     mean = torch.mean(res_out)
@@ -46,7 +48,9 @@ def test_accuracy_rand_like(shape, dtype):
 def test_accuracy_zeros(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.zeros(shape, dtype=dtype, device="cuda")
-    gems_assert_equal(res_out, torch.zeros(shape, dtype=dtype, device="cuda"))
+    out = torch.zeros(shape, dtype=dtype, device="cuda")
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -54,7 +58,9 @@ def test_accuracy_zeros(shape, dtype):
 def test_accuracy_ones(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.ones(shape, dtype=dtype, device="cuda")
-    gems_assert_equal(res_out, torch.ones(shape, dtype=dtype, device="cuda"))
+    out = torch.ones(shape, dtype=dtype, device="cuda")
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -62,7 +68,9 @@ def test_accuracy_ones(shape, dtype):
 def test_accuracy_full(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.full(shape, 3.1415926, dtype=dtype, device="cuda")
-    gems_assert_equal(res_out, torch.full(shape, 3.1415926, dtype=dtype, device="cuda"))
+    out = torch.full(shape, 3.1415926, dtype=dtype, device="cuda")
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -71,7 +79,9 @@ def test_accuracy_zeros_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.zeros_like(x)
-    gems_assert_equal(res_out, torch.zeros_like(x))
+    out = torch.zeros_like(x)
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -80,7 +90,9 @@ def test_accuracy_ones_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.ones_like(x)
-    gems_assert_equal(res_out, torch.ones_like(x))
+    out = torch.ones_like(x)
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -89,4 +101,6 @@ def test_accuracy_full_like(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device="cuda")
     with flag_gems.use_gems():
         res_out = torch.full_like(x, 3.1415926)
-    gems_assert_equal(res_out, torch.full_like(x, 3.1415926))
+    out = torch.full_like(x, 3.1415926)
+    ref_out = to_reference(out)
+    gems_assert_equal(res_out, ref_out)

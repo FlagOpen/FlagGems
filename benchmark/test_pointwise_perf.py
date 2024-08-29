@@ -1,4 +1,5 @@
 import torch
+import flag_gems
 
 from .performance_utils import (
     FLOAT_DTYPES,
@@ -75,14 +76,18 @@ def test_perf_bitwiseor():
 
 
 def test_perf_clamp():
+    def torch_clamp(*args):
+        input, minv, maxv = args
+        return torch.min(torch.max(input, minv), maxv)
     bench = Benchmark(
         op_name="clamp",
-        torch_op=torch.clamp,
+        torch_op=torch_clamp,
         arg_func=ternary_args,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
+    bench.set_gems(flag_gems.ops.clamp_tensor)
     bench.run()
 
 
@@ -516,5 +521,23 @@ def test_perf_flip_int():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=flip_kwargs,
+    )
+    bench.run()
+
+
+def test_masked_fill():
+    def masked_fill_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        value = 1024
+        return (inp, mask, value)
+
+    bench = Benchmark(
+        op_name="masked_fill",
+        torch_op=torch.masked_fill,
+        arg_func=masked_fill_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
     )
     bench.run()

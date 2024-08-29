@@ -6,6 +6,7 @@ import triton
 from triton import language as tl
 
 from flag_gems.utils import libentry
+from .accuracy_utils import DEVICE
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -34,7 +35,7 @@ def softmax_inner_decorator_cascade(x, dim, dtype=None):
 
     out = torch.empty_like(inp, dtype=dtype)
 
-    with torch.cuda.device(out.device):
+    with torch.mlu.device(out.device):
         grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
         softmax_kernel_inner[grid](
             out,
@@ -107,6 +108,7 @@ def softmax_inner_kernel_arg_apply_default(x, dim, dtype=None):
     values={
         "TILE_M": lambda args: 1024 // args["TILE_N"],
         "ONE_TILE_PER_CTA": lambda args: args["TILE_N"] >= args["N"],
+        "num_warps": lambda args: 1,
     },
 )
 @triton.jit

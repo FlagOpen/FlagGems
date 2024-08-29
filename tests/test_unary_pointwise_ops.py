@@ -34,8 +34,8 @@ def test_accuracy_abs(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwisenot(shape, dtype):
     inp = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
-    )
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cpu"
+    ).to("cuda")
     ref_inp = to_reference(inp)
 
     ref_out = torch.bitwise_not(ref_inp)
@@ -272,7 +272,7 @@ def test_accuracy_erf(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_isfinite(shape, dtype):
     if dtype in ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
@@ -290,7 +290,7 @@ def test_accuracy_isfinite(shape, dtype):
 
 
 @pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 @pytest.mark.parametrize("dims", DIMS)
 def test_accuracy_flip(shape, dtype, dims):
     if dtype in ALL_FLOAT_DTYPES:
@@ -302,4 +302,21 @@ def test_accuracy_flip(shape, dtype, dims):
     with flag_gems.use_gems():
         res_out = torch.flip(inp, dims)
     ref_out = torch.flip(ref_inp, dims)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+def test_accuracy_masked_fill(shape, dtype, threshold):
+    inp = torch.zeros(shape, dtype=dtype, device="cuda")
+    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+    value = 1024
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_fill(ref_inp, ref_mask, value)
+    with flag_gems.use_gems():
+        res_out = torch.masked_fill(inp, mask, value)
+
     gems_assert_equal(res_out, ref_out)

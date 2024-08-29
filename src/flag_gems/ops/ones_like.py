@@ -4,6 +4,7 @@ import torch
 import triton
 
 from .ones import ones_kernel
+from ..utils import TOTAL_CORE_NUM
 
 
 def ones_like(
@@ -16,7 +17,7 @@ def ones_like(
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
     with torch.cuda.device(x.device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        ones_kernel[grid_fn](out, N)
     return out

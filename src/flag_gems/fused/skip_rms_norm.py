@@ -5,44 +5,63 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, TOTAL_CORE_NUM
 
+def get_configs():
+    configs = []
+    for BLOCK_SIZE in [2048, 1024, 512]:
+        for M_BLOCK in range(1, 10, 2):
+            for num_stages in [1, 5]:
+                configs.append(triton.Config({'M_BLOCK': M_BLOCK, 'BLOCK_SIZE': BLOCK_SIZE}, num_stages=num_stages, num_warps=1))
+    return configs
 
+@triton.autotune(configs = get_configs(), key=['M', 'N_COLS'],)
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def skip_rms_norm_kernel(
-    Y,  # pointer to the output
-    X,  # pointer to the input
-    R,  # pointer to the residual
-    W,  # pointer to the weights
-    y_stride_r,
-    y_stride_c,
-    x_stride_r,  # how much to increase the pointer when moving by 1 row
-    x_stride_c,  # how much to increase the pointer when moving by 1 col
-    r_stride_r,  # how much to increase the pointer when moving by 1 row
-    r_stride_c,  # how much to increase the pointer when moving by 1 col
-    N,  # number of columns in X
-    eps,  # epsilon to avoid division by zero
+    x_ptr,
+    y_ptr,
+    r_ptr,
+    w_ptr,
+    eps,
+    stride,
+    M,
+    N_COLS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    M_BLOCK: tl.constexpr
 ):
     pid = tl.program_id(0)
-    Y += pid * y_stride_r
-    X += pid * x_stride_r
-    R += pid * r_stride_r
+    pnum = tl.num_programs(axis=0)
+    M_OUT_BLOCK = tl.cdiv(M, pnum)
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-    r = tl.load(R + cols * r_stride_c, mask, other=0.0).to(tl.float32)
-
-    x += r
-
-    var = tl.sum(x * x / N, axis=0)
-    rrms = 1 / tl.sqrt(var + eps)
-
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    y = (x * rrms).to(Y.dtype.element_ty) * w
-    tl.store(Y + cols * y_stride_c, y, mask=mask)
+    lb = pid * M_OUT_BLOCK                                                         
+    ub = tl.minimum((pid + 1) * M_OUT_BLOCK, M)
+    for m_start in range(lb, ub, M_BLOCK):
+        m_offset = m_start + tl.arange(0, M_BLOCK)
+        mx_ptr = x_ptr + stride * m_offset
+        mr_ptr = r_ptr + stride * m_offset
+        my_ptr = y_ptr + stride * m_offset
+        _mean = tl.zeros([M_BLOCK, BLOCK_SIZE], dtype=tl.float32)
+        for offset in range(0, N_COLS, BLOCK_SIZE):
+            cols = offset + tl.arange(0, BLOCK_SIZE)
+            mask=(m_offset < M)[:, None] & (cols < N_COLS)[None, :]
+            x = tl.load(mx_ptr[:, None] + cols[None,:], mask=mask, other=0.0, eviction_policy="evict_last").to(tl.float32)
+            r = tl.load(mr_ptr[:, None] + cols[None,:], mask=mask, other=0.0, eviction_policy="evict_last").to(tl.float32)
+            x += r
+            _mean += x * x
+        
+        var = tl.sum(_mean / N_COLS, axis=1)
+        rrms = 1 / tl.sqrt(var + eps)
+    
+        for offset in range(0, N_COLS, BLOCK_SIZE):
+            cols = offset + tl.arange(0, BLOCK_SIZE)
+            mask=(m_offset < M)[:, None] & (cols < N_COLS)[None, :]
+            x = tl.load(mx_ptr[:, None] + cols[None, :], mask=mask, other=0.0, eviction_policy="evict_first").to(tl.float32)
+            r = tl.load(mr_ptr[:, None] + cols[None,:], mask=mask, other=0.0, eviction_policy="evict_last").to(tl.float32)
+            x += r
+            w = tl.load(w_ptr + cols, mask=cols < N_COLS, other=0.0, eviction_policy="evict_first")
+            y = (x * rrms[:, None]).to(y_ptr.dtype.element_ty) * w
+            tl.store(my_ptr[:, None] + cols[None, :], y, mask=mask)
 
 
 class SkipRmsNorm(torch.autograd.Function):
@@ -53,15 +72,14 @@ class SkipRmsNorm(torch.autograd.Function):
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
         x = x.contiguous()
         residual = residual.contiguous()
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
         with torch.cuda.device(x.device):
-            skip_rms_norm_kernel[M,](
-                y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
+            skip_rms_norm_kernel[TOTAL_CORE_NUM,](
+                x, y, residual, weight, eps, x.stride(0), M, N
             )
         return y
 

@@ -15,12 +15,14 @@ def true_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_tensor_scalar(x, y):
+    y = y.to(x.dtype)
     return x / y
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
+    x = x.to(y.dtype)
     return x / y
 
 

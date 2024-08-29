@@ -67,6 +67,7 @@ def test_perf_cross_entropy_loss():
             [
                 batch,
             ],
+            dtype=torch.int32,
             device="cuda",
         )
         return inp, target
@@ -78,6 +79,32 @@ def test_perf_cross_entropy_loss():
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_cross_entropy_loss_backward():
+    def cross_entropy_loss_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        target = torch.randint(
+            0,
+            size,
+            [
+                batch,
+            ],
+            dtype=torch.int32,
+            device="cuda",
+        )
+        return inp, target
+
+    bench = Benchmark(
+        op_name="cross_entropy_loss",
+        torch_op=torch.nn.CrossEntropyLoss(),
+        arg_func=cross_entropy_loss_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
     )
     bench.run()
 
@@ -129,6 +156,37 @@ def test_perf_groupnorm():
     )
     bench.run()
 
+def test_perf_groupnorm_backward():
+    def group_norm_args(dtype, batch, size):
+        C = 16
+        G = 16
+        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
+        weight = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device="cuda",
+        )
+        bias = torch.randn(
+            [
+                C,
+            ],
+            dtype=dtype,
+            device="cuda",
+        )
+        return inp, G, weight, bias
+
+    bench = Benchmark(
+        op_name="groupnorm",
+        torch_op=torch.nn.functional.group_norm,
+        arg_func=group_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=BLAS_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
@@ -167,6 +225,23 @@ def test_perf_layernorm():
     bench.run()
 
 
+def test_perf_layernorm_backward():
+    def layer_norm_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        weight = torch.randn([size,], dtype=dtype, device="cuda",)
+        bias = torch.randn([size,], dtype=dtype, device="cuda",)
+        return (inp, [size,], weight, bias,)
+    bench = Benchmark(
+        op_name="layernorm",
+        torch_op=torch.layer_norm,
+        arg_func=layer_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
+
 def test_perf_log_softmax():
     bench = Benchmark(
         op_name="log_softmax",
@@ -178,6 +253,17 @@ def test_perf_log_softmax():
     )
     bench.run()
 
+def test_perf_log_softmax_backward():
+    bench = Benchmark(
+        op_name="log_softmax",
+        torch_op=torch.nn.functional.log_softmax,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
 
 def test_perf_max():
     bench = Benchmark(
@@ -238,6 +324,18 @@ def test_perf_softmax():
     )
     bench.run()
 
+def test_perf_softmax_backward():
+    bench = Benchmark(
+        op_name="softmax",
+        torch_op=torch.nn.functional.softmax,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+        is_backward=True,
+    )
+    bench.run()
+
 
 def test_perf_softmax_backward():
     bench = Benchmark(
@@ -281,6 +379,31 @@ def test_perf_vector_norm():
         op_name="vector_norm",
         torch_op=torch.linalg.vector_norm,
         arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_index_select():
+    def index_select_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+
+        threshold = 0.1
+        dim = 0
+        index_size = inp.size(dim)
+        from math import floor
+
+        index = torch.randint(
+            0, index_size, [floor(index_size * threshold)], device="cuda"
+        )
+        return (inp, dim, index)
+
+    bench = Benchmark(
+        op_name="index_select",
+        torch_op=torch.index_select,
+        arg_func=index_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,

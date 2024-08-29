@@ -16,7 +16,6 @@ from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
-from .cumsum import cumsum
 from .div import div
 from .dropout import native_dropout
 from .embedding import embedding
@@ -31,6 +30,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isinf import isinf
@@ -39,6 +39,7 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
+from .masked_fill import masked_fill
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
@@ -74,10 +75,9 @@ from .softmax import softmax
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
+from .topk import topk
 from .triu import triu
 from .uniform import uniform_
-from .var_mean import var_mean
-from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -104,7 +104,6 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
-    "cumsum",
     "div",
     "zeros",
     "ones",
@@ -126,6 +125,7 @@ __all__ = [
     "group_norm",
     "gt",
     "gt_scalar",
+    "index_select",
     "isclose",
     "isfinite",
     "isinf",
@@ -167,6 +167,7 @@ __all__ = [
     "sub",
     "tanh",
     "triu",
+    "topk",
     "max",
     "max_dim",
     "min",
@@ -177,12 +178,11 @@ __all__ = [
     "argmax",
     "prod",
     "prod_dim",
-    "var_mean",
-    "vector_norm",
     "log_softmax",
     "outer",
     "cross_entropy_loss",
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "masked_fill",
 ]

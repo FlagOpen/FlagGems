@@ -6,6 +6,10 @@ from transformers import AutoProcessor, LlavaForConditionalGeneration
 
 import flag_gems
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
 
 @pytest.mark.parametrize(
     "prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"]
