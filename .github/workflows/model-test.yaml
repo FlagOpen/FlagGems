@@ -22,8 +22,14 @@ jobs:
         shell: bash
         run: |
           git config --global --add safe.directory /__w/FlagGems/FlagGems
-          git log -5 --pretty=format:'%s'
-          echo "$(echo skip_check=${{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false)" >> $GITHUB_OUTPUT
+          git log -5
+          # echo skip_check=$({{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false) >> $GITHUB_OUTPUT
+          # echo skip_check=$({{ github.event.head_commit.message }} | grep -qi 'fix doc' && echo true || echo false)
+          # echo skip_check=$(git log -1 --pretty=format:'%s'| grep -qi cx && echo true || echo false)"
+          echo "========"
+          echo ${{ github.event.head_commit.message }}
+          echo ${{ github.event.workflow_run.head_commit.message }}
+          echo "HEAD_COMMIT_MESSAGE=$(git show -s --format=%s)"
 
       - name: Check GPU free
         if: env.skip_check != 'true'
