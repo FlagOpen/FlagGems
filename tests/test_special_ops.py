@@ -13,6 +13,7 @@ from .accuracy_utils import (
     SPECIAL_SHAPES,
     STACK_DIM_LIST,
     STACK_SHAPES,
+    UPSAMPLE_SHAPES,
     UT_SHAPES_1D,
     UT_SHAPES_2D,
     gems_assert_close,
@@ -436,6 +437,20 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
 
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.upsample_nearest2d
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_nearest2d(dtype, shape, scale):
+    input = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_i = to_reference(input, False)
+    output_size = [int(input.shape[i + 2] * scale[i]) for i in range(2)]
+    ref_out = torch._C._nn.upsample_nearest2d(ref_i, output_size=output_size)
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
     gems_assert_equal(res_out, ref_out)
 
 
