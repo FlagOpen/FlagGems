@@ -2,6 +2,7 @@ import logging
 
 import torch
 import triton
+from .mm import mm
 import triton.language as tl
 
 @triton.jit
@@ -27,11 +28,11 @@ def mul_outer_kernel(
         inp_offsets = pid_x * BLOCK_SIZE_M + i
         mask_1 = inp_offsets < M
         output_offsets = (pid_x * BLOCK_SIZE_M + i) * N + weight_offsets
-        mask_3 = output_offsets < (M * N)
+        # mask_3 = output_offsets < (M * N)
         inp_data = tl.load(inp + inp_offsets, mask=mask_1)
         inp_bd, weight_bd = tl.broadcast(inp_data, weight_data)
         output = inp_bd * weight_bd
-        tl.store(out + output_offsets, output, mask=mask_3)
+        tl.store(out + output_offsets, output, mask=mask_2)
 
 def mul(inp, weight):
     assert inp.ndim == 2 and weight.ndim == 2, "Invalid input"
