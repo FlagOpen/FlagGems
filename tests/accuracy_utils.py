@@ -61,8 +61,7 @@ STACK_SHAPES = [
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
 
-# FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-FLOAT_DTYPES = [torch.float16, torch.float32]
+FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64]

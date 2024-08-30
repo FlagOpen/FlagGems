@@ -3,6 +3,7 @@ import torch
 from .performance_utils import (
     BLAS_BATCH,
     FLOAT_DTYPES,
+    FLOAT_DTYPES_WITHOUT_BF16,
     INT_DTYPES,
     REDUCTION_BATCH,
     SIZES,
@@ -92,7 +93,7 @@ def test_perf_cumsum():
         op_name="cumsum",
         torch_op=torch.cumsum,
         arg_func=cumsum_args,
-        dtypes=FLOAT_DTYPES,
+        dtypes=FLOAT_DTYPES_WITHOUT_BF16,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
     )

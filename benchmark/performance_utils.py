@@ -102,8 +102,8 @@ class Benchmark:
                 )
 
 
-# FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-FLOAT_DTYPES = [torch.float16, torch.float32]
+FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+FLOAT_DTYPES_WITHOUT_BF16 = [torch.float16, torch.float32]
 INT_DTYPES = [torch.int16, torch.int32]
 
 
