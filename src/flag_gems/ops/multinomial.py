@@ -78,9 +78,9 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
             vals, indices = torch.topk(s, n_samples, dim=-1)
             return indices.to(torch.int64)
 
-    from flag_gems.ops import fused_renorm_cumsum as renorm_cumsum
+    from flag_gems.ops import normed_cumsum
 
-    cum_prob = renorm_cumsum(prob, dim=-1)
+    cum_prob = normed_cumsum(prob, dim=-1)
 
     if cum_prob.dim() == 1:
         n_dist = 1
