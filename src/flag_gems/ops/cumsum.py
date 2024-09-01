@@ -78,6 +78,7 @@ def cumsum(inp, dim=1, *, dtype=None):
     return out
 
 
+@libentry()
 @triton.jit(do_not_specialize=["K"])
 def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
     row_start = tl.program_id(0) * K
@@ -91,6 +92,7 @@ def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
     tl.store(out + row_start + row_off, y, mask=row_off < K)
 
 
+@libentry()
 @triton.jit(
     do_not_specialize=[
         "r",
@@ -159,6 +161,7 @@ def block_cumsum_kernel(
                 cols += TILE
 
 
+@libentry()
 @triton.jit(
     do_not_specialize=[
         "r",
@@ -223,14 +226,15 @@ def normed_cumsum(inp, dim=-1):
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     assert dim == inp.ndim - 1, "Currently only supports the last dimension."
+    N = inp.numel()
+    K = inp.size(dim)
     # inp = inp.contiguous()
     # First and last dims are easier to handle, but transpose the middle dim to the last
     ranked_dims = sorted(range(inp.ndim), key=lambda i: inp.stride(i), reverse=True)
     is_mid_dim = dim not in (ranked_dims[0], ranked_dims[-1])
     if is_mid_dim:
         inp = inp.transpose(dim, -1).contiguous()
-    K = inp.size(dim)
-    N = inp.numel()
+        dim = -1
     out = torch.empty_like(inp)
     with torch.cuda.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
@@ -242,7 +246,7 @@ def normed_cumsum(inp, dim=-1):
         n_chunks = min(triton.cdiv(num_sms, n_rows), triton.cdiv(K, TILE))
         n_tiles = triton.cdiv(triton.cdiv(K, TILE), n_chunks)
         k_stride = inp.stride(dim)
-        r_stride = inp.stride(dim - 1) if inp.ndim > 0 else 0
+        r_stride = inp.size(dim) if k_stride == 1 else 1
         if n_rows > GRID_Y_LIMIT:
             batch = triton.cdiv(n_rows, GRID_Y_LIMIT)
             n_batch = triton.cdiv(n_rows, batch)
