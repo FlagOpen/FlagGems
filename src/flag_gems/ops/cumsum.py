@@ -51,31 +51,31 @@ def cumsum_kernel(
     tl.store(out_ptrs, result, mask=mask)
 
 
-# def cumsum(inp, dim=1, *, dtype=None):
-#     logging.debug("GEMS CUMSUM")
-#     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-#     shape = inp.shape
-#     dim = dim % inp.ndim
-#     M = 1
-#     N = shape[dim]
-#     for i in range(dim):
-#         M *= shape[i]
-#     inp = inp.contiguous()
-#     K = inp.numel() // M // N
+def cumsum(inp, dim=1, *, dtype=None):
+    logging.debug("GEMS CUMSUM")
+    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    shape = inp.shape
+    dim = dim % inp.ndim
+    M = 1
+    N = shape[dim]
+    for i in range(dim):
+        M *= shape[i]
+    inp = inp.contiguous()
+    K = inp.numel() // M // N
 
-#     if dtype is None:
-#         dtype = inp.dtype
-#         if dtype is torch.bool:
-#             dtype = torch.int64
-#     out = torch.empty_like(inp, dtype=dtype)
+    if dtype is None:
+        dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
+    out = torch.empty_like(inp, dtype=dtype)
 
-#     grid = lambda meta: (
-#         triton.cdiv(M, meta["BLOCK_M"]),
-#         K,
-#     )
-#     with torch.cuda.device(inp.device):
-#         cumsum_kernel[grid](inp, out, M, N, K)
-#     return out
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
+    with torch.cuda.device(inp.device):
+        cumsum_kernel[grid](inp, out, M, N, K)
+    return out
 
 
 @triton.jit(do_not_specialize=["K"])
@@ -94,13 +94,11 @@ def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
 @triton.jit(
     do_not_specialize=[
         "r",
-        "k",
         "t",
         "R",
         "K",
         "r_stride",
         "out_r_stride",
-        "out_k_stride",
     ]
 )
 def block_cumsum_kernel(
@@ -120,7 +118,7 @@ def block_cumsum_kernel(
     HAS_OUT_LAYOUT: tl.constexpr,
     TILE: tl.constexpr,
 ):
-    # One CTA processes (r, t*tile) elements with k as dim bound
+    # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
     gridx = tl.program_id(0).to(tl.int64)
@@ -164,13 +162,11 @@ def block_cumsum_kernel(
 @triton.jit(
     do_not_specialize=[
         "r",
-        "k",
         "t",
         "R",
         "K",
         "r_stride",
         "out_r_stride",
-        "out_k_stride",
     ]
 )
 def block_update_kernel(
@@ -190,7 +186,7 @@ def block_update_kernel(
     HAS_OUT_LAYOUT: tl.constexpr,
     TILE: tl.constexpr,
 ):
-    # One CTA processes (r, t*tile) elements with k as dim bound
+    # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
     gridx = tl.program_id(0).to(tl.int64)
@@ -219,50 +215,7 @@ def block_update_kernel(
             cols += TILE
 
 
-def cumsum(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS CUMSUM")
-    assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
-    dim = dim % inp.ndim
-    assert dim == inp.ndim - 1, "Currently only supports the last dimension."
-    # inp = inp.contiguous()
-    # First and last dims are easier to handle, but transpose the middle dim to the last
-    ranked_dims = sorted(range(inp.ndim), key=lambda i: inp.stride(i), reverse=True)
-    is_mid_dim = dim not in (ranked_dims[0], ranked_dims[-1])
-    if is_mid_dim:
-        inp = inp.transpose(dim, -1).contiguous()
-    K = inp.size(dim)
-    N = inp.numel()
-    out = torch.empty_like(inp)
-    with torch.cuda.device(inp.device.index):
-        # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch.cuda.get_device_properties("cuda").multi_processor_count
-        TILE = 2048
-        # Each row is viewed as n_chunks * n_tiles * TILE data and one cta processes a chunk.
-        n_rows = N // K
-        n_chunks = triton.cdiv(num_sms, n_rows)
-        n_tiles = triton.cdiv(triton.cdiv(K, TILE), n_chunks)
-        k_stride = inp.stride(dim)
-        r_stride = inp.stride(dim - 1) if inp.ndim > 0 else 0
-        grid = (n_chunks, n_rows)
-        if n_chunks == 1:
-            block_cumsum_kernel[grid](
-                inp,
-                out,
-                0,
-                1,
-                n_tiles,
-                n_rows,
-                K,
-                r_stride,
-                k_stride,
-                r_stride,
-                k_stride,
-                OUTPUT_SUMS=False,
-                NORMALIZE=False,
-                HAS_OUT_LAYOUT=False,
-                TILE=TILE,
-            )
-            return out
+GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
@@ -283,20 +236,27 @@ def normed_cumsum(inp, dim=-1):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         num_sms = torch.cuda.get_device_properties("cuda").multi_processor_count
         TILE = 2048
-        # Each row is viewed as n_chunks * n_tiles * TILE data and one cta processes a chunk.
+        # Each row is split into n_chunks of chunks where each chunk is compised of
+        # n_tiles of tiles. Different chunks are assigned to different ctas.
         n_rows = N // K
-        n_chunks = triton.cdiv(num_sms, n_rows)
-        n_chunks = min(n_chunks, triton.cdiv(K, TILE))
+        n_chunks = min(triton.cdiv(num_sms, n_rows), triton.cdiv(K, TILE))
         n_tiles = triton.cdiv(triton.cdiv(K, TILE), n_chunks)
         k_stride = inp.stride(dim)
         r_stride = inp.stride(dim - 1) if inp.ndim > 0 else 0
-        grid = (n_chunks, n_rows)
+        if n_rows > GRID_Y_LIMIT:
+            batch = triton.cdiv(n_rows, GRID_Y_LIMIT)
+            n_batch = triton.cdiv(n_rows, batch)
+        else:
+            batch = 1
+            n_batch = n_rows
+
+        grid = (n_chunks, n_batch)
         if n_chunks == 1:
             block_cumsum_kernel[grid](
                 inp,
                 out,
                 0,
-                1,
+                batch,
                 n_tiles,
                 n_rows,
                 K,
@@ -319,7 +279,7 @@ def normed_cumsum(inp, dim=-1):
             inp,
             out,
             sums,
-            1,
+            batch,
             n_tiles,
             n_rows,
             K,
@@ -333,11 +293,11 @@ def normed_cumsum(inp, dim=-1):
             TILE=TILE,
         )
         # Pass two, scan partial cumsums
-        block_cumsum_kernel[(1, n_rows)](
+        block_cumsum_kernel[(1, n_batch)](
             sums,
             cumsums,
             0,
-            1,
+            batch,
             1,
             n_rows,
             n_chunks,
@@ -357,7 +317,7 @@ def normed_cumsum(inp, dim=-1):
             cumsums - sums,
             rscale,
             out,
-            1,
+            batch,
             n_tiles,
             n_rows,
             K,
