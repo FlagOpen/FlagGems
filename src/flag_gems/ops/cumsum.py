@@ -225,7 +225,6 @@ def normed_cumsum(inp, dim=-1):
     logging.debug("GEMS NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
-    assert dim == inp.ndim - 1, "Currently only supports the last dimension."
     N = inp.numel()
     K = inp.size(dim)
     # inp = inp.contiguous()
