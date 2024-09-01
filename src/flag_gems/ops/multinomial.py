@@ -40,13 +40,12 @@ def multinomial_with_replacement(
 
     cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
-    end = tl.zeros((NBLOCK,), dtype=tl.int32) + K
+    end = tl.zeros((NBLOCK,), dtype=tl.int32) + K - 1
     steps = tl.math.log2(K.to(tl.float32)).to(tl.int32) + 1
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
         start = tl.where(x < rv, mid + 1, start)
-        # start = tl.where(start == end, start, new_start)
         end = tl.where(x < rv, end, mid)
 
     # Returns the last index in case of an overflow
