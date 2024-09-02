@@ -159,3 +159,19 @@ def test_perf_full_like():
         kwargs_func=full_kwargs,
     )
     bench.run()
+
+
+def test_perf_randperm():
+    def randperm_args(dtype, batch, size):
+        return {"n": size, "dtype": dtype, "device": "cuda"}
+
+    bench = Benchmark(
+        op_name="randperm",
+        torch_op=torch.randperm,
+        arg_func=None,
+        dtypes=[torch.int32, torch.int64],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=randperm_args,
+    )
+    bench.run()
