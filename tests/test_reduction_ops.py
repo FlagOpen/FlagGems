@@ -155,40 +155,85 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("size_average", [None, True, False])
-@pytest.mark.parametrize("reduce", [None, True, False])
+@pytest.mark.parametrize("label_smoothing", [0, 0.1, 1])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
-def test_accuracy_cross_entropy_loss(
-    shape, dtype, size_average, reduce, ignore_index, reduction
+def test_accuracy_cross_entropy_loss_indices(
+    shape, dtype, ignore_index, reduction, label_smoothing
 ):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     dim = 1
     up_limit = shape[dim] - 1
     target_shape = list(shape)
     del target_shape[dim]
+
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     target = torch.randint(0, up_limit, target_shape, device="cuda")
+    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
-    criterion = torch.nn.CrossEntropyLoss(
-        size_average=size_average,
-        reduce=reduce,
+    ref_weight = to_reference(weight, True)
+    ref_criterion = torch.nn.CrossEntropyLoss(
+        weight=ref_weight,
         ignore_index=ignore_index,
         reduction=reduction,
+        label_smoothing=label_smoothing,
+    )
+    res_criterion = torch.nn.CrossEntropyLoss(
+        weight=weight,
+        ignore_index=ignore_index,
+        reduction=reduction,
+        label_smoothing=label_smoothing,
     )
 
-    ref_out = criterion(ref_inp, ref_target)
+    ref_out = ref_criterion(ref_inp, ref_target)
     with flag_gems.use_gems():
-        res_out = criterion(inp, target)
-    gems_assert_close(res_out, ref_out, dtype)
+        res_out = res_criterion(inp, target)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.parametrize("label_smoothing", [0, 0.1, 1])
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_cross_entropy_loss_probabilities(
+    shape, dtype, reduction, label_smoothing
+):
+    dim = 1
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    target = torch.randn(shape, dtype=dtype, device="cuda")
+    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target, True)
+    ref_weight = to_reference(weight, True)
+    ref_criterion = torch.nn.CrossEntropyLoss(
+        weight=ref_weight,
+        reduction=reduction,
+        label_smoothing=label_smoothing,
+    )
+    res_criterion = torch.nn.CrossEntropyLoss(
+        weight=weight,
+        reduction=reduction,
+        label_smoothing=label_smoothing,
+    )
+
+    ref_out = ref_criterion(ref_inp, ref_target)
+    with flag_gems.use_gems():
+        res_out = res_criterion(inp, target)
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -625,3 +670,22 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index_select(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    index_size = inp.size(dim)
+    from math import floor
+
+    index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
+
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    with flag_gems.use_gems():
+        res_out = torch.index_select(inp, dim, index)
+
+    gems_assert_equal(res_out, ref_out)
