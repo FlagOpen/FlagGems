@@ -4,7 +4,7 @@ from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
-from .arange import arange
+from .arange import arange, arange_start
 from .argmax import argmax
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -104,6 +104,7 @@ __all__ = [
     "abs",
     "addmm",
     "arange",
+    "arange_start",
     "bitwise_and_tensor",
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",

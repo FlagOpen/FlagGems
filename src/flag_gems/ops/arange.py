@@ -21,9 +21,10 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     tl.store(y_ptr + cols, arange_val, mask=mask < size)
 
 
-def arange(start, end, step=1, dtype=None, layout=None, device=None, pin_memory=None):
+def arange_start(
+    start, end, step=1, dtype=None, layout=None, device=None, pin_memory=None
+):
     logging.debug("GEMS ARANGE")
-
     if dtype is torch.int64:
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
@@ -47,3 +48,7 @@ def arange(start, end, step=1, dtype=None, layout=None, device=None, pin_memory=
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
     arange_func[grid,](result, start, end, step, size, BLOCK_SIZE)
     return result
+
+
+def arange(end, step=1, dtype=None, layout=None, device=None, pin_memory=None):
+    arange_start(0, end, step, dtype, layout, device, pin_memory)
