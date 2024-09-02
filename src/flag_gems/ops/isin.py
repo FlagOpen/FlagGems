@@ -4,21 +4,13 @@ import triton.language as tl
 
 from flag_gems.utils.libentry import libentry
 
+from .all import reduce_all
+from .any import reduce_any
 from .unique import _unique2
 
 
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
     return BLOCK_M, min(BLOCK_N, triton.next_power_of_2(N)), num_warps
-
-
-@triton.jit
-def all_fn(a, b):
-    return a and b
-
-
-@triton.jit
-def any_fn(a, b):
-    return a or b
 
 
 @triton.jit
@@ -52,7 +44,7 @@ def isin_by_comparation_impl(
             tl.where(invert, block and (in0 != in1), block or (in0 == in1)),
             invert,
         )
-    out = tl.reduce(block, axis=1, combine_fn=(all_fn if invert else any_fn))
+    out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
     tl.store(out_ptr, out[:, None], row_mask)
 
 
@@ -67,14 +59,15 @@ def isin_by_comparation_kernel(
     BLOCK_M: tl.constexpr,  # tile_size
     BLOCK_N: tl.constexpr,  # tile_size_1
     tiles_per_cta: int,
-    one_tile_per_cta: tl.constexpr,
     invert: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * num_ctas if j > 0 else pid
         isin_by_comparation_impl(
-            pid,
+            global_pid,
             in0_ravel_ptr,
             in1_ravel_ptr,  # in
             out_ptr,  # out
@@ -84,20 +77,6 @@ def isin_by_comparation_kernel(
             BLOCK_N,
             invert,
         )
-    else:  # grid-stride-loop style kernel
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * num_ctas if j > 0 else pid
-            isin_by_comparation_impl(
-                global_pid,
-                in0_ravel_ptr,
-                in1_ravel_ptr,  # in
-                out_ptr,  # out
-                M,
-                N,
-                BLOCK_M,
-                BLOCK_N,
-                invert,
-            )
 
 
 def isin_by_comparation(
@@ -133,7 +112,6 @@ def isin_by_comparation(
             BLOCK_M,
             BLOCK_N,
             tiles_per_cta=tiles_per_cta,
-            one_tile_per_cta=tiles_per_cta == 1,
             invert=invert,
             num_warps=num_warps,
         )
@@ -185,14 +163,15 @@ def isin_by_search_kernel(
     N: int,  # num_tasks_1
     BLOCK_M: tl.constexpr,  # tile_size
     tiles_per_cta: int,
-    one_tile_per_cta: tl.constexpr,
     invert: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * num_ctas if j > 0 else pid
         isin_by_search_impl(
-            pid,
+            global_pid,
             in0_ravel_ptr,
             in1_sorted_ptr,  # in
             out_ptr,  # out
@@ -201,19 +180,6 @@ def isin_by_search_kernel(
             BLOCK_M,
             invert,
         )
-    else:  # grid-stride-loop style kernel
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * num_ctas if j > 0 else pid
-            isin_by_search_impl(
-                global_pid,
-                in0_ravel_ptr,
-                in1_sorted_ptr,  # in
-                out_ptr,  # out
-                M,
-                N,
-                BLOCK_M,
-                invert,
-            )
 
 
 def isin_by_search(
@@ -262,7 +228,6 @@ def isin_by_search(
             N,
             BLOCK_M,
             tiles_per_cta=tiles_per_cta,
-            one_tile_per_cta=tiles_per_cta == 1,
             invert=invert,
             num_warps=num_warps,
         )
