@@ -16,7 +16,7 @@ from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
-from .cumsum import cumsum
+from .cumsum import cumsum, normed_cumsum
 from .div import div_mode, floor_divide, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
@@ -27,6 +27,7 @@ from .exponential_ import exponential_
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .gather import gather, gather_out
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -48,9 +49,11 @@ from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
 from .mul import mul
+from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nonzero import nonzero
 from .normal import (
     normal_float_float,
     normal_float_tensor,
@@ -60,6 +63,7 @@ from .normal import (
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad import pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
@@ -72,6 +76,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .scatter import scatter_reduce, scatter_src
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
@@ -114,7 +119,9 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "pad",
     "cumsum",
+    "normed_cumsum",
     "true_divide",
     "div_mode",
     "floor_divide",
@@ -128,6 +135,8 @@ __all__ = [
     "eq_scalar",
     "exp",
     "exponential_",
+    "gather",
+    "gather_out",
     "flip",
     "ones_like",
     "full_like",
@@ -153,6 +162,7 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "multinomial",
     "maximum",
     "minimum",
     "rand",
@@ -176,6 +186,8 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
+    "scatter_src",
+    "scatter_reduce",
     "sigmoid",
     "silu",
     "sin",
@@ -207,4 +219,5 @@ __all__ = [
     "slice_scatter",
     "masked_fill",
     "_unique2",
+    "nonzero",
 ]

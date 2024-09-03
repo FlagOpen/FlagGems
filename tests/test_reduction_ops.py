@@ -7,6 +7,9 @@ from .accuracy_utils import (
     DIM_LIST,
     DIMS_LIST,
     FLOAT_DTYPES,
+    INT_DTYPES,
+    ONE_DIM_SHAPES,
+    REDUCTION_MNK_SHAPES,
     REDUCTION_SHAPES,
     gems_assert_close,
     gems_assert_equal,
@@ -236,11 +239,20 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "shape", REDUCTION_SHAPES + ONE_DIM_SHAPES + REDUCTION_MNK_SHAPES
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
-    dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    if shape in REDUCTION_MNK_SHAPES:
+        dim = 1
+    else:
+        dim = -1
+
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
@@ -248,6 +260,26 @@ def test_accuracy_cumsum(shape, dtype):
         res_out = torch.cumsum(inp, dim=dim)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.parametrize(
+    "shape", REDUCTION_SHAPES + ONE_DIM_SHAPES + REDUCTION_MNK_SHAPES
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_nonzero(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, False)
+
+    ref_out = torch.nonzero(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nonzero(inp)
+
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize(
@@ -672,6 +704,212 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
+    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    size_dim = min(src_shape[dim], inp_shape[dim])
+
+    import random
+
+    index_shape = [
+        random.randint(1, min(src_shape[0], inp_shape[0])),
+        random.randint(1, min(src_shape[1], inp_shape[1])),
+        random.randint(1, min(src_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    # ref_src = to_reference(src)
+    ref_out = torch.scatter(inp, dim, index, src)
+    with flag_gems.use_gems():
+        from src.flag_gems.ops import scatter_src
+
+        # res_out = scatter_src(inp, dim, index, src)
+        res_out = scatter_src(inp, dim, index, src)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("src_shape", [(2, 2, 2)])
+@pytest.mark.parametrize("inp_shape", [(3, 3, 3)])
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
+    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    size_dim = min(src_shape[dim], inp_shape[dim])
+
+    import random
+
+    index_shape = [
+        random.randint(1, min(src_shape[0], inp_shape[0])),
+        random.randint(1, min(src_shape[1], inp_shape[1])),
+        random.randint(1, min(src_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    # ref_src = to_reference(src)
+    ref_out = torch.scatter(inp, dim, index, src, reduce="add")
+    with flag_gems.use_gems():
+        from src.flag_gems.ops import scatter_reduce
+
+        # res_out = torch.scatter(inp, dim, index, src, reduce="add")
+        res_out = scatter_reduce(inp, dim, index, src, reduce="add")
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
+    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    size_dim = min(src_shape[dim], inp_shape[dim])
+
+    import random
+
+    index_shape = [
+        random.randint(1, min(src_shape[0], inp_shape[0])),
+        random.randint(1, min(src_shape[1], inp_shape[1])),
+        random.randint(1, min(src_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    # ref_src = to_reference(src)
+    ref_out = torch.scatter(inp, dim, index, src, reduce="multiply")
+    with flag_gems.use_gems():
+        from src.flag_gems.ops import scatter_reduce
+
+        # res_out = torch.scatter(inp, dim, index, src, reduce="multiply")
+        res_out = scatter_reduce(inp, dim, index, src, reduce="multiply")
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_gather(inp_shape, dim, dtype):
+    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+    size_dim = inp_shape[dim]
+
+    import random
+
+    index_shape = [
+        random.randint(1, inp_shape[0]),
+        random.randint(1, inp_shape[1]),
+        random.randint(1, inp_shape[2]),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    ref_out = torch.gather(inp, dim, index)
+    with flag_gems.use_gems():
+        from src.flag_gems.ops import gather
+
+        # res_out = torch.gather(inp, dim, index)
+        res_out = gather(inp, dim, index)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("out_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
+    inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+    size_dim = min(out_shape[dim], inp_shape[dim])
+
+    import random
+
+    index_shape = [
+        random.randint(1, min(out_shape[0], inp_shape[0])),
+        random.randint(1, min(out_shape[1], inp_shape[1])),
+        random.randint(1, min(out_shape[2], inp_shape[2])),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+    out = torch.randn(tuple(index_shape), dtype=dtype, device="cuda")
+
+    m, n, o = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            for k in range(1 if dim == 2 else o):
+                ii = [i, j, k]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    ref_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
+    with flag_gems.use_gems():
+        from src.flag_gems.ops import gather_out
+
+        # res_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
+        res_out = gather_out(inp, dim, index, sparse_grad=False, out=out)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -742,9 +980,9 @@ def test_accuracy_index_select(shape, dim, dtype):
 
     index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
 
-    ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    # ref_inp = to_reference(inp)
+    # ref_index = to_reference(index)
+    ref_out = torch.index_select(inp, dim, index)
     with flag_gems.use_gems():
         from src.flag_gems.ops import index_select
 

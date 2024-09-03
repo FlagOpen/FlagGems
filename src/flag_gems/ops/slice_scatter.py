@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import libentry, offset_calculator, restride_dim
 
 
 def cfggen():
@@ -83,9 +83,9 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
     strides = list(out.stride())
     strides[dim] *= step
     indices = (
-        offsetCalculator(out_strided, idx, strides, dim, isInp=False) + storage_offset
+        offset_calculator(out_strided, idx, strides, dim, isInp=False) + storage_offset
     )
-    src_offsets = offsetCalculator(src, idx, src.stride(), dim, isInp=False)
+    src_offsets = offset_calculator(src, idx, src.stride(), dim, isInp=False)
 
     N = valid_shape[src.ndim - 1]
     M = src.numel() // N
