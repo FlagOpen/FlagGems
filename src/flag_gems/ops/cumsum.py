@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from ..utils import libentry
+
 
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
 def scan_part_sum_kernel(
