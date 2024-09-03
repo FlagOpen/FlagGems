@@ -42,6 +42,7 @@ from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill
+from .masked_select import masked_select
 from .max import max, max_dim
 from .maximum import maximum
 from .mean import mean, mean_dim
@@ -216,4 +217,5 @@ __all__ = [
     "masked_fill",
     "_unique2",
     "nonzero",
+    "masked_select",
 ]
