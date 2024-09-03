@@ -10,10 +10,7 @@ from .sum import sum
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_N": n}, num_warps=4)
-        for n in [256, 512, 1024]
-    ],
+    configs=[triton.Config({"BLOCK_N": n}, num_warps=4) for n in [256, 512, 1024]],
     key=["N"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -41,7 +38,7 @@ def nll_loss_2d_fwd_kernel(
     w_tgt = tl.load(w_ptrs, mask=mask_n, other=0).to(tl.float32)
     tl.store(w_tgt_ptr + offsets_n, w_tgt, mask=(mask_n & ignore_mask))
 
-    inp_tgt_ptrs = inp_ptr + offsets_n + tgt * C
+    inp_tgt_ptrs = inp_ptr + offsets_n * C + tgt
     inp_tgt = tl.load(inp_tgt_ptrs, mask=mask_n & mask_tgt, other=-float("inf")).to(
         tl.float32
     )
@@ -60,12 +57,12 @@ def nll_loss_2d_fwd_kernel(
 )
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_2d_bwd_kernel(
-    inp_ptr,
+    out_grad_ptr,
     tgt_ptr,
     w_ptr,
-    w_tgt_ptr,
-    out_ptr,
+    inp_grad_ptr,
     ignore_index,
+    total_weight,
     N,
     C,
     BLOCK_N: tl.constexpr,
@@ -73,7 +70,25 @@ def nll_loss_2d_bwd_kernel(
 ):
     pid_n = tl.program_id(0)
     pid_c = tl.program_id(1)
-    # TODO
+    offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offsets_c = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+
+    mask_n = offsets_n < N
+    mask_block = offsets_n[:, None] < N and offsets_c[None, :] < C
+
+    tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
+    out_grad = (tl.load(out_grad_ptr + offsets_n, mask=mask_n, other=0).to(tl.float32))[
+        :, None
+    ]
+    ignore_mask = (tgt != ignore_index)[:, None]
+
+    w_ptrs = w_ptr + tgt
+    w_tgt = tl.load(w_ptrs, mask=mask_n, other=0).to(tl.float32)[:, None]
+
+    mask_inp = mask_block and offsets_c[None, :] == tgt[:, None]
+    inp_grad = -1 * out_grad * w_tgt / total_weight
+    inp_grad_ptrs = inp_grad_ptr + offsets_n[:, None] * C + offsets_c[None, :]
+    tl.store(inp_grad_ptrs, inp_grad.to(tl.float32), mask=(mask_inp & ignore_mask))
 
 
 @libentry()
@@ -104,21 +119,21 @@ def nll_loss_multi_fwd_kernel(
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
-    tgt_mask = offset_d < D
-    tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
+    mask_tgt = offset_d < D
+    tgt = tl.load(tgt_ptrs, mask=mask_tgt, other=0)
 
     ignore_mask = not (tgt == ignore_index)
 
     w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)
+    w_tgt = tl.load(w_ptrs, mask=mask_tgt, other=0).to(tl.float32)
     w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=(tgt_mask & ignore_mask))
+    tl.store(w_tgt_ptrs, w_tgt, mask=(mask_tgt & ignore_mask))
 
     inp_tgt_ptrs = inp_ptr + pid_n * C * D + tgt * D + offset_d
-    inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(tl.float32)
+    inp_tgt = tl.load(inp_tgt_ptrs, mask=mask_tgt, other=-float("inf")).to(tl.float32)
     out = inp_tgt * w_tgt * -1
     out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out, mask=(tgt_mask & ignore_mask))
+    tl.store(out_ptrs, out, mask=(mask_tgt & ignore_mask))
 
 
 @libentry()
@@ -149,15 +164,15 @@ def nll_loss_multi_bwd_kernel(
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
-    tgt_mask = offset_d < D
-    tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
+    mask_tgt = offset_d < D
+    tgt = tl.load(tgt_ptrs, mask=mask_tgt, other=0)
 
     ignore_mask = (tgt != ignore_index)[None, :]
 
     w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
+    w_tgt = tl.load(w_ptrs, mask=mask_tgt, other=0).to(tl.float32)[None, :]
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
-    out_grad = (tl.load(out_grad_ptrs, mask=tgt_mask, other=0)).to(tl.float32)[None, :]
+    out_grad = (tl.load(out_grad_ptrs, mask=mask_tgt, other=0).to(tl.float32))[None, :]
 
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
@@ -208,12 +223,10 @@ class NLLLoss(torch.autograd.Function):
                     inp, tgt, w, w_tgt, out, ignore_index, N, C, D
                 )
         else:
-            grid = lambda meta: (
-                triton.cdiv(N, meta["BLOCK_N"],)
-            )
+            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
             with torch.cuda.device(inp.device):
                 nll_loss_2d_fwd_kernel[grid](
-                    inp, tgt, w, w_tgt, out, ignore_index, N, C, D
+                    inp, tgt, w, w_tgt, out, ignore_index, N, C
                 )
 
         ctx.save_for_backward(inp, tgt, w)
@@ -239,7 +252,6 @@ class NLLLoss(torch.autograd.Function):
     def backward(ctx, out_grad):
         logging.debug("GEMS NLLLoss BWD")
         inp, tgt, w = ctx.saved_tensors
-        print("tgt", tgt)
         N = ctx.N
         C = ctx.C
         D = ctx.D
@@ -261,7 +273,7 @@ class NLLLoss(torch.autograd.Function):
                 triton.cdiv(C, meta["BLOCK_C"]),
             )
             nll_loss_2d_bwd_kernel[grid](
-                out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C, D
+                out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C
             )
 
         return inp_grad, None, None, None, None, None
