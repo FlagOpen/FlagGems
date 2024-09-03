@@ -857,14 +857,13 @@ def test_accuracy_gather(inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    # ref_inp = to_reference(inp)
-    # ref_index = to_reference(index)
-    ref_out = torch.gather(inp, dim, index)
-    with flag_gems.use_gems():
-        from src.flag_gems.ops import gather
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.gather(ref_inp, dim, ref_index)
 
-        # res_out = torch.gather(inp, dim, index)
-        res_out = gather(inp, dim, index)
+    from src.flag_gems.ops import gather
+
+    res_out = gather(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -898,14 +897,13 @@ def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    # ref_inp = to_reference(inp)
-    # ref_index = to_reference(index)
-    ref_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
-    with flag_gems.use_gems():
-        from src.flag_gems.ops import gather_out
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.gather(ref_inp, dim, ref_index, sparse_grad=False, out=out)
 
-        # res_out = torch.gather(inp, dim, index, sparse_grad=False, out=out)
-        res_out = gather_out(inp, dim, index, sparse_grad=False, out=out)
+    from src.flag_gems.ops import gather_out
+
+    res_out = gather_out(inp, dim, index, sparse_grad=False, out=out)
 
     gems_assert_equal(res_out, ref_out)
 
