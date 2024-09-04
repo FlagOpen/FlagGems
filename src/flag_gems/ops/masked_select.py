@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import broadcastable_to, libentry
+from ..utils import broadcastable, libentry
 
 
 def cfggen():
@@ -44,14 +44,10 @@ def masked_select(inp, mask):
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
 
-    if broadcastable_to(mask_shape, inp_shape):
-        mask = mask.expand(inp.shape)
-    elif broadcastable_to(inp_shape, mask_shape):
-        inp = inp.expand(mask.shape)
-    else:
-        raise RuntimeError(
-            "The shapes of the `mask` and the `input` tensor must be broadcastable"
-        )
+    assert broadcastable(
+        inp_shape, mask_shape
+    ), "The shapes of the `mask` and the `input` tensor must be broadcastable"
+    inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()
     mask = mask.contiguous()
