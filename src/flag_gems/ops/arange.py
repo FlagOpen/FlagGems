@@ -50,5 +50,7 @@ def arange_start(
     return result
 
 
-def arange(end, step=1, dtype=None, layout=None, device=None, pin_memory=None):
-    arange_start(0, end, step, dtype, layout, device, pin_memory)
+def arange(end, *, dtype=None, layout=None, device=None, pin_memory=None):
+    return arange_start(
+        0, end, 1, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
+    )
