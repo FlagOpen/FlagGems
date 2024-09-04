@@ -379,7 +379,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 @pytest.mark.parametrize("start", [0, 1, 3])
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
-@pytest.mark.parametrize("dtype", [torch.int64, torch.float32])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [None])
 def test_arange(start, step, end, dtype):
     res_out = torch.arange(start, end, step, dtype=dtype, device="cuda")
     with flag_gems.use_gems():

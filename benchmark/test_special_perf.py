@@ -125,16 +125,7 @@ def test_perf_pad():
 
 def test_perf_arange():
     def arange_kwargs(dtype, batch, size):
-        # return {
-        #     "start": 0,
-        #     "step": 1,
-        #     "end": batch * size,
-        #     "device": "cuda",
-        #     "dtype": dtype,
-        # }
-
         return {
-            # "start": 0,
             "end": batch * size,
             "device": "cuda",
             "dtype": dtype,
