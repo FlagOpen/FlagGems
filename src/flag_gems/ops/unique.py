@@ -86,30 +86,20 @@ def output_counts_flat_kernel(
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
-    one_tile_per_cta: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * num_ctas
         output_counts_flat_impl(
-            pid,
+            global_pid,
             idx_ptr,
             origin_num_tasks,  # in
             counts_ptr,  # out
             num_tasks,
             tile_size,
         )
-    else:  # grid-stride-loop style kernel
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * num_ctas if j > 0 else pid
-            output_counts_flat_impl(
-                global_pid,
-                idx_ptr,
-                origin_num_tasks,  # in
-                counts_ptr,  # out
-                num_tasks,
-                tile_size,
-            )
 
 
 @triton.jit
@@ -157,13 +147,14 @@ def quick_output_flat_kernel(
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
-    one_tile_per_cta: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * num_ctas
         quick_output_flat_impl(
-            pid,
+            global_pid,
             sorted_data_ptr,
             idx_ptr,
             origin_num_tasks,  # in
@@ -172,19 +163,6 @@ def quick_output_flat_kernel(
             num_tasks,
             tile_size,
         )
-    else:  # grid-stride-loop style kernel
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * num_ctas if j > 0 else pid
-            quick_output_flat_impl(
-                global_pid,
-                sorted_data_ptr,
-                idx_ptr,
-                origin_num_tasks,  # in
-                data_out_ptr,
-                counts_ptr,  # out
-                num_tasks,
-                tile_size,
-            )
 
 
 @triton.jit
@@ -214,7 +192,7 @@ def local_quick_unique_flat_impl(
     cumsum = tl.cumsum(ne_result)
 
     # local_id or local_unique
-    local_unique_offset = cumsum - (1 if global_pid > 0 else 0)
+    local_unique_offset = cumsum - tl.where(global_pid > 0, 1, 0)
     local_unique_mask = (local_unique_offset >= 0) & mask
     if return_counts:
         # origin_idx: scatter_(to=cumsum, i0)
@@ -247,14 +225,15 @@ def local_quick_unique_flat_kernel(
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
-    one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * num_ctas
         local_quick_unique_flat_impl(
-            pid,
+            global_pid,
             sorted_data_ptr,  # in
             local_unique_ptr,
             origin_idx_ptr,
@@ -264,20 +243,6 @@ def local_quick_unique_flat_kernel(
             tile_size,
             return_counts,
         )
-    else:  # grid-stride-loop style kernel
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * num_ctas if j > 0 else pid
-            local_quick_unique_flat_impl(
-                global_pid,
-                sorted_data_ptr,  # in
-                local_unique_ptr,
-                origin_idx_ptr,
-                tile_sum_ptr,  # out
-                global_num_ctas,
-                num_tasks,
-                tile_size,
-                return_counts,
-            )
 
 
 @triton.jit
@@ -433,7 +398,6 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
             num_tasks,
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta == 1,
             return_counts=return_counts,
             num_warps=num_warps,
         )
@@ -469,7 +433,6 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
                 out_size,
                 tiles_per_cta,
                 tile_size,
-                one_tile_per_cta=tiles_per_cta == 1,
                 num_warps=num_warps,
             )
 
@@ -520,13 +483,14 @@ def local_ne_flat_kernel(
     num_tasks: int,
     tiles_per_cta: int,
     tile_size: tl.constexpr,
-    one_tile_per_cta: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
-    if one_tile_per_cta:  # monolitic kernel style
+    # grid-stride-loop style kernel
+    for j in range(0, tiles_per_cta):
+        global_pid = pid + j * num_ctas
         local_ne_flat_impl(
-            pid,
+            global_pid,
             sorted_data_ptr,  # in
             ne_result_ptr,
             tile_sum_ptr,  # out
@@ -534,18 +498,6 @@ def local_ne_flat_kernel(
             num_tasks,
             tile_size,
         )
-    else:  # grid-stride-loop style kernel
-        for j in range(0, tiles_per_cta):
-            global_pid = pid + j * num_ctas if j > 0 else pid
-            local_ne_flat_impl(
-                global_pid,
-                sorted_data_ptr,  # in
-                ne_result_ptr,
-                tile_sum_ptr,  # out
-                global_num_ctas,
-                num_tasks,
-                tile_size,
-            )
 
 
 @triton.jit
@@ -720,7 +672,6 @@ def sorted_indices_unique_flat(
             num_tasks,
             tiles_per_cta=tiles_per_cta,
             tile_size=tile_size,
-            one_tile_per_cta=tiles_per_cta == 1,
             num_warps=num_warps,
         )
         global_cumsum_flat_kernel[grid](
@@ -753,7 +704,6 @@ def sorted_indices_unique_flat(
                 out_size,
                 tiles_per_cta,
                 tile_size,
-                one_tile_per_cta=tiles_per_cta == 1,
                 num_warps=num_warps,
             )
 
@@ -809,7 +759,6 @@ def simple_unique_flat(
                 num_tasks=out_size,
                 tiles_per_cta=1,
                 tile_size=triton.next_power_of_2(out_size),
-                one_tile_per_cta=True,
                 num_warps=8,
             )
     return data_out[:out_size], inverse_indices, counts

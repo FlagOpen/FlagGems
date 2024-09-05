@@ -1,3 +1,4 @@
+import math
 import torch
 import triton
 import triton.language as tl
@@ -65,7 +66,7 @@ def isin_by_comparation_kernel(
     num_ctas = tl.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
-        global_pid = pid + j * num_ctas if j > 0 else pid
+        global_pid = pid + j * num_ctas
         isin_by_comparation_impl(
             global_pid,
             in0_ravel_ptr,
@@ -126,6 +127,7 @@ def isin_by_search_impl(
     out_ptr: tl.tensor,  # out
     M: int,  # num_tasks
     N: int,  # num_tasks_1
+    log_n: tl.constexpr,
     BLOCK_M: tl.constexpr,  # tile_size
     invert: tl.constexpr,
 ):
@@ -141,7 +143,7 @@ def isin_by_search_impl(
     start = tl.zeros_like(r)
     end = start + N
     while_mask = start < end
-    while tl.sum(tl.where(while_mask, out, 1)) != BLOCK_M:
+    for i in range(log_n):
         mid = tl.where(while_mask, start + (end - start) // 2, 0)
         mid_val = tl.load(in1_sorted_ptr + mid, mask=while_mask)
         out = tl.where(while_mask, out or (mid_val == in0_ravel), out)  # found
@@ -161,6 +163,7 @@ def isin_by_search_kernel(
     out_ptr: tl.tensor,  # out
     M: int,  # num_tasks
     N: int,  # num_tasks_1
+    log_n: tl.constexpr,
     BLOCK_M: tl.constexpr,  # tile_size
     tiles_per_cta: int,
     invert: tl.constexpr,
@@ -169,7 +172,7 @@ def isin_by_search_kernel(
     num_ctas = tl.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
-        global_pid = pid + j * num_ctas if j > 0 else pid
+        global_pid = pid + j * num_ctas
         isin_by_search_impl(
             global_pid,
             in0_ravel_ptr,
@@ -177,6 +180,7 @@ def isin_by_search_kernel(
             out_ptr,  # out
             M,
             N,
+            log_n,
             BLOCK_M,
             invert,
         )
@@ -215,6 +219,7 @@ def isin_by_search(
         _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 32)
     else:
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
+    log_n = int(math.log2(N)) + 1
     num_ctas = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * num_ctas)
     grid = (num_ctas,)
@@ -226,6 +231,7 @@ def isin_by_search(
             out,  # out
             M,
             N,
+            log_n,
             BLOCK_M,
             tiles_per_cta=tiles_per_cta,
             invert=invert,
