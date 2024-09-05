@@ -64,10 +64,10 @@ def isin_by_comparation_kernel(
     invert: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    num_ctas = tl.num_programs(0)
+    ctas_num = tl.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
-        global_pid = pid + j * num_ctas
+        global_pid = pid + j * ctas_num
         isin_by_comparation_impl(
             global_pid,
             in0_ravel_ptr,
@@ -100,9 +100,9 @@ def isin_by_comparation(
         BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 256, N, 8)
     else:
         BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
-    num_ctas = min(65536, triton.cdiv(M, BLOCK_M))
-    tiles_per_cta = triton.cdiv(M, BLOCK_M * num_ctas)
-    grid = (num_ctas,)
+    ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
+    tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
+    grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
     with torch.cuda.device(in0_ravel.device.index):
         isin_by_comparation_kernel[grid](
@@ -170,10 +170,10 @@ def isin_by_search_kernel(
     invert: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    num_ctas = tl.num_programs(0)
+    ctas_num = tl.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
-        global_pid = pid + j * num_ctas
+        global_pid = pid + j * ctas_num
         isin_by_search_impl(
             global_pid,
             in0_ravel_ptr,
@@ -221,9 +221,9 @@ def isin_by_search(
     else:
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
     log_n = int(math.log2(N)) + 1
-    num_ctas = min(65536, triton.cdiv(M, BLOCK_M))
-    tiles_per_cta = triton.cdiv(M, BLOCK_M * num_ctas)
-    grid = (num_ctas,)
+    ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
+    tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
+    grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
     with torch.cuda.device(in0_ravel.device.index):
         isin_by_search_kernel[grid](
