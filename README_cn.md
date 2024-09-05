@@ -85,11 +85,11 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
 - 支持融合算子: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
 
 ### v2.1
-- 支持Tensor类算子：where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad  
-- 支持神经网络类算子：embedding  
-- 支持基础数学算子：allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum  
-- 支持分布类算子：normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like  
-- 支持科学计算算子：erf, resolve_conj, resolve_neg  
+- 支持Tensor类算子：where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
+- 支持神经网络类算子：embedding
+- 支持基础数学算子：allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
+- 支持分布类算子：normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- 支持科学计算算子：erf, resolve_conj, resolve_neg
 
 ## 快速入门
 
