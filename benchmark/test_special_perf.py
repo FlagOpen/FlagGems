@@ -161,22 +161,6 @@ def test_perf_arange():
     bench.run()
 
 
-def test_perf_unique():
-    def unique_kwargs(dtype, batch, size):
-        return {"sorted": True, "return_inverse": True, "return_counts": False}
-
-    bench = Benchmark(
-        op_name="unique",
-        torch_op=torch.unique,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=unique_kwargs,
-    )
-    bench.run()
-
-
 def test_perf_isin():
     bench = Benchmark(
         op_name="isin",
@@ -187,4 +171,3 @@ def test_perf_isin():
         sizes=SIZES,
     )
     bench.run()
-
