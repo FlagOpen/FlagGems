@@ -14,7 +14,6 @@ __all__ = [
     "dim_compress",
     "restride_dim",
     "offset_calculator",
-    "offsetCalculator",
     "broadcastable_to",
     "broadcastable",
 ]
