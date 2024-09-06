@@ -4,6 +4,7 @@ from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
+from .arange import arange, arange_start
 from .argmax import argmax
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -35,6 +36,7 @@ from .gt import gt, gt_scalar
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
+from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -42,6 +44,7 @@ from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill
+from .masked_select import masked_select
 from .max import max, max_dim
 from .maximum import maximum
 from .mean import mean, mean_dim
@@ -72,6 +75,7 @@ from .randn import randn
 from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
+from .repeat import repeat
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -106,6 +110,8 @@ __all__ = [
     "add",
     "abs",
     "addmm",
+    "arange",
+    "arange_start",
     "bitwise_and_tensor",
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",
@@ -148,6 +154,7 @@ __all__ = [
     "index_select",
     "isclose",
     "isfinite",
+    "isin",
     "isinf",
     "isnan",
     "layer_norm",
@@ -216,4 +223,6 @@ __all__ = [
     "masked_fill",
     "_unique2",
     "nonzero",
+    "repeat",
+    "masked_select",
 ]

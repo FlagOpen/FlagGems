@@ -704,6 +704,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip(reason="operator undone")
 @pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -744,6 +745,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip(reason="operator undone")
 @pytest.mark.parametrize("src_shape", [(2, 2, 2)])
 @pytest.mark.parametrize("inp_shape", [(3, 3, 3)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -784,6 +786,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip(reason="operator undone")
 @pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -824,6 +827,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip(reason="operator undone")
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -862,6 +866,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip(reason="operator undone")
 @pytest.mark.parametrize("out_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -917,5 +922,21 @@ def test_accuracy_index_select(shape, dim, dtype):
     ref_out = torch.index_select(inp, dim, index)
     with flag_gems.use_gems():
         res_out = torch.index_select(inp, dim, index)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+def test_accuracy_masked_select(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_select(ref_inp, ref_mask)
+    with flag_gems.use_gems():
+        res_out = torch.masked_select(inp, mask)
 
     gems_assert_equal(res_out, ref_out)

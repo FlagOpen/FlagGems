@@ -6,6 +6,7 @@ from .performance_utils import (
     POINTWISE_BATCH,
     SIZES,
     Benchmark,
+    binary_int_args,
     unary_int_arg,
 )
 
@@ -136,5 +137,37 @@ def test_perf_pad():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=padding_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_arange():
+    def arange_kwargs(dtype, batch, size):
+        return {
+            "end": batch * size,
+            "device": "cuda",
+            "dtype": dtype,
+        }
+
+    bench = Benchmark(
+        op_name="arange",
+        torch_op=torch.arange,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=arange_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_isin():
+    bench = Benchmark(
+        op_name="isin",
+        torch_op=torch.isin,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
     )
     bench.run()

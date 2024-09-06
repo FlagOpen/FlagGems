@@ -3,7 +3,7 @@ import torch
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
-__version__ = "2.0"
+__version__ = "2.1"
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -12,6 +12,9 @@ def enable(lib=aten_lib):
     lib.impl("abs", abs, "CUDA")
     lib.impl("add.Tensor", add, "CUDA")
     lib.impl("addmm", addmm, "CUDA")
+    lib.impl("arange.start_step", arange_start, "CUDA")
+    lib.impl("arange.start", arange_start, "CUDA")
+    lib.impl("arange", arange, "CUDA")
     lib.impl("bitwise_and.Tensor", bitwise_and_tensor, "CUDA")
     lib.impl("bitwise_and.Scalar", bitwise_and_scalar, "CUDA")
     lib.impl("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, "CUDA")
@@ -51,6 +54,9 @@ def enable(lib=aten_lib):
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
     lib.impl("isfinite", isfinite, "CUDA")
+    lib.impl("isin.Tensor_Tensor", isin, "CUDA")
+    lib.impl("isin.Scalar_Tensor", isin, "CUDA")
+    lib.impl("isin.Tensor_Scalar", isin, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("minimum", minimum, "CUDA")
@@ -137,6 +143,8 @@ def enable(lib=aten_lib):
     lib.impl("masked_fill", masked_fill, "CUDA")
     lib.impl("_unique2", _unique2, "CUDA")
     lib.impl("nonzero", nonzero, "CUDA")
+    lib.impl("repeat", repeat, "CUDA")
+    lib.impl("masked_select", masked_select, "CUDA")
 
 
 class use_gems:
