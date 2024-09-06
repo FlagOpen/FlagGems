@@ -188,8 +188,8 @@ def restride_dim(src, dim, shape, step=0, storage_offset=None):
 
 
 def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [256, 1024, 2048, 4096]
+    block_m = [4, 8]
+    block_n = [512, 1024, 2048]
     configs = [
         triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
         for m in block_m
@@ -212,37 +212,51 @@ def add_on_kernel(
 ):
     pid_x = tl.program_id(axis=0)
     pid_y = tl.program_id(axis=1)
-    rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)
     rows_mask = rows_offset < M
 
-    cols_offset = pid_y + tl.arange(0, BLOCK_N)[None, :]
+    cols_offset = pid_y + tl.arange(0, BLOCK_N)
     cols_mask = cols_offset < N
-    block_mask = rows_mask and cols_mask
+    block_mask = rows_mask[:, None] & cols_mask[None, :]
 
-    offsets = rows_offset * N + cols_offset
-    cur_idx = tl.load(idx + offsets, mask=block_mask, other=1)
+    offsets = rows_offset[:, None] * N + cols_offset[None, :]
+    cur_idx = tl.load(idx + offsets, mask=block_mask, other=0)
+
     mod = cur_idx % cur_shape
     res = mod * cur_strides
+
     tl.store(add_on + offsets, res, mask=block_mask)
 
 
 def offset_calculator(inp, idx, strides, dim, isInp):
     ndim = inp.ndim
     shape = list(inp.shape)
+    idx = idx.contiguous()
+
     offsets = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
     idx_dim = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
-    for d in range(0, ndim):
+
+    print("shape: ", shape)
+    N = idx.size(idx.ndim - 1)
+    M = idx.numel() // N
+    print("rows num: ", M)
+    print("cols num", N)
+
+    # Ensure grid configuration is correct
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
+    )
+
+    for d in range(ndim):
+        # Ensure correct size for add_on
         add_on = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
-        N = idx.size(idx.ndim - 1)
-        M = idx.numel() // N
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            triton.cdiv(N, meta["BLOCK_N"]),
-        )
+
         add_on_kernel[grid](idx, add_on, shape[d], strides[d], M, N)
 
-        offsets = torch.add(offsets, add_on)
+        offsets += add_on
         if d == dim:
             idx_dim = add_on
         idx = idx // shape[d]
+
     return offsets if not isInp else (offsets - idx_dim)

@@ -1,6 +1,12 @@
 from .libentry import libentry
 from .pointwise_dynamic import pointwise_dynamic
-from .shape_utils import broadcastable_to, dim_compress, offset_calculator, restride_dim
+from .shape_utils import (
+    broadcastable_to,
+    dim_compress,
+    offset_calculator,
+    offsetCalculator,
+    restride_dim,
+)
 
 __all__ = [
     "libentry",
@@ -8,5 +14,6 @@ __all__ = [
     "dim_compress",
     "restride_dim",
     "offset_calculator",
+    "offsetCalculator",
     "broadcastable_to",
 ]
