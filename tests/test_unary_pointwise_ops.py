@@ -403,7 +403,7 @@ TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 @pytest.mark.parametrize("dims", TILE_DIMS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tile(shape, dims, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
     ref_inp = to_reference(inp)
 
     ref_out = torch.tile(ref_inp, dims)
@@ -421,7 +421,7 @@ REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
 @pytest.mark.parametrize("sizes", REPEAT_SIZES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat(shape, sizes, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
     ref_inp = to_reference(inp)
     sizes = unsqueeze_tuple(sizes, inp.ndim)
 

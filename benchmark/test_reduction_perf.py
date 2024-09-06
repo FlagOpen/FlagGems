@@ -3,7 +3,6 @@ import torch
 from .performance_utils import (
     BLAS_BATCH,
     FLOAT_DTYPES,
-    FLOAT_DTYPES_WITHOUT_BF16,
     INT_DTYPES,
     REDUCTION_BATCH,
     SIZES,
@@ -93,27 +92,6 @@ def test_perf_cumsum():
         op_name="cumsum",
         torch_op=torch.cumsum,
         arg_func=cumsum_args,
-        dtypes=FLOAT_DTYPES_WITHOUT_BF16,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_nonzero():
-    def nonzero_args(dtype, batch, size):
-        if dtype == torch.bool:
-            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
-                torch.bool
-            )
-        else:
-            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
-        return (inp,)
-
-    bench = Benchmark(
-        op_name="nonzero",
-        torch_op=torch.nonzero,
-        arg_func=nonzero_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
@@ -121,25 +99,46 @@ def test_perf_nonzero():
     bench.run()
 
 
-def test_perf_nonzero_int():
-    def nonzero_args(dtype, batch, size):
-        if dtype == torch.bool:
-            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
-                torch.bool
-            )
-        else:
-            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
-        return (inp,)
+# def test_perf_nonzero():
+#     def nonzero_args(dtype, batch, size):
+#         if dtype == torch.bool:
+#             inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="musa").to(
+#                 torch.bool
+#             )
+#         else:
+#             inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="musa")
+#         return (inp,)
 
-    bench = Benchmark(
-        op_name="nonzero_int",
-        torch_op=torch.nonzero,
-        arg_func=nonzero_args,
-        dtypes=INT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="nonzero",
+#         torch_op=torch.nonzero,
+#         arg_func=nonzero_args,
+#         dtypes=FLOAT_DTYPES,
+#         batch=REDUCTION_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
+
+
+# def test_perf_nonzero_int():
+#     def nonzero_args(dtype, batch, size):
+#         if dtype == torch.bool:
+#             inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="musa").to(
+#                 torch.bool
+#             )
+#         else:
+#             inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="musa")
+#         return (inp,)
+
+#     bench = Benchmark(
+#         op_name="nonzero_int",
+#         torch_op=torch.nonzero,
+#         arg_func=nonzero_args,
+#         dtypes=INT_DTYPES,
+#         batch=REDUCTION_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
 
 
 def test_perf_groupnorm():

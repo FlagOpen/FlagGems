@@ -431,9 +431,6 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     )
     pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
 
-    if pad_mode != "constant":
-        pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
-        pad_value = None
 
     ref_pad_params = [to_reference(pad_param) for pad_param in pad_params]
 
@@ -449,7 +446,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
-@pytest.mark.parametrize("device", ["cuda", None])
+@pytest.mark.parametrize("device", ["musa", None])
 @pytest.mark.parametrize(
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.

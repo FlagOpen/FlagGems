@@ -165,7 +165,7 @@ def generate_destination_passing_padding_wrapper(
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device):")
+        code.writeline("with torch.musa.device(in0.device):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)

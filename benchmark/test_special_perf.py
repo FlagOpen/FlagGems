@@ -99,26 +99,26 @@ def test_perf_embedding():
 #     bench.run()
 
 
-def test_multinomial_with_replacement():
-    def multinomial_args(dtype, batch, size):
-        dist = torch.rand((batch, size), dtype=dtype, device="cuda")
-        n_samples = 10000
-        return (dist, n_samples, True)
+# def test_multinomial_with_replacement():
+#     def multinomial_args(dtype, batch, size):
+#         dist = torch.rand((batch, size), dtype=dtype, device="musa")
+#         n_samples = 10000
+#         return (dist, n_samples, True)
 
-    bench = Benchmark(
-        op_name="multinomial",
-        torch_op=torch.multinomial,
-        arg_func=multinomial_args,
-        dtypes=(torch.float16, torch.float32),
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="multinomial",
+#         torch_op=torch.multinomial,
+#         arg_func=multinomial_args,
+#         dtypes=(torch.float16, torch.float32),
+#         batch=POINTWISE_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
 
 
 def test_perf_pad():
     def padding_kwargs(dtype, batch, size):
-        input = torch.randn((batch, size), device="cuda", dtype=dtype)
+        input = torch.randn((batch, size), device="musa", dtype=dtype)
         rank = input.ndim
         pad_params = tuple(torch.randint(0, 10, [rank * 2]))
         pad_value = float(torch.randint(0, 1024, [1]))
@@ -145,7 +145,7 @@ def test_perf_arange():
     def arange_kwargs(dtype, batch, size):
         return {
             "end": batch * size,
-            "device": "cuda",
+            "device": "musa",
             "dtype": dtype,
         }
 

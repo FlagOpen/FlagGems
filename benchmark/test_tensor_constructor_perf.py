@@ -11,7 +11,7 @@ from .performance_utils import (
 
 def test_perf_rand():
     def rand_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
+        return {"size": (batch, size), "dtype": dtype, "device": "musa"}
 
     bench = Benchmark(
         op_name="rand",
@@ -27,7 +27,7 @@ def test_perf_rand():
 
 def test_perf_randn():
     def randn_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
+        return {"size": (batch, size), "dtype": dtype, "device": "musa"}
 
     bench = Benchmark(
         op_name="randn",
