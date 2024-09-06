@@ -236,11 +236,8 @@ def offset_calculator(inp, idx, strides, dim, isInp):
     offsets = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
     idx_dim = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
 
-    print("shape: ", shape)
     N = idx.size(idx.ndim - 1)
     M = idx.numel() // N
-    print("rows num: ", M)
-    print("cols num", N)
 
     # Ensure grid configuration is correct
     grid = lambda meta: (
