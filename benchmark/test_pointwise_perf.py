@@ -617,7 +617,7 @@ def test_perf_tile():
 
 def test_perf_repeat():
     def repeat_arg(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([batch, size], dtype=dtype, device="musa")
         inp2 = [2, 4]
         return inp1, inp2
 

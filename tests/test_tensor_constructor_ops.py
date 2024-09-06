@@ -60,8 +60,8 @@ def test_accuracy_randn_like(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     with flag_gems.use_gems():
         res_out = torch.randn_like(x)
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    mean = torch.mean(res_out.to("cpu"))
+    std = torch.std(res_out.to("cpu"))
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
 

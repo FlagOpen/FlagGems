@@ -72,8 +72,7 @@ class Benchmark:
             print()
 
 
-# FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-FLOAT_DTYPES = [torch.float16, torch.float32]
+FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 BATCH = 1024
 SIZES = [32, 96, 8192, 20480, 32768]
 
