@@ -1,0 +1,36 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: model-test
+
+on:
+  workflow_call:
+
+jobs:
+  model-test:
+    runs-on: [self-hosted, docker]
+    container:
+      image: localhost:5000/flag-gems-ci:v1.0
+      ports:
+        - 82
+      options: --gpus all --hostname flag-gems_cicd_model -v /home/flaggems_cicd/huggingface_cache_bert:/__w/_temp/_github_home/.cache/huggingface -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check GPU free
+        shell: bash
+        run: tools/gpu_check.sh
+
+      - name: FlagGems examples
+        shell: bash
+        run: |
+          git config --global --add safe.directory /__w/FlagGems/FlagGems
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
+            bash tools/model-test.sh ${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
+            bash tools/model-test.sh ${PR_NUMBER}
+          fi

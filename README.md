@@ -79,17 +79,24 @@ Examples：
 - support reduction operators: cumsum, layernorm, mean, softmax
 
 ### v2.0
-- support BLAS operator: mv, outer
+- support BLAS operators: mv, outer
 - support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
 - support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
 - support fused operators: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+
+### v2.1
+- support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
+- support neural network operator: embedding
+- support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
+- support distribution operators: normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- support science operators: erf, resolve_conj, resolve_neg
 
 ## Quick Start
 
 ### Requirements
 
-1. Triton >= 2.2.0, <3.0.0
-2. PyTorch >= 2.1.2
+1. Triton >= 2.2.0
+2. PyTorch >= 2.2.0
 3. Transformers >= 4.40.2
 
 ### Installation
@@ -187,7 +194,7 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 The following chart shows the speedup of FlagGems compared with PyTorch ATen library in eager mode. The speedup is calculated by averaging the speedup on each shape, representing the overall performance of the operator.
 
-![Operator Speedup](./assets/speedup-0708-eng.png)
+![Operator Speedup](./assets/speedup-0814-eng.png)
 
 ## Contributions
 

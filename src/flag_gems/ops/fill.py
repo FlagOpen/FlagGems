@@ -21,14 +21,13 @@ def fill_kernel(
     tl.store(out_ptr + offset, value, mask=offset < N)
 
 
-def fill(self, value):
+def fill(input, value):
     logging.debug("GEMS FILL")
-    out = torch.empty_like(self)
+    out = torch.empty_like(input)
     N = out.numel()
-
-    BLOCK_SIZE = 128
+    BLOCK_SIZE = 512
     grid = triton.cdiv(N, BLOCK_SIZE)
 
-    with torch.cuda.device(self.device):
+    with torch.cuda.device(input.device):
         fill_kernel[grid,](out, N, value, BLOCK_SIZE)
     return out
