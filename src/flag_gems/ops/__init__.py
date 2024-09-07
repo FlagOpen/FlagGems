@@ -25,6 +25,7 @@ from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
+from .fft import rad2_fft
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -129,6 +130,7 @@ __all__ = [
     "true_divide",
     "div_mode",
     "floor_divide",
+    "rad2_fft",
     "zeros",
     "ones",
     "full",

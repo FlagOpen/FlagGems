@@ -476,3 +476,13 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
         res0_out = torch.isin(inp0, inp2, assume_unique=assume_unique, invert=invert)
     ref0_out = torch.isin(inp0, ref_inp2, assume_unique=assume_unique, invert=invert)
     gems_assert_equal(res0_out, ref0_out)
+
+
+@pytest.mark.parametrize("shape", [(2048,), (4096,)])
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_fft(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    y_ref = torch.fft.fft(x)
+    with flag_gems.use_gems():
+        y_res = torch.fft.fft(x)
+    gems_assert_close(y_ref, y_res, dtype)
