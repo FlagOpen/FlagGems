@@ -317,6 +317,17 @@ def test_accuracy_floor_div_int(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
+    for d in inp2.flatten()[:100]:
+        ref_out = ref_inp1 // d
+        with flag_gems.use_gems():
+            res_out = inp1 // d
+        gems_assert_equal(res_out, ref_out)
+
+        ref_out = d // ref_inp1
+        with flag_gems.use_gems():
+            res_out = d // ref_inp1
+        gems_assert_equal(res_out, ref_out)
+
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -342,12 +353,18 @@ def test_accuracy_remainder(shape, dtype):
     with flag_gems.use_gems():
         res_out = inp1 % inp2
 
-    if not torch.equal(res_out, ref_out):
-        print(inp1[res_out != ref_out])
-        print(inp2[res_out != ref_out])
-        print(res_out[res_out != ref_out])
-        print(ref_out[res_out != ref_out])
     gems_assert_equal(res_out, ref_out)
+
+    for d in inp2.flatten()[:100]:
+        ref_out = ref_inp1 % d
+        with flag_gems.use_gems():
+            res_out = inp1 % d
+        gems_assert_equal(res_out, ref_out)
+
+        ref_out = d % ref_inp1
+        with flag_gems.use_gems():
+            res_out = d % ref_inp1
+        gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
