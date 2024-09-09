@@ -3,6 +3,7 @@ import torch
 from .performance_utils import (
     BLAS_BATCH,
     FLOAT_DTYPES,
+    INT_DTYPES,
     REDUCTION_BATCH,
     SIZES,
     Benchmark,
@@ -92,6 +93,48 @@ def test_perf_cumsum():
         torch_op=torch.cumsum,
         arg_func=cumsum_args,
         dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_nonzero():
+    def nonzero_args(dtype, batch, size):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
+                torch.bool
+            )
+        else:
+            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
+        return (inp,)
+
+    bench = Benchmark(
+        op_name="nonzero",
+        torch_op=torch.nonzero,
+        arg_func=nonzero_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_nonzero_int():
+    def nonzero_args(dtype, batch, size):
+        if dtype == torch.bool:
+            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
+                torch.bool
+            )
+        else:
+            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
+        return (inp,)
+
+    bench = Benchmark(
+        op_name="nonzero_int",
+        torch_op=torch.nonzero,
+        arg_func=nonzero_args,
+        dtypes=INT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
     )
@@ -306,6 +349,23 @@ def test_perf_index_select():
         op_name="index_select",
         torch_op=torch.index_select,
         arg_func=index_select_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_masked_select():
+    def masked_select_args(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+        return (inp, mask)
+
+    bench = Benchmark(
+        op_name="masked_select",
+        torch_op=torch.masked_select,
+        arg_func=masked_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,

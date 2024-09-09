@@ -6,6 +6,7 @@ from .performance_utils import (
     POINTWISE_BATCH,
     SIZES,
     Benchmark,
+    binary_int_args,
     unary_int_arg,
 )
 
@@ -94,5 +95,100 @@ def test_perf_unique():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=unique_kwargs,
+    )
+    bench.run()
+
+
+def test_multinomial_with_replacement():
+    def multinomial_args(dtype, batch, size):
+        dist = torch.rand((batch, size), dtype=dtype, device="cuda")
+        n_samples = 10000
+        return (dist, n_samples, True)
+
+    bench = Benchmark(
+        op_name="multinomial",
+        torch_op=torch.multinomial,
+        arg_func=multinomial_args,
+        dtypes=(torch.float16, torch.float32),
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_pad():
+    def padding_kwargs(dtype, batch, size):
+        input = torch.randn((batch, size), device="cuda", dtype=dtype)
+        rank = input.ndim
+        pad_params = tuple(torch.randint(0, 10, [rank * 2]))
+        pad_value = float(torch.randint(0, 1024, [1]))
+        return {
+            "input": input,
+            "pad": pad_params,
+            "mode": "constant",
+            "value": pad_value,
+        }
+
+    bench = Benchmark(
+        op_name="padding",
+        torch_op=torch.nn.functional.pad,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=padding_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_arange():
+    def arange_kwargs(dtype, batch, size):
+        return {
+            "end": batch * size,
+            "device": "cuda",
+            "dtype": dtype,
+        }
+
+    bench = Benchmark(
+        op_name="arange",
+        torch_op=torch.arange,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=arange_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_isin():
+    bench = Benchmark(
+        op_name="isin",
+        torch_op=torch.isin,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_fill():
+    def fill_kwargs(dtype, batch, size):
+        value = 1.0
+        input = torch.empty(batch * size, dtype=dtype, device="cuda")
+        return {
+            "input": input,
+            "value": value,
+        }
+
+    bench = Benchmark(
+        op_name="fill",
+        torch_op=torch.fill,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=fill_kwargs,
     )
     bench.run()

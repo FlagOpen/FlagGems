@@ -4,6 +4,7 @@ from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
+from .arange import arange, arange_start
 from .argmax import argmax
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -16,17 +17,19 @@ from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
-from .cumsum import cumsum
-from .div import div_mode, floor_divide, true_divide
+from .cumsum import cumsum, normed_cumsum
+from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
+from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .gather import gather, gather_out
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -34,6 +37,7 @@ from .gt import gt, gt_scalar
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
+from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
@@ -41,6 +45,7 @@ from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill
+from .masked_select import masked_select
 from .max import max, max_dim
 from .maximum import maximum
 from .mean import mean, mean_dim
@@ -48,9 +53,11 @@ from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
 from .mul import mul
+from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nonzero import nonzero
 from .normal import (
     normal_float_float,
     normal_float_tensor,
@@ -60,6 +67,7 @@ from .normal import (
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad import pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
@@ -68,10 +76,12 @@ from .randn import randn
 from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
+from .repeat import repeat
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .scatter import scatter_reduce, scatter_src
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -101,6 +111,8 @@ __all__ = [
     "add",
     "abs",
     "addmm",
+    "arange",
+    "arange_start",
     "bitwise_and_tensor",
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",
@@ -112,10 +124,13 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "pad",
     "cumsum",
+    "normed_cumsum",
     "true_divide",
     "div_mode",
     "floor_divide",
+    "remainder",
     "zeros",
     "ones",
     "full",
@@ -125,7 +140,11 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "fill_scalar",
+    "fill_tensor",
     "exponential_",
+    "gather",
+    "gather_out",
     "flip",
     "ones_like",
     "full_like",
@@ -139,6 +158,7 @@ __all__ = [
     "index_select",
     "isclose",
     "isfinite",
+    "isin",
     "isinf",
     "isnan",
     "layer_norm",
@@ -151,6 +171,7 @@ __all__ = [
     "mean_dim",
     "mm",
     "mul",
+    "multinomial",
     "maximum",
     "minimum",
     "rand",
@@ -174,6 +195,8 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
+    "scatter_src",
+    "scatter_reduce",
     "sigmoid",
     "silu",
     "sin",
@@ -203,4 +226,7 @@ __all__ = [
     "where_scalar_other",
     "masked_fill",
     "_unique2",
+    "nonzero",
+    "repeat",
+    "masked_select",
 ]

@@ -9,7 +9,7 @@ from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 
-# --------------------------- tile wrapper genration -----------------------------------
+# --------------------------- repeat wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
     """Generate parameter declaration with type annotation for wrapper function.
     Example: in0: torch.Tensor, val0: float, out0: torch.Tensor
@@ -17,7 +17,7 @@ def parameter_for_wrapper() -> str:
     parameters: List[str] = []
 
     parameters.append("in0")
-    parameters.append("dims")
+    parameters.append("sizes")
     return ", ".join(parameters)
 
 
@@ -63,7 +63,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     return code
 
 
-def generate_functional_tile_wrapper(
+def generate_functional_repeat_wrapper(
     wrapper_name: str,
     destination_passing_func_name: str,
     code: IndentedBuffer,
@@ -75,18 +75,18 @@ def generate_functional_tile_wrapper(
 
     with code.indent():
         code.writeline("in0_rank = in0.dim()")
-        code.writeline("dims_rank = len(dims)")
+        code.writeline("sizes_rank = len(sizes)")
         code.writeline("in0_shape = list(in0.shape)")
-        code.writeline("dims_shape = list(dims)")
+        code.writeline("sizes_shape = list(sizes)")
         code.newline()
-        code.writeline("if (dims_rank < in0_rank): ")
+
+        code.writeline(
+            "assert(sizes_rank >= in0_rank), \
+                'Number of dimensions of repeat dims can not be smaller than number of dimensions of tensor'"
+        )
+        code.writeline("if (sizes_rank > in0_rank): ")
         with code.indent():
-            code.writeline("diff = in0_rank - dims_rank")
-            code.writeline("ones = [1 for _ in range(diff)]")
-            code.writeline("dims_shape = ones + dims_shape")
-        code.writeline("elif (dims_rank > in0_rank): ")
-        with code.indent():
-            code.writeline("diff = dims_rank - in0_rank")
+            code.writeline("diff = sizes_rank - in0_rank")
             code.writeline("ones = [1 for _ in range(diff)]")
             code.writeline("in0_shape = ones + in0_shape")
         code.newline()
@@ -95,13 +95,13 @@ def generate_functional_tile_wrapper(
         code.writeline("for i in range(len(in0_shape)): ")
         with code.indent():
             code.writeline(
-                "assert(dims_shape[i] >= 0), 'the number of repetitions per dimension out of range (expected to >= 0) \
-                but got {}'.format(dims_shape[i])"
+                "assert(sizes_shape[i] >= 0), 'the number of repetitions per dimension out of range (expected to >= 0) \
+                but got {}'.format(sizes_shape[i])"
             )
-            code.writeline("if dims_shape[i] == 0: ")
+            code.writeline("if sizes_shape[i] == 0: ")
             with code.indent():
                 code.writeline("is_empty = True")
-            code.writeline("out_shape.append(in0_shape[i] * dims_shape[i])")
+            code.writeline("out_shape.append(in0_shape[i] * sizes_shape[i])")
         code.newline()
         code.writeline(
             "out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)"
@@ -126,7 +126,7 @@ def generate_functional_tile_wrapper(
     return code
 
 
-def generate_destination_passing_tile_wrapper(
+def generate_destination_passing_repeat_wrapper(
     rank: int,
     wrapper_name: str,
     kernel_name: str,
@@ -204,7 +204,7 @@ def generate_destination_passing_tile_wrapper(
     return code
 
 
-def generate_tile_kernel(
+def generate_repeat_kernel(
     rank: int,
     kernel_name: str,
     code: IndentedBuffer,
@@ -400,25 +400,25 @@ def generate_code(
 ) -> IndentedBuffer:
     # the only runtime determined factor is the rank of the task space
     code = generate_imports(code)
-    code = generate_functional_tile_wrapper(
+    code = generate_functional_repeat_wrapper(
         wrapper_name, destination_passing_func_name, code
     )
-    code = generate_destination_passing_tile_wrapper(
+    code = generate_destination_passing_repeat_wrapper(
         rank, destination_passing_func_name, kernel_name, code
     )
-    code = generate_tile_kernel(rank, kernel_name, code)
+    code = generate_repeat_kernel(rank, kernel_name, code)
     return code
 
 
-class TileFunction:
+class RepeatFunction:
     def __init__(self):
         self.pid = os.getpid()
         # instantiated & cached overloads
         self.overloads: Mapping[str, Callable] = {}
 
-    def __call__(self, x, dims):
+    def __call__(self, x, sizes):
         # note: kwargs should not be used in JITFunction directly
-        ndim = self.arg_key(x, dims)
+        ndim = self.arg_key(x, sizes)
         key = str(ndim)
         if key in self.overloads:
             overload = self.overloads[key]
@@ -433,7 +433,7 @@ class TileFunction:
                 code,
             )
 
-            file_name = f"tile_rank_{key}_pid_{self.pid}.py"
+            file_name = f"repeat_rank_{key}_pid_{self.pid}.py"
 
             with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
@@ -450,18 +450,18 @@ class TileFunction:
             spec.loader.exec_module(m)
             overload = getattr(m, "_wrapper")
             self.overloads[key] = overload
-        return overload(x, dims)
+        return overload(x, sizes)
 
-    def arg_key(self, x, dims):
-        max_rank = max(x.ndim, len(dims))
+    def arg_key(self, x, sizes):
+        max_rank = max(x.ndim, len(sizes))
         return max_rank
 
 
-_tile_func = TileFunction()
+_repeat_func = RepeatFunction()
 
 
-def tile(inp: torch.Tensor, dims) -> torch.Tensor:
-    logging.debug("GEMS TILE")
+def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
+    logging.debug("GEMS REPEAT")
 
-    out = _tile_func(inp, dims)
+    out = _repeat_func(inp, sizes)
     return out

@@ -84,6 +84,13 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
 - 支持reduction类算子: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
 - 支持融合算子: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
 
+### v2.1
+- 支持Tensor类算子：where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
+- 支持神经网络类算子：embedding
+- 支持基础数学算子：allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
+- 支持分布类算子：normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- 支持科学计算算子：erf, resolve_conj, resolve_neg
+
 ## 快速入门
 
 ### 依赖
@@ -190,7 +197,7 @@ FlagGems相比Torch Eager模式下ATen算子库的加速比如下图所示。其
 
 ## 贡献代码
 
-欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](/CONTRIBUTING.md)。
+欢迎大家参与FlagGems的算子开发并贡献代码，详情请参考[CONTRIBUTING.md](/CONTRIBUTING_cn.md)。
 
 ## 联系我们
 
