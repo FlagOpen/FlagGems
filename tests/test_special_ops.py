@@ -286,7 +286,7 @@ def test_accuracy_resolve_conj(shape, dtype):
 
 
 @pytest.mark.unique
-@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES + [(8191,), (8192, 23739)])
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 @pytest.mark.parametrize("sorted", [True])
 @pytest.mark.parametrize("return_inverse", [True, False])
