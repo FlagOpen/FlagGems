@@ -482,9 +482,18 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_fill(value, shape, dtype):
+    # Test fill.Scalar
     x = torch.ones(shape, device="cuda", dtype=dtype)
     res_out = torch.fill(x, value)
     with flag_gems.use_gems():
         ref_out = torch.fill(x, value)
 
     gems_assert_equal(ref_out, res_out)
+
+    # Test fill.Tensor
+    value_tensor = torch.tensor(value, device="cuda", dtype=dtype)
+    res_out_tensor = torch.fill(x, value_tensor)
+    with flag_gems.use_gems():
+        ref_out_tensor = torch.fill(x, value_tensor)
+
+    gems_assert_equal(ref_out_tensor, res_out_tensor)

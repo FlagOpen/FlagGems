@@ -14,11 +14,17 @@ def fill_kernel(
     N,
     value,
     BLOCK_SIZE: tl.constexpr,
+    IS_VALUE_SCALAR: tl.constexpr,
 ):
     pid = tl.program_id(0)
     cols = tl.arange(0, BLOCK_SIZE)
     offset = pid * BLOCK_SIZE + cols
-    tl.store(out_ptr + offset, value, mask=offset < N)
+    if not IS_VALUE_SCALAR:
+        value_scalar = tl.load(value)  # load the value from the tensor.
+    else:
+        value_scalar = value  # value is float scalar.
+
+    tl.store(out_ptr + offset, value_scalar, mask=offset < N)
 
 
 def fill(input, value):
@@ -29,5 +35,9 @@ def fill(input, value):
     grid = triton.cdiv(N, BLOCK_SIZE)
 
     with torch.cuda.device(input.device):
-        fill_kernel[grid,](out, N, value, BLOCK_SIZE)
+        if isinstance(value, torch.Tensor):
+            IS_VALUE_SCALAR = False
+        else:
+            IS_VALUE_SCALAR = True
+        fill_kernel[grid,](out, N, value, BLOCK_SIZE, IS_VALUE_SCALAR)
     return out
