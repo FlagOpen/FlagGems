@@ -8,7 +8,7 @@ from ..utils import libentry
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["value_scalar"])
 def fill_scalar_kernel(
     out_ptr,
     N,
