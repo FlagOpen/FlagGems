@@ -307,8 +307,8 @@ def test_accuracy_trunc_div(shape, dtype):
 def test_accuracy_floor_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cuda")
     inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="floor")
     with flag_gems.use_gems():
