@@ -222,10 +222,13 @@ class CodeGenConfig:
     max_num_warps_per_cta: int
 
     prefer_block_pointer: bool
-    # TODO: add 1d tile back
     prefer_1d_tile: bool
     # gen_configs: -> configs
     # prune_config: (as jit function, ) cofigs -> configs
+
+    def __post_init__(self):
+        if self.prefer_1d_tile:
+            self.prefer_block_pointer = False
 
 
 class KernelGenerator:
@@ -1076,7 +1079,11 @@ class PointwiseDynamicFunction:
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or CodeGenConfig(
-            512, (65536, 65536, 65536), 32, False, False
+            512,
+            (65536, 65536, 65536),
+            32,
+            True,
+            prefer_1d_tile=int(triton.__version__[0]) < 3,
         )
 
         # instantiated & cached overloads

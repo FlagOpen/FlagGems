@@ -9,7 +9,8 @@ from flag_gems.utils.pointwise_dynamic import (
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-USE_BLOCK_POINTER = [True, False] if int(triton.__version__[0]) >= 3 else [False]
+USE_BLOCK_POINTER = [True, False]
+triton_version_less_than3 = int(triton.__version__[0]) < 3
 
 
 def test_function_schema_with_non_tensor_input():
@@ -225,6 +226,10 @@ def test_dynamic_function_with_multiple_outputs(use_block_pointer):
         torch.testing.assert_close(out1, alpha * x - y)
 
 
+@pytest.mark.skipif(
+    triton_version_less_than3,
+    reason="using 3d tile in triton version less than 3 in Ampere architecture causes MisAligned Address error.",
+)
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_broadcasting(use_block_pointer):
     config = CodeGenConfig(
@@ -236,7 +241,7 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
     )
 
     # NOTE: [misaligned address]
-    # triton 2.2 may cause Misaligned address when using 3d block pointer in some
+    # triton 2.2 may cause Misaligned address when using >=3d tiles in some
     # cases with some zero strides
     @pointwise_dynamic(
         num_inputs=3,
@@ -256,6 +261,10 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
     torch.testing.assert_close(out, alpha * x + y)
 
 
+@pytest.mark.skipif(
+    triton_version_less_than3,
+    reason="using 3d tile in triton version less than 3 in Ampere architecture causes MisAligned Address error.",
+)
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_broadcasting2(use_block_pointer):
     config = CodeGenConfig(
