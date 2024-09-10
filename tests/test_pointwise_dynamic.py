@@ -226,10 +226,6 @@ def test_dynamic_function_with_multiple_outputs(use_block_pointer):
         torch.testing.assert_close(out1, alpha * x - y)
 
 
-@pytest.mark.skipif(
-    triton_version_less_than3,
-    reason="using 3d tile in triton version less than 3 in Ampere architecture causes MisAligned Address error.",
-)
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_broadcasting(use_block_pointer):
     config = CodeGenConfig(
@@ -237,7 +233,7 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
         max_grid_size=(65536, 65536, 65536),
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
-        prefer_1d_tile=True,
+        prefer_1d_tile=True,  # [misaligned address]
     )
 
     # NOTE: [misaligned address]
@@ -261,10 +257,6 @@ def test_dynamic_function_with_broadcasting(use_block_pointer):
     torch.testing.assert_close(out, alpha * x + y)
 
 
-@pytest.mark.skipif(
-    triton_version_less_than3,
-    reason="using 3d tile in triton version less than 3 in Ampere architecture causes MisAligned Address error.",
-)
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 def test_dynamic_function_with_broadcasting2(use_block_pointer):
     config = CodeGenConfig(
@@ -272,7 +264,7 @@ def test_dynamic_function_with_broadcasting2(use_block_pointer):
         max_grid_size=(65536, 65536, 65536),
         max_num_warps_per_cta=32,
         prefer_block_pointer=use_block_pointer,
-        prefer_1d_tile=True,
+        prefer_1d_tile=True,  # [misaligned address]
     )
 
     # NOTE: See note [misaligned address]
@@ -665,7 +657,7 @@ def test_dynamic_function_gsl(use_block_pointer):
 
 
 @pytest.mark.skipif(
-    torch.cuda.get_device_properties(0).total_memory < (36 * 1024**3),
+    torch.cuda.get_device_properties(0).total_memory < (80 * 1024**3),
     reason="This test requires a lot of memory.",
 )
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
