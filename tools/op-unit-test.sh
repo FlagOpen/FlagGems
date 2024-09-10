@@ -27,6 +27,7 @@ cmds=(
    "CUDA_VISIBLE_DEVICES=4 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py &"
    "CUDA_VISIBLE_DEVICES=5 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py &"
    "CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_libentry.py &"
+   "CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_experimental_ops.py &"
 )
 
 declare -a exit_statuses
