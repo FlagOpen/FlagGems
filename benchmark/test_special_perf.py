@@ -24,7 +24,9 @@ def test_perf_embedding():
         dtypes=[
             torch.float32,
             torch.float16,
-        ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+        ],
+        # Note(Zhengzekang): triton do not support bfloat16 atomic add
+        # which is used in embedding grad.
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=embedding_kwargs,
@@ -169,21 +171,5 @@ def test_perf_isin():
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_rad2_fft():
-    def rad2_fft_kwargs(dtype, batch, size):
-        x = torch.randn((size,), device="cuda", dtype=dtype)
-        return (x,)
-
-    bench = Benchmark(
-        op_name="fft.fft",
-        torch_op=torch.fft.fft,
-        arg_func=rad2_fft_kwargs,
-        dtypes=[torch.cfloat],
-        batch=[1],
-        sizes=[i * 1024 for i in range(1, 100, 10)],
     )
     bench.run()
