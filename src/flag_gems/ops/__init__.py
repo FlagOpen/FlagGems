@@ -18,13 +18,14 @@ from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
-from .div import div_mode, floor_divide, true_divide
+from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
+from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -129,6 +130,7 @@ __all__ = [
     "true_divide",
     "div_mode",
     "floor_divide",
+    "remainder",
     "zeros",
     "ones",
     "full",
@@ -138,6 +140,8 @@ __all__ = [
     "eq",
     "eq_scalar",
     "exp",
+    "fill_scalar",
+    "fill_tensor",
     "exponential_",
     "gather",
     "gather_out",
