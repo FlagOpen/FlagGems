@@ -306,7 +306,7 @@ def test_accuracy_isfinite(shape, dtype):
 def get_max_ndim(shape, dims):
     max_ndim = max(len(shape), len(dims))
     for dim in dims:
-        dim = abs(dim) + 1
+        dim = dim + 1 if dim >= 0 else -dim
         if dim > max_ndim:
             max_ndim = dim
     return max_ndim
