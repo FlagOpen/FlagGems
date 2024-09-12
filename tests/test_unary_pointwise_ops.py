@@ -314,6 +314,7 @@ def get_max_ndim(shape, dims):
 
 FLIP_DIMS = [(0,), (-2,), (2,), (0, 2), (2, 1), (0, -1, 1)]
 
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dims", FLIP_DIMS)
@@ -374,6 +375,7 @@ def test_accuracy_masked_fill(shape, dtype, threshold):
 
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dims", TILE_DIMS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -389,6 +391,7 @@ def test_accuracy_tile(shape, dims, dtype):
 
 
 REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
+
 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("sizes", REPEAT_SIZES)

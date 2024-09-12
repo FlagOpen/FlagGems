@@ -3,12 +3,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import (
-    FLOAT_DTYPES,
-    SCALARS,
-    gems_assert_close,
-    to_reference,
-)
+from .accuracy_utils import FLOAT_DTYPES, SCALARS, gems_assert_close, to_reference
 from .conftest import TO_CPU
 
 MN_SHAPES = [(1, 32)] if TO_CPU else [(1, 32), (160, 1024), (5333, 497)]
