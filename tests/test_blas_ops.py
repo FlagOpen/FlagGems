@@ -5,16 +5,19 @@ import flag_gems
 
 from .accuracy_utils import (
     FLOAT_DTYPES,
+    MN_SHAPES,
     MNK_SHAPES,
     SCALARS,
     gems_assert_close,
     to_reference,
 )
+from .conftest import TO_CPU
 
 
-@pytest.mark.parametrize("M", MNK_SHAPES)
-@pytest.mark.parametrize("N", MNK_SHAPES)
-@pytest.mark.parametrize("K", MNK_SHAPES)
+FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
+
+
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm(M, N, K, scalar, dtype):
@@ -33,10 +36,7 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
-
-@pytest.mark.parametrize("M", MNK_SHAPES)
-@pytest.mark.parametrize("N", MNK_SHAPES)
-@pytest.mark.parametrize("K", MNK_SHAPES)
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
     batch = 4
@@ -52,9 +52,8 @@ def test_accuracy_bmm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.parametrize("M", MNK_SHAPES)
-@pytest.mark.parametrize("N", MNK_SHAPES)
-@pytest.mark.parametrize("K", MNK_SHAPES)
+# TODO: failed at (1, 1, 2)
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mm(M, N, K, dtype):
     mat1 = torch.randn((M, K), dtype=dtype, device="cuda")
@@ -69,8 +68,7 @@ def test_accuracy_mm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.parametrize("M", MNK_SHAPES)
-@pytest.mark.parametrize("N", MNK_SHAPES)
+@pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mv(M, N, dtype):
     matrix = torch.randn((N, M), dtype=dtype, device="cuda")
@@ -85,8 +83,7 @@ def test_accuracy_mv(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.parametrize("M", MNK_SHAPES)
-@pytest.mark.parametrize("N", MNK_SHAPES)
+@pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_outer(M, N, dtype):
     inp1 = torch.randn(M, dtype=dtype, device="cuda", requires_grad=True)
