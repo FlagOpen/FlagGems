@@ -31,8 +31,16 @@ sizes_2d_nr = [1] if TO_CPU else [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
-POINTWISE_SHAPES = [(2, 19, 7)] if TO_CPU else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
-SPECIAL_SHAPES = [(2, 19, 7)] if TO_CPU else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
+POINTWISE_SHAPES = (
+    [(2, 19, 7)]
+    if TO_CPU
+    else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 60), (16, 7, 57, 32, 29)]
+)
+SPECIAL_SHAPES = (
+    [(2, 19, 7)]
+    if TO_CPU
+    else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
+)
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if TO_CPU else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = [(1, 32)] if TO_CPU else [(1, 2), (4096, 256), (200, 2560, 3)]
@@ -55,14 +63,45 @@ SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [1] if TO_CPU else [0, 1]
 DIMS_LIST = [1] if TO_CPU else [0, 1, [0, 1], [1, 0]]
 
-KIND_KEEPDIM_DIMS_SHAPE = [("normal", True, DIMS_LIST[0], REDUCTION_SHAPES[0])] if TO_CPU else list(zip(["normal", "allTrue"] * 2, [True, False] * 2, DIMS_LIST, REDUCTION_SHAPES + [(7, 4, 11, 1)]))
-KEEPDIM_DIMS_SHAPE = [(True, DIMS_LIST[0], REDUCTION_SHAPES[0])] if TO_CPU else list(zip([True, False] * 2, DIMS_LIST, REDUCTION_SHAPES + [(7, 4, 11, 1)]))
-KEEPDIM_DIMS = [(True, DIMS_LIST[0])] if TO_CPU else list(zip([True, False] * 2, DIMS_LIST))
+KIND_KEEPDIM_DIMS_SHAPE = (
+    [("normal", True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(
+        zip(
+            ["normal", "allTrue"] * 2,
+            [True, False] * 2,
+            DIMS_LIST,
+            REDUCTION_SHAPES + [(7, 4, 11, 1)],
+        )
+    )
+)
+KEEPDIM_DIMS_SHAPE = (
+    [(True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(zip([True, False] * 2, DIMS_LIST, REDUCTION_SHAPES + [(7, 4, 11, 1)]))
+)
+KEEPDIM_DIMS = (
+    [(True, DIMS_LIST[0])] if TO_CPU else list(zip([True, False] * 2, DIMS_LIST))
+)
 KEEPDIM_DIM = [(True, DIM_LIST[0])] if TO_CPU else list(zip([True, False], DIM_LIST))
-SMOOTH_IGNORE_SHAPE = [(0.1, 1, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([0, 0.1, 1], [1, 200, -100], REDUCTION_SHAPES))
-SMOOTH_SHAPE = [(0.1, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([1, 0.1, 0], REDUCTION_SHAPES))
-DIM_SHAPE = [(1, REDUCTION_SMALL_SHAPES[0])] if TO_CPU else list(zip([0, 1, 1], REDUCTION_SMALL_SHAPES))
-THRESHOLD_SHAPE = [(0.3, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
+SMOOTH_IGNORE_SHAPE = (
+    [(0.1, 1, REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(zip([0, 0.1, 1], [1, 200, -100], REDUCTION_SHAPES))
+)
+SMOOTH_SHAPE = (
+    [(0.1, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([1, 0.1, 0], REDUCTION_SHAPES))
+)
+DIM_SHAPE = (
+    [(1, REDUCTION_SMALL_SHAPES[0])]
+    if TO_CPU
+    else list(zip([0, 1, 1], REDUCTION_SMALL_SHAPES))
+)
+THRESHOLD_SHAPE = (
+    [(0.3, REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
+)
 CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if TO_CPU else ["mean", "none", "sum"]
 
 
@@ -96,6 +135,7 @@ def unsqueeze_tuple(t, max_len):
     for _ in range(len(t), max_len):
         t = t + (1,)
     return t
+
 
 def unsqueeze_tensor(inp, max_ndim):
     for _ in range(inp.ndim, max_ndim):

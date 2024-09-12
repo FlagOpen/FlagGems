@@ -18,8 +18,8 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     to_reference,
-    unsqueeze_tuple,
     unsqueeze_tensor,
+    unsqueeze_tuple,
 )
 
 
@@ -261,7 +261,9 @@ def test_accuracy_tanh(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.mark.parametrize("shape, diagonal", list(zip(POINTWISE_SHAPES, [-2, -1, 0, 1, 3])))
+@pytest.mark.parametrize(
+    "shape, diagonal", list(zip(POINTWISE_SHAPES, [-2, -1, 0, 1, 3]))
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_triu(shape, diagonal, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")

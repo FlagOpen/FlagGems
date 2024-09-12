@@ -13,7 +13,6 @@ from .accuracy_utils import (
 )
 from .conftest import TO_CPU
 
-
 FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
 
 
@@ -35,6 +34,7 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
         res_out = torch.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
 
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

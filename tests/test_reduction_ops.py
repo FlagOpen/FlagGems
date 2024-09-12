@@ -29,7 +29,6 @@ from .accuracy_utils import (
 )
 from .conftest import TO_CPU
 
-
 FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
 
 
@@ -298,7 +297,9 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 
 
 # TODO: failed at (1, 2) (2, 40499) (32, 40499) (200, 2) (200, 64) (200, 40999)
-@pytest.mark.parametrize("shape", [(1, 40999)] if TO_CPU else [(1, 40999), (4096, 256), (4096, 40999)])
+@pytest.mark.parametrize(
+    "shape", [(1, 40999)] if TO_CPU else [(1, 40999), (4096, 256), (4096, 40999)]
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
     M = shape[0]
@@ -575,7 +576,9 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 
 
 # TODO: failed at (1, 2) (200, 40999, 3)
-@pytest.mark.parametrize("shape", [(1, 256)] if TO_CPU else [(1, 256), (4096, 256), (200, 2560, 3)])
+@pytest.mark.parametrize(
+    "shape", [(1, 256)] if TO_CPU else [(1, 256), (4096, 256), (200, 2560, 3)]
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 def test_accuracy_softmax(shape, dtype, dim):
@@ -634,7 +637,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("keepdim", [True] if TO_CPU else [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
-    if shape[0] == 1:    # TODO: res is inf, while ref is nan
+    if shape[0] == 1:  # TODO: res is inf, while ref is nan
         shape = (2, 2)
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
@@ -652,7 +655,9 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("ord", [2] if TO_CPU else [2, float("inf"), -float("inf"), 0, 1])
+@pytest.mark.parametrize(
+    "ord", [2] if TO_CPU else [2, float("inf"), -float("inf"), 0, 1]
+)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIMS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
