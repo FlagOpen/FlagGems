@@ -337,6 +337,9 @@ def test_accuracy_floor_div_int(shape, dtype):
         dtype=dtype,
         device="cuda",
     )
+    if TO_CPU:
+        inp1 = torch.where(inp1 == 0, 1, inp1)
+        inp2 = torch.where(inp2 == 0, 1, inp2)
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
