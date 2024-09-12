@@ -7,8 +7,6 @@ from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
     ALL_INT_DTYPES,
     BOOL_TYPES,
-    DIM_POINTWISE_SHAPES,
-    DIMS,
     FLIP_DIMS,
     FLOAT_DTYPES,
     INT_DTYPES,
@@ -308,19 +306,24 @@ def test_accuracy_isfinite(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dims", FLIP_DIMS)
-def test_accuracy_flip(shape, dtype, dims):
-    if dtype in ALL_FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
-    else:
-        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+def get_max_ndim(shape, dims):
     max_ndim = max(len(shape), len(dims))
     for dim in dims:
         dim = abs(dim) + 1
         if dim > max_ndim:
             max_ndim = dim
+    return max_ndim
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dims", FLIP_DIMS)
+def test_accuracy_flip_general(shape, dtype, dims):
+    if dtype in ALL_FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    max_ndim = get_max_ndim(shape, dims)
     inp = unsqueeze_tensor(inp, max_ndim)
     ref_inp = to_reference(inp, False)
 
@@ -331,10 +334,13 @@ def test_accuracy_flip(shape, dtype, dims):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", DIM_POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
-@pytest.mark.parametrize("dims", DIMS)
+@pytest.mark.parametrize("dims", FLIP_DIMS)
 def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
+    max_ndim = get_max_ndim(shape, dims)
+    shape = unsqueeze_tuple(shape, max(max_ndim, 2))
+
     shape_dialted = tuple(item * 2 for item in shape)
     if dtype in ALL_FLOAT_DTYPES:
         inp = torch.randn(shape_dialted, dtype=dtype, device="cuda")[::2, ::2]
