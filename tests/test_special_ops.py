@@ -7,10 +7,12 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    DIM_LIST,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
     RESOLUTION,
+    STACK_SHAPES,
     UT_SHAPES_1D,
     UT_SHAPES_2D,
     gems_assert_close,
@@ -497,3 +499,24 @@ def test_fill(value, shape, dtype):
         ref_out_tensor = torch.fill(x, value_tensor)
 
     gems_assert_equal(ref_out_tensor, res_out_tensor)
+
+
+@pytest.mark.parametrize("shape", STACK_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_stack(shape, dim, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+    ref_inp = [to_reference(_, True) for _ in inp]
+    ref_out = torch.stack(ref_inp, dim)
+
+    with flag_gems.use_gems():
+        res_out = torch.stack(inp, dim)
+    gems_assert_equal(res_out, ref_out)
