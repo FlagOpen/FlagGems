@@ -332,9 +332,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 
 
 # TODO: failed at (1, 2) (2~32, 40499) (200, 2~64) (200~4096, 40999)
-@pytest.mark.parametrize(
-    "shape", [(1, 40999)] if TO_CPU else [(1, 40999), (4096, 256)]
-)
+@pytest.mark.parametrize("shape", [(1, 40999)] if TO_CPU else [(1, 40999), (4096, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
     M = shape[0]
