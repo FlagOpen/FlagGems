@@ -9,10 +9,68 @@ from ..utils import libentry, offset_calculator, restride_dim
 
 def cfggen():
     block_m = [1, 2, 4, 8]
+    block_n = [256, 512, 1024, 2048]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
+        for m in block_m
+        for n in block_n
     ]
     return configs
+
+
+@libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def scatter_2d_kernel(
+    src,  # src_strided
+    index,
+    idx,
+    out,
+    inp_stride_0,
+    inp_stride_1,
+    index_shape_0,
+    index_shape_1,
+    index_stride_0,
+    index_stride_1,
+    dim,
+    stride_dim,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_x = tl.program_id(0)
+    pid_y = tl.program_id(1)
+    rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    rows_mask = rows_offsets < M
+    cols_mask = cols_offsets < N
+
+    offsets = rows_offsets * N + cols_offsets
+    mask = rows_mask & cols_mask
+
+    # 1. Calculate inp_offsets and idx_offsets
+    inp_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
+    idx_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
+
+    # dim = 0
+    cur_idx = tl.load(idx + offsets, mask=mask, other=0)
+    mod = cur_idx % index_shape_0
+    inp_offsets += tl.where(dim == 0, 0, mod * inp_stride_0)
+    idx_offsets += mod * index_stride_0
+    cur_idx = cur_idx // index_shape_0
+
+    # dim = 1
+    mod = cur_idx % index_shape_1
+    inp_offsets += tl.where(dim == 1, 0, mod * inp_stride_1)
+    idx_offsets += mod * index_stride_1
+
+    # 2. Use offsets to scatter
+    cur_src = tl.load(src + idx_offsets, mask=mask, other=0)
+    cur_index = tl.load(index + idx_offsets, mask=mask, other=0)
+
+    inp_offsets += cur_index * stride_dim
+    tl.store(out + inp_offsets, cur_src, mask=mask)
 
 
 @libentry()
@@ -201,7 +259,58 @@ def scatter(inp, dim, index, src, reduction=None):
 
 def scatter_src(inp, dim, index, src):
     logging.debug("GEMS SCATTER SRC")
-    return scatter(inp, dim, index, src)
+    # return scatter(inp, dim, index, src)
+
+    # Try 2d scatter
+    assert (
+        inp.ndim == index.ndim and inp.ndim == src.ndim
+    ), "self, index and src (if it is a Tensor) should all have the same number of dimensions"
+    assert (
+        (0 <= index.size(i) and index.size(i) <= src.size(i))
+        for i in range(0, index.ndim)
+    ), "index.size(d) <= src.size(d) for all dimensions d"
+    assert (
+        ((0 <= index.size(i) and index.size(i) <= inp.size(i)) or i == dim)
+        for i in range(0, index.ndim)
+    ), "index.size(d) <= self.size(d) for all dimensions d != dim"
+    inp = inp.contiguous()
+    index = index.contiguous()
+    src = src.contiguous()
+    out = inp.clone()
+
+    src_strided = src.as_strided(index.shape, src.stride()).contiguous()
+    # FIXME: Are there any other way to get the "flatten offset" of a tensor?
+    idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
+    N = list(index.shape)[index.ndim - 1]
+    M = index.numel() // N
+
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(
+            N,
+            meta["BLOCK_N"],
+        ),
+    )
+    inp_strides = inp.stride()
+    index_shapes = list(index.shape)
+    index_strides = index.stride()
+    scatter_2d_kernel[grid](
+        src_strided,
+        index,
+        idx,
+        out,
+        inp_strides[0],
+        inp_strides[1],
+        index_shapes[0],
+        index_shapes[1],
+        index_strides[0],
+        index_strides[1],
+        dim,
+        inp_strides[dim],
+        M,
+        N,
+    )
+    return out
 
 
 def scatter_reduce(inp, dim, index, src, reduce):

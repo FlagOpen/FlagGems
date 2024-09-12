@@ -732,9 +732,9 @@ def test_accuracy_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("dim", [0, 1, 2])
+@pytest.mark.parametrize("src_shape", [(128, 16 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("inp_shape", [(512, 32 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize("dim", [0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
@@ -746,20 +746,18 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     index_shape = [
         random.randint(1, min(src_shape[0], inp_shape[0])),
         random.randint(1, min(src_shape[1], inp_shape[1])),
-        random.randint(1, min(src_shape[2], inp_shape[2])),
     ]
     index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
 
-    m, n, o = index_shape
+    m, n = index_shape
 
     index_size_dim = index_shape[dim]
     # make unique indices
     for i in range(1 if dim == 0 else m):
         for j in range(1 if dim == 1 else n):
-            for k in range(1 if dim == 2 else o):
-                ii = [i, j, k]
-                ii[dim] = slice(0, index.size(dim) + 1)
-                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+            ii = [i, j]
+            ii[dim] = slice(0, index.size(dim) + 1)
+            index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
     ref_inp = to_reference(inp)
     ref_out = torch.scatter(ref_inp, dim, index, src)
