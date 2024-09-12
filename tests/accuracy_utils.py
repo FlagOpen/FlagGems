@@ -44,14 +44,6 @@ SPECIAL_SHAPES = (
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
 REDUCTION_SHAPES = [(2, 32)] if TO_CPU else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = [(1, 32)] if TO_CPU else [(1, 2), (4096, 256), (200, 2560, 3)]
-NONZERO_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,)]
-CUMSUM_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
-MN_SHAPES = [(1, 32)] if TO_CPU else [(1, 32), (160, 1024), (5333, 497)]
-MNK_SHAPES = [(1, 1, 32)] if TO_CPU else [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-
-FLIP_DIMS = [(0,), (-2,), (2,), (0, 2), (2, 1), (0, -1, 1)]
-TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
-REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
@@ -60,49 +52,6 @@ ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
 BOOL_TYPES = [torch.bool]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
-DIM_LIST = [1] if TO_CPU else [0, 1]
-DIMS_LIST = [1] if TO_CPU else [0, 1, [0, 1], [1, 0]]
-
-KIND_KEEPDIM_DIMS_SHAPE = (
-    [("normal", True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
-    if TO_CPU
-    else list(
-        zip(
-            ["normal", "allTrue"] * 2,
-            [True, False] * 2,
-            DIMS_LIST,
-            REDUCTION_SHAPES + [(7, 4, 11, 1)],
-        )
-    )
-)
-KEEPDIM_DIMS_SHAPE = (
-    [(True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
-    if TO_CPU
-    else list(zip([True, False] * 2, DIMS_LIST, REDUCTION_SHAPES + [(7, 4, 11, 1)]))
-)
-KEEPDIM_DIMS = (
-    [(True, DIMS_LIST[0])] if TO_CPU else list(zip([True, False] * 2, DIMS_LIST))
-)
-KEEPDIM_DIM = [(True, DIM_LIST[0])] if TO_CPU else list(zip([True, False], DIM_LIST))
-SMOOTH_IGNORE_SHAPE = (
-    [(0.1, 1, REDUCTION_SHAPES[0])]
-    if TO_CPU
-    else list(zip([0, 0.1, 1], [1, 200, -100], REDUCTION_SHAPES))
-)
-SMOOTH_SHAPE = (
-    [(0.1, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([1, 0.1, 0], REDUCTION_SHAPES))
-)
-DIM_SHAPE = (
-    [(1, REDUCTION_SMALL_SHAPES[0])]
-    if TO_CPU
-    else list(zip([0, 1, 1], REDUCTION_SMALL_SHAPES))
-)
-THRESHOLD_SHAPE = (
-    [(0.3, REDUCTION_SHAPES[0])]
-    if TO_CPU
-    else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
-)
-CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if TO_CPU else ["mean", "none", "sum"]
 
 
 def to_reference(inp, upcast=False):

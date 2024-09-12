@@ -4,23 +4,10 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    CROSS_ENTROPY_LOSS_REDUCTION,
-    CUMSUM_SHAPES,
-    DIM_LIST,
-    DIM_SHAPE,
-    DIMS_LIST,
     FLOAT_DTYPES,
     INT_DTYPES,
-    KEEPDIM_DIM,
-    KEEPDIM_DIMS,
-    KEEPDIM_DIMS_SHAPE,
-    KIND_KEEPDIM_DIMS_SHAPE,
-    NONZERO_SHAPES,
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
-    SMOOTH_IGNORE_SHAPE,
-    SMOOTH_SHAPE,
-    THRESHOLD_SHAPE,
     gems_assert_close,
     gems_assert_equal,
     skip_expr,
@@ -30,6 +17,49 @@ from .accuracy_utils import (
 from .conftest import TO_CPU
 
 FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
+DIM_LIST = [1] if TO_CPU else [0, 1]
+DIMS_LIST = [1] if TO_CPU else [0, 1, [0, 1], [1, 0]]
+KIND_KEEPDIM_DIMS_SHAPE = (
+    [("normal", True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(
+        zip(
+            ["normal", "allTrue"] * 2,
+            [True, False] * 2,
+            DIMS_LIST,
+            REDUCTION_SHAPES + [(7, 4, 11, 1)],
+        )
+    )
+)
+KEEPDIM_DIMS_SHAPE = (
+    [(True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(zip([True, False] * 2, DIMS_LIST, REDUCTION_SHAPES + [(7, 4, 11, 1)]))
+)
+KEEPDIM_DIMS = (
+    [(True, DIMS_LIST[0])] if TO_CPU else list(zip([True, False] * 2, DIMS_LIST))
+)
+KEEPDIM_DIM = [(True, DIM_LIST[0])] if TO_CPU else list(zip([True, False], DIM_LIST))
+SMOOTH_IGNORE_SHAPE = (
+    [(0.1, 1, REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(zip([0, 0.1, 1], [1, 200, -100], REDUCTION_SHAPES))
+)
+SMOOTH_SHAPE = (
+    [(0.1, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([1, 0.1, 0], REDUCTION_SHAPES))
+)
+DIM_SHAPE = (
+    [(1, REDUCTION_SMALL_SHAPES[0])]
+    if TO_CPU
+    else list(zip([0, 1, 1], REDUCTION_SMALL_SHAPES))
+)
+THRESHOLD_SHAPE = (
+    [(0.3, REDUCTION_SHAPES[0])]
+    if TO_CPU
+    else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
+)
+CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if TO_CPU else ["mean", "none", "sum"]
+
 
 
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -207,6 +237,8 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+CUMSUM_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
@@ -223,6 +255,8 @@ def test_accuracy_cumsum(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
+
+NONZERO_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,)]
 
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
