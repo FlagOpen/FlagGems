@@ -7,18 +7,16 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_tile_m(args):
+    return args["M"]
+
+
+def heur_tile_n(args):
+    return args["N"]
+
+
 def heur_tile_k(args):
-    n = args["K"]
-    if n <= 1:
-        return n
-
-    largest_factor = 1
-    for i in range(128, 1, -1):
-        if n % i == 0:
-            largest_factor = i
-            break
-
-    return largest_factor
+    return args["K"]
 
 def heur_group_m(args):
     return 1
@@ -36,73 +34,10 @@ def heur_divisible_k(args):
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-    ],
-    key=["M", "N", "K"],
-)
 @triton.heuristics(
     {
+        "TILE_M": heur_tile_m,
+        "TILE_N": heur_tile_n,
         "TILE_K": heur_tile_k,
         "GROUP_M": heur_group_m,
         "DIVISIBLE_M": heur_divisible_m,
