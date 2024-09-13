@@ -23,21 +23,35 @@ def hstack(
     if len(tensors) == 0:
         raise RuntimeError("hstack expected a non-empty TensorList")
 
-    inp_shapes = [list(_.shape) for _ in tensors]
-    inp0_shape = inp_shapes[0]
+    if tensors[0].ndim == 0:
+        tensors[0] = tensors[0].view(1)
+    inp0_shape = tensors[0].shape
     out_shape = list(inp0_shape)
+    inp_shapes = [inp0_shape]
+
     if len(inp0_shape) == 1:
         dim = 0
     else:
         dim = 1
-        for tensor_num, inp_shape in enumerate(inp_shapes[1:]):
-            for i in range(len(inp_shape)):
-                if i != dim and inp_shape[i] != inp0_shape[i]:
-                    raise RuntimeError(
-                        f"Sizes of tensors must match except in dimension {dim}. \
-                            Expected size {inp0_shape[i]} but got size {inp_shape[i]} \
-                            for tensor number {tensor_num + 1} in the list."
-                    )
+
+    for tensor_num, tensor in enumerate(tensors[1:]):
+        if tensor.ndim == 0:
+            tensor = tensor.view(1)
+        if tensor.ndim != tensors[0].ndim:
+            raise RuntimeError(
+                f"Tensors must have same number of dimensions: got {tensors[0].ndim} and {tensor.ndim}"
+            )
+
+        inp_shape = tensor.shape
+        inp_shapes.append(inp_shape)
+
+        for i in range(len(inp_shape)):
+            if i != dim and inp_shape[i] != inp0_shape[i]:
+                raise RuntimeError(
+                    f"Sizes of tensors must match except in dimension {dim}. \
+                        Expected size {inp0_shape[i]} but got size {inp_shape[i]} \
+                        for tensor number {tensor_num + 1} in the list."
+                )
 
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
 
