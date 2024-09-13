@@ -7,20 +7,67 @@ import triton.language as tl
 from ..utils import libentry
 
 
-def heur_block_m(args):
-    return args["M"]
-
-def heur_block_n(args):
-    return args["N"]
-
 def heur_block_k(args):
-    return args["K"]
+    n = args["K"]
+    if n <= 1:
+        return n
+
+    largest_factor = 1
+    for i in range(128, 1, -1):
+        if n % i == 0:
+            largest_factor = i
+            break
+
+    return largest_factor
 
 @libentry()
+@triton.autotune(
+    configs=[
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256},
+            num_stages=3,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 64},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 128},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 32},
+            num_stages=4,
+            num_warps=4,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 32},
+            num_stages=5,
+            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64},
+            num_stages=5,
+            num_warps=2,
+        ),
+    ],
+    key=["M", "N", "K"],
+)
 @triton.heuristics(
     {
-        "BLOCK_SIZE_M": heur_block_m,
-        "BLOCK_SIZE_N": heur_block_n,
         "BLOCK_SIZE_K": heur_block_k,
     }
 )
