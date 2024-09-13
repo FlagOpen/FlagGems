@@ -34,6 +34,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .index_add import index_add
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -225,6 +226,7 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "index_add",
     "masked_fill",
     "_unique2",
     "nonzero",

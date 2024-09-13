@@ -141,6 +141,7 @@ def enable(lib=aten_lib):
     lib.impl("fill.Scalar", fill_scalar, "CUDA")
     lib.impl("fill.Tensor", fill_tensor, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("index_add", index_add, "CUDA")
     lib.impl("tile", tile, "CUDA")
     lib.impl("index_select", index_select, "CUDA")
     lib.impl("masked_fill", masked_fill, "CUDA")
