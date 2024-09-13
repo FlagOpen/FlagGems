@@ -39,7 +39,7 @@ def scatter_kernel(
         cols_mask = cols_offsets < N
 
         offsets = rows_offsets * N + cols_offsets
-        mask = rows_mask and cols_mask
+        mask = rows_mask & cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
@@ -76,7 +76,7 @@ def scatter_add_kernel(
         cols_mask = cols_offsets < N
 
         offsets = rows_offsets * N + cols_offsets
-        mask = rows_mask and cols_mask
+        mask = rows_mask & cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
@@ -115,7 +115,7 @@ def scatter_mul_kernel(
         cols_mask = cols_offsets < N
 
         offsets = rows_offsets * N + cols_offsets
-        mask = rows_mask and cols_mask
+        mask = rows_mask & cols_mask
 
         inp_indices = tl.load(inp_offsets + offsets, mask=mask, other=0)
         idx_indices = tl.load(idx_offsets + offsets, mask=mask, other=0)
@@ -150,7 +150,7 @@ def scatter(inp, dim, index, src, reduction=None):
     inp_strided = restride_dim(inp, dim, index.shape)
     # FIXME: Are there any other way to get the "flatten offset" of a tensor?
     idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
-    # Temporarily call offsetCalculator() outside the block(although it can actually proceed in parallel),
+    # Temporarily call offset_calculator() outside the block(although it can actually proceed in parallel),
     # because the triton jit.function cannot accept Tuple as input in version 2.2.0(in 3.0.0, it's available),
     # and we do need **the whole stride[]** to accomplish this calculation!
     # FIXME: If stride[] can be wholely passed to triton jit.function, we can do this calculation in the kernel
