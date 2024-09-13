@@ -7,11 +7,11 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    DIM_LIST,
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
     RESOLUTION,
+    STACK_DIM_LIST,
     STACK_SHAPES,
     UT_SHAPES_1D,
     UT_SHAPES_2D,
@@ -502,7 +502,7 @@ def test_fill(value, shape, dtype):
 
 
 @pytest.mark.parametrize("shape", STACK_SHAPES)
-@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dim", STACK_DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_stack(shape, dim, dtype):
     if dtype in FLOAT_DTYPES:

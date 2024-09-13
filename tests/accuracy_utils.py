@@ -63,6 +63,7 @@ BOOL_TYPES = [torch.bool]
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 DIM_LIST = [0, 1]
 DIMS_LIST = [0, 1, [0, 1], [1, 0]]
+STACK_DIM_LIST = [-2, -1, 0, 1]
 
 
 def to_reference(inp, upcast=False):
