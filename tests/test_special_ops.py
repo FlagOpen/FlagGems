@@ -21,6 +21,7 @@ from .accuracy_utils import (
 from .conftest import TO_CPU
 
 
+# TODO: sometimes failed at (8192,), 0.6, bfloat16
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -183,6 +184,7 @@ def test_apply_rotary_pos_emb(
     gems_assert_close(k_embed_out, k_embed_ref, dtype)
 
 
+# TODO: sometimes failed at 8, 2, 2, 8, 2, True, float16
 @pytest.mark.parametrize("EmbeddingSize", [8] if TO_CPU else [4096])
 @pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
 @pytest.mark.parametrize("M", [2] if TO_CPU else [4, 8])
