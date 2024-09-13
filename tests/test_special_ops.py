@@ -27,7 +27,7 @@ from .conftest import TO_CPU
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout(shape, p, dtype):
     if TO_CPU or shape == (1,):
-        shape = (8192,)
+        shape = (32768,)
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp)
 
