@@ -49,6 +49,11 @@ STACK_SHAPES = [
     [(16, 256), (16, 256)],
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
+HSTACK_SHAPES = [
+    [(8,), (16,)],
+    [(16, 256), (16, 128)],
+    [(20, 320, 15), (20, 160, 15), (20, 80, 15)],
+]
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]

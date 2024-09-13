@@ -9,6 +9,7 @@ import flag_gems
 from .accuracy_utils import (
     ALL_INT_DTYPES,
     FLOAT_DTYPES,
+    HSTACK_SHAPES,
     INT_DTYPES,
     RESOLUTION,
     SPECIAL_SHAPES,
@@ -531,4 +532,24 @@ def test_accuracy_stack(shape, dim, dtype):
 
     with flag_gems.use_gems():
         res_out = torch.stack(inp, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", HSTACK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_hstack(shape, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+    ref_inp = [to_reference(_, True) for _ in inp]
+    ref_out = torch.hstack(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.hstack(inp)
     gems_assert_equal(res_out, ref_out)
