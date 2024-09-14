@@ -21,7 +21,7 @@ from .accuracy_utils import (
 from .conftest import TO_CPU
 
 
-def remove_zero(inp):
+def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
@@ -359,8 +359,8 @@ def test_accuracy_floor_div_int(shape, dtype):
         device="cuda",
     )
     if TO_CPU:
-        inp1 = remove_zero(inp1)
-        inp2 = remove_zero(inp2)
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
@@ -402,8 +402,8 @@ def test_accuracy_remainder(shape, dtype):
         device="cuda",
     )
     if TO_CPU:
-        inp1 = remove_zero(inp1)
-        inp2 = remove_zero(inp2)
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
