@@ -1,29 +1,51 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
+try:
+    from triton.language.extra.cuda.libdevice import pow
+except ImportError:
+    try:
+        from triton.language.math import pow
+    except ImportError:
+        from triton.language.libdevice import pow
 
-@pointwise_dynamic
+try:
+    from triton.language.extra.cuda.libdevice import tanh as _tanh
+except ImportError:
+    try:
+        from triton.language.math import tanh as _tanh
+    except ImportError:
+        from triton.language.libdevice import tanh as _tanh
+
+
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_forward(x):
-    return tl.math.tanh(x.to(tl.float32))
+    return _tanh(x.to(tl.float32))
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_backward(y, dy):
-    return dy * (1.0 - tl.math.pow(y.to(tl.float32), 2))
+    return dy * (1.0 - pow(y.to(tl.float32), 2))
 
 
 class Tanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
         logging.debug("GEMS TANH FORWARD")
-        O = tanh_forward(A.to(torch.float32))
-        ctx.save_for_backward(O)
-        return O.to(A.dtype)
+        if A.requires_grad is True:
+            out = tanh_forward(A.to(torch.float32))
+            ctx.save_for_backward(out)
+            return out.to(A.dtype)
+        else:
+            out = tanh_forward(A)
+            return out
 
     @staticmethod
     def backward(ctx, out_grad):

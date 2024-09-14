@@ -1,8 +1,10 @@
+import logging
+import math
+
 import torch
 import triton
 import triton.language as tl
-import logging
-import math
+
 from ..utils import libentry
 
 
@@ -23,7 +25,7 @@ def prod_kernel_mid(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
     mid_value = tl.reduce(inp_val, axis=0, combine_fn=reduce_mul)
     mid_ptr = mid + pid
     tl.store(mid_ptr, mid_value.to(inp_val.dtype))
@@ -35,7 +37,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1.0)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=1.0).to(tl.float32)
     prod_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_mul)
     tl.store(out, prod_val)
 
@@ -53,20 +55,22 @@ def prod(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
-    prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
+    with torch.cuda.device(inp.device):
+        prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
+        prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
+
+
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
 
 
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 8}, num_warps=8),
+        triton.Config({"BLOCK_M": 16}, num_warps=8),
+        triton.Config({"BLOCK_M": 32}, num_warps=8),
     ],
     key=[
         "M",
@@ -74,7 +78,9 @@ def prod(inp, *, dtype=None):
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def prod_kernel(
@@ -97,7 +103,7 @@ def prod_kernel(
     mask1 = m_offset < M
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
     result_index = tl.reduce(inp_vals, axis=1, combine_fn=reduce_mul)
 
     out_ptrs = out + offset_index
@@ -129,6 +135,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    prod_kernel[grid](inp, out, M, N, K)
+    with torch.cuda.device(inp.device):
+        prod_kernel[grid](inp, out, M, N, K)
 
     return out

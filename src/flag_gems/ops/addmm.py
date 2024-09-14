@@ -1,7 +1,9 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import libentry
 
 
@@ -51,7 +53,7 @@ from ..utils import libentry
     ],
     key=["M", "N", "K"],
 )
-@triton.jit
+@triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
     a_ptr,
     b_ptr,
@@ -122,21 +124,22 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    addmm_kernel[grid](
-        mat1,
-        mat2,
-        bias,
-        out,
-        alpha,
-        beta,
-        M,
-        N,
-        K,
-        mat1.stride(0),
-        mat1.stride(1),
-        mat2.stride(0),
-        mat2.stride(1),
-        out.stride(0),
-        out.stride(1),
-    )
+    with torch.cuda.device(mat1.device):
+        addmm_kernel[grid](
+            mat1,
+            mat2,
+            bias,
+            out,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            mat1.stride(0),
+            mat1.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            out.stride(0),
+            out.stride(1),
+        )
     return out

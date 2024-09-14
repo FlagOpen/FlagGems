@@ -1,11 +1,21 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
+try:
+    from triton.language.extra.cuda.libdevice import div_rn
+except ImportError:
+    try:
+        from triton.language.math import div_rn
+    except ImportError:
+        from triton.language.libdevice import div_rn
 
-@pointwise_dynamic
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def silu_forward(x):
     x_fp32 = x.to(tl.float32)
@@ -13,7 +23,7 @@ def silu_forward(x):
     return y
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def silu_backward(x, dy):
     dy_fp32 = dy.to(tl.float32)
@@ -30,9 +40,9 @@ class Silu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
         logging.debug("GEMS SILU FORWARD")
-        O = silu_forward(A)
+        out = silu_forward(A)
         ctx.save_for_backward(A)
-        return O
+        return out
 
     @staticmethod
     def backward(ctx, out_grad):

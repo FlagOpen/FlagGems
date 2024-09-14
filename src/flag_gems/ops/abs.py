@@ -1,10 +1,12 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic
+@pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
 @triton.jit
 def abs_func(x):
     return tl.abs(x)
@@ -12,5 +14,4 @@ def abs_func(x):
 
 def abs(A):
     logging.debug("GEMS ABS")
-    O = abs_func(A)
-    return O
+    return abs_func(A)

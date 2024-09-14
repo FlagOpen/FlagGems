@@ -1,16 +1,25 @@
+import logging
+
 import triton
 import triton.language as tl
-import logging
+
 from ..utils import pointwise_dynamic
 
+try:
+    from triton.language.extra.cuda.libdevice import isinf as _isinf
+except ImportError:
+    try:
+        from triton.language.math import isinf as _isinf
+    except ImportError:
+        from triton.language.libdevice import isinf as _isinf
 
-@pointwise_dynamic
+
+@pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
 def isinf_func(x):
-    return tl.math.isinf(x.to(tl.float32))
+    return _isinf(x.to(tl.float32))
 
 
 def isinf(A):
     logging.debug("GEMS ISINF")
-    O = isinf_func(A)
-    return O
+    return isinf_func(A)

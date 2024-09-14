@@ -1,9 +1,11 @@
+import logging
+import math
+
 import torch
 import triton
 import triton.language as tl
-import logging
-from ..utils import libentry
-import math
+
+from ..utils import dim_compress, libentry
 
 
 @libentry()
@@ -19,20 +21,19 @@ def mean_kernel_1(
     inp_ptrs = inp + offset
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=0.0)
-    div_val = inp_val / M
-    sum_val = tl.sum(div_val, axis=0)
+    sum_val = tl.sum(inp_val, axis=0)
     mid_ptr = mid + pid
     tl.store(mid_ptr, sum_val)
 
 
 @libentry()
 @triton.jit
-def mean_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
+def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
     mid_val = tl.load(mid_ptrs, mask=mask, other=0.0)
-    sum_val = tl.sum(mid_val, axis=0)
+    sum_val = tl.sum(mid_val, axis=0) / M
     tl.store(out, sum_val)
 
 
@@ -48,8 +49,9 @@ def mean(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-    mean_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    with torch.cuda.device(inp.device):
+        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
 
 
@@ -78,31 +80,35 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
-    _mean /= N
-    mean = tl.sum(_mean, axis=1)[:, None]
+    mean = tl.sum(_mean, axis=1) / N
+    mean = mean[:, None]
     tl.store(Mean, mean, row_mask)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
     logging.debug("GEMS MEAN DIM")
 
-    if dtype == None:
+    if dtype is None:
         dtype = x.dtype
     if dim is None:
-        dim = list(range(x.ndim))
+        out = mean(x, dtype=dtype)
+        if not keepdim:
+            out = out.reshape([1] * x.ndim)
+        return out
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
-    order = [i for i in range(x.ndim) if i not in dim] + dim
-    x = x.permute(order).contiguous()
+    x = dim_compress(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = x.numel() // N
-    mean = torch.empty(shape, dtype=dtype, device=x.device)
+    out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-    mean_dim_kernel[grid](x, mean, M, N)
+
+    with torch.cuda.device(x.device):
+        mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
-        mean = mean.squeeze(dim)
-    return mean
+        out = out.squeeze(dim)
+    return out
