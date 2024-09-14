@@ -7,9 +7,19 @@ def pytest_addoption(parser):
         choices=["cuda", "cpu"],
         help="device to run reference tests on",
     )
+    parser.addoption(
+        "--shape",
+        action="store",
+        default="all",
+        required=False,
+        choices=["all", "one"],
+        help="how many shapes to run tests on",
+    )
 
 
 def pytest_configure(config):
-    value = config.getoption("--ref")
     global TO_CPU
-    TO_CPU = value == "cpu"
+    TO_CPU = config.getoption("--ref") == "cpu"
+
+    global ONE_SHAPE
+    ONE_SHAPE = config.getoption("--shape") == "one"

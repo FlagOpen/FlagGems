@@ -12,35 +12,37 @@ from .accuracy_utils import (
     gems_assert_equal,
     to_reference,
 )
-from .conftest import TO_CPU
+from .conftest import ONE_SHAPE
 
-FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
-DIM_LIST = [1] if TO_CPU else [0, 1]
-DIMS_LIST = [1] if TO_CPU else [0, 1, [0, 1], [1, 0]]
+FLOAT_DTYPES = [torch.float32] if ONE_SHAPE else FLOAT_DTYPES
+DIM_LIST = [1] if ONE_SHAPE else [0, 1]
+DIMS_LIST = [1] if ONE_SHAPE else [0, 1, [0, 1], [1, 0]]
 KEEPDIM_DIMS_SHAPE = (
     [(True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
-    if TO_CPU
+    if ONE_SHAPE
     else list(zip([True, False] * 2, DIMS_LIST, REDUCTION_SHAPES + [(7, 4, 11, 1)]))
 )
 SMOOTH_IGNORE_SHAPE = (
     [(0.1, 1, REDUCTION_SHAPES[0])]
-    if TO_CPU
+    if ONE_SHAPE
     else list(zip([0, 0.1, 1], [1, 200, -100], REDUCTION_SHAPES))
 )
 SMOOTH_SHAPE = (
-    [(0.1, REDUCTION_SHAPES[0])] if TO_CPU else list(zip([1, 0.1, 0], REDUCTION_SHAPES))
+    [(0.1, REDUCTION_SHAPES[0])]
+    if ONE_SHAPE
+    else list(zip([1, 0.1, 0], REDUCTION_SHAPES))
 )
 DIM_SHAPE = (
     [(1, REDUCTION_SMALL_SHAPES[0])]
-    if TO_CPU
+    if ONE_SHAPE
     else list(zip([0, 1, 1], REDUCTION_SMALL_SHAPES))
 )
 THRESHOLD_SHAPE = (
     [(0.3, REDUCTION_SHAPES[0])]
-    if TO_CPU
+    if ONE_SHAPE
     else list(zip([0.3, 0.5, 0.7], REDUCTION_SHAPES))
 )
-CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if TO_CPU else ["mean", "none", "sum"]
+CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if ONE_SHAPE else ["mean", "none", "sum"]
 
 
 @pytest.mark.amx
@@ -154,7 +156,9 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-CUMSUM_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+CUMSUM_SHAPES = (
+    [(2, 32)] if ONE_SHAPE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
 
 
 @pytest.mark.cumsum
@@ -175,7 +179,7 @@ def test_accuracy_cumsum(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
-NONZERO_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,)]
+NONZERO_SHAPES = [(2, 32)] if ONE_SHAPE else REDUCTION_SHAPES + [(2637,)]
 
 
 @pytest.mark.nonzero
@@ -221,7 +225,7 @@ def test_accuracy_log_softmax(shape, dtype):
 # TODO: failed at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize(
-    "shape", [(1, 256)] if TO_CPU else [(1, 256), (4096, 256), (200, 2560, 3)]
+    "shape", [(1, 256)] if ONE_SHAPE else [(1, 256), (4096, 256), (200, 2560, 3)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -245,8 +249,8 @@ def test_accuracy_softmax(shape, dtype, dim):
 @pytest.mark.var_mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
-@pytest.mark.parametrize("correction", [1] if TO_CPU else [0, 1])
-@pytest.mark.parametrize("keepdim", [True] if TO_CPU else [True, False])
+@pytest.mark.parametrize("correction", [1] if ONE_SHAPE else [0, 1])
+@pytest.mark.parametrize("keepdim", [True] if ONE_SHAPE else [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     if shape[0] == 1:  # TODO: res is inf, while ref is nan

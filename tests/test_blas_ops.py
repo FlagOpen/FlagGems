@@ -4,11 +4,13 @@ import torch
 import flag_gems
 
 from .accuracy_utils import FLOAT_DTYPES, SCALARS, gems_assert_close, to_reference
-from .conftest import TO_CPU
+from .conftest import ONE_SHAPE
 
-MN_SHAPES = [(1, 32)] if TO_CPU else [(1, 32), (160, 1024), (5333, 497)]
-MNK_SHAPES = [(1, 1, 32)] if TO_CPU else [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
+MN_SHAPES = [(1, 32)] if ONE_SHAPE else [(1, 32), (160, 1024), (5333, 497)]
+MNK_SHAPES = (
+    [(1, 1, 32)] if ONE_SHAPE else [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
+)
+FLOAT_DTYPES = [torch.float32] if ONE_SHAPE else FLOAT_DTYPES
 
 
 @pytest.mark.addmm
