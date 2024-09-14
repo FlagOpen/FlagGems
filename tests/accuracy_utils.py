@@ -82,23 +82,23 @@ def to_reference(inp, upcast=False):
     return ref_inp
 
 
-def to_cpu(a, b):
+def to_cpu(res, ref):
     if TO_CPU:
-        a = a.to("cpu")
-        assert b.device == torch.device("cpu")
-    return a
+        res = res.to("cpu")
+        assert ref.device == torch.device("cpu")
+    return res
 
 
-def gems_assert_close(a, b, dtype, equal_nan=False, reduce_dim=1):
-    a = to_cpu(a, b)
+def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
+    res = to_cpu(res, ref)
     flag_gems.testing.assert_close(
-        a, b, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim
+        res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim
     )
 
 
-def gems_assert_equal(a, b):
-    a = to_cpu(a, b)
-    flag_gems.testing.assert_equal(a, b)
+def gems_assert_equal(res, ref):
+    res = to_cpu(res, ref)
+    flag_gems.testing.assert_equal(res, ref)
 
 
 def unsqueeze_tuple(t, max_len):

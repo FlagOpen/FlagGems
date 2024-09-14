@@ -10,12 +10,12 @@ RESOLUTION = {
 }
 
 
-def assert_close(a, b, dtype, equal_nan=False, reduce_dim=1):
-    b = b.to(dtype)
+def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
+    ref = ref.to(dtype)
     atol = 1e-4 * reduce_dim
     rtol = RESOLUTION[dtype]
-    torch.testing.assert_close(a, b, atol=atol, rtol=rtol, equal_nan=equal_nan)
+    torch.testing.assert_close(res, ref, atol=atol, rtol=rtol, equal_nan=equal_nan)
 
 
-def assert_equal(a, b):
-    assert torch.equal(a, b)
+def assert_equal(res, ref):
+    assert torch.equal(res, ref)
