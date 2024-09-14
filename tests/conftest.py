@@ -8,12 +8,12 @@ def pytest_addoption(parser):
         help="device to run reference tests on",
     )
     parser.addoption(
-        "--shape",
+        "--mode",
         action="store",
-        default="all",
+        default="normal",
         required=False,
-        choices=["all", "one"],
-        help="how many shapes to run tests on",
+        choices=["normal", "quick"],
+        help="run tests on normal or quick mode",
     )
 
 
@@ -21,5 +21,5 @@ def pytest_configure(config):
     global TO_CPU
     TO_CPU = config.getoption("--ref") == "cpu"
 
-    global ONE_SHAPE
-    ONE_SHAPE = config.getoption("--shape") == "one"
+    global QUICK_MODE
+    QUICK_MODE = config.getoption("--mode") == "quick"

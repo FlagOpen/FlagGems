@@ -9,12 +9,12 @@ from .accuracy_utils import (
     gems_assert_close,
     to_reference,
 )
-from .conftest import ONE_SHAPE
+from .conftest import QUICK_MODE
 
-FLOAT_DTYPES = [torch.float32] if ONE_SHAPE else FLOAT_DTYPES
-DIMS_LIST = [1] if ONE_SHAPE else [0, 1, [0, 1], [1, 0]]
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
+DIMS_LIST = [1] if QUICK_MODE else [0, 1, [0, 1], [1, 0]]
 KEEPDIM_DIMS = (
-    [(True, DIMS_LIST[0])] if ONE_SHAPE else list(zip([True, False] * 2, DIMS_LIST))
+    [(True, DIMS_LIST[0])] if QUICK_MODE else list(zip([True, False] * 2, DIMS_LIST))
 )
 
 
@@ -76,7 +76,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 # TODO: failed at (1, 2) (2~32, 40499) (200, 2~64) (200~4096, 40999)
 @pytest.mark.layer_norm
 @pytest.mark.parametrize(
-    "shape", [(1, 40999)] if ONE_SHAPE else [(1, 40999), (4096, 256)]
+    "shape", [(1, 40999)] if QUICK_MODE else [(1, 40999), (4096, 256)]
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
@@ -226,7 +226,7 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 @pytest.mark.vector_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize(
-    "ord", [2] if ONE_SHAPE else [2, float("inf"), -float("inf"), 0, 1]
+    "ord", [2] if QUICK_MODE else [2, float("inf"), -float("inf"), 0, 1]
 )
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIMS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

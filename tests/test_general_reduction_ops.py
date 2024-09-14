@@ -12,14 +12,14 @@ from .accuracy_utils import (
     gems_assert_equal,
     to_reference,
 )
-from .conftest import ONE_SHAPE
+from .conftest import QUICK_MODE
 
-FLOAT_DTYPES = [torch.float32] if ONE_SHAPE else FLOAT_DTYPES
-DIM_LIST = [1] if ONE_SHAPE else [0, 1]
-DIMS_LIST = [1] if ONE_SHAPE else [0, 1, [0, 1], [1, 0]]
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
+DIM_LIST = [1] if QUICK_MODE else [0, 1]
+DIMS_LIST = [1] if QUICK_MODE else [0, 1, [0, 1], [1, 0]]
 KIND_KEEPDIM_DIMS_SHAPE = (
     [("normal", True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
-    if ONE_SHAPE
+    if QUICK_MODE
     else list(
         zip(
             ["normal", "allTrue"] * 2,
@@ -30,9 +30,11 @@ KIND_KEEPDIM_DIMS_SHAPE = (
     )
 )
 KEEPDIM_DIMS = (
-    [(True, DIMS_LIST[0])] if ONE_SHAPE else list(zip([True, False] * 2, DIMS_LIST))
+    [(True, DIMS_LIST[0])] if QUICK_MODE else list(zip([True, False] * 2, DIMS_LIST))
 )
-KEEPDIM_DIM = [(True, DIM_LIST[0])] if ONE_SHAPE else list(zip([True, False], DIM_LIST))
+KEEPDIM_DIM = (
+    [(True, DIM_LIST[0])] if QUICK_MODE else list(zip([True, False], DIM_LIST))
+)
 
 
 @pytest.mark.all
