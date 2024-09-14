@@ -78,6 +78,7 @@ from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
+from .repeat_interleave import repeat_interleave_self_int
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -233,4 +234,5 @@ __all__ = [
     "masked_select",
     "stack",
     "hstack",
+    "repeat_interleave_self_int",
 ]

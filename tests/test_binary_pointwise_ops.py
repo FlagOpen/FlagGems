@@ -976,3 +976,21 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
     assert res_out == ref_out
+
+
+REPEAT_INTERLEAVE_REPEATS = [2]
+REPEAT_INTERLEAVE_DIM = [-1, 0]
+
+
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    repeats = 2
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
+    with flag_gems.use_gems():
+        res_out = torch.repeat_interleave(ref_inp, repeats, dim)
+    gems_assert_equal(res_out, ref_out)
