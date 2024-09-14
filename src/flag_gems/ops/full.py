@@ -32,5 +32,5 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch.cuda.device(device):
-        full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=1024)
+        full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=2048)
     return out

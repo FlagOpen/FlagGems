@@ -9,9 +9,9 @@ from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_unifor
 
 def heur_block(args):
     if args["N"] <= 512:
-        return 512
+        return 2048
     else:
-        return 1024
+        return 4096
 
 
 def heur_num_warps(args):

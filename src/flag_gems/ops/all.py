@@ -93,9 +93,12 @@ def all(inp):
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
-
+    num_warps = 4
+    min_values_per_thread = 8
+    if block_size >= 64 * 8 * min_values_per_thread:
+        num_warps = 8
     with torch.cuda.device(inp.device):
-        all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+        all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size, num_warps=num_warps)
         all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
     return out

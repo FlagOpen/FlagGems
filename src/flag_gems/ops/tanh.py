@@ -69,7 +69,7 @@ def tanh_backward_custom(x: torch.Tensor, y: torch.Tensor):
 
     n_elements = output.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
-    tanh_backward_custom_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
+    tanh_backward_custom_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=2048)
     return output
 
 class Tanh(torch.autograd.Function):

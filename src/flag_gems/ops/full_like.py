@@ -25,5 +25,5 @@ def full_like(
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch.cuda.device(x.device):
-        full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=1024)
+        full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=2048)
     return out

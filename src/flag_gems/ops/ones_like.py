@@ -18,5 +18,5 @@ def ones_like(
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch.cuda.device(x.device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        ones_kernel[grid_fn](out, N, BLOCK_SIZE=2048)
     return out
