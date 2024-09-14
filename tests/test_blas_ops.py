@@ -14,6 +14,8 @@ FLOAT_DTYPES = [torch.float32] if ONE_SHAPE else FLOAT_DTYPES
 
 
 @pytest.mark.addmm
+@pytest.mark.linear
+@pytest.mark.matmul
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

@@ -397,7 +397,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
-@pytest.mark.gatter
+@pytest.mark.gather
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -437,7 +437,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
-@pytest.mark.gatter
+@pytest.mark.gather
 @pytest.mark.parametrize("out_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
