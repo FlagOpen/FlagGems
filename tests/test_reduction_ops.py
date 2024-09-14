@@ -43,6 +43,7 @@ THRESHOLD_SHAPE = (
 CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if TO_CPU else ["mean", "none", "sum"]
 
 
+@pytest.mark.amx
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_amax(shape, dim, keepdim, dtype):
@@ -57,6 +58,7 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
 
 
 # TODO: There are some bugs in argmax with large size.
+@pytest.mark.argmax
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -72,6 +74,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -114,6 +117,7 @@ def test_accuracy_cross_entropy_loss_indices(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -153,6 +157,7 @@ def test_accuracy_cross_entropy_loss_probabilities(
 CUMSUM_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 
 
+@pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
@@ -173,6 +178,7 @@ def test_accuracy_cumsum(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if TO_CPU else REDUCTION_SHAPES + [(2637,)]
 
 
+@pytest.mark.nonzero
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
 def test_accuracy_nonzero(shape, dtype):
@@ -191,6 +197,7 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
@@ -212,6 +219,7 @@ def test_accuracy_log_softmax(shape, dtype):
 
 
 # TODO: failed at (1, 2) (200, 40999, 3)
+@pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if TO_CPU else [(1, 256), (4096, 256), (200, 2560, 3)]
 )
@@ -234,6 +242,7 @@ def test_accuracy_softmax(shape, dtype, dim):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.mark.var_mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("correction", [1] if TO_CPU else [0, 1])
@@ -258,6 +267,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
+@pytest.mark.scatter
 @pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -299,6 +309,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
+@pytest.mark.scatter
 @pytest.mark.parametrize("src_shape", [(2, 2, 2)])
 @pytest.mark.parametrize("inp_shape", [(3, 3, 3)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -340,6 +351,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
+@pytest.mark.scatter
 @pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -381,6 +393,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
+@pytest.mark.gatter
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -420,6 +433,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
 
 
 @pytest.mark.skip(reason="operator undone")
+@pytest.mark.gatter
 @pytest.mark.parametrize("out_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
 @pytest.mark.parametrize("dim", [0, 1, 2])
@@ -461,6 +475,7 @@ def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
 
 
 # TODO: failed at (200, 40999, 3)
+@pytest.mark.index_select
 @pytest.mark.parametrize("dim, shape", DIM_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_select(shape, dim, dtype):
@@ -479,6 +494,7 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_masked_select(shape, dtype, threshold):

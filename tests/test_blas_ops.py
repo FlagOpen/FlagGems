@@ -11,6 +11,7 @@ MNK_SHAPES = [(1, 1, 32)] if TO_CPU else [(1, 1, 32), (15, 160, 1024), (495, 533
 FLOAT_DTYPES = [torch.float32] if TO_CPU else FLOAT_DTYPES
 
 
+@pytest.mark.addmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -31,6 +32,7 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
@@ -48,6 +50,7 @@ def test_accuracy_bmm(M, N, K, dtype):
 
 
 # TODO: failed at (1, 1, 2)
+@pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mm(M, N, K, dtype):
@@ -63,6 +66,7 @@ def test_accuracy_mm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mv(M, N, dtype):
@@ -78,6 +82,7 @@ def test_accuracy_mv(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.outer
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_outer(M, N, dtype):

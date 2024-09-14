@@ -1,6 +1,6 @@
 def pytest_addoption(parser):
     parser.addoption(
-        "--device",
+        "--ref",
         action="store",
         default="cuda",
         required=False,
@@ -10,6 +10,6 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    value = config.getoption("--device")
+    value = config.getoption("--ref")
     global TO_CPU
     TO_CPU = value == "cpu"

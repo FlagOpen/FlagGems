@@ -18,6 +18,7 @@ KEEPDIM_DIMS = (
 )
 
 
+@pytest.mark.group_norm
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -73,6 +74,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
 
 
 # TODO: failed at (1, 2) (2~32, 40499) (200, 2~64) (200~4096, 40999)
+@pytest.mark.layer_norm
 @pytest.mark.parametrize("shape", [(1, 40999)] if TO_CPU else [(1, 40999), (4096, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
@@ -122,6 +124,7 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
+@pytest.mark.rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rmsnorm(shape, dtype):
@@ -148,6 +151,7 @@ def test_accuracy_rmsnorm(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip_layer_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_skip_layernorm(shape, dtype):
@@ -180,6 +184,7 @@ def test_accuracy_skip_layernorm(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip_rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_skip_rmsnorm(shape, dtype):
@@ -216,6 +221,7 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.vector_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize(
     "ord", [2] if TO_CPU else [2, float("inf"), -float("inf"), 0, 1]
