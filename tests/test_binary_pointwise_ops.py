@@ -482,6 +482,8 @@ def test_accuracy_remainder(shape, dtype):
         dtype=dtype,
         device=flag_gems.device,
     )
+    # avoid torch complains RuntimeError: ZeroDivisionError
+    inp1 = torch.where(inp1 != 0, inp1, 1)
     inp2 = torch.randint(
         torch.iinfo(dtype).min,
         torch.iinfo(dtype).max,
