@@ -364,9 +364,9 @@ def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
 
     shape_dialted = tuple(item * 2 for item in shape)
     if dtype in ALL_FLOAT_DTYPES:
-        inp = torch.randn(shape_dialted, dtype=dtype, device="cuda")[::2, ::2]
+        inp = torch.randn(shape_dialted, dtype=dtype, device="musa")[::2, ::2]
     else:
-        inp = torch.randint(-1000, 1000, shape_dialted, device="cuda").to(dtype)[
+        inp = torch.randint(-1000, 1000, shape_dialted, device="musa").to(dtype)[
             ::2, ::2
         ]
     ref_inp = to_reference(inp, False)

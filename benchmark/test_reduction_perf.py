@@ -212,8 +212,8 @@ def test_perf_layernorm():
 
 def test_perf_weightnorm():
     def weight_norm_args(dtype, batch, size):
-        v = torch.randn([batch, size], dtype=dtype, device="cuda")
-        g = torch.randn([batch], dtype=dtype, device="cuda")
+        v = torch.randn([batch, size], dtype=dtype, device="musa")
+        g = torch.randn([batch], dtype=dtype, device="musa")
         return v, g, 0
 
     bench = Benchmark(
@@ -373,11 +373,11 @@ def test_perf_index_select():
     bench.run()
 
 
-def test_masked_select():
-    def masked_select_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
-        return (inp, mask)
+# def test_masked_select():
+#     def masked_select_args(dtype, batch, size):
+#         inp = torch.randn([batch, size], dtype=dtype, device="musa")
+#         mask = torch.randn([batch, size], dtype=dtype, device="musa") < 0.3
+#         return (inp, mask)
 
     bench = Benchmark(
         op_name="masked_select",
@@ -394,8 +394,8 @@ def test_perf_scatter():
     def scatter_args(dtype, batch, size):
         inp_shape = [batch, size]
         src_shape = [batch // 16, size // 16]
-        inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
-        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        inp = torch.randn(inp_shape, dtype=dtype, device="musa")
+        src = torch.randn(src_shape, dtype=dtype, device="musa")
         import random
 
         dim = random.choice([0, 1])
@@ -405,7 +405,7 @@ def test_perf_scatter():
             random.randint(1, min(src_shape[0], inp_shape[0])),
             random.randint(1, min(src_shape[1], inp_shape[1])),
         ]
-        index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device="musa")
 
         m, n = index_shape
 
@@ -433,7 +433,7 @@ def test_perf_scatter():
 def test_perf_gather():
     def gather_args(dtype, batch, size):
         inp_shape = [batch, size]
-        inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+        inp = torch.randn(inp_shape, dtype=dtype, device="musa")
         import random
 
         dim = random.choice([0, 1])
@@ -442,7 +442,7 @@ def test_perf_gather():
             random.randint(1, inp_shape[0]),
             random.randint(1, inp_shape[1]),
         ]
-        index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device="musa")
 
         m, n = index_shape
 

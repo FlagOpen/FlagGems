@@ -415,14 +415,14 @@ def test_accuracy_floor_div_int(shape, dtype):
         torch.iinfo(dtype).max,
         shape,
         dtype=dtype,
-        device="cuda",
+        device="musa",
     )
     inp2 = torch.randint(
         torch.iinfo(dtype).min,
         torch.iinfo(dtype).max,
         shape,
         dtype=dtype,
-        device="cuda",
+        device="musa",
     )
     if TO_CPU:
         inp1 = replace_zeros(inp1)
@@ -478,18 +478,25 @@ def test_accuracy_remainder(shape, dtype):
         torch.iinfo(dtype).max,
         shape,
         dtype=dtype,
-        device="cuda",
+        device="musa",
     )
+    # avoid torch complains RuntimeError: ZeroDivisionError
+    inp1 = torch.where(inp1 != 0, inp1, 1)
     inp2 = torch.randint(
         torch.iinfo(dtype).min,
         torch.iinfo(dtype).max,
         shape,
         dtype=dtype,
-        device="cuda",
+        device="musa",
     )
+<<<<<<< HEAD
     if TO_CPU:
         inp1 = replace_zeros(inp1)
         inp2 = replace_zeros(inp2)
+=======
+    # avoid torch complains RuntimeError: ZeroDivisionError
+    inp2 = torch.where(inp2 != 0, inp2, 1)
+>>>>>>> rebase on master commit 2c9ae672
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
@@ -501,6 +508,10 @@ def test_accuracy_remainder(shape, dtype):
 
     for d in inp2.flatten()[:100]:
         ref_d = to_reference(d, False)
+<<<<<<< HEAD
+=======
+
+>>>>>>> rebase on master commit 2c9ae672
         ref_out = ref_inp1 % ref_d
         with flag_gems.use_gems():
             res_out = inp1 % d

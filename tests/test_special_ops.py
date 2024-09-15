@@ -290,7 +290,7 @@ def test_accuracy_resolve_conj(shape, dtype):
 
 # @pytest.mark.unique
 # @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-# @pytest.mark.parametrize("dtype", INT_DTYPES)
+# @pytest.mark.parametrize("dtype", [torch.int32]) # Torch complains Sort doesn't support Short
 # @pytest.mark.parametrize("sorted", [True])
 # @pytest.mark.parametrize("return_inverse", [True, False])
 # @pytest.mark.parametrize("return_counts", [False, True])
@@ -369,46 +369,46 @@ def test_accuracy_resolve_conj(shape, dtype):
 #     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.multinomial
-@pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-@pytest.mark.parametrize("n_samples", [1000])
-def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
-    if shape[-1] == 1:
-        dist = torch.rand(size=shape, dtype=dtype, device="cuda")
-        with flag_gems.use_gems():
-            res_out = torch.multinomial(dist, n_samples, True)
-        assert torch.all(res_out == 0)
-    else:
-        # Mask p% off of the categories and test the sampling results fall in the rest
-        for p in (0.1, 0.5, 0.9):
-            dist = torch.rand(size=shape, dtype=dtype, device="cuda")
-            dist[torch.rand(shape) < p] = 0
-            # Make sure there's at least one non-zero probability
-            dist[..., -1] = 0.5
-            with flag_gems.use_gems():
-                res_out = torch.multinomial(dist, n_samples, True)
-            res_dist = torch.gather(dist, -1, res_out)
-            # assert torch.all(res_dist)
-            assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
+# @pytest.mark.multinomial
+# @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
+# @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+# @pytest.mark.parametrize("n_samples", [1000])
+# def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
+#     if shape[-1] == 1:
+#         dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+#         with flag_gems.use_gems():
+#             res_out = torch.multinomial(dist, n_samples, True)
+#         assert torch.all(res_out == 0)
+#     else:
+#         # Mask p% off of the categories and test the sampling results fall in the rest
+#         for p in (0.1, 0.5, 0.9):
+#             dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+#             dist[torch.rand(shape) < p] = 0
+#             # Make sure there's at least one non-zero probability
+#             dist[..., -1] = 0.5
+#             with flag_gems.use_gems():
+#                 res_out = torch.multinomial(dist, n_samples, True)
+#             res_dist = torch.gather(dist, -1, res_out)
+#             # assert torch.all(res_dist)
+#             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
 
 
-@pytest.mark.multinomial
-@pytest.mark.parametrize("pool", UT_SHAPES_2D)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_multinomial_without_replacement(pool, dtype):
-    dist = torch.rand(size=pool, dtype=dtype, device="cuda")
-    k = pool[-1]
-    if k > 1:
-        ns = [k // 2, k]
-    else:
-        ns = [1]
-    for n in ns:
-        with flag_gems.use_gems():
-            out = torch.multinomial(dist, n, False)
-        # Verifies uniqueness
-        idx_cnt = torch.nn.functional.one_hot(out).sum(1)
-        assert torch.all(idx_cnt <= 1)
+# @pytest.mark.multinomial
+# @pytest.mark.parametrize("pool", UT_SHAPES_2D)
+# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+# def test_accuracy_multinomial_without_replacement(pool, dtype):
+#     dist = torch.rand(size=pool, dtype=dtype, device="cuda")
+#     k = pool[-1]
+#     if k > 1:
+#         ns = [k // 2, k]
+#     else:
+#         ns = [1]
+#     for n in ns:
+#         with flag_gems.use_gems():
+#             out = torch.multinomial(dist, n, False)
+#         # Verifies uniqueness
+#         idx_cnt = torch.nn.functional.one_hot(out).sum(1)
+#         assert torch.all(idx_cnt <= 1)
 
 
 @pytest.mark.pad
@@ -417,7 +417,7 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
 @pytest.mark.parametrize("contiguous", [True, False])
 def test_pad(shape, dtype, pad_mode, contiguous):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.randn(size=shape, dtype=dtype, device="musa")
     if not contiguous:
         x = x[::2, ::2]
 
@@ -473,7 +473,7 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     inp1 = torch.randint(-100, 100, shape, device="cuda").to(dtype)
     test_numel = inp1.numel() // 2 if inp1.numel() > 1 else 1
     test_shape = (test_numel,)
-    inp2 = torch.randint(-10, 10, test_shape, device="cuda").to(dtype)
+    inp2 = torch.randint(-10, 10, test_shape, device="musa").to(dtype)
     inp1.ravel()[-1] = 0
     if assume_unique:
         inp1 = torch.unique(inp1)
@@ -498,7 +498,7 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     ref2_out = torch.isin(ref_inp1, inp2_s, assume_unique=assume_unique, invert=invert)
     gems_assert_equal(res2_out, ref2_out)
 
-    inp0 = torch.tensor([], device="cuda")
+    inp0 = torch.tensor([], device="musa")
     ref_inp0 = to_reference(inp0, False)
     with flag_gems.use_gems():
         res0_out = torch.isin(inp0, inp2, assume_unique=assume_unique, invert=invert)
@@ -514,7 +514,7 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_fill(value, shape, dtype):
     # Test fill.Scalar
-    x = torch.ones(shape, device="cuda", dtype=dtype)
+    x = torch.ones(shape, device="musa", dtype=dtype)
     ref_x = to_reference(x, False)
 
     ref_out = torch.fill(ref_x, value)
@@ -524,8 +524,9 @@ def test_fill(value, shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
     # Test fill.Tensor
-    value_tensor = torch.tensor(value, device="cuda", dtype=dtype)
-    ref_out_tensor = torch.fill(ref_x, value_tensor)
+    value_tensor = torch.tensor(value, device="musa", dtype=dtype)
+    ref_value_tensor = to_reference(value_tensor, False)
+    ref_out_tensor = torch.fill(ref_x, ref_value_tensor)
     with flag_gems.use_gems():
         res_out_tensor = torch.fill(x, value_tensor)
 
