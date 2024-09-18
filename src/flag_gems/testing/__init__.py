@@ -11,6 +11,7 @@ RESOLUTION = {
 
 
 def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
+    assert res.dtype == dtype
     ref = ref.to(dtype)
     atol = 1e-4 * reduce_dim
     rtol = RESOLUTION[dtype]
