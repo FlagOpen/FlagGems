@@ -41,7 +41,6 @@ cmds=(
     CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py --ref=cpu --mode=quick && \
     CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py --ref=cpu --mode=quick && \
     CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py --ref=cpu --mode=quick &"
-   "bash tools/pytest_mark_check.sh &"
 )
 
 declare -a exit_statuses

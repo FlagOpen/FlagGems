@@ -28,7 +28,7 @@ pre-commit
 
 ### 2.2 算子单元测试
 Op Unit Test 检查算子的正确性，如果新增算子，需要在 `tests` 目录的相应文件下增加测试用例；如果新增了测试文件，则需要在 `tools/coverage.sh` 文件中的 `cmd` 变量新增测试命令。
-对于算子类的单元测试，请在测试函数前装饰 @pytest.mark.{OP_NAME}，并将 {OP_NAME} 注册在 pytest.ini 中。一个单元测试函数可装饰多个自定义 mark。
+对于算子类的单元测试，请在测试函数前装饰 @pytest.mark.{OP_NAME}，这样可以通过 `pytest -m` 选择运行指定 OP 的单元测试函数。一个单元测试函数可装饰多个自定义 mark。
 
 ### 2.3 模型测试
 Model Test 检查模型的正确性，新增模型的流程与新增算子的流程类似。
