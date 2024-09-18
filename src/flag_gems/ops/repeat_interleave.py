@@ -2,7 +2,7 @@ import torch
 import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-from ..utils.shape_utils import c_contiguous_stride, volume
+from ..utils.shape_utils import c_contiguous_stride
 from ..utils.tensor_wrapper import StridedBuffer
 
 
@@ -14,16 +14,7 @@ def copy_func(x):
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     if dim is None:
-        nelems = volume(inp.shape)
-        inp_shape = [
-            nelems,
-        ]
-        inp_stride = [
-            1,
-        ]
-        output_shape = [
-            nelems,
-        ]
+        inp = inp.flatten()
         dim = 0
     else:
         if (dim < -inp.ndim) or (dim >= inp.ndim):
@@ -32,9 +23,9 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
                     -inp.ndim, inp.ndim - 1, dim
                 )
             )
-        inp_shape = list(inp.shape)
-        inp_stride = list(inp.stride())
-        output_shape = list(inp.shape)
+    inp_shape = list(inp.shape)
+    inp_stride = list(inp.stride())
+    output_shape = list(inp.shape)
 
     if dim < 0:
         dim = dim + len(inp_shape)
