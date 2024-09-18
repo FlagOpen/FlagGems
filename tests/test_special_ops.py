@@ -632,6 +632,7 @@ def gen_cat_shapes_dim(shapes):
     return results
 
 
+@pytest.mark.cat
 @pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cat(shape, dim, dtype):
