@@ -14,6 +14,7 @@ from .bitwise_and import (
 from .bitwise_not import bitwise_not
 from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_tensor
 from .bmm import bmm
+from .cat import cat
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
@@ -34,6 +35,7 @@ from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
+from .hstack import hstack
 from .index_select import index_select
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -77,6 +79,7 @@ from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
+from .repeat_interleave import repeat_interleave_self_int
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -86,6 +89,7 @@ from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
 from .softmax import softmax
+from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
@@ -229,4 +233,8 @@ __all__ = [
     "nonzero",
     "repeat",
     "masked_select",
+    "stack",
+    "hstack",
+    "cat",
+    "repeat_interleave_self_int",
 ]

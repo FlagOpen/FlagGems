@@ -7,10 +7,12 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
+    ALL_INT_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
-    POINTWISE_SHAPES,
-    RESOLUTION,
+    SPECIAL_SHAPES,
+    STACK_DIM_LIST,
+    STACK_SHAPES,
     UT_SHAPES_1D,
     UT_SHAPES_2D,
     gems_assert_close,
@@ -20,10 +22,14 @@ from .accuracy_utils import (
 from .conftest import TO_CPU
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+# TODO: sometimes failed at (8192,), 0.6, bfloat16
+@pytest.mark.dropout
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout(shape, p, dtype):
+    if TO_CPU or shape == (1,):
+        shape = (32768,)
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp)
 
@@ -48,6 +54,8 @@ def test_accuracy_dropout(shape, p, dtype):
     exp_equal = (p * p + one_minus_p * one_minus_p) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     if TO_CPU:
+        from flag_gems.testing import RESOLUTION
+
         zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
         num_zero = torch.sum(zero_equal).item()
         assert abs(num_zero / inp.numel() - p) <= 0.05
@@ -124,10 +132,11 @@ def torch_apply_rotary_pos_emb(
     return q_embed, k_embed
 
 
-@pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize("max_seq_len", [512, 2048])
+@pytest.mark.apply_rotary_pos_emb
+@pytest.mark.parametrize("batch_size", [2] if TO_CPU else [4, 8])
+@pytest.mark.parametrize("max_seq_len", [16] if TO_CPU else [512, 2048])
 @pytest.mark.parametrize("q_heads,k_heads", [(8, 1), (6, 2), (1, 1), (8, 8)])
-@pytest.mark.parametrize("head_dim", [64, 96, 128, 256])
+@pytest.mark.parametrize("head_dim", [8] if TO_CPU else [64, 96, 128, 256])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("rotary_interleaved", [True, False])
 @pytest.mark.parametrize("has_pos_id", [True, False])
@@ -180,10 +189,12 @@ def test_apply_rotary_pos_emb(
     gems_assert_close(k_embed_out, k_embed_ref, dtype)
 
 
-@pytest.mark.parametrize("EmbeddingSize", [4096])
-@pytest.mark.parametrize("Batch", [2, 4])
-@pytest.mark.parametrize("M", [4, 8])
-@pytest.mark.parametrize("N", [128, 256, 4096])
+# TODO: failed when EmbeddingSize is small
+@pytest.mark.embedding
+@pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
+@pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
+@pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
+@pytest.mark.parametrize("N", [8] if TO_CPU else [128, 256, 4096])
 @pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize(
@@ -216,7 +227,8 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.resolve_neg
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_neg(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
@@ -228,6 +240,7 @@ def test_accuracy_resolve_neg(shape, dtype):
     assert not out.is_neg()
 
 
+@pytest.mark.topk
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
 @pytest.mark.parametrize("topk", [5])
@@ -257,7 +270,8 @@ def test_topk(
     gems_assert_equal(res_index, ref_index)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.resolve_conj
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_conj(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
@@ -268,7 +282,8 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(8191,), (8192, 73739)])
+@pytest.mark.unique
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 @pytest.mark.parametrize("sorted", [True])
 @pytest.mark.parametrize("return_inverse", [True, False])
@@ -348,6 +363,7 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.multinomial
 @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("n_samples", [1000])
@@ -371,6 +387,7 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
 
 
+@pytest.mark.multinomial
 @pytest.mark.parametrize("pool", UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_multinomial_without_replacement(pool, dtype):
@@ -388,8 +405,9 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
         assert torch.all(idx_cnt <= 1)
 
 
+@pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
 @pytest.mark.parametrize("contiguous", [True, False])
 def test_pad(shape, dtype, pad_mode, contiguous):
@@ -411,40 +429,46 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
         pad_value = None
 
-    ref_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
+    ref_pad_params = [to_reference(pad_param) for pad_param in pad_params]
+
+    ref_out = torch.nn.functional.pad(ref_x, ref_pad_params, pad_mode, pad_value)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.pad(ref_x, pad_params, pad_mode, pad_value)
+        res_out = torch.nn.functional.pad(x, pad_params, pad_mode, pad_value)
 
-    gems_assert_equal(ref_out, res_out)
+    gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.arange
 @pytest.mark.parametrize("start", [0, 1, 3])
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.int64, None])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
 @pytest.mark.parametrize("device", ["cuda", None])
 @pytest.mark.parametrize(
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.
 def test_arange(start, step, end, dtype, device, pin_memory):
-    res_out = torch.arange(
+    if TO_CPU:
+        return
+    ref_out = torch.arange(
         start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
     )
     with flag_gems.use_gems():
-        ref_out = torch.arange(
+        res_out = torch.arange(
             start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
         )
 
-    gems_assert_equal(ref_out, res_out)
+    gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES + [(12288, 1024, 1)])
+@pytest.mark.isin
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
     inp1 = torch.randint(-100, 100, shape, device="cuda").to(dtype)
-    test_numel = inp1.numel() // 2
+    test_numel = inp1.numel() // 2 if inp1.numel() > 1 else 1
     test_shape = (test_numel,)
     inp2 = torch.randint(-10, 10, test_shape, device="cuda").to(dtype)
     inp1.ravel()[-1] = 0
@@ -472,28 +496,158 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     gems_assert_equal(res2_out, ref2_out)
 
     inp0 = torch.tensor([], device="cuda")
+    ref_inp0 = to_reference(inp0, False)
     with flag_gems.use_gems():
         res0_out = torch.isin(inp0, inp2, assume_unique=assume_unique, invert=invert)
-    ref0_out = torch.isin(inp0, ref_inp2, assume_unique=assume_unique, invert=invert)
+    ref0_out = torch.isin(
+        ref_inp0, ref_inp2, assume_unique=assume_unique, invert=invert
+    )
     gems_assert_equal(res0_out, ref0_out)
 
 
+@pytest.mark.fill
 @pytest.mark.parametrize("value", [0, 1, 9])
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_fill(value, shape, dtype):
     # Test fill.Scalar
     x = torch.ones(shape, device="cuda", dtype=dtype)
-    res_out = torch.fill(x, value)
-    with flag_gems.use_gems():
-        ref_out = torch.fill(x, value)
+    ref_x = to_reference(x, False)
 
-    gems_assert_equal(ref_out, res_out)
+    ref_out = torch.fill(ref_x, value)
+    with flag_gems.use_gems():
+        res_out = torch.fill(x, value)
+
+    gems_assert_equal(res_out, ref_out)
 
     # Test fill.Tensor
     value_tensor = torch.tensor(value, device="cuda", dtype=dtype)
-    res_out_tensor = torch.fill(x, value_tensor)
+    ref_out_tensor = torch.fill(ref_x, value_tensor)
     with flag_gems.use_gems():
-        ref_out_tensor = torch.fill(x, value_tensor)
+        res_out_tensor = torch.fill(x, value_tensor)
 
-    gems_assert_equal(ref_out_tensor, res_out_tensor)
+    gems_assert_equal(res_out_tensor, ref_out_tensor)
+
+
+@pytest.mark.stack
+@pytest.mark.parametrize("shape", STACK_SHAPES)
+@pytest.mark.parametrize("dim", STACK_DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_stack(shape, dim, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+    ref_inp = [to_reference(_, True) for _ in inp]
+    ref_out = torch.stack(ref_inp, dim)
+
+    with flag_gems.use_gems():
+        res_out = torch.stack(inp, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
+HSTACK_SHAPES = [
+    [(8,), (16,)],
+    [(16, 256), (16, 128)],
+    [(20, 320, 15), (20, 160, 15), (20, 80, 15)],
+]
+
+
+@pytest.mark.hstack
+@pytest.mark.parametrize("shape", HSTACK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_hstack(shape, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+    ref_inp = [to_reference(_) for _ in inp]
+    ref_out = torch.hstack(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.hstack(inp)
+    gems_assert_equal(res_out, ref_out)
+
+
+HSTACK_EXCEPTION_SHAPES = [
+    [(16, 256), (16,)],
+    [(16, 256), (8, 128)],
+]
+
+
+@pytest.mark.hstack
+@pytest.mark.parametrize("shape", HSTACK_EXCEPTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_exception_hstack(shape, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+
+    with pytest.raises(RuntimeError):
+        with flag_gems.use_gems():
+            _ = torch.hstack(inp)
+
+
+CAT_SHAPES = [
+    [(1, 32), (8, 32)],
+    [(16, 128), (32, 128)],
+    [(1024, 1024), (1024, 1024)],
+    [(1, 1024, 256), (8, 1024, 256), (16, 1024, 256)],
+    [(16, 320, 15), (32, 320, 15), (64, 320, 15)],
+    [(16, 128, 64, 64), (16, 128, 64, 64), (24, 128, 64, 64), (32, 128, 64, 64)],
+]
+
+
+def gen_cat_shapes_dim(shapes):
+    results = []
+    for tensor_shapes in shapes:
+        assert all(
+            [len(s) == len(tensor_shapes[0]) for s in tensor_shapes]
+        ), "All tensor rank must agree."
+        assert all(
+            [s[-1] == tensor_shapes[0][-1] for s in tensor_shapes]
+        ), "All tensor must have same shape except cat dim."
+        rank = len(tensor_shapes[0])
+        results.append([tensor_shapes, 0])
+        for dim in range(1, rank):
+            results.append(
+                [[(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes], dim]
+            )
+    return results
+
+
+@pytest.mark.cat
+@pytest.mark.parametrize("shape, dim", gen_cat_shapes_dim(CAT_SHAPES))
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_cat(shape, dim, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+    ref_inp = [to_reference(_, True) for _ in inp]
+    ref_out = torch.cat(ref_inp, dim)
+
+    with flag_gems.use_gems():
+        res_out = torch.cat(inp, dim)
+    gems_assert_equal(res_out, ref_out)

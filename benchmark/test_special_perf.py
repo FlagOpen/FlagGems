@@ -194,3 +194,81 @@ def test_perf_fill():
         kwargs_func=fill_kwargs,
     )
     bench.run()
+
+
+def test_perf_stack():
+    def stack_args(dtype, batch, size):
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {(inp,) * 3}
+
+    bench = Benchmark(
+        op_name="stack",
+        torch_op=torch.stack,
+        arg_func=stack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_hstack():
+    def hstack_args(dtype, batch, size):
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {(inp,) * 3}
+
+    bench = Benchmark(
+        op_name="hstack",
+        torch_op=torch.hstack,
+        arg_func=hstack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_cat():
+    def cat_args(dtype, batch, size):
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        return [[inp1, inp2]]
+
+    def cat_kwargs(dtype, batch, size):
+        return {"dim": 0}
+
+    bench = Benchmark(
+        op_name="cat",
+        torch_op=torch.cat,
+        arg_func=cat_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=cat_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_cat_int():
+    def cat_args(dtype, batch, size):
+        inp1 = torch.randint(
+            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
+        )
+        inp2 = torch.randint(
+            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
+        )
+        return [[inp1, inp2]]
+
+    def cat_kwargs(dtype, batch, size):
+        return {"dim": 0}
+
+    bench = Benchmark(
+        op_name="cat",
+        torch_op=torch.cat,
+        arg_func=cat_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=cat_kwargs,
+    )
+    bench.run()
