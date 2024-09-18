@@ -565,7 +565,6 @@ def test_fill(value, shape, dtype):
     # Test fill.Scalar
     x = torch.ones(shape, device="cuda", dtype=dtype)
     ref_x = to_reference(x, False)
-
     ref_out = torch.fill(ref_x, value)
     with flag_gems.use_gems():
         res_out = torch.fill(x, value)
