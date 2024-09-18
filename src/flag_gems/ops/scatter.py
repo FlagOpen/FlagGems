@@ -52,15 +52,17 @@ def scatter_2d_kernel(
     # 1. Calculate inp_offsets and idx_offsets
     inp_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
     idx_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
-
-    # dim = 0
     cur_idx = tl.load(idx + offsets, mask=mask, other=0)
+
+    # snippet0: dim = 0
     mod = cur_idx % index_shape_0
     inp_offsets += tl.where(dim == 0, 0, mod * inp_stride_0)
     idx_offsets += mod * index_stride_0
     cur_idx = cur_idx // index_shape_0
+    #   If current dim is not the last dim,
+    #   this snippet should add 'cur_idx = cur_idx // index_shape_[cur_dim]'
 
-    # dim = 1
+    # snippet1: dim = 1
     mod = cur_idx % index_shape_1
     inp_offsets += tl.where(dim == 1, 0, mod * inp_stride_1)
     idx_offsets += mod * index_stride_1
