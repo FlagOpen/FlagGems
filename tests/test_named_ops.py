@@ -18,8 +18,7 @@ blas_ops_ut_map = {
 
 reduction_ops_ut_map = {
     "all": (
-        "test_accuracy_all",
-        "test_accuracy_all_dim",
+        "test_accuracy_all_without_dim",
         "test_accuracy_all_dims",
     ),
     "cross_entropy_loss": (
@@ -32,31 +31,30 @@ reduction_ops_ut_map = {
     "native_layer_norm": ("test_accuracy_layernorm",),
     "log_softmax": ("test_accuracy_log_softmax",),
     "max": (
-        "test_accuracy_max",
+        "test_accuracy_max_without_dim",
         "test_accuracy_max_dim",
     ),
     "mean": (
-        "test_accuracy_mean",
+        "test_accuracy_mean_without_dim",
         "test_accuracy_mean_dim",
     ),
     "min": (
-        "test_accuracy_min",
+        "test_accuracy_min_without_dim",
         "test_accuracy_min_dim",
     ),
     "prod": (
-        "test_accuracy_prod",
+        "test_accuracy_prod_without_dim",
         "test_accuracy_prod_dim",
     ),
     "softmax": ("test_accuracy_softmax",),
     "sum": (
-        "test_accuracy_sum",
+        "test_accuracy_sum_without_dim",
         "test_accuracy_sum_dim",
     ),
     "var_mean": ("test_accuracy_varmean",),
     "amax": ("test_accuracy_amax",),
     "any": (
-        "test_accuracy_any",
-        "test_accuracy_any_dim",
+        "test_accuracy_any_without_dim",
         "test_accuracy_any_dims",
     ),
     "argmax": ("test_accuracy_argmax",),
@@ -86,7 +84,7 @@ unary_pointwise_ops_ut_map = {
     "triu": ("test_accuracy_triu",),
     "erf": ("test_accuracy_erf",),
     "isfinite": ("test_accuracy_isfinite",),
-    "flip": ("test_accuracy_flip",),
+    "flip": ("test_accuracy_flip", "test_accuracy_flip_with_non_dense_input"),
 }
 
 distribution_ops_ut_map = {
@@ -220,7 +218,7 @@ if __name__ == "__main__":
         for file_name, collection in op_name_to_unit_test_maps.items():
             for op, uts in collection.items():
                 for ut in uts:
-                    cmd = f"{file_name}::{ut} --device {device}"
+                    cmd = f"{file_name}::{ut}"
                     result = pytest.main(["-s", cmd, "--device", device])
         print("final_result: ", final_result)
         exit(final_result)

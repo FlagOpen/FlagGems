@@ -110,6 +110,30 @@ def test_perf_div():
     bench.run()
 
 
+def test_perf_floordiv_int():
+    bench = Benchmark(
+        op_name="floor_div",
+        torch_op=torch.floor_divide,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_remainder():
+    bench = Benchmark(
+        op_name="remainder",
+        torch_op=torch.remainder,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_dropout():
     bench = Benchmark(
         op_name="dropout",
@@ -190,6 +214,19 @@ def test_perf_gelu():
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_gelu_backward():
+    bench = Benchmark(
+        op_name="gelu",
+        torch_op=torch.nn.functional.gelu,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        is_backward=True,
     )
     bench.run()
 
@@ -533,7 +570,7 @@ def test_perf_flip_int():
         return {"dims": [0, 1]}
 
     bench = Benchmark(
-        op_name="flip",
+        op_name="flip_int",
         torch_op=torch.flip,
         arg_func=unary_int_arg,
         dtypes=INT_DTYPES,
@@ -555,6 +592,56 @@ def test_masked_fill():
         op_name="masked_fill",
         torch_op=torch.masked_fill,
         arg_func=masked_fill_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_tile():
+    def tile_kwargs(dtype, batch, size):
+        return {"dims": [2, 4]}
+
+    bench = Benchmark(
+        op_name="tile",
+        torch_op=torch.tile,
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=tile_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_repeat():
+    def repeat_arg(dtype, batch, size):
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = [2, 4]
+        return inp1, inp2
+
+    bench = Benchmark(
+        op_name="repeat",
+        torch_op=torch.Tensor.repeat,
+        arg_func=repeat_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_repeat_interleave_self_int():
+    def repeat_interleave_self_int_arg(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        repeats = 2
+        return inp, repeats
+
+    bench = Benchmark(
+        op_name="repeat_interleave_self_int",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_self_int_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,

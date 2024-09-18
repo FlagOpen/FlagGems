@@ -1,9 +1,10 @@
 import torch
 
+from . import testing  # noqa: F401
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
-__version__ = "2.0"
+__version__ = "2.1"
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -12,6 +13,9 @@ def enable(lib=aten_lib):
     lib.impl("abs", abs, "CUDA")
     lib.impl("add.Tensor", add, "CUDA")
     lib.impl("addmm", addmm, "CUDA")
+    lib.impl("arange.start_step", arange_start, "CUDA")
+    lib.impl("arange.start", arange_start, "CUDA")
+    lib.impl("arange", arange, "CUDA")
     lib.impl("bitwise_and.Tensor", bitwise_and_tensor, "CUDA")
     lib.impl("bitwise_and.Scalar", bitwise_and_scalar, "CUDA")
     lib.impl("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, "CUDA")
@@ -23,8 +27,21 @@ def enable(lib=aten_lib):
     lib.impl("clamp", clamp, "CUDA")
     lib.impl("clamp.Tensor", clamp_tensor, "CUDA")
     lib.impl("cos", cos, "CUDA")
+    lib.impl("pad", pad, "CUDA")
     lib.impl("cumsum", cumsum, "CUDA")
-    lib.impl("div.Tensor", div, "CUDA")
+    lib.impl("div.Tensor", true_divide, "CUDA")
+    lib.impl("div.Scalar", true_divide, "CUDA")
+    lib.impl("div.Tensor_mode", div_mode, "CUDA")
+    lib.impl("div.Scalar_mode", div_mode, "CUDA")
+    lib.impl("divide.Tensor", true_divide, "CUDA")  # divide, an alias for div
+    lib.impl("divide.Scalar", true_divide, "CUDA")
+    lib.impl("divide.Tensor_mode", div_mode, "CUDA")
+    lib.impl("divide.Scalar_mode", div_mode, "CUDA")
+    lib.impl("true_divide.Tensor", true_divide, "CUDA")  # true_divide, an alias for div
+    lib.impl("true_divide.Scalar", true_divide, "CUDA")
+    lib.impl("floor_divide", floor_divide, "CUDA")
+    lib.impl("floor_divide.Scalar", floor_divide, "CUDA")
+    lib.impl("remainder.Tensor", remainder, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
     lib.impl("erf", erf, "CUDA")
     lib.impl("embedding", embedding, "AutogradCUDA")
@@ -34,11 +51,14 @@ def enable(lib=aten_lib):
     lib.impl("exponential_", exponential_, "CUDA")
     lib.impl("ge.Tensor", ge, "CUDA")
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
-    lib.impl("gelu", gelu, "CUDA")
+    lib.impl("gelu", gelu, "AutogradCUDA")
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
     lib.impl("isfinite", isfinite, "CUDA")
+    lib.impl("isin.Tensor_Tensor", isin, "CUDA")
+    lib.impl("isin.Scalar_Tensor", isin, "CUDA")
+    lib.impl("isin.Tensor_Scalar", isin, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("minimum", minimum, "CUDA")
@@ -52,6 +72,7 @@ def enable(lib=aten_lib):
     lib.impl("rand", rand, "CUDA")
     lib.impl("randn", randn, "CUDA")
     lib.impl("rand_like", rand_like, "CUDA")
+    lib.impl("randn_like", randn_like, "CUDA")
     lib.impl("zeros", zeros, "CUDA")
     lib.impl("ones", ones, "CUDA")
     lib.impl("full", full, "CUDA")
@@ -69,6 +90,7 @@ def enable(lib=aten_lib):
     lib.impl("mean.dim", mean_dim, "CUDA")
     lib.impl("mm", mm, "CUDA")
     lib.impl("mul.Tensor", mul, "CUDA")
+    lib.impl("multinomial", multinomial, "CUDA")
     lib.impl("mv", mv, "CUDA")
     lib.impl("ne.Tensor", ne, "CUDA")
     lib.impl("ne.Scalar", ne_scalar, "CUDA")
@@ -121,12 +143,22 @@ def enable(lib=aten_lib):
     lib.impl("slice_scatter", slice_scatter, "CUDA")
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
+    lib.impl("fill.Scalar", fill_scalar, "CUDA")
+    lib.impl("fill.Tensor", fill_tensor, "CUDA")
     lib.impl("flip", flip, "CUDA")
+    lib.impl("tile", tile, "CUDA")
     lib.impl("index_select", index_select, "CUDA")
     lib.impl("masked_fill", masked_fill, "CUDA")
     lib.impl("_unique2", _unique2, "CUDA")
     lib.impl("index_add", index_add, "CUDA")
     lib.impl("nll_loss", nll_loss, "AutogradCUDA")
+    lib.impl("nonzero", nonzero, "CUDA")
+    lib.impl("repeat", repeat, "CUDA")
+    lib.impl("masked_select", masked_select, "CUDA")
+    lib.impl("stack", stack, "CUDA")
+    lib.impl("hstack", hstack, "CUDA")
+    lib.impl("cat", cat, "CUDA")
+    lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
 
 
 class use_gems:
