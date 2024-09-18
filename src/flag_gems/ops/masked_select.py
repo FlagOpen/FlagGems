@@ -10,7 +10,7 @@ from ..utils import broadcastable, libentry
 def cfggen():
     configs = [
         triton.Config({"BLOCK_SIZE": bs}, num_warps=w)
-        for w in [4, 8, 16, 32]
+        for w in [4, 8, 16] # maca support up to 16
         for bs in [256, 512, 1024, 2048, 4096]
     ]
     return configs

@@ -11,7 +11,7 @@ from ..utils import libentry
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_SIZE": k}, num_warps=w, num_stages=4)
-        for w in [4, 8, 16, 32]
+        for w in [4, 8, 16]     # maca support up to 16
         for k in [256, 512, 1024, 2048, 4096, 8192]
     ],
     key=[
