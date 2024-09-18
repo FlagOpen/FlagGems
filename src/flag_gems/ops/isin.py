@@ -219,7 +219,7 @@ def isin_by_search(
     elif M <= 8388608:  # 2 ** 23 = 1024 * 8192
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
     elif M <= 268435456:  # 2 ** 28 = 1024 * 262144
-        _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 32)
+        _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 16)
     else:
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
     log_n = int(math.log2(N)) + 1
