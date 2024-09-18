@@ -1034,11 +1034,18 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     assert res_out == ref_out
 
 
+REPEAT_INTERLEAVE_SHAPES = [
+    (1,),
+    (1024, 1024),
+    (20, 320, 15),
+    (16, 128, 64, 60),
+    (16, 7, 57, 32, 29),
+]
 REPEAT_INTERLEAVE_REPEATS = [2]
-REPEAT_INTERLEAVE_DIM = [-1, 0]
+REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 
 
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
