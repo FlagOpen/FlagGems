@@ -188,19 +188,6 @@ def layer_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, out)
 
 
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
 @libentry()
 @triton.autotune(
     configs=[
