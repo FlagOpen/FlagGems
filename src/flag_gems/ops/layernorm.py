@@ -8,16 +8,6 @@ import triton.language as tl
 from ..utils import libentry
 
 
-def heuristics_for_num_warps(tile_size):
-    # it affects occupancy
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
-
-
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
@@ -25,6 +15,10 @@ def prev_multiple_of(a, b):
 
 
 @libentry()
+@triton.autotune(
+    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    key=["M", "N"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel(
     in_ptr,
@@ -64,6 +58,10 @@ def layer_norm_persistent_kernel(
 
 
 @libentry()
+@triton.autotune(
+    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    key=["M", "N"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel_multiline(
     in_ptr,
@@ -108,6 +106,14 @@ def layer_norm_persistent_kernel_multiline(
 
 
 @libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"TILE_N": tile_n}, num_warps=w)
+        for tile_n in [1024, 2048, 4096, 8192]
+        for w in [4, 8, 16]
+    ],
+    key=["M", "N"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_loop_kernel(
     in_ptr,
@@ -323,7 +329,6 @@ class LayerNorm(torch.autograd.Function):
                 TILE_N = triton.next_power_of_2(N)
                 TILE_M = triton.cdiv(1024, TILE_N)
                 grid = (triton.cdiv(M, TILE_M), 1, 1)
-                num_warps = heuristics_for_num_warps(TILE_M * TILE_N)
                 layer_norm_persistent_kernel_multiline[grid](
                     x,
                     y,
@@ -336,12 +341,10 @@ class LayerNorm(torch.autograd.Function):
                     eps,
                     TILE_M,
                     TILE_N,
-                    num_warps=num_warps,
                 )
             elif N <= 4096:
                 TILE_N = triton.next_power_of_2(N)
                 grid = (M, 1, 1)
-                num_warps = heuristics_for_num_warps(TILE_N)
                 layer_norm_persistent_kernel[grid](
                     x,
                     y,
@@ -353,12 +356,9 @@ class LayerNorm(torch.autograd.Function):
                     N,
                     eps,
                     TILE_N,
-                    num_warps=num_warps,
                 )
             else:
-                TILE_N = 4096
                 grid = (M, 1, 1)
-                num_warps = heuristics_for_num_warps(TILE_N)
                 layer_norm_loop_kernel[grid](
                     x,
                     y,
@@ -369,8 +369,6 @@ class LayerNorm(torch.autograd.Function):
                     M,
                     N,
                     eps,
-                    TILE_N,
-                    num_warps=num_warps,
                 )
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
