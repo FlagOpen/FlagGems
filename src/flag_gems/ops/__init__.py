@@ -26,6 +26,7 @@ from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
+from .fft import rad2_fft
 from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
@@ -130,6 +131,7 @@ __all__ = [
     "cos",
     "pad",
     "cumsum",
+    "rad2_fft",
     "normed_cumsum",
     "true_divide",
     "div_mode",

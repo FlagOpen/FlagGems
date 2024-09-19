@@ -7,7 +7,7 @@ import triton
 import triton.language as tl
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["n_elements"])
 def bit_reversal_indices_kernel(
     output_ptr,
     n_elements,
@@ -29,7 +29,7 @@ def bit_reversal_indices_kernel(
     tl.store(output_ptr + offsets, indices, mask=mask)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["step", "n_elements"])
 def fft_kernel(
     xr_ptr,
     xi_ptr,

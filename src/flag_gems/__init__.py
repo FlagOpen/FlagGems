@@ -79,6 +79,7 @@ def enable(lib=aten_lib):
     lib.impl("zeros_like", zeros_like, "CUDA")
     lib.impl("ones_like", ones_like, "CUDA")
     lib.impl("full_like", full_like, "CUDA")
+    lib.impl("fft_fft", rad2_fft, "CUDA")
     lib.impl("resolve_neg", resolve_neg, "CUDA")
     lib.impl("resolve_conj", resolve_conj, "CUDA")
     lib.impl("normal.Tensor_float", normal_tensor_float, "CUDA")
