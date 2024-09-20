@@ -3,7 +3,7 @@
 set -e
 
 if [ -z "$BASH_VERSION" ]; then
-    echo "[FATAL] This script must be run using bash!" >&2
+    echo "This script must be run using bash!" >&2
     exit 1
 fi
 
