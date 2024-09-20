@@ -56,7 +56,7 @@ def pytest_configure(config):
             marker.split(":")[0].strip() for marker in config.getini("markers")
         }
         cmd_args = [
-            arg.replace(".py", "").replace("=", "_")
+            arg.replace(".py", "").replace("=", "_").replace("/", "_")
             for arg in config.invocation_params.args
         ]
         logging.basicConfig(
