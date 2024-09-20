@@ -76,7 +76,7 @@ def fft_kernel(
 def bit_reversal_indices(x: torch.Tensor, n):
     num_bits = int(np.log2(n))
     indices = torch.arange(n, device=x.device)
-    assert x.is_cuda and indices.is_cuda
+
     n_elements = indices.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     bit_reversal_indices_kernel[grid](indices, n_elements, num_bits, BLOCK_SIZE=1024)
@@ -87,8 +87,6 @@ def bit_reversal_indices(x: torch.Tensor, n):
 def rad2_fft(x: torch.Tensor, n=None, dim=-1, norm=None):
     logging.debug("GEMS FFT")
     n_elements = x.numel()
-    assert n is None, "Not support assign `signal length` currently."
-    assert norm is None, "Not support assign `normalization mode` currently."
 
     indices = bit_reversal_indices(x, len(x))
 

@@ -658,7 +658,7 @@ def test_accuracy_cat(shape, dim, dtype):
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_fft(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
-    y_ref = torch.fft.fft(x)
+    y_ref = to_reference(torch.fft.fft(x))
     with flag_gems.use_gems():
         y_res = torch.fft.fft(x)
-    gems_assert_close(y_ref, y_res, dtype)
+    gems_assert_close(y_res, y_ref, dtype)
