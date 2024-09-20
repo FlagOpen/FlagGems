@@ -69,7 +69,9 @@ class Benchmark:
         mode_str = "cpu" if CPU_MODE else "cuda"
         print("")
         for dtype in self.dtypes:
-            print(f"Operator {self.op_name} Performance Test (dtype={dtype}, mode={mode_str})")
+            print(
+                f"Operator {self.op_name} Performance Test (dtype={dtype}, mode={mode_str})"
+            )
             print("Size    Torch Latency (ms)    Gems Latency (ms)    Gems Speedup")
             print("---------------------------------------------------------------")
             for size in self.sizes:
