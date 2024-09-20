@@ -3,7 +3,7 @@
 set -e
 
 if [ -z "$BASH_VERSION" ]; then
-    echo "This script must be run using bash!" >&2
+    echo "[ERROR]This script must be run using bash!" >&2
     exit 1
 fi
 
@@ -50,7 +50,7 @@ for file in ${TEST_OP_FILES}; do
         test_func = 0; decorated = 0; error = 0;
         split(marks, excluded_marks, " ")
     }
-
+    
     /^@pytest\.mark\./ {
         test_func = 1
         excluded = 0
@@ -65,11 +65,11 @@ for file in ${TEST_OP_FILES}; do
         }
         next
     }
-
+    
     /^def / {
         if (test_func == 1) {
             if (decorated == 0) {
-                print $0
+                print "[ERROR]"$0
                 error = 1
             }
             test_func = 0
@@ -85,7 +85,7 @@ for file in ${TEST_OP_FILES}; do
     ' "$file"
 
     if [ $? -ne 0 ]; then
-        echo "There are some test_op_func without 'pytest.mark.{OP_NAME}' in ${file}"
+        echo "[ERROR]There are some test_op_func without 'pytest.mark.{OP_NAME}' in ${file}"
         exit 1
     fi
 
