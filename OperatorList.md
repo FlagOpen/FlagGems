@@ -149,6 +149,7 @@
 - isclose
 - isfinite
 - exponential_
+- vstack
 - minimum
 - maximum
 - ones_like
