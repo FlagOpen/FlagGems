@@ -39,7 +39,6 @@ def pytest_configure(config):
     global RECORD_LOG
     RECORD_LOG = config.getoption("--record") == "log"
     if RECORD_LOG:
-        # pragma: no cover
         global RUNTEST_INFO, BUILTIN_MARKS, REGISTERED_MARKERS
         RUNTEST_INFO = {}
         BUILTIN_MARKS = {
@@ -72,7 +71,6 @@ def pytest_runtest_teardown(item, nextitem):
     if not RECORD_LOG:
         return
     if hasattr(item, "callspec"):
-        # pragma: no cover
         all_marks = list(item.iter_markers())
         op_marks = [
             mark.name
