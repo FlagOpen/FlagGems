@@ -49,19 +49,19 @@ def true_divide(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(div_rz(x, y))
+    return trunc((x / y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    return trunc((x / y))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    return trunc((x / y))
 
 
 def trunc_divide(A, B):
@@ -104,7 +104,7 @@ def floor_div_func(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor(div_rd(x, y))
+        return tl.math.floor((x / y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -113,7 +113,7 @@ def floor_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor(div_rd(x, y))
+        return tl.math.floor((x / y))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
@@ -122,7 +122,7 @@ def floor_div_func_scalar_tensor(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor(div_rd(x, y))
+        return tl.math.floor((x / y))
 
 
 def floor_divide(A, B):
