@@ -18,6 +18,7 @@ PR_ID_DIR="PR${PR_ID}"
 
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
 cmds=(
+   "bash tools/pytest_mark_check.sh &"
    "CUDA_VISIBLE_DEVICES=0 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py &"
    "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py &"
    "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_general_reduction_ops.py &"
