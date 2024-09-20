@@ -24,6 +24,7 @@ from .conftest import TO_CPU
 
 # TODO: sometimes failed at (8192,), 0.6, bfloat16
 @pytest.mark.dropout
+@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -662,3 +663,37 @@ def test_accuracy_fft(shape, dtype):
     with flag_gems.use_gems():
         y_res = torch.fft.fft(x)
     gems_assert_close(y_res, y_ref, dtype)
+
+
+VSTACK_SHAPES = [
+    [(3,), (3,)],
+    [(3, 33), (7, 33)],
+    [(13, 3, 333), (17, 3, 333), (7, 3, 333)],
+    [
+        (13, 3, 64, 5, 2),
+        (16, 3, 64, 5, 2),
+        (7, 3, 64, 5, 2),
+        (4, 3, 64, 5, 2),
+        (1, 3, 64, 5, 2),
+    ],
+]
+
+
+@pytest.mark.parametrize("shape", VSTACK_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_vstack(shape, dtype):
+    if dtype in FLOAT_DTYPES:
+        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    else:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+                dtype
+            )
+            for s in shape
+        ]
+    ref_inp = [to_reference(_) for _ in inp]
+    ref_out = torch.vstack(ref_inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.vstack(inp)
+    gems_assert_equal(res_out, ref_out)
