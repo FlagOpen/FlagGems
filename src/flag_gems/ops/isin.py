@@ -100,6 +100,8 @@ def isin_by_comparation(
         BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 256, N, 8)
     else:
         BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
+    if torch.version.hip:
+        num_warp = min(16, num_warps)
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
@@ -220,6 +222,8 @@ def isin_by_search(
         _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 32)
     else:
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
+    if torch.version.hip:
+        num_warp = min(16, num_warps)
     log_n = int(math.log2(N)) + 1
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
