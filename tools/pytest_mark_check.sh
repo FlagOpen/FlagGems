@@ -50,7 +50,7 @@ for file in ${TEST_OP_FILES}; do
         test_func = 0; decorated = 0; error = 0;
         split(marks, excluded_marks, " ")
     }
-    
+
     /^@pytest\.mark\./ {
         test_func = 1
         excluded = 0
@@ -65,7 +65,7 @@ for file in ${TEST_OP_FILES}; do
         }
         next
     }
-    
+
     /^def / {
         if (test_func == 1) {
             if (decorated == 0) {
