@@ -24,6 +24,45 @@ def sigmoid_forward(x):
     log2e: tl.constexpr = 1.4426950408889634
     return 1 / (1 + exp2(-x.to(tl.float32) * log2e))
 
+@triton.jit
+def sigmoid_forward_custom_kernel(
+    x_ptr: tl.tensor, # *Pointer* to first input vector.
+    output_ptr: tl.tensor, # *Pointer* to output vector.
+    output_bp_ptr: tl.tensor, # *Pointer* to output vector.
+    n_elements: int, # Size of the vector.
+    BLOCK_SIZE: tl.constexpr, # Number of elements each program should process.
+                            # NOTE: constexpr' so it can be used as a shape value.
+):
+    # There are multiple 'programs' processing different data. We identify which program
+    # we are here:
+    pid = tl.program_id(axis=0) # We use a 1D launch grid so axis is 0.
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+
+    # Create a mask to guard memory operations against out-of-bounds accesses.
+    mask = offsets < n_elements
+    # Load x and y from DRAM, masking out any extra elements in case the input is not a
+    # multiple of the block size.
+    x = tl.load(x_ptr + offsets, mask=mask)
+    x_fp32 = x.to(tl.float32)
+
+    #No need to add offset and mask, as its stride is 0
+    log2e: tl.constexpr = 1.4426950408889634
+    output_bp = 1 / (1 + exp2(-x_fp32 * log2e))
+    output = output_bp.to(x.type)
+    # Write output back to DRAM.
+    tl.store(output_ptr + offsets, output, mask=mask)
+    tl.store(output_bp_ptr + offsets, output_bp, mask=mask)
+
+def sigmoid_forward_custom(x: torch.Tensor):
+    # We need to preallocate the output.
+    output = torch.empty_like(x)
+    output_pb = torch.empty(x.shape, dtype=torch.float32, device=x.device)
+    assert x.is_cuda and output.is_cuda
+    n_elements = output.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta[ 'BLOCK_SIZE' ]),)
+    sigmoid_forward_custom_kernel[grid](x, output, output_pb, n_elements, BLOCK_SIZE=2048)
+    return output, output_pb
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
@@ -31,7 +70,6 @@ def sigmoid_backward(y, dy):
     y_f32 = y.to(tl.float32)
     dy_f32 = dy.to(tl.float32)
     return dy_f32 * (1.0 - y_f32) * y_f32
-
 
 @triton.jit
 def sigmoid_backward_custom_kernel(
@@ -76,9 +114,14 @@ class Sigmoid(torch.autograd.Function):
     def forward(ctx, A):
         logging.debug("GEMS SIGMOID FORWARD")
         if A.requires_grad is True:
-            out = sigmoid_forward(A.to(torch.float32))
-            ctx.save_for_backward(out)
-            return out.to(A.dtype)
+            if A.numel() % 1024 == 0 and (A.dtype is torch.float16 or A.dtype is torch.bfloat16):
+                out, out_bp = sigmoid_forward_custom(A)
+                ctx.save_for_backward(out_bp)
+                return out
+            else:
+                out = sigmoid_forward(A.to(torch.float32))
+                ctx.save_for_backward(out)
+                return out.to(A.dtype)
         else:
             out = sigmoid_forward(A)
             return out
