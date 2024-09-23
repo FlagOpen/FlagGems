@@ -35,7 +35,8 @@ SMOOTH_SHAPE = (
 DIM_SHAPE = (
     [(1, REDUCTION_SMALL_SHAPES[0])]
     if QUICK_MODE
-    else list(zip([0, 1, 1], REDUCTION_SMALL_SHAPES))
+    else list(zip([0, 0, 0, 0, 0], [(8192, 256 * i) for i in range(1, 10, 2)])) +
+    list(zip([1, 1, 1, 1, 1], [(8192, 256 * i) for i in range(1, 10, 2)]))
 )
 THRESHOLD_SHAPE = (
     [(0.3, REDUCTION_SHAPES[0])]

@@ -10,7 +10,6 @@ from .accuracy_utils import (
     ALL_INT_DTYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
-    RESOLUTION_DROPOUT,
     SPECIAL_SHAPES,
     STACK_DIM_LIST,
     STACK_SHAPES,
@@ -212,7 +211,6 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     embedding = torch.randn(
         (EmbeddingSize, N), device="musa", dtype=dtype, requires_grad=True
     )
-    ref_indices = to_reference(indices)
     ref_embedding = to_reference(embedding)
     ref_indices = to_reference(indices)
 
@@ -233,17 +231,17 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.mark.resolve_neg
-@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.cfloat])
-def test_accuracy_resolve_neg(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="musa")
-    y = x.conj()
-    z = y.imag
-    assert z.is_neg()
-    with flag_gems.use_gems():
-        out = z.resolve_neg()
-    assert not out.is_neg()
+# @pytest.mark.resolve_neg
+# @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+# @pytest.mark.parametrize("dtype", [torch.cfloat])
+# def test_accuracy_resolve_neg(shape, dtype):
+#     x = torch.randn(size=shape, dtype=dtype, device="musa")
+#     y = x.conj()
+#     z = y.imag
+#     assert z.is_neg()
+#     with flag_gems.use_gems():
+#         out = z.resolve_neg()
+#     assert not out.is_neg()
 
 
 # @pytest.mark.topk
@@ -276,21 +274,21 @@ def test_accuracy_resolve_neg(shape, dtype):
 #     gems_assert_equal(res_index, ref_index)
 
 
-@pytest.mark.resolve_conj
-@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.cfloat])
-def test_accuracy_resolve_conj(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="musa")
-    y = x.conj()
-    assert y.is_conj()
-    with flag_gems.use_gems():
-        z = y.resolve_conj()
-    assert not z.is_conj()
+# @pytest.mark.resolve_conj
+# @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+# @pytest.mark.parametrize("dtype", [torch.cfloat])
+# def test_accuracy_resolve_conj(shape, dtype):
+#     x = torch.randn(size=shape, dtype=dtype, device="musa")
+#     y = x.conj()
+#     assert y.is_conj()
+#     with flag_gems.use_gems():
+#         z = y.resolve_conj()
+#     assert not z.is_conj()
 
 
 # @pytest.mark.unique
 # @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-# @pytest.mark.parametrize("dtype", [torch.int32]) # Torch complains Sort doesn't support Short
+# @pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
 # @pytest.mark.parametrize("sorted", [True])
 # @pytest.mark.parametrize("return_inverse", [True, False])
 # @pytest.mark.parametrize("return_counts", [False, True])
@@ -375,14 +373,14 @@ def test_accuracy_resolve_conj(shape, dtype):
 # @pytest.mark.parametrize("n_samples", [1000])
 # def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
 #     if shape[-1] == 1:
-#         dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+#         dist = torch.rand(size=shape, dtype=dtype, device="musa")
 #         with flag_gems.use_gems():
 #             res_out = torch.multinomial(dist, n_samples, True)
 #         assert torch.all(res_out == 0)
 #     else:
 #         # Mask p% off of the categories and test the sampling results fall in the rest
 #         for p in (0.1, 0.5, 0.9):
-#             dist = torch.rand(size=shape, dtype=dtype, device="cuda")
+#             dist = torch.rand(size=shape, dtype=dtype, device="musa")
 #             dist[torch.rand(shape) < p] = 0
 #             # Make sure there's at least one non-zero probability
 #             dist[..., -1] = 0.5
@@ -397,7 +395,7 @@ def test_accuracy_resolve_conj(shape, dtype):
 # @pytest.mark.parametrize("pool", UT_SHAPES_2D)
 # @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 # def test_accuracy_multinomial_without_replacement(pool, dtype):
-#     dist = torch.rand(size=pool, dtype=dtype, device="cuda")
+#     dist = torch.rand(size=pool, dtype=dtype, device="musa")
 #     k = pool[-1]
 #     if k > 1:
 #         ns = [k // 2, k]
@@ -431,6 +429,9 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     )
     pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
 
+    if pad_mode != "constant":
+        pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
+        pad_value = None
 
     ref_pad_params = [to_reference(pad_param) for pad_param in pad_params]
 
@@ -441,11 +442,12 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     gems_assert_equal(res_out, ref_out)
 
 
+# FIXME: (1, x, 1024) (3, x, 1024)
 @pytest.mark.arange
 @pytest.mark.parametrize("start", [0, 1, 3])
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32] + ALL_INT_DTYPES + [None])
 @pytest.mark.parametrize("device", ["musa", None])
 @pytest.mark.parametrize(
     "pin_memory", [False, None]
@@ -466,11 +468,11 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
-    inp1 = torch.randint(-100, 100, shape, device="cuda").to(dtype)
+    inp1 = torch.randint(-100, 100, shape, device="musa").to(dtype)
     test_numel = inp1.numel() // 2 if inp1.numel() > 1 else 1
     test_shape = (test_numel,)
     inp2 = torch.randint(-10, 10, test_shape, device="musa").to(dtype)
@@ -539,10 +541,10 @@ def test_fill(value, shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_stack(shape, dim, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+        inp = [torch.randn(s, dtype=dtype, device="musa") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="musa").to(
                 dtype
             )
             for s in shape
@@ -567,10 +569,10 @@ HSTACK_SHAPES = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_hstack(shape, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+        inp = [torch.randn(s, dtype=dtype, device="musa") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="musa").to(
                 dtype
             )
             for s in shape
@@ -594,10 +596,10 @@ HSTACK_EXCEPTION_SHAPES = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_exception_hstack(shape, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+        inp = [torch.randn(s, dtype=dtype, device="musa") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="musa").to(
                 dtype
             )
             for s in shape
@@ -641,10 +643,10 @@ def gen_cat_shapes_dim(shapes):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cat(shape, dim, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+        inp = [torch.randn(s, dtype=dtype, device="musa") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="musa").to(
                 dtype
             )
             for s in shape

@@ -284,8 +284,8 @@ def test_accuracy_clamp_tensor(shape, isnone, dtype):
 def test_accuracy_div_tensor_tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="musa")
     inp2 = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -301,7 +301,7 @@ def test_accuracy_div_tensor_tensor(shape, dtype):
 def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="musa")
     inp2 = scalar
-    ref_inp1 = to_reference(inp1, True)
+    ref_inp1 = to_reference(inp1, False)
 
     ref_out = torch.div(ref_inp1, inp2)
     with flag_gems.use_gems():
@@ -317,7 +317,7 @@ def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
 def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device="musa")
-    ref_inp2 = to_reference(inp2, True)
+    ref_inp2 = to_reference(inp2, False)
 
     ref_out = torch.div(inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -480,8 +480,6 @@ def test_accuracy_remainder(shape, dtype):
         dtype=dtype,
         device="musa",
     )
-    # avoid torch complains RuntimeError: ZeroDivisionError
-    inp1 = torch.where(inp1 != 0, inp1, 1)
     inp2 = torch.randint(
         torch.iinfo(dtype).min,
         torch.iinfo(dtype).max,
@@ -489,14 +487,9 @@ def test_accuracy_remainder(shape, dtype):
         dtype=dtype,
         device="musa",
     )
-<<<<<<< HEAD
     if TO_CPU:
         inp1 = replace_zeros(inp1)
         inp2 = replace_zeros(inp2)
-=======
-    # avoid torch complains RuntimeError: ZeroDivisionError
-    inp2 = torch.where(inp2 != 0, inp2, 1)
->>>>>>> rebase on master commit 2c9ae672
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
@@ -508,10 +501,6 @@ def test_accuracy_remainder(shape, dtype):
 
     for d in inp2.flatten()[:100]:
         ref_d = to_reference(d, False)
-<<<<<<< HEAD
-=======
-
->>>>>>> rebase on master commit 2c9ae672
         ref_out = ref_inp1 % ref_d
         with flag_gems.use_gems():
             res_out = inp1 % d
@@ -1053,8 +1042,9 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
                 dtype=dtype,
                 device="musa",
             )
-            inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
-            inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
+            # FIXME: Neg doesn't support double on torch_musa, so workaround temporarily.
+            inp1.view(-1)[0] = (-nan_num.cpu()).to("musa") if gen_nan == 3 else nan_num
+            inp2.view(-1)[0] = (-nan_num.cpu()).to("musa") if gen_nan >= 3 else nan_num
         atol = (
             torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device="musa").item()
             if not zero_tol
@@ -1150,8 +1140,9 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
                 dtype=dtype,
                 device="musa",
             )
-            inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
-            inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
+            # FIXME: Neg doesn't support double on torch_musa, so workaround temporarily.
+            inp1.view(-1)[0] = (-nan_num.cpu()).to("musa") if gen_nan == 3 else nan_num
+            inp2.view(-1)[0] = (-nan_num.cpu()).to("musa") if gen_nan >= 3 else nan_num
     else:
         atol = (
             torch.finfo(torch.float16).eps

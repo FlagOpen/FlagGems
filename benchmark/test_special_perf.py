@@ -83,20 +83,20 @@ def test_perf_embedding():
 #     bench.run()
 
 
-# def test_perf_unique():
-#     def unique_kwargs(dtype, batch, size):
-#         return {"sorted": True, "return_inverse": True, "return_counts": False}
+def test_perf_unique():
+    def unique_kwargs(dtype, batch, size):
+        return {"sorted": True, "return_inverse": True, "return_counts": False}
 
-#     bench = Benchmark(
-#         op_name="unique",
-#         torch_op=torch.unique,
-#         arg_func=unary_int_arg,
-#         dtypes=INT_DTYPES,
-#         batch=POINTWISE_BATCH,
-#         sizes=SIZES,
-#         kwargs_func=unique_kwargs,
-#     )
-#     bench.run()
+    bench = Benchmark(
+        op_name="unique",
+        torch_op=torch.unique,
+        arg_func=unary_int_arg,
+        dtypes=[torch.int32], # torch_musa complains sort doesn't support Short
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=unique_kwargs,
+    )
+    bench.run()
 
 
 # def test_multinomial_with_replacement():
@@ -166,7 +166,7 @@ def test_perf_isin():
         op_name="isin",
         torch_op=torch.isin,
         arg_func=binary_int_args,
-        dtypes=[torch.int32], # Torch complains Sort doesn't support Short
+        dtypes=[torch.int32], # torch_musa complains sort doesn't support Short
         batch=POINTWISE_BATCH,
         sizes=SIZES,
     )
@@ -196,7 +196,7 @@ def test_perf_fill():
 
 def test_perf_stack():
     def stack_args(dtype, batch, size):
-        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="musa")
         return {(inp,) * 3}
 
     bench = Benchmark(
@@ -212,7 +212,7 @@ def test_perf_stack():
 
 def test_perf_hstack():
     def hstack_args(dtype, batch, size):
-        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="musa")
         return {(inp,) * 3}
 
     bench = Benchmark(
@@ -228,8 +228,8 @@ def test_perf_hstack():
 
 def test_perf_cat():
     def cat_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([batch, size], dtype=dtype, device="musa")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="musa")
         return [[inp1, inp2]]
 
     def cat_kwargs(dtype, batch, size):
@@ -250,10 +250,10 @@ def test_perf_cat():
 def test_perf_cat_int():
     def cat_args(dtype, batch, size):
         inp1 = torch.randint(
-            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
+            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="musa"
         )
         inp2 = torch.randint(
-            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
+            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="musa"
         )
         return [[inp1, inp2]]
 
