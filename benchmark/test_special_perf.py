@@ -288,3 +288,22 @@ def test_perf_vstack():
         sizes=SIZES,
     )
     bench.run()
+
+
+def test_perf_sort():
+    def sort_kwargs(dtype, batch, size):
+        input = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {
+            "input": input,
+        }
+
+    bench = Benchmark(
+        op_name="sort",
+        torch_op=torch.sort,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=32,
+        sizes=[64, 128, 256, 512, 1024, 2048],
+        kwargs_func=sort_kwargs,
+    )
+    bench.run()

@@ -39,7 +39,7 @@ def sort_kernel(
     else:
         in_val = tl.load(in_ptr + cols, mask=mask, other=mask_val).to(tl.int32)
 
-    index_val = tl.arange(0, BLOCK_SIZE).to(tl.int64)
+    index_val = tl.arange(0, BLOCK_SIZE).to(tl.int32)
 
     sorted_in_val, sorted_index_val = argsort(
         in_val, index_val, 0, descending=DESCENDING
@@ -62,7 +62,8 @@ def sort(self, dim=-1, descending=False):
     out_index = torch.empty_like(self, dtype=torch.int64)
 
     N = sort_elem_cnt
-    BLOCK_SIZE = 512
+
+    BLOCK_SIZE = triton.next_power_of_2(N)
 
     IS_FLOAT = self.dtype in [
         torch.float16,
@@ -70,6 +71,8 @@ def sort(self, dim=-1, descending=False):
         torch.float32,
         torch.float64,
     ]
+
+    num_warps = 8
 
     with torch.cuda.device(self.device):
         sort_kernel[batch_size,](
@@ -80,5 +83,6 @@ def sort(self, dim=-1, descending=False):
             BLOCK_SIZE,
             descending,
             IS_FLOAT,
+            num_warps=num_warps,
         )
     return out, out_index

@@ -689,12 +689,11 @@ def test_accuracy_vstack(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.vstack
+@pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
-# @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_sort(batch_size, hiddensize, descending, dtype):
     x = torch.arange(hiddensize, dtype=dtype, device="cuda")
     x = x.repeat(batch_size).reshape(batch_size, hiddensize)
