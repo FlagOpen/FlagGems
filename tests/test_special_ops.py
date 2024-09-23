@@ -687,3 +687,27 @@ def test_accuracy_vstack(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.vstack(inp)
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.vstack
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [128, 256])
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+# @pytest.mark.parametrize("dtype", INT_DTYPES)
+def test_sort(batch_size, hiddensize, descending, dtype):
+    x = torch.arange(hiddensize, dtype=dtype, device="cuda")
+    x = x.repeat(batch_size).reshape(batch_size, hiddensize)
+
+    # Each row use different shuffled index.
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(x.size(1))
+        x[bsz, :] = x[bsz, col_indices]
+    ref_x = to_reference(x)
+    ref_value, ref_index = torch.sort(ref_x, dim=-1, descending=descending)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.sort(x, dim=-1, descending=descending)
+
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)

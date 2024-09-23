@@ -105,6 +105,7 @@ def enable(lib=aten_lib):
     lib.impl("silu", silu, "AutogradCUDA")
     lib.impl("sin", sin, "CUDA")
     lib.impl("softmax.int", softmax, "AutogradCUDA")
+    lib.impl("sort", sort, "CUDA")
     lib.impl("sub.Tensor", sub, "CUDA")
     lib.impl("tanh", tanh, "AutogradCUDA")
     lib.impl("triu", triu, "CUDA")
