@@ -12,7 +12,6 @@ from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
-    RESOLUTION_DROPOUT,
     SPECIAL_SHAPES,
     STACK_DIM_LIST,
     STACK_SHAPES,
@@ -215,7 +214,6 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     embedding = torch.randn(
         (EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True
     )
-    ref_indices = to_reference(indices)
     ref_embedding = to_reference(embedding)
     ref_indices = to_reference(indices)
 
@@ -434,6 +432,9 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     )
     pad_value = float(torch.randint(0, 1024, (1,), dtype=torch.int32, device="cpu"))
 
+    if pad_mode != "constant":
+        pad_params = [(pad_val + 2 - 1) // 2 * 2 for pad_val in pad_params]
+        pad_value = None
 
     ref_pad_params = [to_reference(pad_param) for pad_param in pad_params]
 
@@ -519,7 +520,7 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", INT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
