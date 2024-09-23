@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils.type_utils import get_accumulator_dtype
 
 
 @triton.jit
@@ -324,8 +325,9 @@ class LayerNorm(torch.autograd.Function):
 
         # NOTE: when the input is half-precision(either float16 or bfloat16)
         # these statistical data saved for backward is in single precision
-        mean = torch.empty(M, dtype=torch.float32, device=x.device)
-        rstd = torch.empty(M, dtype=torch.float32, device=x.device)
+        acc_type = get_accumulator_dtype(x.dtype)
+        mean = torch.empty(M, dtype=acc_type, device=x.device)
+        rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
         with torch.cuda.device(x.device):
             if N <= 128:

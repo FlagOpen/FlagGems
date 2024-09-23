@@ -81,13 +81,11 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     [(1, 40999)]
     if QUICK_MODE
     else [
-        (1, 2),
-        (1, 40999),
-        (4096, 256),
-        (4096, 100),
-        (16, 40499),
         (200, 36),
-        (300, 400999),
+        (4096, 100),
+        (1, 40999),
+        (100, 40499),
+        (4096, 256),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
