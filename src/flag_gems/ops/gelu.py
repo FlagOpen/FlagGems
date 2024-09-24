@@ -88,10 +88,32 @@ def gelu(A, *, approximate="none"):
     return Gelu.apply(A, approximate)
 
 
+class InplaceGelu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, approximate):
+        logging.debug("GEMS GELU_ FORWARD")
+        ctx.save_for_backward(A.clone())
+        ctx.mark_dirty(A)
+        ctx.approximate = approximate
+
+        if approximate == "tanh":
+            out = gelu_tanh(A, out0=A)
+        else:
+            out = gelu_none(A, out0=A)
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        logging.debug("GEMS GELU_ BACKWARD")
+        (inp,) = ctx.saved_tensors
+        approximate = ctx.approximate
+        if approximate == "tanh":
+            in_grad = gelu_backward_tanh(inp, out_grad)
+        else:
+            in_grad = gelu_backward_none(inp, out_grad)
+        return in_grad, None
+
+
 def gelu_(A, *, approximate="none"):
-    logging.debug("GEMS GELU_ FORWARD")
-    if approximate == "tanh":
-        gelu_tanh(A, out0=A)
-    else:
-        gelu_none(A, ou0=A)
+    InplaceGelu.apply(A, approximate)
     return A

@@ -19,4 +19,4 @@ def rsqrt(A):
 
 def rsqrt_(A):
     logging.debug("GEMS RSQRT_")
-    return rsqrt_func(A, ou0=A)
+    return rsqrt_func(A, out0=A)
