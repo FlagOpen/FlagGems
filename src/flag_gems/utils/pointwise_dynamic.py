@@ -377,7 +377,7 @@ def generate_destination_passing_pointwise_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(2048, triton.next_power_of_2(num_tasks))")
+            code.writeline("tile_size = min(1024, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 4")
             code.writeline("num_ctas = triton.cdiv(num_tasks, tile_size)")
             code.writeline(
