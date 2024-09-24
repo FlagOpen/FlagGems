@@ -433,6 +433,7 @@ def test_accuracy_repeat(shape, sizes, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", [torch.int32])
 def test_accuracy_repeat_interleave_tensor(shape, dtype):
