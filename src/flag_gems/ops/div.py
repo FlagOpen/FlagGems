@@ -49,9 +49,9 @@ def true_divide(A, B):
 def true_divide_(A, B):
     logging.debug("GEMS TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
-        return true_div_func(A, B)
+        return true_div_func(A, B, out0=A)
     else:
-        return true_div_func_tensor_scalar(A, B)
+        return true_div_func_tensor_scalar(A, B, out0=A)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -88,9 +88,9 @@ def trunc_divide(A, B):
 def trunc_divide_(A, B):
     logging.debug("GEMS TRUNC_DIVIDE_")
     if isinstance(B, torch.Tensor):
-        return trunc_div_func(A, B)
+        return trunc_div_func(A, B, out0=A)
     else:
-        return trunc_div_func_tensor_scalar(A, B)
+        return trunc_div_func_tensor_scalar(A, B, out0=A)
 
 
 @triton.jit
@@ -157,9 +157,9 @@ def floor_divide(A, B):
 def floor_divide_(A, B):
     logging.debug("GEMS FLOOR_DIVIDE_")
     if isinstance(B, torch.Tensor):
-        return floor_div_func(A, B)
+        return floor_div_func(A, B, out0=A)
     else:
-        return floor_div_func_tensor_scalar(A, B)
+        return floor_div_func_tensor_scalar(A, B, out0=A)
 
 
 def div_mode(A, B, rounding_mode=None):
