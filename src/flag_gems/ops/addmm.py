@@ -50,6 +50,16 @@ from ..utils import libentry
             num_stages=5,
             num_warps=2,
         ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            num_stages=2,
+            num_warps=8,
+        ),
+        triton.Config(
+            {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32},
+            num_stages=2,
+            num_warps=8,
+        ),
     ],
     key=["M", "N", "K"],
 )
