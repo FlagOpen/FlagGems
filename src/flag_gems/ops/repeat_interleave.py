@@ -1,5 +1,8 @@
+import logging
+
 import torch
 import triton
+from triton import language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from ..utils.shape_utils import c_contiguous_stride
@@ -13,6 +16,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
+    logging.debug("GEMS REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -53,3 +57,41 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
     ndim = len(out_view_shape)
     copy_func.instantiate(ndim)(in_view, out0=out_view)
     return output
+
+
+@triton.jit
+def repeat_interleave_tensor_kernel(inputs_ptr, repeats_ptr, cumsum_ptr, out_ptr, size):
+    pid = tl.program_id(0)
+    mask = pid < size
+    cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
+    inputs = tl.load(inputs_ptr + pid + 1, mask)
+    repeats = tl.load(repeats_ptr + pid + 1, mask)
+
+    tl.device_assert(repeats >= 0, "repeats can not be negative")
+
+    out_offsets = cumsum
+    for _ in range(repeats):
+        tl.store(out_ptr + out_offsets, inputs)
+        out_offsets += 1
+
+
+def repeat_interleave_tensor(repeats, *, output_size=None):
+    logging.debug("GEMS REPEAT_INTERLEAVE_TENSOR")
+
+    assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
+
+    cumsum = repeats.cumsum(axis=0)
+    result_size = cumsum[-1].item()
+
+    assert cumsum[0].item() >= 0, "repeats can not be negative"
+    assert result_size >= 0, "repeats can not be negative"
+
+    out = torch.zeros((result_size,), dtype=repeats.dtype, device=repeats.device)
+    size = repeats.size(0)
+    inputs = torch.arange(0, size, dtype=repeats.dtype, device=repeats.device)
+
+    grid = (size - 1,)
+    repeat_interleave_tensor_kernel[grid](
+        inputs, repeats, cumsum, out, size, num_warps=1
+    )
+    return out
