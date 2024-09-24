@@ -37,3 +37,8 @@ class Relu(torch.autograd.Function):
 
 def relu(A):
     return Relu.apply(A)
+
+
+def relu_(A):
+    logging.debug("GEMS RELU_ FORWARD")
+    return relu_forward(A, out0=A)

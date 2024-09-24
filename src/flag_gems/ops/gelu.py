@@ -86,3 +86,12 @@ class Gelu(torch.autograd.Function):
 
 def gelu(A, *, approximate="none"):
     return Gelu.apply(A, approximate)
+
+
+def gelu_(A, *, approximate="none"):
+    logging.debug("GEMS GELU_ FORWARD")
+    if approximate == "tanh":
+        gelu_tanh(A, out0=A)
+    else:
+        gelu_none(A, ou0=A)
+    return A

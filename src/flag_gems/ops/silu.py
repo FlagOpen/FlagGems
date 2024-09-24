@@ -51,3 +51,9 @@ class Silu(torch.autograd.Function):
 
 def silu(A):
     return Silu.apply(A)
+
+
+def silu_(A):
+    logging.debug("GEMS SILU_ FORWARD")
+    silu_forward(A, ou0=A)
+    return A

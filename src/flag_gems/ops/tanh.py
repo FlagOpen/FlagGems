@@ -57,3 +57,12 @@ class Tanh(torch.autograd.Function):
 
 def tanh(A):
     return Tanh.apply(A)
+
+
+def tanh_(A):
+    logging.debug("GEMS TANH_ FORWARD")
+    if A.requires_grad is True:
+        tanh_forward(A.to(torch.float32), out0=A)
+    else:
+        tanh_forward(A, out0=A)
+    return A

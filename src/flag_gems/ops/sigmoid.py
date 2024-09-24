@@ -55,3 +55,12 @@ class Sigmoid(torch.autograd.Function):
 
 def sigmoid(A):
     return Sigmoid.apply(A)
+
+
+def sigmoid_(A):
+    logging.debug("GEMS SIGMOID_ FORWARD")
+    if A.requires_grad is True:
+        sigmoid_forward(A.to(torch.float32), out0=A)
+    else:
+        sigmoid_forward(A, out0=A)
+    return A
