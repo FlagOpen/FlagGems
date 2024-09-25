@@ -134,10 +134,9 @@ def enable(lib=aten_lib):
     lib.impl("outer", outer, "AutogradCUDA")
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
     lib.impl("select.int", select, "CUDA")
-    lib.impl("scatter.src", scatter_src, "CUDA")
-    lib.impl("scatter.reduce", scatter_reduce, "CUDA")
+    lib.impl("scatter.src", scatter, "CUDA")
+    lib.impl("scatter.reduce", scatter, "CUDA")
     lib.impl("gather", gather, "CUDA")
-    lib.impl("gather.out", gather_out, "CUDA")
 
     lib.impl("select_scatter", select_scatter, "CUDA")
     lib.impl("slice_scatter", slice_scatter, "CUDA")

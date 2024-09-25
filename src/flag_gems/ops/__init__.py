@@ -30,7 +30,7 @@ from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather, gather_out
+from .gather import gather
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -86,7 +86,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
-from .scatter import scatter_reduce, scatter_src
+from .scatter import scatter
 from .select import select
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid
@@ -152,14 +152,11 @@ __all__ = [
     "fill_scalar",
     "fill_tensor",
     "exponential_",
-    "gather",
-    "gather_out",
     "flip",
     "ones_like",
     "full_like",
     "zeros_like",
     "gather",
-    "gather_out",
     "ge",
     "ge_scalar",
     "gelu",
@@ -209,8 +206,7 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
-    "scatter_src",
-    "scatter_reduce",
+    "scatter",
     "select",
     "sigmoid",
     "silu",
@@ -225,8 +221,6 @@ __all__ = [
     "max_dim",
     "min",
     "min_dim",
-    "scatter_src",
-    "scatter_reduce",
     "sum",
     "sum_dim",
     "amax",

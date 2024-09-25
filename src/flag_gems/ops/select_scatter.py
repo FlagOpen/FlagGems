@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import libentry, offset_calculator, restride_dim
 
 
 def cfggen():
@@ -68,10 +68,10 @@ def select_scatter(inp, src, dim, index):
     src_expanded_shape[dim] = 1
     out_strided = restride_dim(out, dim, src_expanded_shape)
     idx = torch.arange(0, src.numel(), device=inp.device).reshape(src_expanded_shape)
-    indices = offsetCalculator(
+    indices = offset_calculator(
         out_strided, idx, out.stride(), dim, isInp=False
     ).squeeze(dim=dim)
-    src_offsets = offsetCalculator(src, idx, src.stride(), dim, isInp=False).squeeze(
+    src_offsets = offset_calculator(src, idx, src.stride(), dim, isInp=False).squeeze(
         dim=dim
     )
 

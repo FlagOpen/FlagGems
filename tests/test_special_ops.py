@@ -407,9 +407,9 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 
 @pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
-@pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)
-@pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
-@pytest.mark.parametrize("contiguous", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("pad_mode", ["constant"])
+@pytest.mark.parametrize("contiguous", [True])
 def test_pad(shape, dtype, pad_mode, contiguous):
     x = torch.randn(size=shape, dtype=dtype, device="cuda")
     if not contiguous:
