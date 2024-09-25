@@ -340,7 +340,7 @@ def test_accuracy_floor_div_float(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2, rounding_mode="floor")
 
-    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
 @pytest.mark.floor_divide
