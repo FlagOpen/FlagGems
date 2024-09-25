@@ -60,19 +60,22 @@ def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
 
 
 @triton.jit
-def repeat_interleave_tensor_kernel(inputs_ptr, repeats_ptr, cumsum_ptr, out_ptr, size):
+def repeat_interleave_tensor_kernel(
+    repeats_ptr, cumsum_ptr, out_ptr, size, BLOCK_SIZE: tl.constexpr
+):
     pid = tl.program_id(0)
     mask = pid < size
     cumsum = tl.load(cumsum_ptr + pid, mask, other=0)
-    inputs = tl.load(inputs_ptr + pid + 1, mask)
-    repeats = tl.load(repeats_ptr + pid + 1, mask)
+    repeats = tl.load(repeats_ptr + pid, mask, other=0)
+    out_offset = cumsum - repeats
 
     tl.device_assert(repeats >= 0, "repeats can not be negative")
 
-    out_offsets = cumsum
-    for _ in range(repeats):
-        tl.store(out_ptr + out_offsets, inputs)
-        out_offsets += 1
+    out_ptr += out_offset
+    for start_k in range(0, repeats, BLOCK_SIZE):
+        offsets_k = start_k + tl.arange(0, BLOCK_SIZE)
+        mask_k = offsets_k < repeats
+        tl.store(out_ptr + offsets_k, pid, mask=mask_k)
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
@@ -83,15 +86,19 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     cumsum = repeats.cumsum(axis=0)
     result_size = cumsum[-1].item()
 
-    assert cumsum[0].item() >= 0, "repeats can not be negative"
     assert result_size >= 0, "repeats can not be negative"
 
-    out = torch.zeros((result_size,), dtype=repeats.dtype, device=repeats.device)
+    out = torch.empty((result_size,), dtype=repeats.dtype, device=repeats.device)
     size = repeats.size(0)
-    inputs = torch.arange(0, size, dtype=repeats.dtype, device=repeats.device)
 
-    grid = (size - 1,)
+    grid = (size,)
+    BLOCK_SIZE = 32
     repeat_interleave_tensor_kernel[grid](
-        inputs, repeats, cumsum, out, size, num_warps=1
+        repeats,
+        cumsum,
+        out,
+        size,
+        BLOCK_SIZE=BLOCK_SIZE,
+        num_warps=1,
     )
     return out
