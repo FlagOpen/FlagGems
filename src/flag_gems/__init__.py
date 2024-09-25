@@ -136,7 +136,6 @@ def enable(lib=aten_lib):
     lib.impl("scatter.src", scatter, "CUDA")
     lib.impl("scatter.reduce", scatter, "CUDA")
     lib.impl("gather", gather, "CUDA")
-    lib.impl("gather.out", gather, "CUDA")
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("fill.Scalar", fill_scalar, "CUDA")
