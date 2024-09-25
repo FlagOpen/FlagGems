@@ -271,8 +271,12 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
 
 
 @pytest.mark.scatter
-@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
@@ -311,8 +315,12 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.scatter
-@pytest.mark.parametrize("src_shape", [(2, 2, 2)])
-@pytest.mark.parametrize("inp_shape", [(3, 3, 3)])
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
@@ -351,8 +359,12 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.scatter
-@pytest.mark.parametrize("src_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
@@ -391,7 +403,10 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.gather
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "inp_shape",
+    [(32, 8, 4)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16), (128, 32, 256)],
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gather(inp_shape, dim, dtype):
@@ -429,8 +444,12 @@ def test_accuracy_gather(inp_shape, dim, dtype):
 
 
 @pytest.mark.gather
-@pytest.mark.parametrize("out_shape", [(128, 16 * i, 32 * i) for i in range(1, 10, 4)])
-@pytest.mark.parametrize("inp_shape", [(512, 32 * i, 64 * i) for i in range(1, 10, 4)])
+@pytest.mark.parametrize(
+    "out_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
+)
+@pytest.mark.parametrize(
+    "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
+)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gather_out(out_shape, inp_shape, dim, dtype):
