@@ -10,7 +10,6 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_SHAPES,
-    UT_SHAPES_1D,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
