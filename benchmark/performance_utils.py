@@ -5,10 +5,9 @@ import triton
 
 import flag_gems
 
-from .conftest import CPU_MODE
+from .attri_util import BenchmarkResult, BenckmarkMatrics
+from .conftest import Config
 
-WARMUP = 100
-REPETITION = 1000
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
@@ -35,45 +34,56 @@ class Benchmark:
         self.sizes = sizes
         self.gems_op = None
         self.is_backward = is_backward
+        self.results = []
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
 
-    def profile(self, op, *args, **kwargs):
+    def get_latency(self, op, *args, **kwargs):
         fn = lambda: op(*args, **kwargs)
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
             fn = lambda: out.backward(dout, retain_graph=True)
-        if CPU_MODE:
-            for i in range(WARMUP):
+        if Config.cpu_mode:
+            for i in range(Config.warm_up):
                 fn()
             torch.cuda.synchronize()
             start = time.time()
-            for i in range(REPETITION):
+            for i in range(Config.repetition):
                 fn()
             torch.cuda.synchronize()
             end = time.time()
-            latency = (end - start) / REPETITION * 1000
+            latency = (end - start) / Config.repetition * 1000
         else:
             latency = triton.testing.do_bench(
                 fn,
-                warmup=WARMUP,
-                rep=REPETITION,
+                warmup=Config.warm_up,
+                rep=Config.repetition,
                 return_mode="median",
             )
         # average latency in ms
         return latency
 
+    def get_tflops(self, op, *args, **kwargs):
+        """not implemented"""
+        from torch.utils.flop_counter import FlopCounterMode
+
+        fn = lambda: op(*args, **kwargs)
+        with FlopCounterMode(display=False) as flop_counter:
+            fn()
+        return flop_counter.get_total_flops()
+
     def run(self):
-        mode_str = "cpu" if CPU_MODE else "cuda"
-        print("")
+        mode_str = "cpu" if Config.cpu_mode else "cuda"
+        # print("")
         for dtype in self.dtypes:
-            print(
-                f"Operator {self.op_name} Performance Test (dtype={dtype}, mode={mode_str})"
-            )
-            print("Size    Torch Latency (ms)    Gems Latency (ms)    Gems Speedup")
-            print("---------------------------------------------------------------")
+            # print(
+            #     f"Operator {self.op_name} Performance Test (dtype={dtype}, mode={mode_str})"
+            # )
+            # print("Size      Torch Latency (ms)    Gems Latency (ms)    Gems Speedup    Size Detail")
+            # print("--------------------------------------------------------------------------------")
+            matrics = []
             for size in self.sizes:
                 args = ()
                 if self.arg_func is not None:
@@ -90,16 +100,37 @@ class Benchmark:
                 if self.kwargs_func is not None:
                     kwargs = self.kwargs_func(dtype, self.batch, size)
 
-                torch_perf = self.profile(self.torch_op, *args, **kwargs)
+                torch_latency = self.get_latency(self.torch_op, *args, **kwargs)
                 if self.gems_op:
-                    gems_perf = self.profile(self.gems_op, *args, **kwargs)
+                    gems_latency = self.get_latency(self.gems_op, *args, **kwargs)
                 else:
                     with flag_gems.use_gems():
-                        gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                speedup = torch_perf / gems_perf
-                print(
-                    f"{size: <8}{torch_perf: >18.6}{gems_perf: >21.6}{speedup: >16.3}"
+                        gems_latency = self.get_latency(self.torch_op, *args, **kwargs)
+                speedup = torch_latency / gems_latency
+
+                size_product = 1
+                [size_product := size_product * num for num in size]
+
+                # tflops is decided by the operation suanfa. so we no need to fenbie cal torch tflops or gems tflops.
+                tflops = self.get_tflops(self.torch_op, *args, **kwargs)
+                utilization = tflops / gems_latency / 1e12 * 1e3
+                # print(
+                #     f"{size_product: <10}{torch_latency: >18.6}{gems_latency: >21.6}{speedup: >16.3}{' ' * 5}{size}"
+                # )
+                matric = BenckmarkMatrics(
+                    shape=size_product,
+                    shape_detail=size,
+                    latency_base=torch_latency,
+                    latency=gems_latency,
+                    speedup=speedup,
+                    tflops=tflops,
+                    utilization=utilization,
                 )
+                matrics.append(matric)
+            result = BenchmarkResult(
+                op_name=self.op_name, dtype=str(dtype), mode=mode_str, result=matrics
+            )
+            print(result)
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -110,22 +141,23 @@ DEFAULT_BATCH = 1
 POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
-SIZES = [i * 1024 for i in range(1, 81, 5)]
+SIZES = [i * 64 for i in range(1, 22, 5)]
 
 
-def unary_arg(dtype, batch, size):
+def unary_arg_old(dtype, batch, size):
     inp = torch.randn([batch, size], dtype=dtype, device="cuda")
     return (inp,)
 
 
-def unary_int_arg(dtype, batch, size):
-    inp = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-    )
+def unary_arg(dtype, batch, shape):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(low=0, high=0x7FFF, size=shape, dtype=dtype, device="cuda")
     return (inp,)
 
 
-def binary_args(dtype, batch, size):
+def binary_args_old(dtype, batch, size):
     if dtype in FLOAT_DTYPES:
         inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
         inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
@@ -147,18 +179,30 @@ def binary_args(dtype, batch, size):
     return inp1, inp2
 
 
-def binary_int_args(dtype, batch, size):
-    inp1 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-    )
-    inp2 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
-    )
+def binary_args(dtype, batch, shape):
+    if dtype in FLOAT_DTYPES:
+        inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+        inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    elif dtype in INT_DTYPES:
+        inp1 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cuda",
+        )
+        inp2 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device="cuda",
+        )
     return inp1, inp2
 
 
-def ternary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
-    inp3 = torch.randn([batch, size], dtype=dtype, device="cuda")
+def ternary_args(dtype, batch, shape):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp3 = torch.randn(shape, dtype=dtype, device="cuda")
     return inp1, inp2, inp3

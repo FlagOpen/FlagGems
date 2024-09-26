@@ -6,8 +6,8 @@ from .performance_utils import (
     POINTWISE_BATCH,
     SIZES,
     Benchmark,
-    binary_int_args,
-    unary_int_arg,
+    binary_args,
+    unary_arg,
 )
 
 
@@ -90,7 +90,7 @@ def test_perf_unique():
     bench = Benchmark(
         op_name="unique",
         torch_op=torch.unique,
-        arg_func=unary_int_arg,
+        arg_func=unary_arg,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
@@ -165,7 +165,7 @@ def test_perf_isin():
     bench = Benchmark(
         op_name="isin",
         torch_op=torch.isin,
-        arg_func=binary_int_args,
+        arg_func=binary_args,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,
