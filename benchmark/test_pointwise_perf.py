@@ -643,33 +643,3 @@ def test_perf_repeat():
         else REPEAT_SHAPES,
     )
     bench.run()
-
-
-# TODO: add more test shapes when bench_level is COMPREHENSIVE
-REPEAT_INTERLEAVE_SHAPES = [
-    (1,),
-    (1024, 1024),
-    (20, 320, 15),
-    (16, 128, 64, 60),
-    (16, 7, 57, 32, 29),
-]
-
-
-@pytest.mark.repeat_interleave(recommended_shapes=REPEAT_INTERLEAVE_SHAPES)
-def test_perf_repeat_interleave_self_int():
-    def repeat_interleave_self_int_arg(dtype, batch, shape):
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
-        repeats = 2
-        return inp, repeats
-
-    bench = Benchmark(
-        op_name="repeat_interleave_self_int",
-        torch_op=torch.repeat_interleave,
-        arg_func=repeat_interleave_self_int_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=get_acceptance_shape(REPEAT_INTERLEAVE_SHAPES)
-        if Config.bench_level == BenchLevel.ACCEPTANCE
-        else REPEAT_INTERLEAVE_SHAPES,
-    )
-    bench.run()
