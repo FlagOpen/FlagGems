@@ -103,12 +103,12 @@ def generate_scatter_kernel(
         code.writeline("rows_mask = rows_offsets < M")
         code.writeline("cols_mask = cols_offsets < N")
 
-        code.writeline("offsets = rows_offsets * N + cols_offsets")
+        code.writeline("offsets = (rows_offsets * N + cols_offsets).to(tl.int64)")
         code.writeline("mask = rows_mask & cols_mask")
 
         #   1. Calculate inp_offsets and idx_offsets
-        code.writeline("inp_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)")
-        code.writeline("idx_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)")
+        code.writeline("inp_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
+        code.writeline("idx_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
         code.writeline("cur_idx = rows_offsets * N + cols_offsets")
 
         #   2. snippets
@@ -129,17 +129,13 @@ def generate_scatter_kernel(
         code.newline()
         code.writeline("if IS_ADD: ")
         with code.indent():
-            code.writeline(
-                "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0).to(tl.float32)"
-            )
+            code.writeline("cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)")
             code.writeline("res = cur_inp + cur_src")
             code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
 
         code.writeline("elif IS_MUL: ")
         with code.indent():
-            code.writeline(
-                "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0).to(tl.float32)"
-            )
+            code.writeline("cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)")
             code.writeline("res = cur_inp * cur_src")
             code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
 
