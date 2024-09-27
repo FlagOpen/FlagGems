@@ -2,11 +2,13 @@ import torch
 
 import flag_gems
 
-from .performance_utils import (
+from .attri_util import (
+    LEGACY_SHAPES,
     FLOAT_DTYPES,
     POINTWISE_BATCH,
     REDUCTION_BATCH,
-    SIZES,
+)
+from .performance_utils import (
     Benchmark,
     binary_args,
 )
@@ -24,7 +26,7 @@ def test_perf_gelu_and_mul():
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()
@@ -42,7 +44,7 @@ def test_perf_silu_and_mul():
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()
@@ -87,7 +89,7 @@ def test_perf_skip_layernorm():
         arg_func=skip_layernorm_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()
@@ -128,7 +130,7 @@ def test_perf_skip_rmsnorm():
         arg_func=skip_rmsnorm_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()

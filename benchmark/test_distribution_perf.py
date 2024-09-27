@@ -1,12 +1,11 @@
 import torch
 
-from .performance_utils import (
+from .attri_util import (
+    LEGACY_SHAPES,
     FLOAT_DTYPES,
     POINTWISE_BATCH,
-    SIZES,
-    Benchmark,
-    unary_arg,
 )
+from .performance_utils import  Benchmark, unary_arg
 
 
 def test_perf_normal():
@@ -23,7 +22,7 @@ def test_perf_normal():
         arg_func=normal_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -35,7 +34,7 @@ def test_perf_uniform():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -47,6 +46,6 @@ def test_perf_exponential_():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()

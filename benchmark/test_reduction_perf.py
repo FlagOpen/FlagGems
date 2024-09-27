@@ -1,14 +1,13 @@
 import torch
 
-from .performance_utils import (
+from .attri_util import (
     BLAS_BATCH,
     FLOAT_DTYPES,
     INT_DTYPES,
+    LEGACY_SHAPES,
     REDUCTION_BATCH,
-    SIZES,
-    Benchmark,
-    unary_arg,
 )
+from .performance_utils import Benchmark, unary_arg
 
 
 def test_perf_all():
@@ -18,7 +17,7 @@ def test_perf_all():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -30,7 +29,7 @@ def test_perf_amax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -42,7 +41,7 @@ def test_perf_any():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -54,7 +53,7 @@ def test_perf_argmax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -78,7 +77,7 @@ def test_perf_cross_entropy_loss():
         arg_func=cross_entropy_loss_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -94,7 +93,7 @@ def test_perf_cumsum():
         arg_func=cumsum_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -115,7 +114,7 @@ def test_perf_nonzero():
         arg_func=nonzero_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -136,7 +135,7 @@ def test_perf_nonzero_int():
         arg_func=nonzero_args,
         dtypes=INT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -168,7 +167,7 @@ def test_perf_groupnorm():
         arg_func=group_norm_args,
         dtypes=FLOAT_DTYPES,
         batch=BLAS_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -205,7 +204,7 @@ def test_perf_layernorm():
         arg_func=layer_norm_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -217,7 +216,7 @@ def test_perf_log_softmax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -229,7 +228,7 @@ def test_perf_max():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -241,7 +240,7 @@ def test_perf_mean():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -253,7 +252,7 @@ def test_perf_min():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -265,7 +264,7 @@ def test_perf_prod():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -277,7 +276,7 @@ def test_perf_softmax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -289,7 +288,7 @@ def test_perf_softmax_backward():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         is_backward=True,
     )
     bench.run()
@@ -302,7 +301,7 @@ def test_perf_sum():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -314,7 +313,7 @@ def test_perf_var_mean():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -326,7 +325,7 @@ def test_perf_vector_norm():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -351,7 +350,7 @@ def test_perf_index_select():
         arg_func=index_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -368,6 +367,6 @@ def test_masked_select():
         arg_func=masked_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()

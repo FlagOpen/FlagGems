@@ -1,17 +1,32 @@
 import time
+from typing import List, Optional
 
 import torch
 import triton
 
 import flag_gems
 
-from .attri_util import BenchmarkResult, BenckmarkMatrics
+from .attri_util import (
+    DEFAULT_METRICS,
+    DEFAULT_NON_BLAS_BENCH_SHAPES,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    BenchmarkMetrics,
+    BenchmarkResult,
+)
 from .conftest import Config
 
 torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class Benchmark:
+    DEFAULT_METRICS = DEFAULT_METRICS
+    DEFAULT_DTYPES = FLOAT_DTYPES
+    DEFAULT_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES
+    """
+    the base class for the operations benchmark
+    """
+
     def __init__(
         self,
         op_name,
@@ -35,6 +50,16 @@ class Benchmark:
         self.gems_op = None
         self.is_backward = is_backward
         self.results = []
+
+    def set_metrics(self, user_desired_metrics: Optional[List[str,]]):
+        self.to_bench_metrics = (
+            user_desired_metrics if user_desired_metrics else self.DEFAULT_METRICS
+        )
+
+    def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
+        self.to_bench_dtypes = (
+            user_desired_dtypes if user_desired_dtypes else self.DEFAULT_DTYPES
+        )
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
@@ -66,7 +91,9 @@ class Benchmark:
         return latency
 
     def get_tflops(self, op, *args, **kwargs):
-        """not implemented"""
+        """This method is currently not really implemented and serves as a placeholder.
+        A proper implementation will be developed in the future."""
+
         from torch.utils.flop_counter import FlopCounterMode
 
         fn = lambda: op(*args, **kwargs)
@@ -75,15 +102,8 @@ class Benchmark:
         return flop_counter.get_total_flops()
 
     def run(self):
-        mode_str = "cpu" if Config.cpu_mode else "cuda"
-        # print("")
         for dtype in self.dtypes:
-            # print(
-            #     f"Operator {self.op_name} Performance Test (dtype={dtype}, mode={mode_str})"
-            # )
-            # print("Size      Torch Latency (ms)    Gems Latency (ms)    Gems Speedup    Size Detail")
-            # print("--------------------------------------------------------------------------------")
-            matrics = []
+            metrics = []
             for size in self.sizes:
                 args = ()
                 if self.arg_func is not None:
@@ -108,17 +128,10 @@ class Benchmark:
                         gems_latency = self.get_latency(self.torch_op, *args, **kwargs)
                 speedup = torch_latency / gems_latency
 
-                size_product = 1
-                [size_product := size_product * num for num in size]
-
-                # tflops is decided by the operation suanfa. so we no need to fenbie cal torch tflops or gems tflops.
                 tflops = self.get_tflops(self.torch_op, *args, **kwargs)
                 utilization = tflops / gems_latency / 1e12 * 1e3
-                # print(
-                #     f"{size_product: <10}{torch_latency: >18.6}{gems_latency: >21.6}{speedup: >16.3}{' ' * 5}{size}"
-                # )
-                matric = BenckmarkMatrics(
-                    shape=size_product,
+
+                metric = BenchmarkMetrics(
                     shape_detail=size,
                     latency_base=torch_latency,
                     latency=gems_latency,
@@ -126,28 +139,15 @@ class Benchmark:
                     tflops=tflops,
                     utilization=utilization,
                 )
-                matrics.append(matric)
+                metrics.append(metric)
+
             result = BenchmarkResult(
-                op_name=self.op_name, dtype=str(dtype), mode=mode_str, result=matrics
+                op_name=self.op_name,
+                dtype=str(dtype),
+                mode="cpu" if Config.cpu_mode else "cuda",
+                result=metrics,
             )
             print(result)
-
-
-FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
-INT_DTYPES = [torch.int16, torch.int32]
-
-
-DEFAULT_BATCH = 1
-POINTWISE_BATCH = 1024
-REDUCTION_BATCH = 1024
-BLAS_BATCH = 16
-SIZES = [i * 64 for i in range(1, 22, 5)]
-
-
-def unary_arg_old(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-    return (inp,)
-
 
 def unary_arg(dtype, batch, shape):
     if dtype in FLOAT_DTYPES:
@@ -155,28 +155,6 @@ def unary_arg(dtype, batch, shape):
     elif dtype in INT_DTYPES:
         inp = torch.randint(low=0, high=0x7FFF, size=shape, dtype=dtype, device="cuda")
     return (inp,)
-
-
-def binary_args_old(dtype, batch, size):
-    if dtype in FLOAT_DTYPES:
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
-    elif dtype in INT_DTYPES:
-        inp1 = torch.randint(
-            torch.iinfo(dtype).min,
-            torch.iinfo(dtype).max,
-            [batch, size],
-            dtype=dtype,
-            device="cuda",
-        )
-        inp2 = torch.randint(
-            torch.iinfo(dtype).min,
-            torch.iinfo(dtype).max,
-            [batch, size],
-            dtype=dtype,
-            device="cuda",
-        )
-    return inp1, inp2
 
 
 def binary_args(dtype, batch, shape):

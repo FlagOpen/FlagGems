@@ -1,9 +1,9 @@
 import operator
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum
 from functools import reduce
 from typing import List, Optional, Tuple
-
+import torch
 
 class ReadOnly:
     def __init__(self, value):
@@ -14,19 +14,31 @@ class ReadOnly:
         return self._value
 
 
-BLAS_OPS = ReadOnly(["addmm", "mv", "addmm", "mm", "outer"])
+BLAS_OPS = ReadOnly(["addmm", "bmm", "mm", "mv", "outer", "matmul", "linear"])
+
+FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+INT_DTYPES = [torch.int16, torch.int32]
 
 DEFAULT_WARMUP_COUNT = 100
 DEFAULT_ITER_COUNT = 1000
 
-# BLAS situation
-# BLAS shapes is defined by (B,M,N,K), it is different from the non blas Shapes
-DEFAULT_BLAS_BENCH_SHAPES = [(1, 1, 1, 32), (4, 15, 160, 1024), (16, 495, 5333, 71)]
-DEFAULT_BLAS_WITHOUT_BATCH_BENCH_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
+# Default shapes settings
+# LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
+# Do not reference this elsewhere.
+LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
+# Non-BLAS shapes are currently defined as (M, N) for backward compatibility
+# but will change to (B, M, N) in the future.
+DEFAULT_NON_BLAS_BENCH_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
+# BLAS shapes are defined as (B, M, N, K), differing from non-BLAS shapes.
+DEFAULT_BLAS_BENCH_SHAPES = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
+DEFAULT_BLAS_WITHOUT_BATCH_BENCH_SHAPES = [
+    (1, shape, shape, shape) for shape in LEGACY_SHAPES
+]
 
-# Non BLAS shapes are defined by (B, M, N) op (B, M, N)
-DEFAULT_NON_BLAS_BENCH_SHAPES = [(1024, i * 64) for i in range(1, 22, 5)]
-
+DEFAULT_BATCH = 1
+POINTWISE_BATCH = 1024
+REDUCTION_BATCH = 1024
+BLAS_BATCH = 16
 
 def get_recommended_shapes(
     op_name: str, op_specified_shapes: Optional[List[Tuple[int, ...]]]
@@ -52,73 +64,91 @@ class BenchLevel(Enum):
 @dataclass
 class OperationAttribute:
     op_name: str
-    # Recommended core benchmark shapes for given op
+    # Recommended core benchmark shapes for the given operation
     recommended_core_shapes: List[Tuple[int, ...]]
 
-    def __str__(self):
-        name_str = f"Operator name                    |  {self.op_name}\n"
-        if self.op_name in BLAS_OPS.value:
-            shapes_str = (
-                f"Recommended Core Shapes[DMNK]    |  {self.recommended_core_shapes}\n"
-            )
-        else:
-            shapes_str = (
-                f"Recommended Core Shapes[DMN]     |  {self.recommended_core_shapes}\n"
-            )
-        return name_str + shapes_str
+    def __str__(self) -> str:
+        shapes_type = "B,M,N,K" if self.op_name in BLAS_OPS.value else "M,N"
+        return (
+            f"{'Operator name':<40} |  {self.op_name}\n"
+            f"{'Recommended Core Shapes[' + shapes_type + ']':<40} |  {self.recommended_core_shapes}\n"
+        )
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return self.__dict__
 
 
 @dataclass
-class BenckmarkMatrics:
-    # the simple version shape info, this shape setted here just to with the last version.
-    shape: int
-    # the detailed size info
-    shape_detail: Optional[Tuple[int, ...]]
-    # latency_base in ms
+class BenchmarkMetrics:
+    # Simple version shape info; this shape is set to maintain compatibility with the last version.
+    legacy_shape: Optional[int] = None
+    # Detailed size info
+    shape_detail: Optional[Tuple[int, ...]] = None
+    # Latency base in ms
     latency_base: Optional[float] = None
-    # latency in ms
+    # Latency in ms
     latency: Optional[float] = None
-    # speedup over baseline
+    # Speedup over baseline
     speedup: Optional[float] = None
-    # Not Implemented Yet, accuracy over baseline
-    accuracy: Optional[bool] = None
-    # Not Implemented Yet, tflops
+    # Accuracy over baseline (not implemented yet)
+    accuracy: Optional[float] = None
+    # TFLOPS (not implemented yet)
     tflops: Optional[float] = None
-    # Not Implemented Yet, utility
+    # Utilization (not implemented yet)
     utilization: Optional[float] = None
 
+ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics)))
+DEFAULT_METRICS = [
+    metric for metric in ['latency_base', 'latency', 'speedup'] if metric in ALL_AVAILABLE_METRICS
+]
 
 @dataclass
 class BenchmarkResult:
-    "record the benchmark Result for each operator"
-    # the uniq name of op
+    """Record the benchmark result for each operator."""
+
+    # Unique name of the operator
     op_name: str
     dtype: str
     mode: str
-    # the Result
-    result: List[BenckmarkMatrics]
+    # Benchmark results
+    result: List[BenchmarkMetrics]
 
-    def __str__(self):
-        head = (
-            f"\nOperator {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode})\n"
-            f"Size      Torch Latency (ms)    Gems Latency (ms)    Gems Speedup    Size Detail\n"
-            f"--------------------------------------------------------------------------------\n"
+    def __str__(self) -> str:
+        header = (
+            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode})\n"
+            f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
+            f"{'Size Detail':>20}\n"
+            f"{'-' * 90}\n"
         )
-        matrics = ""
-        for ele in self.result:
-            line = (
-                f"{ele.shape: <10}"
-                f"{ele.latency_base: >18.6}"
-                f"{ele.latency: >21.6}"
-                f"{ele.speedup: >16.3}"
-                f"{' ' * 5}"
-                f"{ele.shape_detail}\n"
-            )
-            matrics += line
-        return head + matrics
+        metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
+        return header + metrics_lines
 
-    def to_dict(self):
+    def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
+        self.gen_legacy_shape(metrics)
+        legacy_shape_str = (
+            metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
+        )
+        return (
+            f"{legacy_shape_str:<10}"
+            f"{metrics.latency_base:>20.6f}"
+            f"{metrics.latency:>20.6f}"
+            f"{metrics.speedup:>20.3f}"
+            f"{' ' * 10}"
+            f"{metrics.shape_detail}\n"
+        )
+
+    def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
+        legacy_shapes_4d = [(16, shape, shape, shape) for shape in LEGACY_SHAPES] + [
+            (1, shape, shape, shape) for shape in LEGACY_SHAPES
+        ]
+        legacy_shapes_2d = [(1024, shape) for shape in LEGACY_SHAPES]
+
+        if self.op_name in BLAS_OPS.value and metrics.shape_detail in legacy_shapes_4d:
+            metrics.legacy_shape = metrics.shape_detail[-1]
+        elif metrics.shape_detail in legacy_shapes_2d:
+            metrics.legacy_shape = metrics.shape_detail[-1]
+        else:
+            metrics.legacy_shape = None
+
+    def to_dict(self) -> dict:
         return self.__dict__

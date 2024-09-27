@@ -1,15 +1,16 @@
 import torch
 
-from .performance_utils import (
+from .attri_util import (
+    LEGACY_SHAPES,
+    POINTWISE_BATCH,
     FLOAT_DTYPES,
     INT_DTYPES,
-    POINTWISE_BATCH,
-    SIZES,
+)
+from .performance_utils import (
     Benchmark,
     binary_args,
     unary_arg,
 )
-
 
 def test_perf_embedding():
     def embedding_kwargs(dtype, batch, size):
@@ -26,7 +27,7 @@ def test_perf_embedding():
             torch.float16,
         ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=embedding_kwargs,
     )
     bench.run()
@@ -43,7 +44,7 @@ def test_perf_topk():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=topk_kwargs,
     )
     bench.run()
@@ -62,7 +63,7 @@ def test_perf_resolve_neg():
         arg_func=resolve_neg_arg,
         dtypes=[torch.cfloat],
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -78,7 +79,7 @@ def test_perf_resolve_conj():
         arg_func=resolve_conj_arg,
         dtypes=[torch.cfloat],
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -93,7 +94,7 @@ def test_perf_unique():
         arg_func=unary_arg,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=unique_kwargs,
     )
     bench.run()
@@ -111,7 +112,7 @@ def test_multinomial_with_replacement():
         arg_func=multinomial_args,
         dtypes=(torch.float16, torch.float32),
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -135,7 +136,7 @@ def test_perf_pad():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=padding_kwargs,
     )
     bench.run()
@@ -155,7 +156,7 @@ def test_perf_arange():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=arange_kwargs,
     )
     bench.run()
@@ -168,7 +169,7 @@ def test_perf_isin():
         arg_func=binary_args,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -188,7 +189,7 @@ def test_perf_fill():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=fill_kwargs,
     )
     bench.run()
@@ -205,7 +206,7 @@ def test_perf_stack():
         arg_func=stack_args,
         dtypes=FLOAT_DTYPES,
         batch=(512),
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -221,7 +222,7 @@ def test_perf_hstack():
         arg_func=hstack_args,
         dtypes=FLOAT_DTYPES,
         batch=(512),
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -241,7 +242,7 @@ def test_perf_cat():
         arg_func=cat_args,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=cat_kwargs,
     )
     bench.run()
@@ -266,7 +267,7 @@ def test_perf_cat_int():
         arg_func=cat_args,
         dtypes=INT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
         kwargs_func=cat_kwargs,
     )
     bench.run()
@@ -285,7 +286,7 @@ def test_perf_vstack():
         arg_func=vstack_args,
         dtypes=FLOAT_DTYPES,
         batch=(512),
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -302,7 +303,7 @@ def test_perf_repeat_interleave_self_int():
         arg_func=repeat_interleave_self_int_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()
 
@@ -326,6 +327,6 @@ def test_perf_repeat_interleave_tensor():
         arg_func=repeat_interleave_tensor_arg,
         dtypes=[torch.int32],
         batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        sizes=LEGACY_SHAPES,
     )
     bench.run()

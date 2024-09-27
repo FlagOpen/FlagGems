@@ -1,8 +1,14 @@
 import pytest
 import torch
 
-from .conftest import BenchLevel, Config
-from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, Benchmark
+from .conftest import Config
+from .attri_util import (
+    BLAS_BATCH,
+    DEFAULT_BATCH,
+    FLOAT_DTYPES,
+    BenchLevel,
+)
+from .performance_utils import Benchmark
 
 if Config.bench_level == BenchLevel.COMPREHENSIVE:
     BLAS_MN_SHAPES = [(1, 32), (160, 1024), (5333, 497)]

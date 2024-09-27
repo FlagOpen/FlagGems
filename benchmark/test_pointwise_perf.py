@@ -3,12 +3,15 @@ import itertools
 import pytest
 import torch
 
-from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, BenchLevel
-from .conftest import Config
-from .performance_utils import (
+from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
     POINTWISE_BATCH,
+    DEFAULT_NON_BLAS_BENCH_SHAPES, 
+    BenchLevel
+)
+from .conftest import Config
+from .performance_utils import (
     Benchmark,
     binary_args,
     ternary_args,

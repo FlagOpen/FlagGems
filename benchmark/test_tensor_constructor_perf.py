@@ -3,9 +3,14 @@ import itertools
 import pytest
 import torch
 
-from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, BenchLevel
+from .attri_util import (
+    DEFAULT_NON_BLAS_BENCH_SHAPES,
+    BenchLevel,
+    FLOAT_DTYPES,
+    POINTWISE_BATCH
+)
 from .conftest import Config
-from .performance_utils import FLOAT_DTYPES, POINTWISE_BATCH, Benchmark, unary_arg
+from .performance_utils import Benchmark, unary_arg
 
 CONSTRUCTOR_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES[:]
 if Config.bench_level == BenchLevel.COMPREHENSIVE:

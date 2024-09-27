@@ -4,8 +4,11 @@ import logging
 import pytest
 
 from .attri_util import (
+    ALL_AVAILABLE_METRICS,
     DEFAULT_ITER_COUNT,
     DEFAULT_WARMUP_COUNT,
+    FLOAT_DTYPES,
+    INT_DTYPES,
     BenchLevel,
     OperationAttribute,
     get_recommended_shapes,
@@ -63,6 +66,24 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
+        "--metrics",
+        action="append",
+        default=list(ALL_AVAILABLE_METRICS),
+        required=False,
+        choices=ALL_AVAILABLE_METRICS,
+        help="Specify the metrics we want to benchmark. Default is all available metrics.",
+    )
+
+    parser.addoption(
+        "--dtypes",
+        action="append",
+        default=[str(ele) for ele in FLOAT_DTYPES],
+        required=False,
+        choices=[str(ele) for ele in FLOAT_DTYPES + INT_DTYPES],
+        help="Specify the data types for benchmarks. Default is all floating point types.",
+    )
+
+    parser.addoption(
         "--record",
         action="store",
         default="none",
@@ -108,26 +129,28 @@ def setup_once(request):
 
 
 @pytest.fixture(autouse=True)
-def query_mode(request):
+def extract_and_log_op_attributes(request):
     print("")
-    # Attempt to extract the 'recommended_shapes' attribute from the pytest marker decoration.
-    op_attris = []
+    op_attributes = []
+
+    # Extract the 'recommended_shapes' attribute from the pytest marker decoration.
     for mark in request.node.iter_markers():
         op_specified_shapes = mark.kwargs.get("recommended_shapes")
         rec_core_shapes = get_recommended_shapes(mark.name, op_specified_shapes)
-        if len(rec_core_shapes) != 0:
+
+        if rec_core_shapes:
             attri = OperationAttribute(
                 op_name=mark.name,
                 recommended_core_shapes=rec_core_shapes,
             )
             print(attri)
-            op_attris.append(attri.to_dict())
+            op_attributes.append(attri.to_dict())
 
     if request.config.getoption("--query"):
         # Skip the real benchmark functions
-        pytest.skip("Skipping benchmark due to the query param.")
+        pytest.skip("Skipping benchmark due to the query parameter.")
 
     yield
 
-    if Config.record_log and len(op_attris) > 0:
-        logging.info(json.dumps(op_attris, indent=2))
+    if Config.record_log and op_attributes:
+        logging.info(json.dumps(op_attributes, indent=2))
