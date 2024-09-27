@@ -43,7 +43,7 @@ def pytest_addoption(parser):
         default="comprehensive",
         required=False,
         choices=[level.value for level in BenchLevel],
-        help="Specify the benchmark level: comprehensive, routine, or acceptance.",
+        help="Specify the benchmark level: comprehensive, or core.",
     )
 
     parser.addoption(
@@ -114,14 +114,11 @@ def query_mode(request):
     op_attris = []
     for mark in request.node.iter_markers():
         op_specified_shapes = mark.kwargs.get("recommended_shapes")
-        rec_routime_shapes, rec_acceptance_shape = get_recommended_shapes(
-            mark.name, op_specified_shapes
-        )
-        if len(rec_routime_shapes) != 0:
+        rec_core_shapes = get_recommended_shapes(mark.name, op_specified_shapes)
+        if len(rec_core_shapes) != 0:
             attri = OperationAttribute(
                 op_name=mark.name,
-                recommended_routine_shapes=rec_routime_shapes,
-                recommended_acceptance_shapes=rec_acceptance_shape,
+                recommended_core_shapes=rec_core_shapes,
             )
             print(attri)
             op_attris.append(attri.to_dict())

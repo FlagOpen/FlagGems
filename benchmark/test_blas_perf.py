@@ -8,11 +8,7 @@ if Config.bench_level == BenchLevel.COMPREHENSIVE:
     BLAS_MN_SHAPES = [(1, 32), (160, 1024), (5333, 497)]
     BLAS_MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
     BLAS_BATCHS = [1, 4, 8, 16, 32]
-elif Config.bench_level == BenchLevel.ROUTINE:
-    BLAS_MN_SHAPES = [(1, 32), (160, 1024), (5333, 497)]
-    BLAS_MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-    BLAS_BATCHS = [4]
-elif Config.bench_level == BenchLevel.ACCEPTANCE:
+elif Config.bench_level == BenchLevel.CORE:
     BLAS_MN_SHAPES = [(1, 32), (160, 1024), (5333, 497)]
     BLAS_MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
     BLAS_BATCHS = [4]

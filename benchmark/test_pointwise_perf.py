@@ -3,7 +3,7 @@ import itertools
 import pytest
 import torch
 
-from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, BenchLevel, get_acceptance_shape
+from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, BenchLevel
 from .conftest import Config
 from .performance_utils import (
     FLOAT_DTYPES,
@@ -23,8 +23,6 @@ if Config.bench_level == BenchLevel.COMPREHENSIVE:
         (batch, *shape) for batch, shape in itertools.product(MORE_BATCHS, MORE_SHAPES)
     ]
     POINTWISE_SHAPES.extend(combinations)
-elif Config.bench_level == BenchLevel.ACCEPTANCE:
-    POINTWISE_SHAPES = get_acceptance_shape(DEFAULT_NON_BLAS_BENCH_SHAPES)
 
 
 @pytest.mark.abs
@@ -638,8 +636,6 @@ def test_perf_repeat():
         arg_func=repeat_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=get_acceptance_shape(REPEAT_SHAPES)
-        if Config.bench_level == BenchLevel.ACCEPTANCE
-        else REPEAT_SHAPES,
+        sizes=POINTWISE_SHAPES,
     )
     bench.run()

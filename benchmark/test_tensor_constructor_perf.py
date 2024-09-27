@@ -3,7 +3,7 @@ import itertools
 import pytest
 import torch
 
-from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, BenchLevel, get_acceptance_shape
+from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, BenchLevel
 from .conftest import Config
 from .performance_utils import FLOAT_DTYPES, POINTWISE_BATCH, Benchmark, unary_arg
 
@@ -17,8 +17,6 @@ if Config.bench_level == BenchLevel.COMPREHENSIVE:
     CONSTRUCTOR_SHAPES.extend(combinations)
     # add 1D shapes and 5D shapes
     CONSTRUCTOR_SHAPES.extend([(1,), (5,), (32, 5, 4, 7, 8)])
-elif Config.bench_level == BenchLevel.ACCEPTANCE:
-    CONSTRUCTOR_SHAPES = get_acceptance_shape(DEFAULT_NON_BLAS_BENCH_SHAPES)
 
 
 @pytest.mark.rand
