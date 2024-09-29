@@ -199,10 +199,8 @@ def layer_norm_loop_kernel(
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        # for m in [1, 2, 4, 8]
-        for m in [1, 2, 4]
-        # for w in [4, 8, 16]
-        for w in [4, 8]
+        for m in [1, 2, 4, 8]
+        for w in [4, 8, 16]
     ],
     key=["M", "N"],
 )
@@ -389,14 +387,17 @@ class LayerNorm(torch.autograd.Function):
         (x, weight, mean, rstd) = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
-        in_grad = torch.empty_like(x)
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
-        layer_norm_backward_kernel[grid](out_grad, x, weight, mean, rstd, in_grad, M, N)
-        grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
-        weight_grad = torch.empty_like(weight)
-        bias_grad = torch.empty_like(weight)
 
         with torch.musa.device(x.device):
+            in_grad = torch.empty_like(x)
+            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+            layer_norm_backward_kernel[grid](
+                out_grad, x, weight, mean, rstd, in_grad, M, N
+            )
+
+            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
+            weight_grad = torch.empty_like(weight)
+            bias_grad = torch.empty_like(weight)
             weight_bias_backward_kernel[grid](
                 out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
             )

@@ -118,7 +118,7 @@ def vstack(tensors: list[torch.Tensor]):
             scheduled_num_tensors,
         )
         # Launch the kernel
-        with torch.cuda.device(c_tensors[0].device):
+        with torch.musa.device(c_tensors[0].device):
             vstack_kernel[grid](
                 itensors[0],
                 itensors[1],

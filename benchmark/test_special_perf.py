@@ -274,9 +274,9 @@ def test_perf_cat_int():
 
 def test_perf_vstack():
     def vstack_args(dtype, batch, size):
-        inp1 = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
-        inp2 = torch.randn(size=(batch + 1, size), dtype=dtype, device="cuda")
-        inp3 = torch.randn(size=(batch + 2, size), dtype=dtype, device="cuda")
+        inp1 = torch.randn(size=(batch, size), dtype=dtype, device="musa")
+        inp2 = torch.randn(size=(batch + 1, size), dtype=dtype, device="musa")
+        inp3 = torch.randn(size=(batch + 2, size), dtype=dtype, device="musa")
         return [[inp1, inp2, inp3]]
 
     bench = Benchmark(
@@ -292,7 +292,7 @@ def test_perf_vstack():
 
 def test_perf_repeat_interleave_self_int():
     def repeat_interleave_self_int_arg(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device="musa")
         repeats = 2
         return inp, repeats
 
@@ -316,7 +316,7 @@ def test_perf_repeat_interleave_tensor():
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device="musa",
         )
         return (repeats,)
 

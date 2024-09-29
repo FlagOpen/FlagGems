@@ -678,10 +678,10 @@ VSTACK_SHAPES = [
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_vstack(shape, dtype):
     if dtype in FLOAT_DTYPES:
-        inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+        inp = [torch.randn(s, dtype=dtype, device="musa") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="musa").to(
                 dtype
             )
             for s in shape
@@ -709,7 +709,7 @@ REPEAT_INTERLEAVE_DIM = [-1, 0, None]
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
     repeats = 2
     ref_inp = to_reference(inp)
 
@@ -724,7 +724,7 @@ def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
 @pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")[::2]
+    inp = torch.randn(shape, dtype=dtype, device="musa")[::2]
     repeats = 2
     ref_inp = to_reference(inp)
 
@@ -738,7 +738,7 @@ def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", [torch.int32])
 def test_accuracy_repeat_interleave_tensor(shape, dtype):
-    repeats = torch.randint(0, 30, shape, dtype=dtype, device="cuda")
+    repeats = torch.randint(0, 30, shape, dtype=dtype, device="musa")
     ref_repeats = to_reference(repeats)
     ref_out = torch.repeat_interleave(ref_repeats)
 
