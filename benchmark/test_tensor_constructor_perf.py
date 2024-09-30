@@ -4,10 +4,10 @@ import pytest
 import torch
 
 from .attri_util import (
+    DEFAULT_BATCH,
     DEFAULT_NON_BLAS_BENCH_SHAPES,
-    BenchLevel,
     FLOAT_DTYPES,
-    POINTWISE_BATCH
+    BenchLevel,
 )
 from .conftest import Config
 from .performance_utils import Benchmark, unary_arg
@@ -34,7 +34,7 @@ def test_perf_rand():
         torch_op=torch.rand,
         arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
         kwargs_func=rand_kwargs,
     )
@@ -51,7 +51,7 @@ def test_perf_randn():
         torch_op=torch.randn,
         arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
         kwargs_func=randn_kwargs,
     )
@@ -65,7 +65,7 @@ def test_perf_rand_like():
         torch_op=torch.rand_like,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
     )
     bench.run()
@@ -78,7 +78,7 @@ def test_perf_randn_like():
         torch_op=torch.randn_like,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
     )
     bench.run()
@@ -94,7 +94,7 @@ def test_perf_ones():
         torch_op=torch.ones,
         arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
         kwargs_func=ones_kwargs,
     )
@@ -111,7 +111,7 @@ def test_perf_zeros():
         torch_op=torch.zeros,
         arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
         kwargs_func=zeros_kwargs,
     )
@@ -133,7 +133,7 @@ def test_perf_full():
         torch_op=torch.full,
         arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
         kwargs_func=full_kwargs,
     )
@@ -147,7 +147,7 @@ def test_perf_ones_like():
         torch_op=torch.ones_like,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
     )
     bench.run()
@@ -160,7 +160,7 @@ def test_perf_zeros_like():
         torch_op=torch.zeros_like,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
     )
     bench.run()
@@ -179,7 +179,7 @@ def test_perf_full_like():
         torch_op=torch.full_like,
         arg_func=None,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=CONSTRUCTOR_SHAPES,
         kwargs_func=full_kwargs,
     )

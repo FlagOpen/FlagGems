@@ -4,19 +4,14 @@ import pytest
 import torch
 
 from .attri_util import (
+    DEFAULT_BATCH,
+    DEFAULT_NON_BLAS_BENCH_SHAPES,
     FLOAT_DTYPES,
     INT_DTYPES,
-    POINTWISE_BATCH,
-    DEFAULT_NON_BLAS_BENCH_SHAPES, 
-    BenchLevel
+    BenchLevel,
 )
 from .conftest import Config
-from .performance_utils import (
-    Benchmark,
-    binary_args,
-    ternary_args,
-    unary_arg,
-)
+from .performance_utils import Benchmark, binary_args, ternary_args, unary_arg
 
 POINTWISE_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES[:]
 if Config.bench_level == BenchLevel.COMPREHENSIVE:
@@ -35,7 +30,7 @@ def test_perf_abs():
         torch_op=torch.abs,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -48,7 +43,7 @@ def test_perf_add():
         torch_op=torch.add,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -61,7 +56,7 @@ def test_perf_bitwiseand():
         torch_op=torch.bitwise_and,
         arg_func=binary_args,
         dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -74,7 +69,7 @@ def test_perf_bitwisenot():
         torch_op=torch.bitwise_not,
         arg_func=unary_arg,
         dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -87,7 +82,7 @@ def test_perf_bitwiseor():
         torch_op=torch.bitwise_or,
         arg_func=binary_args,
         dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -100,7 +95,7 @@ def test_perf_clamp():
         torch_op=torch.clamp,
         arg_func=ternary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -113,7 +108,7 @@ def test_perf_cos():
         torch_op=torch.cos,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -126,7 +121,7 @@ def test_perf_div():
         torch_op=torch.div,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -139,7 +134,7 @@ def test_perf_floordiv_int():
         torch_op=torch.floor_divide,
         arg_func=binary_args,
         dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -152,21 +147,7 @@ def test_perf_remainder():
         torch_op=torch.remainder,
         arg_func=binary_args,
         dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=POINTWISE_SHAPES,
-    )
-    bench.run()
-
-
-# TODO: enable @pytest.mark.native_dropout or not
-@pytest.mark.dropout
-def test_perf_dropout():
-    bench = Benchmark(
-        op_name="dropout",
-        torch_op=torch.nn.Dropout(p=0.5),
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -179,7 +160,7 @@ def test_perf_eq():
         torch_op=torch.eq,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -192,7 +173,7 @@ def test_perf_maximum():
         torch_op=torch.maximum,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -205,7 +186,7 @@ def test_perf_minimum():
         torch_op=torch.minimum,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -218,7 +199,7 @@ def test_perf_exp():
         torch_op=torch.exp,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -231,7 +212,7 @@ def test_perf_ge():
         torch_op=torch.ge,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -244,7 +225,7 @@ def test_perf_gelu():
         torch_op=torch.nn.functional.gelu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -257,7 +238,7 @@ def test_perf_gelu_backward():
         torch_op=torch.nn.functional.gelu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
         is_backward=True,
     )
@@ -271,7 +252,7 @@ def test_perf_gt():
         torch_op=torch.gt,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -284,7 +265,7 @@ def test_perf_isinf():
         torch_op=torch.isinf,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -297,7 +278,7 @@ def test_perf_isnan():
         torch_op=torch.isnan,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -310,7 +291,7 @@ def test_perf_le():
         torch_op=torch.le,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -323,7 +304,7 @@ def test_perf_lt():
         torch_op=torch.lt,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -336,7 +317,7 @@ def test_perf_mul():
         torch_op=torch.mul,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -349,7 +330,7 @@ def test_perf_ne():
         torch_op=torch.ne,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -362,7 +343,7 @@ def test_perf_neg():
         torch_op=torch.neg,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -375,7 +356,7 @@ def test_perf_pow():
         torch_op=torch.pow,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -388,7 +369,7 @@ def test_perf_reciprocal():
         torch_op=torch.reciprocal,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -401,7 +382,7 @@ def test_perf_relu():
         torch_op=torch.nn.functional.relu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -414,7 +395,7 @@ def test_perf_rsqrt():
         torch_op=torch.rsqrt,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -427,7 +408,7 @@ def test_perf_sigmoid():
         torch_op=torch.sigmoid,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -440,7 +421,7 @@ def test_perf_silu():
         torch_op=torch.nn.functional.silu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -453,7 +434,7 @@ def test_perf_sin():
         torch_op=torch.sin,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -466,7 +447,7 @@ def test_perf_sub():
         torch_op=torch.sub,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -479,7 +460,7 @@ def test_perf_tanh():
         torch_op=torch.tanh,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -492,7 +473,7 @@ def test_perf_triu():
         torch_op=torch.triu,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -511,7 +492,7 @@ def test_perf_where():
         torch_op=torch.where,
         arg_func=where_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -524,7 +505,7 @@ def test_perf_isclose():
         torch_op=torch.isclose,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES + INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -537,7 +518,7 @@ def test_perf_allclose():
         torch_op=torch.allclose,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES + INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -550,7 +531,7 @@ def test_perf_erf():
         torch_op=torch.erf,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -563,7 +544,7 @@ def test_perf_isfinite():
         torch_op=torch.isfinite,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES + INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -579,7 +560,7 @@ def test_perf_flip():
         torch_op=torch.flip,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES + INT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
         kwargs_func=flip_kwargs,
     )
@@ -599,7 +580,7 @@ def test_masked_fill():
         torch_op=torch.masked_fill,
         arg_func=masked_fill_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()
@@ -615,7 +596,7 @@ def test_perf_tile():
         torch_op=torch.tile,
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
         kwargs_func=tile_kwargs,
     )
@@ -638,7 +619,7 @@ def test_perf_repeat():
         torch_op=torch.Tensor.repeat,
         arg_func=repeat_arg,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
+        batch=DEFAULT_BATCH,
         sizes=POINTWISE_SHAPES,
     )
     bench.run()

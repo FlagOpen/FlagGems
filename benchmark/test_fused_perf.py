@@ -1,19 +1,18 @@
+import pytest
 import torch
 
 import flag_gems
 
 from .attri_util import (
-    LEGACY_SHAPES,
+    DEFAULT_BATCH,
+    DEFAULT_NON_BLAS_BENCH_SHAPES,
     FLOAT_DTYPES,
-    POINTWISE_BATCH,
-    REDUCTION_BATCH,
+    LEGACY_SHAPES,
 )
-from .performance_utils import (
-    Benchmark,
-    binary_args,
-)
+from .performance_utils import Benchmark, binary_args
 
 
+@pytest.mark.gelu_and_mul
 def test_perf_gelu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.gelu(x), y)
@@ -25,13 +24,14 @@ def test_perf_gelu_and_mul():
         torch_op=torch_op,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=LEGACY_SHAPES,
+        batch=DEFAULT_BATCH,
+        sizes=DEFAULT_NON_BLAS_BENCH_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()
 
 
+@pytest.mark.silu_and_mul
 def test_perf_silu_and_mul():
     def torch_op(x, y):
         return torch.mul(torch.nn.functional.silu(x), y)
@@ -43,27 +43,28 @@ def test_perf_silu_and_mul():
         torch_op=torch_op,
         arg_func=binary_args,
         dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=LEGACY_SHAPES,
+        batch=DEFAULT_BATCH,
+        sizes=DEFAULT_NON_BLAS_BENCH_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()
 
 
+@pytest.mark.skip_layernorm
 def test_perf_skip_layernorm():
-    def skip_layernorm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        residual = torch.randn([batch, size], dtype=dtype, device="cuda")
+    def skip_layernorm_args(dtype, batch, shape):
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        residual = torch.randn(shape, dtype=dtype, device="cuda")
         weight = torch.randn(
             [
-                size,
+                shape[-1],
             ],
             dtype=dtype,
             device="cuda",
         )
         bias = torch.randn(
             [
-                size,
+                shape[-1],
             ],
             dtype=dtype,
             device="cuda",
@@ -72,7 +73,7 @@ def test_perf_skip_layernorm():
             inp,
             residual,
             [
-                size,
+                shape[-1],
             ],
             weight,
             bias,
@@ -88,20 +89,21 @@ def test_perf_skip_layernorm():
         torch_op=torch_op,
         arg_func=skip_layernorm_args,
         dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        batch=DEFAULT_BATCH,
+        sizes=DEFAULT_NON_BLAS_BENCH_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()
 
 
+@pytest.mark.skip_rmsnorm
 def test_perf_skip_rmsnorm():
-    def skip_rmsnorm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        residual = torch.randn([batch, size], dtype=dtype, device="cuda")
+    def skip_rmsnorm_args(dtype, batch, shape):
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        residual = torch.randn(shape, dtype=dtype, device="cuda")
         weight = torch.randn(
             [
-                size,
+                shape[-1],
             ],
             dtype=dtype,
             device="cuda",
@@ -110,7 +112,7 @@ def test_perf_skip_rmsnorm():
             inp,
             residual,
             [
-                size,
+                shape[-1],
             ],
             weight,
             1e-5,
@@ -129,8 +131,8 @@ def test_perf_skip_rmsnorm():
         torch_op=torch_op,
         arg_func=skip_rmsnorm_args,
         dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        batch=DEFAULT_BATCH,
+        sizes=DEFAULT_NON_BLAS_BENCH_SHAPES,
     )
     bench.set_gems(gems_op)
     bench.run()

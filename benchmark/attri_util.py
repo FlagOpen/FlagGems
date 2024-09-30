@@ -3,7 +3,9 @@ from dataclasses import dataclass, fields
 from enum import Enum
 from functools import reduce
 from typing import List, Optional, Tuple
+
 import torch
+
 
 class ReadOnly:
     def __init__(self, value):
@@ -40,6 +42,7 @@ POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
 
+
 def get_recommended_shapes(
     op_name: str, op_specified_shapes: Optional[List[Tuple[int, ...]]]
 ):
@@ -47,7 +50,9 @@ def get_recommended_shapes(
         return sorted(shapes, key=lambda x: reduce(operator.mul, x))
 
     if op_specified_shapes:
-        return _shapes_sort(op_specified_shapes)
+        return op_specified_shapes
+        # TODO: handle situation that list as the basic element in shape.
+        # return _shapes_sort(op_specified_shapes)
     shapes = DEFAULT_NON_BLAS_BENCH_SHAPES
     if op_name in ["bmm", "mv"]:
         shapes = DEFAULT_BLAS_BENCH_SHAPES
@@ -68,7 +73,7 @@ class OperationAttribute:
     recommended_core_shapes: List[Tuple[int, ...]]
 
     def __str__(self) -> str:
-        shapes_type = "B,M,N,K" if self.op_name in BLAS_OPS.value else "M,N"
+        shapes_type = "(B),M,N,K" if self.op_name in BLAS_OPS.value else "(B),M,N"
         return (
             f"{'Operator name':<40} |  {self.op_name}\n"
             f"{'Recommended Core Shapes[' + shapes_type + ']':<40} |  {self.recommended_core_shapes}\n"
@@ -97,10 +102,14 @@ class BenchmarkMetrics:
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
 
+
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics)))
 DEFAULT_METRICS = [
-    metric for metric in ['latency_base', 'latency', 'speedup'] if metric in ALL_AVAILABLE_METRICS
+    metric
+    for metric in ["latency_base", "latency", "speedup"]
+    if metric in ALL_AVAILABLE_METRICS
 ]
+
 
 @dataclass
 class BenchmarkResult:

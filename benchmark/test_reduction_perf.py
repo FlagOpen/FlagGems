@@ -1,15 +1,29 @@
+import itertools
+
+import pytest
 import torch
 
 from .attri_util import (
-    BLAS_BATCH,
+    DEFAULT_NON_BLAS_BENCH_SHAPES,
     FLOAT_DTYPES,
     INT_DTYPES,
-    LEGACY_SHAPES,
     REDUCTION_BATCH,
+    BenchLevel,
 )
-from .performance_utils import Benchmark, unary_arg
+from .performance_utils import Benchmark, Config, unary_arg
+
+REDUCTION_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES[:]
+if Config.bench_level == BenchLevel.COMPREHENSIVE:
+    MORE_SHAPES = [(320, 15), (128, 64, 60)]
+    MORE_BATCHS = [4, 20, 32]
+    combinations = [
+        (batch, *shape) for batch, shape in itertools.product(MORE_BATCHS, MORE_SHAPES)
+    ]
+    REDUCTION_SHAPES.extend(combinations)
 
 
+# TODO: Set the `keepdim` and `dim` parameters when the benchmark level is set to comprehensive.
+@pytest.mark.all
 def test_perf_all():
     bench = Benchmark(
         op_name="all",
@@ -17,11 +31,12 @@ def test_perf_all():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.amax
 def test_perf_amax():
     bench = Benchmark(
         op_name="amax",
@@ -29,11 +44,12 @@ def test_perf_amax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.any
 def test_perf_any():
     bench = Benchmark(
         op_name="any",
@@ -41,11 +57,13 @@ def test_perf_any():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+# TODO: Set the `keepdim` and `dim` parameters when the benchmark level is set to comprehensive.
+@pytest.mark.argmax
 def test_perf_argmax():
     bench = Benchmark(
         op_name="argmax",
@@ -53,19 +71,20 @@ def test_perf_argmax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.CrossEntropyLoss
 def test_perf_cross_entropy_loss():
-    def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+    def cross_entropy_loss_args(dtype, batch, shape):
+        inp = torch.randn(size=shape, dtype=dtype, device="cuda")
         target = torch.randint(
             0,
-            size,
+            shape[-1],
             [
-                batch,
+                shape[0],
             ],
             device="cuda",
         )
@@ -77,138 +96,54 @@ def test_perf_cross_entropy_loss():
         arg_func=cross_entropy_loss_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.cumsum
 def test_perf_cumsum():
-    def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+    def cumsum_args(dtype, batch, shape):
+        if dtype in INT_DTYPES:
+            inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
+        else:
+            inp = torch.randn(shape, dtype=dtype, device="cuda")
         return inp, 1
 
     bench = Benchmark(
         op_name="cumsum",
         torch_op=torch.cumsum,
         arg_func=cumsum_args,
-        dtypes=FLOAT_DTYPES,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.nonzero
 def test_perf_nonzero():
-    def nonzero_args(dtype, batch, size):
+    def nonzero_args(dtype, batch, shape):
         if dtype == torch.bool:
-            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
-                torch.bool
-            )
+            inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+        elif dtype in INT_DTYPES:
+            inp = torch.randint(0, 2, shape, dtype=dtype, device="cuda")
         else:
-            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
+            inp = torch.randn(shape, dtype=dtype, device="cuda")
         return (inp,)
 
     bench = Benchmark(
         op_name="nonzero",
         torch_op=torch.nonzero,
         arg_func=nonzero_args,
-        dtypes=FLOAT_DTYPES,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + [torch.bool],
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
-def test_perf_nonzero_int():
-    def nonzero_args(dtype, batch, size):
-        if dtype == torch.bool:
-            inp = torch.randint(0, 2, [batch, size], dtype=torch.int, device="cuda").to(
-                torch.bool
-            )
-        else:
-            inp = torch.randint(0, 2, [batch, size], dtype=dtype, device="cuda")
-        return (inp,)
-
-    bench = Benchmark(
-        op_name="nonzero_int",
-        torch_op=torch.nonzero,
-        arg_func=nonzero_args,
-        dtypes=INT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
-    )
-    bench.run()
-
-
-def test_perf_groupnorm():
-    def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return inp, G, weight, bias
-
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=LEGACY_SHAPES,
-    )
-    bench.run()
-
-
-def test_perf_layernorm():
-    def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return (
-            inp,
-            [
-                size,
-            ],
-            weight,
-            bias,
-        )
-
-    bench = Benchmark(
-        op_name="layernorm",
-        torch_op=torch.layer_norm,
-        arg_func=layer_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
-    )
-    bench.run()
-
-
+@pytest.mark.log_softmax
 def test_perf_log_softmax():
     bench = Benchmark(
         op_name="log_softmax",
@@ -216,11 +151,12 @@ def test_perf_log_softmax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.max
 def test_perf_max():
     bench = Benchmark(
         op_name="max",
@@ -228,11 +164,12 @@ def test_perf_max():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.mean
 def test_perf_mean():
     bench = Benchmark(
         op_name="mean",
@@ -240,11 +177,12 @@ def test_perf_mean():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.min
 def test_perf_min():
     bench = Benchmark(
         op_name="min",
@@ -252,11 +190,12 @@ def test_perf_min():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.prod
 def test_perf_prod():
     bench = Benchmark(
         op_name="prod",
@@ -264,11 +203,12 @@ def test_perf_prod():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.softmax
 def test_perf_softmax():
     bench = Benchmark(
         op_name="softmax",
@@ -276,7 +216,7 @@ def test_perf_softmax():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
@@ -288,12 +228,13 @@ def test_perf_softmax_backward():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
         is_backward=True,
     )
     bench.run()
 
 
+@pytest.mark.sum
 def test_perf_sum():
     bench = Benchmark(
         op_name="sum",
@@ -301,11 +242,12 @@ def test_perf_sum():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.var_mean
 def test_perf_var_mean():
     bench = Benchmark(
         op_name="var_mean",
@@ -313,26 +255,15 @@ def test_perf_var_mean():
         arg_func=unary_arg,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
-def test_perf_vector_norm():
-    bench = Benchmark(
-        op_name="vector_norm",
-        torch_op=torch.linalg.vector_norm,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
-    )
-    bench.run()
-
-
+@pytest.mark.index_select
 def test_perf_index_select():
-    def index_select_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+    def index_select_args(dtype, batch, shape):
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
 
         threshold = 0.1
         dim = 0
@@ -350,15 +281,16 @@ def test_perf_index_select():
         arg_func=index_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
 
 
+@pytest.mark.masked_select
 def test_masked_select():
-    def masked_select_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
+    def masked_select_args(dtype, batch, shape):
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        mask = torch.randn(shape, dtype=dtype, device="cuda") < 0.3
         return (inp, mask)
 
     bench = Benchmark(
@@ -367,6 +299,6 @@ def test_masked_select():
         arg_func=masked_select_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
-        sizes=LEGACY_SHAPES,
+        sizes=REDUCTION_SHAPES,
     )
     bench.run()
