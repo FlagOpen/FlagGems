@@ -38,4 +38,12 @@ def sub(A, B, *, alpha=1):
         return sub_func_scalar_tensor(A, B, alpha)
     else:
         # Both scalar
-        return A - B * alpha
+        return torch.tensor(A - B * alpha)
+
+
+def sub_(A, B, *, alpha=1):
+    logging.debug("GEMS SUB_")
+    if isinstance(B, torch.Tensor):
+        return sub_func(A, B, alpha, out0=A)
+    else:
+        return sub_func_tensor_scalar(A, B, alpha, out0=A)
