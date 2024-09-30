@@ -332,9 +332,11 @@ def test_accuracy_div_scalar_scalar(dtype):
     if dtype == torch.float32:
         inp1 = float(np.float32(random.random()))
         inp2 = float(np.float32(random.random()))
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
     else:
-        inp1 = random.randint(0, 100)
-        inp2 = random.randint(0, 100)
+        inp1 = random.randint(1, 100)
+        inp2 = random.randint(1, 100)
 
     ref_out = torch.mul(inp1, inp2)
     with flag_gems.use_gems():
@@ -375,9 +377,11 @@ def test_accuracy_trunc_divide_scalar_scalar(dtype):
     if dtype == torch.float32:
         inp1 = float(np.float32(random.random()))
         inp2 = float(np.float32(random.random()))
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
     else:
-        inp1 = random.randint(0, 100)
-        inp2 = random.randint(0, 100)
+        inp1 = random.randint(1, 100)
+        inp2 = random.randint(1, 100)
 
     ref_out = torch.div(inp1, inp2, rounding_mode="trunc")
     with flag_gems.use_gems():
@@ -455,9 +459,11 @@ def test_accuracy_floor_divide_scalar_scalar(dtype):
     if dtype == torch.float32:
         inp1 = float(np.float32(random.random()))
         inp2 = float(np.float32(random.random()))
+        inp1 = replace_zeros(inp1)
+        inp2 = replace_zeros(inp2)
     else:
-        inp1 = random.randint(0, 100)
-        inp2 = random.randint(0, 100)
+        inp1 = random.randint(1, 100)
+        inp2 = random.randint(1, 100)
 
     ref_out = torch.floor_divide(inp1, inp2)
     with flag_gems.use_gems():
