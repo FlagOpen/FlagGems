@@ -43,7 +43,7 @@ def true_divide(A, B):
         return true_div_func_scalar_tensor(A, B)
     else:
         # Both scalar
-        return A / B
+        return torch.tensor(A / B)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -74,7 +74,7 @@ def trunc_divide(A, B):
         return trunc_div_func_scalar_tensor(A, B)
     else:
         # Both scalar
-        return A / B
+        return torch.tensor(A / B)
 
 
 @triton.jit
@@ -167,7 +167,7 @@ def floor_divide(A, B):
         return floor_div_func_scalar_tensor(A, B)
     else:
         # Both scalar
-        return A // B
+        return torch.tensor(A // B)
 
 
 def div_mode(A, B, rounding_mode=None):
@@ -218,4 +218,4 @@ def remainder(A, B):
         return rem_st(A, B)
     else:
         # Both scalar
-        return A % B
+        return torch.tensor(A % B)
