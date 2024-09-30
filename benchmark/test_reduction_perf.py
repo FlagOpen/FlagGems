@@ -142,7 +142,6 @@ def test_perf_nonzero():
     )
     bench.run()
 
-
 @pytest.mark.log_softmax
 def test_perf_log_softmax():
     bench = Benchmark(

@@ -91,6 +91,24 @@ def test_perf_layernorm():
     bench.run()
 
 
+@pytest.mark.weight_norm_interface
+def test_perf_weightnorm():
+    def weight_norm_args(dtype, batch, shape):
+        v = torch.randn(shape, dtype=dtype, device="cuda")
+        g = torch.randn(shape[0], dtype=dtype, device="cuda")
+        return v, g, 0
+
+    bench = Benchmark(
+        op_name="weight_norm",
+        torch_op=torch._weight_norm_interface,
+        arg_func=weight_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=DEFAULT_BATCH,
+        sizes=DEFAULT_NON_BLAS_BENCH_SHAPES,
+    )
+    bench.run()
+
+
 @pytest.mark.vector_norm
 def test_perf_vector_norm():
     bench = Benchmark(
