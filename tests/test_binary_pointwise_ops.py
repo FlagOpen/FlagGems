@@ -330,10 +330,8 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_div_scalar_scalar(dtype):
     if dtype == torch.float32:
-        inp1 = float(np.float32(random.random()))
-        inp2 = float(np.float32(random.random()))
-        inp1 = replace_zeros(inp1)
-        inp2 = replace_zeros(inp2)
+        inp1 = float(np.float32(random.random() + 0.01))
+        inp2 = float(np.float32(random.random() + 0.01))
     else:
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
@@ -375,10 +373,8 @@ def test_accuracy_trunc_div(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_trunc_divide_scalar_scalar(dtype):
     if dtype == torch.float32:
-        inp1 = float(np.float32(random.random()))
-        inp2 = float(np.float32(random.random()))
-        inp1 = replace_zeros(inp1)
-        inp2 = replace_zeros(inp2)
+        inp1 = float(np.float32(random.random() + 0.01))
+        inp2 = float(np.float32(random.random() + 0.01))
     else:
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
@@ -457,10 +453,8 @@ def test_accuracy_floor_div_int(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_floor_divide_scalar_scalar(dtype):
     if dtype == torch.float32:
-        inp1 = float(np.float32(random.random()))
-        inp2 = float(np.float32(random.random()))
-        inp1 = replace_zeros(inp1)
-        inp2 = replace_zeros(inp2)
+        inp1 = float(np.float32(random.random() + 0.01))
+        inp2 = float(np.float32(random.random() + 0.01))
     else:
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
