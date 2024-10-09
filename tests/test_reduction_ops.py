@@ -512,3 +512,63 @@ def test_accuracy_masked_select(shape, dtype, threshold):
         res_out = torch.masked_select(inp, mask)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.parametrize("shape", [(32, 2, 4)])
+@pytest.mark.parametrize("kernel", [(17, 2, 2)])
+@pytest.mark.parametrize("stride", [2])
+@pytest.mark.parametrize("padding", [1])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+
+    weight = torch.randn(kernel, dtype=dtype, device="cuda")
+    # ref_inp = to_reference(inp, True)
+    ref_out = torch.nn.functional.conv1d(
+        inp, weight, bias=None, stride=stride, padding=padding, dilation=1
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv1d(
+            inp, weight, bias=None, stride=stride, padding=padding, dilation=1
+        )
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.parametrize("shape", [(32, 8, 8, 8)])
+@pytest.mark.parametrize("kernel", [(32, 4, 2, 2)])
+@pytest.mark.parametrize("stride", [2])
+@pytest.mark.parametrize("padding", [2])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_conv2d(shape, kernel, stride, padding, dtype):
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp_cpu = inp.to("cpu")
+    inp_cpu = inp_cpu.detach()
+
+    weight = torch.randn(kernel, dtype=dtype, device="cuda")
+    ref_out = torch.nn.functional.conv2d(
+        inp,
+        weight,
+        bias=None,
+        groups=2,
+        stride=stride,
+        padding=padding,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.conv2d(
+            inp,
+            weight,
+            bias=None,
+            groups=2,
+            stride=stride,
+            padding=padding,
+        )
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(ref_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
