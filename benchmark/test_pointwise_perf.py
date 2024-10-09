@@ -112,7 +112,7 @@ def test_perf_div():
 
 def test_perf_floordiv_int():
     bench = Benchmark(
-        op_name="floor_div",
+        op_name="floor_divide",
         torch_op=torch.floor_divide,
         arg_func=binary_int_args,
         dtypes=INT_DTYPES,
@@ -625,6 +625,23 @@ def test_perf_repeat():
         op_name="repeat",
         torch_op=torch.Tensor.repeat,
         arg_func=repeat_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_repeat_interleave_self_int():
+    def repeat_interleave_self_int_arg(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        repeats = 2
+        return inp, repeats
+
+    bench = Benchmark(
+        op_name="repeat_interleave_self_int",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_self_int_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
         sizes=SIZES,

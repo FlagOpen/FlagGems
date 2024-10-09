@@ -1,5 +1,6 @@
 import torch
 
+from . import testing  # noqa: F401
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
@@ -150,6 +151,9 @@ def enable(lib=aten_lib):
     lib.impl("masked_select", masked_select, "CUDA")
     lib.impl("stack", stack, "CUDA")
     lib.impl("hstack", hstack, "CUDA")
+    lib.impl("cat", cat, "CUDA")
+    lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
+    lib.impl("vstack", vstack, "CUDA")
 
 
 class use_gems:

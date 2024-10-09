@@ -14,6 +14,7 @@ from .bitwise_and import (
 from .bitwise_not import bitwise_not
 from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_tensor
 from .bmm import bmm
+from .cat import cat
 from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
@@ -78,6 +79,7 @@ from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
+from .repeat_interleave import repeat_interleave_self_int
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -98,6 +100,7 @@ from .uniform import uniform_
 from .unique import _unique2
 from .var_mean import var_mean
 from .vector_norm import vector_norm
+from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -233,4 +236,7 @@ __all__ = [
     "masked_select",
     "stack",
     "hstack",
+    "cat",
+    "repeat_interleave_self_int",
+    "vstack",
 ]
