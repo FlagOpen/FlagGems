@@ -74,11 +74,19 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
 
 
-# TODO: failed at (1, 2) (2~32, 40499) (200, 2~64) (200~4096, 40999)
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
-    "shape", [(1, 40999)] if QUICK_MODE else [(1, 40999), (4096, 256), (4096, 100)]
+    "shape",
+    [(1, 40999)]
+    if QUICK_MODE
+    else [
+        (200, 36),
+        (4096, 100),
+        (1, 40999),
+        (100, 40499),
+        (4096, 256),
+    ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype):
@@ -110,8 +118,8 @@ def test_accuracy_layernorm(shape, dtype):
     ref_mean = torch.mean(ref_inp, dim=1)
     ref_var = torch.var(ref_inp, dim=1, correction=0)
     ref_rstd = torch.rsqrt(ref_var + eps)
-    gems_assert_close(res_mean, ref_mean, dtype)
-    gems_assert_close(res_rstd, ref_rstd, dtype)
+    gems_assert_close(res_mean, ref_mean, res_mean.dtype)
+    gems_assert_close(res_rstd, ref_rstd, res_rstd.dtype)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
@@ -126,6 +134,43 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
     gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
+
+
+WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
+    zip(REDUCTION_SHAPES, FLOAT_DTYPES, [-1] if QUICK_MODE else [0, -1, -1])
+)
+
+
+@pytest.mark.weight_norm_interface
+@pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
+def test_accuracy_weightnorm(shape, dtype, dim):
+    dim = dim % len(shape)
+    v = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    g = torch.randn(shape[dim], dtype=dtype, device="cuda", requires_grad=True)
+
+    ref_v = to_reference(v, False)
+    ref_g = to_reference(g, False)
+
+    ref_w_out, ref_norm_out = torch._weight_norm_interface(ref_v, ref_g, dim)
+    with flag_gems.use_gems():
+        res_w_out, res_norm_out = torch._weight_norm_interface(v, g, dim)
+    gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=shape[(dim - 1) % 2])
+    gems_assert_close(
+        res_norm_out, ref_norm_out, res_norm_out.dtype, reduce_dim=shape[(dim - 1) % 2]
+    )
+
+    res_w_grad = torch.randn_like(v)
+    ref_w_grad = to_reference(res_w_grad, False)
+
+    ref_v_grad, ref_g_grad = torch.autograd.grad(
+        ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
+    )
+    res_v_grad, res_g_grad = torch.autograd.grad(
+        res_w_out, (v, g), grad_outputs=res_w_grad
+    )
+
+    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=shape[(dim - 1) % 2])
+    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=shape[(dim - 1) % 2])
 
 
 @pytest.mark.rms_norm

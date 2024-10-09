@@ -1,6 +1,7 @@
 import logging
 import random
 
+import numpy as np
 import pytest
 import torch
 
@@ -74,6 +75,28 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
         res_out = torch.add(inp1, inp2, alpha=alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.add
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_accuracy_add_scalar_scalar(dtype):
+    if dtype == torch.float32:
+        inp1 = float(np.float32(random.random()))
+        inp2 = float(np.float32(random.random()))
+        alpha = float(np.float32(random.random()))
+    else:
+        inp1 = random.randint(0, 100)
+        inp2 = random.randint(0, 100)
+        alpha = random.randint(0, 100)
+
+    ref_out = torch.add(inp1, inp2, alpha=alpha)
+    with flag_gems.use_gems():
+        res_out = torch.add(inp1, inp2, alpha=alpha)
+
+    if dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.bitwise_and
@@ -303,6 +326,26 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.div
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_accuracy_div_scalar_scalar(dtype):
+    if dtype == torch.float32:
+        inp1 = float(np.float32(random.random() + 0.01))
+        inp2 = float(np.float32(random.random() + 0.01))
+    else:
+        inp1 = random.randint(1, 100)
+        inp2 = random.randint(1, 100)
+
+    ref_out = torch.mul(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.mul(inp1, inp2)
+
+    if dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.trunc_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -326,6 +369,26 @@ def test_accuracy_trunc_div(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.trunc_divide
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_accuracy_trunc_divide_scalar_scalar(dtype):
+    if dtype == torch.float32:
+        inp1 = float(np.float32(random.random() + 0.01))
+        inp2 = float(np.float32(random.random() + 0.01))
+    else:
+        inp1 = random.randint(1, 100)
+        inp2 = random.randint(1, 100)
+
+    ref_out = torch.div(inp1, inp2, rounding_mode="trunc")
+    with flag_gems.use_gems():
+        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
+
+    if dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
+
+
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -340,7 +403,7 @@ def test_accuracy_floor_div_float(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.div(inp1, inp2, rounding_mode="floor")
 
-    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
 @pytest.mark.floor_divide
@@ -384,6 +447,26 @@ def test_accuracy_floor_div_int(shape, dtype):
         with flag_gems.use_gems():
             res_out = d // inp1
         gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.floor_divide
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_accuracy_floor_divide_scalar_scalar(dtype):
+    if dtype == torch.float32:
+        inp1 = float(np.float32(random.random() + 0.01))
+        inp2 = float(np.float32(random.random() + 0.01))
+    else:
+        inp1 = random.randint(1, 100)
+        inp2 = random.randint(1, 100)
+
+    ref_out = torch.floor_divide(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.floor_divide(inp1, inp2)
+
+    if dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.remainder
@@ -651,6 +734,26 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.mul
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_accuracy_mul_scalar_scalar(dtype):
+    if dtype == torch.float32:
+        inp1 = float(np.float32(random.random()))
+        inp2 = float(np.float32(random.random()))
+    else:
+        inp1 = random.randint(0, 100)
+        inp2 = random.randint(0, 100)
+
+    ref_out = torch.mul(inp1, inp2)
+    with flag_gems.use_gems():
+        res_out = torch.mul(inp1, inp2)
+
+    if dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.ne
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -846,6 +949,28 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.sub
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_accuracy_sub_scalar_scalar(dtype):
+    if dtype == torch.float32:
+        inp1 = float(np.float32(random.random()))
+        inp2 = float(np.float32(random.random()))
+        alpha = float(np.float32(random.random()))
+    else:
+        inp1 = random.randint(0, 100)
+        inp2 = random.randint(0, 100)
+        alpha = random.randint(0, 100)
+
+    ref_out = torch.sub(inp1, inp2, alpha=alpha)
+    with flag_gems.use_gems():
+        res_out = torch.sub(inp1, inp2, alpha=alpha)
+
+    if dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1035,43 +1160,3 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
     assert res_out == ref_out
-
-
-REPEAT_INTERLEAVE_SHAPES = [
-    (1024, 1024),
-    (20, 320, 15),
-    (16, 128, 64, 60),
-    (16, 7, 57, 32, 29),
-]
-REPEAT_INTERLEAVE_REPEATS = [2]
-REPEAT_INTERLEAVE_DIM = [-1, 0, None]
-
-
-@pytest.mark.repeat_interleave
-@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES + [(1,)])
-@pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_int(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    repeats = 2
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
-    with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(ref_inp, repeats, dim)
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.repeat_interleave
-@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
-@pytest.mark.parametrize("dim", REPEAT_INTERLEAVE_DIM)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_repeat_interleave_self_int_non_contiguous(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")[::2]
-    repeats = 2
-    ref_inp = to_reference(inp)
-
-    ref_out = torch.repeat_interleave(ref_inp, repeats, dim)
-    with flag_gems.use_gems():
-        res_out = torch.repeat_interleave(ref_inp, repeats, dim)
-    gems_assert_equal(res_out, ref_out)

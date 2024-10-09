@@ -210,6 +210,23 @@ def test_perf_layernorm():
     bench.run()
 
 
+def test_perf_weightnorm():
+    def weight_norm_args(dtype, batch, size):
+        v = torch.randn([batch, size], dtype=dtype, device="cuda")
+        g = torch.randn([batch], dtype=dtype, device="cuda")
+        return v, g, 0
+
+    bench = Benchmark(
+        op_name="weight_norm",
+        torch_op=torch._weight_norm_interface,
+        arg_func=weight_norm_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
 def test_perf_log_softmax():
     bench = Benchmark(
         op_name="log_softmax",
@@ -366,6 +383,85 @@ def test_masked_select():
         op_name="masked_select",
         torch_op=torch.masked_select,
         arg_func=masked_select_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_scatter():
+    def scatter_args(dtype, batch, size):
+        inp_shape = [batch, size]
+        src_shape = [batch // 16, size // 16]
+        inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        import random
+
+        dim = random.choice([0, 1])
+        size_dim = min(src_shape[dim], inp_shape[dim])
+
+        index_shape = [
+            random.randint(1, min(src_shape[0], inp_shape[0])),
+            random.randint(1, min(src_shape[1], inp_shape[1])),
+        ]
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+
+        m, n = index_shape
+
+        index_size_dim = index_shape[dim]
+        # make unique indices
+        for i in range(1 if dim == 0 else m):
+            for j in range(1 if dim == 1 else n):
+                ii = [i, j]
+                ii[dim] = slice(0, index.size(dim) + 1)
+                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+        return (inp, dim, index, src)
+
+    bench = Benchmark(
+        op_name="scatter",
+        torch_op=torch.scatter,
+        arg_func=scatter_args,
+        dtypes=FLOAT_DTYPES,
+        batch=REDUCTION_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_gather():
+    def gather_args(dtype, batch, size):
+        inp_shape = [512, 32, size // 256]
+        inp = torch.randn(inp_shape, dtype=dtype, device="cuda")
+        import random
+
+        dim = random.choice([0, 1, 2])
+        size_dim = inp_shape[dim]
+        index_shape = [
+            random.randint(1, inp_shape[0]),
+            random.randint(1, inp_shape[1]),
+            random.randint(1, inp_shape[2]),
+        ]
+        index = torch.empty(tuple(index_shape), dtype=torch.long, device="cuda")
+
+        m, n, o = index_shape
+
+        index_size_dim = index_shape[dim]
+        # make unique indices
+        for i in range(1 if dim == 0 else m):
+            for j in range(1 if dim == 1 else n):
+                for k in range(1 if dim == 2 else o):
+                    ii = [i, j, k]
+                    ii[dim] = slice(0, index.size(dim) + 1)
+                    index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+        return (inp, dim, index)
+
+    bench = Benchmark(
+        op_name="gather",
+        torch_op=torch.gather,
+        arg_func=gather_args,
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
