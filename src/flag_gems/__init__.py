@@ -53,6 +53,7 @@ def enable(lib=aten_lib):
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
     lib.impl("gelu", gelu, "AutogradCUDA")
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
+    lib.impl("_weight_norm_interface", weight_norm, "AutogradCUDA")
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
     lib.impl("isfinite", isfinite, "CUDA")
@@ -134,10 +135,9 @@ def enable(lib=aten_lib):
     lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
     lib.impl("outer", outer, "AutogradCUDA")
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
-    # lib.impl("scatter.src", scatter_src, "CUDA")
-    # lib.impl("scatter.reduce", scatter_reduce, "CUDA")
-    # lib.impl("gather", gather, "CUDA")
-    # lib.impl("gather.out", gather_out, "CUDA")
+    lib.impl("scatter.src", scatter, "CUDA")
+    lib.impl("scatter.reduce", scatter, "CUDA")
+    lib.impl("gather", gather, "CUDA")
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
     lib.impl("fill.Scalar", fill_scalar, "CUDA")
@@ -155,6 +155,7 @@ def enable(lib=aten_lib):
     lib.impl("cat", cat, "CUDA")
     lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
     lib.impl("vstack", vstack, "CUDA")
+    lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "CUDA")
 
 
 class use_gems:

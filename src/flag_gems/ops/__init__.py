@@ -30,7 +30,7 @@ from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather, gather_out
+from .gather import gather
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -79,12 +79,12 @@ from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
-from .repeat_interleave import repeat_interleave_self_int
+from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_tensor
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
-from .scatter import scatter_reduce, scatter_src
+from .scatter import scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
@@ -102,6 +102,7 @@ from .unique import _unique2
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
+from .weightnorm import weight_norm
 from .where import where_scalar_other, where_scalar_self, where_self
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -150,7 +151,6 @@ __all__ = [
     "fill_tensor",
     "exponential_",
     "gather",
-    "gather_out",
     "flip",
     "ones_like",
     "full_like",
@@ -168,6 +168,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "weight_norm",
     "le",
     "le_scalar",
     "lt",
@@ -201,8 +202,7 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
-    "scatter_src",
-    "scatter_reduce",
+    "scatter",
     "sigmoid",
     "silu",
     "sin",
@@ -241,4 +241,5 @@ __all__ = [
     "cat",
     "repeat_interleave_self_int",
     "vstack",
+    "repeat_interleave_tensor",
 ]
