@@ -1,161 +1,47 @@
+import pytest
 import torch
 
-from .performance_utils import (
-    FLOAT_DTYPES,
-    POINTWISE_BATCH,
-    SIZES,
-    Benchmark,
-    unary_arg,
+from .performance_utils import GenericBenchmark, unary_input_fn
+
+
+def generic_constructor_input_fn(shape, dtype, device):
+    yield {"size": shape, "dtype": dtype, "device": device},
+
+
+def full_input_fn(shape, dtype, device):
+    yield {"size": shape, "fill_value": 3.1415926, "dtype": dtype, "device": device},
+
+
+def full_like_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    yield {"input": inp, "fill_value": 3.1415926},
+
+
+# Define operations and their corresponding input functions
+tesor_constructor_operations = [
+    # generic tensor constructor
+    ("rand", torch.rand, generic_constructor_input_fn),
+    ("randn", torch.randn, generic_constructor_input_fn),
+    ("ones", torch.ones, generic_constructor_input_fn),
+    ("zeros", torch.zeros, generic_constructor_input_fn),
+    # generic tensor-like constructor
+    ("rand_like", torch.rand_like, unary_input_fn),
+    ("randn_like", torch.randn_like, unary_input_fn),
+    ("ones_like", torch.ones_like, unary_input_fn),
+    ("zeros_like", torch.zeros_like, unary_input_fn),
+    # tensor constructor with given value
+    ("full", torch.full, full_input_fn),
+    ("full_like", torch.full_like, full_like_input_fn),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        for op, fn, input_fn in tesor_constructor_operations
+    ],
 )
-
-
-def test_perf_rand():
-    def rand_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="rand",
-        torch_op=torch.rand,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=rand_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_randn():
-    def randn_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="randn",
-        torch_op=torch.randn,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=randn_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_rand_like():
-    bench = Benchmark(
-        op_name="rand_like",
-        torch_op=torch.rand_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_randn_like():
-    bench = Benchmark(
-        op_name="randn_like",
-        torch_op=torch.randn_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_ones():
-    def ones_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="ones",
-        torch_op=torch.ones,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=ones_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_zeros():
-    def zeros_kwargs(dtype, batch, size):
-        return {"size": (batch, size), "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="zeros",
-        torch_op=torch.zeros,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=zeros_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_full():
-    def full_kwargs(dtype, batch, size):
-        return {
-            "size": (batch, size),
-            "fill_value": 3.1415926,
-            "dtype": dtype,
-            "device": "cuda",
-        }
-
-    bench = Benchmark(
-        op_name="full",
-        torch_op=torch.full,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=full_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_ones_like():
-    bench = Benchmark(
-        op_name="ones_like",
-        torch_op=torch.ones_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_zeros_like():
-    bench = Benchmark(
-        op_name="zeros_like",
-        torch_op=torch.zeros_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_full_like():
-    def full_kwargs(dtype, batch, size):
-        return {
-            "input": torch.randn([batch, size], dtype=dtype, device="cuda"),
-            "fill_value": 3.1415926,
-        }
-
-    bench = Benchmark(
-        op_name="full_like",
-        torch_op=torch.full_like,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=full_kwargs,
-    )
+def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
+    bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
     bench.run()
