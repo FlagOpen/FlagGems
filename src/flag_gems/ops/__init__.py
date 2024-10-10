@@ -79,7 +79,11 @@ from .randn_like import randn_like
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
-from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_tensor
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -240,4 +244,5 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "repeat_interleave_self_tensor",
 ]
