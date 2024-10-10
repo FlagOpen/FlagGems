@@ -6,6 +6,7 @@ RESOLUTION = {
     torch.int32: 0,
     torch.float16: 1e-3,
     torch.float32: 1.3e-6,
+    torch.complex64: 1.3e-6,
     torch.bfloat16: 0.016,
 }
 
