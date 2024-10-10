@@ -5,6 +5,7 @@ import pytest
 
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
+    BOOL_DTYPES,
     DEFAULT_ITER_COUNT,
     DEFAULT_WARMUP_COUNT,
     FLOAT_DTYPES,
@@ -22,6 +23,8 @@ class BenchConfig:
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
         self.record_log = False
+        self.user_desired_dtypes = None
+        self.user_desired_metrics = None
 
 
 Config = BenchConfig()
@@ -68,19 +71,25 @@ def pytest_addoption(parser):
     parser.addoption(
         "--metrics",
         action="append",
-        default=list(ALL_AVAILABLE_METRICS),
+        default=None,
         required=False,
         choices=ALL_AVAILABLE_METRICS,
-        help="Specify the metrics we want to benchmark. Default is all available metrics.",
+        help=(
+            "Specify the metrics we want to benchmark. "
+            "If not specified, the metric items will vary according to the specified operation's category and name."
+        ),
     )
 
     parser.addoption(
         "--dtypes",
         action="append",
-        default=[str(ele) for ele in FLOAT_DTYPES],
+        default=None,
         required=False,
-        choices=[str(ele) for ele in FLOAT_DTYPES + INT_DTYPES],
-        help="Specify the data types for benchmarks. Default is all floating point types.",
+        choices=[str(ele) for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES],
+        help=(
+            "Specify the data types for benchmarks. "
+            "If not specified, the dtype items will vary according to the specified operation's category and name."
+        ),
     )
 
     parser.addoption(
@@ -102,10 +111,16 @@ def pytest_configure(config):
     Config.bench_level = BenchLevel(level_value)
 
     warmup_value = config.getoption("--warmup")
-    Config.warm_up = warmup_value
+    Config.warm_up = int(warmup_value)
 
     iter_value = config.getoption("--iter")
-    Config.repetition = iter_value
+    Config.repetition = int(iter_value)
+
+    dtypes = config.getoption("--dtypes")
+    Config.user_desired_dtypes = dtypes
+
+    metrics = config.getoption("--metrics")
+    Config.user_desired_metrics = metrics
 
     Config.record_log = config.getoption("--record") == "log"
     if Config.record_log:

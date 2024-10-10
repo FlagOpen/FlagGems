@@ -1,186 +1,47 @@
-import itertools
-
 import pytest
 import torch
 
-from .attri_util import (
-    DEFAULT_BATCH,
-    DEFAULT_NON_BLAS_BENCH_SHAPES,
-    FLOAT_DTYPES,
-    BenchLevel,
+from .performance_utils import GenericBenchmark, unary_input_fn
+
+
+def generic_constructor_input_fn(shape, dtype, device):
+    yield {"size": shape, "dtype": dtype, "device": device},
+
+
+def full_input_fn(shape, dtype, device):
+    yield {"size": shape, "fill_value": 3.1415926, "dtype": dtype, "device": device},
+
+
+def full_like_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    yield {"input": inp, "fill_value": 3.1415926},
+
+
+# Define operations and their corresponding input functions
+tesor_constructor_operations = [
+    # generic tensor constructor
+    ("rand", torch.rand, generic_constructor_input_fn),
+    ("randn", torch.randn, generic_constructor_input_fn),
+    ("ones", torch.ones, generic_constructor_input_fn),
+    ("zeros", torch.zeros, generic_constructor_input_fn),
+    # generic tensor-like constructor
+    ("rand_like", torch.rand_like, unary_input_fn),
+    ("randn_like", torch.randn_like, unary_input_fn),
+    ("ones_like", torch.ones_like, unary_input_fn),
+    ("zeros_like", torch.zeros_like, unary_input_fn),
+    # tensor constructor with given value
+    ("full", torch.full, full_input_fn),
+    ("full_like", torch.full_like, full_like_input_fn),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        for op, fn, input_fn in tesor_constructor_operations
+    ],
 )
-from .conftest import Config
-from .performance_utils import Benchmark, unary_arg
-
-CONSTRUCTOR_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES[:]
-if Config.bench_level == BenchLevel.COMPREHENSIVE:
-    MORE_SHAPES = [(320, 15), (128, 64, 60)]
-    MORE_BATCHS = [4, 20, 32]
-    combinations = [
-        (batch, *shape) for batch, shape in itertools.product(MORE_BATCHS, MORE_SHAPES)
-    ]
-    CONSTRUCTOR_SHAPES.extend(combinations)
-    # add 1D shapes and 5D shapes
-    CONSTRUCTOR_SHAPES.extend([(1,), (5,), (32, 5, 4, 7, 8)])
-
-
-@pytest.mark.rand
-def test_perf_rand():
-    def rand_kwargs(dtype, batch, shape):
-        return {"size": shape, "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="rand",
-        torch_op=torch.rand,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-        kwargs_func=rand_kwargs,
-    )
-    bench.run()
-
-
-@pytest.mark.randn
-def test_perf_randn():
-    def randn_kwargs(dtype, batch, shape):
-        return {"size": shape, "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="randn",
-        torch_op=torch.randn,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-        kwargs_func=randn_kwargs,
-    )
-    bench.run()
-
-
-@pytest.mark.rand_like
-def test_perf_rand_like():
-    bench = Benchmark(
-        op_name="rand_like",
-        torch_op=torch.rand_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-    )
-    bench.run()
-
-
-@pytest.mark.randn_like
-def test_perf_randn_like():
-    bench = Benchmark(
-        op_name="randn_like",
-        torch_op=torch.randn_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-    )
-    bench.run()
-
-
-@pytest.mark.ones
-def test_perf_ones():
-    def ones_kwargs(dtype, batch, shape):
-        return {"size": shape, "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="ones",
-        torch_op=torch.ones,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-        kwargs_func=ones_kwargs,
-    )
-    bench.run()
-
-
-@pytest.mark.zeros
-def test_perf_zeros():
-    def zeros_kwargs(dtype, batch, shape):
-        return {"size": shape, "dtype": dtype, "device": "cuda"}
-
-    bench = Benchmark(
-        op_name="zeros",
-        torch_op=torch.zeros,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-        kwargs_func=zeros_kwargs,
-    )
-    bench.run()
-
-
-@pytest.mark.full
-def test_perf_full():
-    def full_kwargs(dtype, batch, shape):
-        return {
-            "size": shape,
-            "fill_value": 3.1415926,
-            "dtype": dtype,
-            "device": "cuda",
-        }
-
-    bench = Benchmark(
-        op_name="full",
-        torch_op=torch.full,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-        kwargs_func=full_kwargs,
-    )
-    bench.run()
-
-
-@pytest.mark.ones_like
-def test_perf_ones_like():
-    bench = Benchmark(
-        op_name="ones_like",
-        torch_op=torch.ones_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-    )
-    bench.run()
-
-
-@pytest.mark.zeros_like
-def test_perf_zeros_like():
-    bench = Benchmark(
-        op_name="zeros_like",
-        torch_op=torch.zeros_like,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-    )
-    bench.run()
-
-
-@pytest.mark.full_like
-def test_perf_full_like():
-    def full_kwargs(dtype, batch, shape):
-        return {
-            "input": torch.randn(shape, dtype=dtype, device="cuda"),
-            "fill_value": 3.1415926,
-        }
-
-    bench = Benchmark(
-        op_name="full_like",
-        torch_op=torch.full_like,
-        arg_func=None,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=CONSTRUCTOR_SHAPES,
-        kwargs_func=full_kwargs,
-    )
+def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
+    bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
     bench.run()

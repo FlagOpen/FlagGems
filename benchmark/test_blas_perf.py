@@ -1,125 +1,121 @@
+import itertools
+from typing import Generator
+
 import pytest
 import torch
 
-from .conftest import Config
 from .attri_util import (
-    BLAS_BATCH,
-    DEFAULT_BATCH,
+    DEFAULT_BMNK_BLAS,
+    DEFAULT_METRICS,
+    DEFAULT_MNK_BLAS,
     FLOAT_DTYPES,
     BenchLevel,
 )
+from .conftest import Config
 from .performance_utils import Benchmark
 
-if Config.bench_level == BenchLevel.COMPREHENSIVE:
-    BLAS_MN_SHAPES = [(1, 32), (160, 1024), (5333, 497)]
-    BLAS_MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-    BLAS_BATCHS = [1, 4, 8, 16, 32]
-elif Config.bench_level == BenchLevel.CORE:
-    BLAS_MN_SHAPES = [(1, 32), (160, 1024), (5333, 497)]
-    BLAS_MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
-    BLAS_BATCHS = [4]
+
+class BlasBenchmark(Benchmark):
+    """
+    benchmark for blas
+    """
+
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+    DEFAULT_DTYPES = FLOAT_DTYPES
+    DEFAULT_SHAPES = DEFAULT_BMNK_BLAS
+
+    def __init__(self, *args, input_fn, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_fn = input_fn
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for b, m, n, k in self.shapes:
+            yield from self.input_fn(b, m, n, k, cur_dtype, self.device)
+
+    def set_shapes(self):
+        # self.shapes is a list of tuples, each containing four elements:
+        # (B, M, N, K).
+        self.shapes = self.DEFAULT_SHAPES[:]
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            # B=1, M=13, N=2, K=2^6..2^15
+            large_k_shapes = list(
+                itertools.product([1], [13], [2], [2**i for i in range(6, 15)])
+            )
+            # TODO: more shapes
+            self.shapes.extend(large_k_shapes)
+
+    # TODO: register_metric
+    # def tflops(self):
 
 
-def M(mnk):
-    return mnk[0]
+def addmm_input_fn(b, m, n, k, cur_dtype, device):
+    inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
+    inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
+    bias = torch.randn([m, n], dtype=cur_dtype, device=device)
+    yield inp1, inp2, bias
 
 
-def N(mnk):
-    return mnk[1]
+def bmm_input_fn(b, m, n, k, cur_dtype, device):
+    inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=device)
+    inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=device)
+    yield inp1, inp2
 
 
-def K(mnk):
-    return mnk[2]
+def mm_input_fn(b, m, n, k, cur_dtype, device):
+    inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
+    inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
+    yield inp1, inp2
 
 
-# the size for every  blas Operator is (m, n, k)
-@pytest.mark.addmm(recommended_shapes=BLAS_MNK_SHAPES)
-def test_perf_addmm():
-    def addmm_args(dtype, batch, size):
-        bias = torch.randn(
-            [M(size), N(size)],
-            dtype=dtype,
-            device="cuda",
-        )
-        inp1 = torch.randn([M(size), K(size)], dtype=dtype, device="cuda")
-        inp2 = torch.randn([K(size), N(size)], dtype=dtype, device="cuda")
-        return bias, inp1, inp2
-
-    bench = Benchmark(
-        op_name="addmm",
-        torch_op=torch.addmm,
-        arg_func=addmm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=BLAS_MNK_SHAPES,
-    )
-    bench.run()
+def mv_input_fn(b, m, n, k, cur_dtype, device):
+    inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
+    inp2 = torch.randn([k], dtype=cur_dtype, device=device)
+    yield inp1, inp2
 
 
-@pytest.mark.bmm(recommended_shapes=BLAS_MNK_SHAPES)
-def test_perf_bmm():
-    def bmm_args(dtype, batch, size):
-        inp1 = torch.randn([batch, M(size), K(size)], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, K(size), N(size)], dtype=dtype, device="cuda")
-        return inp1, inp2
-
-    bench = Benchmark(
-        op_name="bmm",
-        torch_op=torch.bmm,
-        arg_func=bmm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=BLAS_MNK_SHAPES,
-    )
-    return bench.run()
+def outer_input_fn(b, m, n, k, cur_dtype, device):
+    inp1 = torch.randn([m], dtype=cur_dtype, device=device)
+    inp2 = torch.randn([n], dtype=cur_dtype, device=device)
+    yield inp1, inp2
 
 
-def test_perf_mm():
-    def mm_args(dtype, batch, size):
-        inp1 = torch.randn([M(size), K(size)], dtype=dtype, device="cuda")
-        inp2 = torch.randn([K(size), N(size)], dtype=dtype, device="cuda")
-        return inp1, inp2
-
-    bench = Benchmark(
-        op_name="mm",
-        torch_op=torch.mm,
-        arg_func=mm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=BLAS_MNK_SHAPES,
-    )
-    bench.run()
-
-
-def test_perf_mv():
-    def mv_args(dtype, batch, size):
-        inp1 = torch.randn([size[0], size[1]], dtype=dtype, device="cuda")
-        inp2 = torch.randn([size[1]], dtype=dtype, device="cuda")
-        return inp1, inp2
-
-    bench = Benchmark(
-        op_name="mv",
-        torch_op=torch.mv,
-        arg_func=mv_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=BLAS_MN_SHAPES,
-    )
-    bench.run()
-
-
-def test_perf_outer():
-    def outer_args(dtype, batch, size):
-        inp1 = torch.randn(size[0], dtype=dtype, device="cuda")
-        inp2 = torch.randn(size[1], dtype=dtype, device="cuda")
-        return inp1, inp2
-
-    bench = Benchmark(
-        op_name="outer",
-        torch_op=torch.outer,
-        arg_func=outer_args,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=BLAS_MN_SHAPES,
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(
+            "addmm",
+            torch.addmm,
+            addmm_input_fn,
+            marks=pytest.mark.addmm(recommended_shapes=DEFAULT_MNK_BLAS),
+        ),
+        pytest.param(
+            "bmm",
+            torch.bmm,
+            bmm_input_fn,
+            marks=pytest.mark.bmm(recommended_shapes=DEFAULT_BMNK_BLAS),
+        ),
+        pytest.param(
+            "mm",
+            torch.Tensor.mm,
+            mm_input_fn,
+            marks=pytest.mark.mm,
+        ),
+        pytest.param(
+            "mv",
+            torch.Tensor.mv,
+            mv_input_fn,
+            marks=pytest.mark.mv,
+        ),
+        pytest.param(
+            "outer",
+            torch.Tensor.outer,
+            outer_input_fn,
+            marks=pytest.mark.outer,
+        ),
+    ],
+)
+def test_blas_benchmark(op_name, torch_op, input_fn):
+    bench = BlasBenchmark(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
     bench.run()

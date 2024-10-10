@@ -20,9 +20,12 @@ BLAS_OPS = ReadOnly(["addmm", "bmm", "mm", "mv", "outer", "matmul", "linear"])
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
+BOOL_DTYPES = [
+    torch.bool,
+]
 
-DEFAULT_WARMUP_COUNT = 100
-DEFAULT_ITER_COUNT = 1000
+DEFAULT_WARMUP_COUNT = 1000
+DEFAULT_ITER_COUNT = 100
 
 # Default shapes settings
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
@@ -31,16 +34,52 @@ LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
 # Non-BLAS shapes are currently defined as (M, N) for backward compatibility
 # but will change to (B, M, N) in the future.
 DEFAULT_NON_BLAS_BENCH_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
-# BLAS shapes are defined as (B, M, N, K), differing from non-BLAS shapes.
-DEFAULT_BLAS_BENCH_SHAPES = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
-DEFAULT_BLAS_WITHOUT_BATCH_BENCH_SHAPES = [
-    (1, shape, shape, shape) for shape in LEGACY_SHAPES
+# BLAS shapes are defined as (B, M, N, K) or (M, N, K), differing from non-BLAS shapes.
+DEFAULT_BMNK_BLAS = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
+DEFAULT_MNK_BLAS = [(shape, shape, shape) for shape in LEGACY_SHAPES]
+# GROUP_NORM shapes are defined as (N, C, H, W, num_groups)
+DEFAULT_GROUPNORM_SHAPES = [
+    (16, 16, 8, 8, 16),
+    (16, 16, 8, 48, 16),
+    (16, 16, 8, 88, 16),
+    (16, 16, 8, 128, 16),
+    (16, 16, 8, 168, 16),
 ]
 
 DEFAULT_BATCH = 1
-POINTWISE_BATCH = 1024
-REDUCTION_BATCH = 1024
-BLAS_BATCH = 16
+
+
+@dataclass
+class BenchmarkMetrics:
+    # Legacy shape information for backward compatibility
+    # This field corresponds to the 'size' field in the previous version's benchmark.
+    legacy_shape: Optional[int] = None
+    # Detailed size info
+    shape_detail: Optional[Tuple[int, ...]] = None
+    # Latency base in ms
+    latency_base: Optional[float] = None
+    # Latency in ms
+    latency: Optional[float] = None
+    # Speedup over baseline
+    speedup: Optional[float] = None
+    # Accuracy over baseline (not implemented yet)
+    accuracy: Optional[float] = None
+    # TFLOPS (not implemented yet)
+    tflops: Optional[float] = None
+    # Utilization (not implemented yet)
+    utilization: Optional[float] = None
+
+
+ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
+    "legacy_shape",
+    "shape_detail",
+}
+
+DEFAULT_METRICS = [
+    metric
+    for metric in ["latency_base", "latency", "speedup"]
+    if metric in ALL_AVAILABLE_METRICS
+]
 
 
 def get_recommended_shapes(
@@ -55,9 +94,9 @@ def get_recommended_shapes(
         # return _shapes_sort(op_specified_shapes)
     shapes = DEFAULT_NON_BLAS_BENCH_SHAPES
     if op_name in ["bmm", "mv"]:
-        shapes = DEFAULT_BLAS_BENCH_SHAPES
+        shapes = DEFAULT_BMNK_BLAS
     elif op_name in ["addmm", "mm", "outer"]:
-        shapes = DEFAULT_BLAS_WITHOUT_BATCH_BENCH_SHAPES
+        shapes = DEFAULT_MNK_BLAS
     return _shapes_sort(shapes)
 
 
@@ -81,34 +120,6 @@ class OperationAttribute:
 
     def to_dict(self) -> dict:
         return self.__dict__
-
-
-@dataclass
-class BenchmarkMetrics:
-    # Simple version shape info; this shape is set to maintain compatibility with the last version.
-    legacy_shape: Optional[int] = None
-    # Detailed size info
-    shape_detail: Optional[Tuple[int, ...]] = None
-    # Latency base in ms
-    latency_base: Optional[float] = None
-    # Latency in ms
-    latency: Optional[float] = None
-    # Speedup over baseline
-    speedup: Optional[float] = None
-    # Accuracy over baseline (not implemented yet)
-    accuracy: Optional[float] = None
-    # TFLOPS (not implemented yet)
-    tflops: Optional[float] = None
-    # Utilization (not implemented yet)
-    utilization: Optional[float] = None
-
-
-ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics)))
-DEFAULT_METRICS = [
-    metric
-    for metric in ["latency_base", "latency", "speedup"]
-    if metric in ALL_AVAILABLE_METRICS
-]
 
 
 @dataclass
@@ -137,13 +148,21 @@ class BenchmarkResult:
         legacy_shape_str = (
             metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
         )
+        latency_base_str = (
+            f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
+        )
+        latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
+        speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
+        shape_detail_str = (
+            metrics.shape_detail if metrics.shape_detail is not None else "N/A"
+        )
         return (
             f"{legacy_shape_str:<10}"
-            f"{metrics.latency_base:>20.6f}"
-            f"{metrics.latency:>20.6f}"
-            f"{metrics.speedup:>20.3f}"
+            f"{latency_base_str:>20}"
+            f"{latency_str:>20}"
+            f"{speedup_str:>20}"
             f"{' ' * 10}"
-            f"{metrics.shape_detail}\n"
+            f"{shape_detail_str}\n"
         )
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:

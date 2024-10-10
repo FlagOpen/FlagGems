@@ -1,5 +1,5 @@
 import time
-from typing import List, Optional
+from typing import Any, Generator, List, Optional, Tuple
 
 import torch
 import triton
@@ -11,6 +11,7 @@ from .attri_util import (
     DEFAULT_NON_BLAS_BENCH_SHAPES,
     FLOAT_DTYPES,
     INT_DTYPES,
+    BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
 )
@@ -20,6 +21,7 @@ torch.backends.cuda.matmul.allow_tf32 = False
 
 
 class Benchmark:
+    device: str = "cuda"
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES
@@ -31,10 +33,10 @@ class Benchmark:
         self,
         op_name,
         torch_op,
-        arg_func,
-        dtypes,
-        batch,
-        sizes,
+        arg_func=None,
+        dtypes=None,
+        batch=1,
+        sizes=None,
         is_backward=False,
         kwargs_func=None,
     ):
@@ -42,24 +44,83 @@ class Benchmark:
         if is_backward:
             self.op_name += " backward"
         self.torch_op = torch_op
-        self.arg_func = arg_func
-        self.kwargs_func = kwargs_func
-        self.dtypes = dtypes
-        self.batch = batch
-        self.sizes = sizes
         self.gems_op = None
         self.is_backward = is_backward
-        self.results = []
+        self._input_iter = None
 
-    def set_metrics(self, user_desired_metrics: Optional[List[str,]]):
+        # Theoretical supported dtypes, metrics, for the operation.
+        # These are set by default.
+        self.dtypes = dtypes if dtypes is not None else self.DEFAULT_DTYPES
+        self.metrics = self.DEFAULT_METRICS
+
+        # Actual dtypes and metrics to be used in the benchmark,
+        # can be influenced by user input.
+        self.to_bench_dtypes = self.dtypes
+        self.to_bench_metrics = self.metrics
+
+        self.shapes = sizes if sizes is not None else self.DEFAULT_SHAPES
+
+        self.batch = batch
+        self.arg_func = arg_func
+        self.kwargs_func = kwargs_func
+
+    def set_metrics(self, user_desired_metrics: Optional[List[str]]):
+        # Validate user-specified metrics
+        if user_desired_metrics and not all(
+            metric in self.metrics for metric in user_desired_metrics
+        ):
+            invalid_metrics = [
+                metric for metric in user_desired_metrics if metric not in self.metrics
+            ]
+            raise ValueError(
+                f"Given metric(s) '{', '.join(invalid_metrics)}' can't be supported by this op '{self.op_name}'"
+            )
+
         self.to_bench_metrics = (
-            user_desired_metrics if user_desired_metrics else self.DEFAULT_METRICS
+            user_desired_metrics if user_desired_metrics else self.metrics
         )
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
+        # Validate user-specified dtypes
+        if user_desired_dtypes and not all(
+            dtype in self.dtypes for dtype in user_desired_dtypes
+        ):
+            invalid_dtypes = [
+                dtype for dtype in user_desired_dtypes if dtype not in self.dtypes
+            ]
+            raise ValueError(
+                f"Given dtype(s) '{', '.join(str(dtype) for dtype in invalid_dtypes)}'"
+                f"can't be supported by this op '{self.op_name}'"
+            )
         self.to_bench_dtypes = (
-            user_desired_dtypes if user_desired_dtypes else self.DEFAULT_DTYPES
+            user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
+
+    def set_shapes(self):
+        self.shapes = self.DEFAULT_SHAPES
+
+    def record_shapes(self, *args, **kwargs):
+        def deep_parse(item):
+            if isinstance(item, torch.Tensor):
+                return item.size()
+            elif isinstance(item, (int, float, str, torch.dtype)):
+                return item
+            elif isinstance(item, (list, tuple)):
+                return [deep_parse(sub_item) for sub_item in item]
+            elif isinstance(item, dict):
+                return {key: deep_parse(value) for key, value in item.items()}
+            return None
+
+        parsed_args = [deep_parse(arg) for arg in args]
+        parsed_kwargs = {key: deep_parse(value) for key, value in kwargs.items()}
+        return parsed_args if len(parsed_args) > 0 else parsed_kwargs
+
+    def init_user_config(self):
+        # self.device = Config.device
+        self.cpu_mode = Config.cpu_mode
+        self.set_dtypes(Config.user_desired_dtypes)
+        self.set_metrics(Config.user_desired_metrics)
+        self.set_shapes()
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
@@ -101,10 +162,74 @@ class Benchmark:
             fn()
         return flop_counter.get_total_flops()
 
+    def get_input_iter(self, dtype) -> Generator:
+        # """Return the dynamic input iterator for each Operator."""
+        raise NotImplementedError(
+            "Each Benchmark must implement its own input iterator."
+        )
+
+    def get_inputs(self, dtype):
+        if self._input_iter is None:
+            self._input_iter = self.get_input_iter(dtype)
+        try:
+            return next(self._input_iter)
+        except StopIteration:
+            return None
+
     def run(self):
+        self.init_user_config()
+
+        def _unpack_to_args_kwargs(input_tuple: Tuple[Any, ...]):
+            args = []
+            kwargs = {}
+            for item in input_tuple:
+                if (
+                    isinstance(item, torch.Tensor)
+                    or isinstance(item, (int, float))
+                    or item is None
+                    or isinstance(item, (list, tuple))
+                ):
+                    args.append(item)
+                elif isinstance(item, dict):
+                    kwargs.update(item)
+            return args, kwargs
+
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            for input in self.get_input_iter(dtype):
+                metric = BenchmarkMetrics()
+                args, kwargs = _unpack_to_args_kwargs(input)
+                shape = self.record_shapes(*args, **kwargs)
+                metric.shape_detail = shape
+                if "latency_base" in self.to_bench_metrics:
+                    metric.latency_base = self.get_latency(
+                        self.torch_op, *args, **kwargs
+                    )
+                if "latency" in self.to_bench_metrics:
+                    if self.gems_op:
+                        metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
+                    else:
+                        with flag_gems.use_gems():
+                            metric.latency = self.get_latency(
+                                self.torch_op, *args, **kwargs
+                            )
+                if "speedup" in self.to_bench_metrics:
+                    metric.speedup = metric.latency / metric.latency_base
+                if "tflops" in self.to_bench_metrics:
+                    metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
+                metrics.append(metric)
+            result = BenchmarkResult(
+                op_name=self.op_name,
+                dtype=str(dtype),
+                mode="cpu" if Config.cpu_mode else "cuda",
+                result=metrics,
+            )
+            print(result)
+
+    def legacy_run(self):
         for dtype in self.dtypes:
             metrics = []
-            for size in self.sizes:
+            for size in self.shapes:
                 args = ()
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)
@@ -144,10 +269,48 @@ class Benchmark:
             result = BenchmarkResult(
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else "cuda",
+                mode="cpu" if self.cpu_mode else "cuda",
                 result=metrics,
             )
             print(result)
+
+
+class GenericBenchmark(Benchmark):
+
+    """
+    Generic benchmark for tensor operations with different types of inputs.
+    """
+
+    def __init__(self, *args, input_fn, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.input_fn = input_fn
+
+    def set_shapes(self):
+        self.shapes = self.DEFAULT_SHAPES[:]
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            # TODO: more suitable shapes
+            small_shapes = [(2, 2), (1024, 1)]
+            large_shapes = [
+                (10240, 10240),
+            ]
+            self.shapes.extend(small_shapes)
+            self.shapes.extend(large_shapes)
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+def binary_input_fn(shape, cur_dtype, device):
+    inp1 = torch.randn(shape, dtype=cur_dtype, device=device)
+    inp2 = torch.randn(shape, dtype=cur_dtype, device=device)
+    yield inp1, inp2
+
+
+def unary_input_fn(shape, cur_dtype, device):
+    inp = torch.randn(shape, dtype=cur_dtype, device=device)
+    yield inp,
+
 
 def unary_arg(dtype, batch, shape):
     if dtype in FLOAT_DTYPES:
