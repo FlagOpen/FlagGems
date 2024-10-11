@@ -52,7 +52,7 @@ def addmm_input_fn(b, m, n, k, cur_dtype, device):
     inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
     inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
     bias = torch.randn([m, n], dtype=cur_dtype, device=device)
-    yield inp1, inp2, bias
+    yield bias, inp1, inp2,
 
 
 def bmm_input_fn(b, m, n, k, cur_dtype, device):
@@ -67,10 +67,16 @@ def mm_input_fn(b, m, n, k, cur_dtype, device):
     yield inp1, inp2
 
 
+MV_RECOMMENDED_SHAPES = [(m, n) for m, n, k in DEFAULT_MNK_BLAS]
+
+
 def mv_input_fn(b, m, n, k, cur_dtype, device):
-    inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
-    inp2 = torch.randn([k], dtype=cur_dtype, device=device)
+    inp1 = torch.randn([m, n], dtype=cur_dtype, device=device)
+    inp2 = torch.randn([n], dtype=cur_dtype, device=device)
     yield inp1, inp2
+
+
+OUTER_RECOMENDED_SHAPES = [(m, n) for m, n, k in DEFAULT_MNK_BLAS]
 
 
 def outer_input_fn(b, m, n, k, cur_dtype, device):
@@ -98,19 +104,19 @@ def outer_input_fn(b, m, n, k, cur_dtype, device):
             "mm",
             torch.Tensor.mm,
             mm_input_fn,
-            marks=pytest.mark.mm,
+            marks=pytest.mark.mm(recommended_shapes=DEFAULT_MNK_BLAS),
         ),
         pytest.param(
             "mv",
             torch.Tensor.mv,
             mv_input_fn,
-            marks=pytest.mark.mv,
+            marks=pytest.mark.mv(recommended_shapes=MV_RECOMMENDED_SHAPES),
         ),
         pytest.param(
             "outer",
             torch.Tensor.outer,
             outer_input_fn,
-            marks=pytest.mark.outer,
+            marks=pytest.mark.outer(recommended_shapes=OUTER_RECOMENDED_SHAPES),
         ),
     ],
 )

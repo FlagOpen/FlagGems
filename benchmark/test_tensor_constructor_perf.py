@@ -18,7 +18,7 @@ def full_like_input_fn(shape, dtype, device):
 
 
 # Define operations and their corresponding input functions
-tesor_constructor_operations = [
+tensor_constructor_operations = [
     # generic tensor constructor
     ("rand", torch.rand, generic_constructor_input_fn),
     ("randn", torch.randn, generic_constructor_input_fn),
@@ -39,7 +39,7 @@ tesor_constructor_operations = [
     "op_name, torch_op, input_fn",
     [
         pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
-        for op, fn, input_fn in tesor_constructor_operations
+        for op, fn, input_fn in tensor_constructor_operations
     ],
 )
 def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):

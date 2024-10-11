@@ -11,7 +11,7 @@ from .attri_util import (
     INT_DTYPES,
 )
 from .conftest import BenchLevel, Config
-from .performance_utils import Benchmark
+from .performance_utils import Benchmark, GenericBenchmark, generate_tensor_input
 
 
 class UnaryReductionBenchmark(Benchmark):
@@ -104,37 +104,19 @@ def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-class GenericReductionBenchmark(Benchmark):
-    """
-    Generic reduction benchmark for tensor operations with different types of inputs.
-    """
-
-    def __init__(self, *args, input_fn, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.input_fn = input_fn
-
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for shape in self.shapes:
-            yield from self.input_fn(shape, cur_dtype, self.device)
-
-
 def cross_entropy_loss_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
+    inp = generate_tensor_input(shape, cur_dtype, device)
     target = torch.randint(0, shape[-1], (shape[0],), device=device)
     yield inp, target
 
 
 def cumsum_input_fn(shape, cur_dtype, device):
-    if cur_dtype in FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=cur_dtype, device=device)
-        yield inp, 1
-    elif cur_dtype in INT_DTYPES:
-        inp = torch.randint(0, 2, shape, dtype=cur_dtype, device=device)
-        yield inp, 1
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, 1
 
 
 def index_select_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
+    inp = generate_tensor_input(shape, cur_dtype, device)
     threshold = 0.1
     dim = 0
     index_size = inp.size(dim)
@@ -145,8 +127,8 @@ def index_select_input_fn(shape, cur_dtype, device):
 
 
 def masked_select_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
-    mask = torch.randn(shape, dtype=cur_dtype, device=device) < 0.3
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    mask = generate_tensor_input(shape, cur_dtype, device) < 0.3
     yield inp, mask
 
 
@@ -184,7 +166,7 @@ def masked_select_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
-    bench = GenericReductionBenchmark(
+    bench = GenericBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()

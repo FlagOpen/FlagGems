@@ -2,6 +2,7 @@ import json
 import logging
 
 import pytest
+import torch
 
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
@@ -85,7 +86,9 @@ def pytest_addoption(parser):
         action="append",
         default=None,
         required=False,
-        choices=[str(ele) for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES],
+        choices=[
+            str(ele) for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
+        ],
         help=(
             "Specify the data types for benchmarks. "
             "If not specified, the dtype items will vary according to the specified operation's category and name."

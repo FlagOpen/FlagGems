@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark
+from .performance_utils import GenericBenchmark, unary_input_fn
 
 
 def normal_input_fn(shape, cur_dtype, device):
@@ -11,13 +11,6 @@ def normal_input_fn(shape, cur_dtype, device):
     yield loc, scale
 
 
-def unary_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
-    yield inp,
-
-
-# TODO: Implement support for the multinomial operation in the benchmark.
-# The correctness of this operation has already been tested in the tests directory.
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [

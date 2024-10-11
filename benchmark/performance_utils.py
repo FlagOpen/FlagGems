@@ -7,6 +7,7 @@ import triton
 import flag_gems
 
 from .attri_util import (
+    BOOL_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_NON_BLAS_BENCH_SHAPES,
     FLOAT_DTYPES,
@@ -33,12 +34,9 @@ class Benchmark:
         self,
         op_name,
         torch_op,
-        arg_func=None,
         dtypes=None,
-        batch=1,
-        sizes=None,
         is_backward=False,
-        kwargs_func=None,
+        shapes=None,
     ):
         self.op_name = op_name
         if is_backward:
@@ -48,21 +46,16 @@ class Benchmark:
         self.is_backward = is_backward
         self._input_iter = None
 
-        # Theoretical supported dtypes, metrics, for the operation.
+        # Theoretical supported dtypes, metrics for the operation.
         # These are set by default.
         self.dtypes = dtypes if dtypes is not None else self.DEFAULT_DTYPES
         self.metrics = self.DEFAULT_METRICS
+        self.shapes = self.DEFAULT_SHAPES
 
         # Actual dtypes and metrics to be used in the benchmark,
         # can be influenced by user input.
         self.to_bench_dtypes = self.dtypes
         self.to_bench_metrics = self.metrics
-
-        self.shapes = sizes if sizes is not None else self.DEFAULT_SHAPES
-
-        self.batch = batch
-        self.arg_func = arg_func
-        self.kwargs_func = kwargs_func
 
     def set_metrics(self, user_desired_metrics: Optional[List[str]]):
         # Validate user-specified metrics
@@ -96,8 +89,10 @@ class Benchmark:
             user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
 
-    def set_shapes(self):
-        self.shapes = self.DEFAULT_SHAPES
+    def set_shapes(self, op_specified_shapes: Optional[List[Any]]):
+        self.shapes = (
+            op_specified_shapes if op_specified_shapes else self.DEFAULT_SHAPES
+        )
 
     def record_shapes(self, *args, **kwargs):
         def deep_parse(item):
@@ -116,7 +111,7 @@ class Benchmark:
         return parsed_args if len(parsed_args) > 0 else parsed_kwargs
 
     def init_user_config(self):
-        # self.device = Config.device
+        # TODO: device setting
         self.cpu_mode = Config.cpu_mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
@@ -176,31 +171,29 @@ class Benchmark:
         except StopIteration:
             return None
 
+    def unpack_to_args_kwargs(self, input_tuple: Tuple[Any, ...]):
+        args = []
+        kwargs = {}
+        for item in input_tuple:
+            if (
+                isinstance(item, torch.Tensor)
+                or isinstance(item, (int, float))
+                or item is None
+                or isinstance(item, (list, tuple))
+            ):
+                args.append(item)
+            elif isinstance(item, dict):
+                kwargs.update(item)
+        return args, kwargs
+
     def run(self):
         self.init_user_config()
-
-        def _unpack_to_args_kwargs(input_tuple: Tuple[Any, ...]):
-            args = []
-            kwargs = {}
-            for item in input_tuple:
-                if (
-                    isinstance(item, torch.Tensor)
-                    or isinstance(item, (int, float))
-                    or item is None
-                    or isinstance(item, (list, tuple))
-                ):
-                    args.append(item)
-                elif isinstance(item, dict):
-                    kwargs.update(item)
-            return args, kwargs
-
         for dtype in self.to_bench_dtypes:
             metrics = []
             for input in self.get_input_iter(dtype):
                 metric = BenchmarkMetrics()
-                args, kwargs = _unpack_to_args_kwargs(input)
-                shape = self.record_shapes(*args, **kwargs)
-                metric.shape_detail = shape
+                args, kwargs = self.unpack_to_args_kwargs(input)
+                metric.shape_detail = self.record_shapes(*args, **kwargs)
                 if "latency_base" in self.to_bench_metrics:
                     metric.latency_base = self.get_latency(
                         self.torch_op, *args, **kwargs
@@ -217,59 +210,12 @@ class Benchmark:
                     metric.speedup = metric.latency / metric.latency_base
                 if "tflops" in self.to_bench_metrics:
                     metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
+                    # utilization = tflops / gems_latency / 1e12 * 1e3
                 metrics.append(metric)
             result = BenchmarkResult(
                 op_name=self.op_name,
                 dtype=str(dtype),
                 mode="cpu" if Config.cpu_mode else "cuda",
-                result=metrics,
-            )
-            print(result)
-
-    def legacy_run(self):
-        for dtype in self.dtypes:
-            metrics = []
-            for size in self.shapes:
-                args = ()
-                if self.arg_func is not None:
-                    args = self.arg_func(dtype, self.batch, size)
-                if self.is_backward:
-                    args = tuple(
-                        a.clone().requires_grad_()
-                        if torch.is_tensor(a) and torch.is_floating_point(a)
-                        else a
-                        for a in args
-                    )
-
-                kwargs = {}
-                if self.kwargs_func is not None:
-                    kwargs = self.kwargs_func(dtype, self.batch, size)
-
-                torch_latency = self.get_latency(self.torch_op, *args, **kwargs)
-                if self.gems_op:
-                    gems_latency = self.get_latency(self.gems_op, *args, **kwargs)
-                else:
-                    with flag_gems.use_gems():
-                        gems_latency = self.get_latency(self.torch_op, *args, **kwargs)
-                speedup = torch_latency / gems_latency
-
-                tflops = self.get_tflops(self.torch_op, *args, **kwargs)
-                utilization = tflops / gems_latency / 1e12 * 1e3
-
-                metric = BenchmarkMetrics(
-                    shape_detail=size,
-                    latency_base=torch_latency,
-                    latency=gems_latency,
-                    speedup=speedup,
-                    tflops=tflops,
-                    utilization=utilization,
-                )
-                metrics.append(metric)
-
-            result = BenchmarkResult(
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode="cpu" if self.cpu_mode else "cuda",
                 result=metrics,
             )
             print(result)
@@ -288,8 +234,8 @@ class GenericBenchmark(Benchmark):
     def set_shapes(self):
         self.shapes = self.DEFAULT_SHAPES[:]
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            # TODO: more suitable shapes
-            small_shapes = [(2, 2), (1024, 1)]
+            # TODO: more suitable shapes, topk 有要求。
+            small_shapes = [(1024, 10)]
             large_shapes = [
                 (10240, 10240),
             ]
@@ -301,49 +247,26 @@ class GenericBenchmark(Benchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
 
+def generate_tensor_input(shape, dtype, device):
+    if dtype in FLOAT_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
+    elif dtype in INT_DTYPES:
+        return torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            shape,
+            dtype=dtype,
+            device=device,
+        )
+    elif dtype in BOOL_DTYPES:
+        return torch.randint(0, 2, size=shape, dtype=dtype, device=device)
+
+
 def binary_input_fn(shape, cur_dtype, device):
-    inp1 = torch.randn(shape, dtype=cur_dtype, device=device)
-    inp2 = torch.randn(shape, dtype=cur_dtype, device=device)
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
     yield inp1, inp2
 
 
 def unary_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
-    yield inp,
-
-
-def unary_arg(dtype, batch, shape):
-    if dtype in FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
-    elif dtype in INT_DTYPES:
-        inp = torch.randint(low=0, high=0x7FFF, size=shape, dtype=dtype, device="cuda")
-    return (inp,)
-
-
-def binary_args(dtype, batch, shape):
-    if dtype in FLOAT_DTYPES:
-        inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-        inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    elif dtype in INT_DTYPES:
-        inp1 = torch.randint(
-            torch.iinfo(dtype).min,
-            torch.iinfo(dtype).max,
-            shape,
-            dtype=dtype,
-            device="cuda",
-        )
-        inp2 = torch.randint(
-            torch.iinfo(dtype).min,
-            torch.iinfo(dtype).max,
-            shape,
-            dtype=dtype,
-            device="cuda",
-        )
-    return inp1, inp2
-
-
-def ternary_args(dtype, batch, shape):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp3 = torch.randn(shape, dtype=dtype, device="cuda")
-    return inp1, inp2, inp3
+    yield generate_tensor_input(shape, cur_dtype, device),

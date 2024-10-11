@@ -89,9 +89,9 @@ def get_recommended_shapes(
         return sorted(shapes, key=lambda x: reduce(operator.mul, x))
 
     if op_specified_shapes:
-        return op_specified_shapes
         # TODO: handle situation that list as the basic element in shape.
-        # return _shapes_sort(op_specified_shapes)
+        return _shapes_sort(op_specified_shapes)
+
     shapes = DEFAULT_NON_BLAS_BENCH_SHAPES
     if op_name in ["bmm", "mv"]:
         shapes = DEFAULT_BMNK_BLAS
