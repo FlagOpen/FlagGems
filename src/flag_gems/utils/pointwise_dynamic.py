@@ -721,9 +721,11 @@ class KernelGenerator:
     def codegen_1d_tile(self, code):
         """Generate kernel 1d tile & 1d grid with gsl support."""
         self.gen_import_function(code)
+        print(code)
         self.gen_decorators(code)
+        print(code)
         self.gen_signature_1d_tile(code)
-
+        print(code)
         # function body for rank-0
         if self.ndim == 0:
             with code.indent():
@@ -1081,7 +1083,7 @@ class PointwiseDynamicFunction:
         self.config: CodeGenConfig = config or CodeGenConfig(
             512,
             (65536, 65536, 65536),
-            32,
+            16,
             True,
             prefer_1d_tile=int(triton.__version__[0]) < 3,
         )

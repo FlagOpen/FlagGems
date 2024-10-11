@@ -114,7 +114,8 @@ def _float_floordiv(x, y):
     different_sign = (x < 0) ^ (y < 0)
 
     # NOTE: we have to use div_rn explicitly here
-    q = div_rn(x - remainder, y)
+    # q = div_rn(x - remainder, y)
+    q = (x - remainder) / y
     q = tl.where(imperfect & different_sign, q - 1, q)
 
     floor_q = tl.math.floor(q)
@@ -136,7 +137,7 @@ def floor_div_func(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor((x / y))
+        return _float_floordiv(x, y)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -145,7 +146,7 @@ def floor_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor((x / y))
+        return _float_floordiv(x, y)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
@@ -154,7 +155,7 @@ def floor_div_func_scalar_tensor(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor((x / y))
+        return _float_floordiv(x, y)
 
 
 def floor_divide(A, B):

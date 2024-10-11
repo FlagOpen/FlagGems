@@ -17,7 +17,12 @@ except ImportError:
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func(x, exponent):
-    return _pow(x.to(tl.float32), exponent)
+    if x.type.element_ty == tl.bfloat16:
+        return _pow(x.to(tl.float32), exponent)
+    elif x.type.element_ty == tl.float16:
+        return _pow(x.to(tl.float32), exponent)
+    else:
+        return _pow(x.to(tl.float64), exponent)
 
 
 def pow_tensor_tensor(A, exponent):
@@ -28,7 +33,12 @@ def pow_tensor_tensor(A, exponent):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_tensor_scalar(x, exponent):
-    return _pow(x.to(tl.float32), exponent)
+    if x.type.element_ty == tl.bfloat16:
+        return _pow(x.to(tl.float32), exponent)
+    elif x.type.element_ty == tl.float16:
+        return _pow(x.to(tl.float32), exponent)
+    else:
+        return _pow(x.to(tl.float64), exponent)
 
 
 def pow_tensor_scalar(A, exponent):
@@ -39,7 +49,12 @@ def pow_tensor_scalar(A, exponent):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_scalar_tensor(x, exponent):
-    return _pow(x.to(tl.float32), exponent)
+    if exponent.type.element_ty == tl.bfloat16:
+        return _pow(x.to(tl.float32), exponent)
+    elif exponent.type.element_ty == tl.float16:
+        return _pow(x.to(tl.float32), exponent)
+    else:
+        return _pow(x.to(tl.float64), exponent)
 
 
 def pow_scalar(A, exponent):

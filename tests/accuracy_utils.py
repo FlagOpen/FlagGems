@@ -31,15 +31,6 @@ INT16_MAX = torch.iinfo(torch.int16).max
 INT32_MIN = torch.iinfo(torch.int32).min
 INT32_MAX = torch.iinfo(torch.int32).max
 
-RESOLUTION = {
-    torch.bool: 0,
-    torch.int16: 0,
-    torch.int32: 0,
-    torch.float16: 1e-3,
-    torch.float32: 1e-3,
-    torch.bfloat16: 0.016,
-}
-
 sizes_one = [1]
 sizes_pow_2 = [2**d for d in range(4, 11, 2)]
 sizes_noalign = [d + 17 for d in sizes_pow_2]
