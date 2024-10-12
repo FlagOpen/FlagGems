@@ -139,6 +139,19 @@ def pytest_configure(config):
         )
 
 
+BUILTIN_MARKS = {
+    "parametrize",
+    "skip",
+    "skipif",
+    "xfail",
+    "usefixtures",
+    "filterwarnings",
+    "timeout",
+    "tryfirst",
+    "trylast",
+}
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_once(request):
     if request.config.getoption("--query"):
@@ -153,13 +166,17 @@ def extract_and_log_op_attributes(request):
 
     # Extract the 'recommended_shapes' attribute from the pytest marker decoration.
     for mark in request.node.iter_markers():
+        if mark.name in BUILTIN_MARKS:
+            continue
         op_specified_shapes = mark.kwargs.get("recommended_shapes")
+        shape_desc = mark.kwargs.get("shape_desc", "M, N")
         rec_core_shapes = get_recommended_shapes(mark.name, op_specified_shapes)
 
         if rec_core_shapes:
             attri = OperationAttribute(
                 op_name=mark.name,
                 recommended_core_shapes=rec_core_shapes,
+                shape_desc=shape_desc,
             )
             print(attri)
             op_attributes.append(attri.to_dict())

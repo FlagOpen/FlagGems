@@ -9,13 +9,6 @@ from .conftest import BenchLevel, Config
 from .performance_utils import Benchmark, GenericBenchmark, generate_tensor_input
 
 
-def where_input_fn(shape, cur_dtype, device):
-    inp1 = generate_tensor_input(shape, cur_dtype, device)
-    inp2 = generate_tensor_input(shape, cur_dtype, device)
-    condition = inp1 > 0
-    yield condition, inp1, inp2
-
-
 def flip_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     yield inp, {"dims": [0, 1]}
@@ -30,13 +23,22 @@ def masked_fill_input_fn(shape, cur_dtype, device):
 
 def tile_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
-    yield inp, {"dims": [2, 4]}
+    yield inp, {
+        "dims": [2, 4]
+    }  # TODO: Fails when encountering certain corner shape cases.
 
 
 def repeat_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     inp2 = [2, 4]
-    yield inp1, inp2,
+    yield inp1, inp2,  # TODO: Fails when encountering certain corner shape cases.
+
+
+def where_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    condition = inp1 > 0
+    yield condition, inp1, inp2
 
 
 @pytest.mark.parametrize(

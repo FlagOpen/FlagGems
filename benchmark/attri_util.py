@@ -1,3 +1,4 @@
+import itertools
 import operator
 from dataclasses import dataclass, fields
 from enum import Enum
@@ -35,18 +36,58 @@ LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
 # but will change to (B, M, N) in the future.
 DEFAULT_NON_BLAS_BENCH_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
 # BLAS shapes are defined as (B, M, N, K) or (M, N, K), differing from non-BLAS shapes.
-DEFAULT_BMNK_BLAS = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
-DEFAULT_MNK_BLAS = [(shape, shape, shape) for shape in LEGACY_SHAPES]
-# GROUP_NORM shapes are defined as (N, C, H, W, num_groups)
-DEFAULT_GROUPNORM_SHAPES = [
-    (16, 16, 8, 8, 16),
-    (16, 16, 8, 48, 16),
-    (16, 16, 8, 88, 16),
-    (16, 16, 8, 128, 16),
-    (16, 16, 8, 168, 16),
+DEFAULT_BMNK_BLAS = [(16, shape, shape, shape) for shape in LEGACY_SHAPES[:-1]] + [
+    (2, 4096, 4096, 4096)
 ]
 
-DEFAULT_BATCH = 1
+DEFAULT_MNK_BLAS = [
+    (64, 64, 64),
+    (384, 384, 384),
+    (1024, 1024, 1024),
+    (4096, 4096, 4096),  # from perf
+    (8192, 8192, 8192),  # from perf
+]
+
+DEFAULT_BINARY_POINTWISE_SHAPES = [
+    (64, 64),
+    (1024, 1024),
+    (4096, 4096),
+    (64, 64, 64),
+    (1024, 1024, 1024),  # from perf
+]
+
+# NORM shapes can be either 3D or 4D:
+# - 3D shapes are represented as [batch_size, channels, hidden_size]
+# - 4D shapes are represented as [batch_size, channels, height, width]
+# The default number of groups (num_groups) for GroupNorm is set to channels // 2
+DEFAULT_NORM_SHAPES = [
+    (4, 16, 64, 4),
+    (16, 16, 8, 48),
+    (16, 16, 8, 88),
+    (16, 16, 128),
+    (20, 6, 65536),  # from perf
+]
+
+
+def llama_shapes():
+    # batch sizes * seq lengths
+    BS = [2**i for i in range(0, 17)]
+    # attn: wqkv, wo; ffn: w13, w2
+    KN = [
+        (4096, 12288),
+        (4096, 4096),
+        (4096, 22016),
+        (11008, 4096),
+        (8192, 1280),
+        (1024, 8192),
+        (8192, 7168),
+        (3584, 8192),
+        (16384, 2304),
+        (2048, 16384),
+        (16384, 13312),
+        (6656, 16384),
+    ]
+    return [(bs, n, k) for bs, (k, n) in itertools.product(BS, KN)]
 
 
 @dataclass
@@ -82,6 +123,37 @@ DEFAULT_METRICS = [
 ]
 
 
+def check_metric_dependencies(
+    requested_metrics: Optional[List[str]],
+) -> Optional[List[str]]:
+    """
+    Checks if the requested metrics satisfy their dependencies.
+    Returns True if the dependencies are satisfied, otherwise False.
+    """
+    # Predefined dependencies between metrics
+    buildin_dependencies = {
+        "speedup": ["latency", "latency_base"],
+        "utilization": ["latency", "tflops"],
+    }
+    unsatisfied_metrics = []
+    if requested_metrics is None:
+        return unsatisfied_metrics
+
+    satisfied_metrics = set()
+    for metric in requested_metrics:
+        if metric not in buildin_dependencies:
+            # If the metric has no dependencies, it's automatically satisfied
+            satisfied_metrics.add(metric)
+        else:
+            required_metrics = buildin_dependencies[metric]
+            # Check if all dependencies are in the satisfied metrics list
+            if not all(req in satisfied_metrics for req in required_metrics):
+                unsatisfied_metrics.append(metric)
+            else:
+                satisfied_metrics.add(metric)
+    return unsatisfied_metrics
+
+
 def get_recommended_shapes(
     op_name: str, op_specified_shapes: Optional[List[Tuple[int, ...]]]
 ):
@@ -110,12 +182,12 @@ class OperationAttribute:
     op_name: str
     # Recommended core benchmark shapes for the given operation
     recommended_core_shapes: List[Tuple[int, ...]]
+    shape_desc: str
 
     def __str__(self) -> str:
-        shapes_type = "(B),M,N,K" if self.op_name in BLAS_OPS.value else "(B),M,N"
         return (
             f"{'Operator name':<40} |  {self.op_name}\n"
-            f"{'Recommended Core Shapes[' + shapes_type + ']':<40} |  {self.recommended_core_shapes}\n"
+            f"{'Recommended Core Shapes[' + self.shape_desc + ']':<40} |  {self.recommended_core_shapes}\n"
         )
 
     def to_dict(self) -> dict:
@@ -171,10 +243,17 @@ class BenchmarkResult:
         ]
         legacy_shapes_2d = [(1024, shape) for shape in LEGACY_SHAPES]
 
-        if self.op_name in BLAS_OPS.value and metrics.shape_detail in legacy_shapes_4d:
-            metrics.legacy_shape = metrics.shape_detail[-1]
-        elif metrics.shape_detail in legacy_shapes_2d:
-            metrics.legacy_shape = metrics.shape_detail[-1]
+        first_shape = (
+            metrics.shape_detail[0] if isinstance(metrics.shape_detail, list) else None
+        )
+        to_record_shape = (
+            tuple(first_shape) if isinstance(first_shape, torch.Size) else None
+        )
+
+        if self.op_name in BLAS_OPS.value and to_record_shape in legacy_shapes_4d:
+            metrics.legacy_shape = to_record_shape[-1]
+        elif to_record_shape in legacy_shapes_2d:
+            metrics.legacy_shape = to_record_shape[-1]
         else:
             metrics.legacy_shape = None
 

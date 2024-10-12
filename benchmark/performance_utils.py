@@ -15,6 +15,7 @@ from .attri_util import (
     BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
+    check_metric_dependencies,
 )
 from .conftest import Config
 
@@ -68,6 +69,11 @@ class Benchmark:
             raise ValueError(
                 f"Given metric(s) '{', '.join(invalid_metrics)}' can't be supported by this op '{self.op_name}'"
             )
+        unsatisfied_metrics = check_metric_dependencies(user_desired_metrics)
+        if unsatisfied_metrics:
+            raise ValueError(
+                f"Given metric(s) '{', '.join(unsatisfied_metrics)}' do not satisfy their dependencies"
+            )
 
         self.to_bench_metrics = (
             user_desired_metrics if user_desired_metrics else self.metrics
@@ -89,7 +95,7 @@ class Benchmark:
             user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
 
-    def set_shapes(self, op_specified_shapes: Optional[List[Any]]):
+    def set_shapes(self, op_specified_shapes: Optional[List[Any]] = None):
         self.shapes = (
             op_specified_shapes if op_specified_shapes else self.DEFAULT_SHAPES
         )
@@ -149,7 +155,6 @@ class Benchmark:
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
         A proper implementation will be developed in the future."""
-
         from torch.utils.flop_counter import FlopCounterMode
 
         fn = lambda: op(*args, **kwargs)
@@ -184,6 +189,13 @@ class Benchmark:
                 args.append(item)
             elif isinstance(item, dict):
                 kwargs.update(item)
+        if self.is_backward:
+            args = [
+                a.clone().requires_grad_()
+                if torch.is_tensor(a) and torch.is_floating_point(a)
+                else a
+                for a in args
+            ]
         return args, kwargs
 
     def run(self):
@@ -207,11 +219,12 @@ class Benchmark:
                                 self.torch_op, *args, **kwargs
                             )
                 if "speedup" in self.to_bench_metrics:
-                    metric.speedup = metric.latency / metric.latency_base
+                    metric.speedup = metric.latency_base / metric.latency
                 if "tflops" in self.to_bench_metrics:
                     metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
-                    # utilization = tflops / gems_latency / 1e12 * 1e3
+                    # utilization = metric.tflops / metric.latency / 1e12 * 1e3
                 metrics.append(metric)
+                # TODO: try gc collect to avoid cuda out of memory
             result = BenchmarkResult(
                 op_name=self.op_name,
                 dtype=str(dtype),
@@ -232,15 +245,12 @@ class GenericBenchmark(Benchmark):
         self.input_fn = input_fn
 
     def set_shapes(self):
-        self.shapes = self.DEFAULT_SHAPES[:]
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            # TODO: more suitable shapes, topk 有要求。
-            small_shapes = [(1024, 10)]
-            large_shapes = [
-                (10240, 10240),
-            ]
-            self.shapes.extend(small_shapes)
-            self.shapes.extend(large_shapes)
+        if Config.bench_level == BenchLevel.CORE:
+            self.shapes = self.DEFAULT_SHAPES[:]
+        else:
+            # TODO: consider 3d shapes(some operations like tile failed)
+            more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+            self.shapes = list(dict.fromkeys(self.DEFAULT_SHAPES + more_shapes_2d))
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
