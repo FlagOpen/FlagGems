@@ -638,6 +638,7 @@ def sorted_indices_unique_flat(
     next_power_num_tasks = triton.next_power_of_2(num_tasks)
     tile_size = min(8192, next_power_num_tasks)
     global_ctas_num = triton.cdiv(num_tasks, tile_size)
+
     if global_ctas_num <= 8192:
         min_tile_size = 512 if global_ctas_num > 32 else 256
         tile_size = max(
@@ -775,10 +776,18 @@ def _unique2(
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data, sorted_indices, return_inverse, return_counts
         )
+    elif return_inverse and return_counts:
+        sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
+        data_out, inverse_indices, counts = sorted_indices_unique_flat(
+            sorted_data, sorted_indices, return_counts = False
+        )
+        _, _, counts = sorted_quick_unique_flat(
+            sorted_data, return_counts
+        )
     elif return_inverse:
         sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
         data_out, inverse_indices, counts = sorted_indices_unique_flat(
-            sorted_data, sorted_indices, return_counts
+            sorted_data, sorted_indices, return_counts = False
         )
     else:
         sorted_data, _ = torch.sort(in0.ravel(), stable=False)
