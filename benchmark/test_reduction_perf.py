@@ -379,15 +379,15 @@ def test_perf_index_select():
 #         mask = torch.randn([batch, size], dtype=dtype, device="musa") < 0.3
 #         return (inp, mask)
 
-    bench = Benchmark(
-        op_name="masked_select",
-        torch_op=torch.masked_select,
-        arg_func=masked_select_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+#     bench = Benchmark(
+#         op_name="masked_select",
+#         torch_op=torch.masked_select,
+#         arg_func=masked_select_args,
+#         dtypes=FLOAT_DTYPES,
+#         batch=REDUCTION_BATCH,
+#         sizes=SIZES,
+#     )
+#     bench.run()
 
 
 def test_perf_scatter():

@@ -38,4 +38,5 @@ def rsub(A, B, *, alpha=1):
         return rsub_func_scalar_tensor(A, B, alpha)
     else:
         # Both scalar
-        return B - A * alpha
+        return torch.tensor(B - A * alpha)
+

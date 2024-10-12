@@ -145,8 +145,8 @@ WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
 @pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
 def test_accuracy_weightnorm(shape, dtype, dim):
     dim = dim % len(shape)
-    v = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    g = torch.randn(shape[dim], dtype=dtype, device="cuda", requires_grad=True)
+    v = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
+    g = torch.randn(shape[dim], dtype=dtype, device="musa", requires_grad=True)
 
     ref_v = to_reference(v, False)
     ref_g = to_reference(g, False)

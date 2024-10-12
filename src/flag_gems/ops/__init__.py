@@ -84,6 +84,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
+from .rsub import rsub
 from .scatter import scatter
 from .sigmoid import sigmoid
 from .silu import silu
@@ -201,6 +202,7 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
+    "rsub",
     "scatter",
     "sigmoid",
     "silu",
