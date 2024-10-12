@@ -135,7 +135,12 @@ def _float_floordiv(x, y):
 @triton.jit
 def floor_div_func(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
-        return _int_floordiv(x, y)
+        if x.type.scalar.is_int16():
+            return _int_floordiv(x.to(tl.int32), y)
+        elif x.type.scalar.is_uint16():
+            return _int_floordiv(x.to(tl.uint32), y)
+        else:
+            return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
@@ -144,7 +149,12 @@ def floor_div_func(x, y):
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
-        return _int_floordiv(x, y)
+        if x.type.scalar.is_int16():
+            return _int_floordiv(x.to(tl.int32), y)
+        elif x.type.scalar.is_uint16():
+            return _int_floordiv(x.to(tl.uint32), y)
+        else:
+            return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
 
@@ -153,10 +163,14 @@ def floor_div_func_tensor_scalar(x, y):
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
-        return _int_floordiv(x, y)
+        if x.type.scalar.is_int16():
+            return _int_floordiv(x.to(tl.int32), y)
+        elif x.type.scalar.is_uint16():
+            return _int_floordiv(x.to(tl.uint32), y)
+        else:
+            return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
-
 
 def floor_divide(A, B):
     logging.debug("GEMS FLOOR_DIVIDE")
