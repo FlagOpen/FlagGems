@@ -778,10 +778,10 @@ def test_accuracy_masked_select(shape, dtype, threshold):
     mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
 
     ref_inp = to_reference(inp)
-    ref_mask = to_reference(mask)
-    ref_out = torch.masked_select(ref_inp, ref_mask)
+    ref_index = to_reference(index)
+    ref_out = torch.index_select(ref_inp, dim, ref_index)
     with flag_gems.use_gems():
-        res_out = torch.masked_select(inp, mask)
+        res_out = torch.index_select(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
 
