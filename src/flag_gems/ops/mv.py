@@ -11,7 +11,7 @@ from ..utils import libentry
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=w)
-        for m in [32, 64, 128]
+        for m in [1, 32, 64, 128]
         for n in [1, 2, 4, 8]
         for s in [3, 4]
         for w in [4, 8]
