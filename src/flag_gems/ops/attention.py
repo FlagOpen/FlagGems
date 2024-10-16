@@ -20,6 +20,7 @@ def _attn_fwd_inner(
     stride_attn_mask_kv_seqlen,  #
     start_m,
     qk_scale,  #
+    q_load_mask,
     BLOCK_M: tl.constexpr,
     HEAD_DIM: tl.constexpr,
     BLOCK_N: tl.constexpr,  #
@@ -41,18 +42,23 @@ def _attn_fwd_inner(
 
     K_block_ptr += lo * stride_k_seqlen
     V_block_ptr += lo * stride_v_seqlen
+    kv_load_mask = lo + offs_n < KV_CTX
     if HAS_ATTN_MASK:
         mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
     # loop over k, v and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
-        start_n = tl.multiple_of(start_n, BLOCK_N)
+        # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        k = tl.load(K_block_ptr)
+        k = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
         qk = tl.dot(q, k)
 
         if HAS_ATTN_MASK:
-            attn_mask = tl.load(mask_block_ptr)
+            attn_mask = tl.load(
+                mask_block_ptr,
+                mask=q_load_mask[:, None] & kv_load_mask[None, :],
+                other=0.0,
+            )
 
         if STAGE == 2:
             mask = offs_m[:, None] >= (start_n + offs_n[None, :])
@@ -84,11 +90,11 @@ def _attn_fwd_inner(
         # -- update output accumulator --
         acc = acc * alpha[:, None]
         # update acc
-        v = tl.load(V_block_ptr)
+        v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
-            p = p.to(tl.float16)
+            p = p.to(q.dtype)
         acc = tl.dot(p, v, acc)
         # update m_i and l_i
         m_i = m_ij
@@ -110,7 +116,7 @@ configs = [
     triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
     for BM in [64, 128]
     for BN in [32, 64]
-    for s in [2, 3, 4]
+    for s in [1, 2, 3, 4]
     for w in [4, 8]
 ]
 
@@ -182,6 +188,7 @@ def _attn_fwd(
 
     # initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    q_load_mask = offs_m < Q_CTX
     offs_n = tl.arange(0, BLOCK_N)
 
     Q_block_ptr = (
@@ -232,7 +239,7 @@ def _attn_fwd(
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
     # load q: it will stay in SRAM throughout
-    q = tl.load(Q_block_ptr)
+    q = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
     # stage 1: off-band
     # For causal = True, STAGE = 3 and _attn_fwd_inner gets 1 as its STAGE
     # For causal = False, STAGE = 1, and _attn_fwd_inner gets 3 as its STAGE
@@ -250,6 +257,7 @@ def _attn_fwd(
             stride_attn_mask_kv_seqlen,  #
             start_m,
             qk_scale,  #
+            q_load_mask,
             BLOCK_M,
             HEAD_DIM,
             BLOCK_N,  #
@@ -277,6 +285,7 @@ def _attn_fwd(
             stride_attn_mask_kv_seqlen,  #
             start_m,
             qk_scale,  #
+            q_load_mask,
             BLOCK_M,
             HEAD_DIM,
             BLOCK_N,  #
@@ -291,8 +300,8 @@ def _attn_fwd(
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
-    tl.store(m_ptrs, m_i)
-    tl.store(O_block_ptr, acc.to(Out.type.element_ty))
+    tl.store(m_ptrs, m_i, mask=q_load_mask)
+    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
 def scaled_dot_product_attention(
@@ -306,7 +315,6 @@ def scaled_dot_product_attention(
     enable_gqa=False,
 ):
     logging.debug("GEMS SCALED DOT PRODUCT ATTENTION")
-
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -318,7 +326,6 @@ def scaled_dot_product_attention(
     o = torch.empty_like(query)
 
     stage = 3 if is_causal else 1
-    extra_kern_args = {}
 
     if scale is None:
         sm_scale = 1.0 / (HEAD_DIM_K**0.5)
@@ -350,12 +357,6 @@ def scaled_dot_product_attention(
         stride_attn_mask_head = 1
         stride_attn_mask_q_seqlen = 1
         stride_attn_mask_kv_seqlen = 1
-
-    print("HAS_ATTN MASK IS: ", HAS_ATTN_MASK)
-    print("stride_attn_mask_batch is: ", stride_attn_mask_batch)
-    print("stride_attn_mask_head is: ", stride_attn_mask_head)
-    print("stride_attn_mask_q_seqlen is: ", stride_attn_mask_q_seqlen)
-    print("stride_attn_mask_kv_seqlen is: ", stride_attn_mask_kv_seqlen)
 
     _attn_fwd[grid](
         query,
@@ -393,6 +394,5 @@ def scaled_dot_product_attention(
         HEAD_DIM=HEAD_DIM_K,  #
         STAGE=stage,  #
         HAS_ATTN_MASK=HAS_ATTN_MASK,  #
-        **extra_kern_args,
     )
     return o
