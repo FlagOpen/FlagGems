@@ -4,31 +4,16 @@ import pytest
 import torch
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES
-from .performance_utils import Benchmark
+from .performance_utils import Benchmark, generate_tensor_input
 
 
 class UnaryPointwiseBenchmark(Benchmark):
     """
     Base class for benchmarking unary pointwise operations.
     """
-
-    def _generate_inputs(self, shape, cur_dtype):
-        if cur_dtype in FLOAT_DTYPES:
-            return torch.randn(shape, dtype=cur_dtype, device=self.device)
-        elif cur_dtype in INT_DTYPES:
-            return torch.randint(
-                torch.iinfo(cur_dtype).min,
-                torch.iinfo(cur_dtype).max,
-                shape,
-                dtype=cur_dtype,
-                device=self.device,
-            )
-        elif cur_dtype in BOOL_DTYPES:
-            return torch.randint(0, 2, size=shape, dtype=cur_dtype, device=self.device)
-
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            inp = self._generate_inputs(shape, cur_dtype)
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp,
 
 
@@ -40,6 +25,9 @@ forward_operations = [
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
     ("triu", torch.triu, FLOAT_DTYPES),
+    # Dropout
+    ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
+    ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),

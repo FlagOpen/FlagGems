@@ -17,6 +17,10 @@ def full_like_input_fn(shape, dtype, device):
     yield {"input": inp, "fill_value": 3.1415926},
 
 
+def fill_input_fn(shape, dtype, device):
+    input = torch.empty(shape, dtype=dtype, device=device)
+    yield input, 3.14159,
+
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
     # generic tensor constructor
@@ -30,6 +34,7 @@ tensor_constructor_operations = [
     ("ones_like", torch.ones_like, unary_input_fn),
     ("zeros_like", torch.zeros_like, unary_input_fn),
     # tensor constructor with given value
+    ("fill", torch.fill, fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
 ]

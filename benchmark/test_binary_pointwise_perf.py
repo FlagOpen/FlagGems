@@ -16,13 +16,13 @@ from .performance_utils import Benchmark, generate_tensor_input
 special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
 shapes_3d = [(shape[0], *shape) for shape in DEFAULT_NON_BLAS_BENCH_SHAPES]
 sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-COMPREHENSIVE_SHAPES = set(
+COMPREHENSIVE_SHAPES = list(dict.fromkeys(
     DEFAULT_BINARY_POINTWISE_SHAPES
     + DEFAULT_NON_BLAS_BENCH_SHAPES
     + special_shapes_2d
     + shapes_3d
     + sp_shapes_3d
-)
+))
 
 
 class BinaryPointwiseBenchmark(Benchmark):
@@ -64,6 +64,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("sub", torch.sub, FLOAT_DTYPES),
             ("floor_divide", torch.floor_divide, INT_DTYPES),
             ("remainder", torch.remainder, INT_DTYPES),
+            ("rsub", torch.rsub, FLOAT_DTYPES),
             # Comparison operations
             ("eq", torch.eq, FLOAT_DTYPES),
             ("ge", torch.ge, FLOAT_DTYPES),

@@ -1,5 +1,6 @@
 import math
 from typing import Generator
+import random
 
 import pytest
 import torch
@@ -10,13 +11,26 @@ from .performance_utils import (
     Config,
     GenericBenchmark,
     binary_input_fn,
-    unary_input_fn,
+    generate_tensor_input
 )
 
 
 def topk_input_fn(shape, dtype, device):
     x = torch.randn(shape, device=device, dtype=dtype)
-    yield {"x": x, "k": 5, "dim": -1},
+    k = 5 if shape[-1] > 5 else shape[-1]
+    yield {"x": x, "k": k, "dim": -1},
+    #TODO:  Currently only support sorted == True and only support topk in last dimension
+    # if Config.bench_level == BenchLevel.COMPREHENSIVE:
+    #     k = 5 if shape[0] > 5 else shape[0]
+    #     yield {"x": x, "k": k, "dim": 0},
+    #     yield {"x": x, "k": k, "dim": -1, "sorted": False},
+
+
+def sort_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    yield inp, {"dim" : -1},
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield inp, {"dim": 0},
 
 
 def resolve_neg_input_fn(shape, dtype, device):
@@ -28,18 +42,27 @@ def resolve_conj_input_fn(shape, dtype, device):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     yield x.conj(),
 
+# TODO: set shape for isin. meet CUDA out of memory
+def isin_input_fn(shape, dtype, device):
+    elements = generate_tensor_input(shape, dtype, device)
+    test_elements = generate_tensor_input(shape, dtype, device)
+    yield elements, test_elements
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # assume_unique set to True
+        uniq_elements = torch.unique(generate_tensor_input(shape, dtype, device))
+        uniq_test_elements = torch.unique(generate_tensor_input(shape, dtype, device))
+        yield uniq_elements, uniq_test_elements, {"assume_unique": True}
 
-# Define operations and their corresponding input functions
 special_operations = [
-    # TODO: enable @pytest.mark.native_dropout or not
-    ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES, unary_input_fn),
-    # TODO: comprehensive situation, size should bigger than 5.
+    # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
+    ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
+    # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
-    ("isin", torch.isin, INT_DTYPES, binary_input_fn),
+    # Numerical Check
+    ("isin", torch.isin, INT_DTYPES + FLOAT_DTYPES, isin_input_fn),
 ]
-
 
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes, input_fn",
@@ -58,14 +81,10 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
-        inp = torch.randint(
-            torch.iinfo(dtype).min,
-            torch.iinfo(dtype).max,
-            shape,
-            dtype=dtype,
-            device=device,
-        )
+        inp = generate_tensor_input(shape, dtype, device)
         yield inp, {"sorted": True, "return_inverse": True, "return_counts": False},
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield inp, {"sorted": True, "return_inverse": False, "return_counts": True},
 
     bench = GenericBenchmark(
         input_fn=unique_input_fn,
@@ -76,6 +95,7 @@ def test_perf_unique():
     bench.run()
 
 
+# TODO: not supported for 3D. prob_dist must be 1 or 2 dim.
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
@@ -92,22 +112,14 @@ def test_multinomial_with_replacement():
     bench.run()
 
 
-# PAD_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES[:]
-# if Config.bench_level == BenchLevel.COMPREHENSIVE:
-#     PAD_SHAPES.extend(
-#         [
-#             (64, 64, 64, 64),
-#         ]
-#     )
 @pytest.mark.pad
 def test_perf_pad():
     def padding_input_fn(shape, dtype, device):
         input = torch.randn(shape, device=device, dtype=dtype)
         rank = input.ndim
-        pad_params = tuple(torch.randint(0, 10, [rank * 2]))
+        pad_params = [random.randint(0, 10) for _ in range(rank * 2)]
         pad_value = float(torch.randint(0, 1024, [1]))
-        yield {
-            "input": input,
+        yield input, {
             "pad": pad_params,
             "mode": "constant",
             "value": pad_value,
@@ -122,15 +134,23 @@ def test_perf_pad():
     bench.run()
 
 
-# # TODO: Add more GenericBenchmark shapes to handle three types of parameters: start, step, and end.
+#TODO: special case for tensor construct, move to other file
 @pytest.mark.arange
 def test_perf_arange():
     def arange_input_fn(shape, dtype, device):
         yield {
             "end": math.prod(shape),
-            "device": "cuda",
+            "device": device,
             "dtype": dtype,
-        }
+        },
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield {
+            "start": 0,
+            "end": math.prod(shape),
+            "step": 2,
+            "device": device,
+            "dtype": dtype,
+        },
 
     bench = GenericBenchmark(
         input_fn=arange_input_fn,
@@ -141,33 +161,16 @@ def test_perf_arange():
     bench.run()
 
 
-@pytest.mark.fill
-def test_perf_fill():
-    def fill_input_fn(shape, dtype, device):
-        value = 1.0
-        input = torch.empty(math.prod(shape), dtype=dtype, device=device)
-        yield {
-            "input": input,
-            "value": value,
-        },
-
-    bench = GenericBenchmark(
-        input_fn=fill_input_fn,
-        op_name="fill",
-        torch_op=torch.fill,
-        dtypes=FLOAT_DTYPES,
-    )
-    bench.run()
-
-
 @pytest.mark.repeat_interleave
 def test_perf_repeat_interleave():
     def repeat_interleave_self_input_fn(shape, dtype, device):
         if dtype in FLOAT_DTYPES:
+            # torch.repeat_interleave(input, repeats, dim=None, *, output_size=None) → Tensor
             inp = torch.randn(shape, dtype=dtype, device=device)
-            repeats = 2
+            repeats = 3
             yield inp, repeats
         elif dtype == torch.int32:
+            # torch.repeat_interleave(repeats, *) → Tensor
             repeats = torch.randint(
                 low=0,
                 high=0x7F,
@@ -196,7 +199,6 @@ EMBEDDING_RECOMMENDED_SHAPES = [
     (4, 8, 256),
     (4, 8, 4096),
 ]
-
 
 class EmbeddingBenchmark(Benchmark):
     # DEFAULT_SHAPES = EMBEDDING_RECOMMENDED_SHAPES

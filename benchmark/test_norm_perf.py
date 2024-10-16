@@ -77,7 +77,7 @@ def layernorm_input_fn(shape, dtype, device):
         ),
     ],
 )
-def test_group_layer_norm_benchmark(op_name, torch_op, input_fn):
+def test_group_and_layer_norm_benchmark(op_name, torch_op, input_fn):
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )

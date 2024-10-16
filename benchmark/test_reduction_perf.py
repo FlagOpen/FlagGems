@@ -13,40 +13,31 @@ from .attri_util import (
 from .conftest import BenchLevel, Config
 from .performance_utils import Benchmark, GenericBenchmark, generate_tensor_input
 
+sp_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+shapes_3d = [(shape[0], *shape) for shape in DEFAULT_NON_BLAS_BENCH_SHAPES]
+shapes_1d = [(1024 * 1024 * 1024)]
+sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+COMPREHENSIVE_SHAPES = list(dict.fromkeys(
+    DEFAULT_NON_BLAS_BENCH_SHAPES
+    + sp_shapes_2d
+    + shapes_3d
+    + sp_shapes_3d
+    + shapes_1d
+))
 
 class UnaryReductionBenchmark(Benchmark):
     """
     Base class for benchmarking reduction operations.
     """
-
     def set_shapes(self):
-        self.shapes = DEFAULT_NON_BLAS_BENCH_SHAPES[:]
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            MORE_SHAPES = [(320, 15), (128, 64, 60)]
-            MORE_BATCHS = [4, 20, 32]
-            combinations = [
-                (batch, *shape)
-                for batch, shape in itertools.product(MORE_BATCHS, MORE_SHAPES)
-            ]
-            self.shapes.extend(combinations)
-
-    def _generate_inputs(self, shape, cur_dtype):
-        if cur_dtype in FLOAT_DTYPES:
-            return torch.randn(shape, dtype=cur_dtype, device=self.device)
-        elif cur_dtype in INT_DTYPES:
-            return torch.randint(
-                torch.iinfo(cur_dtype).min,
-                torch.iinfo(cur_dtype).max,
-                shape,
-                dtype=cur_dtype,
-                device=self.device,
-            )
-        elif cur_dtype in BOOL_DTYPES:
-            return torch.randint(0, 2, size=shape, dtype=cur_dtype, device=self.device)
+            self.shapes = COMPREHENSIVE_SHAPES
+        else:
+            self.shapes = DEFAULT_NON_BLAS_BENCH_SHAPES
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            inp = self._generate_inputs(shape, cur_dtype)
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp,
 
 

@@ -61,7 +61,8 @@ def hstack_vstack_input_fn(shape, dtype, device):
             torch.cat,
             stack_cat_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=pytest.mark.cat(recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES),
+            marks=pytest.mark.cat(recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES, shape_desc="((B), M, N) * 3"
+            ),
         ),
         pytest.param(
             "stack",
@@ -69,7 +70,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             stack_cat_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.stack(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES
+                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES, shape_desc="((B), M, N) * 3"
             ),
         ),
         pytest.param(
@@ -78,7 +79,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             hstack_vstack_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.hstack(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES
+                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES, shape_desc="((B), M, N) * 3"
             ),
         ),
         pytest.param(
@@ -87,7 +88,7 @@ def hstack_vstack_input_fn(shape, dtype, device):
             hstack_vstack_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.vstack(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES
+                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES, shape_desc="((B), M, N) * 3"
             ),
         ),
     ],

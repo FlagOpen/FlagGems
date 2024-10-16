@@ -114,7 +114,9 @@ class Benchmark:
 
         parsed_args = [deep_parse(arg) for arg in args]
         parsed_kwargs = {key: deep_parse(value) for key, value in kwargs.items()}
-        return parsed_args if len(parsed_args) > 0 else parsed_kwargs
+        if parsed_args and parsed_kwargs:
+            return parsed_args, parsed_kwargs
+        return parsed_args if parsed_args else parsed_kwargs
 
     def init_user_config(self):
         # TODO: device setting
@@ -250,7 +252,8 @@ class GenericBenchmark(Benchmark):
         else:
             # TODO: consider 3d shapes(some operations like tile failed)
             more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-            self.shapes = list(dict.fromkeys(self.DEFAULT_SHAPES + more_shapes_2d))
+            more_shapes_3d = [(shape[0], *shape) for shape in DEFAULT_NON_BLAS_BENCH_SHAPES]
+            self.shapes = list(dict.fromkeys(self.DEFAULT_SHAPES + more_shapes_2d + more_shapes_3d))
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
