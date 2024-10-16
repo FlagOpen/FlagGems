@@ -24,7 +24,7 @@ def _attn_fwd_inner(
     STAGE: tl.constexpr,
     offs_m: tl.constexpr,
     offs_n: tl.constexpr,  #
-    N_CTX: tl.constexpr,
+    KV_CTX: tl.constexpr,
     fp8_v: tl.constexpr,
 ):
     # range of values handled by this stage
@@ -32,10 +32,9 @@ def _attn_fwd_inner(
         lo, hi = 0, start_m * BLOCK_M
     elif STAGE == 2:
         lo, hi = start_m * BLOCK_M, (start_m + 1) * BLOCK_M
-        lo = tl.multiple_of(lo, BLOCK_M)
     # causal = False
     else:
-        lo, hi = 0, N_CTX
+        lo, hi = 0, KV_CTX
 
     K_block_ptr += lo * stride_k_seqlen
     V_block_ptr += lo * stride_v_seqlen
@@ -96,7 +95,7 @@ def keep(conf):
     return True
 
 
-@triton.autotune(list(filter(keep, configs)), key=["N_CTX", "HEAD_DIM"])
+@triton.autotune(list(filter(keep, configs)), key=["KV_CTX", "HEAD_DIM"])
 @triton.jit
 def _attn_fwd(
     Q,
@@ -124,7 +123,8 @@ def _attn_fwd(
     Z,
     q_numhead,
     kv_numhead,
-    N_CTX,  #
+    Q_CTX,  #
+    KV_CTX,  #
     HEAD_DIM: tl.constexpr,  #
     BLOCK_M: tl.constexpr,  #
     BLOCK_N: tl.constexpr,  #
@@ -141,18 +141,8 @@ def _attn_fwd(
         batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
     )
     kv_offset = (
-        batch_id.to(tl.int64) * stride_q_batch + kv_head_id.to(tl.int64) * stride_q_head
+        batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
     )
-
-    # block pointers
-    # Q_block_ptr = tl.make_block_ptr(
-    #     base=Q + qvk_offset,
-    #     shape=(N_CTX, HEAD_DIM),
-    #     strides=(stride_q_seqlen, stride_q_headsize),
-    #     offsets=(start_m * BLOCK_M, 0),
-    #     block_shape=(BLOCK_M, HEAD_DIM),
-    #     order=(1, 0),
-    # )
 
     offs_headsize = tl.arange(0, HEAD_DIM)
 
@@ -215,7 +205,7 @@ def _attn_fwd(
             4 - STAGE,
             offs_m,
             offs_n,
-            N_CTX,
+            KV_CTX,
             V.dtype.element_ty == tl.float8e5,  #
         )
     # stage 2: on-band
@@ -239,13 +229,13 @@ def _attn_fwd(
             2,
             offs_m,
             offs_n,
-            N_CTX,
+            KV_CTX,
             V.dtype.element_ty == tl.float8e5,  #
         )
     # epilogue
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
-    m_ptrs = M + off_hz * N_CTX + offs_m
+    m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i)
     tl.store(O_block_ptr, acc.to(Out.type.element_ty))
 
@@ -318,7 +308,8 @@ def scaled_dot_product_attention(
         query.shape[0],
         query.shape[1],
         kv_head_num,  #
-        N_CTX=query.shape[2],  #
+        Q_CTX=query.shape[2],  #
+        KV_CTX=key.shape[2],  #
         HEAD_DIM=HEAD_DIM_K,  #
         STAGE=stage,  #
         **extra_kern_args,
