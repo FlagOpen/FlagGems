@@ -14,8 +14,10 @@ def _attn_fwd_inner(
     q,  #
     K_block_ptr,
     V_block_ptr,  #
+    mask_block_ptr,  #
     stride_k_seqlen,
     stride_v_seqlen,
+    stride_attn_mask_kv_seqlen,  #
     start_m,
     qk_scale,  #
     BLOCK_M: tl.constexpr,
@@ -26,6 +28,7 @@ def _attn_fwd_inner(
     offs_n: tl.constexpr,  #
     KV_CTX: tl.constexpr,
     fp8_v: tl.constexpr,
+    HAS_ATTN_MASK: tl.constexpr,
 ):
     # range of values handled by this stage
     if STAGE == 1:
@@ -38,6 +41,8 @@ def _attn_fwd_inner(
 
     K_block_ptr += lo * stride_k_seqlen
     V_block_ptr += lo * stride_v_seqlen
+    if HAS_ATTN_MASK:
+        mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
     # loop over k, v and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
@@ -45,14 +50,32 @@ def _attn_fwd_inner(
         # -- compute qk ----
         k = tl.load(K_block_ptr)
         qk = tl.dot(q, k)
+
+        if HAS_ATTN_MASK:
+            attn_mask = tl.load(mask_block_ptr)
+
         if STAGE == 2:
             mask = offs_m[:, None] >= (start_n + offs_n[None, :])
-            qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
+
+            if HAS_ATTN_MASK:
+                qk = qk * qk_scale + attn_mask
+                qk *= 1.44269504
+                qk = qk + tl.where(mask, 0, -1.0e6)
+            else:
+                qk_scale *= 1.44269504
+                qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
+
             m_ij = tl.maximum(m_i, tl.max(qk, 1))
             qk -= m_ij[:, None]
         else:
             m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
-            qk = qk * qk_scale - m_ij[:, None]
+            if HAS_ATTN_MASK:
+                qk = qk * qk_scale + attn_mask
+                qk *= 1.44269504
+                qk = qk - m_ij[:, None]
+            else:
+                qk_scale *= 1.44269504
+                qk = qk * qk_scale - m_ij[:, None]
         p = tl.math.exp2(qk)
         l_ij = tl.sum(p, 1)
         # -- update m_i and l_i
@@ -72,6 +95,11 @@ def _attn_fwd_inner(
 
         K_block_ptr += BLOCK_N * stride_k_seqlen
         V_block_ptr += BLOCK_N * stride_v_seqlen
+
+        if HAS_ATTN_MASK:
+            # mask_block_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
+            mask_block_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
+
     return acc, l_i, m_i
 
 
@@ -101,6 +129,7 @@ def _attn_fwd(
     Q,
     K,
     V,
+    attn_mask,
     sm_scale,
     M,
     Out,  #
@@ -116,6 +145,10 @@ def _attn_fwd(
     stride_v_head,
     stride_v_seqlen,
     stride_v_headsize,  #
+    stride_attn_mask_batch,
+    stride_attn_mask_head,
+    stride_attn_mask_q_seqlen,
+    stride_attn_mask_kv_seqlen,  #
     stride_o_batch,
     stride_o_head,
     stride_o_seqlen,
@@ -129,6 +162,7 @@ def _attn_fwd(
     BLOCK_M: tl.constexpr,  #
     BLOCK_N: tl.constexpr,  #
     STAGE: tl.constexpr,  #
+    HAS_ATTN_MASK: tl.constexpr,  #
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
@@ -168,6 +202,21 @@ def _attn_fwd(
         + offs_n[:, None] * stride_v_seqlen
         + offs_headsize[None, :] * stride_v_headsize
     )
+
+    if HAS_ATTN_MASK:
+        attn_mask_offset = (
+            batch_id.to(tl.int64) * stride_attn_mask_batch
+            + head_id.to(tl.int64) * stride_attn_mask_head
+        )
+        mask_block_ptr = (
+            attn_mask
+            + attn_mask_offset
+            + offs_m[:, None] * stride_attn_mask_q_seqlen
+            + offs_n[None, :] * stride_attn_mask_kv_seqlen
+        )
+    else:
+        mask_block_ptr = None
+
     O_block_ptr = (
         Out
         + q_offset
@@ -181,7 +230,7 @@ def _attn_fwd(
     acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
     # load scales
     qk_scale = sm_scale
-    qk_scale *= 1.44269504  # 1/log(2)
+    # qk_scale *= 1.44269504  # 1/log(2)
     # load q: it will stay in SRAM throughout
     q = tl.load(Q_block_ptr)
     # stage 1: off-band
@@ -195,8 +244,10 @@ def _attn_fwd(
             q,
             K_block_ptr,
             V_block_ptr,
+            mask_block_ptr,
             stride_k_seqlen,
             stride_v_seqlen,  #
+            stride_attn_mask_kv_seqlen,  #
             start_m,
             qk_scale,  #
             BLOCK_M,
@@ -207,6 +258,7 @@ def _attn_fwd(
             offs_n,
             KV_CTX,
             V.dtype.element_ty == tl.float8e5,  #
+            HAS_ATTN_MASK,  #
         )
     # stage 2: on-band
     if STAGE & 2:
@@ -219,8 +271,10 @@ def _attn_fwd(
             q,
             K_block_ptr,
             V_block_ptr,
+            mask_block_ptr,
             stride_k_seqlen,
             stride_v_seqlen,  #
+            stride_attn_mask_kv_seqlen,  #
             start_m,
             qk_scale,  #
             BLOCK_M,
@@ -231,6 +285,7 @@ def _attn_fwd(
             offs_n,
             KV_CTX,
             V.dtype.element_ty == tl.float8e5,  #
+            HAS_ATTN_MASK,  #
         )
     # epilogue
     m_i += tl.math.log2(l_i)
@@ -282,10 +337,31 @@ def scaled_dot_product_attention(
         device=query.device,
         dtype=torch.float32,
     )
+
+    if attn_mask is not None:
+        HAS_ATTN_MASK = True
+        stride_attn_mask_batch = attn_mask.stride(0)
+        stride_attn_mask_head = attn_mask.stride(1)
+        stride_attn_mask_q_seqlen = attn_mask.stride(2)
+        stride_attn_mask_kv_seqlen = attn_mask.stride(3)
+    else:
+        HAS_ATTN_MASK = False
+        stride_attn_mask_batch = 1
+        stride_attn_mask_head = 1
+        stride_attn_mask_q_seqlen = 1
+        stride_attn_mask_kv_seqlen = 1
+
+    print("HAS_ATTN MASK IS: ", HAS_ATTN_MASK)
+    print("stride_attn_mask_batch is: ", stride_attn_mask_batch)
+    print("stride_attn_mask_head is: ", stride_attn_mask_head)
+    print("stride_attn_mask_q_seqlen is: ", stride_attn_mask_q_seqlen)
+    print("stride_attn_mask_kv_seqlen is: ", stride_attn_mask_kv_seqlen)
+
     _attn_fwd[grid](
         query,
         key,
         value,
+        attn_mask,
         sm_scale,
         M,
         o,  #
@@ -301,6 +377,10 @@ def scaled_dot_product_attention(
         value.stride(1),
         value.stride(2),
         value.stride(3),  #
+        stride_attn_mask_batch,
+        stride_attn_mask_head,
+        stride_attn_mask_q_seqlen,
+        stride_attn_mask_kv_seqlen,  #
         o.stride(0),
         o.stride(1),
         o.stride(2),
@@ -312,6 +392,7 @@ def scaled_dot_product_attention(
         KV_CTX=key.shape[2],  #
         HEAD_DIM=HEAD_DIM_K,  #
         STAGE=stage,  #
+        HAS_ATTN_MASK=HAS_ATTN_MASK,  #
         **extra_kern_args,
     )
     return o
