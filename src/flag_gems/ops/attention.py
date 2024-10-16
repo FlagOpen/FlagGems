@@ -14,6 +14,8 @@ def _attn_fwd_inner(
     q,  #
     K_block_ptr,
     V_block_ptr,  #
+    stride_kn,
+    stride_vk,
     start_m,
     qk_scale,  #
     BLOCK_M: tl.constexpr,
@@ -34,8 +36,10 @@ def _attn_fwd_inner(
     # causal = False
     else:
         lo, hi = 0, N_CTX
-    K_block_ptr = tl.advance(K_block_ptr, (0, lo))
-    V_block_ptr = tl.advance(V_block_ptr, (lo, 0))
+
+    K_block_ptr += lo * stride_kn
+    V_block_ptr += lo * stride_vk
+
     # loop over k, v and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
@@ -66,8 +70,9 @@ def _attn_fwd_inner(
         acc = tl.dot(p, v, acc)
         # update m_i and l_i
         m_i = m_ij
-        V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
-        K_block_ptr = tl.advance(K_block_ptr, (0, BLOCK_N))
+
+        K_block_ptr += BLOCK_N * stride_kn
+        V_block_ptr += BLOCK_N * stride_vk
     return acc, l_i, m_i
 
 
@@ -97,29 +102,27 @@ def _attn_fwd(
     Q,
     K,
     V,
-    Mask,
     sm_scale,
     M,
     Out,  #
-    stride_q_batch,
-    stride_q_numhead,
-    stride_q_seqlen,
-    stride_q_headsize,  #
-    stride_k_batch,
-    stride_k_numhead,
-    stride_k_seqlen,
-    stride_k_headsize,  #
-    stride_v_batch,
-    stride_v_numhead,
-    stride_v_seqlen,
-    stride_v_headsize,  #
-    stride_o_batch,
-    stride_o_numhead,
+    stride_qz,
+    stride_qh,
+    stride_qm,
+    stride_qk,  #
+    stride_kz,
+    stride_kh,
+    stride_kn,
+    stride_kk,  #
+    stride_vz,
+    stride_vh,
+    stride_vk,
+    stride_vn,  #
+    stride_oz,
+    stride_oh,
     stride_om,
-    stride_o_headsize,  #
+    stride_on,  #
     Z,
     H,
-    KV_HEAD_NUM,  #
     N_CTX,  #
     HEAD_DIM: tl.constexpr,  #
     BLOCK_M: tl.constexpr,  #
@@ -130,56 +133,50 @@ def _attn_fwd(
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
     off_z = off_hz // H
-
     off_h = off_hz % H
-    # Used for GQA
-    kv_off_h = off_hz % KV_HEAD_NUM
-
-    # qvk_offset = off_z.to(tl.int64) * stride_q_batch + off_h.to(tl.int64) * stride_q_numhead
-    q_offset = (
-        off_z.to(tl.int64) * stride_q_batch + off_h.to(tl.int64) * stride_q_numhead
-    )
-    kv_offset = (
-        off_z.to(tl.int64) * stride_q_batch + kv_off_h.to(tl.int64) * stride_q_numhead
-    )
+    qvk_offset = off_z.to(tl.int64) * stride_qz + off_h.to(tl.int64) * stride_qh
 
     # block pointers
-    Q_block_ptr = tl.make_block_ptr(
-        base=Q + q_offset,
-        shape=(N_CTX, HEAD_DIM),
-        strides=(stride_q_seqlen, stride_q_headsize),
-        offsets=(start_m * BLOCK_M, 0),
-        block_shape=(BLOCK_M, HEAD_DIM),
-        order=(1, 0),
-    )
-    v_order: tl.constexpr = (0, 1) if V.dtype.element_ty == tl.float8e5 else (1, 0)
-    V_block_ptr = tl.make_block_ptr(
-        base=V + kv_offset,
-        shape=(N_CTX, HEAD_DIM),
-        strides=(stride_v_seqlen, stride_v_headsize),
-        offsets=(0, 0),
-        block_shape=(BLOCK_N, HEAD_DIM),
-        order=v_order,
-    )
-    K_block_ptr = tl.make_block_ptr(
-        base=K + kv_offset,
-        shape=(HEAD_DIM, N_CTX),
-        strides=(stride_k_headsize, stride_k_seqlen),
-        offsets=(0, 0),
-        block_shape=(HEAD_DIM, BLOCK_N),
-        order=(0, 1),
-    )
-    O_block_ptr = tl.make_block_ptr(
-        base=Out + q_offset,
-        shape=(N_CTX, HEAD_DIM),
-        strides=(stride_om, stride_o_headsize),
-        offsets=(start_m * BLOCK_M, 0),
-        block_shape=(BLOCK_M, HEAD_DIM),
-        order=(1, 0),
-    )
+    # Q_block_ptr = tl.make_block_ptr(
+    #     base=Q + qvk_offset,
+    #     shape=(N_CTX, HEAD_DIM),
+    #     strides=(stride_qm, stride_qk),
+    #     offsets=(start_m * BLOCK_M, 0),
+    #     block_shape=(BLOCK_M, HEAD_DIM),
+    #     order=(1, 0),
+    # )
+
+    offs_headsize = tl.arange(0, HEAD_DIM)
+
     # initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = tl.arange(0, BLOCK_N)
+
+    Q_block_ptr = (
+        Q
+        + qvk_offset
+        + offs_m[:, None] * stride_qm
+        + offs_headsize[None, :] * stride_qk
+    )
+    K_block_ptr = (
+        K
+        + qvk_offset
+        + offs_n[None, :] * stride_kn
+        + offs_headsize[:, None] * stride_kk
+    )
+    V_block_ptr = (
+        V
+        + qvk_offset
+        + offs_n[:, None] * stride_vk
+        + offs_headsize[None, :] * stride_vn
+    )
+    O_block_ptr = (
+        Out
+        + qvk_offset
+        + offs_m[:, None] * stride_om
+        + offs_headsize[None, :] * stride_on
+    )
+
     # initialize pointer to m and l
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
@@ -199,7 +196,9 @@ def _attn_fwd(
             m_i,
             q,
             K_block_ptr,
-            V_block_ptr,  #
+            V_block_ptr,
+            stride_kn,
+            stride_vk,  #
             start_m,
             qk_scale,  #
             BLOCK_M,
@@ -221,7 +220,9 @@ def _attn_fwd(
             m_i,
             q,
             K_block_ptr,
-            V_block_ptr,  #
+            V_block_ptr,
+            stride_kn,
+            stride_vk,  #
             start_m,
             qk_scale,  #
             BLOCK_M,
@@ -271,7 +272,7 @@ def scaled_dot_product_attention(
     else:
         sm_scale = scale
 
-    kv_head_num = key.shape[1]
+    # kv_head_num = key.shape[1]
 
     grid = lambda args: (
         triton.cdiv(query.shape[2], args["BLOCK_M"]),
@@ -308,9 +309,10 @@ def scaled_dot_product_attention(
         o.stride(3),  #
         query.shape[0],
         query.shape[1],
-        kv_head_num,  #
+        # kv_head_num,  #
         N_CTX=query.shape[2],  #
         HEAD_DIM=HEAD_DIM_K,  #
         STAGE=stage,  #
         **extra_kern_args,
     )
+    return o
