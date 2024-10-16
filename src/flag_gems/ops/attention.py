@@ -14,8 +14,8 @@ def _attn_fwd_inner(
     q,  #
     K_block_ptr,
     V_block_ptr,  #
-    stride_kn,
-    stride_vk,
+    stride_k_seqlen,
+    stride_v_seqlen,
     start_m,
     qk_scale,  #
     BLOCK_M: tl.constexpr,
@@ -37,8 +37,8 @@ def _attn_fwd_inner(
     else:
         lo, hi = 0, N_CTX
 
-    K_block_ptr += lo * stride_kn
-    V_block_ptr += lo * stride_vk
+    K_block_ptr += lo * stride_k_seqlen
+    V_block_ptr += lo * stride_v_seqlen
 
     # loop over k, v and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
@@ -71,8 +71,8 @@ def _attn_fwd_inner(
         # update m_i and l_i
         m_i = m_ij
 
-        K_block_ptr += BLOCK_N * stride_kn
-        V_block_ptr += BLOCK_N * stride_vk
+        K_block_ptr += BLOCK_N * stride_k_seqlen
+        V_block_ptr += BLOCK_N * stride_v_seqlen
     return acc, l_i, m_i
 
 
@@ -105,24 +105,25 @@ def _attn_fwd(
     sm_scale,
     M,
     Out,  #
-    stride_qz,
-    stride_qh,
-    stride_qm,
-    stride_qk,  #
-    stride_kz,
-    stride_kh,
-    stride_kn,
-    stride_kk,  #
-    stride_vz,
-    stride_vh,
-    stride_vk,
-    stride_vn,  #
-    stride_oz,
-    stride_oh,
-    stride_om,
-    stride_on,  #
+    stride_q_batch,
+    stride_q_head,
+    stride_q_seqlen,
+    stride_q_headsize,  #
+    stride_k_batch,
+    stride_k_head,
+    stride_k_seqlen,
+    stride_k_headsize,  #
+    stride_v_batch,
+    stride_v_head,
+    stride_v_seqlen,
+    stride_v_headsize,  #
+    stride_o_batch,
+    stride_o_head,
+    stride_o_seqlen,
+    stride_o_headsize,  #
     Z,
-    H,
+    q_numhead,
+    kv_numhead,
     N_CTX,  #
     HEAD_DIM: tl.constexpr,  #
     BLOCK_M: tl.constexpr,  #
@@ -132,15 +133,22 @@ def _attn_fwd(
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
-    off_z = off_hz // H
-    off_h = off_hz % H
-    qvk_offset = off_z.to(tl.int64) * stride_qz + off_h.to(tl.int64) * stride_qh
+    batch_id = off_hz // q_numhead
+    head_id = off_hz % q_numhead
+    kv_head_id = off_hz % kv_numhead
+
+    q_offset = (
+        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
+    )
+    kv_offset = (
+        batch_id.to(tl.int64) * stride_q_batch + kv_head_id.to(tl.int64) * stride_q_head
+    )
 
     # block pointers
     # Q_block_ptr = tl.make_block_ptr(
     #     base=Q + qvk_offset,
     #     shape=(N_CTX, HEAD_DIM),
-    #     strides=(stride_qm, stride_qk),
+    #     strides=(stride_q_seqlen, stride_q_headsize),
     #     offsets=(start_m * BLOCK_M, 0),
     #     block_shape=(BLOCK_M, HEAD_DIM),
     #     order=(1, 0),
@@ -154,27 +162,27 @@ def _attn_fwd(
 
     Q_block_ptr = (
         Q
-        + qvk_offset
-        + offs_m[:, None] * stride_qm
-        + offs_headsize[None, :] * stride_qk
+        + q_offset
+        + offs_m[:, None] * stride_q_seqlen
+        + offs_headsize[None, :] * stride_q_headsize
     )
     K_block_ptr = (
         K
-        + qvk_offset
-        + offs_n[None, :] * stride_kn
-        + offs_headsize[:, None] * stride_kk
+        + kv_offset
+        + offs_n[None, :] * stride_k_seqlen
+        + offs_headsize[:, None] * stride_k_headsize
     )
     V_block_ptr = (
         V
-        + qvk_offset
-        + offs_n[:, None] * stride_vk
-        + offs_headsize[None, :] * stride_vn
+        + kv_offset
+        + offs_n[:, None] * stride_v_seqlen
+        + offs_headsize[None, :] * stride_v_headsize
     )
     O_block_ptr = (
         Out
-        + qvk_offset
-        + offs_m[:, None] * stride_om
-        + offs_headsize[None, :] * stride_on
+        + q_offset
+        + offs_m[:, None] * stride_o_seqlen
+        + offs_headsize[None, :] * stride_o_headsize
     )
 
     # initialize pointer to m and l
@@ -197,8 +205,8 @@ def _attn_fwd(
             q,
             K_block_ptr,
             V_block_ptr,
-            stride_kn,
-            stride_vk,  #
+            stride_k_seqlen,
+            stride_v_seqlen,  #
             start_m,
             qk_scale,  #
             BLOCK_M,
@@ -221,8 +229,8 @@ def _attn_fwd(
             q,
             K_block_ptr,
             V_block_ptr,
-            stride_kn,
-            stride_vk,  #
+            stride_k_seqlen,
+            stride_v_seqlen,  #
             start_m,
             qk_scale,  #
             BLOCK_M,
@@ -272,7 +280,7 @@ def scaled_dot_product_attention(
     else:
         sm_scale = scale
 
-    # kv_head_num = key.shape[1]
+    kv_head_num = key.shape[1]
 
     grid = lambda args: (
         triton.cdiv(query.shape[2], args["BLOCK_M"]),
@@ -309,7 +317,7 @@ def scaled_dot_product_attention(
         o.stride(3),  #
         query.shape[0],
         query.shape[1],
-        # kv_head_num,  #
+        kv_head_num,  #
         N_CTX=query.shape[2],  #
         HEAD_DIM=HEAD_DIM_K,  #
         STAGE=stage,  #
