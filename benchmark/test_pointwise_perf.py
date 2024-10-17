@@ -1,632 +1,135 @@
+import itertools
+from typing import Generator
+
+import pytest
 import torch
 
-from .performance_utils import (
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    POINTWISE_BATCH,
-    SIZES,
-    Benchmark,
-    binary_args,
-    binary_int_args,
-    ternary_args,
-    unary_arg,
-    unary_int_arg,
+from .attri_util import DEFAULT_NON_BLAS_BENCH_SHAPES, FLOAT_DTYPES, INT_DTYPES
+from .conftest import BenchLevel, Config
+from .performance_utils import Benchmark, GenericBenchmark, generate_tensor_input
+
+
+def flip_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, {"dims": [0, 1]}
+
+
+def masked_fill_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    mask = generate_tensor_input(shape, cur_dtype, device) < 0.3
+    value = 1024
+    yield inp, mask, value
+
+
+def tile_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, {
+        "dims": [2, 4]
+    }  # TODO: Fails when encountering certain corner shape cases.
+
+
+def repeat_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = [2, 4]
+    yield inp1, inp2,  # TODO: Fails when encountering certain corner shape cases.
+
+
+def where_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    condition = inp1 > 0
+    yield condition, inp1, inp2
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "flip",
+            torch.flip,
+            flip_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.flip,
+        ),
+        pytest.param(
+            "masked_fill",
+            torch.masked_fill,
+            masked_fill_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.masked_fill,
+        ),
+        pytest.param(
+            "tile", torch.tile, tile_input_fn, FLOAT_DTYPES, marks=pytest.mark.tile
+        ),
+        pytest.param(
+            "repeat",
+            torch.Tensor.repeat,
+            repeat_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.repeat,
+        ),
+        pytest.param(
+            "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where
+        ),
+    ],
 )
-
-
-def test_perf_abs():
-    bench = Benchmark(
-        op_name="abs",
-        torch_op=torch.abs,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
+def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmark(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
 
 
-def test_perf_add():
-    bench = Benchmark(
-        op_name="add",
-        torch_op=torch.add,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+class ClampBenchmark(Benchmark):
+    """
+    benchmark for clamp
+    """
+
+    def set_shapes(self):
+        # self.shapes is a list of tuples, where each tuple consists of three elements:
+        # 1. The first element represents the shape of the input tensor.
+        # 2. The second element represents the information for "min",
+        #    which can be a tensor shape, a scalar value, or None.
+        # 3. The third element represents the information for "max",
+        #   which can be a tensor shape, a scalar value, or None.
+        self.shapes = [(shape, shape, shape) for shape in DEFAULT_NON_BLAS_BENCH_SHAPES]
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            more_shapes = [(1024, 1024), (3, 240, 5)]
+            scalars = [0.001, -111.999]
+            self.shapes.extend([(shape, None, shape) for shape in more_shapes])
+            self.shapes.extend(
+                [
+                    (shape, scalar, scalar)
+                    for shape, scalar in itertools.product(more_shapes, scalars)
+                ]
+            )
+            self.shapes.extend(
+                [
+                    (shape, scalar, None)
+                    for shape, scalar in itertools.product(more_shapes, scalars)
+                ]
+            )
+
+    def init_inp(self, shape, cur_dtype):
+        if isinstance(shape, (list, tuple)):
+            return torch.randn(shape, dtype=cur_dtype, device=self.device)
+        elif shape is None:
+            return None
+        elif isinstance(shape, float):
+            return shape  # scalar value
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape1, shape2, shape3 in self.shapes:
+            inp1 = self.init_inp(shape1, cur_dtype)
+            inp2 = self.init_inp(shape2, cur_dtype)
+            inp3 = self.init_inp(shape3, cur_dtype)
+            yield inp1, inp2, inp3
 
 
-def test_perf_bitwiseand():
-    bench = Benchmark(
-        op_name="bitwiseand_int",
-        torch_op=torch.bitwise_and,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_bitwisenot():
-    bench = Benchmark(
-        op_name="bitwisenot_int",
-        torch_op=torch.bitwise_not,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_bitwiseor():
-    bench = Benchmark(
-        op_name="bitwiseor_int",
-        torch_op=torch.bitwise_or,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
+@pytest.mark.clamp
 def test_perf_clamp():
-    bench = Benchmark(
+    bench = ClampBenchmark(
         op_name="clamp",
         torch_op=torch.clamp,
-        arg_func=ternary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_cos():
-    bench = Benchmark(
-        op_name="cos",
-        torch_op=torch.cos,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_div():
-    bench = Benchmark(
-        op_name="div",
-        torch_op=torch.div,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_floordiv_int():
-    bench = Benchmark(
-        op_name="floor_divide",
-        torch_op=torch.floor_divide,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_remainder():
-    bench = Benchmark(
-        op_name="remainder",
-        torch_op=torch.remainder,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_dropout():
-    bench = Benchmark(
-        op_name="dropout",
-        torch_op=torch.nn.Dropout(p=0.5),
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_eq():
-    bench = Benchmark(
-        op_name="eq",
-        torch_op=torch.eq,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_maximum():
-    bench = Benchmark(
-        op_name="maximum",
-        torch_op=torch.maximum,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_minimum():
-    bench = Benchmark(
-        op_name="minimum",
-        torch_op=torch.minimum,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_exp():
-    bench = Benchmark(
-        op_name="exp",
-        torch_op=torch.exp,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_ge():
-    bench = Benchmark(
-        op_name="ge",
-        torch_op=torch.ge,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_gelu():
-    bench = Benchmark(
-        op_name="gelu",
-        torch_op=torch.nn.functional.gelu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_gelu_backward():
-    bench = Benchmark(
-        op_name="gelu",
-        torch_op=torch.nn.functional.gelu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        is_backward=True,
-    )
-    bench.run()
-
-
-def test_perf_gt():
-    bench = Benchmark(
-        op_name="gt",
-        torch_op=torch.gt,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_isinf():
-    bench = Benchmark(
-        op_name="isinf",
-        torch_op=torch.isinf,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_isnan():
-    bench = Benchmark(
-        op_name="isnan",
-        torch_op=torch.isnan,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_le():
-    bench = Benchmark(
-        op_name="le",
-        torch_op=torch.le,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_lt():
-    bench = Benchmark(
-        op_name="lt",
-        torch_op=torch.lt,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_mul():
-    bench = Benchmark(
-        op_name="mul",
-        torch_op=torch.mul,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_ne():
-    bench = Benchmark(
-        op_name="ne",
-        torch_op=torch.ne,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_neg():
-    bench = Benchmark(
-        op_name="neg",
-        torch_op=torch.neg,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_pow():
-    bench = Benchmark(
-        op_name="pow",
-        torch_op=torch.pow,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_reciprocal():
-    bench = Benchmark(
-        op_name="reciprocal",
-        torch_op=torch.reciprocal,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_relu():
-    bench = Benchmark(
-        op_name="relu",
-        torch_op=torch.nn.functional.relu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_rsqrt():
-    bench = Benchmark(
-        op_name="rsqrt",
-        torch_op=torch.rsqrt,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_sigmoid():
-    bench = Benchmark(
-        op_name="sigmoid",
-        torch_op=torch.sigmoid,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_silu():
-    bench = Benchmark(
-        op_name="silu",
-        torch_op=torch.nn.functional.silu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_sin():
-    bench = Benchmark(
-        op_name="sin",
-        torch_op=torch.sin,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_sub():
-    bench = Benchmark(
-        op_name="sub",
-        torch_op=torch.sub,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_tanh():
-    bench = Benchmark(
-        op_name="tanh",
-        torch_op=torch.tanh,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_triu():
-    bench = Benchmark(
-        op_name="triu",
-        torch_op=torch.triu,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_where():
-    def where_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        condition = inp1 > 0
-        return condition, inp1, inp2
-
-    bench = Benchmark(
-        op_name="where",
-        torch_op=torch.where,
-        arg_func=where_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_isclose():
-    bench = Benchmark(
-        op_name="isclose",
-        torch_op=torch.isclose,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_isclose_int():
-    bench = Benchmark(
-        op_name="isclose_int",
-        torch_op=torch.isclose,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_allclose():
-    bench = Benchmark(
-        op_name="allclose",
-        torch_op=torch.allclose,
-        arg_func=binary_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_allclose_int():
-    bench = Benchmark(
-        op_name="allclose_int",
-        torch_op=torch.allclose,
-        arg_func=binary_int_args,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_erf():
-    bench = Benchmark(
-        op_name="erf",
-        torch_op=torch.erf,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_isfinite():
-    bench = Benchmark(
-        op_name="isfinite",
-        torch_op=torch.isfinite,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_isfinite_int():
-    bench = Benchmark(
-        op_name="isfinite_int",
-        torch_op=torch.isfinite,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_flip():
-    def flip_kwargs(dtype, batch, size):
-        return {"dims": [0, 1]}
-
-    bench = Benchmark(
-        op_name="flip",
-        torch_op=torch.flip,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=flip_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_flip_int():
-    def flip_kwargs(dtype, batch, size):
-        return {"dims": [0, 1]}
-
-    bench = Benchmark(
-        op_name="flip_int",
-        torch_op=torch.flip,
-        arg_func=unary_int_arg,
-        dtypes=INT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=flip_kwargs,
-    )
-    bench.run()
-
-
-def test_masked_fill():
-    def masked_fill_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        mask = torch.randn([batch, size], dtype=dtype, device="cuda") < 0.3
-        value = 1024
-        return (inp, mask, value)
-
-    bench = Benchmark(
-        op_name="masked_fill",
-        torch_op=torch.masked_fill,
-        arg_func=masked_fill_args,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_tile():
-    def tile_kwargs(dtype, batch, size):
-        return {"dims": [2, 4]}
-
-    bench = Benchmark(
-        op_name="tile",
-        torch_op=torch.tile,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
-        kwargs_func=tile_kwargs,
-    )
-    bench.run()
-
-
-def test_perf_repeat():
-    def repeat_arg(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = [2, 4]
-        return inp1, inp2
-
-    bench = Benchmark(
-        op_name="repeat",
-        torch_op=torch.Tensor.repeat,
-        arg_func=repeat_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
     )
     bench.run()
