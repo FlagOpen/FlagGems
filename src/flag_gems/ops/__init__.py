@@ -16,6 +16,8 @@ from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_tensor
+from .conv1d import conv1d
+from .conv2d import conv2d
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
@@ -242,4 +244,6 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "conv2d",
+    "conv1d",
 ]
