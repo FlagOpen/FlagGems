@@ -443,8 +443,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-# TODO: failed at (200, 40999, 3)
-@pytest.mark.index_select
+@pytest.mark.select_scatter
 @pytest.mark.parametrize("dim, shape", DIM_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_select_scatter(shape, dim, dtype):
@@ -469,6 +468,7 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.slice_scatter
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -504,6 +504,8 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     gems_assert_equal(res_out, ref_out)
 
 
+# TODO: failed at (200, 40999, 3)
+@pytest.mark.index_select
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
