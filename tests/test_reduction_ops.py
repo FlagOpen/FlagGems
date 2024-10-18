@@ -444,7 +444,8 @@ def test_accuracy_gather(inp_shape, dim, dtype):
 
 
 @pytest.mark.select_scatter
-@pytest.mark.parametrize("dim, shape", DIM_SHAPE)
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_select_scatter(shape, dim, dtype):
     import random
@@ -460,26 +461,29 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     ref_src = to_reference(src)
     ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=ref_src)
     with flag_gems.use_gems():
-        from src.flag_gems.ops import select_scatter
-
-        res_out = select_scatter(inp, dim=dim, index=index, src=src)
-        # res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
+        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
 
     gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.slice_scatter
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize(("dim", "shape"), DIM_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("start", [16, 32])
-@pytest.mark.parametrize("end", [64, 128])
-@pytest.mark.parametrize("step", [1, 3])
+@pytest.mark.parametrize("start", [16, 64])
+@pytest.mark.parametrize("end", [1024, 256])
+@pytest.mark.parametrize("step", [1, 2])
 def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
-    valid_shape = list(inp.shape)
     range = end - start
+    valid_shape = list(inp.shape)
+    if end < start:
+        range = 0
+    elif (end - start) > valid_shape[dim]:
+        range = valid_shape[dim]
+        start = 0
+        end = valid_shape[dim]
+
     valid_shape[dim] = (range + (step - 1)) // step
 
     src = torch.randn(valid_shape, dtype=dtype, device="cuda")
@@ -490,16 +494,9 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
         ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
     )
     with flag_gems.use_gems():
-        from src.flag_gems.ops import slice_scatter
-
-        res_out = slice_scatter(
-            ref_inp, dim=dim, src=src, start=start, end=end, step=step
-        )
-        """
         res_out = torch.slice_scatter(
             ref_inp, dim=dim, src=src, start=start, end=end, step=step
         )
-        """
 
     gems_assert_equal(res_out, ref_out)
 
@@ -520,10 +517,7 @@ def test_accuracy_index_select(shape, dim, dtype):
     ref_index = to_reference(index)
     ref_out = torch.index_select(ref_inp, dim, ref_index)
     with flag_gems.use_gems():
-        from src.flag_gems.ops import index_select
-
-        res_out = index_select(inp, dim, index)
-        # res_out = torch.index_select(inp, dim, index)
+        res_out = torch.index_select(inp, dim, index)
 
     gems_assert_equal(res_out, ref_out)
 
