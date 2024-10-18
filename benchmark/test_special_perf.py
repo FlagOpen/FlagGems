@@ -6,6 +6,7 @@ from .performance_utils import (
     POINTWISE_BATCH,
     SIZES,
     Benchmark,
+    binary_int_args,
     unary_int_arg,
 )
 
@@ -136,5 +137,225 @@ def test_perf_pad():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=padding_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_upsample_bicubic2d_aa():
+    def upsample_bicubic2d_aa_kwargs(dtype, batch, size):
+        channel = 16
+        scale_factors = (2, 2)
+        shape = (batch, channel, size, size)
+        output_size = (
+            int(shape[2] * scale_factors[0]),
+            int(shape[3] * scale_factors[1]),
+        )
+        input = torch.randn(size=shape, device="cuda", dtype=dtype)
+        return {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        }
+
+    bench = Benchmark(
+        op_name="_upsample_bicubic2d_aa",
+        torch_op=torch._C._nn._upsample_bicubic2d_aa,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=16,
+        sizes=[(128 * i) for i in range(1, 12)],
+        kwargs_func=upsample_bicubic2d_aa_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_arange():
+    def arange_kwargs(dtype, batch, size):
+        return {
+            "end": batch * size,
+            "device": "cuda",
+            "dtype": dtype,
+        }
+
+    bench = Benchmark(
+        op_name="arange",
+        torch_op=torch.arange,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=arange_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_isin():
+    bench = Benchmark(
+        op_name="isin",
+        torch_op=torch.isin,
+        arg_func=binary_int_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_fill():
+    def fill_kwargs(dtype, batch, size):
+        value = 1.0
+        input = torch.empty(batch * size, dtype=dtype, device="cuda")
+        return {
+            "input": input,
+            "value": value,
+        }
+
+    bench = Benchmark(
+        op_name="fill",
+        torch_op=torch.fill,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=fill_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_stack():
+    def stack_args(dtype, batch, size):
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {(inp,) * 3}
+
+    bench = Benchmark(
+        op_name="stack",
+        torch_op=torch.stack,
+        arg_func=stack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_hstack():
+    def hstack_args(dtype, batch, size):
+        inp = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {(inp,) * 3}
+
+    bench = Benchmark(
+        op_name="hstack",
+        torch_op=torch.hstack,
+        arg_func=hstack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_cat():
+    def cat_args(dtype, batch, size):
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        return [[inp1, inp2]]
+
+    def cat_kwargs(dtype, batch, size):
+        return {"dim": 0}
+
+    bench = Benchmark(
+        op_name="cat",
+        torch_op=torch.cat,
+        arg_func=cat_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=cat_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_cat_int():
+    def cat_args(dtype, batch, size):
+        inp1 = torch.randint(
+            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
+        )
+        inp2 = torch.randint(
+            low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device="cuda"
+        )
+        return [[inp1, inp2]]
+
+    def cat_kwargs(dtype, batch, size):
+        return {"dim": 0}
+
+    bench = Benchmark(
+        op_name="cat_int",
+        torch_op=torch.cat,
+        arg_func=cat_args,
+        dtypes=INT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=cat_kwargs,
+    )
+    bench.run()
+
+
+def test_perf_vstack():
+    def vstack_args(dtype, batch, size):
+        inp1 = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        inp2 = torch.randn(size=(batch + 1, size), dtype=dtype, device="cuda")
+        inp3 = torch.randn(size=(batch + 2, size), dtype=dtype, device="cuda")
+        return [[inp1, inp2, inp3]]
+
+    bench = Benchmark(
+        op_name="vstack",
+        torch_op=torch.vstack,
+        arg_func=vstack_args,
+        dtypes=FLOAT_DTYPES,
+        batch=(512),
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_repeat_interleave_self_int():
+    def repeat_interleave_self_int_arg(dtype, batch, size):
+        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        repeats = 2
+        return inp, repeats
+
+    bench = Benchmark(
+        op_name="repeat_interleave_self_int",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_self_int_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
+
+def test_perf_repeat_interleave_tensor():
+    def repeat_interleave_tensor_arg(dtype, batch, size):
+        repeats = torch.randint(
+            low=0,
+            high=0x7F,
+            size=[
+                size,
+            ],
+            dtype=dtype,
+            device="cuda",
+        )
+        return (repeats,)
+
+    bench = Benchmark(
+        op_name="repeat_interleave_tensor",
+        torch_op=torch.repeat_interleave,
+        arg_func=repeat_interleave_tensor_arg,
+        dtypes=[torch.int32],
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
     )
     bench.run()

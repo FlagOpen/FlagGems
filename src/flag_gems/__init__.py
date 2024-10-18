@@ -1,9 +1,10 @@
 import torch
 
+from . import testing  # noqa: F401
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 
-__version__ = "2.0"
+__version__ = "2.1"
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -12,6 +13,9 @@ def enable(lib=aten_lib):
     lib.impl("abs", abs, "CUDA")
     lib.impl("add.Tensor", add, "CUDA")
     lib.impl("addmm", addmm, "CUDA")
+    lib.impl("arange.start_step", arange_start, "CUDA")
+    lib.impl("arange.start", arange_start, "CUDA")
+    lib.impl("arange", arange, "CUDA")
     lib.impl("bitwise_and.Tensor", bitwise_and_tensor, "CUDA")
     lib.impl("bitwise_and.Scalar", bitwise_and_scalar, "CUDA")
     lib.impl("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, "CUDA")
@@ -37,6 +41,7 @@ def enable(lib=aten_lib):
     lib.impl("true_divide.Scalar", true_divide, "CUDA")
     lib.impl("floor_divide", floor_divide, "CUDA")
     lib.impl("floor_divide.Scalar", floor_divide, "CUDA")
+    lib.impl("remainder.Tensor", remainder, "CUDA")
     lib.impl("native_dropout", native_dropout, "AutogradCUDA")
     lib.impl("erf", erf, "CUDA")
     lib.impl("embedding", embedding, "AutogradCUDA")
@@ -48,9 +53,13 @@ def enable(lib=aten_lib):
     lib.impl("ge.Scalar", ge_scalar, "CUDA")
     lib.impl("gelu", gelu, "AutogradCUDA")
     lib.impl("native_group_norm", group_norm, "AutogradCUDA")
+    lib.impl("_weight_norm_interface", weight_norm, "AutogradCUDA")
     lib.impl("gt.Tensor", gt, "CUDA")
     lib.impl("gt.Scalar", gt_scalar, "CUDA")
     lib.impl("isfinite", isfinite, "CUDA")
+    lib.impl("isin.Tensor_Tensor", isin, "CUDA")
+    lib.impl("isin.Scalar_Tensor", isin, "CUDA")
+    lib.impl("isin.Tensor_Scalar", isin, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
     lib.impl("minimum", minimum, "CUDA")
@@ -125,12 +134,13 @@ def enable(lib=aten_lib):
     lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
     lib.impl("outer", outer, "AutogradCUDA")
     lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
-    # lib.impl("scatter.src", scatter_src, "CUDA")
-    # lib.impl("scatter.reduce", scatter_reduce, "CUDA")
-    # lib.impl("gather", gather, "CUDA")
-    # lib.impl("gather.out", gather_out, "CUDA")
+    lib.impl("scatter.src", scatter, "CUDA")
+    lib.impl("scatter.reduce", scatter, "CUDA")
+    lib.impl("gather", gather, "CUDA")
     lib.impl("isclose", isclose, "CUDA")
     lib.impl("allclose", allclose, "CUDA")
+    lib.impl("fill.Scalar", fill_scalar, "CUDA")
+    lib.impl("fill.Tensor", fill_tensor, "CUDA")
     lib.impl("flip", flip, "CUDA")
     # lib.impl("slice_scatter", slice_scatter, "CUDA")
     # lib.impl("select_scatter", select_scatter, "CUDA")
@@ -139,7 +149,16 @@ def enable(lib=aten_lib):
     lib.impl("index_select", index_select, "CUDA")
     lib.impl("masked_fill", masked_fill, "CUDA")
     lib.impl("_unique2", _unique2, "CUDA")
+    lib.impl("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, "CUDA")
     lib.impl("nonzero", nonzero, "CUDA")
+    lib.impl("repeat", repeat, "CUDA")
+    lib.impl("masked_select", masked_select, "CUDA")
+    lib.impl("stack", stack, "CUDA")
+    lib.impl("hstack", hstack, "CUDA")
+    lib.impl("cat", cat, "CUDA")
+    lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
+    lib.impl("vstack", vstack, "CUDA")
+    lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "CUDA")
 
 
 class use_gems:

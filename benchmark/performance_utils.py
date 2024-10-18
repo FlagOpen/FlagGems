@@ -66,10 +66,14 @@ class Benchmark:
         return latency
 
     def run(self):
+        mode_str = "cpu" if CPU_MODE else "cuda"
+        print("")
         for dtype in self.dtypes:
-            print(f"Operator {self.op_name} Performance Test ({dtype})")
-            print("Size        Torch Latency (ms)   Gems Latency (ms)")
-            print("--------------------------------------------------")
+            print(
+                f"Operator {self.op_name} Performance Test (dtype={dtype}, mode={mode_str})"
+            )
+            print("Size    Torch Latency (ms)    Gems Latency (ms)    Gems Speedup")
+            print("---------------------------------------------------------------")
             for size in self.sizes:
                 args = ()
                 if self.arg_func is not None:
@@ -92,7 +96,10 @@ class Benchmark:
                 else:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
+                speedup = torch_perf / gems_perf
+                print(
+                    f"{size: <8}{torch_perf: >18.6}{gems_perf: >21.6}{speedup: >16.3}"
+                )
 
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
@@ -119,8 +126,24 @@ def unary_int_arg(dtype, batch, size):
 
 
 def binary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-    inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    if dtype in FLOAT_DTYPES:
+        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+    elif dtype in INT_DTYPES:
+        inp1 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            [batch, size],
+            dtype=dtype,
+            device="cuda",
+        )
+        inp2 = torch.randint(
+            torch.iinfo(dtype).min,
+            torch.iinfo(dtype).max,
+            [batch, size],
+            dtype=dtype,
+            device="cuda",
+        )
     return inp1, inp2
 
 
