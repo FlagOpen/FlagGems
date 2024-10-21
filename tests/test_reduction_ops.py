@@ -495,7 +495,7 @@ def test_accuracy_slice_scatter(shape, dim, dtype, start, end, step):
     )
     with flag_gems.use_gems():
         res_out = torch.slice_scatter(
-            ref_inp, dim=dim, src=src, start=start, end=end, step=step
+            inp, dim=dim, src=src, start=start, end=end, step=step
         )
 
     gems_assert_equal(res_out, ref_out)
