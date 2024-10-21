@@ -5,7 +5,6 @@ from .performance_utils import (
     INT_DTYPES,
     POINTWISE_BATCH,
     SIZES,
-    SMALL_SIZES,
     Benchmark,
     binary_int_args,
     unary_int_arg,
@@ -353,7 +352,7 @@ def test_conv1d():
         arg_func=conv1d_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SMALL_SIZES,
+        sizes=[2, 4, 8, 16, 32, 64],
     )
     bench.run()
 
@@ -380,7 +379,7 @@ def test_conv2d_fwd():
         arg_func=conv2d_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SMALL_SIZES,
+        sizes=[16, 32, 64, 128, 256, 512],
     )
     bench.run()
 
@@ -407,7 +406,7 @@ def test_conv2d_bwd():
         arg_func=conv2d_arg,
         dtypes=FLOAT_DTYPES,
         batch=POINTWISE_BATCH,
-        sizes=SMALL_SIZES,
+        sizes=[16, 32, 64, 128, 256, 512],
         is_backward=True,
     )
     bench.run()
