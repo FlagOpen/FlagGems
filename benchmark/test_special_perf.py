@@ -1,6 +1,6 @@
 import math
-from typing import Generator
 import random
+from typing import Generator
 
 import pytest
 import torch
@@ -10,8 +10,7 @@ from .performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
-    binary_input_fn,
-    generate_tensor_input
+    generate_tensor_input,
 )
 
 
@@ -19,7 +18,7 @@ def topk_input_fn(shape, dtype, device):
     x = torch.randn(shape, device=device, dtype=dtype)
     k = 5 if shape[-1] > 5 else shape[-1]
     yield {"x": x, "k": k, "dim": -1},
-    #TODO:  Currently only support sorted == True and only support topk in last dimension
+    # TODO:  Currently only support sorted == True and only support topk in last dimension
     # if Config.bench_level == BenchLevel.COMPREHENSIVE:
     #     k = 5 if shape[0] > 5 else shape[0]
     #     yield {"x": x, "k": k, "dim": 0},
@@ -28,7 +27,7 @@ def topk_input_fn(shape, dtype, device):
 
 def sort_input_fn(shape, dtype, device):
     inp = generate_tensor_input(shape, dtype, device)
-    yield inp, {"dim" : -1},
+    yield inp, {"dim": -1},
     if Config.bench_level == BenchLevel.COMPREHENSIVE:
         yield inp, {"dim": 0},
 
@@ -42,6 +41,7 @@ def resolve_conj_input_fn(shape, dtype, device):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     yield x.conj(),
 
+
 # TODO: set shape for isin. meet CUDA out of memory
 def isin_input_fn(shape, dtype, device):
     elements = generate_tensor_input(shape, dtype, device)
@@ -53,6 +53,7 @@ def isin_input_fn(shape, dtype, device):
         uniq_test_elements = torch.unique(generate_tensor_input(shape, dtype, device))
         yield uniq_elements, uniq_test_elements, {"assume_unique": True}
 
+
 special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
@@ -63,6 +64,7 @@ special_operations = [
     # Numerical Check
     ("isin", torch.isin, INT_DTYPES + FLOAT_DTYPES, isin_input_fn),
 ]
+
 
 @pytest.mark.parametrize(
     "op_name, torch_op, dtypes, input_fn",
@@ -134,7 +136,7 @@ def test_perf_pad():
     bench.run()
 
 
-#TODO: special case for tensor construct, move to other file
+# TODO: special case for tensor construct, move to other file
 @pytest.mark.arange
 def test_perf_arange():
     def arange_input_fn(shape, dtype, device):
@@ -145,12 +147,12 @@ def test_perf_arange():
         },
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             yield {
-            "start": 0,
-            "end": math.prod(shape),
-            "step": 2,
-            "device": device,
-            "dtype": dtype,
-        },
+                "start": 0,
+                "end": math.prod(shape),
+                "step": 2,
+                "device": device,
+                "dtype": dtype,
+            },
 
     bench = GenericBenchmark(
         input_fn=arange_input_fn,
@@ -200,6 +202,7 @@ EMBEDDING_RECOMMENDED_SHAPES = [
     (4, 8, 4096),
 ]
 
+
 class EmbeddingBenchmark(Benchmark):
     # DEFAULT_SHAPES = EMBEDDING_RECOMMENDED_SHAPES
     def set_shapes(self):
@@ -245,18 +248,19 @@ def test_perf_embedding():
     bench.run()
 
 
-
-#[N, C, H, W]
+# [N, C, H, W]
 UPSAMPLE_SHAPES = [
-    (1,  3,  512, 512),
+    (1, 3, 512, 512),
     (8, 16, 128, 128),
-    (2,  3, 1024, 1024),
+    (2, 3, 1024, 1024),
     (16, 16, 512, 512),
     (16, 16, 1024, 1024),
 ]
 
+
 class UpsampleBenchmark(Benchmark):
     DEFAULT_SHAPES = UPSAMPLE_SHAPES
+
     def set_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
@@ -283,7 +287,10 @@ class UpsampleBenchmark(Benchmark):
                 "scales_w": None,
             },
 
-@pytest.mark.upsample_bicubic2d_aa(recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W")
+
+@pytest.mark.upsample_bicubic2d_aa(
+    recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W"
+)
 def test_perf_upsample_bicubic2d_aa():
     bench = UpsampleBenchmark(
         op_name="_upsample_bicubic2d_aa",
@@ -291,8 +298,3 @@ def test_perf_upsample_bicubic2d_aa():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
-
-
-
-
-
