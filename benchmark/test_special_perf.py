@@ -243,3 +243,56 @@ def test_perf_embedding():
         ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
     )
     bench.run()
+
+
+
+#[N, C, H, W]
+UPSAMPLE_SHAPES = [
+    (1,  3,  512, 512),
+    (8, 16, 128, 128),
+    (2,  3, 1024, 1024),
+    (16, 16, 512, 512),
+    (16, 16, 1024, 1024),
+]
+
+class UpsampleBenchmark(Benchmark):
+    DEFAULT_SHAPES = UPSAMPLE_SHAPES
+    def set_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        self.shapes = self.DEFAULT_SHAPES[:]
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            more_shapes = []
+            # TODO: more shapes
+            self.shapes.extend(more_shapes)
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            batch, channel, height, weight = shape
+            input = torch.randn(size=shape, device=self.device, dtype=cur_dtype)
+            scale_factors = (2, 2)
+            output_size = (
+                int(height * scale_factors[0]),
+                int(weight * scale_factors[1]),
+            )
+            yield {
+                "input": input,
+                "output_size": output_size,
+                "align_corners": False,
+                "scales_h": None,
+                "scales_w": None,
+            },
+
+@pytest.mark.upsample_bicubic2d_aa(recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W")
+def test_perf_upsample_bicubic2d_aa():
+    bench = UpsampleBenchmark(
+        op_name="_upsample_bicubic2d_aa",
+        torch_op=torch._C._nn._upsample_bicubic2d_aa,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+
+
+
