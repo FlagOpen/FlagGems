@@ -1,6 +1,4 @@
-import math
 import random
-from typing import Generator
 
 import pytest
 import torch
@@ -8,18 +6,15 @@ import torch
 from .attri_util import (
     DEFAULT_SHAPES_2D_ONLY,
     DEFAULT_SHAPES_EXCLUDE_1D,
-    DEFAULT_SHAPES_EXCLUDE_3D,
     FLOAT_DTYPES,
     INT_DTYPES,
     BenchLevel,
 )
 from .performance_utils import (
-    Benchmark,
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
-    GenericBenchmarkExcluse3D,
     generate_tensor_input,
 )
 
@@ -164,38 +159,40 @@ def test_perf_pad():
 
 # TODO:add 3d shapes
 EMBEDDING_RECOMMENDED_SHAPES = [
-    (4,  4),
+    (4, 4),
     (16, 16),
     (128, 128),
     (256, 256),
     (1024, 1024),
 ]
 
+
 class EmbeddingBenchmark(GenericBenchmark2DOnly):
     DEFAULT_SHAPES = EMBEDDING_RECOMMENDED_SHAPES
+
     def set_shapes(self):
         self.shapes = self.DEFAULT_SHAPES
-        #TODO: add more shapes
+        # TODO: add more shapes
+
 
 @pytest.mark.embedding(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
 def test_perf_embedding():
     def embedding_input_fn(shape, dtype, device):
-            num_embeddings, embedding_dim = shape
-            indices = torch.randint(
-                0, num_embeddings, (num_embeddings,), device=device
+        num_embeddings, embedding_dim = shape
+        indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
+        weight = torch.randn(
+            (num_embeddings, embedding_dim), device=device, dtype=dtype
+        )
+        yield {"input": indices, "weight": weight},
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            indices_2d = torch.randint(
+                0,
+                num_embeddings,
+                (num_embeddings, num_embeddings),
+                device=device,
             )
-            weight = torch.randn(
-                (num_embeddings, embedding_dim), device=device, dtype=dtype
-            )
-            yield {"input": indices, "weight": weight},
-            if Config.bench_level == BenchLevel.COMPREHENSIVE:
-                indices_2d = torch.randint(
-                    0,
-                    num_embeddings,
-                    (num_embeddings, num_embeddings),
-                    device=device,
-                )
-                yield {"input": indices_2d, "weight": weight},
+            yield {"input": indices_2d, "weight": weight},
+
     bench = EmbeddingBenchmark(
         input_fn=embedding_input_fn,
         op_name="embedding",
@@ -218,43 +215,67 @@ UPSAMPLE_SHAPES = [
 ]
 
 
-class UpsampleBenchmark(Benchmark):
+class UpsampleBenchmark(GenericBenchmark):
     DEFAULT_SHAPES = UPSAMPLE_SHAPES
 
     def set_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
         self.shapes = self.DEFAULT_SHAPES[:]
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            more_shapes = []
-            # TODO: more shapes
-            self.shapes.extend(more_shapes)
-
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for shape in self.shapes:
-            batch, channel, height, weight = shape
-            input = torch.randn(size=shape, device=self.device, dtype=cur_dtype)
-            scale_factors = (2, 2)
-            output_size = (
-                int(height * scale_factors[0]),
-                int(weight * scale_factors[1]),
-            )
-            yield {
-                "input": input,
-                "output_size": output_size,
-                "align_corners": False,
-                "scales_h": None,
-                "scales_w": None,
-            },
 
 
 @pytest.mark.upsample_bicubic2d_aa(
     recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W"
 )
 def test_perf_upsample_bicubic2d_aa():
+    def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
+        batch, channel, height, weight = shape
+        input = torch.randn(size=shape, device=device, dtype=dtype)
+        scale_factors = (2, 2)
+        output_size = (
+            int(height * scale_factors[0]),
+            int(weight * scale_factors[1]),
+        )
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
     bench = UpsampleBenchmark(
+        input_fn=upsample_bicubic2d_aa_input_fn,
         op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.upsample_nearest2d(
+    recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W"
+)
+def test_perf_upsample_nearest2d():
+    def upsample_nearest2d_input_fn(shape, dtype, device):
+        batch, channel, height, weight = shape
+        input = torch.randn(size=shape, device=device, dtype=dtype)
+        scale_factors = (2, 2)
+        output_size = (
+            int(height * scale_factors[0]),
+            int(weight * scale_factors[1]),
+        )
+        yield {
+            "input": input,
+            "output_size": output_size,
+            "scales_h": None,
+            "scales_w": None,
+        },
+
+    bench = UpsampleBenchmark(
+        input_fn=upsample_nearest2d_input_fn,
+        op_name="upsample_nearest2d",
+        torch_op=torch._C._nn.upsample_nearest2d,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
