@@ -1,12 +1,15 @@
-import pytest
-import torch
 import math
 
-from .attri_util import (
-    BenchLevel,
-)
+import pytest
+import torch
 
-from .performance_utils import  Config, GenericBenchmark, generate_tensor_input, unary_input_fn
+from .attri_util import BenchLevel
+from .performance_utils import (
+    Config,
+    GenericBenchmark,
+    generate_tensor_input,
+    unary_input_fn,
+)
 
 
 def generic_constructor_input_fn(shape, dtype, device):
@@ -33,6 +36,7 @@ def fill_input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input, 3.14159,
 
+
 def arange_input_fn(shape, dtype, device):
     yield {
         "end": math.prod(shape),
@@ -47,6 +51,7 @@ def arange_input_fn(shape, dtype, device):
             "device": device,
             "dtype": dtype,
         },
+
 
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
