@@ -1,7 +1,12 @@
 import pytest
 import torch
+import math
 
-from .performance_utils import GenericBenchmark, unary_input_fn
+from .attri_util import (
+    BenchLevel,
+)
+
+from .performance_utils import  Config, GenericBenchmark, generate_tensor_input, unary_input_fn
 
 
 def generic_constructor_input_fn(shape, dtype, device):
@@ -12,6 +17,13 @@ def full_input_fn(shape, dtype, device):
     yield {"size": shape, "fill_value": 3.1415926, "dtype": dtype, "device": device},
 
 
+def masked_fill_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    mask = generate_tensor_input(shape, dtype, device) < 0.3
+    value = 1024
+    yield inp, mask, value
+
+
 def full_like_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     yield {"input": inp, "fill_value": 3.1415926},
@@ -20,6 +32,21 @@ def full_like_input_fn(shape, dtype, device):
 def fill_input_fn(shape, dtype, device):
     input = torch.empty(shape, dtype=dtype, device=device)
     yield input, 3.14159,
+
+def arange_input_fn(shape, dtype, device):
+    yield {
+        "end": math.prod(shape),
+        "device": device,
+        "dtype": dtype,
+    },
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield {
+            "start": 0,
+            "end": math.prod(shape),
+            "step": 2,
+            "device": device,
+            "dtype": dtype,
+        },
 
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
@@ -35,8 +62,11 @@ tensor_constructor_operations = [
     ("zeros_like", torch.zeros_like, unary_input_fn),
     # tensor constructor with given value
     ("fill", torch.fill, fill_input_fn),
+    ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
+    # arange
+    ("arange", torch.arange, arange_input_fn),
 ]
 
 

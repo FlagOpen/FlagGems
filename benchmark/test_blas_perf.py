@@ -40,7 +40,7 @@ class BlasBenchmark(Benchmark):
             yield from self.input_fn(b, m, n, k, cur_dtype, self.device)
         # llama shapes
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            for m, n, k in llama_shapes():
+            for m, n, k, _ in llama_shapes():
                 yield from self.input_fn(1, m, n, k, cur_dtype, self.device)
 
     def set_shapes(self):

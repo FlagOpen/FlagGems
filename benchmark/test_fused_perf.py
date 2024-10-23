@@ -3,8 +3,12 @@ import torch
 
 import flag_gems
 
-from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark, binary_input_fn
+from .attri_util import DEFAULT_SHAPES_EXCLUDE_1D, FLOAT_DTYPES
+from .performance_utils import (
+    GenericBenchmark,
+    GenericBenchmarkExcluse1D,
+    binary_input_fn,
+)
 
 
 @pytest.mark.gelu_and_mul
@@ -40,7 +44,7 @@ def test_perf_silu_and_mul():
     bench.run()
 
 
-@pytest.mark.skip_layernorm
+@pytest.mark.skip_layernorm(recommended_shapes=DEFAULT_SHAPES_EXCLUDE_1D)
 def test_perf_skip_layernorm():
     def skip_layernorm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -55,7 +59,7 @@ def test_perf_skip_layernorm():
 
     gems_op = flag_gems.skip_layer_norm
 
-    bench = GenericBenchmark(
+    bench = GenericBenchmarkExcluse1D(
         input_fn=skip_layernorm_input_fn,
         op_name="skip_layernorm",
         torch_op=torch_op,
@@ -65,7 +69,7 @@ def test_perf_skip_layernorm():
     bench.run()
 
 
-@pytest.mark.skip_rmsnorm
+@pytest.mark.skip_rmsnorm(recommended_shapes=DEFAULT_SHAPES_EXCLUDE_1D)
 def test_perf_skip_rmsnorm():
     def skip_rmsnorm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -82,7 +86,7 @@ def test_perf_skip_rmsnorm():
 
     gems_op = flag_gems.skip_rms_norm
 
-    bench = GenericBenchmark(
+    bench = GenericBenchmarkExcluse1D(
         input_fn=skip_rmsnorm_input_fn,
         op_name="skip_rmsnorm",
         torch_op=torch_op,
@@ -90,3 +94,6 @@ def test_perf_skip_rmsnorm():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+# TODO: apply_rotary_pos_emb

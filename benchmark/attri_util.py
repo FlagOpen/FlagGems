@@ -1,23 +1,9 @@
 import itertools
-import operator
 from dataclasses import dataclass, fields
 from enum import Enum
-from functools import reduce
 from typing import List, Optional, Tuple
 
 import torch
-
-
-class ReadOnly:
-    def __init__(self, value):
-        self._value = value
-
-    @property
-    def value(self):
-        return self._value
-
-
-BLAS_OPS = ReadOnly(["addmm", "bmm", "mm", "mv", "outer", "matmul", "linear"])
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
@@ -28,13 +14,38 @@ BOOL_DTYPES = [
 DEFAULT_WARMUP_COUNT = 1000
 DEFAULT_ITER_COUNT = 100
 
-# Default shapes settings
+
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
 LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
-# Non-BLAS shapes are currently defined as (M, N) for backward compatibility
-# but will change to (B, M, N) in the future.
-DEFAULT_NON_BLAS_BENCH_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
+LEGACY_NON_BLAS_SHAPES = [(1024, shape) for shape in LEGACY_SHAPES]
+LEGACY_BLAS_SHAPES = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
+
+# Default shapes settings
+DEFAULT_SHAPES = [
+    (1024 * 1024 * 1024,),  # from perf
+    (64, 64),
+    (4096, 4096),
+    (64, 512, 512),
+    (1024, 1024, 1024),  # from perf
+]
+
+DEFAULT_SHAPES_EXCLUDE_1D = [shape for shape in DEFAULT_SHAPES if len(shape) != 1] + [
+    (1024, 1024),
+]
+DEFAULT_SHAPES_EXCLUDE_3D = [shape for shape in DEFAULT_SHAPES if len(shape) != 3] + [
+    (1024,),
+    (1024, 1024),
+]
+DEFAULT_SHAPES_2D_ONLY = [
+    (16, 16),
+    (256, 256),
+    (1024, 1024),
+    (4096, 4096),
+    (1024, 65536),
+    # (65536, 65536) # this size is too large for gather and scatter
+]
+
 # BLAS shapes are defined as (B, M, N, K) or (M, N, K), differing from non-BLAS shapes.
 DEFAULT_BMNK_BLAS = [(16, shape, shape, shape) for shape in LEGACY_SHAPES[:-1]] + [
     (2, 4096, 4096, 4096)
@@ -46,14 +57,6 @@ DEFAULT_MNK_BLAS = [
     (1024, 1024, 1024),
     (4096, 4096, 4096),  # from perf
     (8192, 8192, 8192),  # from perf
-]
-
-DEFAULT_BINARY_POINTWISE_SHAPES = [
-    (64, 64),
-    (1024, 1024),
-    (4096, 4096),
-    (64, 64, 64),
-    (1024, 1024, 1024),  # from perf
 ]
 
 # NORM shapes can be either 3D or 4D:
@@ -69,6 +72,7 @@ DEFAULT_NORM_SHAPES = [
 ]
 
 
+# This function is adapted from: https://github.com/pytorch-labs/tritonbench/blob/main/tritonbench/utils/triton_op.py
 def llama_shapes():
     # batch sizes * seq lengths
     BS = [2**i for i in range(0, 17)]
@@ -87,7 +91,7 @@ def llama_shapes():
         (16384, 13312),
         (6656, 16384),
     ]
-    return [(bs, n, k) for bs, (k, n) in itertools.product(BS, KN)]
+    return [(bs, n, k, None) for bs, (k, n) in itertools.product(BS, KN)]
 
 
 @dataclass
@@ -158,18 +162,13 @@ def get_recommended_shapes(
     op_name: str, op_specified_shapes: Optional[List[Tuple[int, ...]]]
 ):
     def _shapes_sort(shapes):
-        return sorted(shapes, key=lambda x: reduce(operator.mul, x))
+        shapes = [shape if isinstance(shape, tuple) else (shape,) for shape in shapes]
+        return sorted(shapes, key=lambda x: torch.tensor(x).prod().item())
 
     if op_specified_shapes:
         # TODO: handle situation that list as the basic element in shape.
         return _shapes_sort(op_specified_shapes)
-
-    shapes = DEFAULT_NON_BLAS_BENCH_SHAPES
-    if op_name in ["bmm", "mv"]:
-        shapes = DEFAULT_BMNK_BLAS
-    elif op_name in ["addmm", "mm", "outer"]:
-        shapes = DEFAULT_MNK_BLAS
-    return _shapes_sort(shapes)
+    return _shapes_sort(DEFAULT_SHAPES)
 
 
 class BenchLevel(Enum):
@@ -202,12 +201,13 @@ class BenchmarkResult:
     op_name: str
     dtype: str
     mode: str
+    level: str
     # Benchmark results
     result: List[BenchmarkMetrics]
 
     def __str__(self) -> str:
         header = (
-            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode})\n"
+            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, level={self.level})\n"
             f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
             f"{'Size Detail':>20}\n"
             f"{'-' * 90}\n"
@@ -238,11 +238,6 @@ class BenchmarkResult:
         )
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
-        legacy_shapes_4d = [(16, shape, shape, shape) for shape in LEGACY_SHAPES] + [
-            (1, shape, shape, shape) for shape in LEGACY_SHAPES
-        ]
-        legacy_shapes_2d = [(1024, shape) for shape in LEGACY_SHAPES]
-
         first_shape = (
             metrics.shape_detail[0] if isinstance(metrics.shape_detail, list) else None
         )
@@ -250,9 +245,13 @@ class BenchmarkResult:
             tuple(first_shape) if isinstance(first_shape, torch.Size) else None
         )
 
-        if self.op_name in BLAS_OPS.value and to_record_shape in legacy_shapes_4d:
+        if to_record_shape in LEGACY_NON_BLAS_SHAPES:
             metrics.legacy_shape = to_record_shape[-1]
-        elif to_record_shape in legacy_shapes_2d:
+        elif (
+            isinstance(to_record_shape, tuple)
+            and len(to_record_shape) == 2
+            and to_record_shape[0] == 1024
+        ):
             metrics.legacy_shape = to_record_shape[-1]
         else:
             metrics.legacy_shape = None

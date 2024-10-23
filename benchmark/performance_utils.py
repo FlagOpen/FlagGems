@@ -9,7 +9,10 @@ import flag_gems
 from .attri_util import (
     BOOL_DTYPES,
     DEFAULT_METRICS,
-    DEFAULT_NON_BLAS_BENCH_SHAPES,
+    DEFAULT_SHAPES,
+    DEFAULT_SHAPES_2D_ONLY,
+    DEFAULT_SHAPES_EXCLUDE_1D,
+    DEFAULT_SHAPES_EXCLUDE_3D,
     FLOAT_DTYPES,
     INT_DTYPES,
     BenchLevel,
@@ -26,7 +29,7 @@ class Benchmark:
     device: str = "cuda"
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
-    DEFAULT_SHAPES = DEFAULT_NON_BLAS_BENCH_SHAPES
+    DEFAULT_SHAPES = DEFAULT_SHAPES
     """
     the base class for the operations benchmark
     """
@@ -60,24 +63,21 @@ class Benchmark:
 
     def set_metrics(self, user_desired_metrics: Optional[List[str]]):
         # Validate user-specified metrics
-        if user_desired_metrics and not all(
-            metric in self.metrics for metric in user_desired_metrics
-        ):
+        if user_desired_metrics:
             invalid_metrics = [
                 metric for metric in user_desired_metrics if metric not in self.metrics
             ]
-            raise ValueError(
-                f"Given metric(s) '{', '.join(invalid_metrics)}' can't be supported by this op '{self.op_name}'"
-            )
-        unsatisfied_metrics = check_metric_dependencies(user_desired_metrics)
-        if unsatisfied_metrics:
-            raise ValueError(
-                f"Given metric(s) '{', '.join(unsatisfied_metrics)}' do not satisfy their dependencies"
-            )
+            if invalid_metrics:
+                raise ValueError(
+                    f"Invalid metrics: {', '.join(invalid_metrics)} for operation: '{self.op_name}'"
+                )
+            unsatisfied_metrics = check_metric_dependencies(user_desired_metrics)
+            if unsatisfied_metrics:
+                raise ValueError(
+                    f"Unsatisfied metric dependencies: {', '.join(unsatisfied_metrics)}"
+                )
 
-        self.to_bench_metrics = (
-            user_desired_metrics if user_desired_metrics else self.metrics
-        )
+        self.to_bench_metrics = user_desired_metrics or self.metrics
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
         # Validate user-specified dtypes
@@ -228,6 +228,7 @@ class Benchmark:
                 metrics.append(metric)
                 # TODO: try gc collect to avoid cuda out of memory
             result = BenchmarkResult(
+                level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
                 mode="cpu" if Config.cpu_mode else "cuda",
@@ -239,7 +240,15 @@ class Benchmark:
 class GenericBenchmark(Benchmark):
 
     """
-    Generic benchmark for tensor operations with different types of inputs.
+    A generic benchmark class for most of the operations.
+
+    This class extends the Benchmark base class. It allows users to specify custom
+    input functions and shapes, making it suitable for a wide range of tensor
+    operations including both unary and binary operations.
+
+    Usage example:
+        benchmark = GenericBenchmark(op_name="add", torch_op=torch.add, input_fn=binary_input_fn)
+        benchmark.run()
     """
 
     def __init__(self, *args, input_fn, **kwargs):
@@ -250,14 +259,68 @@ class GenericBenchmark(Benchmark):
         if Config.bench_level == BenchLevel.CORE:
             self.shapes = self.DEFAULT_SHAPES[:]
         else:
-            # TODO: consider 3d shapes(some operations like tile failed)
+            more_shapes_1d = [
+                (4,),
+                (1024,),
+            ]
             more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-            more_shapes_3d = [(shape[0], *shape) for shape in DEFAULT_NON_BLAS_BENCH_SHAPES]
-            self.shapes = list(dict.fromkeys(self.DEFAULT_SHAPES + more_shapes_2d + more_shapes_3d))
+            more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+            self.shapes = list(
+                dict.fromkeys(
+                    self.shapes + more_shapes_1d + more_shapes_2d + more_shapes_3d
+                )
+            )
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+class GenericBenchmarkFilterShapes(GenericBenchmark):
+    def __init__(self, exclude_dims: Optional[int] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exclude_dims = exclude_dims
+
+    def set_shapes(self):
+        super().set_shapes()
+        if self.exclude_dims is not None:
+            self.shapes = [
+                shape for shape in self.shapes if len(shape) != self.exclude_dims
+            ]
+
+
+class GenericBenchmarkExcluse1D(GenericBenchmarkFilterShapes):
+    DEFAULT_SHAPES = DEFAULT_SHAPES_EXCLUDE_1D
+    """
+    exclude 1d shapes
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=1, *args, **kwargs)
+
+
+class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
+    DEFAULT_SHAPES = DEFAULT_SHAPES_EXCLUDE_3D
+    """
+    exclude 3d shapes
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=3, *args, **kwargs)
+
+
+class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
+    DEFAULT_SHAPES = DEFAULT_SHAPES_2D_ONLY
+    """
+    2d shapes only
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(exclude_dims=None, *args, **kwargs)
+
+    def set_shapes(self):
+        super().set_shapes()
+        self.shapes = [shape for shape in self.shapes if len(shape) == 2]
 
 
 def generate_tensor_input(shape, dtype, device):

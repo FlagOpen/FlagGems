@@ -5,8 +5,8 @@ import torch
 
 from .attri_util import (
     BOOL_DTYPES,
-    DEFAULT_BINARY_POINTWISE_SHAPES,
-    DEFAULT_NON_BLAS_BENCH_SHAPES,
+    DEFAULT_METRICS,
+    DEFAULT_SHAPES,
     FLOAT_DTYPES,
     INT_DTYPES,
 )
@@ -14,15 +14,10 @@ from .conftest import BenchLevel, Config
 from .performance_utils import Benchmark, generate_tensor_input
 
 special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-shapes_3d = [(shape[0], *shape) for shape in DEFAULT_NON_BLAS_BENCH_SHAPES]
-sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-COMPREHENSIVE_SHAPES = list(dict.fromkeys(
-    DEFAULT_BINARY_POINTWISE_SHAPES
-    + DEFAULT_NON_BLAS_BENCH_SHAPES
-    + special_shapes_2d
-    + shapes_3d
-    + sp_shapes_3d
-))
+shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+COMPREHENSIVE_SHAPES = list(
+    dict.fromkeys(DEFAULT_SHAPES + special_shapes_2d + shapes_3d)
+)
 
 
 class BinaryPointwiseBenchmark(Benchmark):
@@ -30,17 +25,24 @@ class BinaryPointwiseBenchmark(Benchmark):
     Base class for benchmarking binary pointwise operations.
     """
 
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
+
     def set_shapes(self):
         if Config.bench_level == BenchLevel.COMPREHENSIVE:
             self.shapes = COMPREHENSIVE_SHAPES
         else:
-            self.shapes = DEFAULT_BINARY_POINTWISE_SHAPES
+            self.shapes = self.DEFAULT_SHAPES
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp1 = generate_tensor_input(shape, cur_dtype, self.device)
             inp2 = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp1, inp2
+
+    def get_tflops(self, op, *args, **kwargs):
+        shape1 = list(args[0].shape)
+        shape2 = list(args[0].shape)
+        return torch.tensor(shape1).prod().item() + torch.tensor(shape2).prod().item()
 
 
 @pytest.mark.parametrize(
@@ -51,8 +53,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             op,
             dtype,
             marks=getattr(pytest.mark, name, None)(
-                recommended_shapes=DEFAULT_BINARY_POINTWISE_SHAPES,
-                shape_desc="(B), M, N",
+                recommended_shapes=DEFAULT_SHAPES,
             ),
         )
         for name, op, dtype in [
@@ -78,6 +79,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),

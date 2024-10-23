@@ -87,7 +87,8 @@ def pytest_addoption(parser):
         default=None,
         required=False,
         choices=[
-            str(ele) for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
+            str(ele).split(".")[-1]
+            for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
         ],
         help=(
             "Specify the data types for benchmarks. "
@@ -119,7 +120,8 @@ def pytest_configure(config):
     iter_value = config.getoption("--iter")
     Config.repetition = int(iter_value)
 
-    dtypes = config.getoption("--dtypes")
+    types_str = config.getoption("--dtypes")
+    dtypes = [getattr(torch, dtype) for dtype in types_str] if types_str else types_str
     Config.user_desired_dtypes = dtypes
 
     metrics = config.getoption("--metrics")
