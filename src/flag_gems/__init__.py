@@ -147,6 +147,7 @@ def enable(lib=aten_lib):
     lib.impl("masked_fill", masked_fill, "PrivateUse1")
     lib.impl("_unique2", _unique2, "PrivateUse1")
     lib.impl("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, "PrivateUse1")
+    lib.impl("upsample_nearest2d", upsample_nearest2d, "PrivateUse1")
     lib.impl("nonzero", nonzero, "PrivateUse1")
     lib.impl("repeat", repeat, "PrivateUse1")
     lib.impl("masked_select", masked_select, "PrivateUse1")
