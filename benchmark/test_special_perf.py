@@ -349,6 +349,25 @@ def test_perf_vstack():
     bench.run()
 
 
+def test_perf_sort():
+    def sort_kwargs(dtype, batch, size):
+        input = torch.randn(size=(batch, size), dtype=dtype, device="cuda")
+        return {
+            "input": input,
+        }
+
+    bench = Benchmark(
+        op_name="sort",
+        torch_op=torch.sort,
+        arg_func=None,
+        dtypes=FLOAT_DTYPES,
+        batch=32,
+        sizes=[64, 128, 256, 512, 1024, 2048],
+        kwargs_func=sort_kwargs,
+    )
+    bench.run()
+
+
 def test_perf_repeat_interleave_self_int():
     def repeat_interleave_self_int_arg(dtype, batch, size):
         inp = torch.randn([batch, size], dtype=dtype, device="cuda")
