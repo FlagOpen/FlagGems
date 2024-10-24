@@ -76,6 +76,7 @@ from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
@@ -185,6 +186,7 @@ __all__ = [
     "minimum",
     "rand",
     "randn",
+    "randperm",
     "rand_like",
     "randn_like",
     "resolve_neg",
