@@ -86,7 +86,6 @@ def enable(lib=aten_lib):
     lib.impl("normal.Tensor_float", normal_tensor_float, "PrivateUse1")
     lib.impl("normal.float_Tensor", normal_float_tensor, "PrivateUse1")
     lib.impl("normal.Tensor_Tensor", normal_tensor_tensor, "PrivateUse1")
-    lib.impl("normal.float_float", normal_float_float, "PrivateUse1")
     lib.impl("uniform_", uniform_, "PrivateUse1")
     lib.impl("mean", mean, "PrivateUse1")
     lib.impl("mean.dim", mean_dim, "PrivateUse1")

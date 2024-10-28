@@ -9,15 +9,24 @@ from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
 
 
 @pytest.mark.normal
+@pytest.mark.parametrize("float", ["none", "mean", "std"])
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_normal(shape, dtype):
-    loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device="musa")
-    scale = torch.full(size=shape, fill_value=10.0, dtype=dtype, device="musa")
+def test_accuracy_normal(float, shape, dtype):
+    loc = (
+        3.0
+        if float == "mean"
+        else torch.full(size=shape, fill_value=3.0, dtype=dtype, device="musa")
+    )
+    scale = (
+        10.0
+        if float == "std"
+        else torch.full(size=shape, fill_value=10.0, dtype=dtype, device="musa")
+    )
     with flag_gems.use_gems():
-        res_out = torch.distributions.normal.Normal(loc, scale).sample()
-    mean = torch.mean(res_out.to("cpu"))
-    std = torch.std(res_out.to("cpu"))
+        res_out = torch.normal(loc, scale)
+    mean = torch.mean(res_out)
+    std = torch.std(res_out)
     assert torch.abs(mean - 3.0) < 0.1
     assert torch.abs(std - 10.0) < 0.1
 
