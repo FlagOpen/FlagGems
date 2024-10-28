@@ -165,7 +165,8 @@ def test_perf_upsample_bicubic2d_aa():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=16,
-        sizes=[(128 * i) for i in range(1, 12)],
+        #sizes=[(128 * i) for i in range(1, 12)],   # 10.23 test requirement
+        sizes=SIZES,
         kwargs_func=upsample_bicubic2d_aa_kwargs,
     )
     bench.run()
@@ -194,7 +195,8 @@ def test_perf_upsample_nearest2d():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=16,
-        sizes=[(128 * i) for i in range(1, 12)],
+        #sizes=[(128 * i) for i in range(1, 12)],   # 10.23 test requirement
+        sizes=SIZES,
         kwargs_func=upsample_nearest2d_kwargs,
     )
     bench.run()
