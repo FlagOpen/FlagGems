@@ -24,6 +24,11 @@ def cat(
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
     if len(A) == 1:
         return A[0]
+
+    # Handle negative dim: convert to positive
+    if dim < 0:
+        dim += len(A[0].shape)
+
     # Same rank check
     inp_shapes = [list(_.shape) for _ in A]
     inp0_shape = inp_shapes[0]
