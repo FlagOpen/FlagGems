@@ -3,14 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import (
-    BOOL_DTYPES,
-    DEFAULT_SHAPES,
-    DEFAULT_SHAPES_2D_ONLY,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-)
-from .conftest import BenchLevel, Config
+from .attri_util import BOOL_DTYPES, DEFAULT_SHAPES_2D_ONLY, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import (
     Benchmark,
     GenericBenchmark,
@@ -19,31 +12,23 @@ from .performance_utils import (
     unary_input_fn,
 )
 
-more_shapes_1d = [
-    (4,),
-    (1024,),
-]
-more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-COMPREHENSIVE_SHAPES = list(
-    dict.fromkeys(DEFAULT_SHAPES + more_shapes_1d + more_shapes_2d + more_shapes_3d)
-)
-
 
 class UnaryReductionBenchmark(Benchmark):
     """
     Base class for benchmarking reduction operations.
     """
 
-    def set_shapes(self):
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            self.shapes = COMPREHENSIVE_SHAPES
-        else:
-            self.shapes = DEFAULT_SHAPES
+    def set_more_shapes(self):
+        more_shapes_1d = [
+            (4,),
+            (1024,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            print(shape)
             inp = generate_tensor_input(shape, cur_dtype, self.device)
             yield inp,
 
@@ -186,12 +171,12 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 class TensorSelectBenchmark(GenericBenchmark):
     DEFAULT_SHAPES = DEFAULT_SHAPES_2D_ONLY
 
-    def set_shapes(self):
-        super().set_shapes()
-        self.shapes = [
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [
             # this filter is for scatter
             shape
-            for shape in self.shapes
+            for shape in shapes
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
         ]
 

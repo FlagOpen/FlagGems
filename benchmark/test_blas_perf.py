@@ -43,26 +43,21 @@ class BlasBenchmark(Benchmark):
             for m, n, k, _ in llama_shapes():
                 yield from self.input_fn(1, m, n, k, cur_dtype, self.device)
 
-    def set_shapes(self):
-        # self.shapes is a list of tuples, each containing four elements:
-        # (B, M, N, K).
-        self.shapes = self.DEFAULT_SHAPES[:]
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            # 'mv' operations only involve M and N dimensions.
-            # Shapes with large K values are not suitable for these two operations.
-            if self.op_name not in ["mv"]:
-                # B=1 or 4, M= 13, N= 2 , K=2^6..2^15
-                large_k_shapes = list(
-                    itertools.product([1, 4], [13], [2], [2**i for i in range(6, 15)])
-                )
-                self.shapes.extend(large_k_shapes)
-
-            split_k_shapes = [
-                (1, m, m, k)
-                for m in [16 * i for i in range(1, 5)]
-                for k in [4096 * i for i in range(1, 9)]
-            ]
-            self.shapes.extend(split_k_shapes)
+    def set_more_shapes(self):
+        split_k_shapes = [
+            (1, m, m, k)
+            for m in [16 * i for i in range(1, 5)]
+            for k in [4096 * i for i in range(1, 9)]
+        ]
+        # 'mv' operations only involve M and N dimensions.
+        # Shapes with large K values are not suitable for these two operations.
+        if self.op_name not in ["mv"]:
+            # B=1 or 4, M= 13, N= 2 , K=2^6..2^15
+            large_k_shapes = list(
+                itertools.product([1, 4], [13], [2], [2**i for i in range(6, 15)])
+            )
+            return large_k_shapes + split_k_shapes
+        return split_k_shapes
 
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
@@ -150,7 +145,7 @@ class OuterBenchmark(BlasBenchmark):
 
     DEFAULT_SHAPES = OUTER_RECOMENDED_SHAPES
 
-    def set_shapes(self):
+    def set_more_shapes(self):
         # 'outer' only involve M and N dimensions.
         self.shapes = self.DEFAULT_SHAPES[:]
 

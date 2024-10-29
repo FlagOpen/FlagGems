@@ -170,9 +170,9 @@ EMBEDDING_RECOMMENDED_SHAPES = [
 class EmbeddingBenchmark(GenericBenchmark2DOnly):
     DEFAULT_SHAPES = EMBEDDING_RECOMMENDED_SHAPES
 
-    def set_shapes(self):
-        self.shapes = self.DEFAULT_SHAPES
+    def set_more_shapes(self):
         # TODO: add more shapes
+        return None
 
 
 @pytest.mark.embedding(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
@@ -218,7 +218,7 @@ UPSAMPLE_SHAPES = [
 class UpsampleBenchmark(GenericBenchmark):
     DEFAULT_SHAPES = UPSAMPLE_SHAPES
 
-    def set_shapes(self):
+    def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
         self.shapes = self.DEFAULT_SHAPES[:]

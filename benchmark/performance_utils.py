@@ -3,6 +3,7 @@ from typing import Any, Generator, List, Optional, Tuple
 
 import torch
 import triton
+import yaml
 
 import flag_gems
 
@@ -30,6 +31,7 @@ class Benchmark:
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
+    DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     """
     the base class for the operations benchmark
     """
@@ -40,7 +42,6 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
-        shapes=None,
     ):
         self.op_name = op_name
         if is_backward:
@@ -55,6 +56,7 @@ class Benchmark:
         self.dtypes = dtypes if dtypes is not None else self.DEFAULT_DTYPES
         self.metrics = self.DEFAULT_METRICS
         self.shapes = self.DEFAULT_SHAPES
+        self.shape_file = self.DEFAULT_SHAPE_FILES
 
         # Actual dtypes and metrics to be used in the benchmark,
         # can be influenced by user input.
@@ -95,10 +97,66 @@ class Benchmark:
             user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
 
-    def set_shapes(self, op_specified_shapes: Optional[List[Any]] = None):
-        self.shapes = (
-            op_specified_shapes if op_specified_shapes else self.DEFAULT_SHAPES
-        )
+    def load_shapes_from_yaml(self, yaml_file_path):
+        with open(yaml_file_path, "r") as f:
+            yaml_config = yaml.safe_load(f)
+
+        if self.op_name in yaml_config:
+            self.shapes = yaml_config[self.op_name].get("shapes", self.DEFAULT_SHAPES)
+        else:
+            for cls in type(self).__mro__:
+                class_name = cls.__name__
+                if class_name in yaml_config:
+                    self.shapes = yaml_config[class_name].get(
+                        "shapes", self.DEFAULT_SHAPES
+                    )
+                    break
+            else:
+                self.shapes = self.DEFAULT_SHAPES
+
+    def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
+        # Validate user-spicified shapes files
+        import os
+
+        if not os.path.isfile(shape_file_path):
+            raise FileNotFoundError(f"Shape file '{shape_file_path}' does not exist.")
+        try:
+            with open(shape_file_path, "r") as file:
+                yaml_config = yaml.safe_load(file)
+                if self.op_name in yaml_config:
+                    self.shapes = yaml_config[self.op_name].get(
+                        "shapes", self.DEFAULT_SHAPES
+                    )
+                else:
+                    for cls in type(self).__mro__:
+                        class_name = cls.__name__
+                        if class_name in yaml_config:
+                            self.shapes = yaml_config[class_name].get(
+                                "shapes", self.DEFAULT_SHAPES
+                            )
+                            break
+                    else:
+                        self.shapes = self.DEFAULT_SHAPES
+
+            self.shapes = [tuple(shape) for shape in self.shapes]
+            # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
+            if (
+                hasattr(self, "set_more_shapes")
+                and callable(getattr(self, "set_more_shapes"))
+                and Config.bench_level == BenchLevel.COMPREHENSIVE
+            ):
+                # Merge shapes using subclass-specific logic
+                additional_shapes = self.set_more_shapes()
+                if additional_shapes:
+                    self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+        except yaml.YAMLError as e:
+            raise ValueError(
+                f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"
+            )
+
+    def set_more_shapes(self) -> Optional[List[List[int]]]:
+        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
+        return None
 
     def record_shapes(self, *args, **kwargs):
         def deep_parse(item):
@@ -123,7 +181,7 @@ class Benchmark:
         self.cpu_mode = Config.cpu_mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
-        self.set_shapes()
+        self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
@@ -255,21 +313,14 @@ class GenericBenchmark(Benchmark):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
 
-    def set_shapes(self):
-        if Config.bench_level == BenchLevel.CORE:
-            self.shapes = self.DEFAULT_SHAPES[:]
-        else:
-            more_shapes_1d = [
-                (4,),
-                (1024,),
-            ]
-            more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-            more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-            self.shapes = list(
-                dict.fromkeys(
-                    self.shapes + more_shapes_1d + more_shapes_2d + more_shapes_3d
-                )
-            )
+    def set_more_shapes(self):
+        more_shapes_1d = [
+            (4,),
+            (1024,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
@@ -281,12 +332,10 @@ class GenericBenchmarkFilterShapes(GenericBenchmark):
         super().__init__(*args, **kwargs)
         self.exclude_dims = exclude_dims
 
-    def set_shapes(self):
-        super().set_shapes()
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
         if self.exclude_dims is not None:
-            self.shapes = [
-                shape for shape in self.shapes if len(shape) != self.exclude_dims
-            ]
+            return [shape for shape in shapes if len(shape) != self.exclude_dims]
 
 
 class GenericBenchmarkExcluse1D(GenericBenchmarkFilterShapes):
@@ -318,9 +367,9 @@ class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
     def __init__(self, *args, **kwargs):
         super().__init__(exclude_dims=None, *args, **kwargs)
 
-    def set_shapes(self):
-        super().set_shapes()
-        self.shapes = [shape for shape in self.shapes if len(shape) == 2]
+    def set_more_shapes(self):
+        shapes = super().set_more_shapes()
+        return [shape for shape in shapes if len(shape) == 2]
 
 
 def generate_tensor_input(shape, dtype, device):

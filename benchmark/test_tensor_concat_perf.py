@@ -35,14 +35,10 @@ class ConcatBenchmark(Benchmark):
         for shape in self.shapes:
             yield from self.input_fn(shape, cur_dtype, self.device)
 
-    def set_shapes(self):
-        self.shapes = self.DEFAULT_SHAPES[:]
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            more_shapes_2d = [(1024, 2**i) for i in range(0, 11, 4)]
-            more_shapes_3d = [(64, 64, 2**i) for i in range(0, 8, 4)]
-            self.shapes = list(
-                dict.fromkeys(self.shapes + more_shapes_2d + more_shapes_3d)
-            )
+    def set_more_shapes(self):
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 11, 4)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 8, 4)]
+        return more_shapes_2d + more_shapes_3d
 
 
 def stack_cat_input_fn(shape, dtype, device):
@@ -127,16 +123,13 @@ class TensorRepeatBenchmark(GenericBenchmark):
 
     DEFAULT_SHAPES = DEFAULT_SHAPES[:]
 
-    def set_shapes(self):
-        if Config.bench_level == BenchLevel.CORE:
-            self.shapes = DEFAULT_SHAPES[:]
-        else:
-            more_shapes = [
-                (1024 * 1024,),
-                (512, 512, 512),
-                (64, 64, 64, 64),
-            ]
-            self.shapes = list(dict.fromkeys(self.DEFAULT_SHAPES + more_shapes))
+    def set_more_shapes(self):
+        more_shapes = [
+            (1024 * 1024,),
+            (512, 512, 512),
+            (64, 64, 64, 64),
+        ]
+        return more_shapes
 
 
 def tile_input_fn(shape, cur_dtype, device):

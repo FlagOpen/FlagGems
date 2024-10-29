@@ -10,14 +10,7 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from .conftest import BenchLevel, Config
 from .performance_utils import Benchmark, generate_tensor_input
-
-special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
-COMPREHENSIVE_SHAPES = list(
-    dict.fromkeys(DEFAULT_SHAPES + special_shapes_2d + shapes_3d)
-)
 
 
 class BinaryPointwiseBenchmark(Benchmark):
@@ -27,11 +20,10 @@ class BinaryPointwiseBenchmark(Benchmark):
 
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
-    def set_shapes(self):
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            self.shapes = COMPREHENSIVE_SHAPES
-        else:
-            self.shapes = self.DEFAULT_SHAPES
+    def set_more_shapes(self):
+        special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
+        return special_shapes_2d + shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:

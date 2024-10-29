@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 import pytest
 import torch
@@ -26,6 +27,7 @@ class BenchConfig:
         self.record_log = False
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
+        self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
 
 
 Config = BenchConfig()
@@ -97,6 +99,14 @@ def pytest_addoption(parser):
     )
 
     parser.addoption(
+        "--shape_file",
+        action="store",
+        default=os.path.join(os.path.dirname(__file__), "core_shapes.yaml"),
+        required=False,
+        help="Specify the shape file name for benchmarks. If not specified, a default shape list will be used.",
+    )
+
+    parser.addoption(
         "--record",
         action="store",
         default="none",
@@ -126,6 +136,9 @@ def pytest_configure(config):
 
     metrics = config.getoption("--metrics")
     Config.user_desired_metrics = metrics
+
+    shape_file_str = config.getoption("--shape_file")
+    Config.shape_file = shape_file_str
 
     Config.record_log = config.getoption("--record") == "log"
     if Config.record_log:

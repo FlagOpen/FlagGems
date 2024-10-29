@@ -10,20 +10,16 @@ class NormBenchmark(GenericBenchmark):
     # TODO: add new metric
     DEFAULT_SHAPES = DEFAULT_NORM_SHAPES
 
-    def set_shapes(self):
-        if Config.bench_level == BenchLevel.CORE:
-            self.shapes = DEFAULT_NORM_SHAPES[:]
-        else:
-            more_shapes = [
-                # 3D shapes represented as [batch_size, channels, hidden_size]
-                (16, 16, 64),
-                (16, 16, 1024),
-                (16, 16, 4098),
-                # 4D shapes represented as [batch_size, channels, H, W]
-                (1, 8, 4, 4),
-                (16, 8, 128, 128),
-            ]
-            self.shapes = list(dict.fromkeys(self.DEFAULT_SHAPES + more_shapes))
+    def set_more_shapes(self):
+        return [
+            # 3D shapes represented as [batch_size, channels, hidden_size]
+            (16, 16, 64),
+            (16, 16, 1024),
+            (16, 16, 4098),
+            # 4D shapes represented as [batch_size, channels, H, W]
+            (1, 8, 4, 4),
+            (16, 8, 128, 128),
+        ]
 
 
 def groupnorm_input_fn(shape, dtype, device):
