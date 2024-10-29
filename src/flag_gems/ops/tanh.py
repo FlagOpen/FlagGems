@@ -55,27 +55,33 @@ def fake_tanh_backward(y: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
 torch.library.define("gems::tanh_forward", "(Tensor x) -> Tensor")
 torch.library.define("gems::tanh_backward", "(Tensor y, Tensor dy) -> Tensor")
 
+
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_forward_kernel(x: torch.Tensor):
     return _tanh(x.to(tl.float32))
+
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_backward_kernel(y: torch.Tensor, dy: torch.Tensor):
     return dy * (1.0 - pow(y.to(tl.float32), 2))
 
+
 @torch.library.impl("gems::tanh_forward", "cuda")
 def tanh_forward(x: torch.Tensor) -> torch.Tensor:
     return tanh_forward_kernel(x)
+
 
 @torch.library.impl("gems::tanh_backward", "cuda")
 def tanh_backward(y: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
     return tanh_backward_kernel(y, dy)
 
+
 @torch.library.impl_abstract("gems::tanh_forward")
 def fake_tanh_forward(x: torch.Tensor) -> torch.Tensor:
     return x
+
 
 @torch.library.impl_abstract("gems::tanh_backward")
 def fake_tanh_backward(y: torch.Tensor, dy: torch.Tensor) -> torch.Tensor:
@@ -101,6 +107,6 @@ class Tanh(torch.autograd.Function):
         in_grad = torch.ops.gems.tanh_backward(out, out_grad)
         return in_grad
 
+
 def tanh(A: torch.Tensor):
     return Tanh.apply(A)
-    
