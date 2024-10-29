@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -11,14 +12,12 @@ from .attri_util import (
     BOOL_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
-    DEFAULT_SHAPES_2D_ONLY,
-    DEFAULT_SHAPES_EXCLUDE_1D,
-    DEFAULT_SHAPES_EXCLUDE_3D,
     FLOAT_DTYPES,
     INT_DTYPES,
     BenchLevel,
     BenchmarkMetrics,
     BenchmarkResult,
+    OperationAttribute,
     check_metric_dependencies,
 )
 from .conftest import Config
@@ -31,6 +30,7 @@ class Benchmark:
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
+    DEFAULT_SHAPE_DESC = "M, N"
     DEFAULT_SHAPE_FILES = "core_shapes.yaml"
     """
     the base class for the operations benchmark
@@ -56,6 +56,7 @@ class Benchmark:
         self.dtypes = dtypes if dtypes is not None else self.DEFAULT_DTYPES
         self.metrics = self.DEFAULT_METRICS
         self.shapes = self.DEFAULT_SHAPES
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
         self.shape_file = self.DEFAULT_SHAPE_FILES
 
         # Actual dtypes and metrics to be used in the benchmark,
@@ -97,23 +98,6 @@ class Benchmark:
             user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
 
-    def load_shapes_from_yaml(self, yaml_file_path):
-        with open(yaml_file_path, "r") as f:
-            yaml_config = yaml.safe_load(f)
-
-        if self.op_name in yaml_config:
-            self.shapes = yaml_config[self.op_name].get("shapes", self.DEFAULT_SHAPES)
-        else:
-            for cls in type(self).__mro__:
-                class_name = cls.__name__
-                if class_name in yaml_config:
-                    self.shapes = yaml_config[class_name].get(
-                        "shapes", self.DEFAULT_SHAPES
-                    )
-                    break
-            else:
-                self.shapes = self.DEFAULT_SHAPES
-
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files
         import os
@@ -127,12 +111,18 @@ class Benchmark:
                     self.shapes = yaml_config[self.op_name].get(
                         "shapes", self.DEFAULT_SHAPES
                     )
+                    self.shape_desc = yaml_config[self.op_name].get(
+                        "shape_desc", self.DEFAULT_SHAPE_DESC
+                    )
                 else:
                     for cls in type(self).__mro__:
                         class_name = cls.__name__
                         if class_name in yaml_config:
                             self.shapes = yaml_config[class_name].get(
                                 "shapes", self.DEFAULT_SHAPES
+                            )
+                            self.shape_desc = yaml_config[class_name].get(
+                                "shape_desc", self.DEFAULT_SHAPE_DESC
                             )
                             break
                     else:
@@ -144,6 +134,7 @@ class Benchmark:
                 hasattr(self, "set_more_shapes")
                 and callable(getattr(self, "set_more_shapes"))
                 and Config.bench_level == BenchLevel.COMPREHENSIVE
+                and not Config.query
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
@@ -175,6 +166,9 @@ class Benchmark:
         if parsed_args and parsed_kwargs:
             return parsed_args, parsed_kwargs
         return parsed_args if parsed_args else parsed_kwargs
+
+    def init_default_config(self):
+        self.set_shapes(self.DEFAULT_SHAPE_FILES)
 
     def init_user_config(self):
         # TODO: device setting
@@ -259,6 +253,16 @@ class Benchmark:
         return args, kwargs
 
     def run(self):
+        if Config.query:
+            self.init_default_config()
+            attri = OperationAttribute(
+                op_name=self.op_name,
+                recommended_core_shapes=self.shapes,
+                shape_desc=self.shape_desc,
+            )
+            print(attri)
+            logging.info(attri.to_dict())
+            return
         self.init_user_config()
         for dtype in self.to_bench_dtypes:
             metrics = []
@@ -293,6 +297,7 @@ class Benchmark:
                 result=metrics,
             )
             print(result)
+            logging.info(result.to_json())
 
 
 class GenericBenchmark(Benchmark):
@@ -339,7 +344,6 @@ class GenericBenchmarkFilterShapes(GenericBenchmark):
 
 
 class GenericBenchmarkExcluse1D(GenericBenchmarkFilterShapes):
-    DEFAULT_SHAPES = DEFAULT_SHAPES_EXCLUDE_1D
     """
     exclude 1d shapes
     """
@@ -349,7 +353,6 @@ class GenericBenchmarkExcluse1D(GenericBenchmarkFilterShapes):
 
 
 class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
-    DEFAULT_SHAPES = DEFAULT_SHAPES_EXCLUDE_3D
     """
     exclude 3d shapes
     """
@@ -359,7 +362,6 @@ class GenericBenchmarkExcluse3D(GenericBenchmarkFilterShapes):
 
 
 class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
-    DEFAULT_SHAPES = DEFAULT_SHAPES_2D_ONLY
     """
     2d shapes only
     """

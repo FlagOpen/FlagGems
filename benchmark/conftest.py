@@ -28,6 +28,7 @@ class BenchConfig:
         self.user_desired_dtypes = None
         self.user_desired_metrics = None
         self.shape_file = os.path.join(os.path.dirname(__file__), "core_shapes.yaml")
+        self.query = False
 
 
 Config = BenchConfig()
@@ -121,6 +122,8 @@ def pytest_configure(config):
     mode_value = config.getoption("--mode")
     Config.cpu_mode = mode_value == "cpu"
 
+    Config.query = config.getoption("--query")
+
     level_value = config.getoption("--level")
     Config.bench_level = BenchLevel(level_value)
 
@@ -146,6 +149,7 @@ def pytest_configure(config):
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
             for arg in config.invocation_params.args
         ]
+
         logging.basicConfig(
             filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
             filemode="w",
@@ -174,7 +178,7 @@ def setup_once(request):
         print("This is query mode; skipping all real benchmark functions.")
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture()
 def extract_and_log_op_attributes(request):
     print("")
     op_attributes = []

@@ -4,7 +4,6 @@ import torch
 from .attri_util import FLOAT_DTYPES, INT_DTYPES
 from .conftest import BenchLevel, Config
 from .performance_utils import (
-    DEFAULT_SHAPES_EXCLUDE_1D,
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     generate_tensor_input,
@@ -75,7 +74,7 @@ def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
             torch.triu,
             unary_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.triu(recommended_shapes=DEFAULT_SHAPES_EXCLUDE_1D),
+            marks=pytest.mark.triu,
         ),
     ],
 )

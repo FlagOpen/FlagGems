@@ -3,10 +3,9 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import BOOL_DTYPES, DEFAULT_SHAPES_2D_ONLY, FLOAT_DTYPES, INT_DTYPES
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import (
     Benchmark,
-    GenericBenchmark,
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
@@ -120,44 +119,42 @@ def masked_select_input_fn(shape, cur_dtype, device):
             torch.nn.functional.log_softmax,
             unary_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.log_softmax(recommended_shapes=DEFAULT_SHAPES_2D_ONLY),
+            marks=pytest.mark.log_softmax,
         ),
         pytest.param(
             "nonzero",
             torch.nonzero,
             unary_input_fn,
             FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
-            marks=pytest.mark.nonzero(recommended_shapes=DEFAULT_SHAPES_2D_ONLY),
+            marks=pytest.mark.nonzero,
         ),
         pytest.param(
             "CrossEntropyLoss",
             torch.nn.CrossEntropyLoss(),
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.CrossEntropyLoss(
-                recommended_shapes=DEFAULT_SHAPES_2D_ONLY
-            ),
+            marks=pytest.mark.CrossEntropyLoss,
         ),
         pytest.param(
             "cumsum",
             torch.cumsum,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=pytest.mark.cumsum(recommended_shapes=DEFAULT_SHAPES_2D_ONLY),
+            marks=pytest.mark.cumsum,
         ),
         pytest.param(
             "index_select",
             torch.index_select,
             index_select_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.index_select(recommended_shapes=DEFAULT_SHAPES_2D_ONLY),
+            marks=pytest.mark.index_select,
         ),
         pytest.param(
             "masked_select",
             torch.masked_select,
             masked_select_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.masked_select(recommended_shapes=DEFAULT_SHAPES_2D_ONLY),
+            marks=pytest.mark.masked_select,
         ),
     ],
 )
@@ -168,9 +165,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
-class TensorSelectBenchmark(GenericBenchmark):
-    DEFAULT_SHAPES = DEFAULT_SHAPES_2D_ONLY
-
+class TensorSelectBenchmark(GenericBenchmark2DOnly):
     def set_more_shapes(self):
         shapes = super().set_more_shapes()
         return [
@@ -181,7 +176,7 @@ class TensorSelectBenchmark(GenericBenchmark):
         ]
 
 
-@pytest.mark.scatter(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
+@pytest.mark.scatter
 def test_perf_scatter():
     def scatter_input_fn(shape, dtype, device):
         batch, size = shape
@@ -220,7 +215,7 @@ def test_perf_scatter():
     bench.run()
 
 
-@pytest.mark.gather(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
+@pytest.mark.gather
 def test_perf_gather():
     def gather_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)

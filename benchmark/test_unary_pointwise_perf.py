@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import DEFAULT_METRICS, DEFAULT_SHAPES, FLOAT_DTYPES, INT_DTYPES
+from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import Benchmark, generate_tensor_input
 
 
@@ -65,10 +65,7 @@ forward_operations = [
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name, None)(
-                recommended_shapes=DEFAULT_SHAPES,
-                shape_desc="(B), M, N",
-            ),
+            marks=getattr(pytest.mark, name, None),
         )
         for name, op, dtype in forward_operations
     ],
@@ -90,10 +87,7 @@ backward_operations = [
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name + "_backward", None)(
-                recommended_shapes=DEFAULT_SHAPES,
-                shape_desc="(B), M, N",
-            ),
+            marks=getattr(pytest.mark, name + "_backward", None),
         )
         for name, op, dtype in backward_operations
     ],

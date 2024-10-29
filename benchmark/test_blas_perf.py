@@ -4,22 +4,9 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import (
-    DEFAULT_BMNK_BLAS,
-    DEFAULT_METRICS,
-    DEFAULT_MNK_BLAS,
-    FLOAT_DTYPES,
-    BenchLevel,
-    llama_shapes,
-)
+from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, BenchLevel, llama_shapes
 from .conftest import Config
 from .performance_utils import Benchmark
-
-MV_RECOMMENDED_SHAPES = [(m, n) for m, n, k in DEFAULT_MNK_BLAS]
-
-OUTER_RECOMENDED_SHAPES = [(m, n) for m, n, k in DEFAULT_MNK_BLAS[:-1]] + [
-    (10240, 10240)  # from perf
-]
 
 
 class BlasBenchmark(Benchmark):
@@ -28,8 +15,6 @@ class BlasBenchmark(Benchmark):
     """
 
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
-    DEFAULT_DTYPES = FLOAT_DTYPES
-    DEFAULT_SHAPES = DEFAULT_BMNK_BLAS
 
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
@@ -103,31 +88,25 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
             "addmm",
             torch.addmm,
             addmm_input_fn,
-            marks=pytest.mark.addmm(
-                recommended_shapes=DEFAULT_MNK_BLAS, shape_desc="M, N, K"
-            ),
+            marks=pytest.mark.addmm,
         ),
         pytest.param(
             "bmm",
             torch.bmm,
             bmm_input_fn,
-            marks=pytest.mark.bmm(
-                recommended_shapes=DEFAULT_BMNK_BLAS, shape_desc="B, M, N, K"
-            ),
+            marks=pytest.mark.bmm,
         ),
         pytest.param(
             "mm",
             torch.Tensor.mm,
             mm_input_fn,
-            marks=pytest.mark.mm(
-                recommended_shapes=DEFAULT_MNK_BLAS, shape_desc="M, N, K"
-            ),
+            marks=pytest.mark.mm,
         ),
         pytest.param(
             "mv",
             torch.Tensor.mv,
             mv_input_fn,
-            marks=pytest.mark.mv(recommended_shapes=MV_RECOMMENDED_SHAPES),
+            marks=pytest.mark.mv,
         ),
     ],
 )
@@ -143,18 +122,12 @@ class OuterBenchmark(BlasBenchmark):
     benchmark for outer
     """
 
-    DEFAULT_SHAPES = OUTER_RECOMENDED_SHAPES
-
-    def set_more_shapes(self):
-        # 'outer' only involve M and N dimensions.
-        self.shapes = self.DEFAULT_SHAPES[:]
-
     def get_input_iter(self, cur_dtype) -> Generator:
         for m, n in self.shapes:
             yield from self.input_fn(m, n, cur_dtype, self.device)
 
 
-@pytest.mark.outer(recommended_shapes=OUTER_RECOMENDED_SHAPES)
+@pytest.mark.outer
 def test_outer_benchmark():
     def outer_input_fn(m, n, cur_dtype, device):
         inp1 = torch.randn([m], dtype=cur_dtype, device=device)

@@ -87,28 +87,15 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-DEFAULT_RANDPERM_SHPAES = [
-    (64,),
-    (1024,),
-    (2048,),
-    (4096,),
-    (65536,),
-]
+# @pytest.mark.randperm
+# def test_perf_randperm():
+#     def randperm_input_fn(shape, dtype, device):
+#         yield {"n": shape[0], "dtype": dtype, "device": device},
 
-
-class RandpermBenchmark(GenericBenchmark):
-    DEFAULT_SHAPES = DEFAULT_RANDPERM_SHPAES
-
-
-@pytest.mark.randperm(recommended_shapes=DEFAULT_RANDPERM_SHPAES)
-def test_perf_randperm():
-    def randperm_input_fn(shape, dtype, device):
-        yield {"n": shape[0], "dtype": dtype, "device": device},
-
-    bench = RandpermBenchmark(
-        input_fn=randperm_input_fn,
-        op_name="randperm",
-        torch_op=torch.randperm,
-        dtypes=[torch.int32, torch.int64],
-    )
-    bench.run()
+#     bench = GenericBenchmark(
+#         input_fn=randperm_input_fn,
+#         op_name="randperm",
+#         torch_op=torch.randperm,
+#         dtypes=[torch.int32, torch.int64],
+#     )
+#     bench.run()

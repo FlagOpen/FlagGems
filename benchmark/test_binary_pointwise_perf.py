@@ -3,13 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import (
-    BOOL_DTYPES,
-    DEFAULT_METRICS,
-    DEFAULT_SHAPES,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-)
+from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import Benchmark, generate_tensor_input
 
 
@@ -44,9 +38,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             name,
             op,
             dtype,
-            marks=getattr(pytest.mark, name, None)(
-                recommended_shapes=DEFAULT_SHAPES,
-            ),
+            marks=getattr(pytest.mark, name, None),
         )
         for name, op, dtype in [
             # Arithmetic operations

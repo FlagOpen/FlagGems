@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-from .attri_util import DEFAULT_NORM_SHAPES, FLOAT_DTYPES, BenchLevel
+from .attri_util import FLOAT_DTYPES, BenchLevel
 from .conftest import Config
 from .performance_utils import GenericBenchmark, unary_input_fn
 
 
 class NormBenchmark(GenericBenchmark):
     # TODO: add new metric
-    DEFAULT_SHAPES = DEFAULT_NORM_SHAPES
 
     def set_more_shapes(self):
         return [
@@ -59,17 +58,13 @@ def layernorm_input_fn(shape, dtype, device):
             "group_norm",
             torch.nn.functional.group_norm,
             groupnorm_input_fn,
-            marks=pytest.mark.group_norm(
-                recommended_shapes=DEFAULT_NORM_SHAPES, shape_desc="N, C, *"
-            ),
+            marks=pytest.mark.group_norm,
         ),
         pytest.param(
             "layer_norm",
             torch.layer_norm,
             layernorm_input_fn,
-            marks=pytest.mark.layer_norm(
-                recommended_shapes=DEFAULT_NORM_SHAPES, shape_desc="N, C, *"
-            ),
+            marks=pytest.mark.layer_norm,
         ),
     ],
 )

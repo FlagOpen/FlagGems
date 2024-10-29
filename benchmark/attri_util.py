@@ -1,5 +1,5 @@
 import itertools
-from dataclasses import dataclass, fields
+from dataclasses import asdict, dataclass, fields
 from enum import Enum
 from typing import List, Optional, Tuple
 
@@ -14,7 +14,6 @@ BOOL_DTYPES = [
 DEFAULT_WARMUP_COUNT = 1000
 DEFAULT_ITER_COUNT = 100
 
-
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
 LEGACY_SHAPES = [i * 64 for i in range(1, 22, 5)]
@@ -28,47 +27,6 @@ DEFAULT_SHAPES = [
     (4096, 4096),
     (64, 512, 512),
     (1024, 1024, 1024),  # from perf
-]
-
-DEFAULT_SHAPES_EXCLUDE_1D = [shape for shape in DEFAULT_SHAPES if len(shape) != 1] + [
-    (1024, 1024),
-]
-DEFAULT_SHAPES_EXCLUDE_3D = [shape for shape in DEFAULT_SHAPES if len(shape) != 3] + [
-    (1024,),
-    (1024, 1024),
-]
-DEFAULT_SHAPES_2D_ONLY = [
-    (16, 16),
-    (256, 256),
-    (1024, 1024),
-    (4096, 4096),
-    (1024, 65536),
-    # (65536, 65536) # this size is too large for gather and scatter
-]
-
-# BLAS shapes are defined as (B, M, N, K) or (M, N, K), differing from non-BLAS shapes.
-DEFAULT_BMNK_BLAS = [(16, shape, shape, shape) for shape in LEGACY_SHAPES[:-1]] + [
-    (2, 4096, 4096, 4096)
-]
-
-DEFAULT_MNK_BLAS = [
-    (64, 64, 64),
-    (384, 384, 384),
-    (1024, 1024, 1024),
-    (4096, 4096, 4096),  # from perf
-    (8192, 8192, 8192),  # from perf
-]
-
-# NORM shapes can be either 3D or 4D:
-# - 3D shapes are represented as [batch_size, channels, hidden_size]
-# - 4D shapes are represented as [batch_size, channels, height, width]
-# The default number of groups (num_groups) for GroupNorm is set to channels // 2
-DEFAULT_NORM_SHAPES = [
-    (4, 16, 64, 4),
-    (16, 16, 8, 48),
-    (16, 16, 8, 88),
-    (16, 16, 128),
-    (20, 6, 65536),  # from perf
 ]
 
 
@@ -255,6 +213,15 @@ class BenchmarkResult:
             metrics.legacy_shape = to_record_shape[-1]
         else:
             metrics.legacy_shape = None
+
+    def to_json(
+        self,
+    ) -> str:
+        import json
+
+        # Convert to dict and handle tuple serialization for shape_detail
+        result_dict = asdict(self)
+        return json.dumps(result_dict, indent=4)
 
     def to_dict(self) -> dict:
         return self.__dict__

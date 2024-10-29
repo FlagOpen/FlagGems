@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import DEFAULT_SHAPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
     Config,
@@ -11,21 +11,11 @@ from .performance_utils import (
     generate_tensor_input,
 )
 
-CONCATENATION_RECOMMENDED_SHAPES = [
-    (64, 64),
-    (256, 256),
-    (512, 512),
-    (512, 1024),
-    (512, 2048),
-]
-
 
 class ConcatBenchmark(Benchmark):
     """
     benchmark for concat and stack
     """
-
-    DEFAULT_SHAPES = CONCATENATION_RECOMMENDED_SHAPES
 
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
@@ -65,40 +55,28 @@ def hstack_vstack_input_fn(shape, dtype, device):
             torch.cat,
             stack_cat_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=pytest.mark.cat(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES,
-                shape_desc="((B), M, N) * 3",
-            ),
+            marks=pytest.mark.cat,
         ),
         pytest.param(
             "stack",
             torch.stack,
             stack_cat_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.stack(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES,
-                shape_desc="((B), M, N) * 3",
-            ),
+            marks=pytest.mark.stack,
         ),
         pytest.param(
             "hstack",
             torch.hstack,
             hstack_vstack_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.hstack(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES,
-                shape_desc="((B), M, N) * 3",
-            ),
+            marks=pytest.mark.hstack,
         ),
         pytest.param(
             "vstack",
             torch.vstack,
             hstack_vstack_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.vstack(
-                recommended_shapes=CONCATENATION_RECOMMENDED_SHAPES,
-                shape_desc="((B), M, N) * 3",
-            ),
+            marks=pytest.mark.vstack,
         ),
     ],
 )
@@ -120,8 +98,6 @@ class TensorRepeatBenchmark(GenericBenchmark):
     To avoid such issues, we constrain the benchmark input sizes for these operations
     to prevent excessive memory usage.
     """
-
-    DEFAULT_SHAPES = DEFAULT_SHAPES[:]
 
     def set_more_shapes(self):
         more_shapes = [

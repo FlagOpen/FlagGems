@@ -3,7 +3,7 @@ import torch
 
 import flag_gems
 
-from .attri_util import DEFAULT_SHAPES_EXCLUDE_1D, FLOAT_DTYPES
+from .attri_util import FLOAT_DTYPES
 from .performance_utils import (
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
@@ -44,7 +44,7 @@ def test_perf_silu_and_mul():
     bench.run()
 
 
-@pytest.mark.skip_layernorm(recommended_shapes=DEFAULT_SHAPES_EXCLUDE_1D)
+@pytest.mark.skip_layernorm
 def test_perf_skip_layernorm():
     def skip_layernorm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -69,7 +69,7 @@ def test_perf_skip_layernorm():
     bench.run()
 
 
-@pytest.mark.skip_rmsnorm(recommended_shapes=DEFAULT_SHAPES_EXCLUDE_1D)
+@pytest.mark.skip_rmsnorm
 def test_perf_skip_rmsnorm():
     def skip_rmsnorm_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)

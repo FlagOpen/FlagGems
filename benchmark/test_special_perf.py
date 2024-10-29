@@ -3,13 +3,7 @@ import random
 import pytest
 import torch
 
-from .attri_util import (
-    DEFAULT_SHAPES_2D_ONLY,
-    DEFAULT_SHAPES_EXCLUDE_1D,
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    BenchLevel,
-)
+from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Config,
     GenericBenchmark,
@@ -65,9 +59,7 @@ special_operations = [
             fn,
             dtypes,
             input_fn,
-            marks=getattr(pytest.mark, op, None)(
-                recommended_shapes=DEFAULT_SHAPES_EXCLUDE_1D
-            ),
+            marks=getattr(pytest.mark, op, None),
         )
         for op, fn, dtypes, input_fn in special_operations
     ],
@@ -79,7 +71,7 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.isin(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
+@pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
         elements = generate_tensor_input(shape, dtype, device)
@@ -102,7 +94,7 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.unique(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
+@pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -119,7 +111,7 @@ def test_perf_unique():
     bench.run()
 
 
-@pytest.mark.multinomial(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
+@pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
         dist = torch.rand(shape, dtype=dtype, device=device)
@@ -157,25 +149,13 @@ def test_perf_pad():
     bench.run()
 
 
-# TODO:add 3d shapes
-EMBEDDING_RECOMMENDED_SHAPES = [
-    (4, 4),
-    (16, 16),
-    (128, 128),
-    (256, 256),
-    (1024, 1024),
-]
-
-
 class EmbeddingBenchmark(GenericBenchmark2DOnly):
-    DEFAULT_SHAPES = EMBEDDING_RECOMMENDED_SHAPES
-
     def set_more_shapes(self):
         # TODO: add more shapes
         return None
 
 
-@pytest.mark.embedding(recommended_shapes=DEFAULT_SHAPES_2D_ONLY)
+@pytest.mark.embedding
 def test_perf_embedding():
     def embedding_input_fn(shape, dtype, device):
         num_embeddings, embedding_dim = shape
@@ -205,28 +185,14 @@ def test_perf_embedding():
     bench.run()
 
 
-# [N, C, H, W]
-UPSAMPLE_SHAPES = [
-    (1, 3, 512, 512),
-    (8, 16, 128, 128),
-    (2, 3, 1024, 1024),
-    (16, 16, 512, 512),
-    (16, 16, 1024, 1024),
-]
-
-
 class UpsampleBenchmark(GenericBenchmark):
-    DEFAULT_SHAPES = UPSAMPLE_SHAPES
-
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
         # (N, C, H, W).
-        self.shapes = self.DEFAULT_SHAPES[:]
+        return None
 
 
-@pytest.mark.upsample_bicubic2d_aa(
-    recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W"
-)
+@pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
@@ -253,9 +219,7 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
-@pytest.mark.upsample_nearest2d(
-    recommended_shapes=UPSAMPLE_SHAPES, shape_desc="N, C, H, W"
-)
+@pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
