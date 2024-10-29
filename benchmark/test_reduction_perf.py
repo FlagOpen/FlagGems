@@ -248,3 +248,60 @@ def test_perf_gather():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.slice_scatter
+def test_slice_scatter_perf():
+    def slice_scatter_input_fn(shape, dtype, device):
+        import random
+
+        dim = random.choice([0, 1])
+        start = 16
+        end = 1024
+        step = 2
+
+        inp = torch.randn(shape, dtype=dtype, device=device)
+
+        range = end - start
+        valid_shape = list(inp.shape)
+        if end < start:
+            range = 0
+        elif (end - start) > valid_shape[dim]:
+            range = valid_shape[dim]
+            start = 0
+            end = valid_shape[dim]
+
+        valid_shape[dim] = (range + (step - 1)) // step
+        src = torch.randn(valid_shape, dtype=dtype, device=device)
+        yield inp, src, dim, start, end, step
+
+    bench = GenericBenchmark2DOnly(
+        op_name="slice_scatter",
+        torch_op=torch.slice_scatter,
+        input_fn=slice_scatter_input_fn,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.select_scatter
+def test_select_scatter_perf():
+    def select_scatter_input_fn(shape, dtype, device):
+        import random
+        dim = random.choice([0, 1])
+        index = random.randint(0, shape[dim] - 1)
+        inp = torch.randn(shape, dtype=dtype, device=device)
+
+        src_shape = list(inp.shape)
+        del src_shape[dim]
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+
+        yield inp, src, dim, index
+
+    bench = GenericBenchmark2DOnly(
+        op_name="select_scatter",
+        torch_op=torch.select_scatter,
+        input_fn=select_scatter_input_fn,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

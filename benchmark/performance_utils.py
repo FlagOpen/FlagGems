@@ -341,6 +341,7 @@ class GenericBenchmarkFilterShapes(GenericBenchmark):
         shapes = super().set_more_shapes()
         if self.exclude_dims is not None:
             return [shape for shape in shapes if len(shape) != self.exclude_dims]
+        return shapes
 
 
 class GenericBenchmarkExcluse1D(GenericBenchmarkFilterShapes):
