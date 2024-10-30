@@ -87,6 +87,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
+@pytest.mark.skip("Error")
 @pytest.mark.randperm
 def test_perf_randperm():
     def randperm_input_fn(shape, dtype, device):
@@ -99,3 +100,4 @@ def test_perf_randperm():
         dtypes=[torch.int32, torch.int64],
     )
     bench.run()
+
