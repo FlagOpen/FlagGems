@@ -46,23 +46,29 @@ def is_expandable_to(s1: Shape, s2: Shape) -> Shape:
     return True
 
 
-"""
-def infer_size(shape, numel):
-    new_size = 1
-    infer_dim = -1
-    for dim in range(0, len(shape)):
-        if (shape[dim] == -1):
-            infer_dim = dim
-        elif (shape[dim] >= 0):
-            new_size *= shape[dim]
-        else:
-            raise "Invalid shape dimension"
-    if infer_dim and new_size > 0 and (numel % new_size == 0):
-        shape[infer_dim] = numel // new_size
-    return shape
+def infer_size(a, b):
+    dimsA = len(a)
+    dimsB = len(b)
+    ndim = max(dimsA, dimsB)
+    expandedSize = []
+
+    for i in range(ndim - 1, -1, -1):
+        offset = ndim - 1 - i
+        dimA = dimsA - 1 - offset
+        dimB = dimsB - 1 - offset
+        sizeA = a[dimA] if (dimA >= 0) else 1
+        sizeB = b[dimB] if (dimB >= 0) else 1
+
+        assert (
+            (sizeA == sizeB) or (sizeA == 1) or (sizeB == 1)
+        ), "shape mismatch: indexing tensors could not be broadcast together"
+        expandedSize.append(sizeB if sizeA == 1 else sizeA)
+
+    return expandedSize
 
 
-def expand_tensor_list(to_expand):
+def expand_outplace(to_expand):
+    # expands a list of Tensors
     first = True
     sizes = []
     for i in range(0, len(to_expand)):
@@ -70,29 +76,17 @@ def expand_tensor_list(to_expand):
             sizes = list(to_expand[i].shape)
             first = False
         else:
-            sizes = infer_size(sizes, len(to_expand[i].shape))
-    print("sizes", sizes)
-"""
+            sizes = infer_size(sizes, list(to_expand[i].shape))
 
+    result = []
+    for i in range(0, len(to_expand)):
+        if list(to_expand[i].shape) == sizes:
+            result.append(to_expand[i])
+        else:
+            result.append(broadcast(sizes, to_expand[i]))
 
-def infer_size(indices, shape):
-    indexing_shape = list(indices.shape)
-    if len(indexing_shape) != len(shape):
-        for i in range(len(indexing_shape), len(shape)):
-            indexing_shape.append(shape[i])
-
-    size = 1
-    first = True
-    for i in range(0, len(indices)):
-        if isinstance(indices[i], tuple) or (
-            torch.is_tensor(indices[i]) and indices[i].ndim > 1
-        ):
-            continue
-        if first:
-            size = indices[i].numel()
-            first = False
-        assert indices[i].numel() == size, "indices has invalid shape"
-    return size
+    print(result)
+    return result
 
 
 def pre_process(indices):
@@ -117,54 +111,50 @@ def build_single_mask(indices, shape, x_num):
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    # 先假设 indices 和 values 的数量都是 match 的，写一版
+    # Temporarily handle: The rank of tensors in indices are all 1-D
     inp_shape = list(inp.shape)
     values_shape = list(values.shape)
-    print(is_expandable_to(values_shape, inp_shape))
-    """
-    assert (
-        (torch.is_tensor(values) and values.ndim == 1)
-    ), "masked_fill_ only supports a 1-dimensional values tensor"
-    inp_shape = list(inp.shape)
-    indexing_shape = []
-    for i in range(0, len(indices)):
-        indexing_shape.extend(list(indices[i].shape))
-    if len(indices) != len(inp_shape):
-        for i in range(len(indices), len(inp_shape)):
-            indexing_shape.append(inp_shape[i])
-    values_shape = broadcast(list(values.shape), indexing_shape)
-    values_ = torch.broadcast_to(values, values_shape)
-    # FIXME: Should we just judge if values can broadcast to indices_shape or not?
-    print(values_)
-    """
-    """
-    x_num = infer_size(indices, inp_shape)
-    indices_ = pre_process(indices)
-    if (values.numel() == 1):
+    assert is_expandable_to(
+        values_shape, inp_shape
+    ), "Value tensor's size should be broadcastable to input tensor. "
+    assert (torch.is_tensor(values) and values.ndim == 1) or isinstance(
+        values, int
+    ), "index_put_ only support a 1-dimensional values tensor or a single value"
+    indices = expand_outplace(indices)
+    x_num = indices[0].size(0)
+
+    indices_ = indices
+    for i in range(len(indices_), inp.ndim, 1):
+        cur_size = inp.size(i)
+        meta = []
+        for j in range(0, cur_size):
+            meta.append([j] * cur_size)
+        indices_.append(torch.tensor(meta))
+
+    if values.numel() == 1:
         val = values.item()
         mask = build_single_mask(indices_, inp_shape, x_num)
+        # Dispatch
         return torch.masked_fill(inp, mask, val)
     else:
         # 对每个 value 都执行一遍 masked_fill
         for i in range(0, x_num):
             mask = torch.full(inp_shape, False)
             val = values[i].item()
-            unravel_offsets = tuple([(t[i] if torch.is_tensor(t) else t) for t in indices_])
+            unravel_offsets = tuple(
+                [(t[i] if torch.is_tensor(t) else t) for t in indices_]
+            )
             mask[unravel_offsets] = True
             inp = torch.masked_fill(inp, mask, val)
-    """
     return inp
 
 
 inp1 = torch.arange(1, 19).reshape(3, 3, 2)
 inp2 = torch.arange(1, 19).reshape(3, 3, 2)
-indices = [
-    torch.tensor([[1], [2]]),
-    torch.tensor([0, 2]),
-]
-values = torch.tensor([100, 400])
+indices = [torch.tensor([1, 2]), torch.tensor([0, 2]), torch.tensor([[0, 1], [0, 1]])]
+values = torch.tensor([100, 400, 800])
 torch_res = torch.index_put_(inp2, indices, values)
-# print("torch_res", torch_res)
+print("torch_res", torch_res)
 triton_res = index_put_(inp1, indices, values)
-# print("triton_res", triton_res)
-# print(torch.allclose(triton_res,torch_res))
+print("triton_res", triton_res)
+print(torch.allclose(triton_res, torch_res))
