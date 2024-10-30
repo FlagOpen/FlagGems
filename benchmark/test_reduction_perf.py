@@ -253,17 +253,15 @@ def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
+@pytest.mark.slice_scatter
 def test_slice_scatter_perf():
-    def slice_scatter_args(dtype, batch, size):
-        shape = [batch, size]
-        import random
-
+    def slice_scatter_input_fn(shape, dtype, device):
         dim = random.choice([0, 1])
         start = 16
         end = 1024
         step = 2
 
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=device)
 
         range = end - start
         valid_shape = list(inp.shape)
@@ -275,44 +273,35 @@ def test_slice_scatter_perf():
             end = valid_shape[dim]
 
         valid_shape[dim] = (range + (step - 1)) // step
-        src = torch.randn(valid_shape, dtype=dtype, device="cuda")
-        return (inp, src, dim, start, end, step)
+        src = torch.randn(valid_shape, dtype=dtype, device=device)
+        yield inp, src, dim, start, end, step
 
-    bench = Benchmark(
+    bench = GenericBenchmark2DOnly(
         op_name="slice_scatter",
         torch_op=torch.slice_scatter,
-        arg_func=slice_scatter_args,
+        input_fn=slice_scatter_input_fn,
         dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
     )
     bench.run()
 
 
+@pytest.mark.select_scatter
 def test_select_scatter_perf():
-    def select_scatter_args(dtype, batch, size):
-        shape = [batch, size]
-        import random
-
+    def select_scatter_input_fn(shape, dtype, device):
         dim = random.choice([0, 1])
-
-        import random
-
         index = random.randint(0, shape[dim] - 1)
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=device)
 
         src_shape = list(inp.shape)
         del src_shape[dim]
-        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        src = torch.randn(src_shape, dtype=dtype, device=device)
 
-        return (inp, src, dim, index)
+        yield inp, src, dim, index
 
-    bench = Benchmark(
+    bench = GenericBenchmark2DOnly(
         op_name="select_scatter",
         torch_op=torch.select_scatter,
-        arg_func=select_scatter_args,
+        input_fn=select_scatter_input_fn,
         dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
     )
     bench.run()
