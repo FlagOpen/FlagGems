@@ -150,7 +150,7 @@ def test_perf_upsample_bicubic2d_aa():
             int(shape[2] * scale_factors[0]),
             int(shape[3] * scale_factors[1]),
         )
-        input = torch.randn(size=shape, device="cuda", dtype=dtype)
+        input = torch.randn(size=shape, device="musa", dtype=dtype)
         return {
             "input": input,
             "output_size": output_size,
@@ -165,7 +165,7 @@ def test_perf_upsample_bicubic2d_aa():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=16,
-        sizes=[(128 * i) for i in range(1, 12)],
+        sizes=SIZES,
         kwargs_func=upsample_bicubic2d_aa_kwargs,
     )
     bench.run()
@@ -180,7 +180,7 @@ def test_perf_upsample_nearest2d():
             int(shape[2] * scale_factors[0]),
             int(shape[3] * scale_factors[1]),
         )
-        input = torch.randn(size=shape, device="cuda", dtype=dtype)
+        input = torch.randn(size=shape, device="musa", dtype=dtype)
         return {
             "input": input,
             "output_size": output_size,
@@ -194,7 +194,7 @@ def test_perf_upsample_nearest2d():
         arg_func=None,
         dtypes=FLOAT_DTYPES,
         batch=16,
-        sizes=[(128 * i) for i in range(1, 12)],
+        sizes=SIZES,
         kwargs_func=upsample_nearest2d_kwargs,
     )
     bench.run()

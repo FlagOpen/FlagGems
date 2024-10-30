@@ -456,7 +456,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         (3, 7, 1023, 1025),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     input = torch.rand(shape, dtype=dtype, device="musa")
     ref_i = to_reference(input, True)
