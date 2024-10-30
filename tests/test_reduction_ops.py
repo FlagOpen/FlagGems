@@ -226,21 +226,21 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction):
         ignore_index=ignore_index,
         reduction=reduction,
     )
-    ref_out = ref_criterion(ref_inp, ref_target)
-    out_grad = torch.randn_like(ref_out)
-    ref_grad = to_reference(out_grad, True)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-
     res_criterion = torch.nn.NLLLoss(
         weight=weight,
         ignore_index=ignore_index,
         reduction=reduction,
     )
+
+    ref_out = ref_criterion(ref_inp, ref_target)
     with flag_gems.use_gems():
         res_out = res_criterion(inp, target)
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
