@@ -200,6 +200,50 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.mark.NLLLoss
+@pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("ignore_index", [1, 200, -100])
+def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction):
+    dim = 1
+    up_limit = shape[dim] - 1
+    target_shape = list(shape)
+    del target_shape[dim]
+
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    m = torch.nn.LogSoftmax(dim=1)
+    inp = m(inp)
+
+    target = torch.randint(0, up_limit, target_shape, device="cuda")
+    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, True)
+    ref_target = to_reference(target)
+    ref_weight = to_reference(weight, True)
+
+    ref_criterion = torch.nn.NLLLoss(
+        weight=ref_weight,
+        ignore_index=ignore_index,
+        reduction=reduction,
+    )
+    ref_out = ref_criterion(ref_inp, ref_target)
+    out_grad = torch.randn_like(ref_out)
+    ref_grad = to_reference(out_grad, True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    res_criterion = torch.nn.NLLLoss(
+        weight=weight,
+        ignore_index=ignore_index,
+        reduction=reduction,
+    )
+    with flag_gems.use_gems():
+        res_out = res_criterion(inp, target)
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
+
+
 CUMSUM_SHAPES = (
     [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )
