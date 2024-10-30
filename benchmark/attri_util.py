@@ -214,9 +214,7 @@ class BenchmarkResult:
         else:
             metrics.legacy_shape = None
 
-    def to_json(
-        self,
-    ) -> str:
+    def to_json(self) -> str:
         import json
 
         # Convert to dict and handle tuple serialization for shape_detail

@@ -1,3 +1,4 @@
+import random
 from typing import Generator
 
 import pytest
@@ -183,7 +184,6 @@ def test_perf_scatter():
         src_shape = [batch // 16, size // 16]
         inp = torch.randn(shape, dtype=dtype, device=device)
         src = torch.randn(src_shape, dtype=dtype, device=device)
-        import random
 
         dim = random.choice([0, 1])
         size_dim = min(src_shape[dim], shape[dim])
@@ -219,7 +219,6 @@ def test_perf_scatter():
 def test_perf_gather():
     def gather_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
-        import random
 
         dim = random.choice([0, 1])
         size_dim = shape[dim]
@@ -253,8 +252,6 @@ def test_perf_gather():
 @pytest.mark.slice_scatter
 def test_slice_scatter_perf():
     def slice_scatter_input_fn(shape, dtype, device):
-        import random
-
         dim = random.choice([0, 1])
         start = 16
         end = 1024
@@ -287,7 +284,6 @@ def test_slice_scatter_perf():
 @pytest.mark.select_scatter
 def test_select_scatter_perf():
     def select_scatter_input_fn(shape, dtype, device):
-        import random
         dim = random.choice([0, 1])
         index = random.randint(0, shape[dim] - 1)
         inp = torch.randn(shape, dtype=dtype, device=device)
