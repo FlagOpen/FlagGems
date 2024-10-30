@@ -1,4 +1,0 @@
-[submodule "triton_musa"]
-	path = triton_musa
-	url = ../../sw/triton_musa.git
-	branch = develop
