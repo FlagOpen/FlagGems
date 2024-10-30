@@ -151,6 +151,12 @@ class OperationAttribute:
         return self.__dict__
 
 
+def custom_json_encoder(obj):
+    if isinstance(obj, torch.dtype):
+        return str(obj)
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+
 @dataclass
 class BenchmarkResult:
     """Record the benchmark result for each operator."""
@@ -219,7 +225,7 @@ class BenchmarkResult:
 
         # Convert to dict and handle tuple serialization for shape_detail
         result_dict = asdict(self)
-        return json.dumps(result_dict, indent=4)
+        return json.dumps(result_dict, default=custom_json_encoder)
 
     def to_dict(self) -> dict:
         return self.__dict__

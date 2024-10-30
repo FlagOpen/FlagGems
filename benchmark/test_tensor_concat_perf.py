@@ -123,23 +123,9 @@ def repeat_input_fn(shape, cur_dtype, device):
 
 
 def repeat_interleave_self_input_fn(shape, dtype, device):
-    if dtype in FLOAT_DTYPES:
-        # torch.repeat_interleave(input, repeats, dim=None, *, output_size=None) → Tensor
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        repeats = 3
-        yield inp, repeats
-    elif dtype == torch.int32:
-        # torch.repeat_interleave(repeats, *) → Tensor
-        repeats = torch.randint(
-            low=0,
-            high=0x7F,
-            size=[
-                shape[-1],
-            ],
-            dtype=dtype,
-            device=device,
-        )
-        yield repeats,
+    inp = generate_tensor_input(shape, dtype, device)
+    repeats = 3
+    yield inp, repeats
 
 
 @pytest.mark.parametrize(

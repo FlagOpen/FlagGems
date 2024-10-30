@@ -89,7 +89,8 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=FLOAT_DTYPES + INT_DTYPES,
+        dtypes=[torch.float16, torch.float32]
+        + INT_DTYPES,  # not support for torch.bfloat16
     )
     bench.run()
 
