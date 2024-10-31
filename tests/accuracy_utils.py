@@ -61,6 +61,16 @@ STACK_SHAPES = [
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
 
+
+UPSAMPLE_SHAPES = [
+    (32, 16, 128, 128),
+    (15, 37, 256, 256),
+    (3, 5, 127, 127),
+    (128, 192, 42, 51),
+    (3, 7, 1023, 1025),
+]
+
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
 INT_DTYPES = [torch.int16, torch.int32]
@@ -96,9 +106,9 @@ def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
     )
 
 
-def gems_assert_equal(res, ref):
+def gems_assert_equal(res, ref, equal_nan=False):
     res = to_cpu(res, ref)
-    flag_gems.testing.assert_equal(res, ref)
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
 
 
 def unsqueeze_tuple(t, max_len):

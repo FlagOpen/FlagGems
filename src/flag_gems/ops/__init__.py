@@ -32,7 +32,7 @@ from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather, gather_out
+from .gather import gather
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -62,12 +62,7 @@ from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
 from .nonzero import nonzero
-from .normal import (
-    normal_float_float,
-    normal_float_tensor,
-    normal_tensor_float,
-    normal_tensor_tensor,
-)
+from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -86,10 +81,12 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
-from .scatter import scatter_reduce, scatter_src
+from .scatter import scatter
+from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .stack import stack
 from .sub import sub
@@ -100,10 +97,12 @@ from .topk import topk
 from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
+from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
-from .weightnorm import weight_norm
+from .weightnorm import weight_norm, weight_norm_interface
 from .where import where_scalar_other, where_scalar_self, where_self
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -152,7 +151,6 @@ __all__ = [
     "fill_tensor",
     "exponential_",
     "gather",
-    "gather_out",
     "flip",
     "ones_like",
     "full_like",
@@ -170,6 +168,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "weight_norm_interface",
     "weight_norm",
     "le",
     "le_scalar",
@@ -192,7 +191,6 @@ __all__ = [
     "normal_tensor_float",
     "normal_float_tensor",
     "normal_tensor_tensor",
-    "normal_float_float",
     "uniform_",
     "mv",
     "ne",
@@ -204,8 +202,7 @@ __all__ = [
     "reciprocal",
     "relu",
     "rsqrt",
-    "scatter_src",
-    "scatter_reduce",
+    "scatter",
     "sigmoid",
     "silu",
     "sin",
@@ -233,8 +230,12 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "select_scatter",
+    "slice_scatter",
     "masked_fill",
     "_unique2",
+    "_upsample_bicubic2d_aa",
+    "upsample_nearest2d",
     "nonzero",
     "repeat",
     "masked_select",
