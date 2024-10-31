@@ -614,3 +614,42 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype):
     # (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     # import numpy as np
     # gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+SHAPE_DEPTHWISE = [
+    ((32, 4, 8, 8), (32, 1, 2, 2), (2, 2)),
+    ((18, 16, 4, 4), (16, 1, 2, 2), (2, 2)),
+    ((9, 32, 4, 4), (128, 1, 2, 2), (2, 2)),
+    ((32, 16, 8, 8), (32, 1, 4, 4), (4, 4)),
+    ((18, 8, 4, 4), (16, 1, 2, 2), (2, 2)),
+    ((9, 4, 4, 4), (128, 1, 2, 2), (2, 2)),
+]
+
+
+@pytest.mark.conv_depthwise2d
+@pytest.mark.parametrize("shape_input, shape_weight,kernel ", SHAPE_DEPTHWISE)
+@pytest.mark.parametrize("stride", [2])
+@pytest.mark.parametrize("padding", [2])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_accuracy_depthwise2d(
+    shape_input, shape_weight, kernel, stride, padding, dtype
+):
+    inp = torch.randn(shape_input, dtype=dtype, device="cuda", requires_grad=True)
+    ref_inp = to_reference(inp, True)
+    torch.backends.cudnn.allow_tf32 = False
+    weight = torch.randn(shape_weight, dtype=dtype, device="cuda")
+    ref_weight = to_reference(weight, True)
+    ref_out = torch._C._nn._conv_depthwise2d(
+        ref_inp,
+        ref_weight,
+        kernel,
+        bias=None,
+        stride=stride,
+        padding=padding,
+        dilation=1,
+    )
+    with flag_gems.use_gems():
+        res_out = torch._C._nn._conv_depthwise2d(
+            inp, weight, kernel, bias=None, stride=stride, padding=padding, dilation=1
+        )
+    gems_assert_close(res_out, ref_out, dtype)
