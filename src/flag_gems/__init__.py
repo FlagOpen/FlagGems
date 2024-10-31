@@ -159,6 +159,7 @@ def enable(lib=aten_lib):
     lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "PrivateUse1")
     lib.impl("vstack", vstack, "PrivateUse1")
     lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "PrivateUse1")
+    lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "PrivateUse1")
 
 
 class use_gems:
