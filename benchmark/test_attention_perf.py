@@ -9,13 +9,13 @@ def test_perf_scaled_dot_product_attention():
         head_size = 128
 
         query = torch.randn(
-            (batch, seq_len, num_heads, head_size), device="cuda", dtype=dtype
+            (batch, num_heads, seq_len, head_size), device="cuda", dtype=dtype
         )
         key = torch.randn(
-            (batch, seq_len, num_heads, head_size), device="cuda", dtype=dtype
+            (batch, num_heads, seq_len, head_size), device="cuda", dtype=dtype
         )
         value = torch.randn(
-            (batch, seq_len, num_heads, head_size), device="cuda", dtype=dtype
+            (batch, num_heads, seq_len, head_size), device="cuda", dtype=dtype
         )
         return {"query": query, "key": key, "value": value, "is_causal": True}
 
