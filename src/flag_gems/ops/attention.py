@@ -115,7 +115,7 @@ def _attn_fwd_inner(
 configs = [
     triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
     for BM in [64, 128]
-    for BN in [32, 64]
+    for BN in [32, 64, 128]
     for s in [1, 2, 3, 4]
     for w in [4, 8]
 ]
@@ -137,7 +137,6 @@ def _attn_fwd(
     V,
     attn_mask,
     sm_scale,
-    M,
     Out,  #
     stride_q_batch,
     stride_q_head,
@@ -297,10 +296,7 @@ def _attn_fwd(
             HAS_ATTN_MASK,  #
         )
     # epilogue
-    m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
-    m_ptrs = M + off_hz * Q_CTX + offs_m
-    tl.store(m_ptrs, m_i, mask=q_load_mask)
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
@@ -339,11 +335,6 @@ def scaled_dot_product_attention(
         query.shape[0] * query.shape[1],
         1,
     )
-    M = torch.empty(
-        (query.shape[0], query.shape[1], query.shape[2]),
-        device=query.device,
-        dtype=torch.float32,
-    )
 
     if attn_mask is not None:
         HAS_ATTN_MASK = True
@@ -364,7 +355,6 @@ def scaled_dot_product_attention(
         value,
         attn_mask,
         sm_scale,
-        M,
         o,  #
         query.stride(0),
         query.stride(1),
