@@ -13,6 +13,7 @@ from .accuracy_utils import (
     SPECIAL_SHAPES,
     STACK_DIM_LIST,
     STACK_SHAPES,
+    UPSAMPLE_SHAPES,
     UT_SHAPES_1D,
     UT_SHAPES_2D,
     gems_assert_close,
@@ -439,6 +440,55 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (32, 16, 128, 128),
+        (15, 37, 256, 256),
+        (3, 5, 127, 127),
+        (128, 192, 42, 51),
+        (3, 7, 1023, 1025),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
+    input = torch.rand(shape, dtype=dtype, device="cuda")
+    ref_i = to_reference(input, True)
+    output_size = tuple([int(input.shape[i + 2] * scale[i]) for i in range(2)])
+    ref_out = torch._C._nn._upsample_bicubic2d_aa(
+        ref_i, output_size=output_size, align_corners=align_corners
+    )
+    with flag_gems.use_gems():
+        res_out = torch._C._nn._upsample_bicubic2d_aa(
+            input, output_size=output_size, align_corners=align_corners
+        )
+
+    def span(scale):
+        support = 2 if (scale >= 1.0) else 2.0 / scale
+        interpolate_range = int(support + 0.5) * 2 + 1
+        return interpolate_range
+
+    reduce_dim = span(scale[0]) * span(scale[1])
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.upsample_nearest2d
+@pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
+@pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_upsample_nearest2d(dtype, shape, scale):
+    input = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_i = to_reference(input).to(torch.float32)
+    output_size = [int(input.shape[i + 2] * scale[i]) for i in range(2)]
+    ref_out = torch._C._nn.upsample_nearest2d(ref_i, output_size=output_size).to(dtype)
+    with flag_gems.use_gems():
+        res_out = torch._C._nn.upsample_nearest2d(input, output_size=output_size)
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.arange
 @pytest.mark.parametrize("start", [0, 1, 3])
 @pytest.mark.parametrize("step", [1, 2, 5])
@@ -630,6 +680,12 @@ def gen_cat_shapes_dim(shapes):
             results.append(
                 [[(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes], dim]
             )
+            results.append(
+                [
+                    [(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes],
+                    dim - rank,
+                ]
+            )
     return results
 
 
@@ -739,4 +795,20 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
 
     with flag_gems.use_gems():
         res_out = torch.repeat_interleave(repeats)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    repeats = torch.randint(0, 30, (shape[dim],), device="cuda")
+    ref_inp = to_reference(inp)
+    ref_repeats = to_reference(repeats)
+
+    ref_out = torch.repeat_interleave(ref_inp, ref_repeats, dim)
+    with flag_gems.use_gems():
+        res_out = torch.repeat_interleave(inp, repeats, dim)
     gems_assert_equal(res_out, ref_out)
