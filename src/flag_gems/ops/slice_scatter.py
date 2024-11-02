@@ -102,6 +102,9 @@ def simplify(x, retain_dim, ordered_dims=None):
     # and/or one inner dim.
     ordered_dims = ordered_dims or sorted(range(x.ndim), key=lambda i: x.stride(i))
     assert x.ndim == len(ordered_dims)
+    if len(ordered_dims) == 1:
+        return x, ordered_dims
+
     size_list = [x.size(dim) for dim in ordered_dims]
     stride_list = [x.stride(dim) for dim in ordered_dims]
 
@@ -312,6 +315,7 @@ def scatter_3d_mid_kernel(
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config(kwargs={"R": 1, "C": 512}, num_warps=4),
         triton.Config(kwargs={"R": 32, "C": 32}, num_warps=4),
         triton.Config(kwargs={"R": 64, "C": 64}, num_warps=4),
         triton.Config(kwargs={"R": 4, "C": 512}, num_warps=4),
@@ -561,6 +565,9 @@ def slice_scatter_v2(inp, src, dim=0, start=None, end=None, step=1):
 
     if new_out is not None and new_src is not None:
         if dim == ordered_dims[0]:
+            if len(ordered_dims) == 1:
+                new_out = new_out.unsqueeze(0)
+                new_src = new_src.unsqueeze(0)
             # slices on inner dim
             scatter_2d_inner(inp, new_src, new_out, start, end, step)
         elif new_src.stride(-1) == new_out.stride(-1) == 1 and new_src.size(-1) >= 128:
