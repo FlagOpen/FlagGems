@@ -309,78 +309,86 @@ def scatter_3d_mid_kernel(
     # tl.store(A_out + a_offset, src, mask=bn_mask & k_mask)
 
 
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config(kwargs={"R": 32, "C": 32}, num_warps=4),
+        triton.Config(kwargs={"R": 64, "C": 64}, num_warps=4),
+        triton.Config(kwargs={"R": 4, "C": 512}, num_warps=4),
+        triton.Config(kwargs={"R": 16, "C": 128}, num_warps=4),
+    ],
+    key=["strided", "pivoted"],
+)
+@triton.heuristics(
+    values={
+        "predicate_load": lambda args: args["x_ncol"] > 0.5 * args["y_ncol"],
+    }
+)
 @triton.jit(
     do_not_specialize=[
         "nrow",
-        "ncol_A",
-        "ncol_B",
-        "a_stride0",
-        "a_stride1",
-        "b_stride0",
-        "b_stride1",
+        "x_ncol",
+        "y_ncol",
+        "x_si",
+        "x_sj",
+        "y_si",
+        "y_sj",
         "start",
         "end",
         "step",
     ]
 )
 def scatter_2d_inner_kernel(
-    A,
-    B,
-    A_out,
+    X,
+    Y,
+    X_out,
+    # sizes
     nrow,
-    ncol_A,
-    ncol_B,
-    a_stride0,
-    a_stride1,
-    # strides of B
-    b_stride0,
-    b_stride1,
-    # slice start index
+    x_ncol,
+    y_ncol,
+    # strides
+    x_si,
+    x_sj,
+    y_si,
+    y_sj,
+    # slice
     start,
-    # slice end index
     end,
-    # slice step
     step,
     strided: tl.constexpr,
-    NROW: tl.constexpr,
-    NCOL: tl.constexpr,
+    pivoted: tl.constexpr,
+    predicate_load: tl.constexpr,
+    R: tl.constexpr,
+    C: tl.constexpr,
 ):
-    pidx = tl.program_id(0)
-    pidy = tl.program_id(1)
+    i0 = tl.program_id(0) * R
+    j0 = tl.program_id(1) * C
+    ii = i0 + tl.arange(0, R)[:, None]
+    jj = j0 + tl.arange(0, C)[None, :]
 
-    row_idx_start = pidx * NROW
-    col_idx_start = pidy * NCOL
-
-    # Offsets into inp and out chunks
-    row_idx = row_idx_start + tl.arange(0, NROW)[:, None]
-    col_idx = col_idx_start + tl.arange(0, NCOL)[None, :]
-    a_offset = row_idx * a_stride0 + col_idx * a_stride1
-    row_mask = row_idx < nrow
-    a_col_mask = col_idx < ncol_A
-
-    # Offsets into src
-    b_offset = row_idx * b_stride0
-    b_offset += (col_idx - start) * b_stride1 // step
-    # This mask applies to the [NROW, NCOL]
-    b_col_mask = start <= col_idx
-    b_col_mask &= col_idx < end
-    b_col_mask &= (col_idx - start) % step == 0
-
-    if not strided:
-        if (col_idx_start + NCOL <= start) | (col_idx_start > end):
-            x = tl.load(A + a_offset, mask=row_mask & a_col_mask)
-            tl.store(A_out + a_offset, x, mask=row_mask & a_col_mask)
-            return
-        elif (col_idx_start >= start) & (col_idx_start + NCOL < end):
-            x = tl.load(B + b_offset, mask=row_mask)
-            tl.store(A_out + a_offset, x, mask=row_mask & a_col_mask)
-            return
-
-    # merge inp and src then write back
-    inp = tl.load(A + a_offset, mask=row_mask & a_col_mask)
-    src = tl.load(B + b_offset, mask=row_mask & b_col_mask)
-    out = tl.where(row_mask & a_col_mask, src, inp)
-    tl.store(A_out + a_offset, out, mask=row_mask & a_col_mask)
+    if predicate_load:
+        # predicate then load
+        px = X + ii * x_si + jj * x_sj
+        if (j0 + C < start) | (j0 >= end):
+            p = px
+        else:
+            py = Y + ii * y_si + (jj - start) * y_sj // step
+            mask = (start <= jj) & (jj < end) & ((jj - start) % step == 0)
+            p = tl.where((ii < nrow) & mask, py, px)
+        tmp = tl.load(p, mask=(ii < nrow) & (jj < x_ncol))
+        tl.store(X_out + ii * x_si + jj * x_sj, tmp, mask=(ii < nrow) & (jj < x_ncol))
+    else:
+        # load then predicate
+        x = tl.load(X + ii * x_si + jj * x_sj, mask=(ii < nrow) & (jj < x_ncol))
+        if (j0 + C < start) | (j0 >= end):
+            tl.store(X_out + ii * x_si + jj * x_sj, x, mask=(ii < nrow) & (jj < x_ncol))
+        else:
+            mask = (start <= jj) & (jj < end) & ((jj - start) % step == 0)
+            y = tl.load(
+                Y + ii * y_si + (jj - start) * y_sj // step, mask=(ii < nrow) & mask
+            )
+            z = tl.where((ii < nrow) & mask, y, x)
+            tl.store(X_out + ii * x_si + jj * x_sj, z, mask=(ii < nrow) & (jj < x_ncol))
 
 
 @triton.jit(
@@ -442,33 +450,33 @@ def scatter_2d_outer_kernel(
     tl.store(A_out + a_offset, out, mask=a_row_mask & col_mask)
 
 
-def scatter_2d_inner(A, B, A_out, start, end, step):
-    nrow, ncol = A_out.size()
-    ncol_B = B.size(1)
-    a_stride0, a_stride1 = A_out.stride()
-    b_stride0, b_stride1 = B.stride()
+def scatter_2d_inner(x, y, x_out, start, end, step):
+    nrow, x_ncol = x_out.size()
+    y_ncol = y.size(1)
+    x_stride_i, x_stride_j = x_out.stride()
+    y_stride_i, y_stride_j = y.stride()
     strided = step > 1
+    pivoted = y_stride_i < y_stride_j
     grid = lambda meta: (
-        triton.cdiv(nrow, meta["NROW"]),
-        triton.cdiv(ncol, meta["NCOL"]),
+        triton.cdiv(nrow, meta["R"]),
+        triton.cdiv(x_ncol, meta["C"]),
     )
     scatter_2d_inner_kernel[grid](
-        A,
-        B,
-        A_out,
+        x,
+        y,
+        x_out,
         nrow,
-        ncol,
-        ncol_B,
-        a_stride0,
-        a_stride1,
-        b_stride0,
-        b_stride1,
+        x_ncol,
+        y_ncol,
+        x_stride_i,
+        x_stride_j,
+        y_stride_i,
+        y_stride_j,
         start,
         end,
         step,
         strided=strided,
-        NROW=4,
-        NCOL=512,
+        pivoted=pivoted,
     )
 
 
@@ -541,7 +549,6 @@ def slice_scatter_v2(inp, src, dim=0, start=None, end=None, step=1):
     out = torch.empty_strided(
         inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
     )
-    # out.copy_(inp)
 
     # Look for a permute of dims so that the outer dims and inner dims relative to dim
     # after permute can be coalesced.
