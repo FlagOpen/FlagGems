@@ -122,6 +122,7 @@ def test_accuracy_max_without_dim(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
+
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -134,6 +135,7 @@ def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
         res_out = torch.max(inp)
 
     gems_assert_equal(res_out, ref_out)
+
 
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.max
