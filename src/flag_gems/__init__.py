@@ -162,6 +162,7 @@ def enable(lib=aten_lib):
     lib.impl("conv2d", conv2d, "CUDA")
     lib.impl("conv1d", conv1d, "CUDA")
     lib.impl("_conv_depthwise2d", _conv_depthwise2d, "CUDA")
+    lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "CUDA")
 
 
 class use_gems:
