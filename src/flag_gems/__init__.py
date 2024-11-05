@@ -142,7 +142,7 @@ def enable(lib=aten_lib):
     lib.impl("fill.Scalar", fill_scalar, "PrivateUse1")
     lib.impl("fill.Tensor", fill_tensor, "PrivateUse1")
     lib.impl("flip", flip, "PrivateUse1")
-    lib.impl("slice_scatter", slice_scatter, "PrivateUse1")
+    lib.impl("slice_scatter", slice_scatter_v2, "PrivateUse1")
     lib.impl("select_scatter", select_scatter, "PrivateUse1")
     lib.impl("index_select", index_select, "PrivateUse1")
     lib.impl("tile", tile, "PrivateUse1")

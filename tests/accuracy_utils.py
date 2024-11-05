@@ -60,6 +60,51 @@ STACK_SHAPES = [
     [(16, 256), (16, 256)],
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
+CONTIGUOUS_SHAPE_STRIDES_1D = [
+    ((1,), (1,)),
+    ((1024,), (1,)),
+    ((1000000,), (1,)),
+]
+DILATED_SHAPE_STRIDES_1D = [
+    ((1,), (2,)),
+    ((1024,), (2,)),
+    ((1000000,), (2,)),
+]
+CONTIGUOUS_SHAPE_STRIDES_2D = [
+    ((1, 1024), (1024, 1)),
+    ((10000, 128), (128, 1)),
+]
+TRANSPOSED_SHAPE_STRIDES_2D = [
+    ((1024, 1), (1, 1024)),
+    ((128, 10000), (1, 128)),
+]
+CONTIGUOUS_SHAPE_STRIDES_3D = [
+    ((20, 320, 15), (4800, 15, 1)),
+    ((200, 40999, 3), (122997, 3, 1)),
+]
+TRANSPOSED_SHAPE_STRIDES_3D = [
+    ((320, 20, 15), (15, 4800, 1)),
+    ((3, 40999, 200), (1, 3, 122997)),
+]
+SHAPE_STRIDES = (
+    CONTIGUOUS_SHAPE_STRIDES_1D
+    + DILATED_SHAPE_STRIDES_1D
+    + CONTIGUOUS_SHAPE_STRIDES_2D
+    + TRANSPOSED_SHAPE_STRIDES_2D
+    + CONTIGUOUS_SHAPE_STRIDES_3D
+    + TRANSPOSED_SHAPE_STRIDES_3D
+)
+
+IRREGULAR_SHAPE_STRIDES = [((10, 10, 10, 10, 10), (1, 10000, 23, 399, 1024))]
+
+UPSAMPLE_SHAPES = [
+    (32, 16, 128, 128),
+    (15, 37, 256, 256),
+    (3, 5, 127, 127),
+    (128, 192, 42, 51),
+    (3, 7, 1023, 1025),
+]
+
 
 
 UPSAMPLE_SHAPES = [
