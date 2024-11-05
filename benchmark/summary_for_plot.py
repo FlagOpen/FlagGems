@@ -38,7 +38,7 @@ from attri_util import BenchmarkMetrics, BenchmarkResult
 
 
 @dataclass
-class SummaryResult:
+class SummaryResultOverDtype:
     op_name: str = ""
     float16_speedup: float = 0.0
     float32_speedup: float = 0.0
@@ -99,13 +99,13 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
     return benchmark_results
 
 
-def calculate_avg_speedup(metrics):
+def calculate_avg_speedup_over_dtype(metrics):
     speedups = [metric.speedup for metric in metrics if metric.speedup is not None]
     return sum(speedups) / len(speedups) if speedups else 0.0
 
 
 def summary_for_plot(benchmark_results):
-    summary = defaultdict(SummaryResult)
+    summary = defaultdict(SummaryResultOverDtype)
 
     dtype_mapping = {
         "torch.float16": "float16_speedup",
@@ -114,7 +114,7 @@ def summary_for_plot(benchmark_results):
         "torch.int16": "int16_speedup",
         "torch.int32": "int32_speedup",
         "torch.bool": "bool_speedup",
-        "torch.cfloat": "cfloat_speedup",
+        "torch.complex64": "cfloat_speedup",
     }
 
     for item in benchmark_results:
@@ -124,14 +124,14 @@ def summary_for_plot(benchmark_results):
         else:
             dtype_suffix = (
                 "_complex"
-                if "cfloat" in item.dtype
+                if "complex64" in item.dtype
                 else "_int"
                 if "int" in item.dtype
                 else "_bool"
             )
 
         op_name = item.op_name + dtype_suffix
-        avg_speedup = calculate_avg_speedup(item.result)
+        avg_speedup = calculate_avg_speedup_over_dtype(item.result)
         cur_op_summary = summary[op_name]
         cur_op_summary.op_name = op_name
         setattr(

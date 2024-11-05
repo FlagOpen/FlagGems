@@ -81,7 +81,7 @@ TensorRepeatBenchmark:
     - [512, 512]
     - [512, 1024]
     - [512, 2048]
-  shape_desc: "((B), M, N) * 3"
+  shape_desc: "(B), M, N"
 
 GenericBenchmarkExcluse1D:
   shapes:
