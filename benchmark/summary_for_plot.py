@@ -140,6 +140,9 @@ def summary_for_plot(benchmark_results):
             avg_speedup,
         )
 
+    # sort the keys based on `op_name`
+    sorted_summary = sorted(summary.values(), key=lambda x: x.op_name)
+
     header = (
         f"{'op_name':<30} "
         f"{'float16_speedup':<16} "
@@ -152,7 +155,7 @@ def summary_for_plot(benchmark_results):
     )
 
     print(header)
-    for result in summary.values():
+    for result in sorted_summary:
         print(result)
 
     return summary
