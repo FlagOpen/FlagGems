@@ -108,6 +108,14 @@ GenericBenchmark2DOnly:
     - [4096, 4096]
     - [1024, 65536]
 
+UnaryReductionBenchmark:
+  shapes:
+    - [1048576,]  # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+
 UnaryPointwiseBenchmark:
   shapes:
     - [1073741824,]  # 1024 * 1024 * 1024
