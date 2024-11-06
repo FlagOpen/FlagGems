@@ -1,4 +1,3 @@
-import random
 from typing import Generator
 
 import pytest
