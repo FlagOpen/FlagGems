@@ -17,6 +17,7 @@ from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_tensor
 from .cos import cos
+from .cov import cov
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
 from .div import div_mode, floor_divide, remainder, true_divide
