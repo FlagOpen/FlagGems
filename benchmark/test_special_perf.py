@@ -37,10 +37,11 @@ def resolve_conj_input_fn(shape, dtype, device):
 
 special_operations = [
     # Sorting Operations
-    ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
+    # ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
+    ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
     # Complex Operations
-    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
-    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
+    # ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
+    # ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
 ]
 
 
@@ -64,6 +65,7 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
+@pytest.mark.skip("cost too long")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -202,6 +204,7 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skip("cost too long")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
