@@ -51,13 +51,13 @@ class SummaryResultOverDtype:
     def __str__(self) -> str:
         return (
             f"{self.op_name:<30} "
-            f"{self.float16_speedup:<15.6f} "
-            f"{self.float32_speedup:<15.6f} "
-            f"{self.bfloat16_speedup:<15.6f} "
-            f"{self.int16_speedup:<15.6f} "
-            f"{self.int32_speedup:<15.6f} "
-            f"{self.bool_speedup:<15.6f} "
-            f"{self.cfloat_speedup:<15.6f}"
+            f"{self.float16_speedup:<20.6f} "
+            f"{self.float32_speedup:<20.6f} "
+            f"{self.bfloat16_speedup:<20.6f} "
+            f"{self.int16_speedup:<20.6f} "
+            f"{self.int32_speedup:<20.6f} "
+            f"{self.bool_speedup:<20.6f} "
+            f"{self.cfloat_speedup:<20.6f}"
         )
 
 
@@ -145,13 +145,13 @@ def summary_for_plot(benchmark_results):
 
     header = (
         f"{'op_name':<30} "
-        f"{'float16_speedup':<16} "
-        f"{'float32_speedup':<16} "
-        f"{'bfloat16_speedup':<16} "
-        f"{'int16_speedup':<16} "
-        f"{'int32_speedup':<16} "
-        f"{'bool_speedup':<16} "
-        f"{'cfloat_speedup':<16}"
+        f"{'float16_speedup':<20} "
+        f"{'float32_speedup':<20} "
+        f"{'bfloat16_speedup':<20} "
+        f"{'int16_speedup':<20} "
+        f"{'int32_speedup':<20} "
+        f"{'bool_speedup':<20} "
+        f"{'cfloat_speedup':<20}"
     )
 
     print(header)
