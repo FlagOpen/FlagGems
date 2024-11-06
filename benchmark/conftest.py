@@ -200,6 +200,12 @@ def clear_module_cache():
     torch_device_fn.empty_cache()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def clear_cuda_cache():
+    yield
+    torch.cuda.empty_cache()
+
+
 @pytest.fixture()
 def extract_and_log_op_attributes(request):
     print("")
