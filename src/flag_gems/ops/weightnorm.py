@@ -392,7 +392,7 @@ class Norm(torch.autograd.Function):
 
         grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
 
-        with torch.cuda.device(v.device):
+        with torch.musa.device(v.device):
             norm_kernel[grid](
                 output,
                 v,
@@ -413,7 +413,7 @@ class Norm(torch.autograd.Function):
         v_grad = torch.empty_like(v)
 
         grid = lambda META: (triton.cdiv(ctx.V_SHAPE[1], META["BLOCK_ROW_SIZE"]),)
-        with torch.cuda.device(v.device):
+        with torch.musa.device(v.device):
             norm_bwd_kernel[grid](
                 v_grad,
                 norm_grad,

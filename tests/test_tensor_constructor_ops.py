@@ -130,9 +130,9 @@ def test_accuracy_randperm(n, dtype):
     if n > torch.iinfo(torch.int16).max and dtype == torch.int16:
         return
 
-    ref_out = torch.randperm(n, dtype=dtype, device="cpu" if TO_CPU else "cuda")
+    ref_out = torch.randperm(n, dtype=dtype, device="cpu" if TO_CPU else "musa")
     with flag_gems.use_gems():
-        res_out = torch.randperm(n, dtype=dtype, device="cuda")
+        res_out = torch.randperm(n, dtype=dtype, device="musa")
     sorted_ref, _ = torch.sort(ref_out)
     sorted_res, _ = torch.sort(res_out)
     gems_assert_equal(sorted_res, sorted_ref)

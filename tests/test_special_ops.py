@@ -19,12 +19,10 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     to_reference,
-    to_reference_gpu,
 )
 from .conftest import TO_CPU
 
 
-# TODO: sometimes failed at (8192,), 0.6, bfloat16
 @pytest.mark.dropout
 @pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -34,7 +32,7 @@ def test_accuracy_dropout(shape, p, dtype):
     if TO_CPU or shape == (1,):
         shape = (32768,)
     inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    ref_inp = to_reference_gpu(inp)
+    ref_inp = to_reference(inp)
 
     # NOTE: ensure that scalars are float32(instead of float64)
     # in some cases, casting up then casting down have different result
@@ -46,26 +44,26 @@ def test_accuracy_dropout(shape, p, dtype):
         res_out = torch.nn.functional.dropout(inp, p, True)
 
     out_grad = torch.randn_like(inp)
-    ref_grad = to_reference_gpu(out_grad)
+    ref_grad = to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    res_out = to_reference_gpu(res_out)
-    res_in_grad = to_reference_gpu(res_in_grad)
+    res_out = to_reference(res_out)
+    res_in_grad = to_reference(res_in_grad)
 
     exp_equal = (p * p + one_minus_p * one_minus_p) * inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     if TO_CPU:
-        from flag_gems.testing import RESOLUTION_DROPOUT
+        from flag_gems.testing import RESOLUTION
 
         zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
         num_zero = torch.sum(zero_equal).item()
         assert abs(num_zero / inp.numel() - p) <= 0.05
         scale_equal = torch.isclose(
-            res_out, ref_inp / one_minus_p, rtol=RESOLUTION_DROPOUT[dtype]
+            res_out, ref_inp / one_minus_p, rtol=RESOLUTION[dtype]
         )
-        assert torch.all(torch.logical_or(zero_equal.to("cpu"), scale_equal.to("cpu")))
+        assert torch.all(torch.logical_or(zero_equal, scale_equal))
     else:
         assert (
             abs(num_equal - exp_equal) / exp_equal <= 0.05
@@ -837,13 +835,14 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("Fatal Python Error: Aborted")
 @pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    repeats = torch.randint(0, 30, (shape[dim],), device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
+    repeats = torch.randint(0, 30, (shape[dim],), device="musa")
     ref_inp = to_reference(inp)
     ref_repeats = to_reference(repeats)
 

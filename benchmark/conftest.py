@@ -184,9 +184,9 @@ def setup_once(request):
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clear_cuda_cache():
+def clear_musa_cache():
     yield
-    torch.cuda.empty_cache()
+    torch.musa.empty_cache()
 
 
 @pytest.fixture()

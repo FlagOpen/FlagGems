@@ -469,11 +469,11 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     import random
 
     index = random.randint(0, shape[dim] - 1)
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
 
     src_shape = list(inp.shape)
     del src_shape[dim]
-    src = torch.randn(src_shape, dtype=dtype, device="cuda")
+    src = torch.randn(src_shape, dtype=dtype, device="musa")
 
     ref_inp = to_reference(inp)
     ref_src = to_reference(src)
@@ -491,7 +491,7 @@ def test_accuracy_select_scatter(shape, dim, dtype):
 @pytest.mark.parametrize("end", [1024, 256])
 @pytest.mark.parametrize("step", [1, 2])
 def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
-    inp = torch.empty_strided(shape, stride, dtype=dtype, device="cuda")
+    inp = torch.empty_strided(shape, stride, dtype=dtype, device="musa")
     inp.copy_(1)
 
     valid_shape = list(inp.shape)
@@ -507,7 +507,7 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
 
     valid_shape[dim] = (end - start + step - 1) // step
 
-    src = torch.rand(valid_shape, dtype=dtype, device="cuda")
+    src = torch.rand(valid_shape, dtype=dtype, device="musa")
 
     ref_inp = to_reference(inp)
     ref_src = to_reference(src)
@@ -529,7 +529,7 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
 @pytest.mark.parametrize("end", [1024, 256])
 @pytest.mark.parametrize("step", [1, 2])
 def test_accuracy_slice_scatter_fallback(shape, stride, dim, dtype, start, end, step):
-    inp = torch.empty_strided(shape, stride, dtype=dtype, device="cuda")
+    inp = torch.empty_strided(shape, stride, dtype=dtype, device="musa")
     inp.copy_(1)
 
     valid_shape = list(inp.shape)
@@ -545,7 +545,7 @@ def test_accuracy_slice_scatter_fallback(shape, stride, dim, dtype, start, end, 
 
     valid_shape[dim] = (end - start + step - 1) // step
 
-    src = torch.rand(valid_shape, dtype=dtype, device="cuda")
+    src = torch.rand(valid_shape, dtype=dtype, device="musa")
 
     ref_inp = to_reference(inp)
     ref_src = to_reference(src)

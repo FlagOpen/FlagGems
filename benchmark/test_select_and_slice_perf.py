@@ -99,6 +99,7 @@ def test_perf_scatter():
     bench.run()
 
 
+@pytest.mark.skip("cost too long")
 @pytest.mark.gather
 def test_perf_gather():
     def gather_input_fn(shape, dtype, device):

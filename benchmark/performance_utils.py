@@ -22,7 +22,7 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch.backends.musa.matmul.allow_tf32 = False
+torch.backends.mudnn.allow_tf32 = False
 
 
 class Benchmark:

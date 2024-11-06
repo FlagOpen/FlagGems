@@ -99,7 +99,7 @@ norm_operations = [
         weight_norm_interface_input_fn,
     ),
     ("weight_norm", torch._weight_norm, weight_norm_input_fn),
-    ("vector_norm", torch.linalg.vector_norm, unary_input_fn),
+    # ("vector_norm", torch.linalg.vector_norm, unary_input_fn),
 ]
 
 

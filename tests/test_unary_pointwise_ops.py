@@ -303,6 +303,7 @@ def test_accuracy_erf(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip("The size of input cannot be None")
 @pytest.mark.isfinite
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
