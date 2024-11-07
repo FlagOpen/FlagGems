@@ -60,12 +60,7 @@ from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
 from .nonzero import nonzero
-from .normal import (
-    normal_float_float,
-    normal_float_tensor,
-    normal_tensor_float,
-    normal_tensor_tensor,
-)
+from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -76,18 +71,25 @@ from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
-from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_tensor
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt
 from .scatter import scatter
+from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
+from .slice_scatter import slice_scatter, slice_scatter_v2
 from .softmax import softmax
 from .stack import stack
 from .sub import sub
@@ -185,6 +187,7 @@ __all__ = [
     "minimum",
     "rand",
     "randn",
+    "randperm",
     "rand_like",
     "randn_like",
     "resolve_neg",
@@ -192,7 +195,6 @@ __all__ = [
     "normal_tensor_float",
     "normal_float_tensor",
     "normal_tensor_tensor",
-    "normal_float_float",
     "uniform_",
     "mv",
     "ne",
@@ -232,6 +234,9 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "select_scatter",
+    "slice_scatter",
+    "slice_scatter_v2",
     "masked_fill",
     "_unique2",
     "_upsample_bicubic2d_aa",
@@ -245,4 +250,5 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "repeat_interleave_self_tensor",
 ]
