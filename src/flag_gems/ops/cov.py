@@ -47,11 +47,7 @@ def covariance_kernel(
     tl.atomic_add(cov_matrix + row * M + col, cov)
 
 def cov(X, correction=1, fweights=None, aweights=None):
-    logging.debug("GEMS ")
-
-    if not X.is_cuda:
-        X = X.to('cuda')
-    
+    logging.debug("GEMS COV")    
     M, N = X.shape  
     if fweights is not None:
         fweights = fweights.to(device=X.device, dtype=X.dtype)
