@@ -371,12 +371,12 @@ class Conv2d(torch.autograd.Function):
             bias is None or weight.shape[0] == bias.shape[0]
         ), "Incompatible weights ({weight.shape}) and bias ({bias.shape}) shape"
 
-        if isinstance(stride, list):
+        if isinstance(stride, (list, tuple)):
             stride_height, stride_width = stride
         else:
             stride_height = stride_width = stride
 
-        if isinstance(padding, list):
+        if isinstance(padding, (list, tuple)):
             padding_height, padding_width = padding
         else:
             padding_height = padding_width = padding
