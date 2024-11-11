@@ -61,34 +61,32 @@ def conv2d_forward_config(
 @triton.autotune(
     configs=[
         conv2d_forward_config(128, 32, 128, n_warps=8, num_stages=2),
-        conv2d_forward_config(256, 32, 128, n_warps=8, num_stages=2),
-        conv2d_forward_config(256, 32, 64, n_warps=4, num_stages=4),
-        conv2d_forward_config(256, 64, 32, n_warps=4, num_stages=4),
-        conv2d_forward_config(256, 64, 16, n_warps=2, num_stages=4),
-        conv2d_forward_config(256, 64, 128, n_warps=8, num_stages=4),
-        conv2d_forward_config(128, 32, 64, n_warps=4, num_stages=4),
-        conv2d_forward_config(128, 32, 16, n_warps=4, num_stages=4),
-        conv2d_forward_config(128, 128, 128, n_warps=8, num_stages=3),
-        conv2d_forward_config(64, 128, 128, n_warps=4, num_stages=4),
-        conv2d_forward_config(64, 128, 64, n_warps=2, num_stages=4),
-        conv2d_forward_config(64, 64, 64, n_warps=2, num_stages=4),
-        conv2d_forward_config(64, 32, 32, n_warps=2, num_stages=4),
-        conv2d_forward_config(64, 16, 32, n_warps=2, num_stages=4),
-        conv2d_forward_config(64, 16, 16, n_warps=2, num_stages=4),
-        conv2d_forward_config(32, 32, 32, n_warps=2, num_stages=4),
-        conv2d_forward_config(32, 16, 32, n_warps=2, num_stages=4),
-        conv2d_forward_config(32, 16, 16, n_warps=2, num_stages=4),
+        # conv2d_forward_config(256, 32, 64, n_warps=8, num_stages=2),
+        # conv2d_forward_config(256, 32, 32, n_warps=4, num_stages=4),
+        # conv2d_forward_config(256, 64, 32, n_warps=4, num_stages=4),
+        # conv2d_forward_config(256, 32, 16, n_warps=2, num_stages=4),
+        # conv2d_forward_config(64, 32, 128, n_warps=8, num_stages=4),
+        # conv2d_forward_config(128, 32, 64, n_warps=4, num_stages=4),
+        # conv2d_forward_config(64, 32, 64, n_warps=4, num_stages=4),
+        # conv2d_forward_config(128, 32, 16, n_warps=4, num_stages=4),
+        # conv2d_forward_config(128, 128, 128, n_warps=8, num_stages=3),
+        # conv2d_forward_config(256, 128, 64, n_warps=8, num_stages=3),
+        # conv2d_forward_config(256, 128, 32, n_warps=4, num_stages=4),
+        # conv2d_forward_config(64, 128, 128, n_warps=4, num_stages=4),
+        # conv2d_forward_config(128, 128, 64, n_warps=4, num_stages=4),
+        # conv2d_forward_config(128, 64, 32, n_warps=2, num_stages=4),
+        # conv2d_forward_config(64, 64, 64, n_warps=2, num_stages=4),
     ],
     key=[
         "in_n",
-        "kernel_c",
-        "in_height",
-        "in_width",
+        "weight_c",
+        "input_height",
+        "input_width",
         "out_c",
         "out_height",
         "out_width",
-        "kernel_height",
-        "kernel_width",
+        "weight_height",
+        "weight_width",
         "stride_height",
         "stride_width",
         "padding_height",
@@ -102,8 +100,8 @@ def conv2d_forward_kernel(
     weight_pointer,
     output_pointer,
     in_n,
-    in_height,
-    in_width,
+    input_height,
+    input_width,
     out_c,
     out_height,
     out_width,
@@ -119,9 +117,9 @@ def conv2d_forward_kernel(
     output_c_stride,
     output_height_stride,
     output_width_stride,
-    kernel_c: tl.constexpr,
-    kernel_height: tl.constexpr,
-    kernel_width: tl.constexpr,
+    weight_c: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
     stride_height: tl.constexpr,
     stride_width: tl.constexpr,
     padding_height: tl.constexpr,
@@ -143,11 +141,11 @@ def conv2d_forward_kernel(
     output_width_point_value = ni_ho_wo_offset % out_width
 
     # Load the input and weight pointers. input and weight are of shape
-    # [in_n, groups, in_c, in_height, in_width] and [groups, out_c, in_c, kernel_height, kernel_width]
+    # [in_n, groups, in_c, input_height, input_width] and [groups, out_c, in_c, weight_height, weight_width]
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     input_pointer += (
-        input_n_stride * in_n_point_value + input_c_stride * pid_group * kernel_c
+        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
     )[:, None]
     weight_pointer += (
         weight_n_stride * output_c_offset
@@ -156,9 +154,9 @@ def conv2d_forward_kernel(
 
     accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
 
-    for h in range(kernel_height):
-        for w in range(kernel_width):
-            for c in range(0, kernel_c, BLOCK_CI):
+    for h in range(weight_height):
+        for w in range(weight_width):
+            for c in range(0, weight_c, BLOCK_CI):
                 input_c_offset = c + tl.arange(0, BLOCK_CI)
                 input_height_offset = (
                     h - padding_height + stride_height * output_height_point_value
@@ -176,19 +174,19 @@ def conv2d_forward_kernel(
                 curr_weight_pointer = (
                     weight_pointer
                     + (weight_c_stride * input_c_offset)[:, None]
-                    + (weight_height_stride * h)[None, :]
-                    + (weight_width_stride * w)[None, :]
+                    + (weight_height_stride * h)
+                    + (weight_width_stride * w)
                 )
 
                 input_mask = (
                     (in_n_point_value < in_n)[:, None]
-                    & (input_c_offset < kernel_c)[None, :]
+                    & (input_c_offset < weight_c)[None, :]
                     & (0 <= input_height_offset)[:, None]
-                    & (input_height_offset < in_height)[:, None]
+                    & (input_height_offset < input_height)[:, None]
                     & (0 <= input_width_offset)[:, None]
-                    & (input_width_offset < in_width)[:, None]
+                    & (input_width_offset < input_width)[:, None]
                 )
-                weight_mask = (input_c_offset < kernel_c)[:, None] & (
+                weight_mask = (input_c_offset < weight_c)[:, None] & (
                     output_c_offset < out_per_group_c
                 )[None, :]
 
@@ -213,6 +211,150 @@ def conv2d_forward_kernel(
     tl.store(output_pointer, accum, mask=output_mask)
 
 
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config(
+            {"BLOCK_NO_HO_WO": 16, "BLOCK_CO": 16, "BLOCK_CI": 16}, num_stages=5
+        ),
+    ],
+    key=[
+        "in_n",
+        "input_height",
+        "input_width",
+        "weight_height",
+        "weight_width",
+        "input_c",
+        "stride_height",
+        "stride_width",
+        "out_height",
+        "out_width",
+        "out_c",
+        "padding_height",
+        "padding_width",
+    ],
+)
+@triton.jit
+def conv2d_backward_kernel(
+    input_pointer,
+    out_grad_pointer,
+    weight_pointer,
+    input_n_stride,
+    input_c_stride,
+    input_height_stride,
+    input_width_stride,
+    weight_n_stride,
+    weight_c_stride,
+    weight_height_stride,
+    weight_width_stride,
+    output_n_stride,
+    output_c_stride,
+    output_height_stride,
+    output_width_stride,
+    input_height,
+    input_width,
+    weight_height,
+    weight_width,
+    input_c,
+    in_n,
+    stride_height,
+    stride_width,
+    out_height,
+    out_width,
+    out_c,
+    padding_height,
+    padding_width,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_NO_HO_WO: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    # load out_grad n (groups out_c)  ho wo
+    # load weight (groups out_c) ci h w
+
+    # init pid and offset 0 for nout*hout*wout 1 for groups 2 for ci
+    pid_no_ho_wo = tl.program_id(0)
+    pid_groups = tl.program_id(1)
+    pid_ci = tl.program_id(2)
+
+    # caculate in_n out_height out_weight value in kernel
+    no_ho_wo_offset = pid_no_ho_wo * BLOCK_NO_HO_WO + tl.arange(0, BLOCK_NO_HO_WO)
+    no_ho_offset = no_ho_wo_offset // out_width
+    no_point_value = no_ho_offset // out_height
+    output_height_point_value = no_ho_offset % out_height
+    output_width_point_value = no_ho_wo_offset % out_width
+
+    # caculate init pointer info of tensors
+    out_grad_pointer += (no_point_value * output_n_stride)[:, None] + (
+        pid_groups * output_c_stride * out_c
+        + output_height_point_value * output_height_stride
+        + output_width_point_value * output_width_stride
+    )[:, None]
+
+    input_c_offset = pid_ci * BLOCK_CI + tl.arange(0, BLOCK_CI)
+    weight_pointer += (pid_groups * weight_n_stride * out_c)[None, :] + (
+        input_c_offset * weight_c_stride
+    )[None, :]
+
+    input_pointer += (
+        (no_point_value * input_n_stride)[:, None]
+        + (pid_groups * input_c_stride * input_c)[:, None]
+        + (input_c_stride * input_c_offset)[None, :]
+    )
+
+    # calculate the values of the input based on the width and height of the weight by looping
+    for h in range(0, weight_height):
+        for w in range(0, weight_width):
+            accum = tl.zeros((BLOCK_NO_HO_WO, BLOCK_CI), dtype=tl.float32)
+            for c in range(0, out_c, BLOCK_CO):
+                output_c_offset = c + tl.arange(0, BLOCK_CO)
+
+                # caculate weight pointer to [out_c, *] out_grad pointer to [*, out_c], out_c as reduce dim
+                curr_weight_pointer = (
+                    weight_pointer
+                    + (h * weight_height_stride + w * weight_width_stride)[None, :]
+                    + (output_c_offset * weight_n_stride)[:, None]
+                )
+                weight_mask = (input_c_offset < input_c)[None, :] & (
+                    output_c_offset < out_c
+                )[:, None]
+
+                curr_out_grad_pointer = (
+                    out_grad_pointer + (output_c_offset * output_c_stride)[None, :]
+                )
+                out_grad_mask = (
+                    (no_point_value < in_n)[:, None]
+                    & (output_c_offset < out_c)[None, :]
+                    & (output_height_point_value < out_height)[:, None]
+                    & (output_width_point_value < out_width)[:, None]
+                )
+
+                curr_out_grad = tl.load(curr_out_grad_pointer, mask=out_grad_mask)
+                curr_weight = tl.load(curr_weight_pointer, mask=weight_mask)
+                accum += tl.dot(curr_out_grad, curr_weight, allow_tf32=False)
+
+            input_height_offset = (
+                h - padding_height + stride_height * output_height_point_value
+            )
+            input_width_offset = (
+                w - padding_width + stride_width * output_width_point_value
+            )
+
+            curr_input_pointer = (
+                input_pointer
+                + (input_height_stride * input_height_offset)[:, None]
+                + (input_width_stride * input_width_offset)[:, None]
+            )
+            input_mask = (
+                (no_point_value < in_n)[:, None]
+                & (input_c_offset < input_c)[None, :]
+                & (0 <= input_height_offset)[:, None]
+                & (input_height_offset < input_height)[:, None]
+                & (0 <= input_width_offset)[:, None]
+                & (input_width_offset < input_width)[:, None]
+            )
+            tl.atomic_add(curr_input_pointer, accum, input_mask)
+
+
 class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
@@ -229,23 +371,23 @@ class Conv2d(torch.autograd.Function):
             bias is None or weight.shape[0] == bias.shape[0]
         ), "Incompatible weights ({weight.shape}) and bias ({bias.shape}) shape"
 
-        if isinstance(stride, (list, tuple)):
+        if isinstance(stride, list):
             stride_height, stride_width = stride
         else:
             stride_height = stride_width = stride
 
-        if isinstance(padding, (list, tuple)):
+        if isinstance(padding, list):
             padding_height, padding_width = padding
         else:
             padding_height = padding_width = padding
 
-        in_n, _, in_height, in_width = input.shape
-        out_c, kernel_c, kernel_height, kernel_width = weight.shape
+        in_n, _, input_height, input_width = input.shape
+        out_c, weight_c, weight_height, weight_width = weight.shape
         out_height = conv2d_output_size(
-            in_height, kernel_height, stride_height, padding_height
+            input_height, weight_height, stride_height, padding_height
         )
         out_width = conv2d_output_size(
-            in_width, kernel_width, stride_width, padding_width
+            input_width, weight_width, stride_width, padding_width
         )
 
         output_dtype = input.dtype
@@ -268,17 +410,17 @@ class Conv2d(torch.autograd.Function):
             weight,
             output,
             in_n,
-            in_height,
-            in_width,
+            input_height,
+            input_width,
             out_c,
             out_height,
             out_width,
             *input.stride(),
             *weight.stride(),
             *output.stride(),
-            kernel_c,
-            kernel_height,
-            kernel_width,
+            weight_c,
+            weight_height,
+            weight_width,
             stride_height,
             stride_width,
             padding_height,
@@ -287,25 +429,86 @@ class Conv2d(torch.autograd.Function):
         )
 
         if bias is not None:
-            # Adding bias in the kernel becomes buggy when groups != 1.
             output += bias.view(1, -1, 1, 1)
 
-        requires_grad = (
-            input.requires_grad
-            or weight.requires_grad
-            or (bias is not None and bias.requires_grad)
-        )
+        ctx.save_for_backward(weight)
 
         ctx.stride = (stride_height, stride_width)
         ctx.padding = (padding_height, padding_width)
+
+        ctx.weight_info = (int(out_c / groups), weight_c, weight_height, weight_width)
+        ctx.input_info = (in_n, input_height, input_width)
+        ctx.out_info = (out_height, out_width)
+
+        ctx.device = input.device
         ctx.groups = groups
-        ctx.bias_requires_grad = False if bias is None else bias.requires_grad
-        ctx.output_dtype = output_dtype
-        if requires_grad:
-            ctx.save_for_backward(input, weight)
 
         return output
 
+    @staticmethod
+    def backward(ctx, out_grad):
+        logging.debug("GEMS CONV2D VJP")
+        (weight,) = ctx.saved_tensors
+        # (out_c equals origin cout divide groups)
+        out_c, weight_c, weight_height, weight_width = ctx.weight_info
+        in_n, input_height, input_width = ctx.input_info
+        out_height, out_width = ctx.out_info
 
+        device = ctx.device
+        groups = ctx.groups
+
+        stride_height, stride_width = ctx.stride
+
+        input = torch.zeros(
+            in_n,
+            weight_c * groups,
+            input_height,
+            input_width,
+            dtype=torch.float32,
+            device=device,
+        )
+
+        grid = lambda meta: (
+            triton.cdiv(in_n * out_height * out_width, meta["BLOCK_NO_HO_WO"]),
+            groups,
+            triton.cdiv(weight_c, meta["BLOCK_CI"]),
+        )
+
+        padding_height, padding_width = ctx.padding
+        # return dx,None,None,None,None,None,None
+        conv2d_backward_kernel[grid](
+            input,
+            out_grad,
+            weight,
+            *input.stride(),
+            *weight.stride(),
+            *out_grad.stride(),
+            input_height,
+            input_width,
+            weight_height,
+            weight_width,
+            weight_c,
+            in_n,
+            stride_height,
+            stride_width,
+            out_height,
+            out_width,
+            out_c,
+            padding_height,
+            padding_width,
+        )
+
+        return (
+            input,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+
+
+# todo test SymInt[2] of stride or padding
 def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     return Conv2d.apply(input, weight, bias, stride, padding, dilation, groups)
