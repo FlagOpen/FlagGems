@@ -87,8 +87,8 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def any(inp):
     logging.debug("GEMS ANY")
     n_elements = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
-    mid_size = triton.cdiv(n_elements, block_size)
+    block_size = min(2048,triton.next_power_of_2(math.ceil(math.sqrt(n_elements))))
+    mid_size = block_size
     block_mid = triton.next_power_of_2(mid_size)
 
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
