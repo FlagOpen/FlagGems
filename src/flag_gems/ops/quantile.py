@@ -3,9 +3,9 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from torch import Tensor, tensor
-from utils import dim_compress, libentry
+from ..utils import dim_compress, libentry
+
 
 INTERPOLATION_METHOD = ['linear', 'lower', 'higher', 'nearest', 'midpoint']
 
@@ -13,14 +13,13 @@ INTERPOLATION_METHOD = ['linear', 'lower', 'higher', 'nearest', 'midpoint']
 def cfggen(one_dim=False):
     block_q = tensor([1, 2, 4, 8], dtype=torch.int32)
     if one_dim:
-        configs = [
-            triton.Config({"BLOCK_Q": q.item()}, num_warps=4) for q in block_q
-        ]
+        configs = [triton.Config({"BLOCK_Q": q.item()}, num_warps=4) for q in block_q]
     else:
-        block_n = tensor([ 2**i for i in range(6, 11)], dtype=torch.int32)
+        block_n = tensor([2**i for i in range(6, 11)], dtype=torch.int32)
         x, y = torch.meshgrid(block_n, block_q, indexing='ij')
         configs = [
-            triton.Config({"BLOCK_Q": q.item(), "BLOCK_N": n.item()}, num_warps=4) for n, q in zip(x.ravel(), y.ravel())
+            triton.Config({"BLOCK_Q": q.item(), "BLOCK_N": n.item()}, num_warps=4) 
+            for n, q in zip(x.ravel(), y.ravel())
         ]
     return configs
 
@@ -35,7 +34,8 @@ def quantile_kernel_1d(
     M,
     Q,
     BLOCK_Q: tl.constexpr,
-    interpolation: tl.constexpr):
+    interpolation: tl.constexpr
+):
     pid = tl.program_id(0)
     ctype = inp.dtype.element_ty
 
@@ -50,16 +50,21 @@ def quantile_kernel_1d(
     inp_lower = tl.load(inp + q_lower)
     inp_upper = tl.load(inp + q_upper)
 
+
     if interpolation == 'linear':
         q_frac = q_block - q_lower
         tl.store(out_ptrs, inp_lower + (inp_upper - inp_lower) * q_frac, mask)
+
     elif interpolation == 'lower':
         tl.store(out_ptrs, inp_lower, mask)
+
     elif interpolation == 'higher':
         tl.store(out_ptrs, inp_upper, mask)
+
     elif interpolation == 'nearest':
         q_near = tl.where(q_block - q_lower > q_upper - q_block, inp_upper, inp_lower)
         tl.store(out_ptrs, q_near, mask)
+
     elif interpolation == 'midpoint':
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask)
 
@@ -77,9 +82,9 @@ def quantile(inp, q, *, interpolation='linear') -> Tensor:
 
     assert M > 0
     assert Q > 0
-    assert torch.all(q >= 0.) and torch.all(q <= 1.)
+    assert torch.all(q >= 0.0) and torch.all(q <= 1.0)
 
-    inp, _ = inp.sort() # Sort the input with torch.sort()
+    inp, _ = inp.sort()  # Sort the input with torch.sort()
     output = torch.empty(q.shape, dtype=inp.dtype, device=inp.device)
     grid = lambda meta: [triton.cdiv(Q, meta['BLOCK_Q'])]
 
@@ -98,11 +103,13 @@ def quantile_kernel_2d(
     inp, 
     q,
     out,
-    N, M,
+    N,
+    M,
     Q,
     BLOCK_Q: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    interpolation: tl.constexpr):
+    interpolation: tl.constexpr
+):
     pid_Q = tl.program_id(0)
     pid_N = tl.program_id(1)
     ctype = inp.dtype.element_ty
@@ -124,19 +131,25 @@ def quantile_kernel_2d(
     inp_lower = tl.load(inp + offsets_N[:, None] * M + q_lower[None, :])
     inp_upper = tl.load(inp + offsets_N[:, None] * M + q_upper[None, :])
 
+
     if interpolation == 'linear':
         q_frac = q_block - q_lower
         tl.store(out_ptrs, inp_lower + (inp_upper - inp_lower) * q_frac, mask_out)
+
     elif interpolation == 'lower':
         tl.store(out_ptrs, inp_lower, mask_out)
+
     elif interpolation == 'higher':
         tl.store(out_ptrs, inp_upper, mask_out)
+
     elif interpolation == 'nearest':
         q_near = tl.where(q_block - q_lower > q_upper - q_block, inp_upper, inp_lower)
         tl.store(out_ptrs, q_near, mask_out)
+
     elif interpolation == 'midpoint':
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask_out)
         
+
 
 def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation='linear') -> Tensor:
     logging.debug("GEMS QUANTILE DIM")    
@@ -152,11 +165,11 @@ def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation='linear') -> 
 
     assert M > 0
     assert Q > 0
-    assert torch.all(q >= 0.) and torch.all(q <= 1.)
+    assert torch.all(q >= 0.0) and torch.all(q <= 1.0)
 
     if dim is None:
-       inp = inp.ravel()
-       dim = 0
+        inp = inp.ravel()
+        dim = 0
 
     shape = list(inp.shape)
 
@@ -165,15 +178,20 @@ def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation='linear') -> 
     M = shape[dim]
     N = inp.numel() // M
 
-    inp, _ = inp.sort() # Sort the input with torch.sort()
+    inp, _ = inp.sort()  # Sort the input with torch.sort()
     output = torch.empty(inp.shape[:-1] + (Q,), dtype=inp.dtype, device=inp.device)
 
-    grid = lambda meta: [triton.cdiv(Q, meta['BLOCK_Q']), triton.cdiv(N, meta['BLOCK_N'])]
+    grid = lambda meta: [
+        triton.cdiv(Q, meta['BLOCK_Q']), 
+        triton.cdiv(N, meta['BLOCK_N'])
+    ]
 
     with torch.cuda.device(inp.device):
         quantile_kernel_2d[grid](inp, q, output, N, M, Q, interpolation=interpolation)
     
-    output = output.permute((-1,) + tuple(range(0, inp.ndim - 1))) # Same as torch.quantile()
+    output = output.permute(
+        (-1,) + tuple(range(0, inp.ndim - 1))
+    )  # Same as torch.quantile()
     if keepdim:
         output = output.unsqueeze(dim + 1)
     return output
