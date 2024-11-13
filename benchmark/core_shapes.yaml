@@ -15,7 +15,6 @@ randperm:
     - [65536]
   shape_desc: "M"
 
-
 BlasBenchmark:
   shapes:
     - [2, 4096, 4096, 4096]
@@ -114,7 +113,7 @@ UnaryReductionBenchmark:
     - [64, 64]
     - [4096, 4096]
     - [64, 512, 512]
-    - [1024, 1024, 1024]
+    - [256, 1024, 1024]
 
 UnaryPointwiseBenchmark:
   shapes:
