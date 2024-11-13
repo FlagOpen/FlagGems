@@ -312,11 +312,11 @@ def test_accuracy_nonzero(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, False)
 
-#     ref_out = torch.nonzero(ref_inp)
-#     with flag_gems.use_gems():
-#         res_out = torch.nonzero(inp)
+    ref_out = torch.nonzero(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nonzero(inp)
 
-#     gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.count_nonzero
@@ -722,6 +722,7 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.select_scatter
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -783,6 +784,7 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.slice_scatter
 @pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

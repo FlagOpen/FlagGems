@@ -85,6 +85,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
