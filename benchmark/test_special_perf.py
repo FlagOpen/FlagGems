@@ -3,7 +3,7 @@ import random
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Config,
     GenericBenchmark,
@@ -242,5 +242,23 @@ def test_perf_upsample_nearest2d():
         op_name="upsample_nearest2d",
         torch_op=torch._C._nn.upsample_nearest2d,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.diag_embed
+def test_perf_diag_embed():
+    def diag_embed_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield {"input": inp},
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield {"input": inp, "offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = EmbeddingBenchmark(
+        input_fn=diag_embed_input_fn,
+        op_name="diag_embed",
+        torch_op=torch.diag_embed,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
     )
     bench.run()
