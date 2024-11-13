@@ -3,11 +3,14 @@ from typing import Generator
 
 import pytest
 import torch
+import triton
 
 from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, BenchLevel, llama_shapes
 from .conftest import Config
 from .performance_utils import Benchmark
 
+WARMUP = 25
+REPETITION = 100
 
 class BlasBenchmark(Benchmark):
     """
@@ -47,12 +50,33 @@ class BlasBenchmark(Benchmark):
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
         A proper implementation will be developed in the future."""
-        from torch.utils.flop_counter import FlopCounterMode
-
         fn = lambda: op(*args, **kwargs)
-        with FlopCounterMode(display=False) as flop_counter:
-            fn()
-        tflops = flop_counter.get_total_flops()
+        #time(s)
+        latency = triton.testing.do_bench(
+                fn,
+                warmup=WARMUP,
+                rep=REPETITION,
+                return_mode="median"
+        )/1000
+        total_flops=0
+        #shape(m,n)(n,p)
+        #total_flops mxnx2k
+        if(self.op_name=="mm"):
+            total_flops=args[0].shape[0]*args[0].shape[1]*args[1].shape[1]*2
+        #shape(m,n)(n,p)
+        #total_flops mxpx(2n+1)
+        if(self.op_name=="addmm"):
+            total_flops=args[0].shape[0]*args[1].shape[1]*(args[1].shape[0]*2+1)
+        #shape(b,n,m), (b,m,p)
+        #total_flops bxnxpx2m
+        if(self.op_name=="bmm"):
+            total_flops=args[0].shape[0]*args[0].shape[1]*args[1].shape[2]*2*args[0].shape[2]
+        #shape(n,m)(m,)
+        #total_flops n*2m
+        if(self.op_name=="mv"):
+            total_flops=args[0].shape[0]*2*args[0].shape[1]
+        tflops=total_flops/latency/1e12
+
         return tflops
 
 
