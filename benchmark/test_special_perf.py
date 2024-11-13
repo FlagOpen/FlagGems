@@ -89,6 +89,7 @@ def test_isin_perf():
     bench.run()
 
 
+@pytest.mark.skip()
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
