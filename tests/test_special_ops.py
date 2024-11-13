@@ -230,184 +230,191 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-# @pytest.mark.resolve_neg
-# @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-# @pytest.mark.parametrize("dtype", [torch.cfloat])
-# def test_accuracy_resolve_neg(shape, dtype):
-#     x = torch.randn(size=shape, dtype=dtype, device="musa")
-#     y = x.conj()
-#     z = y.imag
-#     assert z.is_neg()
-#     with flag_gems.use_gems():
-#         out = z.resolve_neg()
-#     assert not out.is_neg()
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.resolve_neg
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_neg(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="musa")
+    y = x.conj()
+    z = y.imag
+    assert z.is_neg()
+    with flag_gems.use_gems():
+        out = z.resolve_neg()
+    assert not out.is_neg()
 
 
-# @pytest.mark.topk
-# @pytest.mark.parametrize("batch_size", [4, 8])
-# @pytest.mark.parametrize("hiddensize", [128, 256])
-# @pytest.mark.parametrize("topk", [5])
-# @pytest.mark.parametrize("largest", [True, False])
-# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-# def test_topk(
-#     batch_size,
-#     hiddensize,
-#     topk,
-#     largest,
-#     dtype,
-# ):
-#     x = torch.arange(hiddensize, dtype=dtype, device="musa")
-#     x = x.repeat(batch_size).reshape(batch_size, hiddensize)
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.topk
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [128, 256])
+@pytest.mark.parametrize("topk", [5])
+@pytest.mark.parametrize("largest", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_topk(
+    batch_size,
+    hiddensize,
+    topk,
+    largest,
+    dtype,
+):
+    x = torch.arange(hiddensize, dtype=dtype, device="musa")
+    x = x.repeat(batch_size).reshape(batch_size, hiddensize)
 
-#     # Each row use different shuffled index.
-#     for bsz in range(batch_size):
-#         col_indices = torch.randperm(x.size(1))
-#         x[bsz, :] = x[bsz, col_indices]
-#     ref_x = to_reference(x)
-#     ref_value, ref_index = torch.topk(ref_x, topk, largest=largest)
+    # Each row use different shuffled index.
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(x.size(1))
+        x[bsz, :] = x[bsz, col_indices]
+    ref_x = to_reference(x)
+    ref_value, ref_index = torch.topk(ref_x, topk, largest=largest)
 
-#     with flag_gems.use_gems():
-#         res_value, res_index = torch.topk(x, topk, largest=largest)
+    with flag_gems.use_gems():
+        res_value, res_index = torch.topk(x, topk, largest=largest)
 
-#     gems_assert_close(res_value, ref_value, dtype)
-#     gems_assert_equal(res_index, ref_index)
-
-
-# @pytest.mark.resolve_conj
-# @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-# @pytest.mark.parametrize("dtype", [torch.cfloat])
-# def test_accuracy_resolve_conj(shape, dtype):
-#     x = torch.randn(size=shape, dtype=dtype, device="musa")
-#     y = x.conj()
-#     assert y.is_conj()
-#     with flag_gems.use_gems():
-#         z = y.resolve_conj()
-#     assert not z.is_conj()
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)
 
 
-# @pytest.mark.unique
-# @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-# @pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
-# @pytest.mark.parametrize("sorted", [True])
-# @pytest.mark.parametrize("return_inverse", [True, False])
-# @pytest.mark.parametrize("return_counts", [False, True])
-# def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
-#     if dtype in FLOAT_DTYPES:
-#         inp = torch.randn(shape, dtype=dtype, device="musa")
-#     else:
-#         inp = torch.randint(-10, 10, shape, device="musa").to(dtype)
-#     ref_inp = to_reference(inp, False)
-
-#     if return_counts:
-#         if return_inverse:
-#             with flag_gems.use_gems():
-#                 res_out, res_unique_order, res_counts = torch.unique(
-#                     inp,
-#                     sorted=sorted,
-#                     return_inverse=return_inverse,
-#                     return_counts=return_counts,
-#                 )
-#             ref_out, ref_unique_order, ref_counts = torch.unique(
-#                 ref_inp,
-#                 sorted=sorted,
-#                 return_inverse=return_inverse,
-#                 return_counts=return_counts,
-#             )
-#             assert res_out.numel() == ref_out.numel()
-#             gems_assert_equal(res_unique_order, ref_unique_order)
-#         else:
-#             with flag_gems.use_gems():
-#                 res_out, res_counts = torch.unique(
-#                     inp,
-#                     sorted=sorted,
-#                     return_inverse=return_inverse,
-#                     return_counts=return_counts,
-#                 )
-#             ref_out, ref_counts = torch.unique(
-#                 ref_inp,
-#                 sorted=sorted,
-#                 return_inverse=return_inverse,
-#                 return_counts=return_counts,
-#             )
-#             assert res_out.numel() == ref_out.numel()
-#         gems_assert_equal(res_counts, ref_counts)
-#     else:
-#         if return_inverse:
-#             with flag_gems.use_gems():
-#                 res_out, res_unique_order = torch.unique(
-#                     inp,
-#                     sorted=sorted,
-#                     return_inverse=return_inverse,
-#                     return_counts=return_counts,
-#                 )
-#             ref_out, ref_unique_order = torch.unique(
-#                 ref_inp,
-#                 sorted=sorted,
-#                 return_inverse=return_inverse,
-#                 return_counts=return_counts,
-#             )
-#             assert res_out.numel() == ref_out.numel()
-#             gems_assert_equal(res_unique_order, ref_unique_order)
-#         else:
-#             with flag_gems.use_gems():
-#                 res_out = torch.unique(
-#                     inp,
-#                     sorted=sorted,
-#                     return_inverse=return_inverse,
-#                     return_counts=return_counts,
-#                 )
-#             ref_out = torch.unique(
-#                 ref_inp,
-#                 sorted=sorted,
-#                 return_inverse=return_inverse,
-#                 return_counts=return_counts,
-#             )
-#             assert res_out.numel() == ref_out.numel()
-#     gems_assert_equal(res_out, ref_out)
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.resolve_conj
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.cfloat])
+def test_accuracy_resolve_conj(shape, dtype):
+    x = torch.randn(size=shape, dtype=dtype, device="musa")
+    y = x.conj()
+    assert y.is_conj()
+    with flag_gems.use_gems():
+        z = y.resolve_conj()
+    assert not z.is_conj()
 
 
-# @pytest.mark.multinomial
-# @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
-# @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-# @pytest.mark.parametrize("n_samples", [1000])
-# def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
-#     if shape[-1] == 1:
-#         dist = torch.rand(size=shape, dtype=dtype, device="musa")
-#         with flag_gems.use_gems():
-#             res_out = torch.multinomial(dist, n_samples, True)
-#         assert torch.all(res_out == 0)
-#     else:
-#         # Mask p% off of the categories and test the sampling results fall in the rest
-#         for p in (0.1, 0.5, 0.9):
-#             dist = torch.rand(size=shape, dtype=dtype, device="musa")
-#             dist[torch.rand(shape) < p] = 0
-#             # Make sure there's at least one non-zero probability
-#             dist[..., -1] = 0.5
-#             with flag_gems.use_gems():
-#                 res_out = torch.multinomial(dist, n_samples, True)
-#             res_dist = torch.gather(dist, -1, res_out)
-#             # assert torch.all(res_dist)
-#             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.unique
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
+@pytest.mark.parametrize("sorted", [True])
+@pytest.mark.parametrize("return_inverse", [True, False])
+@pytest.mark.parametrize("return_counts", [False, True])
+def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="musa")
+    else:
+        inp = torch.randint(-10, 10, shape, device="musa").to(dtype)
+    ref_inp = to_reference(inp, False)
+
+    if return_counts:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_unique_order, res_counts = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_unique_order, ref_counts = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+            gems_assert_equal(res_unique_order, ref_unique_order)
+        else:
+            with flag_gems.use_gems():
+                res_out, res_counts = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_counts = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+        gems_assert_equal(res_counts, ref_counts)
+    else:
+        if return_inverse:
+            with flag_gems.use_gems():
+                res_out, res_unique_order = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out, ref_unique_order = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+            gems_assert_equal(res_unique_order, ref_unique_order)
+        else:
+            with flag_gems.use_gems():
+                res_out = torch.unique(
+                    inp,
+                    sorted=sorted,
+                    return_inverse=return_inverse,
+                    return_counts=return_counts,
+                )
+            ref_out = torch.unique(
+                ref_inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
+            assert res_out.numel() == ref_out.numel()
+    gems_assert_equal(res_out, ref_out)
 
 
-# @pytest.mark.multinomial
-# @pytest.mark.parametrize("pool", UT_SHAPES_2D)
-# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-# def test_accuracy_multinomial_without_replacement(pool, dtype):
-#     dist = torch.rand(size=pool, dtype=dtype, device="musa")
-#     k = pool[-1]
-#     if k > 1:
-#         ns = [k // 2, k]
-#     else:
-#         ns = [1]
-#     for n in ns:
-#         with flag_gems.use_gems():
-#             out = torch.multinomial(dist, n, False)
-#         # Verifies uniqueness
-#         idx_cnt = torch.nn.functional.one_hot(out).sum(1)
-#         assert torch.all(idx_cnt <= 1)
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.multinomial
+@pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("n_samples", [1000])
+def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
+    if shape[-1] == 1:
+        dist = torch.rand(size=shape, dtype=dtype, device="musa")
+        with flag_gems.use_gems():
+            res_out = torch.multinomial(dist, n_samples, True)
+        assert torch.all(res_out == 0)
+    else:
+        # Mask p% off of the categories and test the sampling results fall in the rest
+        for p in (0.1, 0.5, 0.9):
+            dist = torch.rand(size=shape, dtype=dtype, device="musa")
+            dist[torch.rand(shape) < p] = 0
+            # Make sure there's at least one non-zero probability
+            dist[..., -1] = 0.5
+            with flag_gems.use_gems():
+                res_out = torch.multinomial(dist, n_samples, True)
+            res_dist = torch.gather(dist, -1, res_out)
+            # assert torch.all(res_dist)
+            assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
 
 
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.multinomial
+@pytest.mark.parametrize("pool", UT_SHAPES_2D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_multinomial_without_replacement(pool, dtype):
+    dist = torch.rand(size=pool, dtype=dtype, device="musa")
+    k = pool[-1]
+    if k > 1:
+        ns = [k // 2, k]
+    else:
+        ns = [1]
+    for n in ns:
+        with flag_gems.use_gems():
+            out = torch.multinomial(dist, n, False)
+        # Verifies uniqueness
+        idx_cnt = torch.nn.functional.one_hot(out).sum(1)
+        assert torch.all(idx_cnt <= 1)
+
+
+@pytest.mark.skip("torch_musa unsupport")
 @pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
 @pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)

@@ -123,6 +123,7 @@ def test_accuracy_full_like(shape, dtype):
     gems_assert_equal(res_out, torch.full_like(x, 3.1415926))
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES)

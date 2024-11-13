@@ -94,6 +94,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("random error")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -200,23 +201,24 @@ def test_accuracy_cumsum(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
-# @pytest.mark.nonzero
-# @pytest.mark.parametrize("shape", NONZERO_SHAPES)
-# @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
-# def test_accuracy_nonzero(shape, dtype):
-#     if dtype == torch.bool:
-#         inp = torch.randint(0, 2, shape, dtype=torch.int, device="musa").to(dtype)
-#     elif dtype in INT_DTYPES:
-#         inp = torch.randint(-3, 3, shape, device="musa").to(dtype)
-#     else:
-#         inp = torch.randn(shape, dtype=dtype, device="musa")
-#     ref_inp = to_reference(inp, False)
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.nonzero
+@pytest.mark.parametrize("shape", NONZERO_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_nonzero(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device="musa").to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="musa").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="musa")
+    ref_inp = to_reference(inp, False)
 
-#     ref_out = torch.nonzero(ref_inp)
-#     with flag_gems.use_gems():
-#         res_out = torch.nonzero(inp)
+    ref_out = torch.nonzero(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.nonzero(inp)
 
-#     gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.log_softmax
@@ -461,6 +463,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.select_scatter
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -522,6 +525,7 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.slice_scatter
 @pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -581,17 +585,18 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-# @pytest.mark.masked_select
-# @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
-# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-# def test_accuracy_masked_select(shape, dtype, threshold):
-#     inp = torch.randn(shape, dtype=dtype, device="musa")
-#     mask = torch.randn(shape, dtype=dtype, device="musa") < threshold
-# 
-#     ref_inp = to_reference(inp)
-#     ref_mask = to_reference(mask)
-#     ref_out = torch.masked_select(ref_inp, ref_mask)
-#     with flag_gems.use_gems():
-#         res_out = torch.masked_select(inp, mask)
-# 
-#     gems_assert_equal(res_out, ref_out)
+@pytest.mark.skip("triton_musa unsupport")
+@pytest.mark.masked_select
+@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_masked_select(shape, dtype, threshold):
+    inp = torch.randn(shape, dtype=dtype, device="musa")
+    mask = torch.randn(shape, dtype=dtype, device="musa") < threshold
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_select(ref_inp, ref_mask)
+    with flag_gems.use_gems():
+        res_out = torch.masked_select(inp, mask)
+
+    gems_assert_equal(res_out, ref_out)

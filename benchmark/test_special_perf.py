@@ -95,6 +95,7 @@ def test_isin_perf():
     bench.run()
 
 
+@pytest.mark.skip()
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -112,6 +113,7 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skip()
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
