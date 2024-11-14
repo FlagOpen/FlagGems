@@ -175,7 +175,6 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
 
 
-@pytest.mark.skip("torch_musa unsupport")
 @pytest.mark.weight_norm_interface
 @pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
