@@ -410,7 +410,6 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
         assert torch.all(idx_cnt <= 1)
 
 
-@pytest.mark.skip("torch_musa unsupport")
 @pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
 @pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)
