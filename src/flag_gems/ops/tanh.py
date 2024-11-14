@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import pow
+    from triton.language.extra.musa.libdevice import pow
 except ImportError:
     try:
         from triton.language.math import pow
@@ -15,7 +15,7 @@ except ImportError:
         from triton.language.libdevice import pow
 
 try:
-    from triton.language.extra.cuda.libdevice import tanh as _tanh
+    from triton.language.extra.musa.libdevice import tanh as _tanh
 except ImportError:
     try:
         from triton.language.math import tanh as _tanh
