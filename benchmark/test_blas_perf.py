@@ -3,14 +3,11 @@ from typing import Generator
 
 import pytest
 import torch
-import triton
 
 from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, BenchLevel, llama_shapes
 from .conftest import Config
 from .performance_utils import Benchmark
 
-WARMUP = 25
-REPETITION = 100
 
 class BlasBenchmark(Benchmark):
     """
@@ -50,16 +47,8 @@ class BlasBenchmark(Benchmark):
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
         A proper implementation will be developed in the future."""
-        fn = lambda: op(*args, **kwargs)
-        #time(s)
-        latency = triton.testing.do_bench(
-                fn,
-                warmup=WARMUP,
-                rep=REPETITION,
-                return_mode="median"
-        )/1000
         total_flops=0
-        #shape(m,n)(n,p)
+        #shape(m,k)(k,n)
         #total_flops mxnx2k
         if(self.op_name=="mm"):
             total_flops=args[0].shape[0]*args[0].shape[1]*args[1].shape[1]*2
@@ -75,9 +64,8 @@ class BlasBenchmark(Benchmark):
         #total_flops n*2m
         if(self.op_name=="mv"):
             total_flops=args[0].shape[0]*2*args[0].shape[1]
-        tflops=total_flops/latency/1e12
 
-        return tflops
+        return total_flops
 
 
 def addmm_input_fn(b, m, n, k, cur_dtype, device):

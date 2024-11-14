@@ -285,7 +285,7 @@ class Benchmark:
                 if "speedup" in self.to_bench_metrics:
                     metric.speedup = metric.latency_base / metric.latency
                 if "tflops" in self.to_bench_metrics:
-                    metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
+                    metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)/metric.latency/1e12*1e3
                     # utilization = metric.tflops / metric.latency / 1e12 * 1e3
                 metrics.append(metric)
                 # TODO: try gc collect to avoid cuda out of memory
