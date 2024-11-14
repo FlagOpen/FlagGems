@@ -127,7 +127,7 @@ def test_accuracy_max_without_dim(shape, dtype):
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")[::2,::2]
+    inp = torch.randn(shape, dtype=dtype, device="cuda")[::2, ::2]
     ref_inp = to_reference(inp)
 
     ref_out = torch.max(ref_inp)
