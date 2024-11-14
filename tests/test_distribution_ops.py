@@ -10,7 +10,7 @@ from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
 device = flag_gems.device
 
 
-@pytest.mark.skip("Torch_mus unsupport")
+@pytest.mark.skip("torch_musa unsupport")
 @pytest.mark.normal
 @pytest.mark.parametrize("float", ["none", "mean", "std"])
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
