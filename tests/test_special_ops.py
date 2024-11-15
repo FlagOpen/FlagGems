@@ -812,3 +812,19 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
     with flag_gems.use_gems():
         res_out = torch.repeat_interleave(inp, repeats, dim)
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.kron
+@pytest.mark.parametrize("shape1", [(2, 3), (2, 3, 4)])
+@pytest.mark.parametrize("shape2", [(4, 5, 6)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_kron(shape1, shape2, dtype):
+    a = torch.randn(shape1, dtype=dtype, device="cuda")
+    b = torch.randn(shape2, dtype=dtype, device="cuda")
+    ref_a = to_reference(a)
+    ref_b = to_reference(b)
+
+    ref_out = torch.kron(ref_a, ref_b)
+    with flag_gems.use_gems():
+        res_out = torch.kron(a, b)
+    gems_assert_equal(res_out, ref_out)
