@@ -1,7 +1,9 @@
+import gc
 import logging
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
+import pytest
 import torch
 import triton
 import yaml
@@ -290,12 +292,12 @@ class Benchmark:
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
                         # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                except torch.cuda.OutOfMemoryError:
-                    metric.error_msg = "MEMORY OOM"
                 except Exception as e:
                     metric.error_msg = str(e)
-                metrics.append(metric)
-                # TODO: try gc collect to avoid cuda out of memory
+                    pytest.fail(str(e))  # raise exception again
+                finally:
+                    metrics.append(metric)
+                    gc.collect()
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,

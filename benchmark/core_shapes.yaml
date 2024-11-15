@@ -15,6 +15,22 @@ randperm:
     - [65536]
   shape_desc: "M"
 
+gelu backward:
+  shapes:
+    - [1048576,]  # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [256, 1024, 1024]
+
+softmax backward:
+  shapes:
+    - [1048576,]  # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [256, 1024, 1024]
+
 BlasBenchmark:
   shapes:
     - [2, 4096, 4096, 4096]
@@ -113,7 +129,7 @@ UnaryReductionBenchmark:
     - [64, 64]
     - [4096, 4096]
     - [64, 512, 512]
-    - [256, 1024, 1024]
+    - [1024, 1024, 1024]
 
 UnaryPointwiseBenchmark:
   shapes:
