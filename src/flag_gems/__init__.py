@@ -63,6 +63,7 @@ def enable(lib=aten_lib):
     lib.impl("isin.Tensor_Scalar", isin, "CUDA")
     lib.impl("isinf", isinf, "CUDA")
     lib.impl("isnan", isnan, "CUDA")
+    lib.impl("kron", kron, "CUDA")
     lib.impl("minimum", minimum, "CUDA")
     lib.impl("maximum", maximum, "CUDA")
     lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
