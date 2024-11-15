@@ -525,7 +525,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         inp = inp.contiguous()
         tgt = target.contiguous()
         weight = weight.contiguous()
-        out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+        out = torch.empty(shape, dtype=torch.float32, device=inp.device)
         grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
 
         if tgt.ndim == dim:
@@ -595,7 +595,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             if reduction == 1:
                 ctx.mean_num = N * D if tgt.ndim == dim else w_tgt.item()
 
-        return out
+        return out.to(inp.dtype)
 
     @staticmethod
     def backward(ctx, out_grad):
