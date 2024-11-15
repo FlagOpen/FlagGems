@@ -173,7 +173,7 @@ def max_2d_uncontiguous(inp):
 
 def max(inp: torch.Tensor):
     logging.debug("GEMS MAX")
-    if inp.ndim == 2 and inp.is_contiguous() == False:
+    if inp.ndim == 2 and inp.is_contiguous() is False:
         out = max_2d_uncontiguous(inp)
         return out
     inp = inp.contiguous()
