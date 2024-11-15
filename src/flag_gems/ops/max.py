@@ -90,6 +90,7 @@ def max_kernel(
     tl.store(out_value_ptrs, result_value, mask=mask1)
     tl.store(out_index_ptrs, result_index, mask=mask1)
 
+
 @libentry()
 @triton.jit
 def max_kernel_1_uncontiguous_2dim(
@@ -105,18 +106,23 @@ def max_kernel_1_uncontiguous_2dim(
     block_start_offset = inp_ptr + inp_stride0 * block_idx
     max_val = -float("inf")
     for offset in range(0, inp_shape1, BLOCK_SIZE):
-        process_data_offset = block_start_offset + (offset + tl.arange(0, BLOCK_SIZE)) * inp_stride1
-        mask = (offset + tl.arange(0,BLOCK_SIZE))<inp_shape1
-        inp_vals = tl.load(process_data_offset , mask=mask, other=-float("inf"))
+        process_data_offset = (
+            block_start_offset + (offset + tl.arange(0, BLOCK_SIZE)) * inp_stride1
+        )
+        mask = (offset + tl.arange(0, BLOCK_SIZE)) < inp_shape1
+        inp_vals = tl.load(process_data_offset, mask=mask, other=-float("inf"))
         max_val_sub = tl.max(inp_vals)
         max_val = tl.maximum(max_val, max_val_sub)
     tl.store(mid_ptr + block_idx, max_val)
 
+
 @triton.jit
 def max_kernel_1_uncontiguous_2dim_v2(
     inp_ptr,
-    inp_stride0,inp_stride1,
-    inp_shape0,inp_shape1,
+    inp_stride0,
+    inp_stride1,
+    inp_shape0,
+    inp_shape1,
     mid_ptr,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -131,8 +137,10 @@ def max_kernel_1_uncontiguous_2dim_v2(
             row_start_offset = inp_ptr + inp_stride0 * row_to_process
             max_val = -float("inf")
             for offset in range(0, inp_shape1, BLOCK_SIZE):
-                process_data_offset = row_start_offset + (offset + tl.arange(0, BLOCK_SIZE)) * inp_stride1
-                mask = (offset + tl.arange(0,BLOCK_SIZE))<inp_shape1
+                process_data_offset = (
+                    row_start_offset + (offset + tl.arange(0, BLOCK_SIZE)) * inp_stride1
+                )
+                mask = (offset + tl.arange(0, BLOCK_SIZE)) < inp_shape1
                 inp_vals = tl.load(process_data_offset, mask=mask, other=-float("inf"))
                 max_val_sub = tl.max(inp_vals)
                 max_val = tl.maximum(max_val, max_val_sub)
@@ -140,32 +148,29 @@ def max_kernel_1_uncontiguous_2dim_v2(
 
 
 def max_2d_uncontiguous(inp):
-    if inp.shape[0]<= 4096:
+    if inp.shape[0] <= 4096:
         # use one block to process one row, and the number of blocks is equal to the number os rows
         out = torch.empty([], dtype=inp.dtype, device=inp.device)
         mid = torch.empty((inp.shape[0],), dtype=inp.dtype, device=inp.device)
-        max_kernel_1_uncontiguous_2dim[(inp.shape[0],)](inp,
-                                                        inp.stride(0),inp.stride(1),
-                                                        inp.shape[0],inp.shape[1],
-                                                        mid,
-                                                        512)
+        max_kernel_1_uncontiguous_2dim[(inp.shape[0],)](
+            inp, inp.stride(0), inp.stride(1), inp.shape[0], inp.shape[1], mid, 512
+        )
         block_mid = triton.next_power_of_2(inp.shape[0])
         max_kernel_2[(1, 1, 1)](mid, out, inp.shape[0], block_mid)
         return out
-    
-    if inp.shape[0]>4096:
+
+    if inp.shape[0] > 4096:
         # use one block to process multiple rows
         out = torch.empty([], dtype=inp.dtype, device=inp.device)
         mid = torch.ones((inp.shape[0],), dtype=inp.dtype, device=inp.device)
-        max_kernel_1_uncontiguous_2dim_v2[(1024,)](inp,
-                                                inp.stride(0),inp.stride(1),
-                                                inp.shape[0],inp.shape[1],
-                                                mid,
-                                                512)
+        max_kernel_1_uncontiguous_2dim_v2[(1024,)](
+            inp, inp.stride(0), inp.stride(1), inp.shape[0], inp.shape[1], mid, 512
+        )
         block_mid = triton.next_power_of_2(inp.shape[0])
         max_kernel_2[(1, 1, 1)](mid, out, inp.shape[0], block_mid)
         return out
-    
+
+
 def max(inp: torch.Tensor):
     logging.debug("GEMS MAX")
     if inp.ndim == 2 and inp.is_contiguous() == False:
