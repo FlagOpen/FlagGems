@@ -148,8 +148,9 @@ def max_2d_uncontiguous(inp):
                                                         inp.stride(0),inp.stride(1),
                                                         inp.shape[0],inp.shape[1],
                                                         mid,
-                                                        256)
-        max_kernel_2[(1, 1, 1)](mid, out, inp.shape[0], 256)
+                                                        512)
+        block_mid = triton.next_power_of_2(inp.shape[0])
+        max_kernel_2[(1, 1, 1)](mid, out, inp.shape[0], block_mid)
         return out
     
     if inp.shape[0]>4096:
@@ -160,8 +161,9 @@ def max_2d_uncontiguous(inp):
                                                 inp.stride(0),inp.stride(1),
                                                 inp.shape[0],inp.shape[1],
                                                 mid,
-                                                2)
-        max_kernel_2[(1, 1, 1)](mid, out, inp.shape[0], triton.next_power_of_2(inp.shape[0]))
+                                                512)
+        block_mid = triton.next_power_of_2(inp.shape[0])
+        max_kernel_2[(1, 1, 1)](mid, out, inp.shape[0], block_mid)
         return out
     
 def max(inp: torch.Tensor):
