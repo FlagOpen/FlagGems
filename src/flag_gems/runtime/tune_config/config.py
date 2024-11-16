@@ -7,7 +7,13 @@ class Config:
     def __init__(self):
         self.config = self.get_vendor_tune_config()
         self.gen_key = "gen"
+        self.loaded_config = {}
         self.triton_config_default = {"num_stages": 2, "num_warps": 4, "num_ctas": 1}
+        self.load_all()
+
+    def load_all(self):
+        for key in self.config:
+            self.loaded_config[key] = self.get_op_tune_config(key)
 
     def get_vendor_tune_config(self):
         return backend.get_tune_config(device.device_instance.vendor_name)
@@ -49,6 +55,9 @@ class Config:
         return self._gen_impl(gen_config, param_config, iteration_keys, current_config, iteration_count_init)
 
     def get_op_tune_config(self, op_name):
+        if op_name in self.loaded_config:
+            return self.loaded_config[op_name]
+        
         current_op_configs = self.config[op_name]
         configs = []
         if len(current_op_configs) == 0:
