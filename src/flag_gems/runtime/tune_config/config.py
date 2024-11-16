@@ -5,7 +5,7 @@ from .. import backend, device
 
 class Config:
     def __init__(self):
-        # self.config = self.get_vendor_tune_config()
+        self.config = self.get_vendor_tune_config()
         self.gen_key = "gen"
         self.triton_config_default = {"num_stages": 2, "num_warps": 4, "num_ctas": 1}
 
