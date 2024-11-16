@@ -1,356 +1,356 @@
 {
     "bmm" : [
         {
-            "size_config" : {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
+            "META" : {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
             "num_warps" : 4,
             "num_stages" : 2
         },
         {
-            "size_config" :  {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            "META" :  {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 2
         },
         {
-            "size_config" :   {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 2
         },
         {
-            "size_config" :   {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 2
         },
         {
-            "size_config" :   {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 2
         },
         {
-            "size_config" :   {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 2
         },
         {
-            "size_config" :   {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
+            "META" :   {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
             "num_warps" : 4,
             "num_stages" : 3
         },
         {
-            "size_config" :   {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 3
         },
         {
-            "size_config" :   {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 3
         },
         {
-            "size_config" :   {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 3
         },
         {
-            "size_config" :   {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 3
         },
         {
-            "size_config" :   {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
+            "META" :   {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
             "num_warps" : 4,
             "num_stages" : 3
         }
     ],
     "argmax" : [
         {
-            "size_config" : {"BLOCK_M": 8},
+            "META" : {"BLOCK_M": 8},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 16},
+            "META" : {"BLOCK_M": 16},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 32},
+            "META" : {"BLOCK_M": 32},
             "num_warps" : 8
         }
     ],
     "log_softmax":[
         {
-            "size_config" : {"BLOCK_M": 1}
+            "META" : {"BLOCK_M": 1}
         },
         {
-            "size_config" : {"BLOCK_M": 2}
+            "META" : {"BLOCK_M": 2}
         }
         ,
         {
-            "size_config" : {"BLOCK_M": 4}
+            "META" : {"BLOCK_M": 4}
         }
         ,
         {
-            "size_config" : {"BLOCK_M": 8}
+            "META" : {"BLOCK_M": 8}
         }
     ],
     "mm":[
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 3,
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 3,
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 5,
             "num_warps" : 2
         },
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
             "num_stages" : 3,
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
             "num_stages" : 3,
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
+            "META" : {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
             "num_stages" : 5,
             "num_warps" : 2
         }
     ],
     "softmax_non_inner" : [
         {
-            "size_config" : {"TILE_K" : 32}
+            "META" : {"TILE_K" : 32}
         },
         {
-            "size_config" : {"TILE_K" : 64}
+            "META" : {"TILE_K" : 64}
         },
         {
-            "size_config" : {"TILE_K" : 128}
+            "META" : {"TILE_K" : 128}
         },
         {
-            "size_config" : {"TILE_K" : 256}
+            "META" : {"TILE_K" : 256}
         },
         {
-            "size_config" : {"TILE_K" : 1024}
+            "META" : {"TILE_K" : 1024}
         }
     ],
     "softmax_inner" : [
         {
-            "size_config" : {"TILE_N" : 32}
+            "META" : {"TILE_N" : 32}
         },
         {
-            "size_config" : {"TILE_N" : 64}
+            "META" : {"TILE_N" : 64}
         },
         {
-            "size_config" : {"TILE_N" : 128}
+            "META" : {"TILE_N" : 128}
         },
         {
-            "size_config" : {"TILE_N" : 256}
+            "META" : {"TILE_N" : 256}
         },
         {
-            "size_config" : {"TILE_N" : 1024}
+            "META" : {"TILE_N" : 1024}
         }
     ],
     "test_libentry":[
         {
-            "size_config" : {"TILE_N" : 32}
+            "META" : {"TILE_N" : 32}
         },
         {
-            "size_config" : {"TILE_N" : 64}
+            "META" : {"TILE_N" : 64}
         },
         {
-            "size_config" : {"TILE_N" : 128}
+            "META" : {"TILE_N" : 128}
         },
         {
-            "size_config" : {"TILE_N" : 256}
+            "META" : {"TILE_N" : 256}
         },
         {
-            "size_config" : {"TILE_N" : 512}
+            "META" : {"TILE_N" : 512}
         },
         {
-            "size_config" : {"TILE_N" : 1024}
+            "META" : {"TILE_N" : 1024}
         }
     ],
     "min":[
         {
-            "size_config" : {"BLOCK_M": 8},
+            "META" : {"BLOCK_M": 8},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 16},
+            "META" : {"BLOCK_M": 16},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 32},
+            "META" : {"BLOCK_M": 32},
             "num_warps" : 8
         }
     ],
     "prod" : [
         {
-            "size_config" : {"BLOCK_M": 8},
+            "META" : {"BLOCK_M": 8},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 16},
+            "META" : {"BLOCK_M": 16},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 32},
+            "META" : {"BLOCK_M": 32},
             "num_warps" : 8
         }
     ],
     "max" : [
         {
-            "size_config" : {"BLOCK_M": 8},
+            "META" : {"BLOCK_M": 8},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 16},
+            "META" : {"BLOCK_M": 16},
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_M": 32},
+            "META" : {"BLOCK_M": 32},
             "num_warps" : 8
         }
     ],
     "addmm":[
         {
-            "size_config" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
+            "META" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
             "num_stages" : 3,
             "num_warps" : 8
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
             "num_stages" : 4,
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
             "num_stages" : 5,
             "num_warps" : 2
         },
         {
-            "size_config" : {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
+            "META" : {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
             "num_stages" : 5,
             "num_warps" : 2
         }
     ],
     "cross_entropy_loss":[
         {
-            "size_config" : {"BLOCK_C": 256, "BLOCK_D": 1},
+            "META" : {"BLOCK_C": 256, "BLOCK_D": 1},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 256, "BLOCK_D": 4},
+            "META" : {"BLOCK_C": 256, "BLOCK_D": 4},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 256, "BLOCK_D": 16},
+            "META" : {"BLOCK_C": 256, "BLOCK_D": 16},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 512, "BLOCK_D": 1},
+            "META" : {"BLOCK_C": 512, "BLOCK_D": 1},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 512, "BLOCK_D": 4},
+            "META" : {"BLOCK_C": 512, "BLOCK_D": 4},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 512, "BLOCK_D": 16},
+            "META" : {"BLOCK_C": 512, "BLOCK_D": 16},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 1024, "BLOCK_D": 1},
+            "META" : {"BLOCK_C": 1024, "BLOCK_D": 1},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 1024, "BLOCK_D": 4},
+            "META" : {"BLOCK_C": 1024, "BLOCK_D": 4},
             "num_warps" : 4
         },
         {
-            "size_config" : {"BLOCK_C": 1024, "BLOCK_D": 16},
+            "META" : {"BLOCK_C": 1024, "BLOCK_D": 16},
             "num_warps" : 4
         }
     ],
