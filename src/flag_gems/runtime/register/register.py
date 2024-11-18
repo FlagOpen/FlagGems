@@ -45,16 +45,14 @@ class Register:
             )
 
     def get_vendor_extend_op(self):
-        # for demo , real is self.vendor_name != "nvidia":
-        if self.device.vendor == backend.vendors.NVIDIA:
+        if self.device.vendor != backend.vendors.NVIDIA:
             return backend.get_curent_device_extend_op(
                 self.device.vendor_name
             )
         return ()
 
     def get_vendor_unused_op(self):
-        if self.device.vendor == backend.vendors.NVIDIA:
-            # for demo , real is self.vendor_name != "nvidia":
+        if self.device.vendor != backend.vendors.NVIDIA:
             return backend.get_curent_device_unused_op(
                 self.device.vendor_name
             )
