@@ -71,6 +71,8 @@ class BenchmarkMetrics:
     tflops: Optional[float] = None
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
+    # Error message
+    error_msg: Optional[str] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
@@ -183,15 +185,15 @@ class BenchmarkResult:
                 f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
                 f"{'Size Detail':>20}\n"
                 f"{'-' * 90}\n"
-            )
+                )
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
 
     def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
-        self.gen_legacy_shape(metrics)
-        legacy_shape_str = (
-            metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
-        )
+        # self.gen_legacy_shape(metrics)
+        # legacy_shape_str = (
+        #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
+        # )
         latency_base_str = (
             f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
         )
@@ -201,10 +203,12 @@ class BenchmarkResult:
             tflops_str = f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
         shape_detail_str = (
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
+        
         )
+        status = "SUCCESS" if metrics.error_msg is None else "FAILED"
         if metrics.tflops and  metrics.tflops!=0.0:
             return (
-                f"{legacy_shape_str:<10}"
+                f"{status:<10}"
                 f"{latency_base_str:>20}"
                 f"{latency_str:>20}"
                 f"{speedup_str:>20}"
@@ -214,13 +218,14 @@ class BenchmarkResult:
             )
         else:
             return (
-                f"{legacy_shape_str:<10}"
+                f"{status:<10}"
                 f"{latency_base_str:>20}"
                 f"{latency_str:>20}"
                 f"{speedup_str:>20}"
                 f"{' ' * 10}"
                 f"{shape_detail_str}\n"
             )
+
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
         first_shape = (
             metrics.shape_detail[0] if isinstance(metrics.shape_detail, list) else None
