@@ -18,7 +18,7 @@ from ..utils import libentry
     reset_to_zero=["w_tgt_ptr"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
-def celoss_indice_kernel(
+def celoss_indices_kernel(
     inp_ptr,
     tgt_ptr,
     w_ptr,
@@ -127,7 +127,6 @@ def celoss_probability_kernel(
         _sum += w * log * tgt
 
     out = tl.sum(_sum, axis=0)
-    out = tl.where(offset_d < D, out, 0)
     out_ptrs = out_ptr + pid_n * D + offset_d
     tl.store(out_ptrs, out, mask=offset_d < D)
 
@@ -143,7 +142,7 @@ def celoss_probability_kernel(
     reset_to_zero=["w_tgt_ptr"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
-def celoss_indice_smooth_kernel(
+def celoss_indices_smooth_kernel(
     inp_ptr,
     tgt_ptr,
     w_ptr,
@@ -226,7 +225,7 @@ def celoss_indice_smooth_kernel(
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
-def celoss_indice_bwd(
+def celoss_indices_bwd(
     out_grad_ptr,
     inp_ptr,
     tgt_ptr,
@@ -380,7 +379,7 @@ def celoss_probability_bwd(
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])
-def celoss_indice_smooth_bwd(
+def celoss_indices_smooth_bwd(
     out_grad_ptr,
     inp_ptr,
     tgt_ptr,
@@ -544,7 +543,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             # target indices
             w_tgt = torch.zeros([], dtype=torch.float32, device=inp.device)
             with torch.cuda.device(inp.device):
-                celoss_indice_kernel[grid](
+                celoss_indices_kernel[grid](
                     inp,
                     tgt,
                     weight,
@@ -558,7 +557,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         else:
             w_tgt = torch.zeros([], dtype=torch.float32, device=inp.device)
             with torch.cuda.device(inp.device):
-                celoss_indice_smooth_kernel[grid](
+                celoss_indices_smooth_kernel[grid](
                     inp,
                     tgt,
                     weight,
@@ -619,11 +618,11 @@ class CrossEntropyLoss(torch.autograd.Function):
                 out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D
             )
         elif label_smoothing == 0:
-            celoss_indice_bwd[grid](
+            celoss_indices_bwd[grid](
                 out_grad, inp, tgt, weight, inp_grad, ignore_index, mean_num, C, D
             )
         else:
-            celoss_indice_smooth_bwd[grid](
+            celoss_indices_smooth_bwd[grid](
                 out_grad,
                 inp,
                 tgt,
