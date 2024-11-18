@@ -12,7 +12,7 @@ def cfggen():
     block_n = [1024, 2048, 4096]
     warps = [4, 8, 16]
     configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
+        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=w)
         for m in block_m
         for n in block_n
         for w in warps
@@ -44,7 +44,9 @@ def masked_fill_kernel(
 def masked_fill(inp, mask, value):
     logging.debug("GEMS MASKED FILL")
     assert (
-        torch.is_tensor(value) and value.ndim == 0 and value.numel() == 1
+        (torch.is_tensor(value) and value.ndim == 0 and value.numel() == 1)
+        or isinstance(value, int)
+        or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
