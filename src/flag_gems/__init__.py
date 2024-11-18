@@ -147,6 +147,7 @@ def enable(lib=aten_lib):
     lib.impl("index_select", index_select, "CUDA")
     lib.impl("tile", tile, "CUDA")
     lib.impl("masked_fill", masked_fill, "CUDA")
+    lib.impl("masked_fill.Scalar", masked_fill, "CUDA")
     lib.impl("_unique2", _unique2, "CUDA")
     lib.impl("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, "CUDA")
     lib.impl("upsample_nearest2d", upsample_nearest2d, "CUDA")

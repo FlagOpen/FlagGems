@@ -44,11 +44,10 @@ def masked_fill_kernel(
 def masked_fill(inp, mask, value):
     logging.debug("GEMS MASKED FILL")
     assert (
-        isinstance(value, float)
-        or isinstance(value, int)
-        or (torch.is_tensor(value) and value.ndim == 0)
-    ), "masked_fill_ only supports a Number or a 0-dimensional value tensor"
+        torch.is_tensor(value) and value.ndim == 0 and value.numel() == 1
+    ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
+        # Value can be a tensor or a scalar
         value = value.item()
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
@@ -58,7 +57,6 @@ def masked_fill(inp, mask, value):
 
     inp = inp.contiguous()
     mask = mask.contiguous()
-    value = value.contiguous()
     expand_mask = mask.expand(inp.shape)
     out = torch.empty_like(inp, dtype=inp.dtype, device=inp.device)
 
