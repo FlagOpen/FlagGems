@@ -133,20 +133,6 @@ def cumsum_input_fn(shape, cur_dtype, device):
             marks=pytest.mark.cumsum,
         ),
         pytest.param(
-            "index_select",
-            torch.index_select,
-            index_select_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.index_select,
-        ),
-        pytest.param(
-            "masked_select",
-            torch.masked_select,
-            masked_select_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.masked_select,
-        ),
-        pytest.param(
             "nll_loss",
             torch.nn.NLLLoss,
             nll_loss_input_fn,
