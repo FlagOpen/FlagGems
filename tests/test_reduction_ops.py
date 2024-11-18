@@ -598,16 +598,19 @@ def test_accuracy_masked_select(shape, dtype, threshold):
 
 
 @pytest.mark.masked_fill
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
-@pytest.mark.parametrize("value", [torch.tensor(1024), torch.scalar_tensor(1024), 1024])
+@pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
+@pytest.mark.parametrize(
+    "value",
+    [torch.tensor(1024, device="cuda"), torch.scalar_tensor(1024, device="cuda"), 1024],
+)
 def test_accuracy_masked_fill(shape, dtype, threshold, value):
     inp = torch.zeros(shape, dtype=dtype, device="cuda")
     mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
 
     ref_inp = to_reference(inp)
-    ref_out = torch.masked_fill(ref_inp, mask, value)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_fill(ref_inp, ref_mask, value)
     with flag_gems.use_gems():
         res_out = torch.masked_fill(inp, mask, value)
 
