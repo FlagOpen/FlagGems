@@ -36,7 +36,7 @@ Config = BenchConfig()
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode",
+        "--fg_mode",
         action="store",
         default="cuda",
         required=False,

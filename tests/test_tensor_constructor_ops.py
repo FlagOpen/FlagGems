@@ -30,7 +30,7 @@ def test_accuracy_randn(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device="cuda")
     mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    std = torch.std(res_out.cpu()).cuda()
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
 
@@ -54,7 +54,7 @@ def test_accuracy_randn_like(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.randn_like(x)
     mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    std = torch.std(res_out.cpu()).cuda()
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
 

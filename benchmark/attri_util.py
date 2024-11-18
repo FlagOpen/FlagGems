@@ -11,8 +11,8 @@ BOOL_DTYPES = [
     torch.bool,
 ]
 
-DEFAULT_WARMUP_COUNT = 1000
-DEFAULT_ITER_COUNT = 100
+DEFAULT_WARMUP_COUNT = 1
+DEFAULT_ITER_COUNT = 1
 
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.

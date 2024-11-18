@@ -12,7 +12,7 @@ def pytest_addoption(parser):
         help="device to run reference tests on",
     )
     parser.addoption(
-        "--mode",
+        "--fg_mode",
         action="store",
         default="normal",
         required=False,
