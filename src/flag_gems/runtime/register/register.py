@@ -49,7 +49,7 @@ class Register:
             return backend.get_curent_device_extend_op(
                 self.device.vendor_name
             )
-        return ()
+        return {}
 
     def get_vendor_unused_op(self):
         if self.device.vendor != backend.vendors.NVIDIA:
