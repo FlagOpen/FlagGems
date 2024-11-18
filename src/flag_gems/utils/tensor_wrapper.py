@@ -47,10 +47,17 @@ class StridedBuffer:
     ):
         self._base = base
         self.dtype = dtype or base.dtype
+
+        def get_dtype_bytes(dtype):
+            if dtype.is_floating_point:
+                return int(torch.finfo(dtype).bits / 8)
+            else:
+                return int(torch.iinfo(dtype).bits / 8)
+
         if offset == 0:
             self._data_ptr = self._base.data_ptr()
         else:
-            offset = self.dtype.itemsize * offset
+            offset = get_dtype_bytes(self.dtype) * offset
             self._data_ptr = self._base.data_ptr() + offset
         self.shape = tuple(shape if shape is not None else self._base.shape)
         self._strides = tuple(strides if strides is not None else self._base.stride())

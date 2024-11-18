@@ -311,7 +311,9 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -321,7 +323,9 @@ class KernelGenerator:
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
@@ -332,15 +336,15 @@ class KernelGenerator:
                         )
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks: tl.constexpr,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
-                code.writeline("tiles_per_cta: int,")
+                code.writeline("tiles_per_cta: tl.constexpr,")
                 tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{tile_sizes},")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
@@ -382,24 +386,28 @@ class KernelGenerator:
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
-                    stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"in{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
-                    stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
+                    stride_args = _cs(
+                        f"out{i}_stride{j}: tl.constexpr" for j in range(ndim)
+                    )
                     code.writeline(f"{stride_args}, # strides for out{i}")
 
                 # task space, used to reconstruct multi index
-                task_space_args = _cs(f"s{i}: int" for i in range(ndim))
+                task_space_args = _cs(f"s{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{task_space_args}, # task_space")
 
                 # number of tasks, used to compute mask
-                code.writeline("num_tasks: int,")
+                code.writeline("num_tasks: tl.constexpr,")
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
-                code.writeline("tiles_per_cta: int,")
+                code.writeline("tiles_per_cta: tl.constexpr,")
                 code.writeline("tile_size: tl.constexpr,")
                 code.writeline("one_tile_per_cta: tl.constexpr,")
         code.writeline("):")
@@ -858,8 +866,13 @@ class WrapperGenerator:
             )
             code.writeline("tile_size = tile_sizes[0]")
             code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
-            max_grid_size0 = self.config.max_grid_size[0]
-            code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+            # max_grid_size0 = self.config.max_grid_size[0]
+            # code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+            code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
+            code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
+            code.writeline(
+                "tile_size = triton.cdiv(num_tasks, num_tiles) # XPU BLOCK_NUM"
+            )
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
@@ -1083,7 +1096,7 @@ class PointwiseDynamicFunction:
             (65536, 65536, 65536),
             32,
             True,
-            prefer_1d_tile=int(triton.__version__[0]) < 3,
+            prefer_1d_tile=True,
         )
 
         # instantiated & cached overloads
