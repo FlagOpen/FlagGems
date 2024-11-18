@@ -10,7 +10,7 @@ __version__ = "2.1"
 device = runtime.device.device_instance.device_name
 device_guard = runtime.device.device_instance.get_device_guard_fn()
 
-def enable():
+def enable(unused=[]):
     runtime.to_register((
         ("abs", abs, Autograd.unable),
         ("add.Tensor", add, Autograd.unable),
@@ -163,20 +163,22 @@ def enable():
         ("repeat_interleave.Tensor", repeat_interleave_tensor, Autograd.unable),
         ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, Autograd.unable),
         ("randperm", randperm, Autograd.unable),
-        )
+        ),
+        unused_ops_list=unused
     )
 
 
 
 class use_gems:
     def __init__(self):
-        self.lib = torch.library.Library("aten", "IMPL")
-
+        pass
+    
     def __enter__(self):
-        enable(self.lib)
-
+        enable()
+    
     def __exit__(self, exc_type, exc_val, exc_tb):
-        del self.lib
+        pass
+
 
 
 __all__ = [

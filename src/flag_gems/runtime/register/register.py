@@ -34,6 +34,9 @@ class Register:
             self._set_info(config)
             self._set_info(self.vendor_extend_configs.values())
 
+    def __exit__(self):
+        del self.lib
+
     def _check_backend(self):
         is_support = self.device.vendor_name in self.vendor_list
         if is_support is False:
