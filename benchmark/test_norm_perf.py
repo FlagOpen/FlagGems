@@ -55,6 +55,14 @@ def layernorm_input_fn(shape, dtype, device):
     yield inp, layer_shape, weight, bias
 
 
+def instancenorm_input_fn(shape, dtype, device):
+    C = shape[1]
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    weight = torch.randn((C, ), dtype=dtype, device=device)
+    bias = torch.randn((C, ), dtype=dtype, device=device)
+    yield inp, weight, bias
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
@@ -70,9 +78,15 @@ def layernorm_input_fn(shape, dtype, device):
             layernorm_input_fn,
             marks=pytest.mark.layer_norm,
         ),
+        pytest.param(
+            "instance_norm",
+            torch.nn.functional.instance_norm,
+            instancenorm_input_fn,
+            marks=pytest.mark.instance_norm,
+        ),
     ],
 )
-def test_group_and_layer_norm_benchmark(op_name, torch_op, input_fn):
+def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
