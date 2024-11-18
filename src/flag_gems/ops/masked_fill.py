@@ -62,17 +62,15 @@ def masked_fill_kernel_self(
 def masked_fill(inp, mask, value):
     logging.debug("GEMS MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0 and value.numel() == 1)
+        (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
         or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
         value = value.item()
-    inp_shape = tuple(inp.shape)
-    mask_shape = tuple(mask.shape)
     assert broadcastable_to(
-        mask_shape, inp_shape
+        mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
     if inp.ndim == 0:
@@ -104,17 +102,15 @@ def masked_fill(inp, mask, value):
 def masked_fill_(inp, mask, value):
     logging.debug("GEMS MASKED FILL")
     assert (
-        (torch.is_tensor(value) and value.ndim == 0 and value.numel() == 1)
+        (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
         or isinstance(value, float)
     ), "masked_fill_ only supports a 0-dimensional value tensor"
     if torch.is_tensor(value):
         # Value can be a tensor or a scalar
         value = value.item()
-    inp_shape = tuple(inp.shape)
-    mask_shape = tuple(mask.shape)
     assert broadcastable_to(
-        mask_shape, inp_shape
+        mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
     if inp.ndim == 0:
