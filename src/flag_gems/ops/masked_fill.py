@@ -41,6 +41,24 @@ def masked_fill_kernel(
     tl.store(out + offsets, cur_val, fill_mask and mask)
 
 
+@libentry()
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def masked_fill_kernel_self(
+    inp, expand_mask, value, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+):
+    pid_x = tl.program_id(axis=0)
+    pid_y = tl.program_id(axis=1)
+    rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    cols_offset = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = rows_offset < M and cols_offset < N
+
+    offsets = rows_offset * N + cols_offset
+    fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
+    cur_val = tl.full((BLOCK_M, BLOCK_N), value, dtype=inp.dtype)
+    tl.store(inp + offsets, cur_val, fill_mask and mask)
+
+
 def masked_fill(inp, mask, value):
     logging.debug("GEMS MASKED FILL")
     assert (
@@ -70,3 +88,33 @@ def masked_fill(inp, mask, value):
     )
     masked_fill_kernel[grid](inp, expand_mask.to(torch.int), value, out, M, N)
     return out
+
+
+def masked_fill_(inp, mask, value):
+    logging.debug("GEMS MASKED FILL")
+    assert (
+        (torch.is_tensor(value) and value.ndim == 0 and value.numel() == 1)
+        or isinstance(value, int)
+        or isinstance(value, float)
+    ), "masked_fill_ only supports a 0-dimensional value tensor"
+    if torch.is_tensor(value):
+        # Value can be a tensor or a scalar
+        value = value.item()
+    inp_shape = tuple(inp.shape)
+    mask_shape = tuple(mask.shape)
+    assert broadcastable_to(
+        mask_shape, inp_shape
+    ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
+
+    inp = inp.contiguous()
+    mask = mask.contiguous()
+    expand_mask = mask.expand(inp.shape)
+
+    N = inp.size(inp.ndim - 1)
+    M = inp.numel() // N
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
+    )
+    masked_fill_kernel_self[grid](inp, expand_mask.to(torch.int), value, M, N)
+    return inp

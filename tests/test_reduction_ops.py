@@ -610,7 +610,10 @@ def test_accuracy_masked_fill(shape, dtype, threshold, value):
 
     ref_inp = to_reference(inp)
     ref_mask = to_reference(mask)
-    ref_out = torch.masked_fill(ref_inp, ref_mask, value)
+    if torch.is_tensor(value):
+        ref_out = torch.masked_fill(ref_inp, ref_mask, to_reference(value))
+    else:
+        ref_out = torch.masked_fill(ref_inp, ref_mask, value)
     with flag_gems.use_gems():
         res_out = torch.masked_fill(inp, mask, value)
 
