@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-
+from .. import runtime
 
 @triton.jit
 def reduce_mul(a, b):
@@ -67,11 +67,7 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
-    ],
+    configs=runtime.get_op_tune_config("prod"),
     key=[
         "M",
         "N",

@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
-
+from .. import runtime
 
 @libentry()
 @triton.jit
@@ -57,10 +57,7 @@ def mean(inp, *, dtype=None):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
-        for m in [1, 2, 4, 8]
-    ],
+    configs=runtime.get_op_tune_config("mean"),
     key=["M", "N"],
 )
 @triton.jit

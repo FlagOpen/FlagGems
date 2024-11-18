@@ -5,21 +5,10 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
-
-
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
-        for m in block_m
-        for n in block_n
-    ]
-    return configs
-
+from .. import runtime
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("index_select"), key=["M", "N"])
 @triton.jit
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr

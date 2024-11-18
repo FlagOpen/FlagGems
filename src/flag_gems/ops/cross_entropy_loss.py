@@ -6,15 +6,11 @@ import triton.language as tl
 
 from ..utils import libentry
 from .sum import sum
-
+from ..import runtime
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
+    configs=runtime.get_op_tune_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -72,11 +68,7 @@ def celoss_indice_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
+    configs=runtime.get_op_tune_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["label_smoothing"])
@@ -134,11 +126,7 @@ def celoss_probability_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
+    configs=runtime.get_op_tune_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
@@ -214,11 +202,7 @@ def celoss_indice_smooth_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
+    configs=runtime.get_op_tune_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
@@ -286,11 +270,7 @@ def celoss_indice_bwd(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
+    configs=runtime.get_op_tune_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["label_smoothing", "mean_num"])
@@ -370,11 +350,7 @@ def celoss_probability_bwd(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
+    configs=runtime.get_op_tune_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])

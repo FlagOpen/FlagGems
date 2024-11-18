@@ -7,7 +7,7 @@ import triton.language as tl
 
 from ..utils import dim_compress, libentry
 from ..utils.shape_utils import can_use_int32_index
-
+from .. import runtime
 
 @libentry()
 @triton.jit
@@ -41,16 +41,8 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, amax_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("amax"), key=["M", "N"])
 @triton.jit
 def amax_kernel(
     inp,

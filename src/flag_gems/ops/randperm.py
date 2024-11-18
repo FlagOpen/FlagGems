@@ -8,6 +8,7 @@ from flag_gems.utils.random_utils import philox_cuda_seed_offset
 
 from ..utils import libentry
 from .topk import argsort
+from ..import runtime  
 
 _MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
 _MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
@@ -148,10 +149,9 @@ def digit_hist_kernel(
         tl.store(digit_hist + p * (bins + 1) * grid0 + pid0, 0, mask=bin_segid == 0)
         bit_offset += bits_per_pass
 
-
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_op_tune_config("randperm"),
     key=["n_elements"],
 )
 @triton.jit

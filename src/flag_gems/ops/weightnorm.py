@@ -6,49 +6,11 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-
-
-def cfggen_first():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen_last():
-    block_m = [512, 1024, 2048]
-    block_n = [1, 2, 4, 8, 32]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [256, 512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
+from .. import runtime
 
 
 @libentry()
-@triton.autotune(configs=cfggen_last(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("weight_norm_kernel_last"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -88,7 +50,7 @@ def weight_norm_kernel_last(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_first(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("weight_norm_kernel_first"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_first(
     output,
@@ -128,7 +90,7 @@ def weight_norm_kernel_first(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_last(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("weight_norm_kernel_last"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -178,7 +140,7 @@ def weight_norm_bwd_kernel_last(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_first(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("weight_norm_kernel_first"), key=["M", "N"])
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -228,7 +190,7 @@ def weight_norm_bwd_kernel_first(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+@triton.autotune(configs=runtime.get_op_tune_config("weight_norm_kernel"), key=["v_shape0", "v_shape1", "v_shape2"])
 @triton.jit(do_not_specialize=["eps"])
 def norm_kernel(
     output,
@@ -264,7 +226,7 @@ def norm_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+@triton.autotune(configs=runtime.get_op_tune_config("weight_norm_kernel"), key=["v_shape0", "v_shape1", "v_shape2"])
 @triton.jit(do_not_specialize=["eps"])
 def norm_bwd_kernel(
     v_grad,

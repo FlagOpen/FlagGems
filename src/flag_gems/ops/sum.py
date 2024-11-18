@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
-
+from .. import runtime
 
 @libentry()
 @triton.jit
@@ -52,16 +52,9 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, sum_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("sum"), key=["M", "N"])
 @triton.jit
 def sum_kernel(
     inp,

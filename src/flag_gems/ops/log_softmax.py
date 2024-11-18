@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-
+from ..import runtime
 
 def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
@@ -22,12 +22,7 @@ def heur_num_warps(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
+    configs=runtime.get_op_tune_config("log_softmax"),
     key=[
         "M",
         "N",
@@ -67,12 +62,7 @@ def log_softmax_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
+    configs=runtime.get_op_tune_config("log_softmax"),
     key=[
         "M",
         "N",

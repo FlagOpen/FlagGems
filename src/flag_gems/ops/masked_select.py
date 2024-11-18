@@ -5,19 +5,10 @@ import triton
 import triton.language as tl
 
 from ..utils import broadcastable, libentry
-
-
-def cfggen():
-    configs = [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=w)
-        for w in [4, 8, 16, 32]
-        for bs in [256, 512, 1024, 2048, 4096]
-    ]
-    return configs
-
+from .. import runtime
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["n_elements"])
+@triton.autotune(configs=runtime.get_op_tune_config("masked_select"), key=["n_elements"])
 @triton.jit
 def masked_select_kernel(
     inp_ptr,

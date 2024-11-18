@@ -5,23 +5,10 @@ import triton
 import triton.language as tl
 
 from ..utils import broadcastable_to, libentry
-
-
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
+from .. import runtime
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("masked_fill"), key=["M", "N"])
 @triton.jit
 def masked_fill_kernel(
     inp, expand_mask, value, out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr

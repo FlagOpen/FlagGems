@@ -32,8 +32,10 @@ class Config:
             config_var_key = param_config["META"][param_key]
         else:
             config_var_key = param_config[param_key]
-
-        key_config = gen_config[config_var_key]
+        if isinstance(config_var_key, int):
+            key_config = [config_var_key]
+        else:
+            key_config = gen_config[config_var_key]
         for single_value in key_config:
             if param_key in param_config["META"]:
                 current_config["META"][param_key] = single_value

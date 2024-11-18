@@ -6,28 +6,11 @@ import triton.language as tl
 
 from ..utils import libentry
 from ..utils.shape_utils import can_use_int32_index
-
-
-def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
-    configs = [
-        triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=w)
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen_batch():
-    warps = [1, 2, 4, 8, 16, 32]
-    configs = [
-        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=w)
-        for w in warps
-    ]
-    return configs
+from .. import runtime
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_op_tune_config("triu"), key=["M", "N"])
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -58,7 +41,7 @@ def triu_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+@triton.autotune(configs=runtime.get_op_tune_config("triu_batch"), key=["batch", "MN", "N", "diagonal"])
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,
