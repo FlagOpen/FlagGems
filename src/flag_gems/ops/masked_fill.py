@@ -75,6 +75,14 @@ def masked_fill(inp, mask, value):
         mask_shape, inp_shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
 
+    if inp.ndim == 0:
+        # inp is a single-value
+        return (
+            torch.tensor(value, dtype=inp.dtype, device=inp.device)
+            if mask.item()
+            else inp.clone()
+        )
+
     inp = inp.contiguous()
     mask = mask.contiguous()
     expand_mask = mask.expand(inp.shape)
@@ -108,6 +116,12 @@ def masked_fill_(inp, mask, value):
     assert broadcastable_to(
         mask_shape, inp_shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
+
+    if inp.ndim == 0:
+        # inp is a single-value
+        if mask.item():
+            inp[()] = value
+        return inp
 
     inp = inp.contiguous()
     mask = mask.contiguous()

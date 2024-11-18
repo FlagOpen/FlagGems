@@ -605,7 +605,6 @@ def test_accuracy_masked_select(shape, dtype, threshold):
     [torch.tensor(1024, device="cuda"), torch.scalar_tensor(1024, device="cuda"), 1024],
 )
 def test_accuracy_masked_fill(shape, dtype, threshold, value):
-    shape = [1]
     inp = torch.zeros(shape, dtype=dtype, device="cuda")
     mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
 
