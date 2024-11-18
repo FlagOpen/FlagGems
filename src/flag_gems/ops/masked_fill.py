@@ -80,7 +80,10 @@ def masked_fill(inp, mask, value):
     expand_mask = mask.expand(inp.shape)
     out = torch.empty_like(inp, dtype=inp.dtype, device=inp.device)
 
-    N = inp.size(inp.ndim - 1)
+    index = (inp.ndim - 1) if inp.ndim > 0 else 0
+    N = inp.size(index)
+    if N == 0:
+        return out
     M = inp.numel() // N
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
@@ -110,7 +113,10 @@ def masked_fill_(inp, mask, value):
     mask = mask.contiguous()
     expand_mask = mask.expand(inp.shape)
 
-    N = inp.size(inp.ndim - 1)
+    index = (inp.ndim - 1) if inp.ndim > 0 else 0
+    N = inp.size(index)
+    if N == 0:
+        return inp
     M = inp.numel() // N
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
