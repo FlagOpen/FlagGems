@@ -298,7 +298,6 @@ class Benchmark:
                 finally:
                     metrics.append(metric)
                     gc.collect()
-                break
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
