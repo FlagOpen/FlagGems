@@ -1,4 +1,3 @@
-import torch
 from . import runtime
 from . import testing  # noqa: F401
 from .fused import *  # noqa: F403
@@ -163,6 +162,7 @@ def enable(unused=[]):
         ("repeat_interleave.Tensor", repeat_interleave_tensor, Autograd.unable),
         ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, Autograd.unable),
         ("randperm", randperm, Autograd.unable),
+        ("diag", diag, Autograd.unable),
         ),
         unused_ops_list=unused
     )
