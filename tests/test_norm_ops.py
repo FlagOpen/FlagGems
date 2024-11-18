@@ -136,6 +136,66 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
+@pytest.mark.instance_norm
+@pytest.mark.native_instance_norm
+@pytest.mark.parametrize(
+    "shape",
+    [(2, 1, 2, 1), ]
+    if QUICK_MODE
+    else [
+        (1, 1, 2, 2),
+        (2, 1, 2, 2),
+        (2, 3, 2, 2),
+        (2, 3, 128, 128),
+        (4, 16, 8, 8),
+        (2, 3, 1024),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_instancenorm(shape, dtype):
+    B, C = shape[:2]
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    eps = 1e-5
+
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+    ref_bias = to_reference(bias, True)
+
+    ref_out = torch.nn.functional.instance_norm(
+        ref_inp,
+        weight=ref_weight,
+        bias=ref_bias,
+        eps=eps,
+    )
+    (res_out, res_mean, res_rstd) = flag_gems.instance_norm(
+        inp, weight=weight, bias=bias, eps=eps
+    )
+
+    ref_mean = torch.mean(ref_inp, dim=list(range(2, inp.ndim)))
+    ref_var = torch.var(ref_inp, dim=list(range(2, inp.ndim)), correction=0)
+    ref_rstd = torch.rsqrt(ref_var + eps)
+    gems_assert_close(res_mean, ref_mean, res_mean.dtype)
+    gems_assert_close(res_rstd, ref_rstd, res_rstd.dtype)
+    gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+    )
+    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_out, (inp, weight, bias), out_grad
+    )
+    M = B * C
+    N = inp.numel() // M
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B*N)
+    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B*N)
+
+
 WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
     zip(REDUCTION_SHAPES, FLOAT_DTYPES, [-1] if QUICK_MODE else [0, -1, -1])
 )

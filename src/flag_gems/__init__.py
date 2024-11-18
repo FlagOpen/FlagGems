@@ -80,6 +80,7 @@ def enable(lib=aten_lib, unused=None):
             ("isnan", isnan, Autograd.disable),
             ("minimum", minimum, Autograd.disable),
             ("maximum", maximum, Autograd.disable),
+            ("native_instance_norm", instance_norm, Autograd.enable),
             ("native_layer_norm", layer_norm, Autograd.enable),
             ("le.Tensor", le, Autograd.disable),
             ("le.Scalar", le_scalar, Autograd.disable),
