@@ -1,6 +1,6 @@
 [中文版](./README_cn.md)
 
-![FlagOpen介绍Baaner](https://github.com/user-attachments/assets/35c065b3-6e1d-43af-974f-13c783559032)
+![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
 
 
 ## Introduction
