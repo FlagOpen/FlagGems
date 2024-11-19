@@ -52,29 +52,19 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, sum_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
-
-def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-
-
-def heur_block_n(args):
-    return args["N"]
-
+def heur_n_block_size(args):
+    import builtins
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
 @triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-    }
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
 )
 @triton.jit
 def sum_kernel(
@@ -105,7 +95,9 @@ def sum_kernel(
         mask = row_mask and col_mask
 
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
-        _sum += a
+        tmp = _sum + a
+        _sum = tl.where(mask, tmp, _sum)
+
     sum = tl.sum(_sum, axis=1)[:, None]
     tl.store(out, sum, row_mask)
 

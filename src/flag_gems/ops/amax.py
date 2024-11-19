@@ -41,16 +41,20 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, amax_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
+def heur_n_block_size(args):
+    import builtins
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
 @triton.jit
 def amax_kernel(
     inp,
@@ -77,6 +81,7 @@ def amax_kernel(
         mask = row_mask and col_mask
 
         a = tl.load(inp + cols, mask, other=-float("inf")).to(tl.float32)
+        a = tl.where(mask, a, -float("inf"))
         _all = tl.maximum(_all, a)
     all = tl.max(_all, axis=1)[:, None]
     tl.store(out, all, row_mask)
