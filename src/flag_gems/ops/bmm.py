@@ -6,87 +6,39 @@ import triton.language as tl
 
 from ..utils import libentry
 
+def heur_block_size(arg):
+    def lagest_factor(args):
+        n = args[arg]
+        if n <= 1:
+            return n
+        ret = 1
+        for i in range(min(n, 256), 1, -1):
+            if n % i == 0:
+                ret = i
+                break
+        return ret
+    return lagest_factor
+
+def heur_group_m(args):
+    return 1
 
 def heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
-
 def heur_divisible_n(args):
     return args["N"] % args["TILE_N"] == 0
-
 
 def heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-    ],
-    key=["M", "N", "K"],
-)
 @triton.heuristics(
     {
+        "TILE_M": heur_block_size("M"),
+        "TILE_N": heur_block_size("N"),
+        "TILE_K": heur_block_size("K"),
+        "GROUP_M": heur_group_m,
         "DIVISIBLE_M": heur_divisible_m,
         "DIVISIBLE_N": heur_divisible_n,
         "DIVISIBLE_K": heur_divisible_k,
@@ -154,11 +106,11 @@ def bmm_kernel(
     for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
-                mask_a = None
+                mask_a = tl.full([TILE_M, TILE_K], value=1, dtype=tl.int1)
             else:
                 mask_a = mask_m[:, None]
             if DIVISIBLE_N:
-                mask_b = None
+                mask_b = tl.full([TILE_K, TILE_N], value=1, dtype=tl.int1)
             else:
                 mask_b = mask_n[None, :]
         else:
@@ -182,7 +134,7 @@ def bmm_kernel(
         o += tl.dot(a, b, allow_tf32=False)
 
     if DIVISIBLE_M and DIVISIBLE_N:
-        mask_c = None
+        mask_c = tl.full([TILE_M, TILE_N], value=1, dtype=tl.int1)
     elif DIVISIBLE_M and not DIVISIBLE_N:
         mask_c = mask_n[None, :]
     elif not DIVISIBLE_M and DIVISIBLE_N:
