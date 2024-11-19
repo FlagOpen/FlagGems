@@ -6,6 +6,7 @@ import torch
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import (
     Benchmark,
+    GenericBenchmark,
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
@@ -130,6 +131,39 @@ def cumsum_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench = GenericBenchmark2DOnly(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
+    bench.run()
+
+
+class quantileBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        more_shapes_1d = [(4,), (1024,), (65536)]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 10)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 10)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+
+def quantile_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    q = torch.tensor([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], dtype=cur_dtype, device=device)
+    yield inp, q
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "quantile",
+            torch.quantile,
+            quantile_input_fn,
+            [torch.float32],
+            marks=pytest.mark.quantile,
+        )
+    ],
+)
+def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = quantileBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
