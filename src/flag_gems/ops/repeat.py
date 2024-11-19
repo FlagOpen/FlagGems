@@ -234,22 +234,24 @@ def generate_repeat_kernel(
             # strides for inputs
             for j in range(rank):
                 function_ns.create_name(f"in0_stride{j}")
-            stride_args = ", ".join(f"in0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in0_stride{j}: tl.constexpr" for j in range(rank))
             code.writeline(f"{stride_args}, # strides for in0")
 
             # strides for outputs
             for j in range(rank):
                 function_ns.create_name(f"out0_stride{j}")
-            stride_args = ", ".join(f"out0_stride{j}: int" for j in range(rank))
+            stride_args = ", ".join(
+                f"out0_stride{j}: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # strides for out0")
 
             # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: int" for i in range(rank))
+            task_space_args = ", ".join(f"s{i}: tl.constexpr" for i in range(rank))
             for i in range(rank):
                 function_ns.create_name(f"s{i}")
             code.writeline(f"{task_space_args}, # task_space")
 
-            task_space_args2 = ", ".join(f"in_s{i}: int" for i in range(rank))
+            task_space_args2 = ", ".join(f"in_s{i}: tl.constexpr" for i in range(rank))
             for i in range(rank):
                 function_ns.create_name(f"in_s{i}")
             code.writeline(

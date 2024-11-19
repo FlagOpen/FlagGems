@@ -60,8 +60,22 @@ def cfggen():
     return configs
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+
+
+def heur_block_n(args):
+    return args["N"]
+
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def sum_kernel(
     inp,

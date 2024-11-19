@@ -47,8 +47,22 @@ def cfggen():
     return configs
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 8))
+
+
+def heur_block_n(args):
+    return 1
+
+
 @libentry()
-@triton.autotune(configs=cfggen_last(), key=["M", "N"])
+# @triton.autotune(configs=cfggen_last(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_m,
+        "BLOCK_COL_SIZE": heur_block_n,
+    },
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -127,8 +141,22 @@ def weight_norm_kernel_first(
         tl.store(output + row_offset * N + col_offset, out, mask=mask)
 
 
+def heur_block_m_weight_norm_bwd_kernel_last(args):
+    return 1
+
+
+def heur_block_weight_norm_bwd_kernel_last(args):
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))
+
+
 @libentry()
-@triton.autotune(configs=cfggen_last(), key=["M", "N"])
+# @triton.autotune(configs=cfggen_last(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_m_weight_norm_bwd_kernel_last,
+        "BLOCK_COL_SIZE": heur_block_weight_norm_bwd_kernel_last,
+    },
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -177,8 +205,22 @@ def weight_norm_bwd_kernel_last(
     tl.store(g_grad + col_offset, g_grad_value, mask=col_mask)
 
 
+def heur_block_m_weight_norm_bwd_kernel_first(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+
+
+def heur_block_weight_norm_bwd_kernel_first(args):
+    return 1
+
+
 @libentry()
-@triton.autotune(configs=cfggen_first(), key=["M", "N"])
+# @triton.autotune(configs=cfggen_first(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_m_weight_norm_bwd_kernel_first,
+        "BLOCK_COL_SIZE": heur_block_weight_norm_bwd_kernel_first,
+    },
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -227,8 +269,22 @@ def weight_norm_bwd_kernel_first(
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
+def heur_block_m_norm_kernel(args):
+    return triton.next_power_of_2(triton.cdiv(args["v_shape1"], 12))
+
+
+def heur_block_n_norm_kernel(args):
+    return 1
+
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+# @triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_m_norm_kernel,
+        "BLOCK_COL_SIZE": heur_block_n_norm_kernel,
+    },
+)
 @triton.jit(do_not_specialize=["eps"])
 def norm_kernel(
     output,
@@ -264,7 +320,13 @@ def norm_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+# @triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_m_norm_kernel,
+        "BLOCK_COL_SIZE": heur_block_n_norm_kernel,
+    },
+)
 @triton.jit(do_not_specialize=["eps"])
 def norm_bwd_kernel(
     v_grad,

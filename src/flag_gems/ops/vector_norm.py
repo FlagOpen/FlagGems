@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 
@@ -8,7 +9,7 @@ import triton.language as tl
 from ..utils import dim_compress, libentry
 
 try:
-    from triton.language.extra.cuda.libdevice import pow
+    from triton.language.extra.xpu.libdevice import pow
 except ImportError:
     try:
         from triton.language.math import pow
@@ -24,8 +25,22 @@ def cfggen():
     return configs
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+
+
+def heur_block_n(args):
+    return builtins.min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -73,7 +88,13 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -121,7 +142,13 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -169,7 +196,13 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -217,9 +250,16 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+    ord = ord.to(tl.float32)
     pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
@@ -241,6 +281,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
+    ord = ord.to(tl.float32)
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
@@ -255,6 +296,7 @@ def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
+    ord = ord.to(tl.float32)
     offset = tl.arange(0, BLOCK_MID)
     Mid = Mid + offset
     mask = offset < MID_SIZE

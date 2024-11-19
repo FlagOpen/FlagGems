@@ -6,7 +6,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import isinf as _isinf
+    from triton.language.extra.xpu.libdevice import isinf as _isinf
 except ImportError:
     try:
         from triton.language.math import isinf as _isinf

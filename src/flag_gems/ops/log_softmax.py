@@ -1,3 +1,4 @@
+import builtins
 import logging
 
 import torch
@@ -8,7 +9,7 @@ from ..utils import libentry
 
 
 def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
+    return builtins.min(args["N"], 8192)
 
 
 def heur_num_warps(args):
@@ -20,21 +21,26 @@ def heur_num_warps(args):
         return 16
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_M": 1}),
+#         triton.Config({"BLOCK_M": 2}),
+#         triton.Config({"BLOCK_M": 4}),
+#         triton.Config({"BLOCK_M": 8}),
+#     ],
+#     key=[
+#         "M",
+#         "N",
+#     ],
+# )
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
     }
@@ -66,20 +72,21 @@ def log_softmax_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_M": 1}),
+#         triton.Config({"BLOCK_M": 2}),
+#         triton.Config({"BLOCK_M": 4}),
+#         triton.Config({"BLOCK_M": 8}),
+#     ],
+#     key=[
+#         "M",
+#         "N",
+#     ],
+# )
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
     }

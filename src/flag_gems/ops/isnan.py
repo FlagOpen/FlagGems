@@ -6,7 +6,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import isnan as _isnan
+    from triton.language.extra.xpu.libdevice import isnan as _isnan
 except ImportError:
     try:
         from triton.language.math import isnan as _isnan

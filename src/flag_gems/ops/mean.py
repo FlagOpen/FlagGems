@@ -1,3 +1,4 @@
+import builtins
 import logging
 import math
 
@@ -55,13 +56,27 @@ def mean(inp, *, dtype=None):
     return out
 
 
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def heur_n_block_size(args):
+    return builtins.min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
-        for m in [1, 2, 4, 8]
-    ],
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
+#         for m in [1, 2, 4, 8]
+#     ],
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):

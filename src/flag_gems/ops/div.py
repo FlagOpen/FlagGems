@@ -7,12 +7,12 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import div_rn, div_rz, fmod, trunc
+    from triton.language.extra.xpu.libdevice import div_rn, fmod, xpu_trunc_div
 except ImportError:
     try:
-        from triton.language.math import div_rn, div_rz, fmod, trunc
+        from triton.language.math import div_rn, fmod
     except ImportError:
-        from triton.language.libdevice import div_rn, div_rz, fmod, trunc
+        from triton.language.libdevice import div_rn, fmod
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -49,19 +49,19 @@ def true_divide(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(div_rz(x, y))
+    return xpu_trunc_div(x, y)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    return xpu_trunc_div(x, y)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    return xpu_trunc_div(x, y)
 
 
 def trunc_divide(A, B):

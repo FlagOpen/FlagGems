@@ -232,25 +232,29 @@ def generate_pad_kernel(
             # shape for inputs
             for j in range(rank):
                 function_ns.create_name(f"x_shape{j}")
-            shape_args = ", ".join(f"x_shape{j}: int" for j in range(rank))
+            shape_args = ", ".join(f"x_shape{j}: tl.constexpr" for j in range(rank))
             code.writeline(f"{shape_args}, # shape for x")
 
             # shape for inputs
             for j in range(rank):
                 function_ns.create_name(f"in_strides{j}")
-            stride_args = ", ".join(f"in_strides{j}: int" for j in range(rank))
+            stride_args = ", ".join(f"in_strides{j}: tl.constexpr" for j in range(rank))
             code.writeline(f"{stride_args}, # stride for x")
 
             # shape for inputs
             for j in range(rank):
                 function_ns.create_name(f"out_strides{j}")
-            stride_args = ", ".join(f"out_strides{j}: int" for j in range(rank))
+            stride_args = ", ".join(
+                f"out_strides{j}: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # stride for out")
 
             # shape for inputs
             for j in range(rank):
                 function_ns.create_name(f"valid_dim{j}_start")
-            stride_args = ", ".join(f"valid_dim{j}_start: int" for j in range(rank))
+            stride_args = ", ".join(
+                f"valid_dim{j}_start: tl.constexpr" for j in range(rank)
+            )
             code.writeline(f"{stride_args}, # valid dim start")
 
             # shape for inputs

@@ -48,23 +48,28 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
 
 
 def heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
+    return triton.next_power_of_2(args["N"])
+
+
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_M": 8}, num_warps=8),
+#         triton.Config({"BLOCK_M": 16}, num_warps=8),
+#         triton.Config({"BLOCK_M": 32}, num_warps=8),
+#     ],
+#     key=[
+#         "M",
+#         "N",
+#     ],
+# )
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
     }
 )

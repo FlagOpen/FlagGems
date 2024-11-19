@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import isfinited as _isfinited
+    from triton.language.extra.xpu.libdevice import isfinited as _isfinited
 except ImportError:
     try:
         from triton.language.math import isfinited as _isfinited
@@ -15,7 +15,7 @@ except ImportError:
         from triton.language.libdevice import isfinited as _isfinited
 
 try:
-    from triton.language.extra.cuda.libdevice import finitef as _finitef
+    from triton.language.extra.xpu.libdevice import finitef as _finitef
 except ImportError:
     try:
         from triton.language.math import finitef as _finitef

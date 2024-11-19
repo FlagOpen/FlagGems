@@ -1,3 +1,4 @@
+import builtins
 import logging
 
 import torch
@@ -26,8 +27,22 @@ def cfggen_batch():
     return configs
 
 
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def heur_n_block_size(args):
+    return builtins.min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "M_BLOCK_SIZE": heur_m_block_size,
+        "N_BLOCK_SIZE": heur_n_block_size,
+    },
+)
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -57,8 +72,22 @@ def triu_kernel(
         tl.store(Y + cols, y, mask=mask)
 
 
+def heur_batch_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["batch"], 12))  # cluster_num
+
+
+def heur_mn_block_size(args):
+    return builtins.min(args["MN"], 8192)
+
+
 @libentry()
-@triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+# @triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+@triton.heuristics(
+    {
+        "BATCH_BLOCK_SIZE": heur_batch_block_size,
+        "MN_BLOCK_SIZE": heur_mn_block_size,
+    }
+)
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,

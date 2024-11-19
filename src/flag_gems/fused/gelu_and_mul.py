@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import erf, pow, tanh
+    from triton.language.extra.xpu.libdevice import erf, pow, tanh
 except ImportError:
     try:
         from triton.language.math import erf, pow, tanh
@@ -32,7 +32,9 @@ def gelu_tanh_and_mul_kernel(x, y):
         * x_fp32
         * (
             1
-            + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * pow(x_fp32.to(tl.float32), 2)))
+            + tanh(
+                x_fp32 * 0.79788456 * (1 + 0.044715 * pow(x_fp32.to(tl.float32), 2.0))
+            )
         )
     )
     return x_gelu * y

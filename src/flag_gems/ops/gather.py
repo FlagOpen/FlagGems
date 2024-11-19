@@ -14,6 +14,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
+    code.writeline("import builtins")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
     code.newline()
@@ -45,9 +46,30 @@ def generate_gather_kernel(
     code.newline()
     code.newline()
 
+    code.writeline("def heur_block_m(args):")
+    with code.indent():
+        code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
+
+    code.newline()
+
+    code.writeline("def heur_block_n(args):")
+    with code.indent():
+        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 8192)')
+
+    code.newline()
+    code.newline()
+
     # the decorators
     code.writeline("@libentry()")
-    code.writeline('@triton.autotune(configs=cfggen(), key=["M", "N"])')
+    # code.writeline('@triton.autotune(configs=cfggen(), key=["M", "N"])')
+    code.writeline("@triton.heuristics(")
+    with code.indent():
+        code.writeline("values={")
+        with code.indent():
+            code.writeline('"BLOCK_M": heur_block_m,')
+            code.writeline('"BLOCK_N": heur_block_n,')
+        code.writeline("},")
+    code.writeline(")")
     code.writeline("@triton.jit")
 
     # signature
@@ -64,17 +86,23 @@ def generate_gather_kernel(
 
             for i in range(rank):
                 function_ns.create_name(f"inp_stride_{i}")
-            stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
+            stride_args = ", ".join(
+                f"inp_stride_{i}: tl.constexpr" for i in range(rank)
+            )
             code.writeline(f"{stride_args}, # stride for inp")
 
             for i in range(rank):
                 function_ns.create_name(f"index_stride_{i}")
-            stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
+            stride_args = ", ".join(
+                f"index_stride_{i}: tl.constexpr" for i in range(rank)
+            )
             code.writeline(f"{stride_args}, # stride for index")
 
             for i in range(rank):
                 function_ns.create_name(f"index_shape_{i}")
-            shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
+            shape_args = ", ".join(
+                f"index_shape_{i}: tl.constexpr" for i in range(rank)
+            )
             code.writeline(f"{shape_args}, # shape for index")
 
             code.writeline("dim,")

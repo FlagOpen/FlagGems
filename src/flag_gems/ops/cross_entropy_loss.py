@@ -8,6 +8,14 @@ from ..utils import libentry
 from .sum import sum
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+
+
+def heur_block_n(args):
+    return args["N"]
+
+
 @libentry()
 @triton.autotune(
     configs=[

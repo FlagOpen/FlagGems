@@ -2,6 +2,7 @@ import logging
 
 import triton
 import triton.language as tl
+from triton.language.extra.xpu.libdevice import erf as _erf
 
 from ..utils import pointwise_dynamic
 
@@ -9,7 +10,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def erf_func(x):
-    output = tl.math.erf(x.to(tl.float32))
+    output = _erf(x.to(tl.float32))
     return output
 
 

@@ -20,6 +20,14 @@ def cfggen():
     return configs
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
+
+
+def heur_block_n(args):
+    return args["N"]
+
+
 @triton.jit
 def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
     count = count_x + count_y
@@ -32,7 +40,13 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    {
+        "BLOCK_M": heur_block_m,
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
     X,

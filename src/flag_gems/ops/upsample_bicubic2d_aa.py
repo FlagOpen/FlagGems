@@ -22,7 +22,21 @@ def configs():
     ]
 
 
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+def heur_m_block_size(args):
+    return 1
+
+
+def heur_n_block_size(args):
+    return 1
+
+
+# @triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.heuristics(
+    values={
+        "BLOCK_X": heur_m_block_size,
+        "BLOCK_Y": heur_n_block_size,
+    },
+)
 @triton.jit
 def upsample_bicubic2d_aa_kernel(
     ptr_o,
@@ -373,7 +387,13 @@ def upsample_bicubic2d_aa_kernel(
 
 
 # upsample and downsample
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+# @triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.heuristics(
+    values={
+        "BLOCK_X": heur_m_block_size,
+        "BLOCK_Y": heur_n_block_size,
+    },
+)
 @triton.jit
 def general_interpolate_bicubic2d_aa_kernel(
     ptr_o,

@@ -14,11 +14,18 @@ def configs():
     ]
 
 
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+def heur_block_size(args):
+    return triton.next_power_of_2(
+        triton.cdiv(args["N"] * args["C"] * args["OH"] * args["OW"], 12)
+    )  # cluster_num
+
+
+# @triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
 @triton.heuristics(
     {
         "SAME_H": lambda args: args["OH"] == args["IH"],
         "SAME_W": lambda args: args["OW"] == args["IW"],
+        "BLOCK_SIZE": heur_block_size,
     }
 )
 @triton.jit

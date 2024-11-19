@@ -15,11 +15,19 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+def heur_block_row_size(args):
+    return args["M"]
+
+
+def heur_block_col_size(args):
+    return min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
-    key=["M", "N"],
-)
+# @triton.autotune(
+#     configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+#     key=["M", "N"],
+# )
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel(
     in_ptr,
@@ -59,10 +67,10 @@ def layer_norm_persistent_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
-    key=["M", "N"],
-)
+# @triton.autotune(
+#     configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+#     key=["M", "N"],
+# )
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel_multiline(
     in_ptr,
@@ -106,14 +114,23 @@ def layer_norm_persistent_kernel_multiline(
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
 
 
+def heur_tile_n(args):
+    return 8192
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": tile_n}, num_warps=w)
-        for tile_n in [1024, 2048, 4096, 8192]
-        for w in [4, 8, 16]
-    ],
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"TILE_N": tile_n}, num_warps=w)
+#         for tile_n in [1024, 2048, 4096, 8192]
+#         for w in [4, 8, 16]
+#     ],
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    values={
+        "TILE_N": heur_tile_n,
+    },
 )
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_loop_kernel(
@@ -195,14 +212,28 @@ def layer_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, out)
 
 
+def heur_block_row_size_1(args):
+    return 1
+
+
+def heur_block_col_size_1(args):
+    return 1
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
-    ],
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
+#         for m in [1, 2, 4, 8]
+#         for w in [4, 8, 16]
+#     ],
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_row_size_1,
+        "BLOCK_COL_SIZE": heur_block_col_size_1,
+    },
 )
 @triton.jit
 def layer_norm_backward_kernel(
@@ -262,13 +293,19 @@ def layer_norm_backward_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for n in [1, 2, 4, 8]
-        for w in [4, 8]
-    ],
-    key=["N"],
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
+#         for n in [1, 2, 4, 8]
+#         for w in [4, 8]
+#     ],
+#     key=["N"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": heur_block_row_size_1,
+        "BLOCK_COL_SIZE": heur_block_col_size,
+    },
 )
 @triton.jit
 def weight_bias_backward_kernel(
@@ -303,10 +340,10 @@ def weight_bias_backward_kernel(
         x_hat = x * rstd
         accW += dy * x_hat
         accB += dy
-    dw = tl.sum(accW, axis=0)
-    db = tl.sum(accB, axis=0)
-    tl.store(dW, dw[None, :], mask=col_mask)
-    tl.store(dB, db[None, :], mask=col_mask)
+    # dw = tl.sum(accW, axis=0)
+    # db = tl.sum(accB, axis=0)
+    tl.store(dW, accW, mask=col_mask)
+    tl.store(dB, accB, mask=col_mask)
 
 
 class LayerNorm(torch.autograd.Function):

@@ -7,16 +7,30 @@ import triton.language as tl
 from ..utils import libentry
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))
+
+
+def heur_block_m(args):
+    return args["M"]
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=w)
-        for m in [32, 64, 128]
-        for n in [1, 2, 4, 8]
-        for s in [3, 4]
-        for w in [4, 8]
-    ],
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=w)
+#         for m in [32, 64, 128]
+#         for n in [1, 2, 4, 8]
+#         for s in [3, 4]
+#         for w in [4, 8]
+#     ],
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    {
+        "BLOCK_N": heur_block_n,
+        "BLOCK_M": heur_block_m,
+    }
 )
 @triton.jit
 def mv_kernel(

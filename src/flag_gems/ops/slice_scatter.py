@@ -15,8 +15,22 @@ def cfggen():
     return configs
 
 
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def heur_n_block_size(args):
+    return args["N"]
+
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
 @triton.jit
 def slice_scatter_kernel(
     inp,
