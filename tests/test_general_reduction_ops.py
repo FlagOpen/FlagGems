@@ -139,7 +139,7 @@ def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
 
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.max
-@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES + [(4, 1048577, 4)])
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_dim(shape, dim, keepdim, dtype):
