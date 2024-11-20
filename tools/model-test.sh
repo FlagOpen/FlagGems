@@ -18,7 +18,7 @@ PR_ID_DIR="PR${PR_ID}"
 
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-model"
 cmds=(
-  "CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py &"
+  "CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py"
 )
 
 declare -a exit_statuses

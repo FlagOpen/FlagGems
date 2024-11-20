@@ -18,31 +18,31 @@ PR_ID_DIR="PR${PR_ID}"
 
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
 cmds=(
-   "bash tools/pytest_mark_check.sh &"
-   "CUDA_VISIBLE_DEVICES=0 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py &"
-   "CUDA_VISIBLE_DEVICES=1 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py &"
-   "CUDA_VISIBLE_DEVICES=2 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_general_reduction_ops.py &"
-   "CUDA_VISIBLE_DEVICES=3 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_norm_ops.py &"
-   "CUDA_VISIBLE_DEVICES=4 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py && \
-    CUDA_VISIBLE_DEVICES=4 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py &"
-   "CUDA_VISIBLE_DEVICES=5 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py &"
-   "CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_distribution_ops.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_libentry.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_dynamic.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_shape_utils.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_wrapper.py && \
-    CUDA_VISIBLE_DEVICES=6 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py -m abs --record=log &"
-   "CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_general_reduction_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_norm_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py --ref=cpu --mode=quick && \
-    CUDA_VISIBLE_DEVICES=7 coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py --ref=cpu --mode=quick &"
+    "bash tools/pytest_mark_check.sh && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_general_reduction_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_norm_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_distribution_ops.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_libentry.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_dynamic.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_shape_utils.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_wrapper.py && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py -m abs --record=log && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_reduction_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_general_reduction_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_norm_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_unary_pointwise_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_binary_pointwise_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py --ref=cpu --mode=quick && \
+    coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py --ref=cpu --mode=quick"
 )
 
 declare -a exit_statuses
