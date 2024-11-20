@@ -162,6 +162,7 @@ def enable(lib=aten_lib):
     lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
     lib.impl("vstack", vstack, "CUDA")
     lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "CUDA")
+    lib.impl("scaled_dot_product_attention", scaled_dot_product_attention, "CUDA")
     lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "CUDA")
     lib.impl("randperm", randperm, "CUDA")
     lib.impl("diag", diag, "CUDA")
