@@ -7,11 +7,11 @@ on:
     branches: [ "master" ]
 
 jobs:
-  op-unit-test:
+  blas-op-test:
     concurrency:
-      group: op-unit-test-${{ github.event.pull_request.number || github.ref }}
+      group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    uses: ./.github/workflows/op-unit-test.yaml
+    uses: ./.github/workflows/blas-op-test.yaml
 
   model-test:
     concurrency:
@@ -19,12 +19,42 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/model-test.yaml
 
+  op-test-quick-cpu:
+    concurrency:
+      group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test-quick-cpu.yaml
+
+  op-utils-test:
+    concurrency:
+      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-utils-test.yaml
+
+  pointwise-op-test:
+    concurrency:
+      group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/pointwise-op-test.yaml
+
+  reduction-op-test:
+    concurrency:
+      group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/reduction-op-test.yaml
+
+  special-op-test:
+    concurrency:
+      group: special-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/special-op-test.yaml
+
   coverage-test:
     concurrency:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: jiuding
-    needs: [op-unit-test, model-test]
+    needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

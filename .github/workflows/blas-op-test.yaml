@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: blas-op-test
+      - name: BLAS OP
         shell: bash
         run: |
           echo "current dir: $(pwd)"
@@ -35,7 +35,8 @@ jobs:
           PR_ID_DIR="PR${PR_ID}"
 
           COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py
+          bash tools/pytest_mark_check.sh && \
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py
 
           mkdir -p /PR_Coverage/PR${PR_ID}/${ID_SHA}
           mv ${ID_SHA}* /PR_Coverage/PR${PR_ID}/${ID_SHA}

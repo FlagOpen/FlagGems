@@ -1,7 +1,7 @@
 # This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: op-unit-test
+name: special-op-test
 
 on:
   workflow_call:
@@ -17,9 +17,10 @@ jobs:
         shell: bash
         run: tools/gpu_check.sh
 
-      - name: FlagGems unit test
+      - name: Special OP Test
         shell: bash
         run: |
+          echo "current dir: $(pwd)"
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "current dir: $(pwd)"
@@ -35,7 +36,9 @@ jobs:
           PR_ID_DIR="PR${PR_ID}"
 
           COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
-          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_pointwise_type_promotion.py
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_special_ops.py && \
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_tensor_constructor_ops.py && \
+          coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_distribution_ops.py
 
           mkdir -p /PR_Coverage/PR${PR_ID}/${ID_SHA}
           mv ${ID_SHA}* /PR_Coverage/PR${PR_ID}/${ID_SHA}
