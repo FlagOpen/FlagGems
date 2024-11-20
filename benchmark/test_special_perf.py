@@ -65,12 +65,15 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
+    if op_name == "topk":
+        pytest.skip("[TritonXPU] topk 3D Legalize Unsupported")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
 
 
+@pytest.mark.skip("[TritonXPU] isin tl.cumsum Unsupported")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -112,6 +115,7 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skip("[TritonXPU] multinomial tl.cumsum Unsupported")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
@@ -193,6 +197,7 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skip("[TritonXPU] upsample_bicubic2d_aa Legalize Pass Failed")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):

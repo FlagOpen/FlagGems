@@ -55,6 +55,8 @@ def masked_select_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
+    if op_name == "masked_select":
+        pytest.skip("[TritonXPU] masked_select tl.cumsum Unsupported")
     bench = TensorSelectBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )

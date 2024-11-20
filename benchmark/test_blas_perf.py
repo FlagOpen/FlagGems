@@ -45,6 +45,7 @@ class BlasBenchmark(Benchmark):
         return split_k_shapes
 
     def get_tflops(self, op, *args, **kwargs):
+        return 0
         """This method is currently not really implemented and serves as a placeholder.
         A proper implementation will be developed in the future."""
         from torch.utils.flop_counter import FlopCounterMode

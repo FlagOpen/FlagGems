@@ -175,6 +175,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             torch.repeat_interleave,
             repeat_interleave_self_int_input_fn,
             FLOAT_DTYPES,
+            # [torch.float32],
             marks=pytest.mark.repeat_interleave_self_int,
         ),
         pytest.param(
@@ -194,6 +195,10 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     ],
 )
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
+    if op_name == "repeat_interleave_self_tensor":
+        pytest.skip("[TritonXPU] repeat_interleave_self_tensor tl.cumsum Unsupported")
+    elif op_name == "repeat_interleave_tensor":
+        pytest.skip("[TritonXPU] repeat_interleave_tensor tl.cumsum Unsupported")
     bench = TensorRepeatBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
