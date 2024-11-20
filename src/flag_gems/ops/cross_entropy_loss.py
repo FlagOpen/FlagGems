@@ -39,10 +39,6 @@ def celoss_indices_kernel(
 
     ignore_mask = not (tgt == ignore_index) and tgt_mask
 
-    w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
-    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
-
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
 
@@ -62,7 +58,16 @@ def celoss_indices_kernel(
     inp_tgt_ptrs = inp_ptr + pid_n * C * D + tgt * D + offset_d
     inp_tgt = tl.load(inp_tgt_ptrs, mask=tgt_mask, other=-float("inf")).to(tl.float32)
 
-    out = (final_sum + final_max - inp_tgt) * w_tgt
+    out = final_sum + final_max - inp_tgt
+    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
+
+    if w_ptr is None:
+        w_tgt = ignore_mask
+    else:
+        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+
+    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
+    out *= w_tgt
     out_ptrs = out_ptr + pid_n * D + offset_d
     tl.store(out_ptrs, out, mask=tgt_mask)
 
@@ -114,14 +119,16 @@ def celoss_probability_kernel(
         inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         tgt_ptrs = tgt_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         mask = offset_c[:, None] < C and offset_d[None, :] < D
-        w_ptrs = w_ptr + offset_c
-        w_mask = offset_c < C
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1.0 - label_smoothing) + label_smoothing / C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
         log = final_sum + final_max - inp
-        _sum += w * log * tgt
+        w_mask = offset_c < C
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w = tl.load(w_ptr + offset_c, mask=w_mask, other=0).to(tl.float32)
+        _sum += log * tgt * w[:, None]
 
     out = tl.sum(_sum, axis=0)
     out_ptrs = out_ptr + pid_n * D + offset_d
@@ -161,7 +168,10 @@ def celoss_indices_smooth_kernel(
 
     ignore_mask = not (tgt == ignore_index) and tgt_mask
 
-    w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+    if w_ptr is None:
+        w_tgt = ignore_mask
+    else:
+        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0)
     w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
     tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
 
@@ -180,26 +190,28 @@ def celoss_indices_smooth_kernel(
     final_max = tl.max(tmp_max, axis=0)[None, :]
     tmp_sum = tmp_sum * tl.exp(tmp_max - final_max)
     final_sum = tl.log(tl.sum(tmp_sum, axis=0))[None, :]
+    final_sum_max = final_sum + final_max
 
     _sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     for off in range(0, C, BLOCK_C):
         offset_c = off + tl.arange(0, BLOCK_C)
-        offset = offset_c[:, None] * D + offset_d[None, :]
-        inp_ptrs = inp_ptr + pid_n * C * D + offset
+        inp_ptrs = inp_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
         mask = offset_c[:, None] < C and offset_d[None, :] < D
         inp = tl.load(inp_ptrs, mask, other=0).to(tl.float32)
 
-        w_ptrs = w_ptr + offset_c
-        w = tl.load(w_ptrs, offset_c < C, other=0).to(tl.float32)
+        w_mask = offset_c < C
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w = tl.load(w_ptr + offset_c, w_mask, other=0).to(tl.float32)
 
-        smooth = tl.full([BLOCK_C, BLOCK_D], label_smoothing / C, dtype=tl.float32)
         smooth = tl.where(
             offset_c[:, None] == tgt[None, :],
             1 - label_smoothing + label_smoothing / C,
-            smooth,
-        )
+            label_smoothing / C,
+        ).to(tl.float32)
 
-        log = final_sum + final_max - inp
+        log = final_sum_max - inp
         _sum += log * smooth * w[:, None]
 
     out = tl.sum(_sum, axis=0)
@@ -240,8 +252,12 @@ def celoss_indices_bwd(
     tgt = tl.load(tgt_ptrs, mask=tgt_mask, other=0)
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
     out_grad = tl.load(out_grad_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
-    w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
+
+    if w_ptr is None:
+        w_tgt = tgt_mask
+    else:
+        w_ptrs = w_ptr + tgt
+        w_tgt = tl.load(w_ptrs, mask=tgt_mask, other=0).to(tl.float32)[None, :]
 
     ignore_mask = (tgt != ignore_index)[None, :]
 
@@ -325,11 +341,14 @@ def celoss_probability_bwd(
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1 - label_smoothing) + label_smoothing / C
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
-        w_tgt_sum += tgt * w
+        w_tgt_sum += tgt * w[:, None]
 
         cur_max = tl.maximum(tmp_max, inp)
         cur_exp = tl.exp(inp - cur_max)
@@ -351,11 +370,14 @@ def celoss_probability_bwd(
         tgt = tl.load(tgt_ptrs, mask, other=0).to(tl.float32)
         tgt = tgt * (1 - label_smoothing) + label_smoothing / C
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)[:, None]
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
-        grad = w_tgt_sum / final_sum * tl.exp(inp - final_max) - w * tgt
+        grad = w_tgt_sum / final_sum * tl.exp(inp - final_max) - tgt * w[:, None]
         inp_grad = grad * out_grad * mean_num
 
         inp_grad_ptrs = inp_grad_ptr + offset
@@ -408,9 +430,12 @@ def celoss_indices_smooth_bwd(
         inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
         smooth = tl.full([BLOCK_C, BLOCK_D], label_smoothing / C, dtype=tl.float32)
         smooth = tl.where(
@@ -436,15 +461,17 @@ def celoss_indices_smooth_bwd(
         inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
         inp = tl.load(inp_ptrs, inp_mask, other=-float("inf")).to(tl.float32)
 
-        w_ptrs = w_ptr + offset_c
         w_mask = offset_c < C
-        w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
+        if w_ptr is None:
+            w = w_mask
+        else:
+            w_ptrs = w_ptr + offset_c
+            w = tl.load(w_ptrs, w_mask, other=0).to(tl.float32)
 
-        smooth = tl.full([BLOCK_C, BLOCK_D], label_smoothing / C, dtype=tl.float32)
         smooth = tl.where(
             offset_c[:, None] == tgt[None, :],
             1 - label_smoothing + label_smoothing / C,
-            smooth,
+            label_smoothing / C,
         )
 
         grad = w_sum / final_sum * tl.exp(inp - final_max) - smooth * w[:, None]
@@ -523,18 +550,9 @@ class CrossEntropyLoss(torch.autograd.Function):
         axis = 0 if dim == 1 else 1
         del shape[axis]
 
-        if weight is None:
-            weight = torch.ones(
-                [
-                    C,
-                ],
-                dtype=inp.dtype,
-                device=inp.device,
-            )
-
         inp = inp.contiguous()
         tgt = target.contiguous()
-        weight = weight.contiguous()
+        weight = weight.contiguous() if weight is not None else None
         out = torch.empty(shape, dtype=torch.float32, device=inp.device)
         grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
 
