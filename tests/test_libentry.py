@@ -7,7 +7,6 @@ from triton import language as tl
 
 from flag_gems.utils import libentry
 
-
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
 @contextmanager
 def not_raises(ExpectedException):
