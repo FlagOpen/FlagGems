@@ -3,9 +3,10 @@ import os
 # from .. import error
 import sys
 import importlib
-from ..commom_utils import vendors_map, AUTOGRAD, vendors
+from ..commom_utils import vendors_map, AUTOGRAD, vendors, Autograd
 vendors = vendors
 AUTOGRAD = AUTOGRAD
+Autograd = Autograd
 vendor_module_name = None
 vendor_module = None
 

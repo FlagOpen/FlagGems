@@ -1,16 +1,19 @@
-from . import runtime
+import torch
 from . import testing  # noqa: F401
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 from . import runtime
 from .runtime.commom_utils import Autograd
+from contextlib import contextmanager
 __version__ = "2.1"
-
 device = runtime.device.device_instance.device_name
 device_guard = runtime.device.device_instance.get_device_guard_fn()
+aten_lib = torch.library.Library("aten", "IMPL")
 
-def enable(unused=[]):
-    runtime.to_register((
+from .runtime.register import Register
+
+def enable(lib=aten_lib, unused=[]):
+    Register((
         ("abs", abs, Autograd.unable),
         ("add.Tensor", add, Autograd.unable),
         ("addmm", addmm, Autograd.unable),
@@ -164,20 +167,20 @@ def enable(unused=[]):
         ("randperm", randperm, Autograd.unable),
         ("diag", diag, Autograd.unable),
         ),
-        unused_ops_list=unused
+        unused_ops_list=unused,
+        lib=lib,
     )
-
 
 
 class use_gems:
     def __init__(self):
-        pass
+        self.lib = torch.library.Library("aten", "IMPL")
     
     def __enter__(self):
-        enable()
+        enable(lib=self.lib)
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+       del self.lib
 
 
 
