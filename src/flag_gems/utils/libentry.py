@@ -3,8 +3,10 @@ import threading
 
 import torch
 import triton
+from .. import runtime
 
-DEVICE_COUNT = torch.cuda.device_count()
+
+DEVICE_COUNT = runtime.get_device_conut()
 
 
 class LibEntry(triton.KernelInterface):

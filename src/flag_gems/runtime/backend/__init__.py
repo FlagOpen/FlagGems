@@ -9,6 +9,34 @@ AUTOGRAD = AUTOGRAD
 Autograd = Autograd
 vendor_module_name = None
 vendor_module = None
+device_name = None
+device_fn_cache = {}
+
+
+
+def get_codegen_result(code, result_key):
+    parsed_ast = ast.parse(code)
+    compiled_code = compile(parsed_ast, filename="<ast>", mode="exec")
+    try:
+        exec(compiled_code, globals())
+    except Exception as e:
+        RuntimeError(e)
+    return globals()[result_key]
+
+
+def gen_torch_device_fn(api_name):
+    global device_name
+    device_name = device_name or get_vendor_info()[1]
+    if api_name in device_fn_cache:
+        return device_fn_cache[api_name]
+    code = f"""
+import torch
+fn = torch.{device_name}.{api_name}()
+"""
+    fn = get_codegen_result(code, "fn")
+    device_fn_cache[api_name] = fn
+    return fn
+
 
 def get_vendor_module(vendor_name, query=False):
     def get_module(vendor_name):
