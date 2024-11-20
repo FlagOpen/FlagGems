@@ -155,7 +155,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
 
 @pytest.mark.max
 @pytest.mark.parametrize("shape", [(4, 1048577, 4)])
-@pytest.mark.parametrize("keepdim, dim", [(True, 1)])
+@pytest.mark.parametrize("keepdim, dim", [(True, 1),(False, 1)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_dim_big_shape(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
