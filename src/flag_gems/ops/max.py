@@ -69,7 +69,8 @@ def max_kernel(
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    result_value, result_index = tl.full((BLOCK_M,), -float("inf")),tl.zeros((BLOCK_M,), dtype=tl.int64)
+    result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
+    result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
@@ -80,7 +81,7 @@ def max_kernel(
         max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
         update_mask = max_value > result_value
         result_value = tl.where(update_mask, max_value, result_value)
-        result_index = tl.where(update_mask, max_index, result_index)
+        result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
     offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
