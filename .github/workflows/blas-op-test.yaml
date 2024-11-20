@@ -20,9 +20,9 @@ jobs:
       - name: blas-op-test
         shell: bash
         run: |
-          git config --global --add safe.directory /__w/FlagGems/FlagGems
+          echo "current dir: $(pwd)"
+          git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "current dir: $(pwd)"
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
             PR_ID=${{ github.event.pull_request.number }}
           elif [ "${{ github.event_name }}" == "push" ]; then
