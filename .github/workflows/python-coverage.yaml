@@ -25,11 +25,11 @@ jobs:
       cancel-in-progress: true
     runs-on: jiuding
     needs: [op-unit-test, model-test]
-    container:
-      image: localhost:5000/flag-gems-ci:v1.0
-      ports:
-        - 81
-      options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
+    # container:
+    #   image: localhost:5000/flag-gems-ci:v1.0
+    #   ports:
+    #     - 81
+    #   options: --gpus all --hostname flag-gems_cicd_coverage -v /home/flaggems_cicd/PR_Coverage:/PR_Coverage
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
