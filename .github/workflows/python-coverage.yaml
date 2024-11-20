@@ -23,7 +23,7 @@ jobs:
     concurrency:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    runs-on: [self-hosted, docker]
+    runs-on: [self-hosted, jiuding]
     needs: [op-unit-test, model-test]
     container:
       image: localhost:5000/flag-gems-ci:v1.0
