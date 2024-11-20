@@ -18,9 +18,9 @@ def cfggen():
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
-
 def heur_n_block_size(args):
-    return args["N"]
+    import builtins
+    return builtins.min(triton.next_power_of_2(args["N"]), 128)
 
 
 @libentry()
@@ -54,8 +54,11 @@ def slice_scatter_kernel(
         mask = rows_mask and cols_mask
 
         indices = tl.load(inp_indices + offsets, mask=mask, other=0)
+        indices = tl.where(mask, indices, 0)
         src_indices = tl.load(src_offsets + offsets, mask=mask, other=0)
+        src_indices = tl.where(mask, src_indices, 0)
         cur_src = tl.load(src + src_indices, mask=mask, other=0)
+        cur_src = tl.where(mask, cur_src, 0)
 
         tl.store(inp + indices, cur_src, mask=mask)
 
@@ -330,10 +333,10 @@ def scatter_3d_mid_kernel(
 @triton.autotune(
     configs=[
         triton.Config(kwargs={"R": 1, "C": 512}, num_warps=4),
-        triton.Config(kwargs={"R": 32, "C": 32}, num_warps=4),
-        triton.Config(kwargs={"R": 64, "C": 64}, num_warps=4),
-        triton.Config(kwargs={"R": 4, "C": 512}, num_warps=4),
-        triton.Config(kwargs={"R": 16, "C": 128}, num_warps=4),
+        # triton.Config(kwargs={"R": 32, "C": 32}, num_warps=4),
+        # triton.Config(kwargs={"R": 64, "C": 64}, num_warps=4),
+        # triton.Config(kwargs={"R": 4, "C": 512}, num_warps=4),
+        # triton.Config(kwargs={"R": 16, "C": 128}, num_warps=4),
     ],
     key=["strided", "pivoted"],
 )
@@ -567,7 +570,6 @@ def slice_scatter_v2(inp, src, dim=0, start=None, end=None, step=1):
     out = torch.empty_strided(
         inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
     )
-
     # Look for a permute of dims so that the outer dims and inner dims relative to dim
     # after permute can be coalesced.
     # But this can be difficult so we're resorting to a suffcient and not necessary condition.

@@ -49,6 +49,7 @@ def layer_norm_persistent_kernel(
     mask = n_offsets < N
 
     x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
+    x  = tl.where(mask, x, 0.0)
     m = tl.sum(x) / N
     d = x - m  # deviation
     s = tl.where(mask, d * d, 0)
@@ -97,6 +98,7 @@ def layer_norm_persistent_kernel_multiline(
     x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
         tl.float32
     )
+    x  = tl.where(mask, x, 0.0)
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -115,7 +117,7 @@ def layer_norm_persistent_kernel_multiline(
 
 
 def heur_tile_n(args):
-    return 8192
+    return 128
 
 
 @libentry()
@@ -368,8 +370,8 @@ class LayerNorm(torch.autograd.Function):
 
         with torch.cuda.device(x.device):
             if N <= 128:
+                TILE_M = triton.next_power_of_2(triton.cdiv(M, 12)) 
                 TILE_N = triton.next_power_of_2(N)
-                TILE_M = triton.cdiv(1024, TILE_N)
                 grid = (triton.cdiv(M, TILE_M), 1, 1)
                 layer_norm_persistent_kernel_multiline[grid](
                     x,
