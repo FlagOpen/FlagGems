@@ -358,10 +358,9 @@
         {
             "gen" : true,
             "param_map" : {
-                "META": {"BLOCK_ROW_SIZE" : "block_m", "BLOCK_COL_SIZE" : "block_n"},
+                "META": {"BLOCK_SIZE" : "block_n"},
                 "num_warps" : "warps"
             },
-            "block_m" : [1, 2, 4],
             "block_n" : [1024, 2048, 4096],
             "warps" : [4, 8, 16]
         }
