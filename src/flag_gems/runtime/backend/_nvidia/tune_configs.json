@@ -462,8 +462,7 @@
             "META": {"BLOCK_M": "block_m", "BLOCK_N": 1024},
             "num_warps" : 4
         },
-        "warps" : [4, 8, 16, 32],
-        "block_m" : [256, 512, 1024, 2048, 4096]
+        "block_m" : [1, 2, 4, 8]
     }],
     "mv" : [
         {
