@@ -680,6 +680,12 @@ def gen_cat_shapes_dim(shapes):
             results.append(
                 [[(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes], dim]
             )
+            results.append(
+                [
+                    [(s[dim], *s[1:dim], s[0], *s[dim + 1 :]) for s in tensor_shapes],
+                    dim - rank,
+                ]
+            )
     return results
 
 
@@ -789,4 +795,37 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
 
     with flag_gems.use_gems():
         res_out = torch.repeat_interleave(repeats)
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave
+@pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
+@pytest.mark.parametrize("dim", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    repeats = torch.randint(0, 30, (shape[dim],), device="cuda")
+    ref_inp = to_reference(inp)
+    ref_repeats = to_reference(repeats)
+
+    ref_out = torch.repeat_interleave(ref_inp, ref_repeats, dim)
+    with flag_gems.use_gems():
+        res_out = torch.repeat_interleave(inp, repeats, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
+# Test diag op
+@pytest.mark.diag
+@pytest.mark.parametrize(
+    "shape", [(1024, 1), (1024), (1024, 1024), (512, 1024), (798, 798)]
+)
+@pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_diag(shape, diagonal, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.diag(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.diag(inp, diagonal)
     gems_assert_equal(res_out, ref_out)
