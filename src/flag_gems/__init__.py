@@ -146,7 +146,10 @@ def enable(lib=aten_lib):
     lib.impl("select_scatter", select_scatter, "PrivateUse1")
     lib.impl("index_select", index_select, "PrivateUse1")
     lib.impl("tile", tile, "PrivateUse1")
-    lib.impl("masked_fill", masked_fill, "PrivateUse1")
+    lib.impl("masked_fill.Tensor", masked_fill, "PrivateUse1")
+    lib.impl("masked_fill.Scalar", masked_fill, "PrivateUse1")
+    lib.impl("masked_fill_.Tensor", masked_fill_, "PrivateUse1")
+    lib.impl("masked_fill_.Scalar", masked_fill_, "PrivateUse1")
     lib.impl("_unique2", _unique2, "PrivateUse1")
     lib.impl("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, "PrivateUse1")
     lib.impl("upsample_nearest2d", upsample_nearest2d, "PrivateUse1")
@@ -161,6 +164,7 @@ def enable(lib=aten_lib):
     lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "PrivateUse1")
     lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "PrivateUse1")
     lib.impl("randperm", randperm, "PrivateUse1")
+    lib.impl("diag", diag, "PrivateUse1")
 
 
 class use_gems:

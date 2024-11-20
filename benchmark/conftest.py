@@ -112,6 +112,78 @@ def pytest_addoption(parser):
         action="store",
         default="none",
         required=False,
+        choices=["musa", "cpu"],
+        help=(
+            "Specify how to measure latency, "
+            "'cpu' for CPU-side measurement or 'musa' for GPU-side measurement."
+        ),
+    )
+
+    parser.addoption(
+        "--level",
+        action="store",
+        default="comprehensive",
+        required=False,
+        choices=[level.value for level in BenchLevel],
+        help="Specify the benchmark level: comprehensive, or core.",
+    )
+
+    parser.addoption(
+        "--warmup",
+        default=DEFAULT_WARMUP_COUNT,
+        help="Number of warmup runs before benchmark run.",
+    )
+
+    parser.addoption(
+        "--iter",
+        default=DEFAULT_ITER_COUNT,
+        help="Number of reps for each benchmark run.",
+    )
+
+    parser.addoption(
+        "--query", action="store_true", default=False, help="Enable query mode"
+    )
+
+    parser.addoption(
+        "--metrics",
+        action="append",
+        default=None,
+        required=False,
+        choices=ALL_AVAILABLE_METRICS,
+        help=(
+            "Specify the metrics we want to benchmark. "
+            "If not specified, the metric items will vary according to the specified operation's category and name."
+        ),
+    )
+
+    parser.addoption(
+        "--dtypes",
+        action="append",
+        default=None,
+        required=False,
+        choices=[
+            str(ele).split(".")[-1]
+            for ele in FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES + [torch.cfloat]
+        ],
+        help=(
+            "Specify the data types for benchmarks. "
+            "If not specified, the dtype items will vary according to the specified operation's category and name."
+        ),
+    )
+
+    parser.addoption(
+        "--shape_file",
+        action="store",
+        default=os.path.join(os.path.dirname(__file__), "core_shapes.yaml"),
+        required=False,
+        help="Specify the shape file name for benchmarks. If not specified, a default shape list will be used.",
+    )
+
+    parser.addoption(
+        "--record",
+        action="store",
+        default="none",
+        required=False,
         choices=["none", "log"],
         help="Benchmark info recorded in log files or not",
     )
@@ -175,16 +247,22 @@ BUILTIN_MARKS = {
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
-    else:
-        note_info = (
-            "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
-            "\nThis field will be removed in a future release."
-        )
-        print(note_info)
+    # else:
+    #     note_info = (
+    #         "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
+    #         "\nThis field will be removed in a future release."
+    #     )
+    #     print(note_info)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_function_cache():
+    yield
+    torch.musa.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clear_musa_cache():
+def clear_module_cache():
     yield
     torch.musa.empty_cache()
 
