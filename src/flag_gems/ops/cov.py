@@ -4,8 +4,9 @@ import triton
 import triton.language as tl
 import triton.testing
 
-MAX_GRID_NUM = 65535
+from ..utils import libentry
 
+@libentry()
 @triton.jit
 def mean_kernel(
     X, 
@@ -29,6 +30,7 @@ def mean_kernel(
         acc += tl.sum(x * w, axis=0)
     tl.atomic_add(mean + row, acc)
 
+@libentry()
 @triton.jit
 def covariance_kernel(
     X, 
@@ -64,7 +66,9 @@ def covariance_kernel(
 def cov(X, correction=1, fweights=None, aweights=None):
     logging.debug("GEMS COV")    
     M, N = X.shape  
-    
+    MAX_GRID_NUM = 65535
+    BLOCK_SIZE = min(128, triton.next_power_of_2(N))
+
     if fweights is None:
         fweights = torch.ones(N, device=X.device, dtype=X.dtype)
     else:
@@ -84,9 +88,7 @@ def cov(X, correction=1, fweights=None, aweights=None):
     
     mean = torch.zeros(M, device=X.device, dtype=X.dtype)
     cov_matrix = torch.zeros((M, M), device=X.device, dtype=X.dtype)
-
-    BLOCK_SIZE = min(128, triton.next_power_of_2(N))
-
+    
     for i in range((M + MAX_GRID_NUM - 1) // MAX_GRID_NUM):
         row_offset = i * MAX_GRID_NUM
         current_M = min(MAX_GRID_NUM, M - row_offset)
