@@ -15,7 +15,6 @@ from ..utils import libentry
         for d in [1, 4, 16]
     ],
     key=["C", "D"],
-    reset_to_zero=["w_tgt_ptr"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
 def celoss_indices_kernel(
@@ -27,7 +26,6 @@ def celoss_indices_kernel(
     ignore_index,
     C,
     D,
-    reduction: tl.constexpr,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -42,9 +40,8 @@ def celoss_indices_kernel(
     ignore_mask = not (tgt == ignore_index) and tgt_mask
 
     w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
-    if reduction == 1:
-        w_tgt_sum = tl.sum(w_tgt)
-        tl.atomic_add(w_tgt_ptr, w_tgt_sum)
+    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
+    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -67,7 +64,7 @@ def celoss_indices_kernel(
 
     out = (final_sum + final_max - inp_tgt) * w_tgt
     out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out)
+    tl.store(out_ptrs, out, mask=tgt_mask)
 
 
 @libentry()
@@ -139,7 +136,6 @@ def celoss_probability_kernel(
         for d in [1, 4, 16]
     ],
     key=["C", "D"],
-    reset_to_zero=["w_tgt_ptr"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
 def celoss_indices_smooth_kernel(
@@ -152,7 +148,6 @@ def celoss_indices_smooth_kernel(
     label_smoothing,
     C,
     D,
-    reduction: tl.constexpr,
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
@@ -166,11 +161,9 @@ def celoss_indices_smooth_kernel(
 
     ignore_mask = not (tgt == ignore_index) and tgt_mask
 
-    # mean
     w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
-    if reduction == 1:
-        w_tgt_sum = tl.sum(w_tgt)
-        tl.atomic_add(w_tgt_ptr, w_tgt_sum)
+    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
+    tl.store(w_tgt_ptrs, w_tgt, mask=tgt_mask)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
     tmp_sum = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -212,7 +205,7 @@ def celoss_indices_smooth_kernel(
     out = tl.sum(_sum, axis=0)
     out = tl.where(ignore_mask, out, 0)
     out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out)
+    tl.store(out_ptrs, out, mask=tgt_mask)
 
 
 @libentry()
@@ -474,9 +467,10 @@ def sum_and_scale(
     inp_ptr,
     out_ptr,
     N,
-    ifscale: tl.constexpr,  # 0: not scale; 1: scale by scalar; 2: scale by tensor
+    scalebyw: tl.constexpr,
     BLOCK_N: tl.constexpr,
     scale=1.0,
+    mean_num=None,
 ):
     mid_sum = tl.zeros(
         [
@@ -484,18 +478,35 @@ def sum_and_scale(
         ],
         dtype=tl.float32,
     )
-    for off in range(0, N, BLOCK_N):
-        offset = off + tl.arange(0, BLOCK_N)
-        inp_ptrs = inp_ptr + offset
-        mask = offset < N
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
-        mid_sum += inp_vals
-    out_val = tl.sum(mid_sum)
-    if ifscale == 1:
-        out_val /= scale
-    elif ifscale == 2:
-        scale_val = tl.load(scale)
-        out_val /= scale_val
+    if scalebyw:
+        mid_wgt = tl.zeros(
+            [
+                BLOCK_N,
+            ],
+            dtype=tl.float32,
+        )
+        for off in range(0, N, BLOCK_N):
+            offset = off + tl.arange(0, BLOCK_N)
+            inp_ptrs = inp_ptr + offset
+            mask = offset < N
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
+            mid_sum += inp_vals
+            wgt_ptrs = scale + offset
+            wgt_vals = tl.load(wgt_ptrs, mask=mask, other=0.0)
+            mid_wgt += wgt_vals
+        out_val = tl.sum(mid_sum)
+        scale_val = tl.sum(mid_wgt)
+        tl.store(mean_num, scale_val)
+    else:
+        for off in range(0, N, BLOCK_N):
+            offset = off + tl.arange(0, BLOCK_N)
+            inp_ptrs = inp_ptr + offset
+            mask = offset < N
+            inp_vals = tl.load(inp_ptrs, mask=mask, other=0.0)
+            mid_sum += inp_vals
+        out_val = tl.sum(mid_sum)
+        scale_val = scale
+    out_val /= scale_val
     tl.store(out_ptr, out_val)
 
 
@@ -541,7 +552,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 )
         elif label_smoothing == 0:
             # target indices
-            w_tgt = torch.zeros([], dtype=torch.float32, device=inp.device)
+            w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch.cuda.device(inp.device):
                 celoss_indices_kernel[grid](
                     inp,
@@ -552,10 +563,9 @@ class CrossEntropyLoss(torch.autograd.Function):
                     ignore_index,
                     C,
                     D,
-                    reduction,
                 )
         else:
-            w_tgt = torch.zeros([], dtype=torch.float32, device=inp.device)
+            w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch.cuda.device(inp.device):
                 celoss_indices_smooth_kernel[grid](
                     inp,
@@ -567,19 +577,21 @@ class CrossEntropyLoss(torch.autograd.Function):
                     label_smoothing,
                     C,
                     D,
-                    reduction,
                 )
 
         if reduction == 1:  # MEAN
             out_reduce = torch.empty([], dtype=inp.dtype, device=inp.device)
             if tgt.ndim == dim:
-                sum_and_scale[(1,)](out, out_reduce, N * D, 1, scale=N * D)
+                sum_and_scale[(1,)](out, out_reduce, N * D, False, scale=N * D)
             else:
-                sum_and_scale[(1,)](out, out_reduce, N * D, 2, scale=w_tgt)
+                wgt_sum = torch.empty([], dtype=torch.float32, device=inp.device)
+                sum_and_scale[(1,)](
+                    out, out_reduce, N * D, True, scale=w_tgt, mean_num=wgt_sum
+                )
             out = out_reduce
         elif reduction == 2:  # SUM
             out_reduce = torch.empty([], dtype=inp.dtype, device=inp.device)
-            sum_and_scale[(1,)](out, out_reduce, N * D, 0)
+            sum_and_scale[(1,)](out, out_reduce, N * D, False)
             out = out_reduce
 
         if inp.requires_grad:
@@ -592,7 +604,7 @@ class CrossEntropyLoss(torch.autograd.Function):
             ctx.shape = shape
             ctx.mean_num = 1
             if reduction == 1:
-                ctx.mean_num = N * D if tgt.ndim == dim else w_tgt.item()
+                ctx.mean_num = N * D if tgt.ndim == dim else wgt_sum
 
         return out.to(inp.dtype)
 
@@ -606,7 +618,11 @@ class CrossEntropyLoss(torch.autograd.Function):
         D = ctx.D
         ignore_index = ctx.ignore_index
         label_smoothing = ctx.label_smoothing
-        mean_num = 1 / ctx.mean_num
+        mean_num = (
+            1 / ctx.mean_num.item()
+            if isinstance(ctx.mean_num, torch.Tensor)
+            else 1 / ctx.mean_num
+        )
         shape = ctx.shape
 
         out_grad = out_grad.broadcast_to(shape).contiguous()
