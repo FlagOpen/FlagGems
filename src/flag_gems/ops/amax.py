@@ -5,9 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils.shape_utils import can_use_int32_index
-from .. import runtime
+
 
 @libentry()
 @triton.jit
@@ -19,6 +20,7 @@ def amax_kernel_1(
     INT64_INDEX: tl.constexpr = False,
 ):
     pid = tl.program_id(0)
+
     if INT64_INDEX:
         pid = pid.to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)

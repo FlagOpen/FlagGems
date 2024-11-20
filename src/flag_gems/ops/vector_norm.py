@@ -17,6 +17,7 @@ except ImportError:
 
 from .. import runtime
 
+
 @libentry()
 @triton.autotune(configs=runtime.get_op_tune_config("vector_norm"), key=["M", "N"])
 @triton.jit

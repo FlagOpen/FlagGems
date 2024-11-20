@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
 from .. import runtime
+from ..utils import libentry
+
 
 def heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0

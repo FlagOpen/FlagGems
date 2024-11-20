@@ -5,8 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
 from .. import runtime
+from ..utils import libentry
+
 
 @triton.jit
 def reduce_mul(a, b):

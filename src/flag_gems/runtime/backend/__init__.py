@@ -1,9 +1,10 @@
 import ast
-import os
-# from .. import error
-import sys
 import importlib
-from ..commom_utils import vendors_map, AUTOGRAD, vendors, Autograd
+import os
+import sys
+
+from ..commom_utils import AUTOGRAD, Autograd, vendors, vendors_map
+
 vendors = vendors
 AUTOGRAD = AUTOGRAD
 Autograd = Autograd
@@ -11,7 +12,6 @@ vendor_module_name = None
 vendor_module = None
 device_name = None
 device_fn_cache = {}
-
 
 
 def get_codegen_result(code, result_key):
@@ -45,25 +45,28 @@ def get_vendor_module(vendor_name, query=False):
         sys.path.append(current_dir_path)
         return importlib.import_module(vendor_name)
 
-    if query == True:
+    if query:
         return get_module(vendor_name)
-    
+
     global vendor_module_name, vendor_module
     if vendor_module_name is None:
         vendor_module_name = vendor_name
-        vendor_module = get_module("_"+vendor_name)
+        vendor_module = get_module("_" + vendor_name)
+
 
 def get_device_guard_fn(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
     return vendor_module.device.get_torch_device_guard_fn()
 
+
 def get_vendor_info(vendor_name=None, query=False):
-    if query == True:
+    if query:
         return get_vendor_module(vendor_name, query).device.get_vendor_info()
     global vendor_module
     get_vendor_module(vendor_name)
     return vendor_module.device.get_vendor_info()
+
 
 def get_vendor_infos() -> list:
     infos = []
@@ -72,9 +75,10 @@ def get_vendor_infos() -> list:
         try:
             single_info = get_vendor_info(vendor_name, query=True)
             infos.append(single_info + (vendors_map[single_info[0]],))
-        except Exception as e:
+        except Exception as e:  # noqa: F841
             pass
     return infos
+
 
 def get_curent_device_extend_op(vendor_name=None) -> dict:
     global vendor_module
@@ -85,20 +89,21 @@ def get_curent_device_extend_op(vendor_name=None) -> dict:
         configs[item[0]] = item
     return configs
 
+
 def get_curent_device_unused_op(vendor_name=None) -> list:
     global vendor_module
     get_vendor_module(vendor_name)
-    return  vendor_module.Op.get_unused_op()
+    return vendor_module.Op.get_unused_op()
 
 
 def get_tune_config(vendor_name=None) -> dict:
     global vendor_module
     get_vendor_module(vendor_name)
-    return  vendor_module.config.get_tune_config()
+    return vendor_module.config.get_tune_config()
+
 
 def device_guard_fn(vendor_name=None):
     return get_device_guard_fn(vendor_name)
 
 
 __all__ = ["*"]
-

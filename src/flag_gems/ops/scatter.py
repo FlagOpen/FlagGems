@@ -36,7 +36,9 @@ def generate_scatter_kernel(
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline('@triton.autotune(configs=runtime.get_op_tune_config("scatter"), key=["M", "N"])')
+    code.writeline(
+        '@triton.autotune(configs=runtime.get_op_tune_config("scatter"), key=["M", "N"])'
+    )
     code.writeline("@triton.jit")
 
     # signature

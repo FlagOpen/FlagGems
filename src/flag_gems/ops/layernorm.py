@@ -5,9 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils.type_utils import get_accumulator_dtype
-from .. import runtime
+
 
 @triton.jit
 def prev_multiple_of(a, b):

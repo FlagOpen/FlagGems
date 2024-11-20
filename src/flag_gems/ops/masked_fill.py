@@ -4,13 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import broadcastable_to, libentry
 
-from .. import runtime
 
 @libentry()
 @triton.autotune(configs=runtime.get_op_tune_config("masked_fill"), key=["N"])
-
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)

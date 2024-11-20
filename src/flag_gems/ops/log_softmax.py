@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
-from ..import runtime
+
 
 def heur_block_n(args):
     return triton.next_power_of_2(args["N"])

@@ -18,14 +18,23 @@ class Config:
     def get_vendor_tune_config(self):
         return backend.get_tune_config(device.device_instance.vendor_name)
 
-    def _gen_impl(self, gen_config, param_config, iteration_keys, current_config, current_iteration):
+    def _gen_impl(
+        self,
+        gen_config,
+        param_config,
+        iteration_keys,
+        current_config,
+        current_iteration,
+    ):
         if current_iteration == len(iteration_keys):
-            return [triton.Config(
-                current_config["META"],
-                num_warps=current_config["num_warps"],
-                num_stages=current_config["num_stages"],
-                num_ctas=current_config["num_ctas"],
-            )]
+            return [
+                triton.Config(
+                    current_config["META"],
+                    num_warps=current_config["num_warps"],
+                    num_stages=current_config["num_stages"],
+                    num_ctas=current_config["num_ctas"],
+                )
+            ]
         current_config_list = []
         param_key = iteration_keys[current_iteration]
         if param_key in param_config["META"]:
@@ -41,25 +50,36 @@ class Config:
                 current_config["META"][param_key] = single_value
             else:
                 current_config[param_key] = single_value
-            config_item = self._gen_impl(gen_config, param_config, iteration_keys, current_config, current_iteration + 1)
+            config_item = self._gen_impl(
+                gen_config,
+                param_config,
+                iteration_keys,
+                current_config,
+                current_iteration + 1,
+            )
             current_config_list += config_item
         return current_config_list
-
 
     def to_gen_config(self, gen_config):
         param_config = gen_config["param_map"]
         meta_config = param_config["META"]
-        iteration_keys = (list(meta_config) + list(param_config))
-        iteration_keys.remove('META')
-        current_config = {"META":{}}
+        iteration_keys = list(meta_config) + list(param_config)
+        iteration_keys.remove("META")
+        current_config = {"META": {}}
         current_config.update(self.triton_config_default)
         iteration_count_init = 0
-        return self._gen_impl(gen_config, param_config, iteration_keys, current_config, iteration_count_init)
+        return self._gen_impl(
+            gen_config,
+            param_config,
+            iteration_keys,
+            current_config,
+            iteration_count_init,
+        )
 
     def get_op_tune_config(self, op_name):
         if op_name in self.loaded_config:
             return self.loaded_config[op_name]
-        
+
         current_op_configs = self.config[op_name]
         configs = []
         if len(current_op_configs) == 0:
@@ -84,4 +104,3 @@ class Config:
                 )
             )
         return configs
-    

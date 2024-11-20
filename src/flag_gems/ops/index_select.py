@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
 from .. import runtime
+from ..utils import dim_compress, libentry
+
 
 @libentry()
 @triton.autotune(configs=runtime.get_op_tune_config("index_select"), key=["M", "N"])

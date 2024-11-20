@@ -5,8 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
 from .. import runtime
+from ..utils import dim_compress, libentry
+
 
 @libentry()
 @triton.jit
@@ -50,7 +51,6 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     mid_val = tl.load(mid_ptrs, mask=mask, other=0).to(cdtype)
     sum_val = tl.sum(mid_val)
     tl.store(out, sum_val)
-
 
 
 @libentry()

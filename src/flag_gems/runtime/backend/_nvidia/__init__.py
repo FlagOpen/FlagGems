@@ -1,10 +1,12 @@
-from .ops import *  # noqa: F403
-import torch
-import os
 import json
+import os
+
+import torch
+
+from .ops import *  # noqa: F403
+
 
 class device:
-
     @staticmethod
     def get_device_from_sys_cmd():
         return "nvidia-smi"
@@ -25,14 +27,16 @@ class device:
     def get_torch_device_guard_fn():
         return torch.cuda.device
 
+
 class Op:
     @staticmethod
     def get_register_op_config():
         return (("add.Tensor", add, False),)
-    
+
     @staticmethod
     def get_unused_op():
         return ("cumsum", "cos")
+
 
 class config:
     @staticmethod
@@ -42,5 +46,6 @@ class config:
         with open(file_path, file_mode) as file:
             config = json.load(file)
         return config
+
 
 __all__ = ["device", "Op", "config"]

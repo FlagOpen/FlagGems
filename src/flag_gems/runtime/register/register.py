@@ -1,8 +1,11 @@
 from typing import Optional
+
 import torch
+
 from .. import backend, device, error
 
 aten_lib = torch.library.Library("aten", "IMPL")
+
 
 class Register:
     def __init__(
@@ -32,7 +35,6 @@ class Register:
             self._set_info(config)
             self._set_info(self.vendor_extend_configs.values())
 
-
     def _check_backend(self):
         is_support = self.device.vendor_name in self.vendor_list
         if is_support is False:
@@ -42,16 +44,12 @@ class Register:
 
     def get_vendor_extend_op(self):
         if self.device.vendor != backend.vendors.NVIDIA:
-            return backend.get_curent_device_extend_op(
-                self.device.vendor_name
-            )
+            return backend.get_curent_device_extend_op(self.device.vendor_name)
         return {}
 
     def get_vendor_unused_op(self):
         if self.device.vendor != backend.vendors.NVIDIA:
-            return backend.get_curent_device_unused_op(
-                self.device.vendor_name
-            )
+            return backend.get_curent_device_unused_op(self.device.vendor_name)
         return {}
 
     def __pass_register_cond(self, key):
@@ -62,9 +60,13 @@ class Register:
             if key in self.vendor_extend_configs:
                 single_item = self.vendor_extend_configs[key]
                 _, fn, has_backward = single_item
-        device_key = (self.reg_bac_key if has_backward is backend.Autograd.enable else self.reg_key)
+        device_key = (
+            self.reg_bac_key
+            if has_backward is backend.Autograd.enable
+            else self.reg_key
+        )
         self.lib.impl(key, fn, device_key)
-        
+
     def close(self):
         self.lib
 
@@ -72,7 +74,7 @@ class Register:
         try:
             for key, func, has_backward in config:
                 # if self.__pass_register_cond(key):
-                    self.registerImpl(key, func, has_backward)
+                self.registerImpl(key, func, has_backward)
 
         except Exception as e:
             error.PASS(e)

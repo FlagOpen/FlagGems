@@ -3,8 +3,8 @@ import threading
 
 import torch
 import triton
-from .. import runtime
 
+from .. import runtime
 
 DEVICE_COUNT = runtime.get_device_conut()
 

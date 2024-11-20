@@ -4,11 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import broadcastable, libentry
 from .. import runtime
+from ..utils import broadcastable, libentry
+
 
 @libentry()
-@triton.autotune(configs=runtime.get_op_tune_config("masked_select"), key=["n_elements"])
+@triton.autotune(
+    configs=runtime.get_op_tune_config("masked_select"), key=["n_elements"]
+)
 @triton.jit
 def masked_select_kernel(
     inp_ptr,

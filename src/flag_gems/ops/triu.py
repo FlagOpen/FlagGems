@@ -4,9 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 from ..utils.shape_utils import can_use_int32_index
-from .. import runtime
 
 
 @libentry()
@@ -41,7 +41,10 @@ def triu_kernel(
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_op_tune_config("triu_batch"), key=["batch", "MN", "N", "diagonal"])
+@triton.autotune(
+    configs=runtime.get_op_tune_config("triu_batch"),
+    key=["batch", "MN", "N", "diagonal"],
+)
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,

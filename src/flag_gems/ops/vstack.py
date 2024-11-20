@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
 from .. import runtime
+from ..utils import libentry
+
 
 @libentry()
 @triton.autotune(

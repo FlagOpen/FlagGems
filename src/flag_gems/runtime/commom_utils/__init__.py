@@ -1,6 +1,8 @@
 from enum import Enum
 
 AUTOGRAD = "Autograd"
+
+
 class Autograd(Enum):
     enable = True
     unable = False

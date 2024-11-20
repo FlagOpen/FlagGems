@@ -4,8 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
-from ..import runtime
+
 MAX_TILE_K = 8192
 NUM_SMS = torch.cuda.get_device_properties(
     torch.cuda.current_device()

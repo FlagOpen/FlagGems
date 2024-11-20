@@ -37,7 +37,9 @@ def generate_gather_kernel(
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline('@triton.autotune(configs=runtime.get_op_tune_config("gather"), key=["M", "N"])')
+    code.writeline(
+        '@triton.autotune(configs=runtime.get_op_tune_config("gather"), key=["M", "N"])'
+    )
     code.writeline("@triton.jit")
 
     # signature
