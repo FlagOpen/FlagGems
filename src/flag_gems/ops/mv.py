@@ -12,7 +12,7 @@ def heur_block_n(args):
 
 
 def heur_block_m(args):
-    return args["M"]
+    return triton.next_power_of_2(args["M"])
 
 
 @libentry()

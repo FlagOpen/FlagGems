@@ -871,7 +871,7 @@ class WrapperGenerator:
             code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
             code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
             code.writeline(
-                "tile_size = triton.cdiv(num_tasks, num_tiles) # XPU BLOCK_NUM"
+                "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
             )
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
@@ -997,6 +997,7 @@ class WrapperGenerator:
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
+                code.writeline("buffer_size_limit=512,")
             code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):

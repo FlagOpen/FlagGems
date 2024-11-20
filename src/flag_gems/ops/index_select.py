@@ -23,7 +23,7 @@ def heur_m_block_size(args):
 
 
 def heur_n_block_size(args):
-    return args["N"]
+    return 64 # args["N"]
 
 
 @libentry()
