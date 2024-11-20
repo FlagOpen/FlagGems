@@ -23,7 +23,7 @@ jobs:
     concurrency:
       group: jiuding-coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    runs-on: [self-hosted, jiuding]
+    runs-on: jiuding
     needs: [jiuding-op-unit-test, jiuding-model-test]
     container:
       image: localhost:5000/flag-gems-ci:v1.0

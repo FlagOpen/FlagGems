@@ -8,7 +8,7 @@ on:
 
 jobs:
   jiuding-unit-test:
-    runs-on: [self-hosted, jiuding]
+    runs-on: jiuding
     # container:
     #   image: localhost:5000/flag-gems-ci:v1.0
     #   ports:

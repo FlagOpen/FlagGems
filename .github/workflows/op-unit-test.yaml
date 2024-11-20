@@ -8,7 +8,7 @@ on:
 
 jobs:
   container-unit-test:
-    runs-on: [self-hosted, docker]
+    runs-on: jiuding
     container:
       image: localhost:5000/flag-gems-ci:v1.0
       ports:

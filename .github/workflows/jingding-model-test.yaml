@@ -8,7 +8,7 @@ on:
 
 jobs:
   jiuding-model-test:
-    runs-on: [self-hosted, jiuding]
+    runs-on: jiuding
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
