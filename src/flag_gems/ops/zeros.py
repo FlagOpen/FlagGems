@@ -31,5 +31,8 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch.cuda.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        if N <= 64 * 64:
+            zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        else:
+            zeros_kernel[grid_fn](out, N, BLOCK_SIZE=8192)
     return out

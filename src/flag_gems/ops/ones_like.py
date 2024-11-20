@@ -18,5 +18,8 @@ def ones_like(
     N = x.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch.cuda.device(x.device):
-        ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        if N <= 64 * 64:
+            ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        else:
+            ones_kernel[grid_fn](out, N, BLOCK_SIZE=8192)
     return out

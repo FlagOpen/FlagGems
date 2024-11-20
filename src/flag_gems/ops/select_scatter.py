@@ -1,3 +1,4 @@
+import builtins
 import logging
 
 import torch
@@ -20,7 +21,7 @@ def heur_m_block_size(args):
 
 
 def heur_n_block_size(args):
-    return args["N"]
+    return builtins.min(8192, args["N"])
 
 
 @libentry()
