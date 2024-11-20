@@ -5,8 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
 from .. import runtime
+from ..utils import dim_compress, libentry
 
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if any elements in input evaluate to non-zero value

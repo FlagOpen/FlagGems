@@ -4,8 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
 from .. import runtime
+from ..utils import libentry, offsetCalculator, restride_dim
 
 
 @libentry()
