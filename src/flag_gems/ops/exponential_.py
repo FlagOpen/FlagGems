@@ -73,7 +73,7 @@ def fused_exponential_kernel(
         y2 = transform_exponential(f2, lambd, eps)
         y3 = transform_exponential(f3, lambd, eps)
         UNROLL = 4
-        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
+        start = tl.program_id(0) * BLOCK * UNROLL
         off_0 = start + tl.arange(0, BLOCK)
         off_1 = off_0 + BLOCK
         off_2 = off_1 + BLOCK
