@@ -4,7 +4,7 @@ import threading
 import torch
 import triton
 
-DEVICE_COUNT = torch.cuda.device_count()
+DEVICE_COUNT = torch.musa.device_count()
 
 
 class LibEntry(triton.KernelInterface):
@@ -90,7 +90,7 @@ class LibEntry(triton.KernelInterface):
                 k_args.append(val)
 
         entry_key = self.key(spec_args, dns_args, const_args)
-        device = torch.cuda.current_device()
+        device = torch.musa.current_device()
         cache = self.kernel_cache[device]
         while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on

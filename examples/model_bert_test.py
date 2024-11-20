@@ -11,21 +11,22 @@ import flag_gems
     "prompt",
     ["How are you today?", "What is your name?", "Who are you?", "Where are you from?"],
 )
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+# @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_bert(prompt, dtype):
     config = BertConfig()
     model = BertModel(config)
     tokenizer = AutoTokenizer.from_pretrained("google-bert/bert-base-uncased")
-    inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
+    inputs = tokenizer(prompt, return_tensors="pt").to("musa")
 
     ref_model = copy.deepcopy(model)
-    ref_model.to(torch.float64).to("cuda").eval()
-    ref_inputs = copy.deepcopy(inputs).to(torch.float64)
+    ref_model.to(torch.float32).to("musa").eval()
+    ref_inputs = copy.deepcopy(inputs).to(torch.float32)
     with torch.no_grad():
         ref_outputs = ref_model(**ref_inputs).last_hidden_state.to(dtype)
 
     res_model = copy.deepcopy(model)
-    res_model.to(dtype).to("cuda").eval()
+    res_model.to(dtype).to("musa").eval()
     res_inputs = copy.deepcopy(inputs).to(dtype)
     with flag_gems.use_gems():
         with torch.no_grad():

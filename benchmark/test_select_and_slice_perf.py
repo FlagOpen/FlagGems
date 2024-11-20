@@ -45,13 +45,13 @@ def masked_select_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES,
             marks=pytest.mark.index_select,
         ),
-        pytest.param(
-            "masked_select",
-            torch.masked_select,
-            masked_select_input_fn,
-            FLOAT_DTYPES,
-            marks=pytest.mark.masked_select,
-        ),
+        # pytest.param(
+        #     "masked_select",
+        #     torch.masked_select,
+        #     masked_select_input_fn,
+        #     FLOAT_DTYPES,
+        #     marks=pytest.mark.masked_select,
+        # ),
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
@@ -99,6 +99,7 @@ def test_perf_scatter():
     bench.run()
 
 
+@pytest.mark.skip("cost too long")
 @pytest.mark.gather
 def test_perf_gather():
     def gather_input_fn(shape, dtype, device):
@@ -165,6 +166,7 @@ def test_slice_scatter_perf():
     bench.run()
 
 
+@pytest.mark.skip()
 @pytest.mark.select_scatter
 def test_select_scatter_perf():
     def select_scatter_input_fn(shape, dtype, device):

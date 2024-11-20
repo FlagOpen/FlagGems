@@ -18,5 +18,5 @@ def maximum_kernel(X, Y):
 
 def maximum(X, Y):
     logging.debug("GEMS MAXIMUM")
-    assert X.is_cuda and Y.is_cuda
+    assert X.is_musa and Y.is_musa
     return maximum_kernel(X, Y)

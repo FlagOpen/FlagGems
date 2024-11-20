@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import div_rn, div_rz, fmod, trunc
+    from triton.language.extra.musa.libdevice import div_rn, div_rz, fmod, trunc
 except ImportError:
     try:
         from triton.language.math import div_rn, div_rz, fmod, trunc

@@ -65,7 +65,7 @@ def upsample_nearest2d(
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
     logging.debug("GEMS UPSAMPLE NEAREST2D")
-    assert input.is_cuda
+    assert input.is_musa
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
     OH, OW = output_size

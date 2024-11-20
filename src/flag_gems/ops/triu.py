@@ -101,7 +101,7 @@ def triu(A, diagonal=0):
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     use_int64_index = not can_use_int32_index(A)
     M, N = A.shape[-2:]
-    with torch.cuda.device(A.device):
+    with torch.musa.device(A.device):
         if len(A.shape) == 2:
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
             triu_kernel[grid](A, out, M, N, diagonal, INT64_INDEX=use_int64_index)

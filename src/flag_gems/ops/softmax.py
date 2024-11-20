@@ -7,8 +7,8 @@ import triton.language as tl
 from ..utils import libentry
 
 MAX_TILE_K = 8192
-NUM_SMS = torch.cuda.get_device_properties(
-    torch.cuda.current_device()
+NUM_SMS = torch.musa.get_device_properties(
+    torch.musa.current_device()
 ).multi_processor_count
 
 
@@ -40,7 +40,8 @@ def heur_num_warps_non_inner(args):
     elif tile_size < 4096:
         return 8
     else:
-        return 16
+        # num_warps cannot be larger than 8 because warp size is 128 on mtgpu.
+        return 8
 
 
 @triton.heuristics(
@@ -135,7 +136,8 @@ def heur_num_warps_inner(args):
     elif tile_size < 4096:
         return 8
     else:
-        return 16
+        # num_warps cannot be larger than 8 because warp size is 128 on mtgpu.
+        return 8
 
 
 @triton.heuristics(
@@ -383,7 +385,7 @@ class Softmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N  # post_dim
 
-        with torch.cuda.device(inp.device):
+        with torch.musa.device(inp.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_kernel_non_inner[grid](
@@ -422,7 +424,7 @@ class Softmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch.cuda.device(in_grad.device):
+        with torch.musa.device(in_grad.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_backward_kernel_non_inner[grid](

@@ -486,7 +486,7 @@ def _upsample_bicubic2d_aa(
     scales_w: Optional[float] = None,
 ):
     logging.debug("GEMS UPSAMPLE BICUBIC2D AA")
-    assert input.is_cuda
+    assert input.is_musa
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
 

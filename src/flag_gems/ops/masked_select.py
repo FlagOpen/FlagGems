@@ -59,6 +59,6 @@ def masked_select(inp, mask):
 
     n_elements = inp.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch.cuda.device(inp.device):
+    with torch.musa.device(inp.device):
         masked_select_kernel[grid](inp, mask_flattened, prefix_sum, out, n_elements)
     return out

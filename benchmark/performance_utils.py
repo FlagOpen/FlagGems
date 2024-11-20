@@ -24,11 +24,11 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch.backends.cuda.matmul.allow_tf32 = False
+torch.backends.mudnn.allow_tf32 = False
 
 
 class Benchmark:
-    device: str = "cuda"
+    device: str = "musa"
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
@@ -191,15 +191,15 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch.cuda.synchronize()
+            torch.musa.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch.cuda.synchronize()
+            torch.musa.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
-            latency = triton.testing.do_bench(
+            latency = triton.musa_testing.do_bench(
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
@@ -302,7 +302,7 @@ class Benchmark:
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else "cuda",
+                mode="cpu" if Config.cpu_mode else "musa",
                 result=metrics,
             )
             print(result)

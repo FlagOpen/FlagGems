@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import exp2
+    from triton.language.extra.musa.libdevice import exp2
 except ImportError:
     try:
         from triton.language.math import exp2

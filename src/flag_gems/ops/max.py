@@ -46,8 +46,8 @@ def heur_block_n(args):
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
+        # triton.Config({"BLOCK_M": 16}, num_warps=8),
+        # triton.Config({"BLOCK_M": 32}, num_warps=8),
     ],
     key=[
         "M",
@@ -81,7 +81,7 @@ def max_kernel(
     mask1 = m_offset < M
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
     result_value, result_index = tl.max(inp_vals, axis=1, return_indices=True)
 
     out_value_ptrs = out_value + offset_index
@@ -103,7 +103,7 @@ def max(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch.musa.device(inp.device):
         max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
@@ -133,7 +133,7 @@ def max_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch.musa.device(inp.device):
         max_kernel[grid](inp, out_value, out_index, M, N, K)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)

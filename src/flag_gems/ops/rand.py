@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import philox_musa_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
 
@@ -21,7 +21,8 @@ def heur_num_warps(args):
     elif args["N"] <= 1024:
         return 8
     else:
-        return 16
+        # num_warps cannot be larger than 8 because warp size is 128 on mtgpu.
+        return 8
 
 
 @triton.heuristics(
@@ -68,7 +69,7 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device("cuda")
+        device = torch.device("musa")
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
@@ -76,7 +77,7 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(device):
+    philox_seed, philox_offset = philox_musa_seed_offset(increment)
+    with torch.musa.device(device):
         rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

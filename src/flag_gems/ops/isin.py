@@ -104,7 +104,7 @@ def isin_by_comparation(
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch.cuda.device(in0_ravel.device.index):
+    with torch.musa.device(in0_ravel.device.index):
         isin_by_comparation_kernel[grid](
             in0_ravel,
             in1_ravel,  # in
@@ -215,17 +215,17 @@ def isin_by_search(
     elif M <= 4194304:  # 2 ** 22 = 1024 * 4096
         _, BLOCK_M, num_warps = launch_arg(None, 1024, M, 8)
     elif M <= 8388608:  # 2 ** 23 = 1024 * 8192
-        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
+        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 8)
     elif M <= 268435456:  # 2 ** 28 = 1024 * 262144
-        _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 32)
+        _, BLOCK_M, num_warps = launch_arg(None, 4096, M, 8)
     else:
-        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
+        _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 8)
     log_n = int(math.log2(N)) + 1
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch.cuda.device(in0_ravel.device.index):
+    with torch.musa.device(in0_ravel.device.index):
         isin_by_search_kernel[grid](
             in0_ravel,
             in1_ravel,  # in

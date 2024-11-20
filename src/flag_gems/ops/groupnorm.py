@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import libentry
 
 try:
-    from triton.language.extra.cuda.libdevice import rsqrt
+    from triton.language.extra.musa.libdevice import rsqrt
 except ImportError:
     try:
         from triton.language.math import rsqrt
@@ -184,7 +184,7 @@ class GroupNorm(torch.autograd.Function):
         rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
         grid = (N * num_groups,)
 
-        with torch.cuda.device(x.device):
+        with torch.musa.device(x.device):
             group_norm_kernel[grid](
                 x,
                 y,
@@ -222,7 +222,7 @@ class GroupNorm(torch.autograd.Function):
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
         grid = (N * num_groups,)
-        with torch.cuda.device(x.device):
+        with torch.musa.device(x.device):
             group_norm_backward_kernel[grid](
                 y_grad,
                 x,

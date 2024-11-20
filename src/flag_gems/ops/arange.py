@@ -42,7 +42,7 @@ def arange_start(
 
     if device is None:
         device = torch.device(
-            "cuda"
+            "musa"
         )  # Note(Zhengzekang): Torch default value is CPU, but triton is target to GPU.
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)

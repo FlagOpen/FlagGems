@@ -70,7 +70,7 @@ class SkipLayerNorm(torch.autograd.Function):
         bias = bias.contiguous()
         y = torch.empty_like(x)
 
-        with torch.cuda.device(x.device):
+        with torch.musa.device(x.device):
             skip_layer_norm_kernel[M,](
                 y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
             )

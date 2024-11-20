@@ -8,7 +8,7 @@ import triton.language as tl
 from ..utils import dim_compress, libentry
 
 try:
-    from triton.language.extra.cuda.libdevice import pow
+    from triton.language.extra.musa.libdevice import pow
 except ImportError:
     try:
         from triton.language.math import pow
@@ -272,7 +272,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
-    with torch.cuda.device(x.device):
+    with torch.musa.device(x.device):
         if dim is None or len(dim) == x.ndim:
             dim = list(range(x.ndim))
             shape = [1] * x.ndim
