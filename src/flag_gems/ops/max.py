@@ -41,9 +41,12 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
+
 def heur_n_block_size(args):
     import builtins
+
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
 
 @libentry()
 @triton.heuristics(
@@ -63,24 +66,27 @@ def max_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-
     # m_offset = pidX * BLOCK_M + tl.arange(0, BLOCK_M)
     # offset = m_offset * N * K + tl.arange(0, BLOCK_N) * K + pidY
     # set offset
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
+    result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
+    result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
+    for i in range(0, N, BLOCK_N):
+        n_offset = i + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        # set mask
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+        update_mask = max_value > result_value
+        result_value = tl.where(update_mask, max_value, result_value)
+        result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    # inp_vals = tl.where(mask, inp_vals, -float("inf"))
-    result_value, result_index = tl.max(inp_vals, axis=1, return_indices=True)
-
+    offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
     out_index_ptrs = out_index + offset_index
 
