@@ -56,8 +56,6 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if op_name == "softmax":
-        pytest.skip("[TritonXPU] softmax tl.reduce(axis=0) Unsupported")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
