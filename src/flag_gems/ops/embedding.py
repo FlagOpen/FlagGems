@@ -5,29 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from flag_gems.utils.shape_utils import volume
+from ..utils import libentry, TOTAL_CORE_NUM
 
 
-@libentry()
-@triton.jit
-def embedding_kernel(
-    out_ptr,  # pointer to the output
-    in_ptr,  # pointer to the input
-    weight_ptr,  # pointer to the weights
-    N: tl.constexpr,  # number of columns in X
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    out_ptr += pid * N
-    in_ptr += pid
-
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-
-    row_idx = tl.load(in_ptr)
-    weight_ptr += row_idx * N
-    embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
-    tl.store(out_ptr + cols, embedding_weight, mask)
 
 
 @libentry()
@@ -111,18 +92,18 @@ class Embedding(torch.autograd.Function):
         logging.debug("GEMS EMBEDDING FORWARD")
         assert not sparse, "Currently do not support sparse format"
 
-        M = math.prod(indices.shape)
-        N = weight.shape[-1]
-
-        BLOCK_SIZE = triton.next_power_of_2(N)
         indices = indices.contiguous()
         weight = weight.contiguous()
-        output = torch.empty(
-            (*indices.shape, N), device=indices.device, dtype=weight.dtype
-        )
 
-        with torch.cuda.device(weight.device):
-            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+        from .index_select import index_select
+        output = index_select(weight, 0, indices.flatten())
+        output = output.reshape(indices.shape + (-1,))
+
+        if padding_idx is not None and padding_idx < 0:
+            padding_idx = None
+
+        M = math.prod(indices.shape)
+        N = weight.shape[-1]
 
         ctx.M = M
         ctx.N = N

@@ -7,27 +7,30 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import erf, exp, pow, tanh
+    from triton.language.extra.mlu.libdevice import fast_erf, pow, fast_tanh, exp
 except ImportError:
     try:
-        from triton.language.math import erf, exp, pow, tanh
+        from triton.language.math import erf as fast_erf
+        from triton.language.math import exp, pow
+        from triton.language.math import tanh as fast_tanh
     except ImportError:
-        from triton.language.libdevice import erf, exp, pow, tanh
+        from triton.language.libdevice import fast_erf, pow, fast_tanh, exp
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_none(x):
-    scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    output = 0.5 * x * (1 + erf(x * scale))
+    scale: tl.constexpr = 0.7071067811
+    output = 0.5 * x * (1 + fast_erf(x * scale))
     return output
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_tanh(x):
+    x_f32 = x.to(tl.float32)
     output = (
-        0.5 * x * (1 + tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
+        0.5 * x * (1 + fast_tanh(x * 0.79788456 * (1 + 0.044715 * x_f32 * x_f32)))
     )
     return output
 
@@ -38,9 +41,10 @@ def gelu_backward_none(x, dy):
     scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
     scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
     x_fp32 = x.to(tl.float32)
+    x_sqrt = scale1 * x_fp32
     dydx = (
-        scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2))
-        + 0.5 * erf(scale1 * x_fp32)
+        scale2 * x_fp32 * exp(-x_sqrt * x_sqrt)
+        + 0.5 * fast_erf(x_sqrt)
         + 0.5
     )
     dx = dydx * dy
@@ -51,11 +55,15 @@ def gelu_backward_none(x, dy):
 @triton.jit
 def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)
-    # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x * (1 + 0.044715 * pow(x_fp32, 2)))
-    dydx = 0.5 * x * (
-        (1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
-    ) + 0.5 * (1 + tanh_out)
+    c1 = 0.79788456 # math.sqrt(2 / math.pi)
+    c2 = 0.044715
+    # z = c1 * (x + c2 * x**3)
+    tanh_out = fast_tanh(c1 * x_fp32 * (1 + c2 * x_fp32 * x_fp32))
+    # dz_dx = c1 * (1 + 3 * c2 * x * x)
+    # 0.1070322243 = c1 * 3 *c2
+    dydx = 0.5 * (x * (
+        (1 - tanh_out * tanh_out) * (c1 + 0.1070322243 * x_fp32 * x_fp32)
+    ) + (1 + tanh_out))
     dx = dydx * dy
     return dx
 

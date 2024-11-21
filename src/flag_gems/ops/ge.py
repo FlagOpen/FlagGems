@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def ge_func(x, y):
-    return x.to(tl.float32) >= y
+    return x >= y
 
 
 def ge(A, B):
@@ -20,7 +20,7 @@ def ge(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def ge_func_scalar(x, y):
-    return x.to(tl.float32) >= y
+    return x >= y
 
 
 def ge_scalar(A, B):

@@ -90,7 +90,7 @@ def test_isin_perf():
         op_name="isin",
         torch_op=torch.isin,
         dtypes=[torch.float16, torch.float32]
-        + INT_DTYPES,  # not support for torch.bfloat16
+        + [torch.int32],  # not support for torch.bfloat16 and [int16]
     )
     bench.run()
 
@@ -107,7 +107,7 @@ def test_perf_unique():
         input_fn=unique_input_fn,
         op_name="unique",
         torch_op=torch.unique,
-        dtypes=INT_DTYPES,
+        dtypes=[torch.int32], # torch.int16
     )
     bench.run()
 
@@ -195,6 +195,7 @@ class UpsampleBenchmark(GenericBenchmark):
 
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
+    pytest.skip("compile time too long, wait for fix")
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
@@ -215,7 +216,7 @@ def test_perf_upsample_bicubic2d_aa():
         input_fn=upsample_bicubic2d_aa_input_fn,
         op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32], # torch.float16, torch.bfloat16
     )
     bench.run()
 

@@ -88,7 +88,7 @@ def weight_norm_interface_input_fn(shape, dtype, device):
 
 def weight_norm_input_fn(shape, dtype, device):
     v = torch.randn(shape, dtype=dtype, device=device)
-    g = torch.randn(shape, dtype=dtype, device=device)
+    g = torch.randn(shape[:1] + (1,) * (len(shape)-1), dtype=dtype, device=device)
     yield v, g, 0
 
 

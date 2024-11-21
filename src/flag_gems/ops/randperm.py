@@ -151,7 +151,7 @@ def digit_hist_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=[triton.Config({}, num_warps=w) for w in [1]],
     key=["n_elements"],
 )
 @triton.jit
@@ -455,7 +455,7 @@ def randperm(
         keymax = _MAX_INT64_VAL
 
     rand_key = torch.randint(
-        low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
-    )
+        low=keymin, high=keymax, size=[n], dtype=key_dtype, device="cpu"
+    ).to(device)
     perm_range = sort_by_key(rand_key, in_range, valid_bits)
     return perm_range

@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def le_func(x, y):
-    return x.to(tl.float32) <= y
+    return x <= y
 
 
 def le(A, B):
@@ -20,7 +20,7 @@ def le(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def le_func_scalar(x, y):
-    return x.to(tl.float32) <= y
+    return x <= y
 
 
 def le_scalar(A, B):

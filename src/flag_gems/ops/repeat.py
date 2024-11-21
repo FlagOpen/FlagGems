@@ -8,6 +8,10 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
+import triton
+import triton.language as tl
+from flag_gems.utils import libentry, TOTAL_CORE_NUM
+
 
 # --------------------------- repeat wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -56,7 +60,7 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("from triton import language as tl")
     code.newline()
     code.writeline("from flag_gems.utils.shape_utils import volume")
-    code.writeline("from flag_gems.utils.libentry import libentry")
+    code.writeline("from flag_gems.utils import libentry, MAX_GRID_SIZE_X")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
     code.newline()
     code.newline()
@@ -147,7 +151,7 @@ def generate_destination_passing_repeat_wrapper(
         if rank > 0:
             code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
             code.writeline("num_warps = 4")
-            code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
+            code.writeline("num_ctas = min(MAX_GRID_SIZE_X//num_warps, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
             )
@@ -459,9 +463,72 @@ class RepeatFunction:
 
 _repeat_func = RepeatFunction()
 
+@libentry()
+@triton.autotune(
+    configs=[triton.Config({"BLOCK_C": 2**n}, num_stages=3)
+        for n in range(10, 17, 2)
+    ],
+    key=["C"],
+)
+@triton.jit
+def repeat_2d_kernel(
+    inp_ptr,
+    out_ptr,
+    N,
+    C: tl.constexpr,
+    repeat_N: tl.constexpr,
+    repeat_C: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    job_id = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
+    for batch_idx in range(job_id, N, num_jobs):
+        if C <= BLOCK_C:
+            offset_c = tl.arange(0, C)
+            inp_ptrs = inp_ptr + batch_idx * C + offset_c
+            inp = tl.load(inp_ptrs).reshape(1, C)
+            repeat_inp = inp.broadcast_to(repeat_C, C).reshape(repeat_C * C)
+            out_offset_c = tl.arange(0, repeat_C * C)
+            for n_idx in tl.static_range(0, repeat_N):
+                out_ptrs = out_ptr + N * n_idx * repeat_C * C + batch_idx * repeat_C * C + out_offset_c
+                tl.store(out_ptrs, repeat_inp)
+        else:
+            for off in range(0, C, BLOCK_C):
+                offset_c = off + tl.arange(0, BLOCK_C)
+                inp_ptrs = inp_ptr + batch_idx * C + offset_c
+                inp_mask = offset_c < C
+                inp = tl.load(inp_ptrs, mask=inp_mask, other=0)
+                for c_idx in tl.static_range(0, repeat_C):
+                    for n_idx in tl.static_range(0, repeat_N):
+                        out_ptrs = out_ptr + N * n_idx * repeat_C * C + batch_idx * repeat_C * C + c_idx * C + offset_c
+                        tl.store(out_ptrs, inp, mask=inp_mask)
+
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
     logging.debug("GEMS REPEAT")
+
+    inp_rank = inp.dim()
+    sizes_rank = len(sizes)
+    if inp_rank == 2 and sizes_rank == 2:
+        inp_shape = list(inp.shape)
+        sizes_shape = list(sizes)
+        N = inp_shape[0]
+        C = inp_shape[1]
+        repeat_N = sizes_shape[0]
+        repeat_C = sizes_shape[1]
+
+        is_empty = False
+        out_shape = []
+        for i in range(len(inp_shape)):
+              assert(sizes_shape[i] >= 0)
+              if sizes_shape[i] == 0:
+                  is_empty = True
+              out_shape.append(inp_shape[i] * sizes_shape[i])
+        out = torch.empty(out_shape, device=inp.device, dtype=inp.dtype)
+        if is_empty:
+            return out
+        repeat_2d_kernel[(TOTAL_CORE_NUM,)](inp.contiguous(), out, N, C, repeat_N, repeat_C)
+        return out
 
     out = _repeat_func(inp, sizes)
     return out

@@ -4,7 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import philox_mlu_seed_offset, uint_to_uniform_float
+from ..utils import libentry, TOTAL_CORE_NUM
+from triton.language.extra.mlu.libdevice import philox as _philox
 
 
 def heur_block(args):
@@ -13,71 +15,52 @@ def heur_block(args):
     else:
         return 1024
 
-
-def heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
-
-
 @triton.heuristics(
     {
         "BLOCK": heur_block,
-        "num_warps": heur_num_warps,
     }
 )
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,
     N,
-    is_double,
+    is_double: tl.constexpr,
     lambd,
     eps,
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
 ):
+    if is_double:
+        UNROLL: tl.constexpr = 2  # philox generate 128 random bits at a time
+    else:
+        UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    if is_double:
-        d0 = uint_to_uniform_float(paste_u64(r0, r2))
-        d1 = uint_to_uniform_float(paste_u64(r1, r3))
-        y0 = transform_exponential(d0, lambd, eps)
-        y1 = transform_exponential(d1, lambd, eps)
-        UNROLL = 2
-        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
-        off_0 = start + tl.arange(0, BLOCK)
-        off_1 = off_0 + BLOCK
-        tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
-        tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
-    else:
-        f0 = uint_to_uniform_float(r0)
-        f1 = uint_to_uniform_float(r1)
-        f2 = uint_to_uniform_float(r2)
-        f3 = uint_to_uniform_float(r3)
-        y0 = transform_exponential(f0, lambd, eps)
-        y1 = transform_exponential(f1, lambd, eps)
-        y2 = transform_exponential(f2, lambd, eps)
-        y3 = transform_exponential(f3, lambd, eps)
-        UNROLL = 4
-        start = tl.program_id(0).to(tl.uint64) * BLOCK * UNROLL
-        off_0 = start + tl.arange(0, BLOCK)
-        off_1 = off_0 + BLOCK
-        off_2 = off_1 + BLOCK
-        off_3 = off_2 + BLOCK
-        tl.store(out_ptr + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
-        tl.store(out_ptr + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
-        tl.store(out_ptr + off_2, y2, mask=off_2 < N, eviction_policy="evict_first")
-        tl.store(out_ptr + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
+
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
+    i4_start = pid * BLOCK
+    block_start = pid * UNROLL * BLOCK
+    step = num_jobs * BLOCK * UNROLL
+
+    for block_offset in range(block_start, N, step):
+        sl = (philox_seed & 0xFFFFFFFF).to(tl.uint32)
+        sh = ((philox_seed >> 32) & 0xFFFFFFFF).to(tl.uint32)
+        c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+        c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+        r = _philox(BLOCK, sl, sh, c0 + i4_start, c1, 0, 0, 10)
+        r = tl.reshape(r, [UNROLL * BLOCK], can_reorder=True)
+        off = block_offset + tl.arange(0, UNROLL * BLOCK)
+
+        if is_double:
+            r = r.to(tl.uint64, bitcast=True)
+            f = uint_to_uniform_float(r)
+        else:
+            f = uint_to_uniform_float(r)
+        y = transform_exponential(f, lambd, eps)
+        tl.store(out_ptr + off, y, mask=off < N)
+        i4_start += num_jobs * BLOCK
 
 
 @triton.jit
@@ -105,16 +88,16 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     is_double = dtype in (torch.float64,)
     UNROLL = 2 if is_double else 4
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+    philox_seed, philox_offset = philox_mlu_seed_offset(increment)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch.cuda.device(device):
         fused_exponential_kernel[grid_fn](
-            x_, N, is_double, lambd, eps, philox_seed, philox_offset
+            x_, N, is_double, lambd, eps, philox_seed, philox_offset, num_warps=1, num_stages=3
         )
     if not inplace:
         x.copy_(x_)

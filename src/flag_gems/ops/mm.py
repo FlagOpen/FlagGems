@@ -16,95 +16,84 @@ def heur_even_k(args):
     configs=[
         # basic configs for compute-bound matmuls
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
+            {'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128, "SPLIT_K": 1},
+            num_warps=1,
             num_stages=4,
-            num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 32, "SPLIT_K": 1},
+            {'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 128, "SPLIT_K": 1},
+            num_warps=1,
             num_stages=4,
-            num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            {'BLOCK_M': 256, 'BLOCK_N': 256, 'BLOCK_K': 128, "SPLIT_K": 1},
+            num_warps=1,
             num_stages=4,
-            num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 32, "SPLIT_K": 1},
+            {'BLOCK_M': 256, 'BLOCK_N': 1024, 'BLOCK_K': 64, "SPLIT_K": 1},
+            num_warps=4,
+            num_stages=1,
+        ),
+        triton.Config(
+            {'BLOCK_M': 64, 'BLOCK_N': 512, 'BLOCK_K': 128, "SPLIT_K": 1},
+            num_warps=4,
             num_stages=4,
-            num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "SPLIT_K": 1},
+            {'BLOCK_M': 128, 'BLOCK_N': 512, 'BLOCK_K': 128, "SPLIT_K": 1},
+            num_warps=4,
             num_stages=4,
-            num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
+            {'BLOCK_M': 256, 'BLOCK_N': 512, 'BLOCK_K': 128, "SPLIT_K": 1},
+            num_warps=4,
             num_stages=4,
+        ),
+        triton.Config(
+            {'BLOCK_M': 256, 'BLOCK_N': 1024, 'BLOCK_K': 128, "SPLIT_K": 1},
             num_warps=4,
+            num_stages=4,
         ),
         triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32, "SPLIT_K": 1},
-            num_stages=5,
-            num_warps=2,
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
+            num_warps=1,
+            num_stages=4,
         ),
-        # good for int8
         triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
+            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 384, "SPLIT_K": 1},
+            num_warps=1,
+            num_stages=1,
+        ),
+        triton.Config(
+            {"BLOCK_M": 768, "BLOCK_N": 64, "BLOCK_K": 256, "SPLIT_K": 1},
+            num_warps=4,
+            num_stages=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 192, "BLOCK_N": 128, "BLOCK_K": 256, "SPLIT_K": 1},
+            num_warps=1,
+            num_stages=4,
+        ),
+        triton.Config(
+            {"BLOCK_M": 256, "BLOCK_N": 768, "BLOCK_K": 256, "SPLIT_K": 1},
+            num_warps=4,
+            num_stages=4,
         ),
         triton.Config(
             {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 64, "BLOCK_K": 128, "SPLIT_K": 1},
+            num_warps=1,
             num_stages=4,
-            num_warps=4,
         ),
         triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=4,
+            {"BLOCK_M": 256, "BLOCK_N": 512, "BLOCK_K": 256, "SPLIT_K": 1},
             num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64, "SPLIT_K": 1},
             num_stages=5,
-            num_warps=2,
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 512, "BLOCK_K": 256, "SPLIT_K": 1},
+            num_warps=4,
+            num_stages=5,
         ),
     ],
     key=["M", "N", "K"],
@@ -150,22 +139,24 @@ def mm_kernel(
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
     rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
     # pointers
-    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+    A = A + (rm[:, None] * stride_am + rk[None, :] * stride_ak)
+    B = B + (rk[:, None] * stride_bk + rn[None, :] * stride_bn)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
     for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
-            a = tl.load(A)
-            b = tl.load(B)
+            a = tl.load(A, mask=(rm < M)[:, None], other=0.)
+            b = tl.load(B, mask=(rn < N)[None, :], other=0.)
         else:
             k_remaining = K - k * (BLOCK_K * SPLIT_K)
-            _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
-            a = tl.load(A, mask=rk[None, :] < k_remaining, other=_0)
-            b = tl.load(B, mask=rk[:, None] < k_remaining, other=_0)
+            a = tl.load(A,
+                        mask=(rk[None, :] < k_remaining) & (rm < M)[:, None],
+                        other=0.)
+            b = tl.load(B,
+                        mask=(rk[:, None] < k_remaining) & (rn < N)[None, :], 
+                        other=0.)
+
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)

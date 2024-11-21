@@ -37,6 +37,7 @@ def cat(
             raise RuntimeError(
                 f"Tensors must have same number of dimensions: got {len(inp0_shape)} and {len(s)}"
             )
+    dim = dim % len(inp0_shape)
     # Same size check
     for tensor_idx, inp_shape in enumerate(inp_shapes):
         for idx, (common_length, length) in enumerate(zip(inp0_shape, inp_shape)):

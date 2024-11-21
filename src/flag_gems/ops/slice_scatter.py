@@ -4,13 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import libentry, offsetCalculator, restride_dim, MAX_GRID_SIZE_X
 
 
 def cfggen():
-    block_m = [1, 2, 4, 8]
+    block_m = [1, 2, 4, 8, 16, 32]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=1) for m in block_m
     ]
     return configs
 
@@ -28,7 +28,7 @@ def slice_scatter_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tl.program_id(0) +  tl.num_programs(0) * tl.program_id(1)
     rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
 
@@ -90,7 +90,10 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
     N = valid_shape[src.ndim - 1]
     M = src.numel() // N
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    grid = lambda meta: (
+        min(MAX_GRID_SIZE_X, triton.cdiv(M, meta["BLOCK_M"])),
+        triton.cdiv(triton.cdiv(M, meta["BLOCK_M"]), MAX_GRID_SIZE_X),
+    )
     slice_scatter_kernel[grid](out, indices, src, src_offsets, M, N)
 
     return out
@@ -315,11 +318,11 @@ def scatter_3d_mid_kernel(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config(kwargs={"R": 1, "C": 512}, num_warps=4),
-        triton.Config(kwargs={"R": 32, "C": 32}, num_warps=4),
-        triton.Config(kwargs={"R": 64, "C": 64}, num_warps=4),
-        triton.Config(kwargs={"R": 4, "C": 512}, num_warps=4),
-        triton.Config(kwargs={"R": 16, "C": 128}, num_warps=4),
+        triton.Config(kwargs={"R": 1, "C": 512}, num_warps=1),
+        triton.Config(kwargs={"R": 32, "C": 32}, num_warps=1),
+        triton.Config(kwargs={"R": 64, "C": 64}, num_warps=1),
+        triton.Config(kwargs={"R": 4, "C": 512}, num_warps=1),
+        triton.Config(kwargs={"R": 16, "C": 128}, num_warps=1),
     ],
     key=["strided", "pivoted"],
 )
@@ -375,11 +378,13 @@ def scatter_2d_inner_kernel(
         px = X + ii * x_si + jj * x_sj
         if (j0 + C < start) | (j0 >= end):
             p = px
+            tmp = tl.load(p, mask=(ii < nrow) & (jj < x_ncol))
         else:
             py = Y + ii * y_si + (jj - start) * y_sj // step
             mask = (start <= jj) & (jj < end) & ((jj - start) % step == 0)
-            p = tl.where((ii < nrow) & mask, py, px)
-        tmp = tl.load(p, mask=(ii < nrow) & (jj < x_ncol))
+            tmpx = tl.load(px, mask=(ii < nrow) & (jj < x_ncol) & ~mask)
+            tmpy = tl.load(py, mask=(ii < nrow) & (jj < x_ncol) & mask)
+            tmp = tl.where((ii < nrow) & mask, tmpy, tmpx)
         tl.store(X_out + ii * x_si + jj * x_sj, tmp, mask=(ii < nrow) & (jj < x_ncol))
     else:
         # load then predicate

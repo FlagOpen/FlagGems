@@ -4,6 +4,7 @@ import os
 
 import pytest
 import torch
+from datetime import datetime
 
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
@@ -17,6 +18,10 @@ from .attri_util import (
     get_recommended_shapes,
 )
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
 
 class BenchConfig:
     def __init__(self):
@@ -38,9 +43,9 @@ def pytest_addoption(parser):
     parser.addoption(
         "--mode",
         action="store",
-        default="cuda",
+        default="mlu",
         required=False,
-        choices=["cuda", "cpu"],
+        choices=["cuda", "cpu", "mlu"],
         help=(
             "Specify how to measure latency, "
             "'cpu' for CPU-side measurement or 'cuda' for GPU-side measurement."
@@ -118,9 +123,10 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    global Config
+    global Config, CPU_MODE
     mode_value = config.getoption("--mode")
     Config.cpu_mode = mode_value == "cpu"
+    CPU_MODE = Config.cpu_mode
 
     Config.query = config.getoption("--query")
 
@@ -149,7 +155,6 @@ def pytest_configure(config):
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
             for arg in config.invocation_params.args
         ]
-
         logging.basicConfig(
             filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
             filemode="w",

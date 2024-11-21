@@ -3,189 +3,359 @@ import math
 
 import torch
 import triton
+import copy
 import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, TOTAL_CORE_NUM, TOTAL_CLUSTER_NUM, MAX_GRID_SIZE_Y
 
+MAX_C_MLU_CUMSUM = 8192
+MAX_C_MLU_SPILT_CUMSUM = 32768
+MAX_TILE_N = 256
 
-@libentry()
-@triton.jit(do_not_specialize=["n_elements", "part_num"])
-def scan_part_sum_kernel(
-    inp,
-    out,
-    partial_sum,
-    n_elements,
-    part_num,
-    BLOCK_SIZE: tl.constexpr,
+@triton.jit
+def cumsum_blelloch_impl(
+    in_block,
+    DTYPE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_NUM: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
-
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
-    result = tl.cumsum(inp_vals, axis=0)
-
-    part_sum_via_sum = tl.sum(inp_vals)
-
-    out_ptrs = out + offset
-    tl.store(out_ptrs, result, mask=mask)
-
-    partial_sum_ptrs = partial_sum + pid
-    tl.store(partial_sum_ptrs, part_sum_via_sum)
-
-
-@libentry()
-@triton.jit(do_not_specialize=["n_elements", "part_num"])
-def add_base_sum_kernel(
-    out,
-    partial_sum,
-    n_elements,
-    part_num,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < n_elements
-
-    out_ptrs = out + offset
-    out_vals = tl.load(out_ptrs, mask=mask)
-
-    if pid > 0:
-        partial_sum_ptrs = partial_sum + pid - 1
-        last_part_sum_via_sum = tl.load(partial_sum_ptrs)
-
-        final_vals = out_vals + last_part_sum_via_sum
-        tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    x_block = tl.reshape(in_block, (BLOCK_M, TILE_NUM, TILE_N, BLOCK_K))
+    # Trans TILE_N and apply blelloch in TILE_N dim
+    x_block = tl.trans(x_block, 0, 2, 1, 3)
+    # Apply blelloch algo
+    # Up-Sweep Phase
+    step = 1
+    while step < TILE_N:
+        idx_a = step - 1
+        idx_b = idx_a + step
+        while idx_b < TILE_N:
+            x_block[:,
+                    idx_b, :, :] = x_block[:, idx_a, :, :] + x_block[:, idx_b, :, :]
+            idx_a += 2 * step
+            idx_b += 2 * step
+        step *= 2
+    # Down-Sweep Phase
+    step //= 2
+    while step > 0:
+        idx_b = TILE_N - 1 - step
+        idx_a = idx_b - step
+        while idx_a > 0:
+            x_block[:,
+                    idx_b, :, :] = x_block[:, idx_a, :, :] + x_block[:, idx_b, :, :]
+            idx_b -= 2 * step
+            idx_a -= 2 * step
+        step //= 2
+    # Deal the last tile row exclusive sum(Composed by right shift and tl.cumsum)
+    # Right shift 1 position for the last tile row
+    partial_sum = tl.zeros((BLOCK_M, TILE_NUM, BLOCK_K), dtype=tl.dtype(DTYPE))
+    partial_sum[:, 1:, :] = x_block[:, TILE_N - 1, 0:(TILE_NUM - 1), :]
+    partial_sum = tl.cumsum(partial_sum, axis=1)
+    # Apply cycle add for all tile data
+    x_block += partial_sum[:, None, :, :]
+    # Trans TILE_N dim to original pos
+    x_block = tl.trans(x_block, 0, 2, 1, 3)
+    x_block = tl.reshape(x_block, (BLOCK_M, BLOCK_N, BLOCK_K))
+    return x_block
 
 
-@libentry()
-@triton.jit(do_not_specialize=["part_num"])
-def scan_part_sum_abc_kernel(
-    inp,
-    out,
-    partial_sum,
-    B,
-    C,
-    part_num,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid_a = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    pid_c = tl.program_id(2)
-
-    a_idx = pid_a
-    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    c_idx = pid_c
-
-    offset = a_idx * B * C + b_idx * C + c_idx
-    base_part_offset = a_idx * part_num * C + c_idx
-    part_offset = base_part_offset + pid_b * C
-
-    mask = b_idx < B
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
-    if (
-        tl.constexpr(inp_vals.dtype.is_int64())
-        or tl.constexpr(inp_vals.dtype.is_uint64())
-    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
-        inp_vals = inp_vals
-    elif tl.constexpr(inp_vals.dtype.is_int()):
-        inp_vals = inp_vals.to(tl.int32)
-    else:
-        inp_vals = inp_vals.to(tl.float32)
-    result = tl.cumsum(inp_vals, axis=0)
-
-    part_sum_via_sum = tl.sum(inp_vals)
-
-    out_ptrs = out + offset
-    tl.store(out_ptrs, result, mask=mask)
-
-    partial_sum_ptrs = partial_sum + part_offset
-    tl.store(partial_sum_ptrs, part_sum_via_sum)
-
-
-@libentry()
-@triton.jit(do_not_specialize=["part_num"])
-def add_base_sum_abc_kernel(
-    out,
-    partial_sum,
-    B,
-    C,
-    part_num,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid_a = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    pid_c = tl.program_id(2)
-
-    a_idx = pid_a
-    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    c_idx = pid_c
-
-    base_offset = a_idx * B * C + c_idx
-    offset = base_offset + b_idx * C
-    base_part_offset = a_idx * part_num * C + c_idx
-    last_part_offset = base_part_offset + (pid_b - 1) * C
-
-    mask = b_idx < B
-    out_ptrs = out + offset
-    out_vals = tl.load(out_ptrs, mask=mask)
-
-    if pid_b > 0:
-        partial_sum_ptrs = partial_sum + last_part_offset
-        last_part_sum_via_sum = tl.load(partial_sum_ptrs)
-
-        final_vals = out_vals + last_part_sum_via_sum
-        tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
-
-
-def scan_then_fan_col(inp, out, n_ele, dtype):
-    # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if n_ele <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(n_ele)
-    part_num = math.ceil(n_ele / BLOCK_SIZE)
-    partial_sum = torch.empty(part_num, dtype=dtype, device=inp.device)
-
-    grid = (part_num,)
-    with torch.cuda.device(inp.device):
-        scan_part_sum_kernel[grid](inp, out, partial_sum, n_ele, part_num, BLOCK_SIZE)
-
-    if part_num >= 2:
-        scan_then_fan_col(partial_sum, partial_sum, part_num, dtype)
-        with torch.cuda.device(inp.device):
-            add_base_sum_kernel[grid](out, partial_sum, n_ele, part_num, BLOCK_SIZE)
-
-
-def scan_then_fan(inp, out, A, B, C, dtype):
-    # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if B <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(B)
-    part_num = math.ceil(B / BLOCK_SIZE)
-    partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
-
-    grid = (A, part_num, C)
-    with torch.cuda.device(inp.device):
-        scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
+def config_prune(configs, named_args, **kwargs):
+    M = named_args["M"]
+    N = named_args["N"]
+    configs_map = {}
+    for config in configs:
+        kw = config.kwargs
+        BLOCK_M, BLOCK_N, TILE_N, num_warps, num_stages = (
+            kw["BLOCK_M"],
+            kw["BLOCK_N"],
+            kw["TILE_N"],
+            config.num_warps,
+            config.num_stages,
         )
+        new_config = config
+        # When N is less than MAX_C_MLU_CUMSUM, no reduction loops. Unify different BLOCK_N configs.
+        if N <= MAX_C_MLU_CUMSUM:
+            # change config
+            new_config = copy.deepcopy(config)
+            BLOCK_N = new_config.kwargs["BLOCK_N"] = triton.next_power_of_2(N)
+            num_stages = new_config.num_stages = 1
+        else:
+            # When N is greater than MAX_C_MLU_CUMSUM, the pruning condition was obtained through experimentation.
+            # It may result in not finding the optimal solution.
+            if BLOCK_N < 2048:
+                continue
+            if BLOCK_N >= 2048 and TILE_N < 8:
+                continue
+            if BLOCK_N < MAX_C_MLU_CUMSUM and BLOCK_M < M and BLOCK_M <= (
+                    MAX_C_MLU_CUMSUM // BLOCK_N * 2):
+                continue
+        # BLOCK_M can only be 1 when BLOCK_N is at its maximum
+        if BLOCK_N == MAX_C_MLU_CUMSUM and BLOCK_M > 1:
+            continue
+        # Prune invalid BLOCK_M
+        if BLOCK_M > M:
+            continue
+        # Prune invalid TILE_N
+        if TILE_N > BLOCK_N:
+            continue
+        # The pruning condition was obtained through experimentation. It may result in not finding the optimal solution.
+        if BLOCK_N > 128 and TILE_N < 8:
+            continue
+        key = (BLOCK_M, BLOCK_N, TILE_N, num_warps, num_stages)
+        # Only keep one config for the same key
+        configs_map.setdefault(key, new_config)
+    pruned_configs = []
+    for k, v in configs_map.items():
+        pruned_configs.append(v)
+    return pruned_configs
 
-    if part_num >= 2:
-        scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
-        with torch.cuda.device(inp.device):
-            add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
+@triton.autotune(
+    configs=[
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_N": 2**n,
+            "TILE_N": 2**t,
+        },
+                      num_stages=s,
+                      num_warps=1) for m in range(1, 30, 3)
+        for n in range(7, 14, 1) for t in range(0, 7, 1) for s in [1, 3]
+    ],
+    key=[
+        "M",
+        "N",
+        "K",
+    ],
+    prune_configs_by={'early_config_prune': config_prune},
+)
+@triton.heuristics(
+    values={
+        "TILE_NUM":
+        lambda args: args["BLOCK_N"] // args["TILE_N"] if args["BLOCK_N"] %
+        args["TILE_N"] == 0 and args["BLOCK_N"] // args["TILE_N"] >= 1 else 1,
+        "TILE_N":
+        lambda args: args["BLOCK_N"]
+        if args["TILE_NUM"] == 1 else args["TILE_N"],
+    }, )
+@triton.jit
+def cumsum_blelloch(
+    inp,
+    out,
+    M,
+    N,
+    K,
+    DTYPE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_NUM: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_k = tl.program_id(1)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    kep = tl.full([BLOCK_M, BLOCK_N, 1], float(0), tl.dtype(DTYPE))
+    for col_offset in range(0, N, BLOCK_N):
+        n_offset = col_offset + tl.arange(0, BLOCK_N)
+        # Pointers to the start of the row
+        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        x_ptrs = inp + offsets
+        y_ptrs = out + offsets
 
+        # Load data into NRAM
+        in_block = tl.load(x_ptrs, mask=mask, other=0.0).to(tl.dtype(DTYPE))
+
+        x_block = cumsum_blelloch_impl(in_block,
+                                       DTYPE,
+                                       BLOCK_M,
+                                       BLOCK_N,
+                                       1,
+                                       TILE_N,
+                                       TILE_NUM)
+        # Add last block partial sum to current block
+        x_block = tl.reshape(x_block, (BLOCK_M, BLOCK_N))
+        kep_tmp = kep[:, BLOCK_N - 1, :]
+        x_block += kep_tmp
+        kep = x_block[:, :, None]
+        # Store result back to global memory
+        tl.store(y_ptrs, x_block, mask=mask)
+
+def get_reduction_dim_block_size(N):
+    block_size = N // TOTAL_CORE_NUM + ((N % TOTAL_CORE_NUM) != 0)
+    if block_size > MAX_C_MLU_SPILT_CUMSUM:
+        block_size = MAX_C_MLU_SPILT_CUMSUM
+    # In blelloch, block_size = TILE_N * TILE_NUM
+    # TILE_N and TILE_NUM should be power of 2, So is it
+    return triton.next_power_of_2(block_size)
+
+def config_prune_mid(configs, named_args, **kwargs):
+    M = named_args["M"]
+    N = named_args["N"]
+    K = named_args["K"]
+    BLOCK_N = named_args["BLOCK_N"]
+    configs_map = {}
+    for config in configs:
+        kw = config.kwargs
+        BLOCK_M, BLOCK_K, TILE_N, num_warps, num_stages = (
+            kw["BLOCK_M"],
+            kw["BLOCK_K"],
+            kw["TILE_N"],
+            config.num_warps,
+            config.num_stages,
+        )
+        new_config = config
+        # Prune invalid BLOCK_M
+        if BLOCK_M > M:
+            continue
+        # Prune invalid BLOCK_K
+        if BLOCK_K > K:
+            continue
+        if BLOCK_N * BLOCK_K * BLOCK_M > MAX_C_MLU_SPILT_CUMSUM:
+            continue
+        # Prune invalid TILE_N
+        if TILE_N > BLOCK_N:
+            continue
+        # The pruning condition was obtained through experimentation. It may result in not finding the optimal solution.
+        if BLOCK_N > 128 and TILE_N < 8:
+            continue
+        key = (BLOCK_M, BLOCK_N, BLOCK_K, TILE_N, num_warps, num_stages)
+        # Only keep one config for the same key
+        configs_map.setdefault(key, new_config)
+    pruned_configs = []
+    for k, v in configs_map.items():
+        pruned_configs.append(v)
+    return pruned_configs
+
+@triton.autotune(
+    configs=[
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_K": 2**k,
+            "TILE_N": 2**t,
+        },
+                      num_stages=s,
+                      num_warps=1) for m in range(1, 30, 3)
+        for k in range(0, 7, 1) for t in range(0, int(math.log(MAX_TILE_N, 2) + 1), 1) for s in [1, 3]
+    ],
+    key=[
+        "M",
+        "N",
+        "K",
+        "BLOCK_N",
+    ],
+    prune_configs_by={'early_config_prune': config_prune_mid},
+)
+@triton.heuristics(
+    values={
+        "TILE_NUM":
+        lambda args: args["BLOCK_N"] // args["TILE_N"] if args["BLOCK_N"] %
+        args["TILE_N"] == 0 and args["BLOCK_N"] // args["TILE_N"] >= 1 else 1,
+        "TILE_N":
+        lambda args: args["BLOCK_N"]
+        if args["TILE_NUM"] == 1 else args["TILE_N"],
+    }, )
+@triton.jit
+def cumsum_kernel_mid(
+    inp,
+    out,
+    prefix_sum,
+    M,
+    N,
+    K,
+    BLOCK_N: tl.constexpr,
+    DTYPE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    TILE_N: tl.constexpr,
+    TILE_NUM: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    num_jobs_n = tl.num_programs(1)
+    pid_k = tl.program_id(2)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    k_offset = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offsets = m_offset[:, None, None] * N * K + n_offset[None, :, None,] * K + k_offset[None, None, :]
+    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[None, None, :] < K
+    x_ptrs = inp + offsets
+    y_ptrs = out + offsets
+
+    # Load data into NRAM
+    in_block = tl.load(x_ptrs, mask=mask, other=0.0).to(tl.dtype(DTYPE))
+
+    x_block = cumsum_blelloch_impl(in_block,
+                                   DTYPE,
+                                   BLOCK_M,
+                                   BLOCK_N,
+                                   BLOCK_K,
+                                   TILE_N,
+                                   TILE_NUM)
+    tl.store(y_ptrs, x_block, mask=mask)
+    prefix_sum_offsets = m_offset[:, None] * num_jobs_n * K + pid_n * K + k_offset[None, :]
+    prefix_sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
+    prefix_sum_ptrs = prefix_sum + prefix_sum_offsets
+    tl.store(prefix_sum_ptrs, x_block[:, BLOCK_N - 1, :], prefix_sum_mask)
+
+@triton.autotune(
+    configs=[
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_K": 2**k,
+        },
+                      num_stages=s,
+                      num_warps=1) for m in [1, 3, 6]
+        for k in range(0, 3, 1)
+        for s in [1, 3]
+    ],  
+    key=[
+        "M",
+        "N",
+        "K",
+        "BLOCK_N",
+    ],
+)
+@triton.jit
+def cumsum_kernel_result(
+    inp,
+    prefix_sum,
+    out,
+    M,
+    N,
+    K,
+    BLOCK_N: tl.constexpr,
+    DTYPE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+
+    num_jobs_n = tl.num_programs(1)
+    pid_k = tl.program_id(2)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    k_offset = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    offsets = m_offset[:, None, None] * N * K + n_offset[None, :, None,] * K + k_offset[None, None, :]
+    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[None, None, :] < K
+    x_ptrs = inp + offsets
+    y_ptrs = out + offsets
+    
+    # Load data into NRAM
+    x_block = tl.load(x_ptrs, mask=mask, other=0.0).to(tl.dtype(DTYPE))
+    
+    if pid_n > 0:
+        sum_offsets = m_offset[:, None] * num_jobs_n * K + (pid_n - 1) * K + k_offset[None, :]
+        sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
+        sum_ptrs = prefix_sum + sum_offsets
+        sum_block = tl.load(sum_ptrs, mask=sum_mask, other=0.0).to(tl.dtype(DTYPE))
+        x_block += sum_block[:, None, :]
+    
+    # Store result back to global memory
+    tl.store(y_ptrs, x_block, mask=mask)
 
 def cumsum(inp, dim=1, *, dtype=None):
     logging.debug("GEMS CUMSUM")
@@ -202,17 +372,32 @@ def cumsum(inp, dim=1, *, dtype=None):
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
-            dtype = torch.int64
+            dtype = torch.int32
     out = torch.empty_like(inp, dtype=dtype)
+    blelloch_grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
 
-    compute_dtype = out.dtype
-    if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
-        compute_dtype = torch.float32
-
-    if M == 1 and K == 1:
-        scan_then_fan_col(inp, out, N, compute_dtype)
+    dtypestr = "fp32" if torch.is_floating_point(out) else "int32"
+    if (M * K < TOTAL_CORE_NUM / 2) and (N > MAX_C_MLU_CUMSUM):
+        # result BLOCK_N must be same as mid BLOCK_N
+        mid_out = torch.empty_like(inp, dtype=dtype)
+        BLOCK_N = get_reduction_dim_block_size(N)
+        prefix_sum_inp = torch.empty(M, triton.cdiv(N, BLOCK_N), K, dtype=dtype, device=inp.device)
+        prefix_sum = torch.empty(M, triton.cdiv(N, BLOCK_N), K, dtype=dtype, device=inp.device)
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            triton.cdiv(N, BLOCK_N),
+            triton.cdiv(K, meta["BLOCK_K"]),
+        )
+        with torch.cuda.device(inp.device):
+            cumsum_kernel_mid[grid](inp, mid_out, prefix_sum_inp, M, N, K, BLOCK_N, dtypestr)
+            cumsum_blelloch[blelloch_grid](prefix_sum_inp, prefix_sum, M, triton.cdiv(N, BLOCK_N), K, dtypestr)
+            cumsum_kernel_result[grid](mid_out, prefix_sum, out, M, N, K, BLOCK_N, dtypestr)
     else:
-        scan_then_fan(inp, out, M, N, K, compute_dtype)
+        with torch.cuda.device(inp.device):
+            cumsum_blelloch[blelloch_grid](inp, out, M, N, K, dtypestr)
     return out
 
 
@@ -356,7 +541,7 @@ def block_update_kernel(
             cols += TILE
 
 
-GRID_Y_LIMIT = 65535
+GRID_Y_LIMIT = MAX_GRID_SIZE_Y
 
 
 def normed_cumsum(inp, dim=-1):
@@ -375,7 +560,7 @@ def normed_cumsum(inp, dim=-1):
     out = torch.empty_like(inp)
     with torch.cuda.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch.cuda.get_device_properties("cuda").multi_processor_count
+        num_sms = TOTAL_CORE_NUM # torch.cuda.get_device_properties("cuda").multi_processor_count
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.

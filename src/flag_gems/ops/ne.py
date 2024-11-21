@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def ne_func(x, y):
-    return x.to(tl.float32) != y.to(tl.float32)
+    return x != y
 
 
 def ne(A, B):
@@ -20,7 +20,7 @@ def ne(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def ne_func_scalar(x, y):
-    return x.to(tl.float32) != y.to(tl.float32)
+    return x != y
 
 
 def ne_scalar(A, B):

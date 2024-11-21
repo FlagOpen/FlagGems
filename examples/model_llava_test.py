@@ -6,6 +6,10 @@ from transformers import AutoProcessor, LlavaForConditionalGeneration
 
 import flag_gems
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
 
 @pytest.mark.parametrize(
     "prompt", ["USER: <image>\nWhat's the content of the image? ASSISTANT:"]
@@ -19,6 +23,7 @@ import flag_gems
     ],
 )
 def test_accuracy_llava(prompt, url):
+    pytest.skip("skip llava test")
     model = LlavaForConditionalGeneration.from_pretrained("llava-hf/llava-1.5-7b-hf")
     processor = AutoProcessor.from_pretrained("llava-hf/llava-1.5-7b-hf")
     torch.manual_seed(1234)

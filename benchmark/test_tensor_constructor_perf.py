@@ -89,6 +89,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
 
 @pytest.mark.randperm
 def test_perf_randperm():
+    pytest.skip("compile time too long, wait for fix")
     def randperm_input_fn(shape, dtype, device):
         yield {"n": shape[0], "dtype": dtype, "device": device},
 

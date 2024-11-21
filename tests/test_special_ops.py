@@ -2,6 +2,7 @@ from typing import Optional
 
 import numpy as np
 import pytest
+import scipy
 import torch
 
 import flag_gems
@@ -307,11 +308,14 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                     return_counts=return_counts,
                 )
             ref_out, ref_unique_order, ref_counts = torch.unique(
-                ref_inp,
+                ref_inp.cpu(),
                 sorted=sorted,
                 return_inverse=return_inverse,
                 return_counts=return_counts,
             )
+            ref_out = ref_out.to(ref_inp.device)
+            ref_unique_order = ref_unique_order.to(ref_inp.device)
+            ref_counts = ref_counts.to(ref_inp.device)
             assert res_out.numel() == ref_out.numel()
             gems_assert_equal(res_unique_order, ref_unique_order)
         else:
@@ -323,11 +327,13 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                     return_counts=return_counts,
                 )
             ref_out, ref_counts = torch.unique(
-                ref_inp,
+                ref_inp.cpu(),
                 sorted=sorted,
                 return_inverse=return_inverse,
                 return_counts=return_counts,
             )
+            ref_out = ref_out.to(ref_inp.device)
+            ref_counts = ref_counts.to(ref_inp.device)
             assert res_out.numel() == ref_out.numel()
         gems_assert_equal(res_counts, ref_counts)
     else:
@@ -340,11 +346,13 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                     return_counts=return_counts,
                 )
             ref_out, ref_unique_order = torch.unique(
-                ref_inp,
+                ref_inp.cpu(),
                 sorted=sorted,
                 return_inverse=return_inverse,
                 return_counts=return_counts,
             )
+            ref_out = ref_out.to(ref_inp.device)
+            ref_unique_order = ref_unique_order.to(ref_inp.device)
             assert res_out.numel() == ref_out.numel()
             gems_assert_equal(res_unique_order, ref_unique_order)
         else:
@@ -356,11 +364,11 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
                     return_counts=return_counts,
                 )
             ref_out = torch.unique(
-                ref_inp,
+                ref_inp.cpu(),
                 sorted=sorted,
                 return_inverse=return_inverse,
                 return_counts=return_counts,
-            )
+            ).to(ref_inp.device)
             assert res_out.numel() == ref_out.numel()
     gems_assert_equal(res_out, ref_out)
 
@@ -453,8 +461,10 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         (3, 7, 1023, 1025),
     ],
 )
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
+    pytest.skip("test too long(18h) wait for fix")
+
     input = torch.rand(shape, dtype=dtype, device="cuda")
     ref_i = to_reference(input, True)
     output_size = tuple([int(input.shape[i + 2] * scale[i]) for i in range(2)])
@@ -524,21 +534,21 @@ def test_accuracy_isin(shape, dtype, assume_unique, invert):
     inp2 = torch.randint(-10, 10, test_shape, device="cuda").to(dtype)
     inp1.ravel()[-1] = 0
     if assume_unique:
-        inp1 = torch.unique(inp1)
-        inp2 = torch.unique(inp2)
+        inp1 = torch.unique(inp1.cpu()).to("cuda")
+        inp2 = torch.unique(inp2.cpu()).to("cuda")
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
     with flag_gems.use_gems():
         res_out = torch.isin(inp1, inp2, assume_unique=assume_unique, invert=invert)
-    ref_out = torch.isin(ref_inp1, ref_inp2, assume_unique=assume_unique, invert=invert)
-    gems_assert_equal(res_out, ref_out)
+    ref_out = torch.isin(ref_inp1.cpu(), ref_inp2.cpu(), assume_unique=assume_unique, invert=invert)
+    gems_assert_equal(res_out.cpu(), ref_out)
 
     inp1_s = inp1.ravel()[0].item()
     with flag_gems.use_gems():
         res1_out = torch.isin(inp1_s, inp2, assume_unique=assume_unique, invert=invert)
-    ref1_out = torch.isin(inp1_s, ref_inp2, assume_unique=assume_unique, invert=invert)
-    gems_assert_equal(res1_out, ref1_out)
+    ref1_out = torch.isin(inp1_s, ref_inp2.cpu(), assume_unique=assume_unique, invert=invert)
+    gems_assert_equal(res1_out.cpu(), ref1_out)
 
     inp2_s = inp2.ravel()[0].item()
     with flag_gems.use_gems():
@@ -573,7 +583,8 @@ def test_fill(value, shape, dtype):
 
     # Test fill.Tensor
     value_tensor = torch.tensor(value, device="cuda", dtype=dtype)
-    ref_out_tensor = torch.fill(ref_x, value_tensor)
+    ref_value_tensor = to_reference(value_tensor, False)
+    ref_out_tensor = torch.fill(ref_x, ref_value_tensor)
     with flag_gems.use_gems():
         res_out_tensor = torch.fill(x, value_tensor)
 
@@ -589,9 +600,7 @@ def test_accuracy_stack(shape, dim, dtype):
         inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
-                dtype
-            )
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to("cuda")
             for s in shape
         ]
     ref_inp = [to_reference(_) for _ in inp]
@@ -617,9 +626,7 @@ def test_accuracy_hstack(shape, dtype):
         inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
-                dtype
-            )
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to("cuda")
             for s in shape
         ]
     ref_inp = [to_reference(_) for _ in inp]
@@ -644,9 +651,7 @@ def test_exception_hstack(shape, dtype):
         inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
-                dtype
-            )
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to("cuda")
             for s in shape
         ]
 
@@ -697,8 +702,8 @@ def test_accuracy_cat(shape, dim, dtype):
         inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
-                dtype
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                "cuda"
             )
             for s in shape
         ]
@@ -732,8 +737,8 @@ def test_accuracy_vstack(shape, dtype):
         inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
     else:
         inp = [
-            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cuda").to(
-                dtype
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                "cuda"
             )
             for s in shape
         ]

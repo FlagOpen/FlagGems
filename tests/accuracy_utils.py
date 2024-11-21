@@ -1,10 +1,11 @@
 import itertools
 
 import torch
+from .conftest import TO_CPU, DEVICE, QUICK_MODE
+import logging
 
+logging.debug("Using Device: " + DEVICE)
 import flag_gems
-
-from .conftest import QUICK_MODE, TO_CPU
 
 
 def SkipTorchVersion(skip_pattern):
@@ -51,6 +52,24 @@ SPECIAL_SHAPES = (
     else [(1,), (1024, 1024), (20, 320, 15), (16, 128, 64, 1280), (16, 7, 57, 32, 29)]
 )
 DISTRIBUTION_SHAPES = [(20, 320, 15)]
+# REDUCTION_SHAPES = [(4096, 256 * i) for i in range(1, 10, 2)]
+BIG_REDUCTION_SHAPES = [(29, 32000), (27, 40960), (23, 32768, 4), (101, 16384, 11), (34, 40000, 11), (26, 910030, 11)]
+MNK_SHAPES = [15, 160, 1024]
+REDUCTION_MNK_SHAPES = [(15, 160, 1024), (16, 1025, 255)]
+ONE_DIM_SHAPES = [(256 * i + 7,) for i in range(1, 10, 2)]
+DIM_LIST = [0, 1]
+DIMS_LIST = [0, 1, [0, 1], [1, 0]]
+
+DIM_POINTWISE_SHAPES = [
+    (1024, 1024, 1),
+    (16, 1024, 256),
+    (16, 7, 128, 64, 64),
+    (20, 320, 15),
+]
+DIMS = [[0], [-2], [2], [0, 2], [2, 1], [0, -1, 1]]
+TILE_DIMS = [(2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
+REPEAT_SIZES = [(2, 3, 4, 5), (2, 0, 4, 5)]
+
 REDUCTION_SHAPES = [(2, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 40999, 3)]
 REDUCTION_SMALL_SHAPES = (
     [(1, 32)] if QUICK_MODE else [(1, 2), (4096, 256), (200, 2560, 3)]
@@ -114,7 +133,6 @@ BOOL_TYPES = [torch.bool]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-2, -1, 0, 1]
-
 
 def to_reference(inp, upcast=False):
     if inp is None:

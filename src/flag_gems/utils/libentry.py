@@ -1,10 +1,30 @@
 import inspect
 import threading
+import sys
 
 import torch
 import triton
+import torch
+import torch_mlu
+import triton.backends.mlu.driver as driver
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
+
+_devprob = driver.BangUtils().get_device_properties(torch.mlu.current_device())
+
+TOTAL_CLUSTER_NUM = _devprob.get('cluster_num')
+TOTAL_CORE_NUM = TOTAL_CLUSTER_NUM * _devprob.get("core_num_per_cluster")
+MAX_NRAM_SIZE = _devprob.get('max_nram_size')
 DEVICE_COUNT = torch.cuda.device_count()
+MAX_GRID_SIZES = [
+    _devprob.get("max_block_task_dim_x", sys.maxsize),
+    _devprob.get("max_block_task_dim_y", sys.maxsize),
+    _devprob.get("max_block_task_dim_z", sys.maxsize),
+]
+MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y, MAX_GRID_SIZE_Z = MAX_GRID_SIZES
 
 
 class LibEntry(triton.KernelInterface):

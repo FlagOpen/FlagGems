@@ -8,7 +8,7 @@ import triton.language as tl
 
 def configs():
     block = [(bx, by) for bx in (512, 256, 128, 64) for by in (2, 1)]
-    warps = [4, 8]
+    warps = [1]
     return [
         triton.Config(
             {

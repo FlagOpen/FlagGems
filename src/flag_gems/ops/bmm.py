@@ -82,6 +82,46 @@ def heur_divisible_k(args):
             num_warps=4,
             num_stages=3,
         ),
+        triton.Config(
+            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 64, "GROUP_M": 2},
+            num_warps=1,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 384, "TILE_K": 64, "GROUP_M": 2},
+            num_warps=1,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 256, "TILE_K": 128, "GROUP_M": 2},
+            num_warps=1,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 256, "TILE_N": 256, "TILE_K": 128, "GROUP_M": 2},
+            num_warps=1,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 1024, "TILE_K": 128, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 256, "TILE_N": 1024, "TILE_K": 128, "GROUP_M": 2},
+            num_warps=4,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 64, "TILE_N": 448, "TILE_K": 128, "GROUP_M": 2},
+            num_warps=1,
+            num_stages=3,
+        ),
+        triton.Config(
+            {"TILE_M": 128, "TILE_N": 448, "TILE_K": 128, "GROUP_M": 2},
+            num_warps=1,
+            num_stages=3,
+        ),
     ],
     key=["M", "N", "K"],
 )
@@ -151,7 +191,7 @@ def bmm_kernel(
 
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for _ in range(num_iters):
+    for k in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
                 mask_a = None
@@ -162,7 +202,7 @@ def bmm_kernel(
             else:
                 mask_b = mask_n[None, :]
         else:
-            mask_k = offs_k < K
+            mask_k = offs_k < K - k * TILE_K
             if DIVISIBLE_M:
                 mask_a = mask_k[None, :]
             else:
@@ -175,7 +215,6 @@ def bmm_kernel(
         a = tl.load(a_ptrs, mask_a)
         b = tl.load(b_ptrs, mask_b)
 
-        offs_k += TILE_K
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
 

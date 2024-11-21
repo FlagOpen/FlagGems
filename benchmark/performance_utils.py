@@ -20,10 +20,9 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config
+from .conftest import Config, CPU_MODE
 
-torch.backends.cuda.matmul.allow_tf32 = False
-
+torch.backends.mlu.matmul.allow_tf32 = False
 
 class Benchmark:
     device: str = "cuda"
@@ -45,7 +44,7 @@ class Benchmark:
     ):
         self.op_name = op_name
         if is_backward:
-            self.op_name += " backward"
+            self.op_name += "_backward"
         self.torch_op = torch_op
         self.gems_op = None
         self.is_backward = is_backward
@@ -189,11 +188,11 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch.cuda.synchronize()
+            torch.mlu.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch.cuda.synchronize()
+            torch.mlu.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
@@ -384,10 +383,10 @@ def generate_tensor_input(shape, dtype, device):
             torch.iinfo(dtype).max,
             shape,
             dtype=dtype,
-            device=device,
-        )
+            device="cpu",
+        ).to(device)
     elif dtype in BOOL_DTYPES:
-        return torch.randint(0, 2, size=shape, dtype=dtype, device=device)
+        return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
 
 
 def binary_input_fn(shape, cur_dtype, device):
@@ -398,3 +397,27 @@ def binary_input_fn(shape, cur_dtype, device):
 
 def unary_input_fn(shape, cur_dtype, device):
     yield generate_tensor_input(shape, cur_dtype, device),
+
+
+def binary_args_model_elementwise(dtype, batch, size):
+    inp1 = torch.randn(batch + size, dtype=dtype, device="cuda")
+    inp2 = torch.randn(batch + size, dtype=dtype, device="cuda")
+    return inp1, inp2
+
+
+def binary_args_model_scalar(dtype, batch, size):
+    inp1 = torch.randn(batch + size, dtype=dtype, device="cuda")
+    inp2 = torch.randn([], dtype=dtype, device="cuda")
+    return inp1, inp2
+
+
+def unary_arg_model(dtype, batch, size):
+    inp = torch.randn(batch + size, dtype=dtype, device="cuda")
+    return (inp, )
+
+
+def binary_args_model_vector(dtype, batch, size):
+    size1, size2 = size
+    inp1 = torch.randn(batch + size1, dtype=dtype, device="cuda")
+    inp2 = torch.randn(batch + size2, dtype=dtype, device="cuda")
+    return inp1, inp2

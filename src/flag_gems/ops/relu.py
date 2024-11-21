@@ -30,6 +30,7 @@ class Relu(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS RELU BACKWARD")
+        out_grad = out_grad.contiguous()
         (inp,) = ctx.saved_tensors
         in_grad = relu_backward(inp, out_grad)
         return in_grad

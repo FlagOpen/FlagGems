@@ -5,14 +5,15 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uniform
+from flag_gems.utils.random_utils import philox_mlu_seed_offset, uniform, uint_to_uniform_float
+from triton.language.extra.mlu.libdevice import philox as _philox
 
 
 @libentry()
 @triton.heuristics(
     {
         "NBLOCK": lambda args: 128,
-        "num_warps": lambda args: 4,
+        "num_warps": lambda args: 1,
     }
 )
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
@@ -27,7 +28,18 @@ def multinomial_with_replacement(
     #           |   dist2.batch0 | dist2.batch1 | dist2.batch2 ...
     y_off = tl.program_id(1) * N
     n = tl.program_id(0) * NBLOCK + tl.arange(0, NBLOCK)
-    rv, _, _, _ = uniform(philox_seed, philox_offset, y_off + n)
+    y_off_step = tl.program_id(0) * NBLOCK
+
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    sl = (philox_seed & 0xFFFFFFFF).to(tl.uint32)
+    sh = ((philox_seed >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    r = _philox(NBLOCK, sl, sh, c0 + y_off + y_off_step, c1, 0, 0, 10)
+    r = uint_to_uniform_float(r)
+    rv = r[:, 0]
+#    rv = tl.reshape(r[0, :], [NBLOCK], can_reorder=True)
 
     # Do a binary search for each random number on the cumulative probabilities.
     # Each random number always selects the leftmost index of the data greater
@@ -90,7 +102,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     # The CTA level parallelism is framed in a 2d grid of blocks with grid.y
     # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
-    philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+    philox_seed, philox_offset = philox_mlu_seed_offset(increment)
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
     multinomial_with_replacement[grid](
         cum_prob, out, n_categories, n_samples, philox_seed, philox_offset

@@ -4,6 +4,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import flag_gems
 
+try:
+    from torch_mlu.utils.model_transfer import transfer
+except ImportError:
+    pass
 
 @pytest.mark.parametrize(
     "prompt",

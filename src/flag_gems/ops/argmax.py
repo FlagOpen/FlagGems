@@ -5,16 +5,40 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, TOTAL_CORE_NUM
 from ..utils.shape_utils import can_use_int32_index
 
 
+def cfggen_reduce_op():
+    block_size = [4096, 8192, 16384, 32768, 65536, 131072]
+    num_stage = [1, 3]
+    configs=[
+        triton.Config({"BLOCK_SIZE": m}, num_warps=1, num_stages=s) for m in block_size for s in num_stage
+    ]
+    return configs
+
+
 @libentry()
+@triton.jit
+def argmax_kernel_once(
+    inp,
+    out,
+    M: tl.constexpr,
+):
+    offset = tl.arange(0, M)
+    inp_val = tl.load(inp + offset)
+    index_val = tl.argmax(inp_val, axis=0)
+    tl.store(out, index_val.to(tl.int64))
+
+
+@libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def argmax_kernel_1(
     inp,
     mid_value,
     mid_index,
+    real_size,
     M,
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
@@ -22,51 +46,59 @@ def argmax_kernel_1(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
-    max_index = max_index + pid * BLOCK_SIZE
+    num_jobs = tl.num_programs(axis=0)
+
+    size_per_job = (M + num_jobs -1) // num_jobs
+    start_idx = pid * size_per_job
+    end_idx = min(start_idx + size_per_job, M)
+
+    max_tmp = -float("inf")
+    index_tmp = 0
+    if INT64_INDEX:
+        index_tmp = index_tmp.to(tl.int64)
+    for off in range(start_idx, end_idx, BLOCK_SIZE):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < end_idx
+        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
+        if max_val > max_tmp:
+            max_tmp = max_val.to(tl.float32)
+            index_tmp = max_index + off
     mid_value_ptr = mid_value + pid
     max_index_ptr = mid_index + pid
-    tl.store(mid_value_ptr, max_val)
-    tl.store(max_index_ptr, max_index)
+    tl.store(mid_value_ptr, max_tmp)
+    tl.store(max_index_ptr, index_tmp)
+    tl.store(real_size, num_jobs)
 
 
 @libentry()
 @triton.jit
-def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
+def argmax_kernel_2(mid_value, mid_index, out, real_size, mid_size: tl.constexpr):
+    size = tl.load(real_size)
+    offset = tl.arange(0, mid_size)
     mid_ptrs = mid_value + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
+    mid_val = tl.load(mid_ptrs, mask=offset<size, other=-float("inf"))
     index_val = tl.argmax(mid_val, axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
     tl.store(out, out_val)
 
 
-def heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
-
-
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
+        triton.Config({
+            "BLOCK_M": m,
+            "BLOCK_N": n
+        },
+        num_stages=3,
+        num_warps=1) for m in [4, 8]
+        for n in [4096, 8192, 16384]
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
 )
 @triton.jit
 def argmax_kernel(
@@ -116,13 +148,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
+
         use_int64_index = not can_use_int32_index(inp)
 
-        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
@@ -131,16 +159,25 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch.cuda.device(inp.device):
-            argmax_kernel_1[(mid_size, 1, 1)](
-                inp,
-                mid_value,
-                mid_index,
-                M,
-                block_size,
-                INT64_INDEX=use_int64_index,
-            )
-            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+        if M <= 65536:
+            with torch.cuda.device(inp.device):
+                argmax_kernel_once[(1, 1, 1)](inp, out, M)
+        else:
+            grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM),)
+            mid_size = TOTAL_CORE_NUM
+            real_size = torch.empty([], dtype=torch.int32, device=inp.device)
+            mid_value = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
+            mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
+            with torch.cuda.device(inp.device):
+                argmax_kernel_1[grid](
+                    inp,
+                    mid_value,
+                    mid_index,
+                    real_size,
+                    M,
+                    INT64_INDEX=use_int64_index,
+                )
+                argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, real_size, mid_size)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -164,13 +201,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             K,
         )
         with torch.cuda.device(inp.device):
-            argmax_kernel[grid](
-                inp,
-                out_index,
-                M,
-                N,
-                K,
-                INT64_INDEX=use_int64_index,
-            )
+            argmax_kernel[grid](inp, out_index, M, N, K, INT64_INDEX=use_int64_index)
 
         return out_index

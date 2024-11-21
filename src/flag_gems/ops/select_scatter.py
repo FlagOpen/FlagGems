@@ -4,13 +4,46 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import libentry, offsetCalculator, restride_dim, TOTAL_CORE_NUM
+
+@libentry()
+@triton.autotune(
+    configs = [
+        triton.Config({"BLOCK_SIZE": 2**n}, num_stages=s)
+            for n in range(6, 16, 2)
+            for s in [1, 3]
+    ],
+    key = ["src_elements"],
+)
+@triton.jit
+def select_scatter_2d_kernel(
+    inp_ptr,
+    src_ptr,
+    dim,
+    index,
+    src_elements,
+    H,
+    W,
+    BLOCK_SIZE: tl.constexpr,
+):
+    job_id = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
+    start = job_id * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    w_stride = 1 if dim == 0 else W
+    h_stride = W if dim == 0 else 1
+    for off in range(start, src_elements, step):
+        src_offsets = off + tl.arange(0, BLOCK_SIZE)
+        src_mask = src_offsets < src_elements
+        src = tl.load(src_ptr + src_offsets, mask=src_mask)
+        inp_offsets = (off + tl.arange(0, BLOCK_SIZE)) * w_stride + index * h_stride
+        tl.store(inp_ptr + inp_offsets, src, mask=src_mask)
 
 
 def cfggen():
     block_m = [1, 2, 4, 8]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=1) for m in block_m
     ]
     return configs
 
@@ -57,6 +90,15 @@ def select_scatter(inp, src, dim, index):
     index = index % inp.size(dim)
     out = inp.clone().contiguous()
     src = src.contiguous()
+
+    if inp.ndim == 2:
+        src_elements = src.numel()
+        H = out.shape[0]
+        W = out.shape[1]
+        grid = lambda meta: (min(triton.cdiv(src_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM), )
+        select_scatter_2d_kernel[grid](
+            out, src, dim, index, src_elements, H, W)
+        return out
 
     valid_shape = list(inp.shape)
     del valid_shape[dim]

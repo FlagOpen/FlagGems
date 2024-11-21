@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.libentry import libentry
+from flag_gems.utils.libentry import libentry, MAX_GRID_SIZE_X
 
 from .all import reduce_all
 from .any import reduce_any
@@ -91,16 +91,16 @@ def isin_by_comparation(
     M = in0.numel()
     N = in1.numel()
     if M <= 1024:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 256, N, 4)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(1, 256, N, 1)
     elif M <= 3072:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(2, 256, N, 4)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(2, 256, N, 1)
     elif M <= 6144:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 1)
     elif M <= 9216:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 256, N, 8)
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 256, N, 1)
     else:
-        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 4)
-    ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
+        BLOCK_M, BLOCK_N, num_warps = launch_arg(4, 128, N, 1)
+    ctas_num = min(MAX_GRID_SIZE_X // num_warps, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
@@ -221,7 +221,7 @@ def isin_by_search(
     else:
         _, BLOCK_M, num_warps = launch_arg(None, 2048, M, 16)
     log_n = int(math.log2(N)) + 1
-    ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
+    ctas_num = min(MAX_GRID_SIZE_X // num_warps, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)

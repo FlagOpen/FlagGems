@@ -9,7 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def gt_func(x, y):
-    return x.to(tl.float32) > y
+    return x > y
 
 
 def gt(A, B):
@@ -20,7 +20,7 @@ def gt(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def gt_func_scalar(x, y):
-    return x.to(tl.float32) > y
+    return x > y
 
 
 def gt_scalar(A, B):

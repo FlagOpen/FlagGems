@@ -5,15 +5,29 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 from ..utils.shape_utils import can_use_int32_index
 
 
 @libentry()
 @triton.jit
+def amax_kernel_once(
+    inp,
+    out,
+    M: tl.constexpr,
+):
+    offset = tl.arange(0, M)
+    inp_val = tl.load(inp + offset)
+    amax_val = tl.max(inp_val, 0, return_indices=True)
+    tl.store(out, amax_val)
+
+
+@libentry()
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
+@triton.jit
 def amax_kernel_1(
     inp,
-    mid,
+    out,
     M,
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
@@ -21,30 +35,69 @@ def amax_kernel_1(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    amax_val = tl.max(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, amax_val)
+    num_jobs = tl.num_programs(axis=0)
+    block_start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    _tmp = -float("inf")
+    for off in range(block_start, M, step):
+        offset = off + tl.arange(0, BLOCK_SIZE)
+        mask = offset < M
+        inp_val = tl.load(inp + offset, mask=mask, other=-float("inf"))
+        amax_val = tl.max(inp_val, 0, return_indices=True)
+        if amax_val > _tmp:
+            _tmp = amax_val.to(tl.float32)
+    tl.atomic_max(out, _tmp)
+
+
+def cfggen_opt():
+    tile_num_n = [1, 2, 4, 8, 16, 48]
+    num_stage = [1, 3]
+    configs = [
+        triton.Config({"TILE_NUM_N": n}, num_warps=1, num_stages=s) for n in tile_num_n for s in num_stage
+    ]
+    return configs
 
 
 @libentry()
+@triton.autotune(configs=cfggen_opt(), key=["N"])
 @triton.jit
-def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=-float("inf"))
-    amax_val = tl.max(mid_val)
-    tl.store(out, amax_val)
+def amax_kernel_opt(
+    inp,
+    out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    TILE_NUM_N: tl.constexpr,
+    INT64_INDEX: tl.constexpr = False,
+):
+    # Map the program id to the row of inp it should compute.
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    if INT64_INDEX:
+        pid_m = pid_m.to(tl.int64)
+        pid_n = pid_n.to(tl.int64)
+
+    num_jobs = tl.num_programs(0)
+    rows_per_job = (M + num_jobs -1) // num_jobs
+    row_begin = pid_m * rows_per_job
+    row_end = min(row_begin + rows_per_job, M)
+
+    BLOCK_N: tl.constexpr = (N + TILE_NUM_N - 1) // TILE_NUM_N
+
+    for row_idx in range(row_begin, row_end):
+        offset_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        inp_ptrs = inp + row_idx * N + offset_n
+        mask = offset_n < N
+        inps = tl.load(inp_ptrs, mask, other=-float("inf"))
+        max_val = tl.max(inps, 0, return_indices=True)
+        new_out = out + row_idx
+        tl.atomic_max(new_out, max_val)
 
 
 def cfggen():
     block_m = [1, 2, 4, 8]
+    block_n = [1024, 2048, 4096]
     configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
+        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1, num_stages=3) for m in block_m for n in block_n
     ]
     return configs
 
@@ -65,48 +118,59 @@ def amax_kernel(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
-    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + rows * N
-    out = out + rows
-    row_mask = rows < M
 
-    _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
+    num_jobs = tl.num_programs(axis=0)
+    start_m = pid * BLOCK_M
+    step = num_jobs * BLOCK_M
+    for off_m in range(start_m, M, step):
+        rows = off_m + tl.arange(0, BLOCK_M)[:, None]
+        new_inp = inp + rows * N
+        new_out = out + rows
+        row_mask = rows < M
 
-        a = tl.load(inp + cols, mask, other=-float("inf")).to(tl.float32)
-        _all = tl.maximum(_all, a)
-    all = tl.max(_all, axis=1)[:, None]
-    tl.store(out, all, row_mask)
+        _all = tl.full([BLOCK_M, BLOCK_N], value=-float("inf"), dtype=tl.float32)
+        for off in range(0, N, BLOCK_N):
+            cols = off + tl.arange(0, BLOCK_N)[None, :]
+            col_mask = cols < N
+            mask = row_mask and col_mask
+
+            a = tl.load(new_inp + cols, mask, other=-float("inf"))
+            _all = tl.maximum(a, _all)
+
+        all = tl.max(_all, axis=1)[:, None]
+        tl.store(new_out, all, row_mask)
 
 
 def amax(inp, dim=None, keepdim=False):
     logging.debug("GEMS AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-        mid_size = triton.cdiv(M, block_size)
-        block_mid = triton.next_power_of_2(mid_size)
         dtype = inp.dtype
-        mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         use_int64_index = not can_use_int32_index(inp)
-        if not keepdim:
-            out = torch.empty([], dtype=dtype, device=inp.device)
+
+        if M <= 65536:
+            if not keepdim:
+                out = torch.empty([], dtype=dtype, device=inp.device)
+            else:
+                shape = list(inp.shape)
+                for i in range(0, inp.dim()):
+                    shape[i] = 1
+                out = torch.empty(shape, dtype=dtype, device=inp.device)
+            with torch.cuda.device(inp.device):
+                amax_kernel_once[(1, 1, 1)](inp, out, M)
+            return out
         else:
-            shape = list(inp.shape)
-            for i in range(0, inp.dim()):
-                shape[i] = 1
-            out = torch.empty(shape, dtype=dtype, device=inp.device)
-        with torch.cuda.device(inp.device):
-            amax_kernel_1[(mid_size, 1)](
-                inp, mid, M, block_size, INT64_INDEX=use_int64_index
-            )
-            amax_kernel_2[(1, 1)](
-                mid, out, mid_size, block_mid
-            )  # max block size is 128k, so mid does not requires int64 index
-        return out
+            if not keepdim:
+                out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
+            else:
+                shape = list(inp.shape)
+                for i in range(0, inp.dim()):
+                    shape[i] = 1
+                out = torch.full(shape, float("-inf"), dtype=torch.float32, device=inp.device)
+            grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
+            with torch.cuda.device(inp.device):
+                amax_kernel_1[grid](inp, out, M, INT64_INDEX=use_int64_index)
+            return out.to(dtype)
     else:
         if isinstance(dim, int):
             dim = [dim]
@@ -123,11 +187,15 @@ def amax(inp, dim=None, keepdim=False):
             shape[i] = 1
         M = inp.numel() // N
 
-        out = torch.empty(shape, dtype=dtype, device=inp.device)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch.cuda.device(inp.device):
-            amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
+            if N > 1048576:
+                out = torch.empty(shape, dtype=dtype, device=inp.device)
+                grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_M']), TOTAL_CORE_NUM), )
+                amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
+            else :
+                out = torch.full(shape, -float("inf"), dtype=torch.float32, device=inp.device)
+                grid = lambda meta: (min(triton.cdiv(TOTAL_CORE_NUM, meta["TILE_NUM_N"]), M), meta["TILE_NUM_N"])
+                amax_kernel_opt[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
         if not keepdim:
             out = out.squeeze(dim=dim)
-        return out
+        return out.to(dtype)

@@ -8,6 +8,10 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
+import triton
+import triton.language as tl
+from flag_gems.utils import libentry, TOTAL_CORE_NUM
+
 
 # --------------------------- padding wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -136,7 +140,7 @@ def generate_destination_passing_padding_wrapper(
 
     with code.indent():
         # docstring
-        code.writeline("BLOCK_SIZE = 256")
+        code.writeline("BLOCK_SIZE = 2048")
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
@@ -447,14 +451,129 @@ class PadFunction:
 
 _pad_func = PadFunction()
 
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 2**n}, num_stages=s)
+            for n in range(10, 16, 2)
+            for s in [1, 3]
+    ],
+    key=["inp_elements"],
+)
+@triton.jit
+def pad_1d_constant_kernel(
+    inp_ptr,
+    out_ptr,
+    inp_elements,
+    pad_value,
+    pad_left,
+    pad_right,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
+    start = pid * BLOCK_SIZE
+    step = num_jobs * BLOCK_SIZE
+    out_elements = pad_left + inp_elements + pad_right
+    for off in range(start, out_elements, step):
+        inp_offset = off + tl.arange(0, BLOCK_SIZE) - pad_left
+        inp_mask = inp_offset >= 0 and inp_offset < inp_elements
+        inp = tl.load(inp_ptr + inp_offset, mask=inp_mask, other=pad_value)
+        out_offset = off + tl.arange(0, BLOCK_SIZE)
+        out_mask = out_offset < out_elements
+        tl.store(out_ptr + out_offset, inp, mask=out_mask)
+
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_H": n}, num_stages=s)
+            for n in [1, 4, 8, 12, 16, 24]
+            for s in [1, 3]
+    ],
+    key=["H", "W"],
+)
+@triton.jit
+def pad_2d_constant_kernel(
+    inp_ptr,
+    out_ptr,
+    H,
+    W: tl.constexpr,
+    pad_value,
+    pad_left: tl.constexpr,
+    pad_right: tl.constexpr,
+    pad_top,
+    pad_bottom,
+    BLOCK_H: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_jobs = tl.num_programs(0)
+    block_start = pid * BLOCK_H
+    step = num_jobs * BLOCK_H
+    out_W: tl.constexpr = pad_left + W + pad_right
+    out_H = pad_top + H + pad_bottom
+    for batch_idx in range(block_start, out_H, step):
+        offset_h = tl.arange(0, BLOCK_H) + batch_idx - pad_top
+        offset_w = tl.arange(0, out_W) - pad_left
+        offsets = offset_h[:, None] * W + offset_w[None, :]
+        mask = (offset_h[:, None] >= 0 and offset_h[:, None] < H) and (offset_w[None, :] >= 0 and offset_w[None, :] < W)
+        inp = tl.load(inp_ptr + offsets, mask=mask, other=pad_value)
+
+        out_offset_c = tl.arange(0, out_W)
+        out_offset_n = tl.arange(0, BLOCK_H) + batch_idx
+        out_offsets = out_offset_n[:, None] * out_W + out_offset_c[None, :]
+        out_mask = out_offset_n[:, None] < out_H and out_offset_c[None, :] < out_W
+        tl.store(out_ptr + out_offsets, inp, mask=out_mask)
 
 def pad(self, pad, mode="constant", value=None):
     logging.debug("GEMS CONSTANT PAD ND")
 
     ndim = self.ndim
+    pad_size = len(pad)
+    assert pad_size % 2 == 0
 
     if value is None:
         value = 0.0
+
+    if mode == "constant":
+        pad_before = [0 for _ in range(ndim)]
+        pad_after = [0 for _ in range(ndim)]
+        pad_pair = pad_size // 2
+        for i in range(pad_pair):
+              pad_before[ndim - i - 1] = pad[2 * i]
+              pad_after[ndim - i - 1] = pad[2 * i + 1]
+
+        inp_shape = list(self.shape)
+        out_shape = list(self.shape)
+        for i in range(ndim):
+              out_shape[i] += pad_before[i] + pad_after[i]
+        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
+
+        if ndim == 1:
+            grid = lambda meta: (min(triton.cdiv(out_shape[0], meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
+            pad_1d_constant_kernel[grid](
+                  self.contiguous(), out, inp_shape[0], value,
+                  pad_before[-1], pad_after[-1])
+            return out
+
+        if ndim == 2:
+            grid = lambda meta: (min(triton.cdiv(out_shape[0], meta["BLOCK_H"]), TOTAL_CORE_NUM),)
+            pad_2d_constant_kernel[grid](
+                  self.contiguous(), out, inp_shape[0], inp_shape[1], value,
+                  pad_before[-1], pad_after[-1], pad_before[-2], pad_after[-2])
+            return out
+
+        if ndim == 3:
+            out[:pad_before[0]] = torch.full(
+                out[0:pad_before[0]].shape, value, dtype=self.dtype, device=self.device)
+            out[pad_before[0]+inp_shape[0]:] = torch.full(
+                out[pad_before[0]+inp_shape[0]:].shape, value, dtype=self.dtype, device=self.device)
+
+            for i in range(pad_before[0], pad_before[0] + inp_shape[0]):
+                grid = lambda meta: (min(triton.cdiv(out_shape[1], meta["BLOCK_H"]), TOTAL_CORE_NUM),)
+                pad_2d_constant_kernel[grid](
+                    self[i-pad_before[0]].contiguous(), out[i], inp_shape[1], inp_shape[2], value,
+                    pad_before[-1], pad_after[-1], pad_before[-2], pad_after[-2])
+            return out
 
     if mode == "reflect":
         ndim //= 2

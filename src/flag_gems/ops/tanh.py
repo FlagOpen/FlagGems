@@ -7,7 +7,7 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import pow
+    from triton.language.extra.mlu.libdevice import pow
 except ImportError:
     try:
         from triton.language.math import pow
@@ -15,12 +15,12 @@ except ImportError:
         from triton.language.libdevice import pow
 
 try:
-    from triton.language.extra.cuda.libdevice import tanh as _tanh
+    from triton.language.extra.mlu.libdevice import fast_tanh as _tanh
 except ImportError:
     try:
         from triton.language.math import tanh as _tanh
     except ImportError:
-        from triton.language.libdevice import tanh as _tanh
+        from triton.language.libdevice import fast_tanh as _tanh
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -32,7 +32,7 @@ def tanh_forward(x):
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_backward(y, dy):
-    return dy * (1.0 - pow(y.to(tl.float32), 2))
+    return dy * (1.0 - y * y)
 
 
 class Tanh(torch.autograd.Function):
@@ -50,6 +50,7 @@ class Tanh(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS TANH BACKWARD")
+        out_grad = out_grad.contiguous()
         (out,) = ctx.saved_tensors
         in_grad = tanh_backward(out, out_grad)
         return in_grad

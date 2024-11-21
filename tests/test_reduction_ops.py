@@ -4,11 +4,16 @@ import pytest
 import torch
 
 import flag_gems
+import time
 
 from .accuracy_utils import (
     CONTIGUOUS_SHAPE_STRIDES_2D,
     FLOAT_DTYPES,
+    ALL_INT_DTYPES,
     INT_DTYPES,
+    DEVICE,
+    ONE_DIM_SHAPES,
+    REDUCTION_MNK_SHAPES,
     IRREGULAR_SHAPE_STRIDES,
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
@@ -18,6 +23,8 @@ from .accuracy_utils import (
     to_reference,
 )
 from .conftest import QUICK_MODE
+
+random.seed(time.time() // 100)
 
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 DIM_LIST = [1] if QUICK_MODE else [0, 1]
@@ -62,6 +69,10 @@ THRESHOLD_SHAPE = (
 )
 CROSS_ENTROPY_LOSS_REDUCTION = ["sum"] if QUICK_MODE else ["mean", "none", "sum"]
 
+# Fixed random seed for softmax and norm class tests.
+seed = 23
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
 
 @pytest.mark.amax
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
@@ -222,8 +233,8 @@ def test_accuracy_nonzero(shape, dtype):
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_log_softmax(shape, dtype):
-    dim = 1
+@pytest.mark.parametrize("dim", [0, 1])
+def test_accuracy_log_softmax(shape, dtype, dim):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp, True)
 

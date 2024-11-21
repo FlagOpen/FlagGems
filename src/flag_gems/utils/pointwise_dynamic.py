@@ -7,6 +7,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
+from flag_gems.utils import TOTAL_CORE_NUM
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
@@ -257,6 +258,16 @@ class KernelGenerator:
 
     def gen_decorators(self, code):
         code.writeline("@libentry()")
+        if self.ndim == 1 and (not self.config.prefer_1d_tile):
+            code.writeline("@triton.autotune(")
+            with code.indent():
+                code.writeline("configs=[")
+                with code.indent():
+                    code.writeline("triton.Config({'tile_size0':1024}, num_stages=3, num_warps=1), triton.Config({'tile_size0':2048}, num_stages=3, num_warps=1), triton.Config({'tile_size0':4096}, num_stages=3, num_warps=1), triton.Config({'tile_size0':8192}, num_stages=3, num_warps=1), triton.Config({'tile_size0':16384}, num_stages=3, num_warps=1), triton.Config({'tile_size0':21760}, num_stages=3, num_warps=1), triton.Config({'tile_size0':32768}, num_stages=3, num_warps=1)")
+                code.writeline("],")
+                code.writeline("key=['num_tasks'],")
+            code.writeline(")")
+
         num_non_tensor_args = self.fx.num_non_tensor_args()
         if num_non_tensor_args > 0:
             # we do not specialize non tensor args since they are passed into the inlined function
@@ -340,10 +351,11 @@ class KernelGenerator:
 
             # tile size & tiles_per_cta, gsl style
             if ndim > 0:
-                code.writeline("tiles_per_cta: int,")
                 tile_sizes = _cs(f"tile_size{i}: tl.constexpr" for i in range(ndim))
                 code.writeline(f"{tile_sizes},")
-                code.writeline("one_tile_per_cta: tl.constexpr,")
+                if ndim > 1:
+                    code.writeline("tiles_per_cta: int,")
+                    code.writeline("one_tile_per_cta: tl.constexpr,")
         code.writeline("):")
 
     def gen_signature_1d_tile(self, code):
@@ -518,6 +530,8 @@ class KernelGenerator:
 
     def gen_body_gsl_with_bptr(self, code):
         code.writeline("num_ctas = tl.num_programs(0)")
+        if self.ndim == 1:
+            code.writeline("tiles_per_cta = tl.cdiv(num_tiles0, num_ctas).to(tl.int32)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -594,6 +608,8 @@ class KernelGenerator:
 
     def gen_body_gsl_without_bptr(self, code):
         code.writeline("num_ctas = tl.num_programs(0)")
+        if self.ndim == 1:
+            code.writeline("tiles_per_cta = tl.cdiv(num_tiles0, num_ctas)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -615,14 +631,7 @@ class KernelGenerator:
             code.writeline("pid = tl.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            code.writeline("if one_tile_per_cta: # monolitic kernel style")
-            with code.indent():
-                code.writeline("tile_id = pid")
-                self.gen_body_one_tile_per_cta_with_bptr(code)
-            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-            code.writeline("else: # grid-stride-loop style kernel")
-            with code.indent():
-                self.gen_body_gsl_with_bptr(code)
+            self.gen_body_gsl_with_bptr(code)
         code.newline()
         return code
 
@@ -639,16 +648,10 @@ class KernelGenerator:
 
         with code.indent():
             code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = pid.to(tl.int64)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
-            code.writeline("if one_tile_per_cta: # monolitic kernel style")
-            with code.indent():
-                code.writeline("tile_id = pid")
-                self.gen_body_one_tile_per_cta_without_bptr(code)
-            # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-            code.writeline("else: # grid-stride-loop style kernel")
-            with code.indent():
-                self.gen_body_gsl_without_bptr(code)
+            self.gen_body_gsl_without_bptr(code)
         code.newline()
         return code
 
@@ -732,6 +735,7 @@ class KernelGenerator:
 
         with code.indent():
             code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = pid.to(tl.int64)")
             # code.writeline("num_ctas = tl.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -835,13 +839,17 @@ class WrapperGenerator:
             code.writeline(
                 "num_tiles = math.prod(triton.cdiv(size, tile_size) for size, tile_size in zip(shape, tile_sizes))"
             )
+            code.writeline("num_warps = 1")
             max_grid_size0 = self.config.max_grid_size[0]
-            code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
+            code.writeline(f"num_ctas = min({max_grid_size0}//num_warps, num_tiles)")
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
-            code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
-        code.writeline("grid = (num_ctas, 1, 1)")
+        if ndim == 1:
+            max_grid_size0 = self.config.max_grid_size[0]
+            code.writeline(f"grid = lambda meta: (min({max_grid_size0}//num_warps, triton.cdiv(num_tasks, meta['tile_size0'])),)")
+        else:
+            code.writeline("grid = (num_ctas, 1, 1)")
 
     def gen_task_partition_1d(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
@@ -862,7 +870,7 @@ class WrapperGenerator:
             code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
-            code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
+            code.writeline("num_warps = 1")
             code.writeline("one_tile_per_cta = tiles_per_cta==1")
         code.writeline("grid = (num_ctas, 1, 1)")
 
@@ -933,11 +941,13 @@ class WrapperGenerator:
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
                     code.writeline("num_tasks, # num tasks")
-                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                    for i in range(ndim):
-                        code.writeline(f"tile_size{i}=tile_sizes[{i}],")
-                    code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                code.writeline("num_warps=num_warps,")
+                    if ndim > 1:
+                        code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                    if ndim != 1:
+                        for i in range(ndim):
+                            code.writeline(f"tile_size{i}=tile_sizes[{i}],")
+                    if ndim > 1:
+                        code.writeline("one_tile_per_cta=one_tile_per_cta,")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -1079,10 +1089,10 @@ class PointwiseDynamicFunction:
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or CodeGenConfig(
-            512,
-            (65536, 65536, 65536),
+            8192,
+            tuple([TOTAL_CORE_NUM, 1, 1]),
             32,
-            True,
+            False,
             prefer_1d_tile=int(triton.__version__[0]) < 3,
         )
 
@@ -1253,6 +1263,9 @@ class PointwiseDynamicFunction:
         )
         with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
             f.write(code.getvalue())
+
+        # print ("debug pointwise dynamic codegen: ", cache_dir() / file_name)
+        # print (code.getvalue())
 
         # load
         spec = importlib.util.spec_from_file_location(

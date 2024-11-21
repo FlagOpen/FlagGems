@@ -7,12 +7,12 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 try:
-    from triton.language.extra.cuda.libdevice import div_rn, div_rz, fmod, trunc
+    from triton.language.extra.mlu.libdevice import trunc, div_rz, floor, div_rd, fmod, div_rn
 except ImportError:
     try:
-        from triton.language.math import div_rn, div_rz, fmod, trunc
+        from triton.language.math import trunc, div_rz, floor, div_rd, fmod, div_rn
     except ImportError:
-        from triton.language.libdevice import div_rn, div_rz, fmod, trunc
+        from triton.language.libdevice import trunc, div_rz, floor, div_rd, fmod, div_rn
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -24,12 +24,14 @@ def true_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_tensor_scalar(x, y):
+    y = y.to(x.dtype)
     return x / y
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def true_div_func_scalar_tensor(x, y):
+    x = x.to(y.dtype)
     return x / y
 
 
@@ -49,19 +51,19 @@ def true_divide(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rn(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rn(x, y))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return trunc(div_rz(x, y))
+    return trunc(div_rn(x, y))
 
 
 def trunc_divide(A, B):
@@ -95,7 +97,9 @@ def _int_floordiv(x, y):
     r = x % y
     c1 = r != 0
     c2 = (x < 0) ^ (y < 0)
-    return tl.where(c1 & c2, x // y - 1, x // y)
+    c3 = (x < 0) & (y == 0)
+    c = c1 & c2
+    return x // y - c - c3
 
 
 # TO be consistent with python, numpy and torch, we have to implement it in the
@@ -133,7 +137,7 @@ def _float_floordiv(x, y):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
@@ -142,7 +146,7 @@ def floor_div_func(x, y):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_tensor_scalar(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)
@@ -151,7 +155,7 @@ def floor_div_func_tensor_scalar(x, y):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func_scalar_tensor(x, y):
-    if x.type.scalar.is_int() & x.type.scalar.is_int():
+    if x.type.scalar.is_int() & y.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
         return _float_floordiv(x, y)

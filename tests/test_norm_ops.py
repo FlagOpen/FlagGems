@@ -17,6 +17,10 @@ KEEPDIM_DIMS = (
     [(True, DIMS_LIST[0])] if QUICK_MODE else list(zip([True, False] * 2, DIMS_LIST))
 )
 
+# Fixed random seed for softmax and norm class tests.
+seed = 23
+torch.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
 
 @pytest.mark.group_norm
 @pytest.mark.native_group_norm
@@ -314,8 +318,14 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
+    if "mlu" in str(inp.device) and ord in [float("inf"), -float("inf")]:
+        # FIXME: torch can't support type with inf.
+        ref_out = torch.linalg.vector_norm(ref_inp.to("cpu"), ord, dim, keepdim).to(
+            ref_inp.device
+        )
+    else:
+        ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
 
-    ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
     with flag_gems.use_gems():
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
