@@ -61,7 +61,7 @@ def diag_1d_to_2d(x, diagonal=0):
 
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
 
-    with torch.cuda.device(x.device):
+    with torch.musa.device(x.device):
         diag_1d_to_2d_kernel[grid](
             x, output, N, M, stride, diagonal, BLOCK_SIZE=BLOCK_SIZE
         )
@@ -83,7 +83,7 @@ def diag_2d_to_1d(x, diagonal=0):
 
     grid = lambda meta: (triton.cdiv(diag_len, BLOCK_SIZE),)
 
-    with torch.cuda.device(x.device):
+    with torch.musa.device(x.device):
         diag_2d_to_1d_kernel[grid](
             x, output, N, M, stride0, stride1, diagonal, BLOCK_SIZE=BLOCK_SIZE
         )

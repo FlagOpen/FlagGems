@@ -94,7 +94,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("random error")
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -202,7 +202,6 @@ def test_accuracy_cumsum(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
-@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.nonzero
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -586,7 +585,6 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
