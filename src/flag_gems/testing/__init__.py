@@ -11,12 +11,6 @@ RESOLUTION = {
     torch.complex64: 1.3e-6,
 }
 
-RESOLUTION_DROPOUT = {
-    torch.float16: 2e-3,
-    torch.float32: 1.3e-6,
-    torch.bfloat16: 0.016,
-}
-
 def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
     assert res.dtype == dtype
     ref = ref.to(dtype)
