@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-# from ..utils import libentry
+from ..utils import libentry
 
 
 def conv2d_output_size(
@@ -26,7 +26,7 @@ def conv2d_output_size(
     Returns:
         Output size of 2D convolution.
     """
-    return (in_size + 2 * padding - dilation * (kernel_size -1) - 1) // stride + 1
+    return (in_size + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 
 
 def conv2d_forward_config(
@@ -58,7 +58,7 @@ def conv2d_forward_config(
     )
 
 
-# @libentry()
+@libentry()
 @triton.autotune(
     configs=[
         conv2d_forward_config(128, 32, 128, n_warps=2, num_stages=4),
@@ -83,7 +83,7 @@ def conv2d_forward_config(
         conv2d_forward_config(128, 16, 32, n_warps=2, num_stages=4),
         conv2d_forward_config(64, 64, 32, n_warps=2, num_stages=4),
         conv2d_forward_config(64, 32, 32, n_warps=2, num_stages=4),
-        conv2d_forward_config(128, 32, 32, n_warps=2, num_stages=4),   
+        conv2d_forward_config(128, 32, 32, n_warps=2, num_stages=4),
     ],
     key=[
         "in_n",
@@ -169,13 +169,15 @@ def conv2d_forward_kernel(
         hw = hwc // BLOCK_CI_COUNT
         h = hw // weight_width
         w = hw % weight_width
- 
+
         input_c_offset = c + tl.arange(0, BLOCK_CI)
         input_height_offset = (
-            h*dilation_height - padding_height + stride_height * output_height_point_value
+            h * dilation_height
+            - padding_height
+            + stride_height * output_height_point_value
         )
         input_width_offset = (
-            w*dilation_width - padding_width + stride_width * output_width_point_value
+            w * dilation_width - padding_width + stride_width * output_width_point_value
         )
 
         curr_input_pointer = (
@@ -224,7 +226,7 @@ def conv2d_forward_kernel(
     tl.store(output_pointer, accum, mask=output_mask)
 
 
-# @libentry()
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config(
@@ -348,10 +350,14 @@ def conv2d_backward_kernel(
                 accum += tl.dot(curr_out_grad, curr_weight, allow_tf32=False)
 
             input_height_offset = (
-                h * dilation_height - padding_height + stride_height * output_height_point_value
+                h * dilation_height
+                - padding_height
+                + stride_height * output_height_point_value
             )
             input_width_offset = (
-                w * dilation_width - padding_width + stride_width * output_width_point_value
+                w * dilation_width
+                - padding_width
+                + stride_width * output_width_point_value
             )
 
             curr_input_pointer = (
@@ -395,10 +401,10 @@ class Conv2d(torch.autograd.Function):
             padding_height, padding_width = padding
         else:
             padding_height = padding_width = padding
-        
+
         if isinstance(dilation, (list, tuple)):
             dilation_height, dilation_width = dilation
-        else:    
+        else:
             dilation_height = dilation_width = dilation
 
         in_n, _, input_height, input_width = input.shape

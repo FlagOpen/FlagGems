@@ -257,8 +257,6 @@ class Benchmark:
         return args, kwargs
 
     def run(self):
-
-        # torch.backends.cudnn.allow_tf32 = False
         if Config.query:
             self.init_default_config()
             attri = OperationAttribute(

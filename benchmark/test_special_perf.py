@@ -291,8 +291,8 @@ def test_perf_conv2d():
         torch_op=torch.nn.functional.conv2d,
         dtypes=FLOAT_DTYPES,
     )
-    torch.backends.cudnn.allow_tf32 = False
     bench.run()
+
 
 @pytest.mark.diag
 def test_perf_diag():
