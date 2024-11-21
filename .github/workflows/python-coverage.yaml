@@ -19,11 +19,11 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/model-test.yaml
 
-  # op-test-quick-cpu:
-  #   concurrency:
-  #     group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
-  #     cancel-in-progress: true
-  #   uses: ./.github/workflows/op-test-quick-cpu.yaml
+  op-test-quick-cpu:
+    concurrency:
+      group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test-quick-cpu.yaml
 
   op-utils-test:
     concurrency:
@@ -31,31 +31,30 @@ jobs:
       cancel-in-progress: true
     uses: ./.github/workflows/op-utils-test.yaml
 
-  # pointwise-op-test:
-  #   concurrency:
-  #     group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
-  #     cancel-in-progress: true
-  #   uses: ./.github/workflows/pointwise-op-test.yaml
+  pointwise-op-test:
+    concurrency:
+      group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/pointwise-op-test.yaml
 
-  # reduction-op-test:
-  #   concurrency:
-  #     group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
-  #     cancel-in-progress: true
-  #   uses: ./.github/workflows/reduction-op-test.yaml
+  reduction-op-test:
+    concurrency:
+      group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/reduction-op-test.yaml
 
-  # special-op-test:
-  #   concurrency:
-  #     group: special-op-test-${{ github.event.pull_request.number || github.ref }}
-  #     cancel-in-progress: true
-  #   uses: ./.github/workflows/special-op-test.yaml
+  special-op-test:
+    concurrency:
+      group: special-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/special-op-test.yaml
 
   coverage-test:
     concurrency:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     runs-on: jiuding
-    # needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
-    needs: [blas-op-test, model-test, op-utils-test]
+    needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
