@@ -12,7 +12,6 @@ class device_ctx:
         self.vendor_list = backend.vendors_map.keys()
         self.device_info = self.get_vendor(vendor_name)
         self.vendor_name, self.device_name, self.cmd, self.vendor = self.device_info
-        self.device_guard = self.get_device_guard_fn()
 
     def get_vendor(self, vendor_name=None) -> tuple:
         if vendor_name is not None:
@@ -50,6 +49,3 @@ class device_ctx:
             return triton.get_vendor_info()
         except Exception:
             return torch.get_vendor_info()
-
-    def get_device_guard_fn(self):
-        return backend.get_device_guard_fn(self.vendor_name)

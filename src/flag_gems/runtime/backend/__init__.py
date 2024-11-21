@@ -1,4 +1,5 @@
 import ast
+import functools
 import importlib
 import os
 import sys
@@ -22,6 +23,17 @@ def get_codegen_result(code, result_key):
     except Exception as e:
         RuntimeError(e)
     return globals()[result_key]
+
+
+@functools.lru_cache(maxsize=32)
+def gen_torch_tensor_attr_res(tensor, attr_name):
+    global device_name
+    device_name = device_name or get_vendor_info()[1]
+    code = f"""
+import torch
+res = {tensor}.{attr_name}
+    """
+    return get_codegen_result(code, "res")
 
 
 def gen_torch_device_fn(api_name):
@@ -52,12 +64,6 @@ def get_vendor_module(vendor_name, query=False):
     if vendor_module_name is None:
         vendor_module_name = vendor_name
         vendor_module = get_module("_" + vendor_name)
-
-
-def get_device_guard_fn(vendor_name=None):
-    global vendor_module
-    get_vendor_module(vendor_name)
-    return vendor_module.device.get_torch_device_guard_fn()
 
 
 def get_vendor_info(vendor_name=None, query=False):
@@ -100,10 +106,6 @@ def get_tune_config(vendor_name=None) -> dict:
     global vendor_module
     get_vendor_module(vendor_name)
     return vendor_module.config.get_tune_config()
-
-
-def device_guard_fn(vendor_name=None):
-    return get_device_guard_fn(vendor_name)
 
 
 __all__ = ["*"]

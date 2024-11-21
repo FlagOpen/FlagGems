@@ -1,31 +1,13 @@
 import json
 import os
 
-import torch
-
 from .ops import *  # noqa: F403
 
 
 class device:
     @staticmethod
-    def get_device_from_sys_cmd():
-        return "nvidia-smi"
-
-    @staticmethod
-    def get_dispatch_key():
-        return "cuda"
-
-    @staticmethod
     def get_vendor_info():
         return ("nvidia", "cuda", "nvidia-smi")
-
-    @staticmethod
-    def get_vendor_name():
-        return "nvidia"
-
-    @staticmethod
-    def get_torch_device_guard_fn():
-        return torch.cuda.device
 
 
 class Op:

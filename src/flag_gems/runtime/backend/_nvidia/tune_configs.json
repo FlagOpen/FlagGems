@@ -262,15 +262,15 @@
     ],
     "max" : [
         {
-            "META" : {"BLOCK_M": 8},
+            "META" : {"BLOCK_M": 8, "BLOCK_N": 256},
             "num_warps" : 8
         },
         {
-            "META" : {"BLOCK_M": 16},
+            "META" : {"BLOCK_M": 16, "BLOCK_N": 512},
             "num_warps" : 8
         },
         {
-            "META" : {"BLOCK_M": 32},
+            "META" : {"BLOCK_M": 32, "BLOCK_N": 512},
             "num_warps" : 8
         }
     ],

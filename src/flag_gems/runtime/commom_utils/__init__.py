@@ -15,7 +15,7 @@ class Autograd(Enum):
 class vendors(Enum):
     NVIDIA = 0
     CAMBRICON = 1
-    ASCEND = 2
+    METAX = 2
     ILUVATAR = 3
     MTHREADS = 4
     KUNLUNXIN = 5
@@ -33,5 +33,5 @@ vendors_map = {
     "kunlunxin": vendors.KUNLUNXIN,
     "mthreads": vendors.MTHREADS,
     "hygon": vendors.HYGON,
-    "ascend": vendors.ASCEND,
+    "metax": vendors.METAX,
 }
