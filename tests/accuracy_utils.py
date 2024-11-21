@@ -127,15 +127,6 @@ def to_reference(inp, upcast=False):
     return ref_inp
 
 
-def to_reference_gpu(inp, upcast=False, device='musa'):
-    if inp is None:
-        return None
-    ref_inp = inp.to(device=device)
-    if upcast:
-        ref_inp = ref_inp.to(torch.float64)
-    return ref_inp
-
-
 def to_cpu(res, ref):
     if TO_CPU:
         res = res.to("cpu")
