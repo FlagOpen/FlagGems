@@ -531,6 +531,7 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
@@ -837,7 +838,6 @@ def test_accuracy_repeat_interleave_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("Fatal Python Error: Aborted")
 @pytest.mark.repeat_interleave
 @pytest.mark.parametrize("shape", REPEAT_INTERLEAVE_SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
