@@ -146,7 +146,10 @@ def enable(lib=aten_lib):
     lib.impl("select_scatter", select_scatter, "CUDA")
     lib.impl("index_select", index_select, "CUDA")
     lib.impl("tile", tile, "CUDA")
-    lib.impl("masked_fill", masked_fill, "CUDA")
+    lib.impl("masked_fill.Tensor", masked_fill, "CUDA")
+    lib.impl("masked_fill.Scalar", masked_fill, "CUDA")
+    lib.impl("masked_fill_.Tensor", masked_fill_, "CUDA")
+    lib.impl("masked_fill_.Scalar", masked_fill_, "CUDA")
     lib.impl("_unique2", _unique2, "CUDA")
     lib.impl("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, "CUDA")
     lib.impl("upsample_nearest2d", upsample_nearest2d, "CUDA")
@@ -161,6 +164,7 @@ def enable(lib=aten_lib):
     lib.impl("repeat_interleave.Tensor", repeat_interleave_tensor, "CUDA")
     lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "CUDA")
     lib.impl("randperm", randperm, "CUDA")
+    lib.impl("diag", diag, "CUDA")
 
 
 class use_gems:
