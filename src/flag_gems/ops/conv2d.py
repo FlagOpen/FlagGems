@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+# from ..utils import libentry
 
 
 def conv2d_output_size(
@@ -12,6 +12,7 @@ def conv2d_output_size(
     kernel_size: int,
     stride: int,
     padding: int,
+    dilation: int,
 ) -> int:
     """
     Determines the output size of a 2D convolution operation.
@@ -25,7 +26,7 @@ def conv2d_output_size(
     Returns:
         Output size of 2D convolution.
     """
-    return (in_size + 2 * padding - kernel_size) // stride + 1
+    return (in_size + 2 * padding - dilation * (kernel_size -1) - 1) // stride + 1
 
 
 def conv2d_forward_config(
@@ -57,25 +58,32 @@ def conv2d_forward_config(
     )
 
 
-@libentry()
+# @libentry()
 @triton.autotune(
     configs=[
-        conv2d_forward_config(128, 32, 128, n_warps=8, num_stages=2),
-        # conv2d_forward_config(256, 32, 64, n_warps=8, num_stages=2),
-        # conv2d_forward_config(256, 32, 32, n_warps=4, num_stages=4),
-        # conv2d_forward_config(256, 64, 32, n_warps=4, num_stages=4),
-        # conv2d_forward_config(256, 32, 16, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 32, 128, n_warps=8, num_stages=4),
-        # conv2d_forward_config(128, 32, 64, n_warps=4, num_stages=4),
-        # conv2d_forward_config(64, 32, 64, n_warps=4, num_stages=4),
-        # conv2d_forward_config(128, 32, 16, n_warps=4, num_stages=4),
-        # conv2d_forward_config(128, 128, 128, n_warps=8, num_stages=3),
-        # conv2d_forward_config(256, 128, 64, n_warps=8, num_stages=3),
-        # conv2d_forward_config(256, 128, 32, n_warps=4, num_stages=4),
-        # conv2d_forward_config(64, 128, 128, n_warps=4, num_stages=4),
-        # conv2d_forward_config(128, 128, 64, n_warps=4, num_stages=4),
-        # conv2d_forward_config(128, 64, 32, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 64, 64, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 32, 128, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 32, 64, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 32, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 64, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 64, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 32, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 32, 128, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 32, 64, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 32, 64, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 32, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 128, 128, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 128, 64, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 64, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 64, 64, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 16, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 16, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 16, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(32, 16, 16, n_warps=2, num_stages=4),
+        conv2d_forward_config(256, 16, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 16, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 64, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(64, 32, 32, n_warps=2, num_stages=4),
+        conv2d_forward_config(128, 32, 32, n_warps=2, num_stages=4),   
     ],
     key=[
         "in_n",
@@ -124,6 +132,8 @@ def conv2d_forward_kernel(
     stride_width: tl.constexpr,
     padding_height: tl.constexpr,
     padding_width: tl.constexpr,
+    dilation_height: tl.constexpr,
+    dilation_width: tl.constexpr,
     groups: tl.constexpr,
     BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
@@ -153,47 +163,50 @@ def conv2d_forward_kernel(
     )[None, :]
 
     accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
+    BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
+    for hwc in range(weight_height * weight_width * BLOCK_CI_COUNT):
+        c = (hwc % BLOCK_CI_COUNT) * BLOCK_CI
+        hw = hwc // BLOCK_CI_COUNT
+        h = hw // weight_width
+        w = hw % weight_width
+ 
+        input_c_offset = c + tl.arange(0, BLOCK_CI)
+        input_height_offset = (
+            h*dilation_height - padding_height + stride_height * output_height_point_value
+        )
+        input_width_offset = (
+            w*dilation_width - padding_width + stride_width * output_width_point_value
+        )
 
-    for h in range(weight_height):
-        for w in range(weight_width):
-            for c in range(0, weight_c, BLOCK_CI):
-                input_c_offset = c + tl.arange(0, BLOCK_CI)
-                input_height_offset = (
-                    h - padding_height + stride_height * output_height_point_value
-                )
-                input_width_offset = (
-                    w - padding_width + stride_width * output_width_point_value
-                )
+        curr_input_pointer = (
+            input_pointer
+            + (input_c_stride * input_c_offset)[None, :]
+            + (input_height_stride * input_height_offset)[:, None]
+            + (input_width_stride * input_width_offset)[:, None]
+        )
+        curr_weight_pointer = (
+            weight_pointer
+            + (weight_c_stride * input_c_offset)[:, None]
+            + (weight_height_stride * h)
+            + (weight_width_stride * w)
+        )
 
-                curr_input_pointer = (
-                    input_pointer
-                    + (input_c_stride * input_c_offset)[None, :]
-                    + (input_height_stride * input_height_offset)[:, None]
-                    + (input_width_stride * input_width_offset)[:, None]
-                )
-                curr_weight_pointer = (
-                    weight_pointer
-                    + (weight_c_stride * input_c_offset)[:, None]
-                    + (weight_height_stride * h)
-                    + (weight_width_stride * w)
-                )
+        input_mask = (
+            (in_n_point_value < in_n)[:, None]
+            & (input_c_offset < weight_c)[None, :]
+            & (0 <= input_height_offset)[:, None]
+            & (input_height_offset < input_height)[:, None]
+            & (0 <= input_width_offset)[:, None]
+            & (input_width_offset < input_width)[:, None]
+        )
+        weight_mask = (input_c_offset < weight_c)[:, None] & (
+            output_c_offset < out_per_group_c
+        )[None, :]
 
-                input_mask = (
-                    (in_n_point_value < in_n)[:, None]
-                    & (input_c_offset < weight_c)[None, :]
-                    & (0 <= input_height_offset)[:, None]
-                    & (input_height_offset < input_height)[:, None]
-                    & (0 <= input_width_offset)[:, None]
-                    & (input_width_offset < input_width)[:, None]
-                )
-                weight_mask = (input_c_offset < weight_c)[:, None] & (
-                    output_c_offset < out_per_group_c
-                )[None, :]
+        input_block = tl.load(curr_input_pointer, mask=input_mask)
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
 
-                input_block = tl.load(curr_input_pointer, mask=input_mask)
-                weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
-
-                accum += tl.dot(input_block, weight_block, allow_tf32=False)
+        accum += tl.dot(input_block, weight_block, allow_tf32=False)
 
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
@@ -211,7 +224,7 @@ def conv2d_forward_kernel(
     tl.store(output_pointer, accum, mask=output_mask)
 
 
-@libentry()
+# @libentry()
 @triton.autotune(
     configs=[
         triton.Config(
@@ -264,6 +277,8 @@ def conv2d_backward_kernel(
     out_c,
     padding_height,
     padding_width,
+    dilation_height,
+    dilation_width,
     BLOCK_CI: tl.constexpr,
     BLOCK_NO_HO_WO: tl.constexpr,
     BLOCK_CO: tl.constexpr,
@@ -333,10 +348,10 @@ def conv2d_backward_kernel(
                 accum += tl.dot(curr_out_grad, curr_weight, allow_tf32=False)
 
             input_height_offset = (
-                h - padding_height + stride_height * output_height_point_value
+                h * dilation_height - padding_height + stride_height * output_height_point_value
             )
             input_width_offset = (
-                w - padding_width + stride_width * output_width_point_value
+                w * dilation_width - padding_width + stride_width * output_width_point_value
             )
 
             curr_input_pointer = (
@@ -380,14 +395,19 @@ class Conv2d(torch.autograd.Function):
             padding_height, padding_width = padding
         else:
             padding_height = padding_width = padding
+        
+        if isinstance(dilation, (list, tuple)):
+            dilation_height, dilation_width = dilation
+        else:    
+            dilation_height = dilation_width = dilation
 
         in_n, _, input_height, input_width = input.shape
         out_c, weight_c, weight_height, weight_width = weight.shape
         out_height = conv2d_output_size(
-            input_height, weight_height, stride_height, padding_height
+            input_height, weight_height, stride_height, padding_height, dilation_height
         )
         out_width = conv2d_output_size(
-            input_width, weight_width, stride_width, padding_width
+            input_width, weight_width, stride_width, padding_width, dilation_width
         )
 
         output_dtype = input.dtype
@@ -425,6 +445,8 @@ class Conv2d(torch.autograd.Function):
             stride_width,
             padding_height,
             padding_width,
+            dilation_height,
+            dilation_width,
             groups=groups,
         )
 
@@ -435,6 +457,7 @@ class Conv2d(torch.autograd.Function):
 
         ctx.stride = (stride_height, stride_width)
         ctx.padding = (padding_height, padding_width)
+        ctx.dilation = (dilation_height, dilation_width)
 
         ctx.weight_info = (int(out_c / groups), weight_c, weight_height, weight_width)
         ctx.input_info = (in_n, input_height, input_width)
@@ -458,6 +481,7 @@ class Conv2d(torch.autograd.Function):
         groups = ctx.groups
 
         stride_height, stride_width = ctx.stride
+        dilation_height, dilation_width = ctx.dilation
 
         input = torch.zeros(
             in_n,
@@ -496,6 +520,8 @@ class Conv2d(torch.autograd.Function):
             out_c,
             padding_height,
             padding_width,
+            dilation_height,
+            dilation_width,
         )
 
         return (
