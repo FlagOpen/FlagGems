@@ -140,7 +140,9 @@ def test_accuracy_layernorm(shape, dtype):
 @pytest.mark.native_instance_norm
 @pytest.mark.parametrize(
     "shape",
-    [(2, 1, 2, 1), ]
+    [
+        (2, 1, 2, 1),
+    ]
     if QUICK_MODE
     else [
         (1, 1, 2, 2),
@@ -222,8 +224,8 @@ def test_accuracy_instancenorm(shape, dtype, use_input_stats, has_running_stats)
     N = inp.numel() // M
     if use_input_stats:
         gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
-        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B*N)
-        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B*N)
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B * N)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)
 
 
 WEIGHT_NORM_SHAPE_DTYPE_DIM = list(

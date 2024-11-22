@@ -423,7 +423,11 @@ class InstanceNorm(torch.autograd.Function):
                 eps=1e-05,
                 cudnn_enable=False):
         logging.debug("GEMS INSTANCENORM FORWARD")
-        assert len(x.shape) in [3,4,5], f"x.shape should be [B, C, N] or [B, C, H, W] or [B, C, H, W, L], but got {x.shape}"
+        assert len(x.shape) in [
+            3,
+            4,
+            5
+        ], f"x.shape should be [B, C, N] or [B, C, H, W] or [B, C, H, W, L], but got {x.shape}"
         B, C = x.shape[:2]
         N = math.prod(x.shape[2:])
         M = x.numel() // N
