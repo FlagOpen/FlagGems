@@ -11,6 +11,7 @@ from ..utils.type_utils import get_accumulator_dtype
 
 Tensor = torch.Tensor
 
+
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
@@ -282,7 +283,7 @@ def update_running_stats_kernel(
             tl.float32
         )
         var = (
-            1 / (rstd * rstd) + eps) * N / (N - 1
+            (1 / (rstd * rstd) + eps) * N / (N - 1)
         )  # NOTE: use unbiased var to update running_var
 
         new_mean += tl.sum(mean, axis=0)
@@ -614,6 +615,7 @@ def instance_norm(
     Returns:
         output tensor of shape :math:`(N, C, *)`
     """
+
     return InstanceNorm.apply(
         input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps
     )
