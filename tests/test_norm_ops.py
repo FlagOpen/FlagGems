@@ -151,6 +151,10 @@ def test_accuracy_layernorm(shape, dtype):
         (2, 3, 128, 128),
         (4, 16, 8, 8),
         (2, 3, 1024),
+        (2, 3, 2048),
+        (2, 3, 4096),
+        (2, 3, 8192),
+        (2, 3, 10240),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
