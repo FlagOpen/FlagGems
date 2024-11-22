@@ -103,6 +103,7 @@ def test_instance_norm_benchmark(op_name, torch_op, input_fn):
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
     import flag_gems
+
     gems_op = flag_gems.instance_norm
     bench.set_gems(gems_op)
     bench.run()
