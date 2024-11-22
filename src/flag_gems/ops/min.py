@@ -38,40 +38,28 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, min_val)
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
-
-def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-
+def heur_n_block_size(args):
+    import builtins
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 @libentry()
-# @triton.autotune(
-#     configs=[
-#         triton.Config({"BLOCK_M": 8}, num_warps=8),
-#         triton.Config({"BLOCK_M": 16}, num_warps=8),
-#         triton.Config({"BLOCK_M": 32}, num_warps=8),
-#     ],
-#     key=[
-#         "M",
-#         "N",
-#     ],
-# )
 @triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-    }
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
 )
 @triton.jit
 def min_kernel(
     inp,
     out_value,
     out_index,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -87,6 +75,7 @@ def min_kernel(
     mask = m_offset[:, None] < M and n_offset[None, :] < N
     inp_ptrs = inp + offset
     inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf")).to(tl.float32)
+    # inp_vals = tl.where(mask, inp_vals, float("inf"))
     result_value, result_index = tl.min(inp_vals, axis=1, return_indices=True)
 
     out_value_ptrs = out_value + offset_index

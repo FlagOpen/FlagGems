@@ -47,43 +47,33 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
-
-def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-
+def heur_n_block_size(args):
+    import builtins
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 @libentry()
-# @triton.autotune(
-#     configs=[
-#         triton.Config({"BLOCK_M": 8}, num_warps=8),
-#         triton.Config({"BLOCK_M": 16}, num_warps=8),
-#         triton.Config({"BLOCK_M": 32}, num_warps=8),
-#     ],
-#     key=[
-#         "M",
-#         "N",
-#     ],
-# )
 @triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-    }
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
 )
 @triton.jit
 def argmax_kernel(
     inp,
     out_index,
-    M,
-    N,
-    K,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
 ):
+    # m_offset = pidX * BLOCK_M + tl.arange(0, BLOCK_M)
+    # offset = m_offset * N * K + tl.arange(0, BLOCK_N) * K + pidY
     # set offset
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
@@ -91,28 +81,20 @@ def argmax_kernel(
         pid_m = pid_m.to(tl.int64)
         pid_k = pid_k.to(tl.int64)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-
-    max_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("-inf"))
-    argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-        local_max, local_argmax = tl.max(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
-        # if return indices is not supported, call a tl.argmax in addition
-        # local_argmax = tl.argmax(inp_vals, 1)
-        update = local_max > max_values
-        max_values = tl.where(update, local_max, max_values)
-        argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
-
+    n_offset = tl.arange(0, BLOCK_N)
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
     offset_index = m_offset * K + pid_k
-    out_index_ptrs = out_index + offset_index
+    # set mask
     mask1 = m_offset < M
-    tl.store(out_index_ptrs, argmax_values, mask=mask1)
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    inp_ptrs = inp + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    # inp_vals = tl.where(mask, inp_vals, -float("inf"))
+    _, result_index = tl.max(inp_vals, axis=1, return_indices=True)
+
+    out_index_ptrs = out_index + offset_index
+
+    tl.store(out_index_ptrs, result_index, mask=mask1)
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
@@ -163,7 +145,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
-
         grid = lambda meta: (
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
