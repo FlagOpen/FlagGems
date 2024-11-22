@@ -412,21 +412,23 @@ def weight_bias_backward_kernel(
 
 class InstanceNorm(torch.autograd.Function):
     @staticmethod
-    def forward(ctx,
-                x,
-                weight=None,
-                bias=None,
-                running_mean=None,
-                running_var=None,
-                use_input_stats=False,
-                momentum=0.1,
-                eps=1e-05,
-                cudnn_enable=False):
+    def forward(
+        ctx,
+        x,
+        weight=None,
+        bias=None,
+        running_mean=None,
+        running_var=None,
+        use_input_stats=False,
+        momentum=0.1,
+        eps=1e-05,
+        cudnn_enable=False,
+    ):
         logging.debug("GEMS INSTANCENORM FORWARD")
         assert len(x.shape) in [
             3,
             4,
-            5
+            5,
         ], f"x.shape should be [B, C, N] or [B, C, H, W] or [B, C, H, W, L], but got {x.shape}"
         B, C = x.shape[:2]
         N = math.prod(x.shape[2:])
@@ -439,12 +441,22 @@ class InstanceNorm(torch.autograd.Function):
 
         has_running_stats = running_mean is not None
         if has_running_stats:
-            assert N > 1, f"Expected more than 1 spatial element when training, got input size {x.shape}"
-            assert running_mean is not None and running_var is not None, "running_mean and running_var should not both be None"
-            assert running_mean.shape == running_var.shape and running_mean.shape[0] == C, f"running_mean and running_var should have shape as {[C,]}"
-            assert running_mean.dtype == running_var.dtype, "running_mean and running_var should have the same dtype"
+            assert (
+                N > 1
+            ), f"Expected more than 1 spatial element when training, got input size {x.shape}"
+            assert (
+                running_mean is not None and running_var is not None
+            ), "running_mean and running_var should not both be None"
+            assert (
+                running_mean.shape == running_var.shape and running_mean.shape[0] == C
+            ), f"running_mean and running_var should have shape as {[C,]}"
+            assert (
+                running_mean.dtype == running_var.dtype
+            ), "running_mean and running_var should have the same dtype"
         if not use_input_stats:
-            assert has_running_stats, "Expected running_mean and running_var to be defined when use_input_stats is False"
+            assert (
+                has_running_stats
+            ), "Expected running_mean and running_var to be defined when use_input_stats is False"
 
         # NOTE: when the input is half-precision(either float16 or bfloat16)
         # these statistical data saved for backward is in single precision
@@ -503,7 +515,11 @@ class InstanceNorm(torch.autograd.Function):
                         eps,
                     )
                 if has_running_stats and use_input_stats:  # update running stats
-                    grid = lambda meta: (triton.cdiv(C, meta["BLOCK_CHANNEL_SIZE"]), 1, 1)
+                    grid = lambda meta: (
+                        triton.cdiv(C, meta["BLOCK_CHANNEL_SIZE"]),
+                        1,
+                        1,
+                    )
                     update_running_stats_kernel[grid](
                         mean,
                         rstd,
@@ -592,4 +608,6 @@ def instance_norm(
     Returns:
         output tensor of shape :math:`(N, C, *)`
     """
-    return InstanceNorm.apply(input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps)
+    return InstanceNorm.apply(
+        input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps
+    )
