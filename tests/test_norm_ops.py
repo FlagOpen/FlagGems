@@ -285,6 +285,7 @@ def test_accuracy_instancenorm(
 WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, 1]))
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
