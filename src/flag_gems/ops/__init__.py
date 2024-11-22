@@ -19,6 +19,7 @@ from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
+from .diag import diag
 from .diag_embed import diag_embed
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
@@ -47,7 +48,7 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
-from .masked_fill import masked_fill
+from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
 from .maximum import maximum
@@ -107,7 +108,7 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm, weight_norm_interface
-from .where import where_scalar_other, where_scalar_self, where_self
+from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
 
@@ -135,6 +136,7 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "diag",
     "diag_embed",
     "pad",
     "cumsum",
@@ -233,6 +235,7 @@ __all__ = [
     "log_softmax",
     "outer",
     "cross_entropy_loss",
+    "where_self_out",
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
@@ -240,6 +243,7 @@ __all__ = [
     "slice_scatter",
     "slice_scatter_v2",
     "masked_fill",
+    "masked_fill_",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "upsample_nearest2d",

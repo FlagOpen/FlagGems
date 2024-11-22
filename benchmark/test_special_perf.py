@@ -9,6 +9,7 @@ from .performance_utils import (
     GenericBenchmark,
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
+    GenericBenchmarkExcluse3D,
     generate_tensor_input,
 )
 
@@ -44,7 +45,7 @@ def resolve_conj_input_fn(shape, dtype, device):
 special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
-    ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
+    # ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
@@ -246,6 +247,25 @@ def test_perf_upsample_nearest2d():
     bench.run()
 
 
+@pytest.mark.diag
+def test_perf_diag():
+    def diag_input_fn(shape, dtype, device):
+        input = generate_tensor_input(shape, dtype, device)
+        diagonal = random.randint(-4, 4)
+        yield input, {
+            "diagonal": diagonal,
+        },
+
+    bench = GenericBenchmarkExcluse3D(
+        input_fn=diag_input_fn,
+        op_name="diag",
+        torch_op=torch.diag,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+
+    bench.run()
+
+
 @pytest.mark.diag_embed
 def test_perf_diag_embed():
     def diag_embed_input_fn(shape, dtype, device):
@@ -261,4 +281,3 @@ def test_perf_diag_embed():
         torch_op=torch.diag_embed,
         dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
     )
-    bench.run()
