@@ -157,7 +157,7 @@ def test_accuracy_layernorm(shape, dtype):
 @pytest.mark.parametrize("use_input_stats", [False] if QUICK_MODE else [False, True])
 @pytest.mark.parametrize("has_running_stats", [True] if QUICK_MODE else [False, True])
 def test_accuracy_instancenorm(shape, dtype, use_input_stats, has_running_stats):
-    if use_input_stats == False and has_running_stats == False:
+    if use_input_stats is False and has_running_stats is False:
         return
 
     B, C = shape[:2]
