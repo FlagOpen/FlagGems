@@ -82,8 +82,8 @@ def test_group_and_layer_norm_benchmark(op_name, torch_op, input_fn):
 def instancenorm_input_fn(shape, dtype, device):
     C = shape[1]
     inp = torch.randn(shape, dtype=dtype, device=device)
-    weight = torch.randn((C, ), dtype=dtype, device=device)
-    bias = torch.randn((C, ), dtype=dtype, device=device)
+    weight = torch.randn((C,), dtype=dtype, device=device)
+    bias = torch.randn((C,), dtype=dtype, device=device)
     yield inp, weight, bias
 
 

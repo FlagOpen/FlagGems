@@ -262,7 +262,7 @@ def update_running_stats_kernel(
     eps,
     BLOCK_BATCH_SIZE: tl.constexpr = 1,
     BLOCK_CHANNEL_SIZE: tl.constexpr = 2048,
-    num_warps = 4,
+    num_warps=4,
 ):
     cid = tl.program_id(0) * BLOCK_CHANNEL_SIZE + tl.arange(0, BLOCK_CHANNEL_SIZE)
     col_mask = cid < C
@@ -275,9 +275,15 @@ def update_running_stats_kernel(
         bid = b * BLOCK_BATCH_SIZE + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
         row_mask = bid < B
         mask = row_mask and col_mask[None, :]
-        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(tl.float32)
-        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(tl.float32)
-        var = (1 / (rstd * rstd) + eps) * N / (N - 1)  # NOTE: use unbiased var to update running_var
+        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
+            tl.float32
+        )
+        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(
+            tl.float32
+        )
+        var = (
+            1 / (rstd * rstd) + eps) * N / (N - 1
+        )  # NOTE: use unbiased var to update running_var
 
         new_mean += tl.sum(mean, axis=0)
         new_var += tl.sum(var, axis=0)
