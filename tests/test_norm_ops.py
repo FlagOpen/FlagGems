@@ -141,6 +141,7 @@ WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
 )
 
 
+@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.weight_norm
 @pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
 def test_accuracy_weightnorm(shape, dtype, dim):

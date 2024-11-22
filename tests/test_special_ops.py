@@ -829,7 +829,7 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
 @pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_diag(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa")
     ref_inp = to_reference(inp)
 
     ref_out = torch.diag(ref_inp, diagonal)
