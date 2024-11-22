@@ -1,5 +1,6 @@
 import logging
 import math
+from typing import Optional
 
 import torch
 import triton
@@ -8,6 +9,7 @@ import triton.language as tl
 from ..utils import libentry
 from ..utils.type_utils import get_accumulator_dtype
 
+Tensor = torch.Tensor
 
 @triton.jit
 def prev_multiple_of(a, b):
@@ -204,12 +206,97 @@ def instance_norm_loop_kernel(
 
 @libentry()
 @triton.autotune(
+    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    key=["M", "N"],
+)
+@triton.jit(do_not_specialize=["eps"])
+def instance_norm_use_running_stats_kernel(
+    in_ptr,
+    out_ptr,
+    weight_ptr,
+    bias_ptr,
+    running_mean_ptr,  # pointer to the mean
+    running_var_ptr,  # pointer to the var
+    out_mean_ptr,  # pointer to the mean
+    out_rstd_ptr,  # pointer to the 1/std
+    M,  # M = B * C
+    N,
+    C,
+    eps,
+    TILE_N: tl.constexpr,
+):
+    # using 1d tile makes code clean
+    # Map the program id to the row of X and Y it should compute.
+    pid = tl.program_id(0)
+    m_mask = pid < M
+    c_offsets = pid % C
+
+    n_offsets = tl.arange(0, TILE_N)
+    mask = n_offsets < N
+
+    x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
+    m = tl.load(running_mean_ptr + c_offsets, mask=m_mask)
+    var = tl.load(running_var_ptr + c_offsets, mask=m_mask)
+    rstd = tl.math.rsqrt(var + eps)
+
+    tl.store(out_mean_ptr + pid, m)
+    tl.store(out_rstd_ptr + pid, rstd)
+
+    w = tl.load(weight_ptr + c_offsets, mask=m_mask)
+    b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+    out = (x - m) * rstd * w + b
+
+    tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
+
+
+@triton.jit
+def update_running_stats_kernel(
+    mean_ptr,  # pointer to the mean
+    rstd_ptr,  # pointer to the 1/std
+    running_mean_ptr,
+    running_var_ptr,
+    momentum,
+    B,
+    C,
+    N,
+    eps,
+    BLOCK_BATCH_SIZE: tl.constexpr = 1,
+    BLOCK_CHANNEL_SIZE: tl.constexpr = 2048,
+    num_warps = 4,
+):
+    cid = tl.program_id(0) * BLOCK_CHANNEL_SIZE + tl.arange(0, BLOCK_CHANNEL_SIZE)
+    col_mask = cid < C
+    running_mean = tl.load(running_mean_ptr + cid, mask=col_mask).to(tl.float32)
+    running_var = tl.load(running_var_ptr + cid, mask=col_mask).to(tl.float32)
+
+    new_mean = tl.zeros((BLOCK_CHANNEL_SIZE,), dtype=tl.float32)
+    new_var = tl.zeros((BLOCK_CHANNEL_SIZE,), dtype=tl.float32)
+    for b in range(0, B, BLOCK_BATCH_SIZE):
+        bid = b * BLOCK_BATCH_SIZE + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
+        row_mask = bid < B
+        mask = row_mask and col_mask[None, :]
+        mean = tl.load(mean_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(tl.float32)
+        rstd = tl.load(rstd_ptr + bid * C + cid[None, :], mask=mask, other=0.0).to(tl.float32)
+        var = (1 / (rstd * rstd) + eps) * N / (N - 1)  # NOTE: use unbiased var to update running_var
+
+        new_mean += tl.sum(mean, axis=0)
+        new_var += tl.sum(var, axis=0)
+
+    new_running_mean = (1 - momentum) * running_mean + momentum * new_mean / B
+    new_running_var = (1 - momentum) * running_var + momentum * new_var / B
+
+    tl.store(running_mean_ptr + cid, new_running_mean, mask=col_mask)
+    tl.store(running_var_ptr + cid, new_running_var, mask=col_mask)
+
+
+@libentry()
+@triton.autotune(
     configs=[
         triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
         for m in [1, 2, 4, 8]
         for w in [4, 8, 16]
     ],
-    key=["M", "N"],
+    key=["M", "N", "C"],
 )
 @triton.jit
 def instance_norm_backward_kernel(
@@ -276,7 +363,7 @@ def instance_norm_backward_kernel(
         for b in [1, 2, 4, 8]
         for w in [4, 8, 16]
     ],
-    key=["M", "N"],
+    key=["N", "B", "C"],
 )
 @triton.jit
 def weight_bias_backward_kernel(
@@ -325,7 +412,16 @@ def weight_bias_backward_kernel(
 
 class InstanceNorm(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, weight, bias, eps=1e-5):
+    def forward(ctx,
+                x,
+                weight=None,
+                bias=None,
+                running_mean=None,
+                running_var=None,
+                use_input_stats=False,
+                momentum=0.1,
+                eps=1e-05,
+                cudnn_enable=False):
         logging.debug("GEMS INSTANCENORM FORWARD")
         assert len(x.shape) in [3,4,5], f"x.shape should be [B, C, N] or [B, C, H, W] or [B, C, H, W, L], but got {x.shape}"
         B, C = x.shape[:2]
@@ -337,6 +433,15 @@ class InstanceNorm(torch.autograd.Function):
         bias = bias.contiguous()
         y = torch.empty_like(x)
 
+        has_running_stats = running_mean is not None
+        if has_running_stats:
+            assert N > 1, f"Expected more than 1 spatial element when training, got input size {x.shape}"
+            assert running_mean is not None and running_var is not None, "running_mean and running_var should not both be None"
+            assert running_mean.shape == running_var.shape and running_mean.shape[0] == C, f"running_mean and running_var should have shape as {[C,]}"
+            assert running_mean.dtype == running_var.dtype, "running_mean and running_var should have the same dtype"
+        if not use_input_stats:
+            assert has_running_stats, "Expected running_mean and running_var to be defined when use_input_stats is False"
+
         # NOTE: when the input is half-precision(either float16 or bfloat16)
         # these statistical data saved for backward is in single precision
         acc_type = get_accumulator_dtype(x.dtype)
@@ -344,32 +449,78 @@ class InstanceNorm(torch.autograd.Function):
         rstd = torch.empty(size=(B, C), dtype=acc_type, device=x.device)
 
         with torch.cuda.device(x.device):
-            if N <= 128:
-                TILE_N = triton.next_power_of_2(N)
-                TILE_M = triton.cdiv(1024, TILE_N)
-                grid = (triton.cdiv(M, TILE_M), 1, 1)
-                instance_norm_persistent_kernel_multiline[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    C,
-                    eps,
-                    TILE_M,
-                    TILE_N,
-                )
-            elif N <= 4096:
+            if use_input_stats:
+                if N <= 128:
+                    TILE_N = triton.next_power_of_2(N)
+                    TILE_M = triton.cdiv(1024, TILE_N)
+                    grid = (triton.cdiv(M, TILE_M), 1, 1)
+                    instance_norm_persistent_kernel_multiline[grid](
+                        x,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        C,
+                        eps,
+                        TILE_M,
+                        TILE_N,
+                    )
+                elif N <= 4096:
+                    TILE_N = triton.next_power_of_2(N)
+                    grid = (M, 1, 1)
+                    instance_norm_persistent_kernel[grid](
+                        x,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        C,
+                        eps,
+                        TILE_N,
+                    )
+                else:
+                    grid = (M, 1, 1)
+                    instance_norm_loop_kernel[grid](
+                        x,
+                        y,
+                        weight,
+                        bias,
+                        mean,
+                        rstd,
+                        M,
+                        N,
+                        C,
+                        eps,
+                    )
+                if has_running_stats and use_input_stats:  # update running stats
+                    grid = lambda meta: (triton.cdiv(C, meta["BLOCK_CHANNEL_SIZE"]), 1, 1)
+                    update_running_stats_kernel[grid](
+                        mean,
+                        rstd,
+                        running_mean,
+                        running_var,
+                        momentum,
+                        B,
+                        C,
+                        N,
+                        eps,
+                    )
+            else:  # use running stats instead of input stats
                 TILE_N = triton.next_power_of_2(N)
                 grid = (M, 1, 1)
-                instance_norm_persistent_kernel[grid](
+                instance_norm_use_running_stats_kernel[grid](
                     x,
                     y,
                     weight,
                     bias,
+                    running_mean,
+                    running_var,
                     mean,
                     rstd,
                     M,
@@ -378,20 +529,7 @@ class InstanceNorm(torch.autograd.Function):
                     eps,
                     TILE_N,
                 )
-            else:
-                grid = (M, 1, 1)
-                instance_norm_loop_kernel[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    C,
-                    eps,
-                )
+
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
         ctx.N = N
@@ -421,8 +559,33 @@ class InstanceNorm(torch.autograd.Function):
             weight_bias_backward_kernel[grid](
                 out_grad, x, mean, rstd, weight_grad, bias_grad, M, N, B, C
             )
-        return in_grad, weight_grad, bias_grad, None
+        return in_grad, weight_grad, bias_grad, None, None, None, None, None, None
 
 
-def instance_norm(x, weight, bias, eps=1e-5):
-    return InstanceNorm.apply(x, weight, bias, eps)
+def instance_norm(
+    input: Tensor,
+    weight: Optional[Tensor] = None,
+    bias: Optional[Tensor] = None,
+    running_mean: Optional[Tensor] = None,
+    running_var: Optional[Tensor] = None,
+    use_input_stats: bool = False,
+    momentum: float = 0.1,
+    eps: float = 1e-5,
+    cudnn_enable: bool = False,
+) -> Tensor:
+    r"""Applies Instance Normalization for each channel in each data sample in a
+    batch.
+    Inputs:
+        input: input tensor of shape :math:`(N, C, *)`
+        weight: weight tensor of shape :math:`(C)`
+        bias: bias tensor of shape :math:`(C)`
+        running_mean: running mean tensor of shape :math:`(C)`
+        running_var: running variance tensor of shape :math:`(C)`
+        use_input_stats: whether to use the mean and variance of the input tensor
+        momentum: momentum value for the running mean and variance
+        eps: epsilon value for numerical stability
+        cudnn_enable: whether to use cudnn for normalization
+    Returns:
+        output tensor of shape :math:`(N, C, *)`
+    """
+    return InstanceNorm.apply(input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps)

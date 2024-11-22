@@ -152,33 +152,62 @@ def test_accuracy_layernorm(shape, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_instancenorm(shape, dtype):
+@pytest.mark.parametrize("use_input_stats", [False] if QUICK_MODE else [False, True])
+@pytest.mark.parametrize("has_running_stats", [True] if QUICK_MODE else [False, True])
+def test_accuracy_instancenorm(shape, dtype, use_input_stats, has_running_stats):
+    if use_input_stats == False and has_running_stats == False:
+        return
+
     B, C = shape[:2]
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
     bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+    running_mean = torch.randn(size=(C,), dtype=torch.float32, device="cuda") if has_running_stats else None
+    running_var = torch.randn(size=(C,), dtype=torch.float32, device="cuda").abs() + 1e-5 if has_running_stats else None
+    momentum = 0.1
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
     ref_weight = to_reference(weight, True)
     ref_bias = to_reference(bias, True)
+    ref_running_mean = to_reference(running_mean.clone() if has_running_stats else None, True)
+    ref_running_var = to_reference(running_var.clone() if has_running_stats else None, True)
 
     ref_out = torch.nn.functional.instance_norm(
         ref_inp,
+        running_mean=ref_running_mean,
+        running_var=ref_running_var,
         weight=ref_weight,
         bias=ref_bias,
+        use_input_stats=use_input_stats,
+        momentum=momentum,
         eps=eps,
     )
     (res_out, res_mean, res_rstd) = flag_gems.instance_norm(
-        inp, weight=weight, bias=bias, eps=eps
+        inp,
+        running_mean=running_mean,
+        running_var=running_var,
+        weight=weight,
+        bias=bias,
+        use_input_stats=use_input_stats,
+        momentum=momentum,
+        eps=eps
     )
 
-    ref_mean = torch.mean(ref_inp, dim=list(range(2, inp.ndim)))
-    ref_var = torch.var(ref_inp, dim=list(range(2, inp.ndim)), correction=0)
-    ref_rstd = torch.rsqrt(ref_var + eps)
+    if use_input_stats:
+        ref_mean = torch.mean(ref_inp, dim=list(range(2, inp.ndim)))
+        ref_var = torch.var(ref_inp, dim=list(range(2, inp.ndim)), correction=0)
+        ref_rstd = torch.rsqrt(ref_var + eps)
+    else:
+        ref_mean = ref_running_mean.reshape(-1, C).repeat(B, 1)
+        ref_var = ref_running_var.reshape(-1, C).repeat(B, 1)
+        ref_rstd = torch.rsqrt(ref_var + eps)
     gems_assert_close(res_mean, ref_mean, res_mean.dtype)
     gems_assert_close(res_rstd, ref_rstd, res_rstd.dtype)
     gems_assert_close(res_out, ref_out, dtype)
+    if has_running_stats:
+        gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
+        gems_assert_close(running_var, ref_running_var, running_var.dtype)
 
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
@@ -191,9 +220,10 @@ def test_accuracy_instancenorm(shape, dtype):
     )
     M = B * C
     N = inp.numel() // M
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B*N)
-    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B*N)
+    if use_input_stats:
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B*N)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B*N)
 
 
 WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
