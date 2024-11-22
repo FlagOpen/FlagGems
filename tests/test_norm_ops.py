@@ -164,16 +164,28 @@ def test_accuracy_instancenorm(shape, dtype, use_input_stats, has_running_stats)
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
     bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
-    running_mean = torch.randn(size=(C,), dtype=torch.float32, device="cuda") if has_running_stats else None
-    running_var = torch.randn(size=(C,), dtype=torch.float32, device="cuda").abs() + 1e-5 if has_running_stats else None
+    running_mean = (
+        torch.randn(size=(C,), dtype=torch.float32, device="cuda")
+        if has_running_stats
+        else None
+    )
+    running_var = (
+        torch.randn(size=(C,), dtype=torch.float32, device="cuda").abs() + 1e-5
+        if has_running_stats
+        else None
+    )
     momentum = 0.1
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
     ref_weight = to_reference(weight, True)
     ref_bias = to_reference(bias, True)
-    ref_running_mean = to_reference(running_mean.clone() if has_running_stats else None, True)
-    ref_running_var = to_reference(running_var.clone() if has_running_stats else None, True)
+    ref_running_mean = to_reference(
+        running_mean.clone() if has_running_stats else None, True
+    )
+    ref_running_var = to_reference(
+        running_var.clone() if has_running_stats else None, True
+    )
 
     ref_out = torch.nn.functional.instance_norm(
         ref_inp,
@@ -193,7 +205,7 @@ def test_accuracy_instancenorm(shape, dtype, use_input_stats, has_running_stats)
         bias=bias,
         use_input_stats=use_input_stats,
         momentum=momentum,
-        eps=eps
+        eps=eps,
     )
 
     if use_input_stats:
