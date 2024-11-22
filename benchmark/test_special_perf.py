@@ -281,3 +281,5 @@ def test_perf_diag_embed():
         torch_op=torch.diag_embed,
         dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
     )
+
+    bench.run()

@@ -874,3 +874,4 @@ def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
     ref_out = torch.diag_embed(ref_inp, offset, dim1, dim2)
     with flag_gems.use_gems():
         res_out = torch.diag_embed(inp, offset, dim1, dim2)
+    gems_assert_equal(res_out, ref_out)
