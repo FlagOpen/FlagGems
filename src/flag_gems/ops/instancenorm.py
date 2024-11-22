@@ -568,7 +568,7 @@ def instance_norm(
     bias: Optional[Tensor] = None,
     running_mean: Optional[Tensor] = None,
     running_var: Optional[Tensor] = None,
-    use_input_stats: bool = False,
+    use_input_stats: bool = True,
     momentum: float = 0.1,
     eps: float = 1e-5,
     cudnn_enable: bool = False,
