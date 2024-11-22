@@ -29,8 +29,8 @@ def celoss_indices_kernel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -93,8 +93,8 @@ def celoss_probability_kernel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -158,8 +158,8 @@ def celoss_indices_smooth_kernel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -243,8 +243,8 @@ def celoss_indices_bwd(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -318,8 +318,8 @@ def celoss_probability_bwd(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
@@ -408,8 +408,8 @@ def celoss_indices_smooth_bwd(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
+    pid_d = tl.program_id(0)
+    pid_n = tl.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -554,7 +554,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         tgt = target.contiguous()
         weight = weight.contiguous() if weight is not None else None
         out = torch.empty(shape, dtype=torch.float32, device=inp.device)
-        grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+        grid = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), N)
 
         if tgt.ndim == dim:
             # target probabilities
@@ -646,7 +646,7 @@ class CrossEntropyLoss(torch.autograd.Function):
         out_grad = out_grad.broadcast_to(shape).contiguous()
 
         inp_grad = torch.zeros(inp.shape, dtype=inp.dtype, device=inp.device)
-        grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+        grid = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), N)
         if tgt.ndim == inp.ndim:
             celoss_probability_bwd[grid](
                 out_grad, inp, tgt, weight, inp_grad, label_smoothing, mean_num, C, D
