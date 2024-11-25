@@ -19,6 +19,7 @@ from .clamp import clamp, clamp_tensor
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
+from .diag import diag
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
@@ -46,7 +47,7 @@ from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .lt import lt, lt_scalar
-from .masked_fill import masked_fill
+from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
 from .maximum import maximum
@@ -71,10 +72,15 @@ from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
 from .randn_like import randn_like
+from .randperm import randperm
 from .reciprocal import reciprocal
 from .relu import relu
 from .repeat import repeat
-from .repeat_interleave import repeat_interleave_self_int, repeat_interleave_tensor
+from .repeat_interleave import (
+    repeat_interleave_self_int,
+    repeat_interleave_self_tensor,
+    repeat_interleave_tensor,
+)
 from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
@@ -84,7 +90,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
-from .slice_scatter import slice_scatter
+from .slice_scatter import slice_scatter, slice_scatter_v2
 from .softmax import softmax
 from .sort import sort
 from .stack import stack
@@ -102,7 +108,7 @@ from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm, weight_norm_interface
-from .where import where_scalar_other, where_scalar_self, where_self
+from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
 
@@ -130,6 +136,7 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "diag",
     "pad",
     "cumsum",
     "normed_cumsum",
@@ -183,6 +190,7 @@ __all__ = [
     "minimum",
     "rand",
     "randn",
+    "randperm",
     "rand_like",
     "randn_like",
     "resolve_neg",
@@ -227,12 +235,15 @@ __all__ = [
     "log_softmax",
     "outer",
     "cross_entropy_loss",
+    "where_self_out",
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
     "select_scatter",
     "slice_scatter",
+    "slice_scatter_v2",
     "masked_fill",
+    "masked_fill_",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "upsample_nearest2d",
@@ -245,4 +256,5 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "repeat_interleave_self_tensor",
 ]

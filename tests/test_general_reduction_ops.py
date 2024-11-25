@@ -123,12 +123,42 @@ def test_accuracy_max_without_dim(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.max
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")[::2, ::2]
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.max(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.max(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_dim(shape, dim, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out_value, res_out_index = torch.max(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_equal(res_out_index, ref_out_index)
+    gems_assert_equal(res_out_value, ref_out_value)
+
+
+@pytest.mark.max
+@pytest.mark.parametrize("shape", [(4, 1048577, 4)])
+@pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_dim_big_shape(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp)
 
