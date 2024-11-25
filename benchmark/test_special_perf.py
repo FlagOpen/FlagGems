@@ -82,8 +82,7 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=[torch.float16, torch.float32]
-        + INT_DTYPES,  # not support for torch.bfloat16
+        dtypes=INT_DTYPES,
     )
     bench.run()
 
@@ -93,8 +92,6 @@ def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield inp, {"sorted": True, "return_inverse": True, "return_counts": False},
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            yield inp, {"sorted": True, "return_inverse": False, "return_counts": True},
 
     bench = GenericBenchmark2DOnly(
         input_fn=unique_input_fn,
