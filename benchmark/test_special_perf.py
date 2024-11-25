@@ -25,13 +25,6 @@ def topk_input_fn(shape, dtype, device):
     #     yield {"x": x, "k": k, "dim": -1, "sorted": False},
 
 
-def sort_input_fn(shape, dtype, device):
-    inp = generate_tensor_input(shape, dtype, device)
-    yield inp, {"dim": -1},
-    if Config.bench_level == BenchLevel.COMPREHENSIVE:
-        yield inp, {"dim": 0},
-
-
 def resolve_neg_input_fn(shape, dtype, device):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     yield x.conj().imag,
@@ -45,7 +38,10 @@ def resolve_conj_input_fn(shape, dtype, device):
 special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
+<<<<<<< HEAD
     # ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
+=======
+>>>>>>> [Operator] Add sort op
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
@@ -109,6 +105,25 @@ def test_perf_unique():
         op_name="unique",
         torch_op=torch.unique,
         dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.sort
+def test_perf_sort():
+    class SortBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [(1024, 1), (1024, 512)]
+
+    def sort_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"dim": -1, "descending": False},
+
+    bench = SortBenchmark(
+        input_fn=sort_input_fn,
+        op_name="sort",
+        torch_op=torch.sort,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
     )
     bench.run()
 

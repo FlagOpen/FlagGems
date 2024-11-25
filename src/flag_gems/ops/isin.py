@@ -207,7 +207,7 @@ def isin_by_search(
             in1, sorted=True, return_inverse=False, return_counts=False
         )
     else:
-        in1_ravel, _ = torch.sort(in1.ravel())
+        in1_ravel, _ = torch.sort(in1.ravel(), stable=False)
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()
