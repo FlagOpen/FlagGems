@@ -130,10 +130,9 @@ def bmm_kernel(
 
         group_id = pid // num_CTA_per_group
         inner_group_id = pid % num_CTA_per_group
-        if (group_id * GROUP_M + GROUP_M) > gridx:
-            GROUP_SIZE = gridx % GROUP_M
-        else:
-            GROUP_SIZE = GROUP_M
+        GROUP_SIZE = tl.where(
+            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
+        )
         pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
         pid_n = inner_group_id // GROUP_SIZE
 
