@@ -124,6 +124,9 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         if dtype is torch.bool:
             dtype = torch.int64
 
+    if dim == []:
+        return sum(inp, dtype=dtype)
+
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
     inp = dim_compress(inp, dim)

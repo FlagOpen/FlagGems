@@ -128,6 +128,8 @@ def any_dim(inp, dim=None, keepdim=False):
 
 def any_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS ANY DIMS")
+    if dim == []:
+        return any(inqp)
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
     assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
