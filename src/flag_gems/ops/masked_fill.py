@@ -28,9 +28,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
     cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and mask, other=0)
     tl.store(out + offsets, cur_inp, (not fill_mask) and mask)
-
-    cur_val = tl.full((BLOCK_SIZE,), value, dtype=cur_inp.dtype)
-    tl.store(out + offsets, cur_val, fill_mask and mask)
+    tl.store(out + offsets, value, fill_mask and mask)
 
 
 @libentry()
@@ -42,8 +40,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.cons
     mask = offsets < N
 
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
-    cur_val = tl.full((BLOCK_SIZE,), value, dtype=inp.dtype)
-    tl.store(out + offsets, cur_val, fill_mask and mask)
+    tl.store(inp + offsets, value, fill_mask and mask)
 
 
 def masked_fill(inp, mask, value):
