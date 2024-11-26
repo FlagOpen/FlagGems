@@ -8,6 +8,10 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(256, args["N"]))
+
+
 def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
@@ -18,7 +22,7 @@ def heur_num_warps(args):
     elif args["N"] <= 2048:
         return 4
     else:
-        return 8
+        return 8s
 
 
 @libentry()
@@ -37,6 +41,7 @@ def heur_num_warps(args):
 )
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
     }
