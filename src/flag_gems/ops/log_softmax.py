@@ -8,6 +8,10 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
+def heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(256, args["N"]))
+
+
 def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
@@ -22,20 +26,9 @@ def heur_num_warps(args):
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
         "num_warps": heur_num_warps,
     }
