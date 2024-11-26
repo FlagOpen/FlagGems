@@ -274,7 +274,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
     with torch.cuda.device(x.device):
-        if dim is None or len(dim) == x.ndim:
+        if (not dim) or len(dim) == x.ndim:
             dim = list(range(x.ndim))
             shape = [1] * x.ndim
             x = dim_compress(x, dim)

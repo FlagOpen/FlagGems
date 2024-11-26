@@ -612,7 +612,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -638,7 +638,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -731,7 +731,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             # code.writeline("num_ctas = tl.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
