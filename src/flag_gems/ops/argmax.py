@@ -46,20 +46,18 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
+def heur_block_m(args):
+    return 4 if args["M"] < 4096 else 8
+
+
 def heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("argmax"),
-    key=[
-        "M",
-        "N",
-    ],
-)
 @triton.heuristics(
     {
+        "BLOCK_M": heur_block_m,
         "BLOCK_N": heur_block_n,
     }
 )
