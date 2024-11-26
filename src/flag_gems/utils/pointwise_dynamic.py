@@ -1048,6 +1048,7 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
+        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.newline()
         code.newline()
         return code

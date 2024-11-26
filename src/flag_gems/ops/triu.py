@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import can_use_int32_index
 
 
@@ -39,7 +40,7 @@ def triu_kernel(
     N_BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
     row = pid * M_BLOCK_SIZE + tl.arange(0, M_BLOCK_SIZE)[:, None]
@@ -71,8 +72,8 @@ def triu_batch_kernel(
     MN_BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
 ):
-    batch_id = tl.program_id(0)
-    mn_id = tl.program_id(1)
+    batch_id = tle.program_id(0)
+    mn_id = tle.program_id(1)
     if INT64_INDEX:
         batch_id = batch_id.to(tl.int64)
         mn_id = mn_id.to(tl.int64)

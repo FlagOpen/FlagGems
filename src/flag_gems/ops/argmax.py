@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import can_use_int32_index
 
 
@@ -19,7 +20,7 @@ def argmax_kernel_1(
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -80,8 +81,8 @@ def argmax_kernel(
     INT64_INDEX: tl.constexpr = False,
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     if INT64_INDEX:
         pid_m = pid_m.to(tl.int64)
         pid_k = pid_k.to(tl.int64)

@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import can_use_int32_index
 
 
@@ -18,7 +19,7 @@ def amax_kernel_1(
     BLOCK_SIZE: tl.constexpr,
     INT64_INDEX: tl.constexpr = False,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -62,7 +63,7 @@ def amax_kernel(
     INT64_INDEX: tl.constexpr = False,
 ):
     # Map the program id to the row of inp it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
     rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
