@@ -23,15 +23,16 @@ def cummin_kernel_(input, axis=0):
     return core.associative_scan(input, axis, _min_combine)
 
 
+def heur_block_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
+        triton.Config({"BLOCK_M": 8}, num_warps=8),
+        triton.Config({"BLOCK_M": 16}, num_warps=8),
+        triton.Config({"BLOCK_M": 32}, num_warps=8),
     ],
     key=[
         "M",
@@ -39,7 +40,9 @@ def cummin_kernel_(input, axis=0):
     ],
 )
 @triton.heuristics(
-    values={"BLOCK_N": lambda args: triton.next_power_of_2(args["N"])},
+    {
+        "BLOCK_N": heur_block_n,
+    }
 )
 @triton.jit
 def cummin_kernel(
@@ -78,11 +81,14 @@ def cummin(inp, dim=1, *, dtype=None):
 
     if dtype is None:
         dtype = inp.dtype
+        if dtype is torch.bool:
+            dtype = torch.int64
     out = torch.empty_like(inp, dtype=dtype)
 
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    cummin_kernel[grid](inp, out, M, N, K)
+    with torch.cuda.device(inp.device):
+        cummin_kernel[grid](inp, out, M, N, K)
     return out
