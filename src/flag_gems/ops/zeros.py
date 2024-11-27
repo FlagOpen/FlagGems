@@ -10,6 +10,8 @@ from ..utils.shape_utils import volume
 
 device_ = device
 
+from ..utils import triton_lang_extension as tle
+
 
 @triton.jit
 def zeros_kernel(
