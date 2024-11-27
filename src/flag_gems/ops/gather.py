@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 from flag_gems.utils.shape_utils import restride_dim
 
@@ -229,7 +229,7 @@ class GatherFunction:
 
             file_name = f"gather_rank_{key}_pid_{self.pid}.py"
 
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load
