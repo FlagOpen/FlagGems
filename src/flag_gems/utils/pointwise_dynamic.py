@@ -467,7 +467,10 @@ class KernelGenerator:
         # cta_offsets
         code.writeline("# tile offsets")
         for i in range(ndim):
-            code.writeline(f"offset{i} = tile_id{i} * tile_size{i}")
+            # Or else: AssertionError: Block pointers only support 32 bit
+            # `offsets/block_shape`, add a `.to(tl.int32)` or use regular indexing
+            # for 64 bit support
+            code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
         # loads
         code.writeline("# loads")
@@ -517,7 +520,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -593,7 +596,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -712,7 +715,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -732,7 +735,7 @@ class KernelGenerator:
 
         with code.indent():
             code.writeline("pid = tle.program_id(0)")
-            # code.writeline("num_ctas = tl.num_programs(0)")
+            # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
             with code.indent():
