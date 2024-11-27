@@ -43,6 +43,7 @@ def heur_num_warps_non_inner(args):
         return 16
 
 
+@libentry()
 @triton.heuristics(
     {
         "TILE_K": heur_tile_k,
@@ -138,6 +139,7 @@ def heur_num_warps_inner(args):
         return 16
 
 
+@libentry()
 @triton.heuristics(
     {
         "TILE_N": heur_tile_n_inner,
