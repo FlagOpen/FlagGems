@@ -1,14 +1,11 @@
 import logging
 
 import torch
-
-from ..ops.copy import copy
-from ..utils.shape_utils import has_internal_overlapping
-=======
 import triton
 import triton.language as tl
 
 from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import triton_lang_extension as tle
 
 
 def cfggen():
@@ -34,7 +31,7 @@ def select_scatter_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
 
@@ -51,7 +48,6 @@ def select_scatter_kernel(
 
         indices += index * stride_dim
         tl.store(inp + indices, cur_src, mask=mask)
->>>>>>> 89c65c7 ([Operator] slice&select scatter (#143))
 
 
 def select_scatter(inp, src, dim, index):
@@ -60,6 +56,8 @@ def select_scatter(inp, src, dim, index):
     assert index >= -inp.size(dim) and index < inp.size(dim), "Invalid index"
     dim = dim % inp.ndim
     index = index % inp.size(dim)
+    out = inp.clone().contiguous()
+    src = src.contiguous()
 
     valid_shape = list(inp.shape)
     del valid_shape[dim]
@@ -67,16 +65,24 @@ def select_scatter(inp, src, dim, index):
         list(src.shape) == valid_shape
     ), "Expected src to have a size equal to the slice of self"
 
-    if has_internal_overlapping(inp):
-        out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
-    else:
-        out = torch.empty_strided(
-            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-        )
+    src_expanded_shape = list(inp.shape)
+    src_expanded_shape[dim] = 1
+    out_strided = restride_dim(out, dim, src_expanded_shape)
+    idx = torch.arange(0, src.numel(), device=inp.device).reshape(src_expanded_shape)
+    indices = offsetCalculator(
+        out_strided, idx, out.stride(), dim, isInp=False
+    ).squeeze(dim=dim)
+    src_offsets = offsetCalculator(src, idx, src.stride(), dim, isInp=False).squeeze(
+        dim=dim
+    )
 
-    copy(inp, out0=out)
-    indices = [slice(None)] * inp.ndim
-    indices[dim] = index
-    copy(src, out0=out[indices])
+    N = valid_shape[src.ndim - 1]
+    M = src.numel() // N
+
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    select_scatter_kernel[grid](
+        out, indices, src, src_offsets, M, N, index, out.stride(dim)
+    )
 
     return out
+

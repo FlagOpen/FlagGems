@@ -11,6 +11,8 @@ from ..utils.shape_utils import volume
 
 device_ = device
 
+from ..utils import triton_lang_extension as tle
+
 
 @libentry()
 @triton.jit
