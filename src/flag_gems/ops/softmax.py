@@ -180,7 +180,9 @@ def softmax_kernel_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             inp = tl.load(input_ptr + n_offsets)
             m_new = tl.maximum(m, inp)
-            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+            # it is possible that there are -inf's in the input
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
         # specialize the last iteration
         for start_n in range(previous_multiple, N, TILE_N):
@@ -188,7 +190,8 @@ def softmax_kernel_inner(
             mask = n_offsets < N
             inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
             m_new = tl.maximum(m, inp)
-            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, 0)
