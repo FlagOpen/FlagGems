@@ -6,7 +6,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import libentry
+from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 
@@ -15,7 +15,7 @@ def heur_even_k(args):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_triton_config("mm"),
     key=["M", "N", "K"],
 )
@@ -151,3 +151,20 @@ def mm(a, b):
             GROUP_M=8,
         )
     return c
+
+
+def mm_pretune():
+    data_types = [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ]
+    pre_shapes = [
+        [64, 64, 64],
+    ]
+
+    for dtype in data_types:
+        for M, N, K in pre_shapes:
+            tensor_a = torch.randn([M, K], dtype=dtype, device="cuda")
+            tensor_b = torch.randn([K, N], dtype=dtype, device="cuda")
+            mm(tensor_a, tensor_b)
