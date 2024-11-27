@@ -5,6 +5,8 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
+
 
 def heur_block_size(arg):
     def lagest_factor(args):
@@ -17,7 +19,9 @@ def heur_block_size(arg):
                 ret = i
                 break
         return ret
+
     return lagest_factor
+
 
 @libentry()
 @triton.heuristics(
@@ -48,8 +52,8 @@ def addmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_n = tle.program_id(1)
 
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)

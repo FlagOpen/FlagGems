@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 def heur_block_m(args):
@@ -37,8 +38,8 @@ def celoss_indices_kernel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_d = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_d = tle.program_id(0)
+    pid_n = tle.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -101,8 +102,8 @@ def celoss_probability_kernel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_d = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_d = tle.program_id(0)
+    pid_n = tle.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tmp_max = tl.zeros([BLOCK_C, BLOCK_D], dtype=tl.float32)
@@ -166,8 +167,8 @@ def celoss_indices_smooth_kernel(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_d = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_d = tle.program_id(0)
+    pid_n = tle.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -251,8 +252,8 @@ def celoss_indices_bwd(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_d = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_d = tle.program_id(0)
+    pid_n = tle.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d
@@ -326,8 +327,8 @@ def celoss_probability_bwd(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_d = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_d = tle.program_id(0)
+    pid_n = tle.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
@@ -416,8 +417,8 @@ def celoss_indices_smooth_bwd(
     BLOCK_C: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    pid_d = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_d = tle.program_id(0)
+    pid_n = tle.program_id(1)
     offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
 
     tgt_ptrs = tgt_ptr + pid_n * D + offset_d

@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import triton_lang_extension as tle
 
 
 def cfggen():
@@ -18,8 +19,10 @@ def cfggen():
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
+
 def heur_n_block_size(args):
     import builtins
+
     return builtins.min(triton.next_power_of_2(args["N"]), 128)
 
 
@@ -42,7 +45,7 @@ def slice_scatter_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
 
@@ -196,8 +199,8 @@ def scatter_by_row_kernel(
     step,
     BLOCK: tl.constexpr,
 ):
-    pidx = tl.program_id(0)
-    pidy = tl.program_id(1)
+    pidx = tle.program_id(0)
+    pidy = tle.program_id(1)
 
     am_idx = pidx // N1
     an_idx = pidx % N1
@@ -299,8 +302,8 @@ def scatter_3d_mid_kernel(
     # Each cta processes one [1, NBLOCK, KBLOCK] chunk for input and output
     # The src chunk size is dynamically determined
 
-    pidx = tl.program_id(0)
-    pidy = tl.program_id(1)
+    pidx = tle.program_id(0)
+    pidy = tle.program_id(1)
 
     am_idx = pidx
     an_idx = pidy * NBLOCK
@@ -382,8 +385,8 @@ def scatter_2d_inner_kernel(
     R: tl.constexpr,
     C: tl.constexpr,
 ):
-    i0 = tl.program_id(0) * R
-    j0 = tl.program_id(1) * C
+    i0 = tle.program_id(0) * R
+    j0 = tle.program_id(1) * C
     ii = i0 + tl.arange(0, R)[:, None]
     jj = j0 + tl.arange(0, C)[None, :]
 
@@ -443,8 +446,8 @@ def scatter_2d_outer_kernel(
     NROW: tl.constexpr,
     NCOL: tl.constexpr,
 ):
-    pidx = tl.program_id(0)
-    pidy = tl.program_id(1)
+    pidx = tle.program_id(0)
+    pidy = tle.program_id(1)
 
     row_idx = pidx * NROW
     col_idx = pidy * NCOL

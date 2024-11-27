@@ -5,6 +5,8 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
+
 
 def heur_block_size(arg):
     def lagest_factor(args):
@@ -17,16 +19,21 @@ def heur_block_size(arg):
                 ret = i
                 break
         return ret
+
     return lagest_factor
+
 
 def heur_group_m(args):
     return 1
 
+
 def heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
+
 def heur_divisible_n(args):
     return args["N"] % args["TILE_N"] == 0
+
 
 def heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
@@ -61,30 +68,29 @@ def bmm_kernel(
     DIVISIBLE_K: tl.constexpr,
 ):
     # batch offsets
-    pid_b = tl.program_id(2)
+    pid_b = tle.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
 
-    pidx = tl.program_id(0)
-    pidy = tl.program_id(1)
+    pidx = tle.program_id(0)
+    pidy = tle.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
         # reorder CTAs
-        gridx = tl.num_programs(0)
-        gridy = tl.num_programs(1)
+        gridx = tle.num_programs(0)
+        gridy = tle.num_programs(1)
         pid = pidx + pidy * gridx
 
         num_CTA_per_group = gridy * GROUP_M
 
         group_id = pid // num_CTA_per_group
         inner_group_id = pid % num_CTA_per_group
-        if (group_id * GROUP_M + GROUP_M) > gridx:
-            GROUP_SIZE = gridx % GROUP_M
-        else:
-            GROUP_SIZE = GROUP_M
+        GROUP_SIZE = tl.where(
+            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
+        )
         pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
         pid_n = inner_group_id // GROUP_SIZE
 

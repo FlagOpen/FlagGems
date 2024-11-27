@@ -6,6 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 from ..utils.type_utils import get_accumulator_dtype
 
 
@@ -43,13 +44,13 @@ def layer_norm_persistent_kernel(
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
 
     n_offsets = tl.arange(0, TILE_N)
     mask = n_offsets < N
 
     x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
-    x  = tl.where(mask, x, 0.0)
+    x = tl.where(mask, x, 0.0)
     m = tl.sum(x) / N
     d = x - m  # deviation
     s = tl.where(mask, d * d, 0)
@@ -87,7 +88,7 @@ def layer_norm_persistent_kernel_multiline(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     m_offsets = pid * TILE_M + tl.arange(0, TILE_M)
     m_mask = m_offsets < M
 
@@ -98,7 +99,7 @@ def layer_norm_persistent_kernel_multiline(
     x = tl.load(in_ptr + m_offsets[:, None] * N + n_offsets, mask, other=0.0).to(
         tl.float32
     )
-    x  = tl.where(mask, x, 0.0)
+    x = tl.where(mask, x, 0.0)
     m = tl.sum(x, axis=1) / N
     d = x - m[:, None]  # deviation
     s = tl.where(mask, d * d, 0)
@@ -148,7 +149,7 @@ def layer_norm_loop_kernel(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
 
     # Compute mean
     m = tl.zeros((TILE_N,), dtype=tl.float32)  # mean
@@ -250,7 +251,7 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = tle.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -322,7 +323,7 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    pid = tle.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
     col_mask = pid < N
     dY += pid
     X += pid
@@ -370,7 +371,7 @@ class LayerNorm(torch.autograd.Function):
 
         with torch.cuda.device(x.device):
             if N <= 128:
-                TILE_M = triton.next_power_of_2(triton.cdiv(M, 12)) 
+                TILE_M = triton.next_power_of_2(triton.cdiv(M, 12))
                 TILE_N = triton.next_power_of_2(N)
                 grid = (triton.cdiv(M, TILE_M), 1, 1)
                 layer_norm_persistent_kernel_multiline[grid](
