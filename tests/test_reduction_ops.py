@@ -203,6 +203,30 @@ def test_accuracy_cumsum(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
+CUMMIN_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
+
+
+@pytest.mark.cummin
+@pytest.mark.parametrize("shape", CUMMIN_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_cummin(shape, dtype):
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummin(ref_inp, dim=dim)
+    # with flag_gems.use_gems():
+    #    res_out = torch.cummin(inp, dim=dim)
+    res_out = flag_gems.ops.cummin(inp, dim=dim)
+    # breakpoint()
+    gems_assert_close(res_out, ref_out.values, dtype, reduce_dim=shape[dim])
+
+
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
