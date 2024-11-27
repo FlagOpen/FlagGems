@@ -128,8 +128,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 def all_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS ALL DIMS")
-    if dim == []:
-        return all(inp)
+
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)
     assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"

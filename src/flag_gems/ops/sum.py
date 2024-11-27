@@ -125,7 +125,11 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
             dtype = torch.int64
 
     if dim == []:
-        return sum(inp, dtype=dtype)
+        if not keepdim:
+            return sum(inp, dtype=dtype)
+        else:
+            dim_num = inp.ndim
+            return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
