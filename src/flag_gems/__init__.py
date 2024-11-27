@@ -180,6 +180,10 @@ class use_gems:
         del self.lib
 
 
+def pretune():
+    mm_pretune()
+
+
 __all__ = [
     "enable",
     "use_gems",
