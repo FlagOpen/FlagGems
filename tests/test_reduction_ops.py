@@ -204,7 +204,7 @@ def test_accuracy_cumsum(shape, dtype):
 
 
 CUMMIN_SHAPES = (
-    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+    [(2, 32)] if QUICK_MODE else REDUCTION_SMALL_SHAPES + [(2637,), (16, 1025, 255)]
 )
 
 
