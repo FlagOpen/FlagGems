@@ -16,7 +16,6 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton.language as tl")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
-    code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
 
     code.newline()
@@ -32,16 +31,30 @@ def generate_gather_kernel(
     # make the inlined function visible in the context
     code.newline()
 
-    # the autotune function
+    code.writeline("def heur_block_m(args):")
+    with code.indent():
+        code.writeline(
+            "return min(4, triton.next_power_of_2(triton.cdiv(args['N'], 2048)))"
+        )
+
+    code.newline()
+    code.writeline("def heur_block_n(args):")
+    with code.indent():
+        code.writeline("return min(2048, triton.next_power_of_2(args['N']))")
 
     code.newline()
     code.newline()
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline(
-        '@triton.autotune(configs=runtime.get_triton_config("gather"), key=["M", "N"])'
-    )
+    code.writeline("@triton.heuristics(")
+    with code.indent():
+        code.writeline("{")
+        with code.indent():
+            code.writeline('"BLOCK_M": heur_block_m,')
+            code.writeline('"BLOCK_N": heur_block_n,')
+        code.writeline("}")
+    code.writeline(")")
     code.writeline("@triton.jit")
 
     # signature
