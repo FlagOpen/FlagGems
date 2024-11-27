@@ -90,8 +90,8 @@ def softmax_kernel_non_inner(
             mask = (n_offsets[:, None] < N) & (k_offsets < K)
             inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
             m_new = tl.maximum(m, inp)
-            alpha = tl.exp(m - m_new)
-            z = z * alpha + tl.exp(inp - m_new)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, 0)  # (TILE_K,)
