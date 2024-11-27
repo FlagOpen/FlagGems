@@ -16,7 +16,7 @@ from .conftest import QUICK_MODE
 
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 DIM_LIST = [1] if QUICK_MODE else [0, 1]
-DIMS_LIST = [1] if QUICK_MODE else [0, 1, [0, 1], [1, 0]]
+DIMS_LIST = [1] if QUICK_MODE else [0, 1, [0, 1], [1, 0], []]
 KIND_KEEPDIM_DIMS_SHAPE = (
     [("normal", True, DIMS_LIST[0], REDUCTION_SHAPES[0])]
     if QUICK_MODE
@@ -276,7 +276,7 @@ def test_accuracy_sum_without_dim(shape, dtype):
 
 @pytest.mark.sum
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
+@pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM + [(False, [])])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device="cuda")
