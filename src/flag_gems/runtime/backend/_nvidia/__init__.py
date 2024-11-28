@@ -1,33 +1,20 @@
-import json
 import os
+import sys
 
 from .ops import *  # noqa: F403
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from backend_utils import device_info  # noqa: E402
 
-class device:
-    @staticmethod
-    def get_vendor_info():
-        return ("nvidia", "cuda", "nvidia-smi")
-
-
-class Op:
-    @staticmethod
-    def get_register_op_config():
-        return (("add.Tensor", add, False),)
-
-    @staticmethod
-    def get_unused_op():
-        return ("cumsum", "cos")
+vendor_info = device_info(vendor_name="nvidia", device_name="cuda", cmd="nvidia-smi")
 
 
-class config:
-    @staticmethod
-    def get_tune_config(file_mode="r"):
-        script_path = os.path.abspath(__file__)
-        file_path = os.path.dirname(script_path) + "/tune_configs.json"
-        with open(file_path, file_mode) as file:
-            config = json.load(file)
-        return config
+def get_register_op_config():
+    return (("add.Tensor", add, False),)
 
 
-__all__ = ["device", "Op", "config"]
+def get_unused_op():
+    return ("cumsum", "cos")
+
+
+__all__ = ["*"]

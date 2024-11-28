@@ -1,6 +1,7 @@
 import triton
 
-from .. import backend, device
+from .. import backend
+from ..device import device_instance as device
 
 
 class Config:
@@ -16,7 +17,7 @@ class Config:
             self.loaded_config[key] = self.get_op_tune_config(key)
 
     def get_vendor_tune_config(self):
-        return backend.get_tune_config(device.device_instance.vendor_name)
+        return backend.get_tune_config(device.vendor_name)
 
     def _gen_impl(
         self,

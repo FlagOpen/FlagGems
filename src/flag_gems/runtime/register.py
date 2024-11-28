@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 
-from .. import backend, device, error
+from . import backend, device, error
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -38,9 +38,7 @@ class Register:
     def _check_backend(self):
         is_support = self.device.vendor_name in self.vendor_list
         if is_support is False:
-            error.ErrorHandler().backend_not_support(
-                self.device.device_name, self.backend_list
-            )
+            error.backend_not_support(self.device.device_name, self.backend_list)
 
     def get_vendor_extend_op(self):
         if self.device.vendor != backend.vendors.NVIDIA:
@@ -67,18 +65,13 @@ class Register:
         )
         self.lib.impl(key, fn, device_key)
 
-    def close(self):
-        self.lib
-
     def for_each(self, config):
         try:
             for key, func, has_backward in config:
-                # if self.__pass_register_cond(key):
-                self.registerImpl(key, func, has_backward)
-
-        except Exception as e:
-            error.PASS(e)
-            error.ErrorHandler().register_error()
+                if self.__pass_register_cond(key):
+                    self.registerImpl(key, func, has_backward)
+        except Exception:
+            error.register_error()
 
     def _set_info(self, config):
         for _, fn, hasbackward in config:
