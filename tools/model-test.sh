@@ -12,8 +12,9 @@ fi
 ID_SHA="${PR_ID}-${GITHUB_SHA}"
 echo ID_SHA $ID_SHA
 
+source ./run_command.sh
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-model"
-coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py
+run_command coverage run ${COVERAGE_ARGS} -m pytest -s examples/model_bert_test.py
 
 mkdir -p /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
 mv ${ID_SHA}* /home/zhangbo/PR_Coverage/PR${PR_ID}/${ID_SHA}
