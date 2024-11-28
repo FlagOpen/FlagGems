@@ -29,8 +29,6 @@ reduction_ops_ut_map = {
     "native_group_norm": ("test_accuracy_groupnorm",),
     "layer_norm": ("test_accuracy_layernorm",),
     "native_layer_norm": ("test_accuracy_layernorm",),
-    "instance_norm": ("test_accuracy_instancenorm",),
-    "native_instance_norm": ("test_accuracy_instancenorm",),
     "log_softmax": ("test_accuracy_log_softmax",),
     "max": (
         "test_accuracy_max_without_dim",
