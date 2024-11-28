@@ -6,6 +6,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -27,7 +28,7 @@ def mv_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
     offset_m = tl.arange(0, BLOCK_M)[None, :]
     n_mask = offset_n < N

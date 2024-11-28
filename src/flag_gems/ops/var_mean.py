@@ -6,6 +6,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 
 @triton.jit
@@ -33,7 +34,7 @@ def var_mean_welford_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Var = Var + pid
     Mean = Mean + pid
@@ -76,7 +77,7 @@ def var_mean_kernel_1(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
 
     X = X + offset

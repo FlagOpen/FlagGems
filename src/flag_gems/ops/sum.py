@@ -7,6 +7,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -24,7 +25,7 @@ def sum_kernel_1(
     else:
         cdtype = inp.dtype.element_ty
 
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -72,7 +73,7 @@ def sum_kernel(
         cdtype = inp.dtype.element_ty
 
     # Map the program id to the row of inp it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M

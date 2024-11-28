@@ -121,6 +121,7 @@ def enable(lib=aten_lib, unused=[]):
             ("topk", topk, Autograd.unable),
             ("var_mean.correction", var_mean, Autograd.unable),
             ("linalg_vector_norm", vector_norm, Autograd.unable),
+            ("where.self_out", where_self_out, Autograd.unable),
             ("where.self", where_self, Autograd.unable),
             ("where.ScalarSelf", where_scalar_self, Autograd.unable),
             ("where.ScalarOther", where_scalar_other, Autograd.unable),

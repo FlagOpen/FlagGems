@@ -7,6 +7,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -26,7 +27,7 @@ def weight_norm_kernel_last(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
-    bx = tl.program_id(axis=0) * BLOCK_COL_SIZE
+    bx = tle.program_id(axis=0) * BLOCK_COL_SIZE
     col_offset = bx + tx
     col_mask = col_offset < N
 
@@ -68,7 +69,7 @@ def weight_norm_kernel_first(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    by = tl.program_id(axis=0) * BLOCK_ROW_SIZE
+    by = tle.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = by + ty
     row_mask = row_offset < M
 
@@ -112,7 +113,7 @@ def weight_norm_bwd_kernel_last(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
-    bx = tl.program_id(axis=0) * BLOCK_COL_SIZE
+    bx = tle.program_id(axis=0) * BLOCK_COL_SIZE
     col_offset = tx + bx
     col_mask = col_offset < N
 
@@ -164,7 +165,7 @@ def weight_norm_bwd_kernel_first(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    by = tl.program_id(axis=0) * BLOCK_ROW_SIZE
+    by = tle.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = by + ty
     row_mask = row_offset < M
 
@@ -214,7 +215,7 @@ def norm_kernel(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    pid = tl.program_id(axis=0) * BLOCK_ROW_SIZE
+    pid = tle.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = pid + tid_m
     row_mask = row_offset < v_shape1
 
@@ -255,7 +256,7 @@ def norm_bwd_kernel(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    pid = tl.program_id(axis=0) * BLOCK_ROW_SIZE
+    pid = tle.program_id(axis=0) * BLOCK_ROW_SIZE
     row_offset = pid + tid_m
     row_mask = row_offset < v_shape1
 

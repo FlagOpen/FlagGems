@@ -6,6 +6,7 @@ import triton.language as tl
 
 from .. import runtime
 from ..utils import libentry, offsetCalculator, restride_dim
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -23,7 +24,7 @@ def select_scatter_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     rows_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
 
