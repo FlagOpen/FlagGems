@@ -36,6 +36,7 @@ def instance_norm_persistent_kernel(
     C,
     eps,
     TILE_N: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
@@ -57,9 +58,12 @@ def instance_norm_persistent_kernel(
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
 
-    w = tl.load(weight_ptr + c_offsets, mask=m_mask)
-    b = tl.load(bias_ptr + c_offsets, mask=m_mask)
-    out = (x - m) * rstd * w + b
+    if HAS_WEIGHT_BIAS:
+        w = tl.load(weight_ptr + c_offsets, mask=m_mask)
+        b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+        out = (x - m) * rstd * w + b
+    else:
+        out = (x - m) * rstd
 
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
@@ -83,6 +87,7 @@ def instance_norm_persistent_kernel_multiline(
     eps,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
     pid = tl.program_id(0)
@@ -107,9 +112,12 @@ def instance_norm_persistent_kernel_multiline(
     tl.store(out_mean_ptr + m_offsets, m, mask=m_mask)
     tl.store(out_rstd_ptr + m_offsets, rstd, mask=m_mask)
 
-    w = tl.load(weight_ptr + c_offsets, mask=m_mask)
-    b = tl.load(bias_ptr + c_offsets, mask=m_mask)
-    out = (x - m[:, None]) * rstd[:, None] * w[:, None] + b[:, None]
+    if HAS_WEIGHT_BIAS:
+        w = tl.load(weight_ptr + c_offsets, mask=m_mask)
+        b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+        out = (x - m[:, None]) * rstd[:, None] * w[:, None] + b[:, None]
+    else:
+        out = (x - m[:, None]) * rstd[:, None]
 
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
 
@@ -136,6 +144,7 @@ def instance_norm_loop_kernel(
     C,
     eps,
     TILE_N: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
     pid = tl.program_id(0)
@@ -177,8 +186,12 @@ def instance_norm_loop_kernel(
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
 
-    w = tl.load(weight_ptr + c_offsets, mask=m_mask)
-    b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+    if HAS_WEIGHT_BIAS:
+        w = tl.load(weight_ptr + c_offsets, mask=m_mask)
+        b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+    else:
+        w = 1
+        b = 0
 
     # reverse the order of the second sweep
     # Normalize and apply linear transformation
@@ -225,6 +238,7 @@ def instance_norm_use_running_stats_kernel(
     C,
     eps,
     TILE_N: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
@@ -243,9 +257,12 @@ def instance_norm_use_running_stats_kernel(
     tl.store(out_mean_ptr + pid, m)
     tl.store(out_rstd_ptr + pid, rstd)
 
-    w = tl.load(weight_ptr + c_offsets, mask=m_mask)
-    b = tl.load(bias_ptr + c_offsets, mask=m_mask)
-    out = (x - m) * rstd * w + b
+    if HAS_WEIGHT_BIAS:
+        w = tl.load(weight_ptr + c_offsets, mask=m_mask)
+        b = tl.load(bias_ptr + c_offsets, mask=m_mask)
+        out = (x - m) * rstd * w + b
+    else:
+        out = (x - m) * rstd
 
     tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
@@ -318,6 +335,7 @@ def instance_norm_backward_kernel(
     C,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    HAS_WEIGHT_BIAS: tl.constexpr,
 ):
     pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     c_offsets = pid % C
@@ -330,7 +348,10 @@ def instance_norm_backward_kernel(
 
     mean = tl.load(Mean).to(tl.float32)
     rstd = tl.load(Rstd).to(tl.float32)
-    w = tl.load(W + c_offsets, mask=row_mask).to(tl.float32)
+    if HAS_WEIGHT_BIAS:
+        w = tl.load(W + c_offsets, mask=row_mask).to(tl.float32)
+    else:
+        w = 1
 
     dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
@@ -442,9 +463,13 @@ class InstanceNorm(torch.autograd.Function):
         M = x.numel() // N
 
         x = x.contiguous()
-        weight = weight.contiguous()
-        bias = bias.contiguous()
+        weight = weight.contiguous() if weight is not None else None
+        bias = bias.contiguous() if bias is not None else None
         y = torch.empty_like(x)
+
+        has_weight_bias = weight is not None
+        if has_weight_bias:
+            assert weight is not None and bias is not None
 
         has_running_stats = running_mean is not None
         if has_running_stats:
@@ -490,6 +515,7 @@ class InstanceNorm(torch.autograd.Function):
                         eps,
                         TILE_M,
                         TILE_N,
+                        HAS_WEIGHT_BIAS=has_weight_bias,
                     )
                 elif N <= 4096:
                     TILE_N = triton.next_power_of_2(N)
@@ -506,6 +532,7 @@ class InstanceNorm(torch.autograd.Function):
                         C,
                         eps,
                         TILE_N,
+                        HAS_WEIGHT_BIAS=has_weight_bias,
                     )
                 else:
                     grid = (M, 1, 1)
@@ -520,6 +547,7 @@ class InstanceNorm(torch.autograd.Function):
                         N,
                         C,
                         eps,
+                        HAS_WEIGHT_BIAS=has_weight_bias,
                     )
                 if has_running_stats and use_input_stats:  # update running stats
                     grid = lambda meta: (
@@ -555,16 +583,18 @@ class InstanceNorm(torch.autograd.Function):
                     C,
                     eps,
                     TILE_N,
+                    HAS_WEIGHT_BIAS=has_weight_bias,
                 )
 
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
         ctx.N = N
         ctx.C = C
-        return y, mean, rstd
+        ctx.has_weight_bias = has_weight_bias
+        return y
 
     @staticmethod
-    def backward(ctx, out_grad, mean_grad, rstd_grad):
+    def backward(ctx, out_grad):
         logging.debug("GEMS INSTANCENORM BACKWARD")
         out_grad = out_grad.contiguous()
         (x, weight, mean, rstd) = ctx.saved_tensors
@@ -577,15 +607,28 @@ class InstanceNorm(torch.autograd.Function):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
             instance_norm_backward_kernel[grid](
-                out_grad, x, weight, mean, rstd, in_grad, M, N, C
+                out_grad,
+                x,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                M,
+                N,
+                C,
+                HAS_WEIGHT_BIAS=ctx.has_weight_bias,
             )
 
-            grid = lambda meta: (C, 1, 1)
-            weight_grad = torch.empty_like(weight)
-            bias_grad = torch.empty_like(weight)
-            weight_bias_backward_kernel[grid](
-                out_grad, x, mean, rstd, weight_grad, bias_grad, M, N, B, C
-            )
+            if ctx.has_weight_bias:
+                grid = lambda meta: (C, 1, 1)
+                weight_grad = torch.empty_like(weight)
+                bias_grad = torch.empty_like(weight)
+                weight_bias_backward_kernel[grid](
+                    out_grad, x, mean, rstd, weight_grad, bias_grad, M, N, B, C
+                )
+            else:
+                weight_grad = None
+                bias_grad = None
         return in_grad, weight_grad, bias_grad, None, None, None, None, None, None
 
 
