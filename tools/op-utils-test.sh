@@ -2,13 +2,6 @@
 
 set -e
 PR_ID=$1
-# For local test
-if [ -z "$PR_ID" ]; then
-  PR_ID=168
-fi
-if [ -z "$GITHUB_SHA" ]; then
-  GITHUB_SHA=abcdefg
-fi
 ID_SHA="${PR_ID}-${GITHUB_SHA}"
 echo ID_SHA $ID_SHA
 
