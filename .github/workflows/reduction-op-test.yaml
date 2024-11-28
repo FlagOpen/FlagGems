@@ -20,6 +20,7 @@ jobs:
       - name: Reduction Op Test
         shell: bash
         run: |
+          set -e
           echo "current dir: $(pwd)"
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
