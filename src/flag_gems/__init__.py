@@ -187,4 +187,5 @@ def pretune():
 __all__ = [
     "enable",
     "use_gems",
+    "pretune",
 ]
