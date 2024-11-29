@@ -207,16 +207,18 @@ def test_accuracy_instancenorm(
         momentum=momentum,
         eps=eps,
     )
-    res_out = flag_gems.instance_norm(
-        inp,
-        running_mean=running_mean,
-        running_var=running_var,
-        weight=weight,
-        bias=bias,
-        use_input_stats=use_input_stats,
-        momentum=momentum,
-        eps=eps,
-    )
+    with flag_gems.use_gems():
+        res_out = torch.instance_norm(
+            inp,
+            running_mean=running_mean,
+            running_var=running_var,
+            weight=weight,
+            bias=bias,
+            use_input_stats=use_input_stats,
+            momentum=momentum,
+            eps=eps,
+            cudnn_enabled=True,
+        )
 
     gems_assert_close(res_out, ref_out, dtype)
     if has_running_stats:
