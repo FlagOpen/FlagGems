@@ -57,7 +57,9 @@ def get_vendor_module(vendor_name, query=False):
         sys.path.append(current_dir_path)
         return importlib.import_module(vendor_name)
 
-    if query:
+    if (
+        query
+    ):  # The purpose of a query is to provide the user with the instance that he wants to import
         return get_module(vendor_name)
 
     global vendor_module
@@ -90,7 +92,7 @@ def get_vendor_infos() -> list:
 def get_curent_device_extend_op(vendor_name=None) -> dict:
     global vendor_module
     get_vendor_module(vendor_name)
-    tuples = vendor_module.Op.get_register_op_config()
+    tuples = vendor_module.get_register_op_config()
     configs = {}
     for item in tuples:
         configs[item[0]] = item
@@ -100,7 +102,7 @@ def get_curent_device_extend_op(vendor_name=None) -> dict:
 def get_curent_device_unused_op(vendor_name=None) -> list:
     global vendor_module
     get_vendor_module(vendor_name)
-    return vendor_module.Op.get_unused_op()
+    return vendor_module.get_unused_op()
 
 
 def get_tune_config(vendor_name=None) -> dict:

@@ -1,8 +1,10 @@
 import os
 import subprocess
 
+import torch  # noqa: F401
+
 from . import backend, error
-from .commom_utils import vendors_map
+from .commom_utils import quick_special_cmd, vendors_map
 
 global device_instance
 device_instance = None
@@ -17,6 +19,7 @@ class device_ctx:
         self.vendor = vendors_map[self.vendor_name]
 
     def get_vendor(self, vendor_name=None) -> tuple:
+        vendor_name = self._get_vendor_from_quick_cmd()
         if vendor_name is not None:
             return backend.get_vendor_info(vendor_name)
         vendor_from_env = self._get_vendor_from_env()
@@ -26,6 +29,15 @@ class device_ctx:
             return self._get_vendor_from_lib()
         except Exception:
             return self._get_vendor_from_sys()
+
+    def _get_vendor_from_quick_cmd(self):
+        for vendor_name, cmd in quick_special_cmd.items():
+            try:
+                exec(cmd, globals())
+                return vendor_name
+            except Exception:
+                pass
+        return None
 
     def _get_vendor_from_env(self):
         device_from_evn = os.environ.get("GEMS_VENDOR")
@@ -52,7 +64,7 @@ class device_ctx:
         #     return triton.get_vendor_info()
         # except Exception:
         #     return torch.get_vendor_info()
-        raise RuntimeError("The related method is not implemented")
+        raise RuntimeError("The method is not implemented")
 
 
 device_instance = device_instance or device_ctx()

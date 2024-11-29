@@ -35,3 +35,10 @@ vendors_map = {
     "hygon": vendors.HYGON,
     "metax": vendors.METAX,
 }
+
+
+quick_special_cmd = {
+    "nvidia": "torch.cuda",
+    "cambricon": "torch.mlu",
+    "mthreads": "torch.musa",
+}

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 @dataclass
-class device_info:
+class vendor_info_base:
     vendor_name: str
     device_name: str
     cmd: str
