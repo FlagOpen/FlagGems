@@ -4,12 +4,9 @@ import importlib
 import os
 import sys
 
-from ..commom_utils import AUTOGRAD, Autograd, vendors, vendors_map
+from ..commom_utils import vendors_map
 from . import backend_utils
 
-vendors = vendors
-AUTOGRAD = AUTOGRAD
-Autograd = Autograd
 vendor_module = None
 device_name = None
 device_fn_cache = {}

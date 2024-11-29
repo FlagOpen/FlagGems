@@ -1,6 +1,6 @@
 from enum import Enum
 
-AUTOGRAD = "Autograd"
+autograd_str = "Autograd"
 
 
 class Autograd(Enum):
@@ -38,7 +38,6 @@ vendors_map = {
 
 
 quick_special_cmd = {
-    "nvidia": "torch.cuda",
     "cambricon": "torch.mlu",
     "mthreads": "torch.musa",
 }

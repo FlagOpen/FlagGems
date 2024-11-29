@@ -180,7 +180,7 @@ def enable(lib=aten_lib, unused=[]):
             ("randperm", randperm, Autograd.unable),
             ("diag", diag, Autograd.unable),
         ),
-        unused_ops_list=unused,
+        user_unused_ops_list=unused,
         lib=lib,
     )
 
