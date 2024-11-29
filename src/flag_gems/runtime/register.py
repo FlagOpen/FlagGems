@@ -22,7 +22,7 @@ class Register:
         self.vendor_list = list(commom_utils.vendors_map)
         self.debug = debug
         self.forward_ops = []
-        self.backend_ops = []
+        self.backward_ops = []
         self.config = config
         self.vendor_extend_configs = self.get_vendor_extend_op()
         self.vendor_unused_ops_list = self.get_vendor_unused_op()
@@ -70,15 +70,15 @@ class Register:
     def _set_info(self, config):
         for _, fn, hasbackward in config:
             fn_name = fn.__name__
-            self.backend_ops.append(
+            self.backward_ops.append(
                 fn_name
             ) if hasbackward else self.forward_ops.append(fn_name)
 
     def get_forward_ops(self) -> list[str]:
         return self.forward_ops if self.debug else []
 
-    def get_backend_ops(self) -> list[str]:
-        return self.backend_ops if self.debug else []
+    def get_backward_ops(self) -> list[str]:
+        return self.backward_opss if self.debug else []
 
     def get_unused_ops(self) -> list[str]:
         return self.unused_ops

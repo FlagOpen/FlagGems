@@ -17,6 +17,9 @@ class device_ctx:
         self.vendor_name = self.device_info.vendor_name
         self.device_name = self.device_info.device_name
         self.vendor = vendors_map[self.vendor_name]
+        self.device_count = backend.gen_torch_device_fn(
+            "device_count", self.vendor_name
+        )()
 
     def get_vendor(self, vendor_name=None) -> tuple:
         vendor_name = self._get_vendor_from_quick_cmd()
