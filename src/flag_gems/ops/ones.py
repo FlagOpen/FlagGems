@@ -6,9 +6,11 @@ import triton.language as tl
 
 from flag_gems.utils.shape_utils import volume
 
+from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
+@libentry()
 @triton.jit
 def ones_kernel(
     output_ptr,
@@ -31,10 +33,11 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    BLOCK_SIZE = 1024
+    grid = (triton.cdiv(N, BLOCK_SIZE),)
     with torch.cuda.device(device):
         if N <= 64 * 64:
-            ones_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+            ones_kernel[grid](out, N, BLOCK_SIZE)
         else:
-            ones_kernel[grid_fn](out, N, BLOCK_SIZE=8192)
+            ones_kernel[grid](out, N, BLOCK_SIZE=8192)
     return out
