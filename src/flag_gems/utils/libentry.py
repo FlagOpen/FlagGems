@@ -47,12 +47,6 @@ class LibTuner(triton.runtime.Autotuner):
         self.preload()
         weakref.finalize(self, self.store)
 
-    def getvalue(self, key):
-        try:
-            return eval(key)
-        except Exception:
-            return getattr(torch, key.split(".")[1][:-1])
-
     def preload(self):
         connect = sqlite3.connect(self.cache_dir)
         c = connect.cursor()
@@ -61,7 +55,7 @@ class LibTuner(triton.runtime.Autotuner):
 
         for row in cursor:
             key_str, config_str = row
-            key = (self.getvalue(k) for k in key_str[1:-1].split(", "))
+            key = [eval(k) for k in key_str[1:-1].split(", ")]
 
             cfg_ls = [item.split(": ") for item in config_str.split(", ")]
             config = triton.Config({})
@@ -72,7 +66,7 @@ class LibTuner(triton.runtime.Autotuner):
             config.num_stages = int(cfg_ls[-2][1])
             config.enable_fp_fusion = eval(cfg_ls[-1][1])
 
-            self.cache[key] = config
+            self.cache[tuple(key)] = config
 
         connect.close()
 
