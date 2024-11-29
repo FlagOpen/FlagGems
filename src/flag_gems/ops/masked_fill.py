@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from ..utils import broadcastable_to, libentry
+from ..utils import triton_lang_extension as tle
 
 
 def cfggen():
@@ -20,29 +21,26 @@ def cfggen():
 @triton.autotune(configs=cfggen(), key=["N"])
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
 
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
     cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and mask, other=0)
     tl.store(out + offsets, cur_inp, (not fill_mask) and mask)
-
-    cur_val = tl.full((BLOCK_SIZE,), value, dtype=cur_inp.dtype)
-    tl.store(out + offsets, cur_val, fill_mask and mask)
+    tl.store(out + offsets, value, fill_mask and mask)
 
 
 @libentry()
 @triton.autotune(configs=cfggen(), key=["N"])
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
 
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
-    cur_val = tl.full((BLOCK_SIZE,), value, dtype=inp.dtype)
-    tl.store(out + offsets, cur_val, fill_mask and mask)
+    tl.store(inp + offsets, value, fill_mask and mask)
 
 
 def masked_fill(inp, mask, value):

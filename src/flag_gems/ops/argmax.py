@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-from ..utils.shape_utils import can_use_int32_index
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -17,11 +17,8 @@ def argmax_kernel_1(
     mid_index,
     M,
     BLOCK_SIZE: tl.constexpr,
-    INT64_INDEX: tl.constexpr = False,
 ):
-    pid = tl.program_id(0)
-    if INT64_INDEX:
-        pid = pid.to(tl.int64)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -77,15 +74,10 @@ def argmax_kernel(
     K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    INT64_INDEX: tl.constexpr = False,
-    USE_K: tl.constexpr = False
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    if INT64_INDEX:
-        pid_m = pid_m.to(tl.int64)
-        pid_k = pid_k.to(tl.int64)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     max_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("-inf"))
@@ -93,8 +85,7 @@ def argmax_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K
-        if USE_K:
-            offset += pid_k
+        
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
@@ -108,8 +99,7 @@ def argmax_kernel(
         argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
 
     offset_index = m_offset * K
-    if USE_K:
-        offset_index += pid_k
+    
     out_index_ptrs = out_index + offset_index
     mask1 = m_offset < M
     tl.store(out_index_ptrs, argmax_values, mask=mask1)
@@ -124,7 +114,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
-        use_int64_index = not can_use_int32_index(inp)
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
@@ -143,7 +132,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 mid_index,
                 M,
                 block_size,
-                INT64_INDEX=use_int64_index,
             )
             argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
@@ -154,10 +142,8 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
-        USE_K = K != 1
 
         inp = inp.contiguous()
-        use_int64_index = not can_use_int32_index(inp)
 
         shape_list = list(shape)
         shape_list[dim] = 1
@@ -176,8 +162,6 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 K,
-                INT64_INDEX=use_int64_index,
-                USE_K=USE_K
             )
 
         return out_index
