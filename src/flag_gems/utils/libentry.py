@@ -43,7 +43,7 @@ class LibTuner(triton.runtime.Autotuner):
             use_cuda_graph,
         )
         self.__name__ = self.base_fn.__name__
-        self.cache_dir = config_cache_dir() / f"{self.__name__}.db"
+        self.cache_dir = config_cache_dir() / "TunedConfig.db"
         self.preload()
         weakref.finalize(self, self.store)
 
@@ -103,7 +103,7 @@ def libtuner(
     use_cuda_graph=False,
 ):
     """
-    Decorator for triton library entries.
+    Decorator for triton library autotuner.
     """
 
     def decorator(fn):
