@@ -6,16 +6,15 @@ import torch  # noqa: F401
 from . import backend, error
 from .commom_utils import quick_special_cmd, vendors_map
 
-global device_instance
-device_instance = None
+global device
 
 
 class device_ctx:
     def __init__(self, vendor_name=None):
         self.vendor_list = vendors_map.keys()
-        self.device_info = self.get_vendor(vendor_name)
-        self.vendor_name = self.device_info.vendor_name
-        self.device_name = self.device_info.device_name
+        self.info = self.get_vendor(vendor_name)
+        self.vendor_name = self.info.vendor_name
+        self.name = self.info.device_name
         self.vendor = vendors_map[self.vendor_name]
         self.device_count = backend.gen_torch_device_fn(
             "device_count", self.vendor_name
@@ -54,9 +53,6 @@ class device_ctx:
                 return single_info
         error.device_not_found()
 
-    def get_device_name(self):
-        return self.device_name
-
     def get_vendor_name(self):
         return self.vendor_name
 
@@ -70,4 +66,4 @@ class device_ctx:
         raise RuntimeError("The method is not implemented")
 
 
-device_instance = device_instance or device_ctx()
+device = device_ctx()

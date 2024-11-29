@@ -3,7 +3,7 @@ import copy
 import triton
 
 from . import backend
-from .device import device_instance as device
+from .device import device
 
 
 class Config:

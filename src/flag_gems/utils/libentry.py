@@ -6,7 +6,7 @@ import triton
 
 from .. import runtime
 
-DEVICE_COUNT = runtime.device.device_instance.device_count
+DEVICE_COUNT = runtime.device.device_count
 
 
 class LibEntry(triton.KernelInterface):

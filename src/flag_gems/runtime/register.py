@@ -2,7 +2,8 @@ from typing import Optional
 
 import torch
 
-from . import backend, commom_utils, device, error
+from . import backend, commom_utils, error
+from .device import device
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -16,8 +17,8 @@ class Register:
         debug: Optional[bool] = False,
     ):
         self.lib = lib
-        self.device = device.device_instance
-        self.reg_key = self.device.device_name.upper()
+        self.device = device
+        self.reg_key = self.device.name.upper()
         self.reg_bac_key = commom_utils.autograd_str + self.reg_key
         self.vendor_list = list(commom_utils.vendors_map)
         self.debug = debug
@@ -35,7 +36,7 @@ class Register:
     def check_backend(self):
         is_support = self.device.vendor_name in self.vendor_list
         if is_support is False:
-            error.backend_not_support(self.device.device_name, self.backend_list)
+            error.backend_not_support(self.device.name, self.backend_list)
 
     def get_vendor_extend_op(self):
         if self.device.vendor != commom_utils.vendors.NVIDIA:
@@ -87,7 +88,7 @@ class Register:
         return self.device.vendor_name
 
     def get_current_device(self) -> str:
-        return self.device.device_name
+        return self.device.name
 
     def support_backward(self, fn) -> bool:
         return fn.__name__ in self.backend_ops

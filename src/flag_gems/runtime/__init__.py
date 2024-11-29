@@ -1,8 +1,10 @@
-from . import backend, commom_utils, device, register
+from . import backend, commom_utils, register
 from .config import Config
+from .device import device_ctx
 
-global configer
+global configer, device
 configer = Config()
+device = device_ctx()
 
 
 def get_op_tune_config(op_name):

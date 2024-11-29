@@ -8,7 +8,7 @@ from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
 __version__ = "2.1"
-device = runtime.device.device_instance.device_name
+device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
 
 
