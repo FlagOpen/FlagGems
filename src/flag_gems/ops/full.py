@@ -9,6 +9,7 @@ from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
 
 from ..utils import triton_lang_extension as tle
+from ..utils.shape_utils import volume
 
 
 @triton.jit(do_not_specialize=["fill_value_or_ptr"])
