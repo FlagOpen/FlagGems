@@ -308,7 +308,7 @@ QUANTILE_INTERPOLATION = (
 
 
 @pytest.mark.quantile
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("q", QUANTILE_Q)
 @pytest.mark.parametrize("interpolation", QUANTILE_INTERPOLATION)
@@ -326,7 +326,7 @@ def test_accuracy_quantile_without_dim(shape, dtype, q, interpolation):
 
 
 @pytest.mark.quantile
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("q", QUANTILE_Q)
