@@ -166,6 +166,7 @@ def enable(lib=aten_lib):
     lib.impl("repeat_interleave.self_Tensor", repeat_interleave_self_tensor, "CUDA")
     lib.impl("randperm", randperm, "CUDA")
     lib.impl("diag", diag, "CUDA")
+    lib.impl("sort", sort, "CUDA")
 
 
 class use_gems:
