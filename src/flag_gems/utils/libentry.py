@@ -44,12 +44,12 @@ class LibTuner(triton.runtime.Autotuner):
             use_cuda_graph,
         )
         self.__name__ = self.base_fn.__name__
-        self.cache_dir = config_cache_dir() / "TunedConfig.db"
+        self.cache_path = config_cache_dir() / "TunedConfig.db"
         self.preload()
         weakref.finalize(self, self.store)
 
     def preload(self):
-        connect = sqlite3.connect(self.cache_dir)
+        connect = sqlite3.connect(self.cache_path)
         c = connect.cursor()
         c.execute(f"CREATE TABLE IF NOT EXISTS {self.__name__} (key TEXT, config TEXT)")
         cursor = c.execute(f"SELECT key, config from {self.__name__}")
@@ -72,7 +72,7 @@ class LibTuner(triton.runtime.Autotuner):
         connect.close()
 
     def store(self):
-        connect = sqlite3.connect(self.cache_dir)
+        connect = sqlite3.connect(self.cache_path)
         c = connect.cursor()
         c.execute(f"CREATE TABLE IF NOT EXISTS {self.__name__} (key TEXT, config TEXT)")
         for key, config in self.cache.items():
