@@ -48,7 +48,7 @@ def sort(inp, dim=-1, descending=False):
     sort_elem_cnt = inp.shape[dim]
     if sort_elem_cnt == 1:
         return inp, torch.zeros_like(inp, dtype=torch.int64)
-    elif sort_elem_cnt > 512:
+    elif sort_elem_cnt > 512:  # TODO: Optimize implementation for large cases.
         return torch.sort(inp, stable=False, dim=dim, descending=descending)
     block_size = triton.next_power_of_2(sort_elem_cnt)
 
