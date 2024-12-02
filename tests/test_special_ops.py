@@ -199,9 +199,7 @@ def test_apply_rotary_pos_emb(
 @pytest.mark.parametrize("N", [8] if TO_CPU else [128, 256, 4096])
 @pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.float32]
-)  # triton.atomic_add still not support bf16
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
     indices = torch.randint(
         0, EmbeddingSize, (Batch, M), device="cuda", requires_grad=False
@@ -710,6 +708,26 @@ def test_accuracy_cat(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.cat
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        (((0, 3), (2, 3)), 0),
+        (((0, 3), (0, 3)), 0),
+        (((0,), (0,)), 0),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_cat_empty_tensor(shape, dim, dtype):
+    inp = [torch.randn(s, dtype=dtype, device="cuda") for s in shape]
+    ref_inp = [to_reference(_) for _ in inp]
+    ref_out = torch.cat(ref_inp, dim)
+
+    with flag_gems.use_gems():
+        res_out = torch.cat(inp, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
 VSTACK_SHAPES = [
     [(3,), (3,)],
     [(3, 33), (7, 33)],
@@ -811,4 +829,21 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
     ref_out = torch.repeat_interleave(ref_inp, ref_repeats, dim)
     with flag_gems.use_gems():
         res_out = torch.repeat_interleave(inp, repeats, dim)
+    gems_assert_equal(res_out, ref_out)
+
+
+# Test diag op
+@pytest.mark.diag
+@pytest.mark.parametrize(
+    "shape", [(1024, 1), (1024), (1024, 1024), (512, 1024), (798, 798)]
+)
+@pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_diag(shape, diagonal, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.diag(ref_inp, diagonal)
+    with flag_gems.use_gems():
+        res_out = torch.diag(inp, diagonal)
     gems_assert_equal(res_out, ref_out)

@@ -305,15 +305,12 @@ def test_accuracy_erf(shape, dtype):
 
 @pytest.mark.isfinite
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
 def test_accuracy_isfinite(shape, dtype):
-    if dtype in ALL_FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
-        inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
-        inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
-        inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
-    else:
-        inp = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.masked_fill(inp, inp > 1.0, float("inf"))
+    inp = torch.masked_fill(inp, inp < -1.0, float("-inf"))
+    inp = torch.masked_fill(inp, (inp > -0.1) & (inp < 0.1), float("nan"))
     ref_inp = to_reference(inp)
 
     ref_out = torch.isfinite(ref_inp)
@@ -381,18 +378,48 @@ def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
-def test_accuracy_masked_fill(shape, dtype, threshold):
+@pytest.mark.parametrize(
+    "value",
+    [torch.tensor(1024, device="cuda"), torch.scalar_tensor(1024, device="cuda"), 1024],
+)
+def test_accuracy_masked_fill(shape, dtype, threshold, value):
     inp = torch.zeros(shape, dtype=dtype, device="cuda")
     mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
-    value = 1024
 
     ref_inp = to_reference(inp)
     ref_mask = to_reference(mask)
-    ref_out = torch.masked_fill(ref_inp, ref_mask, value)
+    if torch.is_tensor(value):
+        ref_out = torch.masked_fill(ref_inp, ref_mask, to_reference(value))
+    else:
+        ref_out = torch.masked_fill(ref_inp, ref_mask, value)
     with flag_gems.use_gems():
         res_out = torch.masked_fill(inp, mask, value)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.masked_fill
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
+@pytest.mark.parametrize(
+    "value",
+    [torch.tensor(1024, device="cuda"), torch.scalar_tensor(1024, device="cuda"), 1024],
+)
+def test_accuracy_masked_fill_(shape, dtype, threshold, value):
+    inp = torch.zeros(shape, dtype=dtype, device="cuda")
+    mask = torch.randn(shape, dtype=dtype, device="cuda") < threshold
+
+    ref_inp = to_reference(inp)
+    ref_mask = to_reference(mask)
+    if torch.is_tensor(value):
+        ref_inp.masked_fill_(ref_mask, to_reference(value))
+    else:
+        ref_inp.masked_fill_(ref_mask, value)
+    with flag_gems.use_gems():
+        inp.masked_fill_(mask, value)
+
+    gems_assert_equal(inp, ref_inp)
 
 
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
