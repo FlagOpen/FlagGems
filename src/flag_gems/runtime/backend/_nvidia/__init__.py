@@ -2,7 +2,9 @@ from backend_utils import vendorInfoBase  # noqa: E402
 
 from .ops import *  # noqa: F403
 
-vendor_info = vendorInfoBase(vendor_name="nvidia", device_name="cuda", cmd="nvidia-smi")
+vendor_info = vendorInfoBase(
+    vendor_name="nvidia", device_name="cuda", device_query_cmd="nvidia-smi"
+)
 
 
 def get_register_op_config():

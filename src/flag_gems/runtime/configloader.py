@@ -3,21 +3,21 @@ import copy
 import triton
 
 from . import backend
-from .device import deviceDetector
+from .device import DeviceDetector
 
 
-class configLoader(object):
+class ConfigLoader(object):
     _instance = None
 
     def __new__(cls, *args, **kargs):
         if cls._instance is None:
-            cls._instance = super(configLoader, cls).__new__(cls)
+            cls._instance = super(ConfigLoader, cls).__new__(cls)
         return cls._instance
 
     def __init__(self):
         if not hasattr(self, "initialized"):
             self.initialized = True
-            self.device = deviceDetector()
+            self.device = DeviceDetector()
             self.primitive_json_config = self.get_vendor_tune_config()
             self.gen_key = "gen"
             self.loaded_triton_config = {}

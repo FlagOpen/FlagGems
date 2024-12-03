@@ -8,7 +8,7 @@ from dataclasses import dataclass
 class vendorInfoBase:
     vendor_name: str
     device_name: str
-    cmd: str
+    device_query_cmd: str
 
 
 def get_tune_config(vendor_name, file_mode="r"):

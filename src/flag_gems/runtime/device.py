@@ -8,12 +8,12 @@ from .commom_utils import quick_special_cmd, vendors_map
 
 
 # A singleton class to manage device context.
-class deviceDetector(object):
+class DeviceDetector(object):
     _instance = None
 
     def __new__(cls, *args, **kargs):
         if cls._instance is None:
-            cls._instance = super(deviceDetector, cls).__new__(cls)
+            cls._instance = super(DeviceDetector, cls).__new__(cls)
         return cls._instance
 
     def __init__(self, vendor_name=None):
@@ -65,7 +65,9 @@ class deviceDetector(object):
         vendor_infos = backend.get_vendor_infos()
         for single_info in vendor_infos:
             # Get the vendor information by running system commands.
-            result = subprocess.run([single_info.cmd], capture_output=True, text=True)
+            result = subprocess.run(
+                [single_info.device_query_cmd], capture_output=True, text=True
+            )
             if result.returncode == 0:
                 return single_info
         error.device_not_found()

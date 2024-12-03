@@ -1,9 +1,9 @@
 from . import backend, commom_utils, register
-from .configloader import configLoader
-from .device import deviceDetector
+from .configloader import ConfigLoader
+from .device import DeviceDetector
 
-configer = configLoader()
-device = deviceDetector()
+configer = ConfigLoader()
+device = DeviceDetector()
 
 
 def get_op_tune_config(op_name):
