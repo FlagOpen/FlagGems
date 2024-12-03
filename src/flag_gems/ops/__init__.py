@@ -1,6 +1,6 @@
 from .abs import abs
 from .add import add
-from .addmm import addmm
+from .addmm import addmm, addmm_pretune
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .any import any, any_dim, any_dims
@@ -258,4 +258,5 @@ __all__ = [
     "repeat_interleave_tensor",
     "repeat_interleave_self_tensor",
     "mm_pretune",
+    "addmm_pretune",
 ]
