@@ -23,11 +23,14 @@ def configs():
 
 
 def heur_m_block_size(args):
-    return 1
+    return triton.next_power_of_2(triton.cdiv(args["OW"], 12))  # cluster_num
 
 
 def heur_n_block_size(args):
     return 1
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["OH"]), 8192)
 
 
 # @triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
@@ -41,8 +44,8 @@ def heur_n_block_size(args):
 def upsample_bicubic2d_aa_kernel(
     ptr_o,
     ptr_i,
-    N,
-    C,
+    N: tl.constexpr,
+    C: tl.constexpr,
     OH,
     OW,
     IH,

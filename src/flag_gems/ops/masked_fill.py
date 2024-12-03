@@ -16,8 +16,17 @@ def cfggen():
     return configs
 
 
+def heur_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # cluster_num
+
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["N"])
+# @triton.autotune(configs=cfggen(), key=["N"])
+@triton.heuristics(
+    values={
+        "BLOCK_SIZE": heur_block_size,
+    },
+)
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
@@ -33,7 +42,12 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["N"])
+# @triton.autotune(configs=cfggen(), key=["N"])
+@triton.heuristics(
+    values={
+        "BLOCK_SIZE": heur_block_size,
+    },
+)
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
