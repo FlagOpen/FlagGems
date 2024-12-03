@@ -92,6 +92,7 @@ from .silu import silu
 from .sin import sin
 from .slice_scatter import slice_scatter, slice_scatter_v2
 from .softmax import softmax
+from .sort import sort
 from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
@@ -213,6 +214,7 @@ __all__ = [
     "silu",
     "sin",
     "softmax",
+    "sort",
     "sub",
     "tanh",
     "tile",
