@@ -170,7 +170,7 @@ def cumsum_input_fn(shape, cur_dtype, device):
         ),
         pytest.param(
             "nll_loss",
-            torch.nn.NLLLoss,
+            torch.nn.functional.nll_loss,
             nll_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.NLLLoss,
