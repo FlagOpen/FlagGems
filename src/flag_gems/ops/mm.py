@@ -244,36 +244,36 @@ def mm(a, b):
     return c
 
 
-def mm_pretune(max_tokens = 100):
+def mm_pretune(max_tokens=100):
+    assert (
+        isinstance(max_tokens, int) and max_tokens > 0
+    ), "max_tokens must be a positive integer"
+
     data_types = [
         torch.float16,
         torch.bfloat16,
         torch.float32,
     ]
 
+    # Predefined (N, K) shapes for autotune
     nk_shape = [
-        # from llama3-8b config
+        # from LLaMA config
         [1024, 4096],
         [128256, 4096],
         [14336, 4096],
         [4096, 14336],
         [4096, 4096],
-        [6144, 4096],  # vllm version for llama (qkv_proj)
-        [28672, 4096],  # vllm version for llama (gate_up_proj). 
-        # from qwen2.5-7b config
+        [6144, 4096],  # For qkv_proj in LLaMA
+        [28672, 4096],  # For gate_up_proj in LLaMA
+        # From QWen config
         [3584, 3584],
         [18944, 3584],
         [3584, 18944],
-        [152064,  3584],
-        [37888, 3584],   # vllm version for qwen (gate_up_proj).
+        [152064, 3584],
+        [37888, 3584],  # For gate_up_proj in QWen
     ]
 
-    pre_shapes = []
-    for m in range (max_tokens):
-        m = m + 1
-        for n, k in nk_shape:
-            pre_shapes.append([m, n, k])
-
+    pre_shapes = [[m, n, k] for m in range(1, max_tokens + 1) for n, k in nk_shape]
     for dtype in data_types:
         for M, N, K in pre_shapes:
             tensor_a = torch.randn([M, K], dtype=dtype, device="cuda")

@@ -145,28 +145,30 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         )
     return out
 
-def addmm_pretune(max_tokens = 100):
+
+def addmm_pretune(max_tokens=100):
+    assert (
+        isinstance(max_tokens, int) and max_tokens > 0
+    ), "max_tokens must be a positive integer"
+
     data_types = [
         torch.float16,
         torch.bfloat16,
         torch.float32,
     ]
 
+    # Predefined (N, K) shapes for autotune
     nk_shape = [
-        # from qwen2.5-7b config
+        # From qwen2.5-7b config
         [3584, 3584],
         [512, 3584],
-        [4608, 3584],  # vllm version for qwen (qkv_proj)
+        [4608, 3584],  # VLLM version for qwen (qkv_proj)
     ]
 
-    pre_shapes = []
-    for m in range (max_tokens):
-        m = m + 1
-        for n, k in nk_shape:
-            pre_shapes.append([m, n, k])
-
+    pre_shapes = [[m, n, k] for m in range(1, max_tokens + 1) for n, k in nk_shape]
     for dtype in data_types:
         for M, N, K in pre_shapes:
             tensor_a = torch.randn([M, K], dtype=dtype, device="cuda")
             tensor_b = torch.randn([K, N], dtype=dtype, device="cuda")
-            mm(tensor_a, tensor_b)
+            bias = torch.randn([M, N], dtype=dtype, device="cuda")
+            addmm(bias, tensor_a, tensor_b)
