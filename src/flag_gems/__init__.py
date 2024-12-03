@@ -181,6 +181,7 @@ class use_gems:
 
 def pretune():
     mm_pretune()
+    addmm_pretune()
 
 
 __all__ = [

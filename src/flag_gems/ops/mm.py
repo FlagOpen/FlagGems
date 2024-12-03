@@ -204,7 +204,6 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logging.debug("GEMS MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -215,6 +214,7 @@ def mm(a, b):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
+    logging.debug(f"GEMS MM, the input shape(M, N, K) is [{M}, {N}, {K}]")
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
@@ -244,15 +244,35 @@ def mm(a, b):
     return c
 
 
-def mm_pretune():
+def mm_pretune(max_tokens = 100):
     data_types = [
         torch.float16,
         torch.bfloat16,
         torch.float32,
     ]
-    pre_shapes = [
-        [64, 64, 64],
+
+    nk_shape = [
+        # from llama3-8b config
+        [1024, 4096],
+        [128256, 4096],
+        [14336, 4096],
+        [4096, 14336],
+        [4096, 4096],
+        [6144, 4096],  # vllm version for llama (qkv_proj)
+        [28672, 4096],  # vllm version for llama (gate_up_proj). 
+        # from qwen2.5-7b config
+        [3584, 3584],
+        [18944, 3584],
+        [3584, 18944],
+        [152064,  3584],
+        [37888, 3584],   # vllm version for qwen (gate_up_proj).
     ]
+
+    pre_shapes = []
+    for m in range (max_tokens):
+        m = m + 1
+        for n, k in nk_shape:
+            pre_shapes.append([m, n, k])
 
     for dtype in data_types:
         for M, N, K in pre_shapes:
