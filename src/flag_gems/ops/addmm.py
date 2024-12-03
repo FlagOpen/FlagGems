@@ -4,12 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=[
         triton.Config(
             {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
@@ -112,10 +112,10 @@ def addmm_kernel(
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    logging.debug("GEMS ADDMM")
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     M, K = mat1.shape
     _, N = mat2.shape
+    logging.debug(f"GEMS ADDMM, the input shape (M, N, K) is [{M}, {N}, {K}]")
 
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()
@@ -144,3 +144,31 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
             out.stride(1),
         )
     return out
+
+
+def addmm_pretune(max_tokens=100):
+    assert (
+        isinstance(max_tokens, int) and max_tokens > 0
+    ), "max_tokens must be a positive integer"
+
+    data_types = [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ]
+
+    # Predefined (N, K) shapes for autotune
+    nk_shape = [
+        # From qwen2.5-7b config
+        [3584, 3584],
+        [512, 3584],
+        [4608, 3584],  # VLLM version for qwen (qkv_proj)
+    ]
+
+    pre_shapes = [[m, n, k] for m in range(1, max_tokens + 1) for n, k in nk_shape]
+    for dtype in data_types:
+        for M, N, K in pre_shapes:
+            tensor_a = torch.randn([M, K], dtype=dtype, device="cuda")
+            tensor_b = torch.randn([K, N], dtype=dtype, device="cuda")
+            bias = torch.randn([M, N], dtype=dtype, device="cuda")
+            addmm(bias, tensor_a, tensor_b)

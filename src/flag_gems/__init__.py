@@ -179,8 +179,9 @@ class use_gems:
         del self.lib
 
 
-def pretune():
-    mm_pretune()
+def pretune(max_tokens=100):
+    mm_pretune(max_tokens)
+    addmm_pretune(max_tokens)
 
 
 __all__ = [
