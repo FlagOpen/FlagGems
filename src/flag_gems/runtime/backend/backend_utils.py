@@ -3,8 +3,9 @@ import os
 from dataclasses import dataclass
 
 
+# Metadata template,  Each vendor needs to specialize instances of this template
 @dataclass
-class vendor_info_base:
+class vendorInfoBase:
     vendor_name: str
     device_name: str
     cmd: str

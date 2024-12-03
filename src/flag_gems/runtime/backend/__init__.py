@@ -18,7 +18,7 @@ def get_codegen_result(code, result_key):
     try:
         exec(compiled_code, globals())
     except Exception as e:
-        RuntimeError(e)
+        raise e
     return globals()[result_key]
 
 

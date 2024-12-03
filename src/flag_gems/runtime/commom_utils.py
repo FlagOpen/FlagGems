@@ -8,7 +8,7 @@ class Autograd(Enum):
     unable = False
 
     @classmethod
-    def get_all_vendors(cls):
+    def get_optional_value(cls):
         return [member.name for member in cls]
 
 

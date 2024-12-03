@@ -6,28 +6,44 @@ import torch  # noqa: F401
 from . import backend, error
 from .commom_utils import quick_special_cmd, vendors_map
 
-global device
 
+# A singleton class to manage device context.
+class deviceDetector(object):
+    _instance = None
 
-class device_ctx:
+    def __new__(cls, *args, **kargs):
+        if cls._instance is None:
+            cls._instance = super(deviceDetector, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self, vendor_name=None):
-        self.vendor_list = vendors_map.keys()
-        self.info = self.get_vendor(vendor_name)
-        self.vendor_name = self.info.vendor_name
-        self.name = self.info.device_name
-        self.vendor = vendors_map[self.vendor_name]
-        self.device_count = backend.gen_torch_device_fn(
-            "device_count", self.vendor_name
-        )()
+        if not hasattr(self, "initialized"):
+            self.initialized = True
+            # A list of all available vendor names.
+            self.vendor_list = vendors_map.keys()
+
+            # A dataclass instance, get the vendor information based on the provided or default vendor name.
+            self.info = self.get_vendor(vendor_name)
+
+            # vendor_name is like 'nvidia', device_name is like 'cuda'.
+            self.vendor_name = self.info.vendor_name
+            self.name = self.info.device_name
+            self.vendor = vendors_map[self.vendor_name]
+            self.device_count = backend.gen_torch_device_fn(
+                "device_count", self.vendor_name
+            )()
 
     def get_vendor(self, vendor_name=None) -> tuple:
+        # Try to get the vendor name from a quick special command like 'torch.mlu'.
         vendor_name = self._get_vendor_from_quick_cmd()
         if vendor_name is not None:
             return backend.get_vendor_info(vendor_name)
+        # Check whether the vendor name is set in the environment variable.
         vendor_from_env = self._get_vendor_from_env()
         if vendor_from_env is not None:
             return backend.get_vendor_info(vendor_from_env)
         try:
+            # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
             return self._get_vendor_from_lib()
         except Exception:
             return self._get_vendor_from_sys()
@@ -48,6 +64,7 @@ class device_ctx:
     def _get_vendor_from_sys(self):
         vendor_infos = backend.get_vendor_infos()
         for single_info in vendor_infos:
+            # Get the vendor information by running system commands.
             result = subprocess.run([single_info.cmd], capture_output=True, text=True)
             if result.returncode == 0:
                 return single_info
@@ -64,6 +81,3 @@ class device_ctx:
         # except Exception:
         #     return torch.get_vendor_info()
         raise RuntimeError("The method is not implemented")
-
-
-device = device_ctx()

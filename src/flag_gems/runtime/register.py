@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 
 from . import backend, commom_utils, error
-from .device import device
+from .device import deviceDetector
 
 aten_lib = torch.library.Library("aten", "IMPL")
 
@@ -16,8 +16,10 @@ class Register:
         lib: Optional[any] = None,
         debug: Optional[bool] = False,
     ):
+        # lib is a instance of torch.library.Library
         self.lib = lib
-        self.device = device
+        self.device = deviceDetector()
+        # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
         self.reg_key = self.device.name.upper()
         self.reg_bac_key = commom_utils.autograd_str + self.reg_key
         self.vendor_list = list(commom_utils.vendors_map)

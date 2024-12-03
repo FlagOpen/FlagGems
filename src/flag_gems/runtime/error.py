@@ -1,10 +1,10 @@
 def backend_not_support(device_name, backend_list):
-    raise RuntimeError(f"The {device_name} device is not support currently. ")
+    raise RuntimeError(f"The {device_name} device is not supported currently. ")
 
 
 def device_not_found():
     raise RuntimeError(
-        "No devices were detected on your machine ! \n "
+        "No device were detected on your machine ! \n "
         "Please check that your driver is complete. "
     )
 
