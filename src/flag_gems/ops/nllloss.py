@@ -185,7 +185,37 @@ def nll_loss_multi_bwd_kernel(
         tl.store(inp_grad_ptrs, inp_grad.to(tl.float32), mask=(inp_mask & ignore_mask))
 
 
-class NLLLoss(torch.autograd.Function):
+# Negative Log Likelihood Loss (NLLLoss)
+#
+# This loss function is used for training classification problems with C classes.
+#
+# Parameters:
+# - input (Tensor):
+#   - Expected to contain log-probabilities for each class.
+#   - Shape can be either:
+#     - (minibatch, C) for standard classification tasks.
+#     - (minibatch, C, d1, d2, ..., dK) for K-dimensional inputs (e.g., per-pixel loss for 2D images).
+#
+# - target (Tensor):
+#   - Should contain class indices in the range [0, C-1].
+#   - If ignore_index is specified, this index can be outside the class range
+#       and will be ignored in the loss computation.
+#
+# - weight (1D Tensor, optional):
+#   - Assigns weight to each class, useful for unbalanced datasets.
+#
+# Reduction modes:
+# - 'none': returns per-sample loss (shape: (N,)).
+# - 'mean' (default): computes the mean of the weighted losses.
+# - 'sum': computes the sum of the weighted losses.
+#
+# Mathematical description:
+# - Unreduced loss:
+#   l_n = -w_y_n * x_n, where w_c = weight[c] * 1{c != ignore_index}.
+# - Reduced loss (depending on the specified reduction mode):
+#   - mean: ℓ(x, y) = (1/N) * Σ(w_y_n * l_n)
+#   - sum: ℓ(x, y) = Σ(l_n)
+class NegativeLogLikeLoss(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index):
         logging.debug("GEMS NLLLoss FWD")
@@ -203,9 +233,7 @@ class NLLLoss(torch.autograd.Function):
 
         if weight is None:
             weight = torch.ones(
-                [
-                    C,
-                ],
+                (C),
                 dtype=inp.dtype,
                 device=inp.device,
             )
@@ -280,4 +308,4 @@ class NLLLoss(torch.autograd.Function):
 
 
 def nll_loss(inp, target, weight=None, reduction=1, ignore_index=-100):
-    return NLLLoss.apply(inp, target, weight, reduction, ignore_index)
+    return NegativeLogLikeLoss.apply(inp, target, weight, reduction, ignore_index)
