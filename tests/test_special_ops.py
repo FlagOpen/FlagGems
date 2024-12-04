@@ -925,4 +925,5 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
+    gems_assert_equal(res_out, ref_out)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
