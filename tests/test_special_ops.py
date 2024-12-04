@@ -854,12 +854,11 @@ def test_accuracy_diag(shape, diagonal, dtype):
 
 
 def get_dim1_dim2(o_rank):
-        dims = list(range(-o_rank, o_rank))
-        return [
-            p
-            for p in itertools.permutations(dims, 2)
-            if (p[0] % o_rank) != (p[1] % o_rank)
-        ]
+    dims = list(range(-o_rank, o_rank))
+    return [
+        p for p in itertools.permutations(dims, 2) if (p[0] % o_rank) != (p[1] % o_rank)
+    ]
+
 
 def get_diag_embed_shape_and_dims():
     shapes = [
@@ -874,6 +873,7 @@ def get_diag_embed_shape_and_dims():
         result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
 
     return result
+
 
 @pytest.mark.diag_embed
 @pytest.mark.parametrize("shape, dim1, dim2", get_diag_embed_shape_and_dims())

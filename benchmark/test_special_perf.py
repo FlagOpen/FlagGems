@@ -284,6 +284,7 @@ def test_perf_diag_embed():
 
     bench.run()
 
+
 @pytest.mark.diagonal_backward
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
