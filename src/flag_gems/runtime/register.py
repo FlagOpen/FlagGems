@@ -50,7 +50,7 @@ class Register:
             return backend.get_curent_device_unused_op(self.device.vendor_name)
         return []
 
-    def registerImpl(self, key, fn, has_backward):
+    def register_impl(self, key, fn, has_backward):
         if self.device.vendor != commom_utils.vendors.NVIDIA:
             if key in self.vendor_extend_configs:
                 single_item = self.vendor_extend_configs[key]
@@ -66,7 +66,7 @@ class Register:
         try:
             for key, func, has_backward in config:
                 if key not in self.unused_ops:
-                    self.registerImpl(key, func, has_backward)
+                    self.register_impl(key, func, has_backward)
         except Exception as e:
             error.register_error(e)
 
