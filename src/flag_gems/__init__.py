@@ -120,6 +120,7 @@ def enable(lib=aten_lib):
     lib.impl("max.dim", max_dim, "CUDA")
     lib.impl("min", min, "CUDA")
     lib.impl("min.dim", min_dim, "CUDA")
+    lib.impl("nll_loss", nll_loss, "AutogradCUDA")
     lib.impl("amax", amax, "CUDA")
     lib.impl("argmax", argmax, "CUDA")
     lib.impl("prod", prod, "CUDA")

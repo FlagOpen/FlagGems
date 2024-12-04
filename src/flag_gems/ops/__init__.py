@@ -60,6 +60,7 @@ from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nllloss import nll_loss
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
@@ -254,5 +255,6 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "nll_loss",
     "repeat_interleave_self_tensor",
 ]
