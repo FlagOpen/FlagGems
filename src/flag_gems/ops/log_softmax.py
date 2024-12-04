@@ -24,7 +24,7 @@ def heur_num_warps(args):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("log_softmax"),
+    configs=runtime.get_triton_config("log_softmax"),
     key=[
         "M",
         "N",
@@ -64,7 +64,7 @@ def log_softmax_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("log_softmax"),
+    configs=runtime.get_triton_config("log_softmax"),
     key=[
         "M",
         "N",

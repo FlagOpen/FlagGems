@@ -11,7 +11,7 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("cross_entropy_loss"),
+    configs=runtime.get_triton_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -72,7 +72,7 @@ def celoss_indices_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("cross_entropy_loss"),
+    configs=runtime.get_triton_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["label_smoothing"])
@@ -131,7 +131,7 @@ def celoss_probability_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("cross_entropy_loss"),
+    configs=runtime.get_triton_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing"])
@@ -212,7 +212,7 @@ def celoss_indices_smooth_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("cross_entropy_loss"),
+    configs=runtime.get_triton_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
@@ -283,7 +283,7 @@ def celoss_indices_bwd(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("cross_entropy_loss"),
+    configs=runtime.get_triton_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["label_smoothing", "mean_num"])
@@ -368,7 +368,7 @@ def celoss_probability_bwd(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("cross_entropy_loss"),
+    configs=runtime.get_triton_config("cross_entropy_loss"),
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index", "label_smoothing", "mean_num"])

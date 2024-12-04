@@ -11,7 +11,7 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("mv"),
+    configs=runtime.get_triton_config("mv"),
     key=["M", "N"],
 )
 @triton.jit

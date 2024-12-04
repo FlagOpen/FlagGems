@@ -229,7 +229,7 @@ def heur_tile_n_bwd_non_inner(args):
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("softmax_non_inner"),
+    configs=runtime.get_triton_config("softmax_non_inner"),
     key=[
         "M",
         "N",
@@ -298,7 +298,7 @@ def heru_tile_m(args):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("softmax_inner"),
+    configs=runtime.get_triton_config("softmax_inner"),
     key=["M", "N"],
 )
 @triton.heuristics(

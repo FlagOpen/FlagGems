@@ -1,13 +1,13 @@
-from backend_utils import vendorInfoBase  # noqa: E402
+from backend_utils import VendorInfoBase  # noqa: E402
 
 from .ops import *  # noqa: F403
 
-vendor_info = vendorInfoBase(
+vendor_info = VendorInfoBase(
     vendor_name="nvidia", device_name="cuda", device_query_cmd="nvidia-smi"
 )
 
 
-def get_register_op_config():
+def get_register_ops():
     return (("add.Tensor", add, False),)
 
 

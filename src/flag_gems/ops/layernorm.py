@@ -19,7 +19,7 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("layer_norm_persistent"),
+    configs=runtime.get_triton_config("layer_norm_persistent"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -62,7 +62,7 @@ def layer_norm_persistent_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("layer_norm_persistent"),
+    configs=runtime.get_triton_config("layer_norm_persistent"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -110,7 +110,7 @@ def layer_norm_persistent_kernel_multiline(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("layer_norm_loop"),
+    configs=runtime.get_triton_config("layer_norm_loop"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -195,7 +195,7 @@ def layer_norm_loop_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("layer_norm_backward"),
+    configs=runtime.get_triton_config("layer_norm_backward"),
     key=["M", "N"],
 )
 @triton.jit
@@ -257,7 +257,7 @@ def layer_norm_backward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_bias_backward"),
+    configs=runtime.get_triton_config("weight_bias_backward"),
     key=["N"],
 )
 @triton.jit

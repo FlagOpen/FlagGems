@@ -11,7 +11,7 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("vstack"),
+    configs=runtime.get_triton_config("vstack"),
     key=[
         "max_tile_elems",
     ],

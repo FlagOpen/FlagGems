@@ -3,8 +3,8 @@ import subprocess
 
 import torch  # noqa: F401
 
-from . import backend, error
-from .commom_utils import quick_special_cmd, vendors_map
+from .. import backend, error
+from ..commom_utils import vendors_map
 
 
 # A singleton class to manage device context.
@@ -49,7 +49,11 @@ class DeviceDetector(object):
             return self._get_vendor_from_sys()
 
     def _get_vendor_from_quick_cmd(self):
-        for vendor_name, cmd in quick_special_cmd.items():
+        cmd = {
+            "cambricon": "torch.mlu",
+            "mthreads": "torch.musa",
+        }
+        for vendor_name, cmd in cmd.items():
             try:
                 exec(cmd, globals())
                 return vendor_name

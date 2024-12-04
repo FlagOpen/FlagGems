@@ -23,7 +23,7 @@ def heur_divisible_k(args):
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("bmm"),
+    configs=runtime.get_triton_config("bmm"),
     key=["M", "N", "K"],
 )
 @triton.heuristics(

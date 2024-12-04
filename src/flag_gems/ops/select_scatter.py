@@ -10,7 +10,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_op_tune_config("select_scatter"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("select_scatter"), key=["M", "N"])
 @triton.jit
 def select_scatter_kernel(
     inp,

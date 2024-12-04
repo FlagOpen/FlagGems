@@ -5,7 +5,7 @@ autograd_str = "Autograd"
 
 class Autograd(Enum):
     enable = True
-    unable = False
+    disable = False
 
     @classmethod
     def get_optional_value(cls):
@@ -34,10 +34,4 @@ vendors_map = {
     "mthreads": vendors.MTHREADS,
     "hygon": vendors.HYGON,
     "metax": vendors.METAX,
-}
-
-
-quick_special_cmd = {
-    "cambricon": "torch.mlu",
-    "mthreads": "torch.musa",
 }

@@ -10,7 +10,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_op_tune_config("index_select"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("index_select"), key=["M", "N"])
 @triton.jit
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr

@@ -41,7 +41,7 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_op_tune_config("amax"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("amax"), key=["M", "N"])
 @triton.jit
 def amax_kernel(
     inp,

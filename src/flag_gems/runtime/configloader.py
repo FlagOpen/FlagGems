@@ -3,7 +3,7 @@ import copy
 import triton
 
 from . import backend
-from .device import DeviceDetector
+from .backend.device import DeviceDetector
 
 
 class ConfigLoader(object):
@@ -18,8 +18,12 @@ class ConfigLoader(object):
         if not hasattr(self, "initialized"):
             self.initialized = True
             self.device = DeviceDetector()
-            self.primitive_json_config = self.get_vendor_tune_config()
+            # primitive_yaml_config is simply the dictionary returned by yaml
+            # and is reserved from being an attr for vendor customizability
+            self.primitive_yaml_config = self.get_vendor_tune_config()
+            # gen_key is an identifier that indicates whether the current config needs to be generated automatically
             self.gen_key = "gen"
+            # loaded_triton_config is wrapped in triton.Config according to primitive_yaml_config
             self.loaded_triton_config = {}
             self.triton_config_default = {
                 "num_stages": 2,
@@ -29,8 +33,8 @@ class ConfigLoader(object):
             self.load_all()
 
     def load_all(self):
-        for key in self.primitive_json_config:
-            self.loaded_triton_config[key] = self.get_op_tune_config(key)
+        for key in self.primitive_yaml_config:
+            self.loaded_triton_config[key] = self.get_triton_config(key)
 
     def get_vendor_tune_config(self):
         return backend.get_tune_config(self.device.vendor_name)
@@ -99,11 +103,11 @@ class ConfigLoader(object):
             current_config,
         )
 
-    def get_op_tune_config(self, op_name):
+    def get_triton_config(self, op_name):
         if op_name in self.loaded_triton_config:
             return self.loaded_triton_config[op_name]
 
-        current_op_configs = self.primitive_json_config[op_name]
+        current_op_configs = self.primitive_yaml_config[op_name]
         configs = []
         if len(current_op_configs) == 0:
             return configs

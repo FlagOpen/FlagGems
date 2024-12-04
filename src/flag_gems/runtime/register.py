@@ -3,7 +3,7 @@ from typing import Optional
 import torch
 
 from . import backend, commom_utils, error
-from .device import DeviceDetector
+from .backend.device import DeviceDetector
 
 aten_lib = torch.library.Library("aten", "IMPL")
 

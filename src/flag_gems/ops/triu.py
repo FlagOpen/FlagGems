@@ -10,7 +10,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_op_tune_config("triu"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("triu"), key=["M", "N"])
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -39,7 +39,7 @@ def triu_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("triu_batch"),
+    configs=runtime.get_triton_config("triu_batch"),
     key=["batch", "MN", "N", "diagonal"],
 )
 @triton.jit(do_not_specialize=["diagonal"])

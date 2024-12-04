@@ -12,7 +12,7 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_norm_kernel_last"), key=["M", "N"]
+    configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
 )
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
@@ -54,7 +54,7 @@ def weight_norm_kernel_last(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_norm_kernel_first"), key=["M", "N"]
+    configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
 )
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_first(
@@ -96,7 +96,7 @@ def weight_norm_kernel_first(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_norm_kernel_last"), key=["M", "N"]
+    configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
 )
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
@@ -148,7 +148,7 @@ def weight_norm_bwd_kernel_last(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_norm_kernel_first"), key=["M", "N"]
+    configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
 )
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
@@ -200,7 +200,7 @@ def weight_norm_bwd_kernel_first(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_norm_kernel"),
+    configs=runtime.get_triton_config("weight_norm_kernel"),
     key=["v_shape0", "v_shape1", "v_shape2"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -239,7 +239,7 @@ def norm_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_op_tune_config("weight_norm_kernel"),
+    configs=runtime.get_triton_config("weight_norm_kernel"),
     key=["v_shape0", "v_shape1", "v_shape2"],
 )
 @triton.jit(do_not_specialize=["eps"])
