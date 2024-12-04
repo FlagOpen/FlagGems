@@ -1,337 +1,144 @@
+from typing import Generator
+
+import pytest
 import torch
 
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
-    BLAS_BATCH,
-    FLOAT_DTYPES,
-    REDUCTION_BATCH,
-    SIZES,
     Benchmark,
-    unary_arg,
+    Config,
+    GenericBenchmark2DOnly,
+    generate_tensor_input,
+    unary_input_fn,
 )
 
 
-def test_perf_all():
-    bench = Benchmark(
-        op_name="all",
-        torch_op=torch.all,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
+class UnaryReductionBenchmark(Benchmark):
+    """
+    Base class for benchmarking reduction operations.
+    """
+
+    def set_more_shapes(self):
+        more_shapes_1d = [
+            (4,),
+            (1024,),
+            (1024 * 1024 * 1024,),
+        ]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            yield inp,
+
+
+forward_operations = [
+    ("all", torch.all, FLOAT_DTYPES),
+    ("amax", torch.amax, FLOAT_DTYPES),
+    ("any", torch.any, FLOAT_DTYPES),
+    ("argmax", torch.argmax, FLOAT_DTYPES),
+    ("max", torch.max, FLOAT_DTYPES),
+    ("mean", torch.mean, FLOAT_DTYPES),
+    ("min", torch.min, FLOAT_DTYPES),
+    ("prod", torch.prod, FLOAT_DTYPES),
+    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+    ("sum", torch.sum, FLOAT_DTYPES),
+    ("var_mean", torch.var_mean, FLOAT_DTYPES),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(name, op, dtype, marks=getattr(pytest.mark, name, None))
+        for name, op, dtype in forward_operations
+    ],
+)
+def test_general_reduction_perf(op_name, torch_op, dtypes):
+    bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
 
-def test_perf_amax():
-    bench = Benchmark(
-        op_name="amax",
-        torch_op=torch.amax,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+backward_operations = [
+    ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+]
 
 
-def test_perf_any():
-    bench = Benchmark(
-        op_name="any",
-        torch_op=torch.any,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_argmax():
-    bench = Benchmark(
-        op_name="argmax",
-        torch_op=torch.argmax,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_cross_entropy_loss():
-    def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        target = torch.randint(
-            0,
-            size,
-            [
-                batch,
-            ],
-            device="cuda",
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name, op, dtype, marks=getattr(pytest.mark, name + "_backward", None)
         )
-        return inp, target
-
-    bench = Benchmark(
-        op_name="cross_entropy_loss",
-        torch_op=torch.nn.CrossEntropyLoss(),
-        arg_func=cross_entropy_loss_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_cumsum():
-    def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        return inp, 1
-
-    bench = Benchmark(
-        op_name="cumsum",
-        torch_op=torch.cumsum,
-        arg_func=cumsum_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_groupnorm():
-    def group_norm_args(dtype, batch, size):
-        C = 16
-        G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                C,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return inp, G, weight, bias
-
-    bench = Benchmark(
-        op_name="groupnorm",
-        torch_op=torch.nn.functional.group_norm,
-        arg_func=group_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_layernorm():
-    def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-        weight = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        bias = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device="cuda",
-        )
-        return (
-            inp,
-            [
-                size,
-            ],
-            weight,
-            bias,
-        )
-
-    bench = Benchmark(
-        op_name="layernorm",
-        torch_op=torch.layer_norm,
-        arg_func=layer_norm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_log_softmax():
-    bench = Benchmark(
-        op_name="log_softmax",
-        torch_op=torch.nn.functional.log_softmax,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_max():
-    bench = Benchmark(
-        op_name="max",
-        torch_op=torch.max,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_mean():
-    bench = Benchmark(
-        op_name="mean",
-        torch_op=torch.mean,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_min():
-    bench = Benchmark(
-        op_name="min",
-        torch_op=torch.min,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_prod():
-    bench = Benchmark(
-        op_name="prod",
-        torch_op=torch.prod,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_softmax():
-    bench = Benchmark(
-        op_name="softmax",
-        torch_op=torch.nn.functional.softmax,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_softmax_backward():
-    bench = Benchmark(
-        op_name="softmax",
-        torch_op=torch.nn.functional.softmax,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
+        for name, op, dtype in backward_operations
+    ],
+)
+def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
+    bench = UnaryReductionBenchmark(
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
         is_backward=True,
     )
     bench.run()
 
 
-def test_perf_sum():
-    bench = Benchmark(
-        op_name="sum",
-        torch_op=torch.sum,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+def cross_entropy_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = torch.randint(0, shape[-1], (shape[0],), device=device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+        yield inp, target, {
+            "weight": weight,
+            "reduction": "sum",
+            "label_smoothing": 0.1,
+        }
 
 
-def test_perf_var_mean():
-    bench = Benchmark(
-        op_name="var_mean",
-        torch_op=torch.var_mean,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
+def cumsum_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, 1
 
 
-def test_perf_vector_norm():
-    bench = Benchmark(
-        op_name="vector_norm",
-        torch_op=torch.linalg.vector_norm,
-        arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_index_add():
-    def index_add_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-
-        dim = 0
-        src_shape = list(inp.shape)
-        index_max = src_shape[dim]
-        index_len = index_max // 2
-        index = torch.randint(0, index_max, (index_len,), device="cuda")
-        src_shape[dim] = index_len
-        src = torch.randn(src_shape, dtype=dtype, device="cuda")
-        return (inp, dim, index, src)
-
-    bench = Benchmark(
-        op_name="index_add",
-        torch_op=torch.index_add,
-        arg_func=index_add_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
-    )
-    bench.run()
-
-
-def test_perf_index_select():
-    def index_select_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
-
-        threshold = 0.1
-        dim = 0
-        index_size = inp.size(dim)
-        from math import floor
-
-        index = torch.randint(
-            0, index_size, [floor(index_size * threshold)], device="cuda"
-        )
-        return (inp, dim, index)
-
-    bench = Benchmark(
-        op_name="index_select",
-        torch_op=torch.index_select,
-        arg_func=index_select_args,
-        dtypes=FLOAT_DTYPES,
-        batch=REDUCTION_BATCH,
-        sizes=SIZES,
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "log_softmax",
+            torch.nn.functional.log_softmax,
+            unary_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.log_softmax,
+        ),
+        pytest.param(
+            "nonzero",
+            torch.nonzero,
+            unary_input_fn,
+            FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+            marks=pytest.mark.nonzero,
+        ),
+        pytest.param(
+            "CrossEntropyLoss",
+            torch.nn.functional.cross_entropy,
+            cross_entropy_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.CrossEntropyLoss,
+        ),
+        pytest.param(
+            "cumsum",
+            torch.cumsum,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.cumsum,
+        ),
+    ],
+)
+def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = GenericBenchmark2DOnly(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()

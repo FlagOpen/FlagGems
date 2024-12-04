@@ -1,5 +1,3 @@
-# https://github.com/marketplace/actions/python-coverage
-
 name: python-coverage
 
 on:
@@ -8,62 +6,70 @@ on:
   pull_request:
     branches: [ "master" ]
 
-permissions:
-  pull-requests: write
-
 jobs:
-  container-coverage-test:
-    runs-on: [self-hosted, docker]
-    container:
-      image: localhost:5000/flag-gems-ci:v1.0
-      ports:
-        - 81
-      options: --gpus all --hostname flag-gems_cicd_coverage
+  blas-op-test:
+    concurrency:
+      group: blas-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/blas-op-test.yaml
+
+  model-test:
+    concurrency:
+      group: model-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/model-test.yaml
+
+  op-test-quick-cpu:
+    concurrency:
+      group: op-test-quick-cpu-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-test-quick-cpu.yaml
+
+  op-utils-test:
+    concurrency:
+      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/op-utils-test.yaml
+
+  pointwise-op-test:
+    concurrency:
+      group: pointwise-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/pointwise-op-test.yaml
+
+  reduction-op-test:
+    concurrency:
+      group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/reduction-op-test.yaml
+
+  special-op-test:
+    concurrency:
+      group: special-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    uses: ./.github/workflows/special-op-test.yaml
+
+  coverage-test:
+    concurrency:
+      group: coverage-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: jiuding
+    needs: [blas-op-test, model-test, op-test-quick-cpu, op-utils-test, pointwise-op-test, reduction-op-test, special-op-test]
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: check-gpu-free
-        run: tests/scripts/gpu_check.sh
-
-      - name: run-pytest
+      - name: Get python coverage
         shell: bash
         run: |
-          cmds=(
-            "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_unary_pointwise_ops.py &"
-            "CUDA_VISIBLE_DEVICES=0 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_pointwise_type_promotion.py &"
-            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_binary_pointwise_ops.py &"
-            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_tensor_constructor_ops.py &"
-            "CUDA_VISIBLE_DEVICES=1 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_distribution_ops.py &"
-            "CUDA_VISIBLE_DEVICES=2 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_blas_ops.py &"
-            "CUDA_VISIBLE_DEVICES=3 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_reduction_ops.py &"
-            "CUDA_VISIBLE_DEVICES=4 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_special_ops.py &"
-            "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s tests/test_libentry.py &"
-            "CUDA_VISIBLE_DEVICES=5 coverage run --parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" -m pytest -s examples/model_bert_test.py &"
-          )
-
-          declare -a exit_statuses
-
-          for cmd in "${cmds[@]}"; do
-            eval "$cmd"
-          done
-
-          for job in $(jobs -p); do
-            wait $job
-            exit_statuses+=($?)
-            echo "Task $pid completed with exit status ${exit_statuses[-1]}"
-          done
-
-          echo "Exit statuses of all tasks: ${exit_statuses[@]}"
-
-      - name: get-coverage
-        run: |
-          coverage combine --append
-          coverage report -m
-          coverage xml -o coverage.xml
-
-      - name: report-coverage
-        uses: orgoro/coverage@v3.2
-        with:
-            coverageFile: coverage.xml
-            thresholdNew: 0.8
-            thresholdModified: 0.0
-            token: ${{ secrets.GITHUB_TOKEN }}
+          echo "current dir: $(pwd)"
+          git config --global --add safe.directory ../FlagGems
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
+            PR_ID=${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            echo "This is a push event. The relate PR number is ${PR_NUMBER}"
+            PR_ID=${PR_NUMBER}
+          fi
+          bash tools/code_coverage/coverage.sh ${PR_ID}

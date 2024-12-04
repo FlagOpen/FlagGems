@@ -1,8 +1,12 @@
 import functools
 import operator
-from typing import Iterable, Tuple
+from typing import Iterable, Sequence, Tuple
 
 import torch
+import triton
+import triton.language as tl
+
+from ..utils import triton_lang_extension as tle
 
 Shape = Tuple[int]
 Stride = Tuple[int]
@@ -125,9 +129,72 @@ def c_contiguous_stride(shape: Shape) -> Stride:
     s = 1
     for size in reversed(shape):
         strides.append(s)
-        s *= size
-
+        s *= max(size, 1)  # treat size 0 as size 1
     return tuple(reversed(strides))
+
+
+def f_contiguous_stride(shape: Shape) -> Stride:
+    strides = []
+    s = 1
+    for size in shape:
+        strides.append(s)
+        s *= max(size, 1)  # treat size 0 as size 1
+    return tuple(strides)
+
+
+def ordered_stride(shape: Shape, order: Perm) -> Stride:
+    strides = [0] * len(shape)
+    s = 1
+    for i in order:
+        strides[i] = s
+        s *= max(shape[i], 1)  # treat size 0 as size 1
+    return tuple(strides)
+
+
+def stride_order(strides):
+    # we also handle negative strides
+    return sorted(range(len(strides)), key=lambda i: abs(strides[i]))
+
+
+def all_the_same_shape(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    shape = tensors[0].shape
+    return all(item.shape == shape for item in tensors[1:])
+
+
+def all_the_same_stride(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    stride = tensors[0].stride()
+    return all(item.stride() == stride for item in tensors[1:])
+
+
+def all_c_contiguous(tensors: Sequence[torch.Tensor]) -> bool:
+    if len(tensors) == 0:
+        return True
+    return all(tensor.is_contiguous() for tensor in tensors)
+
+
+def heuristics_for_tile_size(max_tile_size, *sizes):
+    ndim = len(sizes)
+    tile_sizes = [0 for _ in range(ndim)]
+    for i in range(ndim):
+        size = sizes[ndim - 1 - i]
+        tile_size = min(max_tile_size, triton.next_power_of_2(size))
+        tile_sizes[ndim - 1 - i] = tile_size
+        max_tile_size = max(1, max_tile_size // tile_size)
+    return tuple(tile_sizes)
+
+
+# This should be part of CodeGenConfig
+def heuristics_for_num_warps(tile_size):
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 
 def dim_compress(inp, dims):
@@ -156,3 +223,133 @@ def can_use_int32_index(a):
         if max_offset > INT32_MAX:
             return False
     return True
+
+
+def restride_dim(src, dim, shape, step=0, storage_offset=None):
+    strides = list(src.stride())
+    strides[dim] *= step
+    return src.as_strided(shape, strides, storage_offset)
+
+
+def cfggen():
+    block_m = [1, 2, 4]
+    block_n = [256, 1024, 2048, 4096]
+    configs = [
+        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
+        for m in block_m
+        for n in block_n
+    ]
+    return configs
+
+
+@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.jit
+def add_on_kernel(
+    idx,
+    add_on,
+    cur_shape,
+    cur_strides,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
+    rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    rows_mask = rows_offset < M
+
+    cols_offset = pid_y + tl.arange(0, BLOCK_N)[None, :]
+    cols_mask = cols_offset < N
+    block_mask = rows_mask and cols_mask
+
+    offsets = rows_offset * N + cols_offset
+    cur_idx = tl.load(idx + offsets, mask=block_mask, other=1)
+    mod = cur_idx % cur_shape
+    res = mod * cur_strides
+    tl.store(add_on + offsets, res, mask=block_mask)
+
+
+def offset_calculator(inp, idx, strides, dim, isInp):
+    """
+    Calculate the flat index(a.k.a offset) for a given ravel index in a multi-dimensional array.
+    The formula can be seen in:
+        - https://numpy.org/doc/stable/reference/arrays.ndarray.html#internal-memory-layout-of-an-ndarray
+        - https://numpy.org/devdocs/user/basics.indexing.html#single-element-indexing
+
+
+    Parameters:
+        inp (tensor):               The input multi-dimensional array from which the offset is calculated.
+        idx (tensor):               The linear index for which the offset is to be calculated.
+        strides (list of int):      A list containing the stride lengths for each dimension of the input array.
+        dim (int):                  The specific dimension for which the index offset needs to be calculated.
+        isInp (bool):               A flag indicating whether the tensor 'inp' is the parameter 'self'
+                                    in scatter/gather/index_* operators or not.
+
+                                    In operators such as scatter/gather and index_*, when the input tensor 'inp'
+                                    is the 'self' tensor to be processed, we may need to modify its offsets later.
+                                    For instance, in the scatter operator, the offset is calculated using the formula:
+
+                                        inp_offset = origin_offset - stride[dim] * n_dim + stride[dim] * index.
+
+                                    In this case, we return the fixed part of the formula:
+
+                                        origin_offset - stride[dim] * n_dim,
+
+                                    to facilitate subsequent modifications.
+                                    For other types of input 'inp', we return the complete calculation result
+                                    of origin_offsets directly.
+
+
+    Returns:
+    The calculated offset. If isInp is True, the fixed offset is returned; otherwise, the origin offset is returned.
+
+
+    Note:
+    The function includes a comment suggesting the potential optimization of division and modulus operations,
+    which may be beneficial if this function is called frequently.
+    See also:
+        - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        - Division by Invariant Integers Using Multiplication,
+            Torbjörn Granlund and Peter L. Montgomery, 1994.
+    """
+    ndim = inp.ndim
+    shape = list(inp.shape)
+    offsets = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
+    idx_dim = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
+    for d in range(0, ndim):
+        add_on = torch.zeros_like(inp, dtype=torch.int32, device=inp.device)
+        N = idx.size(idx.ndim - 1)
+        M = idx.numel() // N
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            triton.cdiv(N, meta["BLOCK_N"]),
+        )
+        add_on_kernel[grid](idx, add_on, shape[d], strides[d], M, N)
+
+        offsets = torch.add(offsets, add_on)
+        if d == dim:
+            idx_dim = add_on
+        idx = idx // shape[d]
+    return offsets if not isInp else (offsets - idx_dim)
+
+
+def offsetCalculator(inp, idx, strides, dim, isInp):
+    ndim = inp.ndim
+    shape = list(inp.shape)
+    offsets = 0
+    idx_dim = 0
+    for d in range(0, ndim):
+        mod = idx % shape[d]
+        add_on = mod * strides[d]
+        offsets += add_on
+        if d == dim:
+            idx_dim = add_on
+        idx = idx // shape[d]
+        # FIXME: Should we write a fast div/mod
+        # to boost the '%' and '//'? (Since they may be run many times)
+        # See also:
+        #   - https://ridiculousfish.com/blog/posts/labor-of-division-episode-i.html
+        #   - Division by Invariant Integers Using Multiplication,
+        #     Torbjörn Granlund and Peter L. Montgomery, 1994.
+    return (offsets) if not isInp else (offsets - idx_dim)

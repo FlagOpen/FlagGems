@@ -7,6 +7,7 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -17,7 +18,7 @@ def max_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -45,19 +46,14 @@ def heur_block_n(args):
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
+        triton.Config({"BLOCK_M": 8, "BLOCK_N": 256}, num_warps=8),
+        triton.Config({"BLOCK_M": 16, "BLOCK_N": 512}, num_warps=8),
+        triton.Config({"BLOCK_M": 32, "BLOCK_N": 512}, num_warps=8),
     ],
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
 )
 @triton.jit
 def max_kernel(
@@ -71,19 +67,24 @@ def max_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
+    result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
+    result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
+    for i in range(0, N, BLOCK_N):
+        n_offset = i + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        # set mask
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+        update_mask = max_value > result_value
+        result_value = tl.where(update_mask, max_value, result_value)
+        result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    result_value, result_index = tl.max(inp_vals, axis=1, return_indices=True)
-
+    offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
     out_index_ptrs = out_index + offset_index
 
@@ -93,6 +94,7 @@ def max_kernel(
 
 def max(inp):
     logging.debug("GEMS MAX")
+    inp = inp.contiguous()
     M = inp.numel()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)

@@ -1,10 +1,18 @@
 [中文版](./README_cn.md)
 
+![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
+
+
 ## Introduction
 
 FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.
 
 By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
+
+We created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
+
+ <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
+
 
 
 ## Feature
@@ -79,10 +87,17 @@ Examples：
 - support reduction operators: cumsum, layernorm, mean, softmax
 
 ### v2.0
-- support BLAS operator: mv, outer
+- support BLAS operators: mv, outer
 - support pointwise operators: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
 - support reduction operators: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
 - support fused operators: skip_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+
+### v2.1
+- support Tensor operators: where, arange, repeat, masked_fill, tile, unique, index_select, masked_select, ones, ones_like, zeros, zeros_like, full, full_like, flip, pad
+- support neural network operator: embedding
+- support basic math operators: allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
+- support distribution operators: normal, uniform_, exponential_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
+- support science operators: erf, resolve_conj, resolve_neg
 
 ## Quick Start
 
@@ -140,7 +155,7 @@ pip install .
     - Run reference on cpu
         ```shell
         cd tests
-        pytest test_xx_ops.py --device cpu
+        pytest test_xx_ops.py --ref cpu
         ```
 
 2. Test Model Accuracy
