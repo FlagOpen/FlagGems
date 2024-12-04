@@ -602,7 +602,7 @@ def test_accuracy_index_add(shape, dim, dtype):
 
     src_shape = list(inp.shape)
     index_max = src_shape[dim]
-    index_len = index_max // 2
+    index_len = index_max
     index = torch.randperm(index_len, device="cuda")
     src_shape[dim] = index_len
     src = torch.randn(src_shape, dtype=dtype, device="cuda")
