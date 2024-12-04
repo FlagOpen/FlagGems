@@ -66,7 +66,7 @@ def covariance_kernel(
 def cov(X, correction=1, fweights=None, aweights=None):
     logging.debug("GEMS COV")    
     M, N = X.shape  
-    MAX_GRID_NUM = 65535
+    MAX_GRID_NUM = 2048
     BLOCK_SIZE = min(128, triton.next_power_of_2(N))
 
     if fweights is None:
@@ -89,17 +89,18 @@ def cov(X, correction=1, fweights=None, aweights=None):
     mean = torch.zeros(M, device=X.device, dtype=X.dtype)
     cov_matrix = torch.zeros((M, M), device=X.device, dtype=X.dtype)
     
-    for i in range((M + MAX_GRID_NUM - 1) // MAX_GRID_NUM):
+    num_row_chunks = (M + MAX_GRID_NUM - 1) // MAX_GRID_NUM
+    for i in range(num_row_chunks):
         row_offset = i * MAX_GRID_NUM
         current_M = min(MAX_GRID_NUM, M - row_offset)
         grid = (current_M,)
         mean_kernel[grid](X, mean, M, N, weights, row_offset=row_offset, BLOCK_SIZE=BLOCK_SIZE)
     mean = mean / sum_weights
-         
-    for i in range((M + MAX_GRID_NUM - 1) // MAX_GRID_NUM):
+    
+    for i in range(num_row_chunks):
         row_offset = i * MAX_GRID_NUM
         current_rows = min(MAX_GRID_NUM, M - row_offset)    
-        for j in range((M + MAX_GRID_NUM - 1) // MAX_GRID_NUM):
+        for j in range(num_row_chunks):
             col_offset = j * MAX_GRID_NUM
             current_cols = min(MAX_GRID_NUM, M - col_offset)
             grid = (current_rows, current_cols)
