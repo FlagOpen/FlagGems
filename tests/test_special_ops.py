@@ -914,9 +914,8 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     ref_inp = to_reference(inp)
 
-    ref_out = torch.diagonal(inp, offset, dim1, dim2)
+    ref_out = torch.diagonal(ref_inp, offset, dim1, dim2)
     res_out = torch.diagonal(inp, offset, dim1, dim2)
-    gems_assert_equal(res_out, ref_out)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad)
@@ -924,6 +923,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-
+    res_out = to_reference(res_out)
+    res_in_grad = to_reference(res_in_grad)
     gems_assert_equal(res_out, ref_out)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
