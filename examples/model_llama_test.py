@@ -14,7 +14,7 @@ def test_accuracy_llama(prompt):
     model = AutoModelForCausalLM.from_pretrained("sharpbai/Llama-2-7b-hf")
 
     model.to("cuda").eval()
-    inputs = tokenizer(prompt, return_tensors="pt").to(device="cuda")
+    inputs = tokenizer(prompt, return_tensors="pt").to(device=flag_gems.device)
     with torch.no_grad():
         ref_output = model.generate(**inputs, max_length=100, num_beams=5)
 

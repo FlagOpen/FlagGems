@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_backend
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
@@ -34,6 +35,6 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     N = volume(size)
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(N, BLOCK_SIZE),)
-    with torch.cuda.device(device):
+    with torch_backend.device(device):
         ones_kernel[grid](out, N, BLOCK_SIZE)
     return out

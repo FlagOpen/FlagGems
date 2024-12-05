@@ -16,12 +16,16 @@ def test_accuracy_normal(float, shape, dtype):
     loc = (
         3.0
         if float == "mean"
-        else torch.full(size=shape, fill_value=3.0, dtype=dtype, device="cuda")
+        else torch.full(
+            size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device
+        )
     )
     scale = (
         10.0
         if float == "std"
-        else torch.full(size=shape, fill_value=10.0, dtype=dtype, device="cuda")
+        else torch.full(
+            size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
+        )
     )
     with flag_gems.use_gems():
         res_out = torch.normal(loc, scale)
@@ -35,7 +39,7 @@ def test_accuracy_normal(float, shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_uniform(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         x.uniform_(-3, 3)
     assert (x <= 3.0).all()
@@ -46,7 +50,7 @@ def test_accuracy_uniform(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_exponential_(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cuda")
+    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     with flag_gems.use_gems():
         x.exponential_()
     assert x.min() > 0

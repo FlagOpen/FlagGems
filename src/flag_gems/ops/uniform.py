@@ -1,11 +1,12 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
+
+from ..runtime import torch_backend
 
 
 def heur_block(args):
@@ -72,6 +73,6 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
 
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(self.device):
+    with torch_backend.device(self.device):
         uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to)
     return self

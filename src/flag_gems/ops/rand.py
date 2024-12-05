@@ -7,6 +7,8 @@ import triton.language as tl
 from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 from flag_gems.utils.shape_utils import volume
 
+from ..runtime import torch_backend
+
 
 def heur_block(args):
     if args["N"] <= 512:
@@ -77,6 +79,6 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_cuda_seed_offset(increment)
-    with torch.cuda.device(device):
+    with torch_backend.device(device):
         rand_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

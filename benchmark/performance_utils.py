@@ -9,6 +9,7 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.runtime import torch_backend
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -191,11 +192,11 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch.cuda.synchronize()
+            torch_backend.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch.cuda.synchronize()
+            torch_backend.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:

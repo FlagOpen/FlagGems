@@ -9,6 +9,7 @@ from . import backend_utils
 
 vendor_module = None
 device_name = None
+torch_device_object = None
 device_fn_cache = {}
 
 
@@ -33,18 +34,17 @@ res = {tensor}.{attr_name}
     return get_codegen_result(code, "res")
 
 
-def gen_torch_device_fn(api_name, vendor_name=None):
-    global device_name
+def gen_torch_device_object(vendor_name=None):
+    global device_name, torch_device_object
+    if torch_device_object is not None:
+        return torch_device_object
     device_name = device_name or get_vendor_info(vendor_name).device_name
-    if api_name in device_fn_cache:
-        return device_fn_cache[api_name]
     code = f"""
 import torch
-fn = torch.{device_name}.{api_name}
+fn = torch.{device_name}
 """
-    fn = get_codegen_result(code, "fn")
-    device_fn_cache[api_name] = fn
-    return fn
+    torch_device_object = get_codegen_result(code, "fn")
+    return torch_device_object
 
 
 def get_vendor_module(vendor_name, query=False):

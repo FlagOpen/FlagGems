@@ -81,7 +81,7 @@ class Register:
         return self.forward_ops if self.debug else []
 
     def get_backward_ops(self) -> list[str]:
-        return self.backward_opss if self.debug else []
+        return self.backward_ops if self.debug else []
 
     def get_unused_ops(self) -> list[str]:
         return self.unused_ops
@@ -93,4 +93,4 @@ class Register:
         return self.device.name
 
     def support_backward(self, fn) -> bool:
-        return fn.__name__ in self.backend_ops
+        return fn.__name__ in self.backward_ops

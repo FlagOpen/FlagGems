@@ -5,6 +5,8 @@ import os
 import pytest
 import torch
 
+from flag_gems.runtime import torch_backend
+
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
@@ -186,13 +188,13 @@ def setup_once(request):
 @pytest.fixture(scope="function", autouse=True)
 def clear_function_cache():
     yield
-    torch.cuda.empty_cache()
+    torch_backend.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
-    torch.cuda.empty_cache()
+    torch_backend.empty_cache()
 
 
 @pytest.fixture()

@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
 
+from ..runtime import torch_backend
+
 
 def heur_block(args):
     if args["N"] <= 512:
@@ -112,7 +114,7 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     philox_seed, philox_offset = philox_cuda_seed_offset(increment)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
-    with torch.cuda.device(device):
+    with torch_backend.device(device):
         fused_exponential_kernel[grid_fn](
             x_, N, is_double, lambd, eps, philox_seed, philox_offset
         )
