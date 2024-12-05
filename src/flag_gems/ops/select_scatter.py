@@ -9,14 +9,6 @@ from ..utils import libentry, offsetCalculator, restride_dim
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
@@ -26,7 +18,7 @@ def heur_n_block_size(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("select_scatter"), key=["M", "N"])
 @triton.heuristics(
     values={
         "BLOCK_M": heur_m_block_size,

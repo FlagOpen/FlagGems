@@ -69,10 +69,7 @@ def heur_n_block_size(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=[
-#         triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
-#         for m in [1, 2, 4, 8]
-#     ],
+#     configs=runtime.get_triton_config("mean"),
 #     key=["M", "N"],
 # )
 @triton.heuristics(

@@ -9,45 +9,6 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen_first():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen_last():
-    block_m = [512, 1024, 2048]
-    block_n = [1, 2, 4, 8, 32]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [256, 512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
 def weight_norm_kernel_last_block_row(args):
     return 1
     import builtins
@@ -61,7 +22,9 @@ def weight_norm_kernel_last_block_col(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen_last(), key=["M", "N"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
+# )
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": weight_norm_kernel_last_block_row,
@@ -115,7 +78,9 @@ def weight_norm_kernel_first_block_col(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen_first(), key=["M", "N"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
+# )
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": weight_norm_kernel_first_block_row,
@@ -169,7 +134,9 @@ def heur_block_weight_norm_bwd_kernel_last(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen_last(), key=["M", "N"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
+# )
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": heur_block_m_weight_norm_bwd_kernel_last,
@@ -233,7 +200,9 @@ def heur_block_weight_norm_bwd_kernel_first(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen_first(), key=["M", "N"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
+# )
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": heur_block_m_weight_norm_bwd_kernel_first,
@@ -297,7 +266,10 @@ def heur_block_n_norm_kernel(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("weight_norm_kernel"),
+#     key=["v_shape0", "v_shape1", "v_shape2"],
+# )
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": heur_block_m_norm_kernel,
@@ -339,7 +311,10 @@ def norm_kernel(
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("weight_norm_kernel"),
+#     key=["v_shape0", "v_shape1", "v_shape2"],
+# )
 @triton.heuristics(
     values={
         "BLOCK_ROW_SIZE": heur_block_m_norm_kernel,

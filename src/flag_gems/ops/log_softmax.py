@@ -28,12 +28,7 @@ def heur_block_m(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=[
-#         triton.Config({"BLOCK_M": 1}),
-#         triton.Config({"BLOCK_M": 2}),
-#         triton.Config({"BLOCK_M": 4}),
-#         triton.Config({"BLOCK_M": 8}),
-#     ],
+#     configs=runtime.get_triton_config("log_softmax"),
 #     key=[
 #         "M",
 #         "N",
@@ -74,12 +69,7 @@ def log_softmax_kernel(
 
 @libentry()
 # @triton.autotune(
-#     configs=[
-#         triton.Config({"BLOCK_M": 1}),
-#         triton.Config({"BLOCK_M": 2}),
-#         triton.Config({"BLOCK_M": 4}),
-#         triton.Config({"BLOCK_M": 8}),
-#     ],
+#     configs=runtime.get_triton_config("log_softmax"),
 #     key=[
 #         "M",
 #         "N",

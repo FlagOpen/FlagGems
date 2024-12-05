@@ -8,21 +8,12 @@ from ..utils import broadcastable_to, libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    block_size = [1024, 2048, 4096]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_SIZE": n}, num_warps=w) for n in block_size for w in warps
-    ]
-    return configs
-
-
 def heur_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # cluster_num
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["N"])
+# @triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
 @triton.heuristics(
     values={
         "BLOCK_SIZE": heur_block_size,
@@ -41,7 +32,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["N"])
+# @triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
 @triton.heuristics(
     values={
         "BLOCK_SIZE": heur_block_size,

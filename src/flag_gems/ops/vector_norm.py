@@ -18,14 +18,6 @@ except ImportError:
         from triton.language.libdevice import pow
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 def heur_block_m(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
 
@@ -35,7 +27,7 @@ def heur_block_n(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -89,7 +81,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -143,7 +135,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -197,7 +189,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -251,7 +243,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,

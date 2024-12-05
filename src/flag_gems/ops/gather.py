@@ -17,7 +17,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import builtins")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+
     code.newline()
     code.newline()
     return code
@@ -43,6 +45,19 @@ def generate_gather_kernel(
             code.writeline("for n in block_n")
         code.writeline("]")
         code.writeline("return configs")
+
+    code.newline()
+    code.newline()
+
+    code.writeline("def heur_block_m(args):")
+    with code.indent():
+        code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
+
+    code.newline()
+
+    code.writeline("def heur_block_n(args):")
+    with code.indent():
+        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 8192)')
 
     code.newline()
     code.newline()

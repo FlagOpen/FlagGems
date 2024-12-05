@@ -9,24 +9,6 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
-    configs = [
-        triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=w)
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen_batch():
-    warps = [1, 2, 4, 8, 16, 32]
-    configs = [
-        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=w)
-        for w in warps
-    ]
-    return configs
-
-
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
@@ -36,7 +18,7 @@ def heur_n_block_size(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_triton_config("triu"), key=["M", "N"])
 @triton.heuristics(
     values={
         "M_BLOCK_SIZE": heur_m_block_size,
@@ -78,7 +60,10 @@ def heur_mn_block_size(args):
 
 
 @libentry()
-# @triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+# @triton.autotune(
+#     configs=runtime.get_triton_config("triu_batch"),
+#     key=["batch", "MN", "N", "diagonal"],
+# )
 @triton.heuristics(
     {
         "BATCH_BLOCK_SIZE": heur_batch_block_size,

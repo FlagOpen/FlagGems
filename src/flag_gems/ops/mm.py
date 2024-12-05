@@ -32,6 +32,10 @@ def heur_even_k(args):
 
 
 @libentry()
+# @triton.autotune(
+#     configs=runtime.get_triton_config("mm"),
+#     key=["M", "N", "K"],
+# )
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_size("M"),

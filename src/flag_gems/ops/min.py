@@ -50,6 +50,13 @@ def heur_n_block_size(args):
 
 
 @libentry()
+# @triton.autotune(
+#     configs=runtime.get_triton_config("min"),
+#     key=[
+#         "M",
+#         "N",
+#     ],
+# )
 @triton.heuristics(
     values={
         "BLOCK_M": heur_m_block_size,

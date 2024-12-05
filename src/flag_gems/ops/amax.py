@@ -18,6 +18,7 @@ def amax_kernel_1(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
+
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M

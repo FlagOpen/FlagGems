@@ -8,17 +8,6 @@ from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
-        for m in block_m
-        for n in block_n
-    ]
-    return configs
-
-
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
