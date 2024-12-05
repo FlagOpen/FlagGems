@@ -12,7 +12,7 @@ class Register:
     def __init__(
         self,
         config: Optional[tuple[tuple]],
-        user_unused_ops_list: Optional[list[str]] = [],
+        user_unused_ops_list: Optional[list[str]] = None,
         lib: Optional[any] = None,
         debug: Optional[bool] = False,
     ):

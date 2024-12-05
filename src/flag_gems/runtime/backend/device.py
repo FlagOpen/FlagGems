@@ -50,15 +50,12 @@ class DeviceDetector(object):
 
     def _get_vendor_from_quick_cmd(self):
         cmd = {
-            "cambricon": "torch.mlu",
-            "mthreads": "torch.musa",
+            "cambricon": "mlu",
+            "mthreads": "musa",
         }
-        for vendor_name, cmd in cmd.items():
-            try:
-                exec(cmd, globals())
+        for vendor_name, flag in cmd.items():
+            if hasattr(torch, flag):
                 return vendor_name
-            except Exception:
-                pass
         return None
 
     def _get_vendor_from_env(self):
