@@ -926,4 +926,4 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     res_out = to_reference(res_out)
     res_in_grad = to_reference(res_in_grad)
     gems_assert_equal(res_out, ref_out)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    gems_assert_equal(res_in_grad, ref_in_grad)

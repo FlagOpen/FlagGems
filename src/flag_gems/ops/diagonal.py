@@ -12,15 +12,11 @@ def copy_func(x):
     return x
 
 
-def backward(grad_output, input_sizes, offset, dim1, dim2):
+def diagonal_backward(grad_output, input_sizes, offset, dim1, dim2):
+    logging.debug("GEMS diagonal backward")
     grad_input = torch.zeros(
         input_sizes, dtype=grad_output.dtype, device=grad_output.device
     )
     diag = torch.diagonal(grad_input, offset, dim1, dim2)
     copy_func.instantiate(grad_output.ndim)(grad_output, out0=diag)
     return grad_input
-
-
-def diagonal_backward(grad_output, input_sizes, offset, dim1, dim2):
-    logging.debug("GEMS diagonal backward")
-    return backward(grad_output, input_sizes, offset, dim1, dim2)
