@@ -26,10 +26,11 @@ from .attri_util import (
 from .conftest import Config
 
 torch.backends.cuda.matmul.allow_tf32 = False
+device = flag_gems.device
 
 
 class Benchmark:
-    device: str = "cuda"
+    device: str = device
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
@@ -308,7 +309,7 @@ class Benchmark:
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else "cuda",
+                mode="cpu" if Config.cpu_mode else device,
                 result=metrics,
             )
             print(result)
