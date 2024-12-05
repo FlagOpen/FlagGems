@@ -609,7 +609,9 @@ def test_accuracy_index_add(shape, dim, dtype):
     alpha = 2
 
     ref_inp = to_reference(inp)
-    ref_out = torch.index_add(ref_inp, dim, index, src, alpha=alpha)
+    ref_src = to_reference(src)
+    ref_index = to_reference(index)
+    ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
     with flag_gems.use_gems():
         res_out = torch.index_add(inp, dim, index, src, alpha=alpha)
 
