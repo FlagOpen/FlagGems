@@ -5,19 +5,12 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import torch_backend
+from .. import runtime
+from ..runtime import tl_extra_module, torch_backend
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
-try:
-    from triton.language.extra.cuda.libdevice import pow
-except ImportError:
-    try:
-        from triton.language.math import pow
-    except ImportError:
-        from triton.language.libdevice import pow
-
-from .. import runtime
+pow = tl_extra_module.pow
 
 
 @libentry()

@@ -9,7 +9,7 @@ import triton
 import yaml
 
 import flag_gems
-from flag_gems.runtime import torch_backend
+from flag_gems.runtime import torch_backend, torch_backends_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -25,7 +25,7 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch.backends.cuda.matmul.allow_tf32 = False
+torch_backends_device_fn.matmul.allow_tf32 = False
 device = flag_gems.device
 
 

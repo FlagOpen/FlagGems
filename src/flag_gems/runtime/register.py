@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 
 from . import backend, commom_utils, error
@@ -11,10 +9,10 @@ aten_lib = torch.library.Library("aten", "IMPL")
 class Register:
     def __init__(
         self,
-        config: Optional[tuple[tuple]],
-        user_unused_ops_list: Optional[list[str]] = None,
-        lib: Optional[any] = None,
-        debug: Optional[bool] = False,
+        config,
+        user_unused_ops_list=None,
+        lib=None,
+        debug=False,
     ):
         # lib is a instance of torch.library.Library
         self.lib = lib

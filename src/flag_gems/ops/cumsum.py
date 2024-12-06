@@ -10,6 +10,8 @@ from flag_gems.utils import libentry
 from ..runtime import device, torch_backend
 from ..utils import triton_lang_extension as tle
 
+device = device.name
+
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
@@ -378,7 +380,7 @@ def normed_cumsum(inp, dim=-1):
     out = torch.empty_like(inp)
     with torch_backend.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch_backend.get_device_properties("cuda").multi_processor_count
+        num_sms = torch_backend.get_device_properties(device).multi_processor_count
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.

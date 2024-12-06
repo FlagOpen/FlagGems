@@ -4,12 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .. import runtime
-from ..runtime import torch_backend
+from ..runtime import device, torch_backend
 from ..utils import libentry
 from .topk import argsort
+
+device_ = device
 
 _MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
 _MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
@@ -255,7 +257,7 @@ def radix_sortbykey_scatter_kernel(
         tl.store(value_out + global_offsets, value_data, mask=key_digit_mask)
 
 
-# for parallelization, randomly shuffle the entire block rather than adjacent equal elements as pytorch cuda backend
+# for parallelization, randomly shuffle the entire block rather than adjacent equal elements as pytorch GPU backend
 @libentry()
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def duplicate_keys_shuffle_kernel(
@@ -382,7 +384,7 @@ def sort_by_key(key, value, valid_bits):
         # last step, shuffle inner-block data
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
-        philox_seed, philox_offset = philox_cuda_seed_offset(n_elements)
+        philox_seed, philox_offset = philox_backend_seed_offset(n_elements)
         with torch_backend.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
@@ -422,7 +424,7 @@ def randperm(
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
 
     if device is None:
-        device = torch.device("cuda")
+        device = torch.device(device_.name)
     in_range = torch.arange(n, dtype=dtype, device=device)
 
     u8max = 2**8

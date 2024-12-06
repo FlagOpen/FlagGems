@@ -24,6 +24,8 @@ from .accuracy_utils import (
 )
 from .conftest import TO_CPU
 
+device = flag_gems.device
+
 
 # TODO: sometimes failed at (8192,), 0.6, bfloat16
 @pytest.mark.dropout
@@ -496,7 +498,7 @@ def test_upsample_nearest2d(dtype, shape, scale):
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
-@pytest.mark.parametrize("device", ["cuda", None])
+@pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize(
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.

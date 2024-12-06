@@ -5,16 +5,11 @@ import triton
 import triton.language as tl
 
 from ..runtime import torch_backend
+from ..runtime.moduel_tool import tl_extra_module
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-try:
-    from triton.language.extra.cuda.libdevice import rsqrt
-except ImportError:
-    try:
-        from triton.language.math import rsqrt
-    except ImportError:
-        from triton.language.libdevice import rsqrt
+rsqrt = tl_extra_module.rsqrt
 
 
 @libentry()

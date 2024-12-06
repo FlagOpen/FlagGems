@@ -4,10 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import torch_backend
+from ..runtime import device, torch_backend
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
+
+device_ = device
 
 
 @libentry()
@@ -29,7 +31,7 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device("cuda")
+        device = torch.device(device_.name)
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)

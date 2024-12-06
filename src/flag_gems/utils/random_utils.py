@@ -34,7 +34,7 @@ except AttributeError:
 # https://github.com/pytorch/pytorch/blob/8a4597980c2692b73f35fb3c7145eaeaf2273e77/aten/src/ATen/cuda/CUDAGeneratorImpl.cpp#L452
 # It returns the current state of the default Philox RNG in seed and offset and
 # updates the next offset by adding `increment`.
-def philox_cuda_seed_offset(increment, device=None):
+def philox_backend_seed_offset(increment, device=None):
     device = device or torch_backend.current_device()
     gen = torch_backend.default_generators[device]
     state_copy = gen.get_state()

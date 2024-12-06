@@ -4,7 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import (
+    philox_backend_seed_offset,
+    uint_to_uniform_float,
+)
 
 from ..runtime import torch_backend
 
@@ -155,7 +158,7 @@ class NativeDropout(torch.autograd.Function):
         # hence we cannot obtain the per thread offset as in Pytorch.
         increment = triton.cdiv(N, UNROLL)
         with torch_backend.device(device):
-            philox_seed, philox_offset = philox_cuda_seed_offset(increment)
+            philox_seed, philox_offset = philox_backend_seed_offset(increment)
             dropout_forward_kernel[grid_fn](x, out, N, p, philox_seed, philox_offset)
         ctx.p = p
         ctx.philox_seed = philox_seed

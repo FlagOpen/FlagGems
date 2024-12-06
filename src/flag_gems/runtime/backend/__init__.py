@@ -10,6 +10,8 @@ from . import backend_utils
 vendor_module = None
 device_name = None
 torch_device_object = None
+torch_backends_device = None
+tl_extra_backend_module = None
 device_fn_cache = {}
 
 
@@ -32,6 +34,26 @@ import torch
 res = {tensor}.{attr_name}
     """
     return get_codegen_result(code, "res")
+
+
+def gen_tl_extra_backend_module(vendor_name=None):
+    global device_name, tl_extra_backend_module
+    if tl_extra_backend_module is not None:
+        return tl_extra_backend_module
+    device_name = device_name or get_vendor_info(vendor_name).device_name
+    module_str = f"triton.language.extra.{device_name}.libdevice"
+    tl_extra_backend_module = importlib.import_module(module_str)
+    return tl_extra_backend_module
+
+
+def gen_torch_backends_device(vendor_name=None):
+    global device_name, torch_backends_device
+    if torch_backends_device is not None:
+        return torch_backends_device
+    device_name = device_name or get_vendor_info(vendor_name).device_name
+    module_str = f"torch.backends.{device_name}"
+    torch_backends_device = importlib.import_module(module_str)
+    return torch_backends_device
 
 
 def gen_torch_device_object(vendor_name=None):
