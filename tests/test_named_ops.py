@@ -3,6 +3,9 @@ import logging
 
 import pytest
 
+import flag_gems
+
+device = flag_gems.device
 # This is a collection of unit test by op name for testing the
 # accuracy of each op.
 
@@ -193,11 +196,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--name", type=str, help="test for a specific op")
     parser.add_argument(
-        "--device",
+        f"--{device}",
         action="store",
-        default="cuda",
-        choices=["cuda", "cpu"],
-        help="device to run reference tests on. Choose 'cuda' or 'cpu'. Default is 'cuda'.",
+        default=device,
+        choices=[device, "cpu"],
+        help=f"device to run reference tests on. Choose {device} or 'cpu'. Default is {device}.",
     )
     args = parser.parse_args()
 
