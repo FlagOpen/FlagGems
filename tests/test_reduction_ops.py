@@ -593,7 +593,7 @@ def test_accuracy_slice_scatter_fallback(shape, stride, dim, dtype, start, end, 
 
 
 # TODO: failed at (200, 40999, 3)
-@pytest.mark.index_select
+@pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
