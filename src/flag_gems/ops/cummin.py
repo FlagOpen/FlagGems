@@ -7,19 +7,14 @@ import triton.language as tl
 import triton.language.core as core
 
 from ..utils import libentry
-
-
-@triton.jit
-def _min_combine(a, idxa, b, idxb):
-    if a < b:
-        return a, idxa
-    else:
-        return b, idxb
+from ..utils import triton_lang_extension as tle
 
 
 @triton.jit
 def tl_cummin(input, index, axis=0):
-    return core.associative_scan((input, index), axis, _min_combine)
+    return core.associative_scan(
+        (input, index), axis, tle.minimum_with_index_tie_break_right
+    )
 
 
 @triton.jit
@@ -87,7 +82,7 @@ def scan_part_min_kernel(
     mask = offset < n_elements
 
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -103,8 +98,6 @@ def scan_part_min_kernel(
     part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
         inp_vals, axis=0
     )
-    # part_min_via_min = result[BLOCK_SIZE - 1]
-    # part_min_indices_via_min = indices[BLOCK_SIZE - 1]
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -177,7 +170,7 @@ def scan_part_min_abc_kernel(
 
     mask = b_idx < B
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())

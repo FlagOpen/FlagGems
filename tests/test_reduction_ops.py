@@ -217,7 +217,8 @@ def test_accuracy_cummin(shape, dtype):
         inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
     else:
         inp = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, True)
+
     ref_out = torch.cummin(ref_inp, dim=dim)
     with flag_gems.use_gems():
         res_out = torch.cummin(inp, dim=dim)
