@@ -21,6 +21,7 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
+from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -144,6 +145,7 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "pad",
+    "cummin",
     "cumsum",
     "normed_cumsum",
     "true_divide",
