@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 from torch import Tensor, tensor
 
-from ..utils import dim_compress, libentry
+from utils import dim_compress, libentry
 
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 
@@ -62,7 +62,7 @@ def quantile_kernel_1d(
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask)
 
 
-def quantile(inp, q, *, interpolation="linear", out=None) -> Tensor:
+def quantile(inp, q, *, interpolation="linear") -> Tensor:
     logging.debug("GEMS QUANTILE")
     assert torch.is_floating_point(inp)
     assert isinstance(q, (float, torch.Tensor))
@@ -84,8 +84,8 @@ def quantile(inp, q, *, interpolation="linear", out=None) -> Tensor:
     with torch.cuda.device(inp.device):
         quantile_kernel_1d[grid](inp, q, output, M, Q, interpolation=interpolation)
 
-    if out is not None:
-        out.copy_(output)
+    if output is not None:
+        pass
     return output
 
 
@@ -142,7 +142,7 @@ def quantile_kernel_2d(
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask_out)
 
 
-def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear", out=None) -> Tensor:
+def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear") -> Tensor:
     logging.debug("GEMS QUANTILE DIM")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
@@ -185,7 +185,25 @@ def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear", out
     )  # Same as torch.quantile()
     if keepdim:
         output = output.unsqueeze(dim + 1)
-        
-    if out is not None:
-        out.copy_(output)
     return output
+## Testing
+import time
+my_device = 'cuda:7'
+
+input_shape = [1, 10, 10] 
+q = tensor([0, 0.17, 0.2, 0.558, 0.6, 1.0], device=my_device, dtype=torch.float32)
+dim = 1
+keepdim = True
+interpolation = 'linear'
+input = torch.randn(input_shape, device=my_device, dtype=q.dtype)
+
+output = quantile_dim(input, q, dim=dim, keepdim=keepdim, interpolation=interpolation)
+print(output.shape)
+ref = torch.quantile(input, q, dim=dim, keepdim=keepdim, interpolation=interpolation)
+print(ref.shape)
+
+
+
+print(torch.allclose(output, ref))
+print(torch.max(torch.abs(ref - output)))
+#print(output, ref)
