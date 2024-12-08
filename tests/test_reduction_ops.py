@@ -13,6 +13,7 @@ from .accuracy_utils import (
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
     SHAPE_STRIDES,
+    SkipVersion,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -208,6 +209,10 @@ CUMMIN_SHAPES = (
 )
 
 
+@pytest.mark.skipif(
+    SkipVersion("triton", "<3.0"),
+    reason="Skipping when associative_scan only support single tensor input.",
+)
 @pytest.mark.cummin
 @pytest.mark.parametrize("shape", CUMMIN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
