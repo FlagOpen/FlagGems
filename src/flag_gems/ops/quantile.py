@@ -62,7 +62,7 @@ def quantile_kernel_1d(
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask)
 
 
-def quantile(inp, q, *, interpolation="linear") -> Tensor:
+def quantile(inp, q, *, interpolation="linear", out=None) -> Tensor:
     logging.debug("GEMS QUANTILE")
     assert torch.is_floating_point(inp)
     assert isinstance(q, (float, torch.Tensor))
@@ -84,8 +84,8 @@ def quantile(inp, q, *, interpolation="linear") -> Tensor:
     with torch.cuda.device(inp.device):
         quantile_kernel_1d[grid](inp, q, output, M, Q, interpolation=interpolation)
 
-    if output is not None:
-        pass
+    if out is not None:
+        out.copy_(output)
     return output
 
 
@@ -142,7 +142,7 @@ def quantile_kernel_2d(
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask_out)
 
 
-def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear") -> Tensor:
+def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear", out=None) -> Tensor:
     logging.debug("GEMS QUANTILE DIM")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
@@ -185,4 +185,7 @@ def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear") -> 
     )  # Same as torch.quantile()
     if keepdim:
         output = output.unsqueeze(dim + 1)
+        
+    if out is not None:
+        out.copy_(output)
     return output
