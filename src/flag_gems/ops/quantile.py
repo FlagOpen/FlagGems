@@ -23,7 +23,7 @@ def cfggen(one_dim=False):
         ]
     return configs
 
-
+ 
 @libentry()
 @triton.autotune(configs=cfggen(True), key=["M", "Q"])
 @triton.jit
