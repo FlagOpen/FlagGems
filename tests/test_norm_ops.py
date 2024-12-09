@@ -478,17 +478,42 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 
 
 @pytest.mark.batch_norm
-@pytest.mark.batch_norm_2d
 @pytest.mark.parametrize(
-    "N, C, H, W",
+    "shape",
     [
+        (64, 1024),
+        (64, 1024, 2),
         (16, 3, 16, 16),
         (32, 32, 32, 32),
         (1, 32, 32, 32),
         (32, 3, 224, 224),
-        (16, 64, 32, 32),
+        (32, 3, 3, 224, 224),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_batch_norm_2d(N, C, H, W, dtype):
-    pass
+@pytest.mark.parametrize("training", [False, True])
+def test_accuracy_batch_norm_2d(shape, dtype, training):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(
+        size=(shape[1],), dtype=dtype, device="cuda", requires_grad=True
+    )
+    bias = torch.randn(size=(shape[1],), dtype=dtype, device="cuda", requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    eps = 1e-5
+    momentum = 0.1
+
+    ref_out = torch.nn.functional.batch_norm(
+        ref_inp, weight=weight, bias=bias, training=training, momentum=momentum, eps=eps
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.batch_norm(
+            ref_inp,
+            weight=weight,
+            bias=bias,
+            training=training,
+            momentum=momentum,
+            eps=eps,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
