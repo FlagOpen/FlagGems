@@ -1,3 +1,4 @@
+import random
 from typing import Generator
 
 import pytest
@@ -143,15 +144,16 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     )
     bench.run()
 
+
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
-        dim = random.choice([None,0,1])
+        dim = random.choice([None, 0, 1])
 
-        yield inp,dim
+        yield inp, dim
 
-    bench =  GenericBenchmark2DOnly(
+    bench = GenericBenchmark2DOnly(
         input_fn=count_nonzero_input_fn,
         op_name="count_nonzero",
         torch_op=torch.count_nonzero,
