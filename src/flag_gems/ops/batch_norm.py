@@ -258,6 +258,7 @@ def batch_norm_backward_kernel(
         curr_input = tl.load(
             curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
         ).to(tl.float32)
+
         curr_pre_lin = (curr_input - mean) * inv_std
         curr_output_grad = tl.load(
             curr_output_grad_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
