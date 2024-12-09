@@ -618,6 +618,7 @@ def test_accuracy_index_add(shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
 
 
+@pytest.mark.index_select
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
