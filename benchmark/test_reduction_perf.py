@@ -147,16 +147,16 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 
 class quantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
-        more_shapes_1d = [(4,), (1024,), (65536)]
+        more_shapes_1d = [(4,), (1024,)]
         more_shapes_2d = [(1024, 2**i) for i in range(0, 10)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 10)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 7)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
 
 def quantile_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     q = torch.tensor([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], dtype=cur_dtype, device=device)
-    yield inp, q
+    yield inp, q, 0
 
 
 @pytest.mark.parametrize(
@@ -166,7 +166,7 @@ def quantile_input_fn(shape, cur_dtype, device):
             "quantile",
             torch.quantile,
             quantile_input_fn,
-            [torch.float32],
+            [torch.float32, torch.float64],
             marks=pytest.mark.quantile,
         )
     ],
