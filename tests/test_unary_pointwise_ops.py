@@ -457,3 +457,17 @@ def test_accuracy_repeat(shape, sizes, dtype):
         res_out = inp.repeat(*sizes)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.logical_not
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_logical_not(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.logical_not(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.logical_not(inp)
+
+    gems_assert_equal(res_out, ref_out)

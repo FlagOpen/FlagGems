@@ -1207,3 +1207,19 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
     assert res_out == ref_out
+
+
+@pytest.mark.logical_or
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_logical_or(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.logical_or(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.logical_or(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)

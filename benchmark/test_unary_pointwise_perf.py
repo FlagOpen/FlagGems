@@ -36,6 +36,7 @@ forward_operations = [
     ("neg", torch.neg, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
+    ("logical_not", torch.logical_not, FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
     ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
