@@ -247,6 +247,53 @@ def test_perf_upsample_nearest2d():
     bench.run()
 
 
+class ConvBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+@pytest.mark.conv2d
+def test_perf_conv2d():
+    def conv2d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_h,
+            input_w,
+            out_c,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = ConvBenchmark(
+        input_fn=conv2d_input_fn,
+        op_name="conv2d",
+        torch_op=torch.nn.functional.conv2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.diag
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):
@@ -261,6 +308,44 @@ def test_perf_diag():
         op_name="diag",
         torch_op=torch.diag,
         dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.diag_embed
+def test_perf_diag_embed():
+    def diag_embed_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield {"input": inp},
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield {"input": inp, "offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = EmbeddingBenchmark(
+        input_fn=diag_embed_input_fn,
+        op_name="diag_embed",
+        torch_op=torch.diag_embed,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+
+    bench.run()
+
+
+@pytest.mark.diagonal_backward
+def test_perf_diagonal_backward():
+    def diagonal_backward_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp,
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield inp, {"offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=diagonal_backward_input_fn,
+        op_name="diagonal_backward",
+        torch_op=torch.diagonal,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
     )
 
     bench.run()
