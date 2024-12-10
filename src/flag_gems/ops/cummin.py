@@ -4,7 +4,6 @@ import math
 import torch
 import triton
 import triton.language as tl
-import triton.language.core as core
 
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
@@ -12,24 +11,18 @@ from ..utils import triton_lang_extension as tle
 
 @triton.jit
 def tl_cummin(input, index, axis=0):
-    return core.associative_scan(
+    return tl.associative_scan(
         (input, index), axis, tle.minimum_with_index_tie_break_right
     )
 
 
 @triton.jit
-def _argmin_combine_tie_break_right(value1, index1, value2, index2):
-    tie = value1 == value2 and index1 > index2
-    lt = value1 < value2 or tie
-    value_ret = core.where(lt, value1, value2)
-    index_ret = core.where(lt, index1, index2)
-    return value_ret, index_ret
-
-
-@triton.jit
-def tl_min_tie_break_right(input, axis=None, keep_dims=False):
-    return core._reduce_with_indices(
-        input, axis, _argmin_combine_tie_break_right, keep_dims=keep_dims
+def tl_min_tie_break_right(input, index, axis=None, keep_dims=False):
+    return tl.reduce(
+        (input, index),
+        axis,
+        tle.minimum_with_index_tie_break_right,
+        keep_dims=keep_dims,
     )
 
 
@@ -43,7 +36,7 @@ def add_base_min_kernel(
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -71,13 +64,14 @@ def add_base_min_kernel(
 def scan_part_min_kernel(
     inp,
     out,
+    in_indices,
     out_indices,
     partial_min,
     partial_min_indices,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -92,30 +86,26 @@ def scan_part_min_kernel(
         inp_vals = inp_vals.to(tl.int32)
     else:
         inp_vals = inp_vals.to(tl.float32)
-    result, cummin_indices = tl_cummin(inp_vals, offset, axis=0)
+    in_indices_ptrs = out_indices + offset
+    in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
 
     # tl.min do not support min_indices_tie_break_right
     part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
-        inp_vals, axis=0
+        inp_vals, in_indices_vals, axis=0
     )
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
 
-    in_indices_ptrs = out_indices + cummin_indices
-    indices_mask = cummin_indices < n_elements
-    true_out_indices = tl.load(in_indices_ptrs, mask=indices_mask)
     out_indices_ptrs = out_indices + offset
-    tl.store(out_indices_ptrs, true_out_indices, mask=mask)
+    tl.store(out_indices_ptrs, cummin_indices, mask=mask)
 
     partial_min_ptrs = partial_min + pid
     tl.store(partial_min_ptrs, part_min_via_min)
 
-    true_partial_min_indices = tl.load(
-        out_indices + pid * BLOCK_SIZE + part_min_indices_via_min
-    )
     partial_min_indices_ptrs = partial_min_indices + pid
-    tl.store(partial_min_indices_ptrs, true_partial_min_indices)
+    tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
 
 
 def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
@@ -130,7 +120,14 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
     grid = (part_num,)
     with torch.cuda.device(inp.device):
         scan_part_min_kernel[grid](
-            inp, out, out_indices, partial_min, partial_min_indices, n_ele, BLOCK_SIZE
+            inp,
+            out,
+            out_indices,
+            out_indices,
+            partial_min,
+            partial_min_indices,
+            n_ele,
+            BLOCK_SIZE,
         )
 
     if part_num >= 2:
@@ -148,6 +145,7 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
 def scan_part_min_abc_kernel(
     inp,
     out,
+    in_indices,
     out_indices,
     partial_min,
     partial_min_indices,
@@ -156,9 +154,9 @@ def scan_part_min_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    pid_c = tl.program_id(2)
+    pid_a = tle.program_id(0)
+    pid_b = tle.program_id(1)
+    pid_c = tle.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -180,34 +178,27 @@ def scan_part_min_abc_kernel(
         inp_vals = inp_vals.to(tl.int32)
     else:
         inp_vals = inp_vals.to(tl.float32)
-    result, cummin_indices = tl_cummin(inp_vals, b_idx, axis=0)
+    indices_offset = a_idx * B * C + b_idx * C + c_idx
+    in_indices_ptrs = out_indices + indices_offset
+    in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
 
     # tl.min do not support min_indices_tie_break_right
     part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
-        inp_vals, axis=0
+        inp_vals, in_indices_vals, axis=0
     )
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
 
-    indices_offset = a_idx * B * C + cummin_indices * C + c_idx
-    in_indices_ptrs = out_indices + indices_offset
-    indices_mask = cummin_indices < B
-    true_out_indices = tl.load(in_indices_ptrs, mask=indices_mask)
     out_indices_ptrs = out_indices + offset
-    tl.store(out_indices_ptrs, true_out_indices, mask=mask)
+    tl.store(out_indices_ptrs, cummin_indices, mask=mask)
 
     partial_min_ptrs = partial_min + part_offset
     tl.store(partial_min_ptrs, part_min_via_min)
 
-    true_partial_min_indices = tl.load(
-        out_indices
-        + a_idx * B * C
-        + (pid_b * BLOCK_SIZE + part_min_indices_via_min) * C
-        + c_idx
-    )
     partial_min_indices_ptrs = partial_min_indices + part_offset
-    tl.store(partial_min_indices_ptrs, true_partial_min_indices)
+    tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
 
 
 @libentry()
@@ -222,9 +213,9 @@ def add_base_min_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    pid_c = tl.program_id(2)
+    pid_a = tle.program_id(0)
+    pid_b = tle.program_id(1)
+    pid_c = tle.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -271,6 +262,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
         scan_part_min_abc_kernel[grid](
             inp,
             out,
+            out_indices,
             out_indices,
             partial_min,
             partial_min_indices,
