@@ -158,7 +158,7 @@ def test_accuracy_layernorm(shape, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("has_weight_bias", [False] if QUICK_MODE else [False, True])
+@pytest.mark.parametrize("has_weight_bias", [True] if QUICK_MODE else [False, True])
 @pytest.mark.parametrize("use_input_stats", [True] if QUICK_MODE else [False, True])
 @pytest.mark.parametrize("has_running_stats", [False] if QUICK_MODE else [False, True])
 def test_accuracy_instancenorm(
