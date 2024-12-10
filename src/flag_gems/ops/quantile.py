@@ -23,7 +23,7 @@ def cfggen(one_dim=False):
         ]
     return configs
 
- 
+
 @libentry()
 @triton.autotune(configs=cfggen(True), key=["M", "Q"])
 @triton.jit
@@ -142,7 +142,9 @@ def quantile_kernel_2d(
         tl.store(out_ptrs, (inp_lower + inp_upper) / 2, mask_out)
 
 
-def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear", out=None) -> Tensor:
+def quantile_dim(
+    inp, q, dim=None, keepdim=False, *, interpolation="linear", out=None
+) -> Tensor:
     logging.debug("GEMS QUANTILE DIM")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
@@ -185,7 +187,7 @@ def quantile_dim(inp, q, dim=None, keepdim=False, *, interpolation="linear", out
     )  # Same as torch.quantile()
     if keepdim:
         output = output.unsqueeze(dim + 1)
-        
+
     if out is not None:
         out.copy_(output)
     return output
