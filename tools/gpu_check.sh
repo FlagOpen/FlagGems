@@ -5,7 +5,7 @@ memory_usage_max=30000     # Maximum memory usage limit (MB)
 sleep_time=120             # Wait time (seconds), default is 2 minutes
 
 # Get the number of GPUs
-gpu_count=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+gpu_count=$(rocm-smi --query-gpu=name --format=csv,noheader | wc -l)
 
 if [ "$gpu_count" -eq 0 ]; then
     echo "No GPUs detected. Please ensure you have NVIDIA GPUs installed and properly configured."
@@ -14,16 +14,16 @@ fi
 
 echo "Detected $gpu_count GPUs."
 
-nvidia-smi
+rocm-smi
 
 while true; do
     # Query GPU memory usage and total memory
-    memory_usage=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)
-    memory_total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null)
+    memory_usage=$(rocm-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null)
+    memory_total=$(rocm-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null)
 
-    # Check if nvidia-smi command was successful
+    # Check if rocm-smi command was successful
     if [ $? -ne 0 ]; then
-        echo "Failed to query GPU memory information. Please check if nvidia-smi is working correctly."
+        echo "Failed to query GPU memory information. Please check if rocm-smi is working correctly."
         exit 1
     fi
 
