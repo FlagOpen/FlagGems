@@ -832,6 +832,9 @@ class WrapperGenerator:
         else:
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = out0.numel()")
+            code.writeline("if num_tasks == 0:")
+            with code.indent():
+                self.gen_return(code)
             max_tile_size = self.config.max_tile_size
             code.writeline(
                 f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
@@ -857,6 +860,9 @@ class WrapperGenerator:
         else:
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = out0.numel()")
+            code.writeline("if num_tasks == 0:")
+            with code.indent():
+                self.gen_return(code)
             max_tile_size = self.config.max_tile_size
             code.writeline(
                 f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"

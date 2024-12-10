@@ -16,10 +16,15 @@ from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_tensor
+from .conv1d import conv1d
+from .conv2d import conv2d
+from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
+from .diag_embed import diag_embed
+from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
@@ -136,6 +141,8 @@ __all__ = [
     "clamp_tensor",
     "cos",
     "diag",
+    "diag_embed",
+    "diagonal_backward",
     "pad",
     "cumsum",
     "normed_cumsum",
@@ -254,5 +261,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "conv2d",
+    "conv1d",
+    "_conv_depthwise2d",
     "repeat_interleave_self_tensor",
 ]
