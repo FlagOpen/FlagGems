@@ -44,6 +44,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_select import index_select
+from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -52,6 +53,8 @@ from .isnan import isnan
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
+from .logical_not import logical_not
+from .logical_or import logical_or
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -176,6 +179,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "instance_norm",
     "isclose",
     "isfinite",
     "isin",
@@ -267,4 +271,6 @@ __all__ = [
     "conv1d",
     "_conv_depthwise2d",
     "repeat_interleave_self_tensor",
+    "logical_or",
+    "logical_not",
 ]
