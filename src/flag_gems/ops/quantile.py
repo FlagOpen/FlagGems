@@ -3,7 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from torch import Tensor, tensor
+from torch import Tensor
 
 from ..utils import dim_compress, libentry
 
@@ -11,16 +11,18 @@ INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 
 
 def cfggen(one_dim=False):
-    block_q = tensor([1, 2, 4, 8], dtype=torch.int32)
-    if one_dim:
-        configs = [triton.Config({"BLOCK_Q": q.item()}, num_warps=4) for q in block_q]
-    else:
-        block_n = tensor([2**i for i in range(6, 11)], dtype=torch.int32)
-        x, y = torch.meshgrid(block_n, block_q, indexing="ij")
-        configs = [
-            triton.Config({"BLOCK_Q": q.item(), "BLOCK_N": n.item()}, num_warps=4)
-            for n, q in zip(x.ravel(), y.ravel())
-        ]
+    block_q = [2**1 for i in range(0, 6)]
+    warp = [1, 2, 4, 8, 16, 32]
+    configs = []
+    for q in block_q:
+        for w in warp:
+            configs.append(triton.Config({"BLOCK_Q": q}, num_warps=w))
+    if not one_dim:
+        block_n = [2**i for i in range(1, 16)]
+        for c in configs:
+            for n in block_n:
+                c["BLOCK_N"] = n
+
     return configs
 
 

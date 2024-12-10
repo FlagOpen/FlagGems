@@ -147,9 +147,9 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 
 class quantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
-        more_shapes_1d = [(4,), (1024,)]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 10)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 7)]
+        more_shapes_1d = [(4,), (1024,), (65535)]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 15, 3)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 3)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
 
