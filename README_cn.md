@@ -136,8 +136,8 @@ pip install .
     import flag_gems
 
     M, N, K = 1024, 1024, 1024
-    A = torch.randn((M, K), dtype=torch.float16, device="cuda")
-    B = torch.randn((K, N), dtype=torch.float16, device="cuda")
+    A = torch.randn((M, K), dtype=torch.float16, device=flag_gems.device)
+    B = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device)
     with flag_gems.use_gems():
         C = torch.mm(A, B)
     ```
