@@ -22,7 +22,7 @@ def heur_num_warps(args):
     elif args["N"] <= 2048:
         return 4
     else:
-        return 8s
+        return 8
 
 
 @libentry()
