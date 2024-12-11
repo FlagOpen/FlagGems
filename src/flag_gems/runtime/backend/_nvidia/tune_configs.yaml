@@ -814,3 +814,18 @@ var_mean:
   - 4
   - 8
   - 16
+index_select_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+    num_warps: 4
+  block_m:
+  - 1
+  - 2
+  - 4
+  block_n:
+  - 1024
+  - 2048
+  - 4096
