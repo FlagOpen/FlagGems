@@ -63,19 +63,10 @@ def index_select(inp, dim, index):
     else:
         return out
 
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [1024, 2048, 4096]
-    configs = [
-    triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
-        for m in block_m
-        for n in block_n
-    ]
-    return configs
 
 #kernel
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("index_select_backward"), key=["M", "N"])
 @triton.jit
 def index_select_backward_kernel(
     grad, out, M, N, index, outN, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
@@ -96,7 +87,7 @@ def index_select_backward_kernel(
     tl.store(out + out_off, selected, mask=out_mask)
 
 #function
-def index_select_backward(grad, self_sizes,dim, index):
+def index_select_backward(grad, self_sizes, dim, index):
     logging.debug("GEMS INDEX SELECT BACKWARD")
     assert dim >= -len(self_sizes) and dim < len(self_sizes), "Invalid dim" 
     assert index.ndim <= 1, "Index should have dimension 1 or 0" 
