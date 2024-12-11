@@ -42,8 +42,7 @@ from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
-from .index_select import index_select
-from .index_select import index_select_backward
+from .index_select import index_select, index_select_backward
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -180,7 +179,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
-    "index_select_backward"
+    "index_select_backward",
     "instance_norm",
     "isclose",
     "isfinite",
