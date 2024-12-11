@@ -179,6 +179,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "index_select_backward"
     "instance_norm",
     "isclose",
     "isfinite",
