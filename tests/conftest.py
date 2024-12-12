@@ -12,6 +12,10 @@ device = flag_gems.device
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 filename = f"test_detail_and_result_{timestamp}.json"
 
+import flag_gems
+
+device = flag_gems.device
+
 
 def pytest_addoption(parser):
     parser.addoption(

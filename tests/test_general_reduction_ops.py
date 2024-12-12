@@ -194,7 +194,7 @@ def test_accuracy_max_dim_big_shape(shape, dim, keepdim, dtype):
 @pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max_dim_big_shape(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out_value, ref_out_index = torch.max(ref_inp, dim=dim, keepdim=keepdim)
