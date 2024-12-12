@@ -65,7 +65,7 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm
+from .mm import mm, mm_pretune
 from .mul import mul
 from .multinomial import multinomial
 from .mv import mv
@@ -278,4 +278,5 @@ __all__ = [
     "logical_and",
     "logical_xor",
     "logical_not",
+    "mm_pretune",
 ]
