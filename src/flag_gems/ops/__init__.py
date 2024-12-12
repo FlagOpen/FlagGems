@@ -16,11 +16,16 @@ from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_
 from .bmm import bmm
 from .cat import cat
 from .clamp import clamp, clamp_tensor
+from .conv1d import conv1d
+from .conv2d import conv2d
+from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos
+from .count_nonzero import count_nonzero
 from .cross_entropy_loss import cross_entropy_loss
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
+from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
@@ -39,6 +44,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_select import index_select
+from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -47,6 +53,9 @@ from .isnan import isnan
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
+from .logical_and import logical_and
+from .logical_not import logical_not
+from .logical_or import logical_or
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -66,7 +75,7 @@ from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tens
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
-from .pad import pad
+from .pad import constant_pad_nd, pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
@@ -136,9 +145,12 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "count_nonzero",
     "diag",
     "diag_embed",
+    "diagonal_backward",
     "pad",
+    "constant_pad_nd",
     "cumsum",
     "normed_cumsum",
     "true_divide",
@@ -169,6 +181,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "instance_norm",
     "isclose",
     "isfinite",
     "isin",
@@ -256,5 +269,11 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "conv2d",
+    "conv1d",
+    "_conv_depthwise2d",
     "repeat_interleave_self_tensor",
+    "logical_or",
+    "logical_and",
+    "logical_not",
 ]
