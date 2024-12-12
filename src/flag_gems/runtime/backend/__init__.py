@@ -95,7 +95,7 @@ def get_vendor_info(vendor_name=None, query=False):
     return vendor_module.vendor_info
 
 
-def get_vendor_infos() -> list:
+def get_vendor_infos():
     infos = []
     for vendor_name in vendors_map:
         vendor_name = "_" + vendor_name
@@ -108,7 +108,7 @@ def get_vendor_infos() -> list:
     return infos
 
 
-def get_curent_device_extend_op(vendor_name=None) -> dict:
+def get_curent_device_extend_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
     tuples = vendor_module.get_register_op_config()
@@ -118,13 +118,13 @@ def get_curent_device_extend_op(vendor_name=None) -> dict:
     return configs
 
 
-def get_curent_device_unused_op(vendor_name=None) -> list:
+def get_curent_device_unused_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
     return vendor_module.get_unused_op()
 
 
-def get_tune_config(vendor_name=None) -> dict:
+def get_tune_config(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)

@@ -75,20 +75,20 @@ class Register:
                 fn_name
             ) if hasbackward else self.forward_ops.append(fn_name)
 
-    def get_forward_ops(self) -> list[str]:
+    def get_forward_ops(self):
         return self.forward_ops if self.debug else []
 
-    def get_backward_ops(self) -> list[str]:
+    def get_backward_ops(self):
         return self.backward_ops if self.debug else []
 
-    def get_unused_ops(self) -> list[str]:
+    def get_unused_ops(self):
         return self.unused_ops
 
-    def get_vendor_name(self) -> str:
+    def get_vendor_name(self):
         return self.device.vendor_name
 
-    def get_current_device(self) -> str:
+    def get_current_device(self):
         return self.device.name
 
-    def support_backward(self, fn) -> bool:
+    def support_backward(self, fn):
         return fn.__name__ in self.backward_ops
