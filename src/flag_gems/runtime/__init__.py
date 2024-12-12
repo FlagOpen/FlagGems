@@ -4,8 +4,10 @@ from .configloader import ConfigLoader
 
 config_loader = ConfigLoader()
 device = DeviceDetector()
+# torch_backend is like 'torch.cuda' object
 torch_backend = backend.gen_torch_device_object()
 tl_extra_module = moduel_tool.tl_extra_module
+# torch_backends_device_fn is like 'torch.backend.cuda' object
 torch_backends_device_fn = backend.gen_torch_backends_device()
 
 

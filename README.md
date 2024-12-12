@@ -147,7 +147,7 @@ pip install .
 ### Execute
 
 1. Test Operator Accuracy
-    - Run reference on flag_gems.device
+    - Run reference on specific backend like cuda
         ```shell
         cd tests
         pytest test_xx_ops.py
