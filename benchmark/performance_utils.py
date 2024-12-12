@@ -87,8 +87,8 @@ class Benchmark:
 
         self.to_bench_metrics = user_desired_metrics or self.metrics
         if (
-            hasattr(self, "set_more_shapes")
-            and callable(getattr(self, "set_more_shapes"))
+            hasattr(self, "set_more_metrics")
+            and callable(getattr(self, "set_more_metrics"))
             and Config.bench_level == BenchLevel.COMPREHENSIVE
             and not Config.query
         ):
@@ -157,8 +157,8 @@ class Benchmark:
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
                 self.shapes = additional_shapes
-                # if additional_shapes:
-                #     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
+                if additional_shapes:
+                    self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
         except yaml.YAMLError as e:
             raise ValueError(
                 f"Shape file '{shape_file_path}' is not a valid YAML file. Error: {e}"

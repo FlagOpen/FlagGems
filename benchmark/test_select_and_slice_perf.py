@@ -11,6 +11,9 @@ class TensorSelectBenchmark(GenericBenchmark):
     def set_more_metrics(self):
         return ["gbps"]
 
+    def set_more_shapes(self):
+        return super().set_more_shapes()
+
 
 def index_select_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
