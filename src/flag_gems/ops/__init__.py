@@ -20,7 +20,9 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos
+from .count_nonzero import count_nonzero
 from .cross_entropy_loss import cross_entropy_loss
+from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -55,6 +57,7 @@ from .log_softmax import log_softmax
 from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
+from .logical_xor import logical_xor
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -101,6 +104,7 @@ from .silu import silu
 from .sin import sin
 from .slice_scatter import slice_scatter, slice_scatter_v2
 from .softmax import softmax
+from .sort import sort
 from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
@@ -144,11 +148,13 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "count_nonzero",
     "diag",
     "diag_embed",
     "diagonal_backward",
     "pad",
     "constant_pad_nd",
+    "cummin",
     "cumsum",
     "normed_cumsum",
     "true_divide",
@@ -274,5 +280,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "logical_or",
     "logical_and",
+    "logical_xor",
     "logical_not",
+    "sort",
 ]

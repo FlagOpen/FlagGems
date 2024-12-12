@@ -13,6 +13,7 @@ from .accuracy_utils import (
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
     SHAPE_STRIDES,
+    SkipVersion,
     gems_assert_close,
     gems_assert_equal,
     to_reference,
@@ -203,6 +204,33 @@ def test_accuracy_cumsum(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
 
+CUMMIN_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
+
+
+@pytest.mark.skipif(
+    SkipVersion("triton", "<3.0"),
+    reason="Skipping when associative_scan only support single tensor input.",
+)
+@pytest.mark.cummin
+@pytest.mark.parametrize("shape", CUMMIN_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_cummin(shape, dtype):
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummin(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummin(inp, dim=dim)
+    gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
@@ -222,6 +250,24 @@ def test_accuracy_nonzero(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.nonzero(inp)
 
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.count_nonzero
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_count_nonzero(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, shape, dtype=torch.int, device="cuda").to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device="cuda").to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    ref_inp = to_reference(inp, False)
+    dim = random.choice([None] + list(range(inp.ndim)))
+    ref_out = torch.count_nonzero(ref_inp, dim)
+    with flag_gems.use_gems():
+        res_out = torch.count_nonzero(inp, dim)
     gems_assert_equal(res_out, ref_out)
 
 
