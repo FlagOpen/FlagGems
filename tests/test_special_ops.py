@@ -966,4 +966,3 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 
     gems_assert_close(res_value, ref_value, dtype)
     gems_assert_equal(res_index, ref_index)
-
