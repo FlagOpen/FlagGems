@@ -185,3 +185,26 @@ def test_select_scatter_perf():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.index_select_backward
+def test_perf_index_select_backward():
+    def index_select_backward_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        threshold = 0.1
+        dim = 0
+        index_size = inp.size(dim)
+        from math import floor
+
+        index = torch.randint(0, index_size, [floor(index_size * threshold)], device=device)
+        yield inp, dim, index
+
+    bench = TensorSelectBenchmark(
+        input_fn=index_select_backward_input_fn,
+        op_name="index_select_backward",
+        torch_op=torch.index_select,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
+    )
+
+    bench.run()
