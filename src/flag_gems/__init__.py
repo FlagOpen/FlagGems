@@ -163,7 +163,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("log_softmax.int", log_softmax, Autograd.enable),
             ("outer", outer, Autograd.enable),
             ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
-            ("nllloss", nll_loss, Autograd.enable),
+            ("nll_loss", nll_loss, Autograd.enable),
             ("scatter.src", scatter, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
             ("gather", gather, Autograd.disable),
