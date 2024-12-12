@@ -1,3 +1,4 @@
+import itertools
 from typing import Optional
 
 import numpy as np
@@ -8,6 +9,7 @@ import flag_gems
 
 from .accuracy_utils import (
     ALL_INT_DTYPES,
+    BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
     SPECIAL_SHAPES,
@@ -832,18 +834,135 @@ def test_accuracy_repeat_interleave_self_tensor(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-# Test diag op
 @pytest.mark.diag
-@pytest.mark.parametrize(
-    "shape", [(1024, 1), (1024), (1024, 1024), (512, 1024), (798, 798)]
-)
+@pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("diagonal", [-2, -1, 0, 1, 2])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
 def test_accuracy_diag(shape, diagonal, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    elif dtype in BOOL_TYPES:
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(0, 0x7FFF, size=shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp)
 
     ref_out = torch.diag(ref_inp, diagonal)
     with flag_gems.use_gems():
         res_out = torch.diag(inp, diagonal)
     gems_assert_equal(res_out, ref_out)
+
+
+def get_dim1_dim2(o_rank):
+    dims = list(range(-o_rank, o_rank))
+    return [
+        p for p in itertools.permutations(dims, 2) if (p[0] % o_rank) != (p[1] % o_rank)
+    ]
+
+
+def get_diag_embed_shape_and_dims():
+    shapes = [
+        (1024,),
+        (1024, 1024),
+    ]
+    # [(shape, dim1, dim2)]
+    result = []
+
+    for s in shapes:
+        dim_pairs = get_dim1_dim2(len(s) + 1)
+        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
+
+    return result
+
+
+@pytest.mark.diag_embed
+@pytest.mark.parametrize("shape, dim1, dim2", get_diag_embed_shape_and_dims())
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
+def test_accuracy_diag_embed(shape, dtype, offset, dim1, dim2):
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(low=0, high=0x7FFF, size=shape, dtype=dtype, device="cuda")
+    else:
+        inp = torch.randint(low=0, high=2, size=shape, dtype=dtype, device="cuda")
+
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.diag_embed(ref_inp, offset, dim1, dim2)
+    with flag_gems.use_gems():
+        res_out = torch.diag_embed(inp, offset, dim1, dim2)
+    gems_assert_equal(res_out, ref_out)
+
+
+def get_diagonal_backward_shape_and_dims():
+    shapes = SPECIAL_SHAPES
+    result = []
+
+    for s in shapes:
+        dim_pairs = get_dim1_dim2(len(s))
+        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
+
+    return result
+
+
+@pytest.mark.diagonal_backward
+@pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
+@pytest.mark.parametrize("offset", [-1, 0, 1])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.diagonal(ref_inp, offset, dim1, dim2)
+    res_out = torch.diagonal(inp, offset, dim1, dim2)
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_out = to_reference(res_out)
+    res_in_grad = to_reference(res_in_grad)
+    gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_in_grad, ref_in_grad)
+
+
+@pytest.mark.sort
+@pytest.mark.parametrize("batch_size", [4, 8])
+@pytest.mark.parametrize("hiddensize", [1, 256, 2048, 9333, 65536])
+@pytest.mark.parametrize("descending", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize("dim", [0, -1])
+def test_sort(batch_size, hiddensize, descending, dtype, dim):
+    if dtype in FLOAT_DTYPES:
+        x = torch.empty((hiddensize,), dtype=dtype, device="cuda")
+        tmp = torch.tensor(0, dtype=dtype)
+        inf = torch.tensor(float("inf"), dtype=dtype)
+        for i in range(0, hiddensize):
+            x[i] = tmp.item()
+            tmp = torch.nextafter(tmp, inf)
+            if tmp.item() == inf.item():
+                hiddensize = i
+                x = x[:hiddensize]
+                break
+    else:
+        x = torch.arange(hiddensize, dtype=dtype, device="cuda")
+    y = torch.empty((batch_size, hiddensize), dtype=dtype, device="cuda")
+
+    # Each row use different shuffled index.
+    col_indices = torch.randperm(x.size(0))
+    for bsz in range(batch_size):
+        col_indices = torch.randperm(x.size(0))
+        y[bsz, :] = x[col_indices]
+    if dim == 0:
+        y = torch.movedim(y, dim, -1)
+    ref_y = to_reference(y)
+    ref_value, ref_index = torch.sort(ref_y, dim=dim, descending=descending)
+
+    with flag_gems.use_gems():
+        res_value, res_index = torch.sort(y, dim=dim, descending=descending)
+
+    gems_assert_close(res_value, ref_value, dtype)
+    gems_assert_equal(res_index, ref_index)
