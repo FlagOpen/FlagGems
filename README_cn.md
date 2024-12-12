@@ -145,7 +145,7 @@ pip install .
 ### 执行
 
 1. 算子正确性测试
-    - 在CUDA上运行参考实现
+    - 在例如CUDA的异构设备上运行参考实现
         ```shell
         cd tests
         pytest test_xx_ops.py

@@ -9,7 +9,7 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-from ..runtime import torch_backend
+from ..runtime import torch_device_fn
 
 
 def heur_block(args):
@@ -76,6 +76,6 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
 
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
-    with torch_backend.device(self.device):
+    with torch_device_fn.device(self.device):
         uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to)
     return self

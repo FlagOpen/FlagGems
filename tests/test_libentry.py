@@ -6,7 +6,7 @@ import triton
 from triton import language as tl
 
 import flag_gems
-from flag_gems.runtime import torch_backend
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 
@@ -36,7 +36,7 @@ def softmax_inner_decorator_cascade(x, dim, dtype=None):
 
     out = torch.empty_like(inp, dtype=dtype)
 
-    with torch_backend.device(out.device):
+    with torch_device_fn.device(out.device):
         grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
         softmax_kernel_inner[grid](
             out,

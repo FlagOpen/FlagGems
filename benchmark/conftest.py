@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.runtime import torch_backend
+from flag_gems.runtime import torch_device_fn
 
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
@@ -191,13 +191,13 @@ def setup_once(request):
 @pytest.fixture(scope="function", autouse=True)
 def clear_function_cache():
     yield
-    torch_backend.empty_cache()
+    torch_device_fn.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
 def clear_module_cache():
     yield
-    torch_backend.empty_cache()
+    torch_device_fn.empty_cache()
 
 
 @pytest.fixture()

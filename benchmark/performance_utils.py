@@ -9,7 +9,7 @@ import triton
 import yaml
 
 import flag_gems
-from flag_gems.runtime import torch_backend, torch_backends_device_fn
+from flag_gems.runtime import torch_device_fn, torch_device_fns_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -25,7 +25,7 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch_backends_device_fn.matmul.allow_tf32 = False
+torch_device_fns_device_fn.matmul.allow_tf32 = False
 device = flag_gems.device
 
 
@@ -193,11 +193,11 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch_backend.synchronize()
+            torch_device_fn.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch_backend.synchronize()
+            torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:

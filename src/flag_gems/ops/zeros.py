@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import device, torch_backend
+from ..runtime import device, torch_device_fn
 from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
 
@@ -34,6 +34,6 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch_backend.device(device):
+    with torch_device_fn.device(device):
         zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
     return out

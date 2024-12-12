@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .. import runtime
-from ..runtime import device, torch_backend
+from ..runtime import device, torch_device_fn
 from ..utils import libentry
 from .topk import argsort
 
@@ -327,7 +327,7 @@ def sort_by_key(key, value, valid_bits):
 
         # step1
         d_lookback.zero_()
-        with torch_backend.device(key.device):
+        with torch_device_fn.device(key.device):
             digit_hist_kernel[grid_hist](
                 digit_hist_slice,
                 key,
@@ -358,7 +358,7 @@ def sort_by_key(key, value, valid_bits):
                 )
                 tiles_per_portion = triton.cdiv(portion_items, BLOCK_SIZE)
                 grid_scatter = (tiles_per_portion, grid_hist[1])
-                with torch_backend.device(key.device):
+                with torch_device_fn.device(key.device):
                     radix_sortbykey_scatter_kernel[grid_scatter](
                         k_out,
                         v_out,
@@ -385,7 +385,7 @@ def sort_by_key(key, value, valid_bits):
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
         philox_seed, philox_offset = philox_backend_seed_offset(n_elements)
-        with torch_backend.device(key.device):
+        with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
                 n_elements,
@@ -401,7 +401,7 @@ def sort_by_key(key, value, valid_bits):
         grid = (1,)
         k_out = torch.empty_like(key)
         v_out = torch.empty_like(value)
-        with torch_backend.device(key.device):
+        with torch_device_fn.device(key.device):
             bitonic_sortbykey_kernel[grid](
                 k_out, v_out, key, value, n_elements, BLOCK_SIZE, False
             )

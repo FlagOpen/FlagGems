@@ -46,6 +46,6 @@ def add(x: torch.Tensor, y: torch.Tensor):
     #  - `triton.jit`'ed functions can be indexed with a launch grid to obtain a callable GPU kernel.
     #  - Don't forget to pass meta-parameters as keywords arguments.
     add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
-    # We return a handle to z but, since `torch_backend.synchronize()` hasn't been called, the kernel is still
+    # We return a handle to z but, since `torch_device_fn.synchronize()` hasn't been called, the kernel is still
     # running asynchronously at this point.
     return output

@@ -10,7 +10,7 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-from ..runtime import device, torch_backend
+from ..runtime import device, torch_device_fn
 
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
@@ -98,6 +98,6 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
-    with torch_backend.device(device):
+    with torch_device_fn.device(device):
         randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
     return out

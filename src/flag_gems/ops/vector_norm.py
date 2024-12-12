@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import tl_extra_module, torch_backend
+from ..runtime import tl_extra_module, torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
@@ -261,7 +261,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
-    with torch_backend.device(x.device):
+    with torch_device_fn.device(x.device):
         if (not dim) or len(dim) == x.ndim:
             dim = list(range(x.ndim))
             shape = [1] * x.ndim
