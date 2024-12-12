@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+# from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.type_utils import get_accumulator_dtype
@@ -369,7 +371,7 @@ class LayerNorm(torch.autograd.Function):
         mean = torch.empty(M, dtype=acc_type, device=x.device)
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             if N <= 128:
                 TILE_M = triton.next_power_of_2(triton.cdiv(M, 12))
                 TILE_N = triton.next_power_of_2(N)
@@ -428,7 +430,7 @@ class LayerNorm(torch.autograd.Function):
         M = ctx.M
         N = ctx.N
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
             layer_norm_backward_kernel[grid](

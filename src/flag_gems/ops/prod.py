@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+# from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -56,7 +58,7 @@ def prod(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
         if mid_size == 1:
             return mid.reshape([])
@@ -141,7 +143,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         prod_kernel[grid](inp, out, M, N, K)
 
     return out

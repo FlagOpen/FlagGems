@@ -4,15 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import tl_extra_module
 from ..utils import pointwise_dynamic
 
-try:
-    from triton.language.extra.xpu.libdevice import div_rn, fmod, xpu_trunc_div
-except ImportError:
-    try:
-        from triton.language.math import div_rn, fmod
-    except ImportError:
-        from triton.language.libdevice import div_rn, fmod
+div_rn = tl_extra_module.div_rn
+div_rz = tl_extra_module.div_rz
+fmod = tl_extra_module.fmod
+trunc = tl_extra_module.trunc
+xpu_trunc_div = tl_extra_module.xpu_trunc_div
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])

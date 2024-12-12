@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+# from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -369,7 +371,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = v.shape[0]
             N = math.prod(v.shape[1:])
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_kernel_first[grid](
                     output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
                 )
@@ -377,7 +379,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = math.prod(v.shape[:-1])
             N = v.shape[dim]
             grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_kernel_last[grid](
                     output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
                 )
@@ -399,7 +401,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = v.shape[0]
             N = math.prod(v.shape[1:])
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_bwd_kernel_first[grid](
                     v_grad,
                     g_grad,
@@ -415,7 +417,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = math.prod(v.shape[:dim])
             N = v.shape[dim]
             grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_bwd_kernel_last[grid](
                     v_grad,
                     g_grad,
@@ -448,7 +450,7 @@ class Norm(torch.autograd.Function):
 
         grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
 
-        with torch.cuda.device(v.device):
+        with torch_device_fn.device(v.device):
             norm_kernel[grid](
                 output,
                 v,
@@ -469,7 +471,7 @@ class Norm(torch.autograd.Function):
         v_grad = torch.empty_like(v)
 
         grid = lambda META: (triton.cdiv(ctx.V_SHAPE[1], META["BLOCK_ROW_SIZE"]),)
-        with torch.cuda.device(v.device):
+        with torch_device_fn.device(v.device):
             norm_bwd_kernel[grid](
                 v_grad,
                 norm_grad,

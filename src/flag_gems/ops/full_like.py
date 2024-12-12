@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 
+from ..runtime import torch_device_fn
 from .full import check_dtype, full_kernel
 
 
@@ -26,6 +27,12 @@ def full_like(
     N = x.numel()
     grid_fn = (12, 1, 1)
     block_size = triton.next_power_of_2(triton.cdiv(N, 12))
-    with torch.cuda.device(x.device):
-        full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=block_size)
+    with torch_device_fn.device(x.device):
+        full_kernel[grid_fn](
+            out,
+            N,
+            fill_value,
+            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
+            BLOCK_SIZE=block_size,
+        )
     return out

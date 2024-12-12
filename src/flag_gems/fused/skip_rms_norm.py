@@ -6,6 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -121,7 +122,7 @@ class SkipRmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             if N > 64 * 128:
                 skip_rms_norm_kernel_tile[M,](
                     y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE

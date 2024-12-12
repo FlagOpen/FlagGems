@@ -6,6 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
+# from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -107,7 +109,7 @@ def min(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         if mid_size == 1:
             return mid.reshape([])
@@ -139,7 +141,7 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N, K)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)

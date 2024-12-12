@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+# from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -113,7 +115,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             argmax_kernel_1[(mid_size, 1, 1)](
                 inp,
                 mid_value,
@@ -142,7 +144,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             argmax_kernel[grid](
                 inp,
                 out_index,
