@@ -5,7 +5,7 @@ from .backend.device import DeviceDetector
 
 device = DeviceDetector()
 backend.set_tl_extra_backend_module(device.vendor_name)
-backend.set_torch_device_fn(device.vendor_name)
+backend.set_torch_backend_device_fn(device.vendor_name)
 tl_extra_module = None
 if tl_extra_module is None:
     try:

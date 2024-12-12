@@ -48,14 +48,14 @@ def get_tl_extra_backend_module():
     return tl_extra_backend_module
 
 
-def set_torch_device_fn(vendor_name=None):
+def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{device_name}"
     torch_device_fn_device = importlib.import_module(module_str)
 
 
-def get_torch_device_fn():
+def get_torch_backend_device_fn():
     global torch_device_fn_device
     return torch_device_fn_device
 
