@@ -230,11 +230,14 @@ def batch_norm_backward_kernel(
     batch_offset = tl.arange(0, BLOCK_SIZE_BATCH)
     batch_mask = batch_offset < batch_dim
 
-    mean = tl.load(feat_pid + mean_pointer)
-    inv_std = tl.load(feat_pid + inv_std_pointer)
+    mean = tl.load(feat_pid + mean_pointer).to(tl.float32)
+    inv_std = tl.load(feat_pid + inv_std_pointer).to(tl.float32)
 
-    term1 = 0.0
-    term2 = 0.0
+    # term1 = 0.0
+    # term2 = 0.0
+
+    term1 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32)
+    term2 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_BATCH], dtype=tl.float32)
 
     for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
         spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
@@ -264,8 +267,13 @@ def batch_norm_backward_kernel(
             curr_output_grad_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
         ).to(tl.float32)
 
-        term1 += tl.sum(curr_pre_lin * curr_output_grad)
-        term2 += tl.sum(curr_output_grad)
+        # term1 += tl.sum(curr_pre_lin * curr_output_grad)
+        # term2 += tl.sum(curr_output_grad)
+        term1 += curr_pre_lin * curr_output_grad
+        term2 += curr_output_grad
+
+    term1 = tl.sum(term1, axis=1)[:, None]
+    term1 = tl.sum(term2, axis=1)[:, None]
 
     if affine:
         weight = tl.load(feat_pid + weight_pointer)
