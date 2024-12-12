@@ -823,9 +823,5 @@ index_select_backward:
     num_warps: 4
   block_m:
   - 1
-  - 2
-  - 4
   block_n:
-  - 1024
-  - 2048
-  - 4096
+  - 1
