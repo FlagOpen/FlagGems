@@ -156,6 +156,7 @@ class quantileBenchmark(GenericBenchmark):
 def quantile_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     q = torch.tensor([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], dtype=cur_dtype, device=device)
+    print(shape)
     yield inp, q, 0
 
 

@@ -297,7 +297,7 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
-QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196)]
+QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
 QUANTILE_FLOAT_DTYPES = [torch.float32, torch.float64]
 QUANTILE_Q = (
     [(0.2, 0.5, 0.8)]
