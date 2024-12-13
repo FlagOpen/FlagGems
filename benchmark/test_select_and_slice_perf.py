@@ -4,18 +4,12 @@ import pytest
 import torch
 
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
+from .performance_utils import GenericBenchmark, generate_tensor_input
 
 
-class TensorSelectBenchmark(GenericBenchmark2DOnly):
-    def set_more_shapes(self):
-        shapes = super().set_more_shapes()
-        return [
-            # this filter is for scatter
-            shape
-            for shape in shapes
-            if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
-        ]
+class TensorSelectBenchmark(GenericBenchmark):
+    def set_more_metrics(self):
+        return ["gbps"]
 
 
 def index_select_input_fn(shape, cur_dtype, device):
@@ -136,9 +130,9 @@ def test_perf_gather():
 @pytest.mark.slice_scatter
 def test_slice_scatter_perf():
     def slice_scatter_input_fn(shape, dtype, device):
-        dim = random.choice([0, 1])
-        start = 16
-        end = 1024
+        dim = 0 if len(shape) == 1 else 1
+        start = 0
+        end = shape[dim]
         step = 2
 
         inp = torch.randn(shape, dtype=dtype, device=device)
@@ -168,7 +162,7 @@ def test_slice_scatter_perf():
 @pytest.mark.select_scatter
 def test_select_scatter_perf():
     def select_scatter_input_fn(shape, dtype, device):
-        dim = random.choice([0, 1])
+        dim = 0 if len(shape) == 1 else 1
         index = random.randint(0, shape[dim] - 1)
         inp = torch.randn(shape, dtype=dtype, device=device)
 

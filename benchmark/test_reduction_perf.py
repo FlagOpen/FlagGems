@@ -21,18 +21,18 @@ class UnaryReductionBenchmark(Benchmark):
 
     def set_more_shapes(self):
         more_shapes_1d = [
-            (4,),
-            (1024,),
-            (1024 * 1024 * 1024,),
+            # (4,),
+            # (1024,),
+            # (1024 * 1024 * 1024,),
         ]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
+        # more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d  # + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = generate_tensor_input(shape, cur_dtype, self.device)
-            yield inp,
+            yield inp, 1
 
 
 forward_operations = [

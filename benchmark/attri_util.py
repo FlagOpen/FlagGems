@@ -61,6 +61,8 @@ class BenchmarkMetrics:
     latency_base: Optional[float] = None
     # Latency in ms
     latency: Optional[float] = None
+    gbps_base: Optional[float] = None
+    gbps: Optional[float] = None
     # Speedup over baseline
     speedup: Optional[float] = None
     # Accuracy over baseline (not implemented yet)
@@ -178,14 +180,23 @@ class BenchmarkResult:
                 f"{'Size Detail':>20}\n"
                 f"{'-' * 120}\n"
             )
+        elif self.result[0].gbps is not None:
+            header = (
+                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, "
+                f"level={self.level})\n"
+                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20} {'Torch GBPS ':>20} {'Gems GBPS':>20}"  # noqa
+                f"{'Size Detail':>20}\n"
+                f"{'-' * 150}\n"
+            )
         else:
             header = (
                 f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, "
                 f"level={self.level})\n"
-                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
+                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"  # noqa
                 f"{'Size Detail':>20}\n"
                 f"{'-' * 90}\n"
             )
+
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
 
@@ -199,6 +210,10 @@ class BenchmarkResult:
         )
         latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
         speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
+        torch_gbps_str = (
+            f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
+        )
+        gems_gbps_str = f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
         if metrics.tflops and metrics.tflops != 0.0:
             tflops_str = (
                 f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
@@ -214,6 +229,17 @@ class BenchmarkResult:
                 f"{latency_str:>20}"
                 f"{speedup_str:>20}"
                 f"{tflops_str:>20}"
+                f"{' ' * 10}"
+                f"{shape_detail_str}\n"
+            )
+        elif metrics.gbps is not None:
+            return (
+                f"{status:<10}"
+                f"{latency_base_str:>20}"
+                f"{latency_str:>20}"
+                f"{speedup_str:>20}"
+                f"{torch_gbps_str:>20}"
+                f"{gems_gbps_str:>20}"
                 f"{' ' * 10}"
                 f"{shape_detail_str}\n"
             )
