@@ -490,16 +490,26 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_batch_norm(shape, dtype):
+@pytest.mark.parametrize("affine", [True, False])
+@pytest.mark.parametrize("require_grad", [True, False])
+def test_accuracy_batch_norm(shape, dtype, affine, require_grad):
     C = shape[1]
     inp = torch.randn(
-        size=shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        size=shape, dtype=dtype, device=flag_gems.device, requires_grad=require_grad
     )
-    weight = torch.randn(
-        size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+    weight = (
+        torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=require_grad
+        )
+        if affine
+        else None
     )
-    bias = torch.randn(
-        size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+    bias = (
+        torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=require_grad
+        )
+        if affine
+        else None
     )
 
     running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
@@ -538,17 +548,28 @@ def test_accuracy_batch_norm(shape, dtype):
     gems_assert_close(running_mean, ref_running_mean, dtype)
     gems_assert_close(running_var, ref_running_var, dtype)
 
+    if not require_grad:
+        return
+
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
-
-    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-        ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
-    )
-    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-        res_out, (inp, weight, bias), out_grad
-    )
-
     reduce_dim = int(math.prod(shape) / C)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim)
+
+    if affine:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
+        gems_assert_close(
+            res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
+        )
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim)
+    else:
+        (ref_in_grad,) = torch.autograd.grad(ref_out, (ref_inp,), ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, (inp,), out_grad)
+
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)

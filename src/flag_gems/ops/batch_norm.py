@@ -8,6 +8,7 @@ from torch import Tensor
 from triton import next_power_of_2
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..runtime.moduel_tool import tl_extra_module
 from ..utils import libentry
 from ..utils.type_utils import get_accumulator_dtype
@@ -385,25 +386,26 @@ class BatchNorm(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over one feature.
         grid = lambda _: (feat_dim,)
-        batch_norm_forward_kernel[grid](
-            input_3d,
-            weight,
-            bias,
-            mean,
-            inv_std,
-            output,
-            running_mean,
-            running_var,
-            batch_dim,
-            spatial_dim,
-            *input_3d.stride(),
-            *output.stride(),
-            momentum,
-            eps,
-            affine=affine,
-            save_stats=requires_grad,
-            is_train=training,
-        )
+        with torch_device_fn.device(input.device):
+            batch_norm_forward_kernel[grid](
+                input_3d,
+                weight,
+                bias,
+                mean,
+                inv_std,
+                output,
+                running_mean,
+                running_var,
+                batch_dim,
+                spatial_dim,
+                *input_3d.stride(),
+                *output.stride(),
+                momentum,
+                eps,
+                affine=affine,
+                save_stats=requires_grad,
+                is_train=training,
+            )
 
         ctx.affine = affine
         if requires_grad:
@@ -430,22 +432,23 @@ class BatchNorm(torch.autograd.Function):
 
         # Launches 1D grid where each program operates over one feature.
         grid = lambda _: (feat_dim,)
-        batch_norm_backward_kernel[grid](
-            output_grad_3d,
-            input_3d,
-            mean,
-            inv_std,
-            weight,
-            input_grad,
-            weight_grad,
-            bias_grad,
-            batch_dim,
-            spatial_dim,
-            *output_grad_3d.stride(),
-            *input_3d.stride(),
-            *input_grad.stride(),
-            affine=ctx.affine,
-        )
+        with torch_device_fn.device(input.device):
+            batch_norm_backward_kernel[grid](
+                output_grad_3d,
+                input_3d,
+                mean,
+                inv_std,
+                weight,
+                input_grad,
+                weight_grad,
+                bias_grad,
+                batch_dim,
+                spatial_dim,
+                *output_grad_3d.stride(),
+                *input_3d.stride(),
+                *input_grad.stride(),
+                affine=ctx.affine,
+            )
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
