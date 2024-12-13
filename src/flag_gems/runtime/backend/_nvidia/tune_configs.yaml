@@ -953,6 +953,7 @@ var_mean:
 batch_norm:
 - gen: true
   param_map:
+    META: {}
     num_warps: warps
   warps:
   - 2

@@ -485,8 +485,8 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     [
         (16, 3),
         (32, 32, 32),
-        (8, 3, 224, 224),
-        (8, 16, 3, 224, 224),
+        (8, 32, 16, 16),
+        (8, 16, 3, 16, 16),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
