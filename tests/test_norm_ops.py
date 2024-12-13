@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -481,39 +483,72 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 @pytest.mark.parametrize(
     "shape",
     [
-        (64, 1024),
-        (64, 1024, 2),
-        (16, 3, 16, 16),
-        (32, 32, 32, 32),
-        (1, 32, 32, 32),
-        (32, 3, 224, 224),
-        (32, 3, 3, 224, 224),
+        (16, 3),
+        (32, 32, 32),
+        (8, 3, 224, 224),
+        (8, 16, 3, 224, 224),
     ],
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("training", [False, True])
-def test_accuracy_batch_norm_2d(shape, dtype, training):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    weight = torch.randn(
-        size=(shape[1],), dtype=dtype, device="cuda", requires_grad=True
+def test_accuracy_batch_norm(shape, dtype):
+    C = shape[1]
+    inp = torch.randn(
+        size=shape, dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    bias = torch.randn(size=(shape[1],), dtype=dtype, device="cuda", requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    weight = torch.randn(
+        size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    bias = torch.randn(
+        size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+
+    running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+    running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
 
     eps = 1e-5
-    momentum = 0.1
+
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+    ref_bias = to_reference(bias, True)
+    ref_running_mean = to_reference(running_mean, True)
+    ref_running_var = to_reference(running_var, True)
 
     ref_out = torch.nn.functional.batch_norm(
-        ref_inp, weight=weight, bias=bias, training=training, momentum=momentum, eps=eps
+        ref_inp,
+        ref_running_mean,
+        ref_running_var,
+        weight=ref_weight,
+        bias=ref_bias,
+        training=True,
+        eps=eps,
     )
+
     with flag_gems.use_gems():
         res_out = torch.nn.functional.batch_norm(
-            ref_inp,
+            inp,
+            running_mean,
+            running_var,
             weight=weight,
             bias=bias,
-            training=training,
-            momentum=momentum,
+            training=True,
             eps=eps,
         )
 
     gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(running_mean, ref_running_mean, dtype)
+    gems_assert_close(running_var, ref_running_var, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+    )
+    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+        res_out, (inp, weight, bias), out_grad
+    )
+
+    reduce_dim = int(math.prod(shape) / C)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim)
+    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim)
