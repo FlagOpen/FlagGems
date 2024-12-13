@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -23,12 +25,7 @@ def heur_num_warps(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
+    configs=runtime.get_triton_config("log_softmax"),
     key=[
         "M",
         "N",
@@ -68,12 +65,7 @@ def log_softmax_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}),
-        triton.Config({"BLOCK_M": 2}),
-        triton.Config({"BLOCK_M": 4}),
-        triton.Config({"BLOCK_M": 8}),
-    ],
+    configs=runtime.get_triton_config("log_softmax"),
     key=[
         "M",
         "N",
@@ -136,7 +128,7 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             log_softmax_kernel[grid](
                 out,
                 inp,
@@ -170,7 +162,7 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(in_grad.device):
+        with torch_device_fn.device(in_grad.device):
             log_softmax_backward_kernel[grid](
                 out,
                 out_grad,

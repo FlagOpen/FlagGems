@@ -4,21 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import broadcastable, libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    configs = [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=w)
-        for w in [4, 8, 16, 32]
-        for bs in [256, 512, 1024, 2048, 4096]
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["n_elements"])
+@triton.autotune(configs=runtime.get_triton_config("masked_select"), key=["n_elements"])
 @triton.jit
 def masked_select_kernel(
     inp_ptr,
@@ -60,6 +53,6 @@ def masked_select(inp, mask):
 
     n_elements = inp.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         masked_select_kernel[grid](inp, mask_flattened, prefix_sum, out, n_elements)
     return out

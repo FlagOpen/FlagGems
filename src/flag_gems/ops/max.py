@@ -6,6 +6,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -45,11 +47,7 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": 256}, num_warps=8),
-        triton.Config({"BLOCK_M": 16, "BLOCK_N": 512}, num_warps=8),
-        triton.Config({"BLOCK_M": 32, "BLOCK_N": 512}, num_warps=8),
-    ],
+    configs=runtime.get_triton_config("max"),
     key=[
         "M",
         "N",
@@ -104,7 +102,7 @@ def max(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
@@ -134,7 +132,7 @@ def max_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         max_kernel[grid](inp, out_value, out_index, M, N, K)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)

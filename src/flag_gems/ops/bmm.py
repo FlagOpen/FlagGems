@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
@@ -22,68 +24,7 @@ def heur_divisible_k(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=2,
-        ),
-        triton.Config(
-            {"TILE_M": 32, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 1},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 64, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 32, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 64, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-        triton.Config(
-            {"TILE_M": 128, "TILE_N": 128, "TILE_K": 32, "GROUP_M": 2},
-            num_warps=4,
-            num_stages=3,
-        ),
-    ],
+    configs=runtime.get_triton_config("bmm"),
     key=["M", "N", "K"],
 )
 @triton.heuristics(
@@ -205,6 +146,6 @@ def bmm(A, B):
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-    with torch.cuda.device(A.device):
+    with torch_device_fn.device(A.device):
         bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out
