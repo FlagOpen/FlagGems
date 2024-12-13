@@ -8,8 +8,11 @@ from torch import Tensor
 from triton import next_power_of_2
 
 from .. import runtime
+from ..runtime.moduel_tool import tl_extra_module
 from ..utils import libentry
 from ..utils.type_utils import get_accumulator_dtype
+
+rsqrt = tl_extra_module.rsqrt
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -136,7 +139,7 @@ def batch_norm_forward_kernel(
             var += tl.sum(deltas)
 
         var /= count
-        inv_std = tl.rsqrt(var + eps)
+        inv_std = rsqrt(var + eps)
 
         if save_stats:
             tl.store(feat_pid + mean_pointer, mean)
@@ -157,7 +160,7 @@ def batch_norm_forward_kernel(
 
     else:
         mean = tl.load(feat_pid + running_mean_pointer)
-        inv_std = tl.rsqrt(tl.load(feat_pid + running_var_pointer) + eps)
+        inv_std = rsqrt(tl.load(feat_pid + running_var_pointer) + eps)
 
     if affine:
         weight = tl.load(feat_pid + weight_pointer)
