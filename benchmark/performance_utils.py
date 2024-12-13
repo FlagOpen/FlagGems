@@ -156,7 +156,7 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
-                self.shapes = additional_shapes
+                # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
         except yaml.YAMLError as e:

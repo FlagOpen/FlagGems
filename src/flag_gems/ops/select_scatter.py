@@ -2,7 +2,7 @@ import logging
 
 import torch
 
-from ..ops.copy import copy_
+from ..ops.copy import copy
 
 
 def select_scatter(inp, src, dim, index):
@@ -22,9 +22,9 @@ def select_scatter(inp, src, dim, index):
         inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
     )
 
-    out.copy_(inp)
+    copy(inp, out0=out)
     indices = [slice(None)] * inp.ndim
     indices[dim] = index
-    copy_(src, out0=out[indices])
+    copy(src, out0=out[indices])
 
     return out

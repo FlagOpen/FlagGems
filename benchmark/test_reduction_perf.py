@@ -19,20 +19,25 @@ class UnaryReductionBenchmark(Benchmark):
     Base class for benchmarking reduction operations.
     """
 
+    def set_more_metrics(self):
+        return ["gbps"]
+
     def set_more_shapes(self):
         more_shapes_1d = [
-            # (4,),
-            # (1024,),
-            # (1024 * 1024 * 1024,),
+            (1025 * 1024,),
+            (1024 * 1024 * 1024,),
         ]
         more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
-        # more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
-        return more_shapes_1d + more_shapes_2d  # + more_shapes_3d
+        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = generate_tensor_input(shape, cur_dtype, self.device)
-            yield inp, 1
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
 
 
 forward_operations = [

@@ -3,7 +3,7 @@ import logging
 import torch
 import triton
 
-from ..ops.copy import copy_
+from ..ops.copy import copy
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
@@ -29,12 +29,11 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
     )
 
     ndim = inp.ndim
-    copy_.instantiate(ndim)
-    copy_(inp, out0=out)
+    copy(inp, out0=out)
 
     indices = [slice(None)] * ndim
     indices[dim] = slice(start, end, step)
     out_ = out[indices]
-    copy_(src, out0=out_)
+    copy(src, out0=out_)
 
     return out

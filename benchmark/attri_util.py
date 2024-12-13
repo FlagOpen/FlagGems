@@ -172,30 +172,25 @@ class BenchmarkResult:
     result: List[BenchmarkMetrics]
 
     def __str__(self) -> str:
+        header_title = (
+            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
+            f"level={self.level})\n"
+        )
+        col_names = [
+            f"{'Size':<10}",
+            f"{'Torch Latency (ms)':>20}",
+            f"{'Gems Latency (ms)':>20}",
+            f"{'Gems Speedup':>20}",
+        ]
         if self.result[0].tflops and self.result[0].tflops != 0.0:
-            header = (
-                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
-                f"level={self.level})\n"
-                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20} {'TFLOPS':>20}"
-                f"{'Size Detail':>20}\n"
-                f"{'-' * 120}\n"
-            )
-        elif self.result[0].gbps is not None:
-            header = (
-                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, "
-                f"level={self.level})\n"
-                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20} {'Torch GBPS ':>20} {'Gems GBPS':>20}"  # noqa
-                f"{'Size Detail':>20}\n"
-                f"{'-' * 150}\n"
-            )
-        else:
-            header = (
-                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, "
-                f"level={self.level})\n"
-                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"  # noqa
-                f"{'Size Detail':>20}\n"
-                f"{'-' * 90}\n"
-            )
+            col_names.append(f"{'TFLOPS':>20}")
+        if self.result[0].gbps is not None:
+            col_names.append(f"{'Torch GBPS ':>20}")
+            col_names.append(f"{'Gems GBPS ':>20}")
+        col_names.append(f"{'Size Detail':>20}\n")
+        header_col_names = " ".join(col_names)
+        header_break = "-" * len(header_col_names) + "\n"
+        header = header_title + header_col_names + header_break
 
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
@@ -222,36 +217,19 @@ class BenchmarkResult:
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
+        data_line = (
+            f"{status:<10}"
+            f"{latency_base_str:>20}"
+            f"{latency_str:>20}"
+            f"{speedup_str:>20}"
+        )
         if metrics.tflops and metrics.tflops != 0.0:
-            return (
-                f"{status:<10}"
-                f"{latency_base_str:>20}"
-                f"{latency_str:>20}"
-                f"{speedup_str:>20}"
-                f"{tflops_str:>20}"
-                f"{' ' * 10}"
-                f"{shape_detail_str}\n"
-            )
-        elif metrics.gbps is not None:
-            return (
-                f"{status:<10}"
-                f"{latency_base_str:>20}"
-                f"{latency_str:>20}"
-                f"{speedup_str:>20}"
-                f"{torch_gbps_str:>20}"
-                f"{gems_gbps_str:>20}"
-                f"{' ' * 10}"
-                f"{shape_detail_str}\n"
-            )
-        else:
-            return (
-                f"{status:<10}"
-                f"{latency_base_str:>20}"
-                f"{latency_str:>20}"
-                f"{speedup_str:>20}"
-                f"{' ' * 10}"
-                f"{shape_detail_str}\n"
-            )
+            data_line += f"{tflops_str:>20}"
+        if metrics.gbps is not None:
+            data_line += f"{torch_gbps_str:>20}{gems_gbps_str:>20}"
+        data_line += " " * 10
+        data_line += f"{shape_detail_str}\n"
+        return data_line
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
         first_shape = (
