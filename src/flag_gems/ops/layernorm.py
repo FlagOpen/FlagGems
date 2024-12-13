@@ -5,7 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 from ..utils.type_utils import get_accumulator_dtype
 
 
@@ -17,7 +20,7 @@ def prev_multiple_of(a, b):
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("layer_norm_persistent"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -35,7 +38,7 @@ def layer_norm_persistent_kernel(
 ):
     # using 1d tile makes code clean
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
 
     n_offsets = tl.arange(0, TILE_N)
     mask = n_offsets < N
@@ -60,7 +63,7 @@ def layer_norm_persistent_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=w) for w in [4, 8, 16]],
+    configs=runtime.get_triton_config("layer_norm_persistent"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -78,7 +81,7 @@ def layer_norm_persistent_kernel_multiline(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     m_offsets = pid * TILE_M + tl.arange(0, TILE_M)
     m_mask = m_offsets < M
 
@@ -108,11 +111,7 @@ def layer_norm_persistent_kernel_multiline(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": tile_n}, num_warps=w)
-        for tile_n in [1024, 2048, 4096, 8192]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("layer_norm_loop"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])
@@ -129,7 +128,7 @@ def layer_norm_loop_kernel(
     TILE_N: tl.constexpr,
 ):
     # Map the program id to the row of X and Y it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
 
     # Compute mean
     m = tl.zeros((TILE_N,), dtype=tl.float32)  # mean
@@ -197,11 +196,7 @@ def layer_norm_loop_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": 2048}, num_warps=w)
-        for m in [1, 2, 4, 8]
-        for w in [4, 8, 16]
-    ],
+    configs=runtime.get_triton_config("layer_norm_backward"),
     key=["M", "N"],
 )
 @triton.jit
@@ -217,7 +212,7 @@ def layer_norm_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
+    pid = tle.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -263,11 +258,7 @@ def layer_norm_backward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_ROW_SIZE": 2048, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for n in [1, 2, 4, 8]
-        for w in [4, 8]
-    ],
+    configs=runtime.get_triton_config("weight_bias_backward"),
     key=["N"],
 )
 @triton.jit
@@ -283,7 +274,7 @@ def weight_bias_backward_kernel(
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
+    pid = tle.program_id(0) * BLOCK_COL_SIZE + tl.arange(0, BLOCK_COL_SIZE)[None, :]
     col_mask = pid < N
     dY += pid
     X += pid
@@ -329,7 +320,7 @@ class LayerNorm(torch.autograd.Function):
         mean = torch.empty(M, dtype=acc_type, device=x.device)
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             if N <= 128:
                 TILE_N = triton.next_power_of_2(N)
                 TILE_M = triton.cdiv(1024, TILE_N)
@@ -388,7 +379,7 @@ class LayerNorm(torch.autograd.Function):
         M = ctx.M
         N = ctx.N
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
             layer_norm_backward_kernel[grid](

@@ -55,9 +55,11 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
+    code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils.libentry import libentry")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code
@@ -169,7 +171,7 @@ def generate_destination_passing_repeat_wrapper(
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device.index):")
+        code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)
@@ -275,11 +277,11 @@ def generate_repeat_kernel(
     with code.indent():
         # get pid
         code.writeline("# task id & masking")
-        pid_stmt = "pid = tl.program_id(0)"
+        pid_stmt = "pid = tle.program_id(0)"
         code.writeline(pid_stmt)
         function_ns.create_name("pid")
 
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         function_ns.create_name("num_ctas")
 
         # get tid (a.k.a task id)

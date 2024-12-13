@@ -4,11 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 MAX_TILE_K = 8192
-NUM_SMS = torch.cuda.get_device_properties(
-    torch.cuda.current_device()
+NUM_SMS = torch_device_fn.get_device_properties(
+    torch_device_fn.current_device()
 ).multi_processor_count
 
 
@@ -43,6 +46,7 @@ def heur_num_warps_non_inner(args):
         return 16
 
 
+@libentry()
 @triton.heuristics(
     {
         "TILE_K": heur_tile_k,
@@ -62,8 +66,8 @@ def softmax_kernel_non_inner(
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_k = tl.program_id(1)
-    pid_m = tl.program_id(0)
+    pid_k = tle.program_id(1)
+    pid_m = tle.program_id(0)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
 
@@ -90,8 +94,8 @@ def softmax_kernel_non_inner(
             mask = (n_offsets[:, None] < N) & (k_offsets < K)
             inp = tl.load(input_ptr + offsets, mask=mask, other=-float("inf"))
             m_new = tl.maximum(m, inp)
-            alpha = tl.exp(m - m_new)
-            z = z * alpha + tl.exp(inp - m_new)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, 0)  # (TILE_K,)
@@ -138,6 +142,7 @@ def heur_num_warps_inner(args):
         return 16
 
 
+@libentry()
 @triton.heuristics(
     {
         "TILE_N": heur_tile_n_inner,
@@ -154,7 +159,7 @@ def softmax_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
+    pid_m = tle.program_id(0)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
         offset = pid_m * N + n_offsets
@@ -180,7 +185,9 @@ def softmax_kernel_inner(
             n_offsets = start_n + tl.arange(0, TILE_N)
             inp = tl.load(input_ptr + n_offsets)
             m_new = tl.maximum(m, inp)
-            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+            # it is possible that there are -inf's in the input
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
         # specialize the last iteration
         for start_n in range(previous_multiple, N, TILE_N):
@@ -188,7 +195,8 @@ def softmax_kernel_inner(
             mask = n_offsets < N
             inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("inf"))
             m_new = tl.maximum(m, inp)
-            z = z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+            all_neg_inf = m_new == float("-inf")
+            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
             m = m_new
 
         m_reduced = tl.max(m, 0)
@@ -222,14 +230,7 @@ def heur_tile_n_bwd_non_inner(args):
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_K": 32}),
-        triton.Config({"TILE_K": 64}),
-        triton.Config({"TILE_K": 128}),
-        triton.Config({"TILE_K": 256}),
-        triton.Config({"TILE_K": 512}),
-        triton.Config({"TILE_K": 1024}),
-    ],
+    configs=runtime.get_triton_config("softmax_non_inner"),
     key=[
         "M",
         "N",
@@ -254,8 +255,8 @@ def softmax_backward_kernel_non_inner(
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     offsets_k = pid_k * TILE_K + tl.arange(0, TILE_K)
 
     if ONE_TILE_PER_CTA:
@@ -298,14 +299,7 @@ def heru_tile_m(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"TILE_N": 32}),
-        triton.Config({"TILE_N": 64}),
-        triton.Config({"TILE_N": 128}),
-        triton.Config({"TILE_N": 256}),
-        triton.Config({"TILE_N": 512}),
-        triton.Config({"TILE_N": 1024}),
-    ],
+    configs=runtime.get_triton_config("softmax_inner"),
     key=["M", "N"],
 )
 @triton.heuristics(
@@ -325,7 +319,7 @@ def softmax_backward_kernel_inner(
     TILE_N: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
+    pid_m = tle.program_id(0)
     m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)
@@ -383,7 +377,7 @@ class Softmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N  # post_dim
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_kernel_non_inner[grid](
@@ -422,7 +416,7 @@ class Softmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch.cuda.device(in_grad.device):
+        with torch_device_fn.device(in_grad.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
                 softmax_backward_kernel_non_inner[grid](

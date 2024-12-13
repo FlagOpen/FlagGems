@@ -4,20 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
-
-
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    block_n = [1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
+from ..utils import triton_lang_extension as tle
 
 
 @triton.jit
@@ -32,7 +22,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("var_mean"), key=["M", "N"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
     X,
@@ -45,7 +35,7 @@ def var_mean_welford_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Var = Var + pid
     Mean = Mean + pid
@@ -88,7 +78,7 @@ def var_mean_kernel_1(
     BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_N + tl.arange(0, BLOCK_N)
 
     X = X + offset
@@ -163,7 +153,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         average = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
             var_mean_kernel_2[(1,)](
                 acc, average, count, var, mean, N, correction, BLOCK_NUM
@@ -181,7 +171,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
         grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 
     if not keepdim:

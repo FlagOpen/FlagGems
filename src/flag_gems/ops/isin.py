@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.utils.libentry import libentry
 
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 from .all import reduce_all
 from .any import reduce_any
 from .unique import _unique2
@@ -63,8 +65,8 @@ def isin_by_comparation_kernel(
     tiles_per_cta: int,
     invert: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -104,7 +106,7 @@ def isin_by_comparation(
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch.cuda.device(in0_ravel.device.index):
+    with torch_device_fn.device(in0_ravel.device.index):
         isin_by_comparation_kernel[grid](
             in0_ravel,
             in1_ravel,  # in
@@ -169,8 +171,8 @@ def isin_by_search_kernel(
     tiles_per_cta: int,
     invert: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -225,7 +227,7 @@ def isin_by_search(
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch.cuda.device(in0_ravel.device.index):
+    with torch_device_fn.device(in0_ravel.device.index):
         isin_by_search_kernel[grid](
             in0_ravel,
             in1_ravel,  # in
