@@ -6,6 +6,7 @@ import triton.language as tl
 from torch import Tensor
 
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 
@@ -41,8 +42,8 @@ def quantile_kernel(
     BLOCK_N: tl.constexpr,
     interpolation: tl.constexpr,
 ):
-    pid_Q = tl.program_id(0)
-    pid_N = tl.program_id(1)
+    pid_Q = tle.program_id(0)
+    pid_N = tle.program_id(1)
     ctype = inp.dtype.element_ty
 
     offsets_Q = pid_Q * BLOCK_Q + tl.arange(0, BLOCK_Q)
