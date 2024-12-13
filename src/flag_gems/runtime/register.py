@@ -1,19 +1,8 @@
-import torch
-
 from . import backend, commom_utils, error
 from .backend.device import DeviceDetector
 
-aten_lib = torch.library.Library("aten", "IMPL")
-
 
 class Register:
-    _instance = None
-
-    def __new__(cls, *args, **kargs):
-        if cls._instance is None:
-            cls._instance = super(Register, cls).__new__(cls)
-        return cls._instance
-
     def __init__(
         self,
         config,
@@ -21,27 +10,25 @@ class Register:
         lib=None,
         debug=True,
     ):
-        if not hasattr(self, "initialized"):
-            self.initialized = True
-            # lib is a instance of torch.library.Library
-            self.device = DeviceDetector()
-            self.vendor_list = list(commom_utils.vendors_map)
-            self.check_backend()
-            self.lib = lib
-            # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
-            self.reg_key = self.device.name.upper()
-            self.reg_bac_key = commom_utils.autograd_str + self.reg_key
-            self.debug = debug
-            self.forward_ops = []
-            self.backward_ops = []
-            self.vendor_extend_configs = self.get_vendor_extend_op()
-            self.vendor_unused_ops_list = self.get_vendor_unused_op()
-            self.unused_ops = user_unused_ops_list + self.vendor_unused_ops_list
-            self.config = config + self.vendor_extend_configs
-            self.config_filter()
-            self.for_each()
-            if debug:
-                self._set_info()
+        # lib is a instance of torch.library.Library
+        self.device = DeviceDetector()
+        self.vendor_list = list(commom_utils.vendors_map)
+        self.check_backend()
+        self.lib = lib
+        # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
+        self.reg_key = self.device.name.upper()
+        self.reg_bac_key = commom_utils.autograd_str + self.reg_key
+        self.debug = debug
+        self.forward_ops = []
+        self.backward_ops = []
+        self.vendor_extend_configs = self.get_vendor_extend_op()
+        self.vendor_unused_ops_list = self.get_vendor_unused_op()
+        self.unused_ops = user_unused_ops_list + self.vendor_unused_ops_list
+        self.config = config + self.vendor_extend_configs
+        self.config_filter()
+        self.for_each()
+        if debug:
+            self._set_info()
 
     def config_filter(self):
         self.config = [
