@@ -77,9 +77,7 @@ def min_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
-        local_min, local_argmin = tl.min(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
         # if return indices is not supported, call a tl.argmax in addition
         # local_argmin = tl.argmin(inp_vals, 1)
         update = local_min < min_values

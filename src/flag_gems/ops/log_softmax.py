@@ -10,22 +10,8 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def heur_num_warps(args):
-    if args["N"] <= 1024:
-        return 4
-    elif args["N"] <= 2048:
-        return 8
-    else:
-        return 16
-
-
 @libentry()
 @triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
-@triton.heuristics({"num_warps": heur_num_warps})
 @triton.jit
 def log_softmax_kernel(
     output_ptr,
@@ -70,7 +56,6 @@ def log_softmax_kernel(
 
 @libentry()
 @triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
-@triton.heuristics({"num_warps": heur_num_warps})
 @triton.jit
 def log_softmax_backward_kernel(
     out_ptr,

@@ -77,9 +77,7 @@ def max_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-        max_value, max_index = tl.max(
-            inp_vals, axis=1, return_indices=True, return_indices_tie_break_left=True
-        )
+        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
         update_mask = max_value > result_value
         result_value = tl.where(update_mask, max_value, result_value)
         result_index = tl.where(update_mask, i + max_index, result_index)
