@@ -10,12 +10,13 @@ from .runtime.register import Register
 __version__ = "2.1"
 device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
+registar = Register
+current_work_registar = None
 
 
-def enable(lib=aten_lib, unused=None):
-    if unused is None:
-        unused = []
-    Register(
+def enable(lib=aten_lib, unused=None, registar=registar):
+    global current_work_registar
+    current_work_registar = registar(
         (
             ("abs", abs, Autograd.disable),
             ("add.Tensor", add, Autograd.disable),
@@ -201,20 +202,38 @@ def enable(lib=aten_lib, unused=None):
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
         ),
-        user_unused_ops_list=unused,
+        user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
     )
 
 
 class use_gems:
-    def __init__(self):
+    def __init__(self, unused=None):
         self.lib = torch.library.Library("aten", "IMPL")
+        self.unused = [] if unused is None else unused
+        self.registar = Register
 
     def __enter__(self):
-        enable(lib=self.lib)
+        enable(lib=self.lib, unused=self.unused, registar=self.registar)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        global current_work_registar
         del self.lib
+        del self.unused
+        del self.registar
+        del current_work_registar
+
+
+def only_forward_ops():
+    return current_work_registar.get_forward_ops()
+
+
+def has_backward_ops():
+    return current_work_registar.get_backward_ops()
+
+
+def all_ops():
+    return current_work_registar.get_all_ops()
 
 
 __all__ = [

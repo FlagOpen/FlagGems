@@ -7,31 +7,46 @@ aten_lib = torch.library.Library("aten", "IMPL")
 
 
 class Register:
+    _instance = None
+
+    def __new__(cls, *args, **kargs):
+        if cls._instance is None:
+            cls._instance = super(Register, cls).__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         config,
         user_unused_ops_list=None,
         lib=None,
-        debug=False,
+        debug=True,
     ):
-        # lib is a instance of torch.library.Library
-        self.lib = lib
-        self.device = DeviceDetector()
-        # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
-        self.reg_key = self.device.name.upper()
-        self.reg_bac_key = commom_utils.autograd_str + self.reg_key
-        self.vendor_list = list(commom_utils.vendors_map)
-        self.debug = debug
-        self.forward_ops = []
-        self.backward_ops = []
-        self.config = config
-        self.vendor_extend_configs = self.get_vendor_extend_op()
-        self.vendor_unused_ops_list = self.get_vendor_unused_op()
-        self.unused_ops = user_unused_ops_list + self.vendor_unused_ops_list
-        self.check_backend()
-        self.for_each(config)
-        if debug:
-            self._set_info(config + self.vendor_extend_configs.values())
+        if not hasattr(self, "initialized"):
+            self.initialized = True
+            # lib is a instance of torch.library.Library
+            self.device = DeviceDetector()
+            self.vendor_list = list(commom_utils.vendors_map)
+            self.check_backend()
+            self.lib = lib
+            # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
+            self.reg_key = self.device.name.upper()
+            self.reg_bac_key = commom_utils.autograd_str + self.reg_key
+            self.debug = debug
+            self.forward_ops = []
+            self.backward_ops = []
+            self.vendor_extend_configs = self.get_vendor_extend_op()
+            self.vendor_unused_ops_list = self.get_vendor_unused_op()
+            self.unused_ops = user_unused_ops_list + self.vendor_unused_ops_list
+            self.config = config + self.vendor_extend_configs
+            self.config_filter()
+            self.for_each()
+            if debug:
+                self._set_info()
+
+    def config_filter(self):
+        self.config = [
+            item for item in self.config if item[1].__name__ not in self.unused_ops
+        ]
 
     def check_backend(self):
         is_support = self.device.vendor_name in self.vendor_list
@@ -60,20 +75,25 @@ class Register:
         )
         self.lib.impl(key, fn, device_key)
 
-    def for_each(self, config):
+    def for_each(self):
         try:
-            for key, func, has_backward in config:
+            for key, func, has_backward in self.config:
                 if key not in self.unused_ops:
                     self.register_impl(key, func, has_backward)
         except Exception as e:
             error.register_error(e)
 
-    def _set_info(self, config):
-        for _, fn, hasbackward in config:
+    def _set_info(self):
+        for _, fn, hasbackward in self.config:
             fn_name = fn.__name__
             self.backward_ops.append(
                 fn_name
-            ) if hasbackward else self.forward_ops.append(fn_name)
+            ) if hasbackward is commom_utils.Autograd.enable else self.forward_ops.append(
+                fn_name
+            )
+
+    def get_all_ops(self):
+        return self.forward_ops + self.backward_ops if self.debug else []
 
     def get_forward_ops(self):
         return self.forward_ops if self.debug else []
