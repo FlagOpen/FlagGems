@@ -198,6 +198,7 @@ def batch_norm_forward_kernel(
         )
 
 
+@libentry()
 @triton.autotune(
     configs=runtime.get_triton_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
