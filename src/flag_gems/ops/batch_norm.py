@@ -353,11 +353,6 @@ class BatchNorm(torch.autograd.Function):
         logging.debug("GEMS BATCHNORM FORWARD")
 
         input_3d = make_3d_for_bn(input)
-        transpose = False
-
-        if input_3d.shape[-1] > 1:
-            input_3d = input_3d.transpose(0, -1)
-            transpose = True
 
         affine = weight is not None and bias is not None
         requires_grad = (
@@ -402,9 +397,6 @@ class BatchNorm(torch.autograd.Function):
             is_train=training,
         )
 
-        if transpose:
-            output = output.transpose(0, -1)
-
         ctx.affine = affine
         if requires_grad:
             ctx.save_for_backward(input, mean, inv_std, weight)
@@ -417,12 +409,6 @@ class BatchNorm(torch.autograd.Function):
         (input, mean, inv_std, weight) = ctx.saved_tensors
         input_3d = make_3d_for_bn(input)
         output_grad_3d = make_3d_for_bn(output_grad)
-
-        transpose = False
-        if input_3d.shape[-1] > 1:
-            input_3d = input_3d.transpose(0, -1)
-            output_grad_3d = output_grad_3d.transpose(0, -1)
-            transpose = True
 
         batch_dim, feat_dim, spatial_dim = input_3d.shape
         input_grad = torch.empty_like(input_3d)
@@ -452,9 +438,6 @@ class BatchNorm(torch.autograd.Function):
             *input_grad.stride(),
             affine=ctx.affine,
         )
-
-        if transpose:
-            input_grad = input_grad.transpose(0, -1)
 
         # Pads output with None because a gradient is necessary for
         # all input arguments.
