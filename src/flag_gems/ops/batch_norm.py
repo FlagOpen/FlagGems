@@ -1,5 +1,4 @@
-# import logging
-
+import logging
 from typing import Dict
 
 import torch
@@ -7,6 +6,8 @@ import triton
 import triton.language as tl
 from torch import Tensor
 from triton import next_power_of_2
+
+from ..utils import libentry
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -48,6 +49,7 @@ def BLOCK_SIZE_SPATIAL_heuristic(args: Dict) -> int:
     return min(BLOCK_SIZE_SPATIAL, max(1, 2**14 // BLOCK_SIZE_BATCH))
 
 
+@libentry()
 @triton.autotune(
     configs=[triton.Config({}, num_warps=2**i) for i in range(6)],
     key=["batch_dim", "spatial_dim"],
@@ -233,11 +235,8 @@ def batch_norm_backward_kernel(
     mean = tl.load(feat_pid + mean_pointer).to(tl.float32)
     inv_std = tl.load(feat_pid + inv_std_pointer).to(tl.float32)
 
-    # term1 = 0.0
-    # term2 = 0.0
-
     term1 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32)
-    term2 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_BATCH], dtype=tl.float32)
+    term2 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32)
 
     for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
         spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
@@ -267,13 +266,11 @@ def batch_norm_backward_kernel(
             curr_output_grad_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
         ).to(tl.float32)
 
-        # term1 += tl.sum(curr_pre_lin * curr_output_grad)
-        # term2 += tl.sum(curr_output_grad)
         term1 += curr_pre_lin * curr_output_grad
         term2 += curr_output_grad
 
-    term1 = tl.sum(term1, axis=1)[:, None]
-    term1 = tl.sum(term2, axis=1)[:, None]
+    term1 = tl.sum(term1)
+    term2 = tl.sum(term2)
 
     if affine:
         weight = tl.load(feat_pid + weight_pointer)
@@ -284,8 +281,6 @@ def batch_norm_backward_kernel(
         weight = 1.0
 
     count = batch_dim * spatial_dim
-    term1 *= weight / count
-    term2 *= weight / count
 
     for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
         spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
@@ -319,8 +314,10 @@ def batch_norm_backward_kernel(
         curr_output_grad = tl.load(
             curr_output_grad_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
         ).to(tl.float32)
-        curr_input_grad = inv_std * (
-            weight * curr_output_grad - (term1 * curr_pre_lin + term2)
+        curr_input_grad = (
+            inv_std
+            * weight
+            * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
         )
         tl.store(
             curr_input_grad_pointer,
@@ -351,9 +348,7 @@ class BatchNorm(torch.autograd.Function):
         eps=1e-05,
         cudnn_enable=True,
     ):
-        print("GEMS BATCHNORM FORWARD")
-
-        assert training == input.requires_grad, "input tensor...."
+        logging.debug("GEMS BATCHNORM FORWARD")
 
         input_3d = make_3d_for_bn(input)
         transpose = False
@@ -415,7 +410,7 @@ class BatchNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, output_grad):
-        print("GEMS BATCHNORM BACKWARD")
+        logging.debug("GEMS BATCHNORM BACKWARD")
         (input, mean, inv_std, weight) = ctx.saved_tensors
         input_3d = make_3d_for_bn(input)
         output_grad_3d = make_3d_for_bn(output_grad)
