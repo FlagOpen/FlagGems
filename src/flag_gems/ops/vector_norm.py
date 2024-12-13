@@ -260,6 +260,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 )
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
+    ord = ord.to(tl.float32)
     pid = tle.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Out = Out + pid
@@ -281,6 +282,7 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_1(X, Mid, ord, M, BLOCK_SIZE: tl.constexpr):
+    ord = ord.to(tl.float32)
     pid = tle.program_id(0).to(tl.int64)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     X = X + offset
