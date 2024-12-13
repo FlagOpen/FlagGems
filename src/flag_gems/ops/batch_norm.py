@@ -51,6 +51,10 @@ def BLOCK_SIZE_SPATIAL_heuristic(args: Dict) -> int:
     return min(BLOCK_SIZE_SPATIAL, max(1, 2**14 // BLOCK_SIZE_BATCH))
 
 
+# NOTE: This part of the kernel code is copied and modified
+# from the https://github.com/BobMcDear/attorch codebase.
+
+
 @libentry()
 @triton.autotune(
     configs=runtime.get_triton_config("batch_norm"),
