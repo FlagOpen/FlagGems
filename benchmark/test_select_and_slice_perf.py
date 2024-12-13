@@ -196,7 +196,9 @@ def test_perf_index_select_backward():
         index_size = inp.size(dim)
         from math import floor
 
-        index = torch.randint(0, index_size, [floor(index_size * threshold)], device=device)
+        index = torch.randint(
+            0, index_size, [floor(index_size * threshold)], device=device
+        )
         yield inp, dim, index
 
     bench = TensorSelectBenchmark(
