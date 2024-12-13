@@ -10,7 +10,6 @@ import yaml
 
 import flag_gems
 from flag_gems.runtime import torch_backend_device, torch_device_fn
-from flag_gems.utils import shape_utils
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -47,6 +46,7 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
+        **kwargs,
     ):
         self.op_name = op_name
         if is_backward:
@@ -68,6 +68,11 @@ class Benchmark:
         # can be influenced by user input.
         self.to_bench_dtypes = self.dtypes
         self.to_bench_metrics = self.metrics
+
+        # additional properties
+        for k in kwargs:
+            if hasattr(self, k):
+                setattr(self, k, kwargs[k])
 
     def set_metrics(self, user_desired_metrics: Optional[List[str]]):
         # Validate user-specified metrics
@@ -225,11 +230,11 @@ class Benchmark:
         # average latency in ms
         return latency
 
-    def get_gbps(self, x, out, t):
-        import numpy as np
-
-        io_amount = np.sum([shape_utils.size_in_bytes(item) for item in [x, out]])
-        return io_amount * 1e-9 / (t * 1e-3)
+    def get_gbps(self, args, latency=None):
+        # """Return the dynamic input iterator for each Operator."""
+        raise NotImplementedError(
+            "Each Benchmark must implement its own input iterator."
+        )
 
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
@@ -316,9 +321,9 @@ class Benchmark:
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
                         metric.gbps_base = self.get_gbps(
-                            args[0], args[0], metric.latency_base
+                            args, latency=metric.latency_base
                         )
-                        metric.gbps = self.get_gbps(args[0], args[0], metric.latency)
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
                     if "tflops" in self.to_bench_metrics:
                         metric.tflops = (
                             self.get_tflops(self.torch_op, *args, **kwargs)

@@ -4,6 +4,8 @@ from typing import Generator
 import pytest
 import torch
 
+from flag_gems.utils import shape_utils
+
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
@@ -21,6 +23,11 @@ class UnaryReductionBenchmark(Benchmark):
 
     def set_more_metrics(self):
         return ["gbps"]
+
+    def get_gbps(self, args, latency):
+        inp = args[0]
+        io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, inp]])
+        return io_amount * 1e-9 / (latency * 1e-3)
 
     def set_more_shapes(self):
         more_shapes_1d = [
