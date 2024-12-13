@@ -7,7 +7,9 @@ import triton.language as tl
 from torch import Tensor
 from triton import next_power_of_2
 
+from .. import runtime
 from ..utils import libentry
+from ..utils.type_utils import get_accumulator_dtype
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -51,7 +53,7 @@ def BLOCK_SIZE_SPATIAL_heuristic(args: Dict) -> int:
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=2**i) for i in range(6)],
+    configs=runtime.get_triton_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
     restore_value=["running_mean_pointer", "running_var_pointer"],
 )
@@ -193,7 +195,7 @@ def batch_norm_forward_kernel(
 
 
 @triton.autotune(
-    configs=[triton.Config({}, num_warps=2**i) for i in range(6)],
+    configs=runtime.get_triton_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
 )
 @triton.heuristics(
@@ -368,8 +370,9 @@ class BatchNorm(torch.autograd.Function):
         output = torch.empty_like(input_3d)
 
         if requires_grad:
-            mean = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
-            inv_std = torch.empty(feat_dim, device=input.device, dtype=torch.float32)
+            acc_type = get_accumulator_dtype(input.dtype)
+            mean = torch.empty(feat_dim, device=input.device, dtype=acc_type)
+            inv_std = torch.empty(feat_dim, device=input.device, dtype=acc_type)
 
         else:
             mean = inv_std = None
