@@ -96,6 +96,8 @@ def any(inp):
 
     with torch.cuda.device(inp.device):
         any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+        if mid_size == 1:
+            return mid.reshape([])
         any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
     return out
