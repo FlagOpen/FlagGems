@@ -32,11 +32,8 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    BLOCK_SIZE = 1024
-    grid = (triton.cdiv(N, BLOCK_SIZE),)
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
     with torch.cuda.device(device):
-        if N <= 64 * 64:
-            ones_kernel[grid](out, N, BLOCK_SIZE)
-        else:
-            ones_kernel[grid](out, N, BLOCK_SIZE=8192)
+        ones_kernel[grid_fn](out, N, BLOCK_SIZE=block_size)
     return out
