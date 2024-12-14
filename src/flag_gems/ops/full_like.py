@@ -24,22 +24,8 @@ def full_like(
     fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
     with torch.cuda.device(x.device):
-        if N <= 64 * 64:
-            full_kernel[grid_fn](
-                out,
-                N,
-                fill_value,
-                FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-                BLOCK_SIZE=1024,
-            )
-        else:
-            full_kernel[grid_fn](
-                out,
-                N,
-                fill_value,
-                FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-                BLOCK_SIZE=8192,
-            )
+        full_kernel[grid_fn](out, N, fill_value, BLOCK_SIZE=block_size)
     return out
