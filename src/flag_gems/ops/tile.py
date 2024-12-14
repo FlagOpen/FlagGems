@@ -145,9 +145,9 @@ def generate_destination_passing_tile_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
-            code.writeline("num_warps = 4")
-            code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
+            code.writeline("num_ctas = 12")
+            code.writeline("num_warps = 1")
+            code.writeline("tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_ctas))")
             code.writeline(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
             )
