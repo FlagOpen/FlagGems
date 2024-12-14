@@ -102,6 +102,8 @@ def min(inp):
 
     with torch.cuda.device(inp.device):
         min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        if mid_size == 1:
+            return mid.reshape([])
         min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 

@@ -58,6 +58,8 @@ def prod(inp, *, dtype=None):
 
     with torch.cuda.device(inp.device):
         prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
+        if mid_size == 1:
+            return mid.reshape([])
         prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
 

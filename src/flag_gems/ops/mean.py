@@ -53,6 +53,8 @@ def mean(inp, *, dtype=None):
 
     with torch.cuda.device(inp.device):
         mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        if mid_size == 1:
+            return (mid / M).reshape([])
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
 
