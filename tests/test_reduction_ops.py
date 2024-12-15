@@ -95,14 +95,16 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-# TODO: There are some bugs in argmin with large size.
 @pytest.mark.argmin
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_argmin(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-1024, 1024, size=shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.argmin(ref_inp, dim=dim, keepdim=keepdim)
