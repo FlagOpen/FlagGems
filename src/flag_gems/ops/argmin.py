@@ -5,9 +5,18 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
-from ..utils.shape_utils import can_use_int32_index
+from ..utils import triton_lang_extension as tle
 
+torch_dtype_to_tl_dtype_and_max_value = {
+    torch.int16 : (tl.int16, torch.iinfo(torch.int16).max),
+    torch.int32 : (tl.int32, torch.iinfo(torch.int32).max),
+    torch.float16 : (tl.float16, torch.finfo(torch.float16).max),
+    torch.float32 : (tl.float32, torch.finfo(torch.float32).max),
+    torch.bfloat16 : (tl.float32, torch.finfo(torch.float32).max),
+}
 
 @libentry()
 @triton.jit
@@ -17,11 +26,8 @@ def argmin_kernel_1(
     mid_index,
     M,
     BLOCK_SIZE: tl.constexpr,
-    INT64_INDEX: tl.constexpr = False,
 ):
-    pid = tl.program_id(0)
-    if INT64_INDEX:
-        pid = pid.to(tl.int64)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -53,11 +59,7 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
-    ],
+    configs=runtime.get_triton_config("argmin"),
     key=[
         "M",
         "N",
@@ -75,26 +77,26 @@ def argmin_kernel(
     M,
     N,
     K,
+    tl_dtype: tl.constexpr,
+    dtype_max_value: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    INT64_INDEX: tl.constexpr = False,
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    if INT64_INDEX:
-        pid_m = pid_m.to(tl.int64)
-        pid_k = pid_k.to(tl.int64)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
+    # min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
+    min_values = tl.full([BLOCK_M], dtype=tl_dtype, value=dtype_max_value)
     argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        # inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=dtype_max_value)
         local_min, local_argmin = tl.min(
             inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
         )
@@ -119,7 +121,6 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
-        use_int64_index = not can_use_int32_index(inp)
 
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
@@ -131,14 +132,13 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             argmin_kernel_1[(mid_size, 1, 1)](
                 inp,
                 mid_value,
                 mid_index,
                 M,
                 block_size,
-                INT64_INDEX=use_int64_index,
             )
             argmin_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
@@ -151,7 +151,6 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         K = inp.numel() // M // N
 
         inp = inp.contiguous()
-        use_int64_index = not can_use_int32_index(inp)
 
         shape_list = list(shape)
         shape_list[dim] = 1
@@ -159,18 +158,21 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 
+        tl_dtype, dtype_max_value = torch_dtype_to_tl_dtype_and_max_value[inp.dtype]
+
         grid = lambda meta: (
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             argmin_kernel[grid](
                 inp,
                 out_index,
                 M,
                 N,
                 K,
-                INT64_INDEX=use_int64_index,
+                tl_dtype,
+                dtype_max_value,
             )
 
         return out_index
