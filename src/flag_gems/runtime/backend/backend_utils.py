@@ -14,8 +14,6 @@ class VendorInfoBase:
 
 def get_tune_config(vendor_name, file_mode="r"):
     try:
-        if not vendor_name.isalnum():
-            raise ValueError("Invalid vendor name")
         vendor_name = "_" + vendor_name
         script_path = os.path.abspath(__file__)
         base_dir = os.path.dirname(script_path)
