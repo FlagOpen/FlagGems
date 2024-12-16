@@ -50,7 +50,6 @@ def pretune_mm(max_tokens, shapes):
     for dtype in DTYPES:
         for M in range(1, max_tokens + 1):
             for N, K in shapes:
-                print(f"matmul pretuning {dtype} {M} {N} {K}")
                 tensor_a = torch.randn([M, K], dtype=dtype, device=device)
                 tensor_b = torch.randn([K, N], dtype=dtype, device=device)
                 flag_gems.mm(tensor_a, tensor_b)
@@ -60,7 +59,6 @@ def pretune_addmm(max_tokens, shapes):
     for dtype in DTYPES:
         for M in range(1, max_tokens + 1):
             for N, K in shapes:
-                print(f"addmm pretuning {dtype} {M} {N} {K}")
                 tensor_a = torch.randn([M, K], dtype=dtype, device=device)
                 tensor_b = torch.randn([K, N], dtype=dtype, device=device)
                 bias = torch.randn([M, N], dtype=dtype, device=device)
@@ -106,5 +104,4 @@ if __name__ == "__main__":
         shapes = model.get(op)
         if not shapes:
             continue
-        print(f"pretune {op} for {args.model}")
         func(max_tokens, shapes)
