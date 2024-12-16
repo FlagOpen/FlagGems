@@ -151,20 +151,3 @@ def mm(a, b):
             GROUP_M=8,
         )
     return c
-
-
-def mm_pretune():
-    data_types = [
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-    ]
-    pre_shapes = [
-        [64, 64, 64],
-    ]
-
-    for dtype in data_types:
-        for M, N, K in pre_shapes:
-            tensor_a = torch.randn([M, K], dtype=dtype, device="cuda")
-            tensor_b = torch.randn([K, N], dtype=dtype, device="cuda")
-            mm(tensor_a, tensor_b)

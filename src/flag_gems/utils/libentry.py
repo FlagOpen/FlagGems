@@ -7,9 +7,8 @@ from typing import Dict
 import triton
 
 from .. import runtime
-from .code_cache import config_cache_dir
-from .. import runtime
 from ..runtime import torch_device_fn
+from .code_cache import config_cache_dir
 
 DEVICE_COUNT = runtime.device.device_count
 major_version = eval(triton.__version__.split(".")[0])
@@ -95,8 +94,13 @@ class LibTuner(triton.runtime.Autotuner):
             self.cache[tuple(key)] = config
 
         connect.close()
+        self.volumn = len(self.cache)
+        print("BEFORE: ", self.volumn)
 
     def store(self):
+        print("AFTER: ", self.volumn)
+        if len(self.cache) == self.volumn:
+            return
         connect = sqlite3.connect(self.cache_path)
         c = connect.cursor()
         c.execute(
