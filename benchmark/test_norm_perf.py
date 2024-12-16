@@ -78,13 +78,18 @@ def batchnorm_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     weight = torch.randn((C,), dtype=dtype, device=device)
     bias = torch.randn((C,), dtype=dtype, device=device)
-    running_mean = torch.randn((C,), dtype=dtype, device=device)
-    running_var = torch.randn((C,), dtype=dtype, device=device)
+    running_mean = None
+    running_var = None
     training = True
     momentum = 0.1
     eps = 1e-5
     cudnn_enabled = True
     yield inp, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled
+
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        running_mean = torch.randn((C,), dtype=dtype, device=device)
+        running_var = torch.randn((C,), dtype=dtype, device=device)
+        yield inp, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled
 
 
 @pytest.mark.parametrize(
