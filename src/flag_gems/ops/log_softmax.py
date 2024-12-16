@@ -10,31 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(256, args["N"]))
-
-
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def heur_num_warps(args):
-    if args["N"] <= 1024:
-        return 4
-    elif args["N"] <= 2048:
-        return 8
-    else:
-        return 16
-
-
 @libentry()
-@triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
-)
 @triton.jit
 def log_softmax_kernel(
     output_ptr,
@@ -42,8 +18,8 @@ def log_softmax_kernel(
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK_M: tl.constexpr = 8,
+    BLOCK_N: tl.constexpr = 256,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
@@ -145,6 +121,7 @@ class LogSoftmax(torch.autograd.Function):
                 M,
                 N,
                 K,
+                num_warps=8,
             )
         ctx.save_for_backward(out)
         ctx.dim = dim
