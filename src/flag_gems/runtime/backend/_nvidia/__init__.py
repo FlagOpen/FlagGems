@@ -1,4 +1,4 @@
-from backend_utils import VendorInfoBase  # noqa: E402
+from backend_utils import Autograd, VendorInfoBase  # noqa: E402
 
 vendor_info = VendorInfoBase(
     vendor_name="nvidia", device_name="cuda", device_query_cmd="nvidia-smi"
