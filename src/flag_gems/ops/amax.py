@@ -5,6 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
@@ -18,6 +20,7 @@ def amax_kernel_1(
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
+
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -38,16 +41,8 @@ def amax_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, amax_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("amax"), key=["M", "N"])
 @triton.jit
 def amax_kernel(
     inp,
@@ -92,7 +87,7 @@ def amax(inp, dim=None, keepdim=False):
             for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             amax_kernel_1[(mid_size, 1)](
                 inp,
                 mid,
@@ -121,7 +116,7 @@ def amax(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=dtype, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             amax_kernel[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)

@@ -5,51 +5,16 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen_first():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen_last():
-    block_m = [512, 1024, 2048]
-    block_n = [1, 2, 4, 8, 32]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [256, 512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen_last(), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_last(
     output,
@@ -89,7 +54,9 @@ def weight_norm_kernel_last(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_first(), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_kernel_first(
     output,
@@ -129,7 +96,9 @@ def weight_norm_kernel_first(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_last(), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_last(
     v_grad,
@@ -179,7 +148,9 @@ def weight_norm_bwd_kernel_last(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_first(), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
+)
 @triton.jit(do_not_specialize=["eps"])
 def weight_norm_bwd_kernel_first(
     v_grad,
@@ -229,7 +200,10 @@ def weight_norm_bwd_kernel_first(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel"),
+    key=["v_shape0", "v_shape1", "v_shape2"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def norm_kernel(
     output,
@@ -265,7 +239,10 @@ def norm_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["v_shape0", "v_shape1", "v_shape2"])
+@triton.autotune(
+    configs=runtime.get_triton_config("weight_norm_kernel"),
+    key=["v_shape0", "v_shape1", "v_shape2"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def norm_bwd_kernel(
     v_grad,
@@ -314,7 +291,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = v.shape[0]
             N = math.prod(v.shape[1:])
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_kernel_first[grid](
                     output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
                 )
@@ -322,7 +299,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = math.prod(v.shape[:-1])
             N = v.shape[dim]
             grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_kernel_last[grid](
                     output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
                 )
@@ -344,7 +321,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = v.shape[0]
             N = math.prod(v.shape[1:])
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_bwd_kernel_first[grid](
                     v_grad,
                     g_grad,
@@ -360,7 +337,7 @@ class WeightNormInterface(torch.autograd.Function):
             M = math.prod(v.shape[:dim])
             N = v.shape[dim]
             grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-            with torch.cuda.device(v.device):
+            with torch_device_fn.device(v.device):
                 weight_norm_bwd_kernel_last[grid](
                     v_grad,
                     g_grad,
@@ -393,7 +370,7 @@ class Norm(torch.autograd.Function):
 
         grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
 
-        with torch.cuda.device(v.device):
+        with torch_device_fn.device(v.device):
             norm_kernel[grid](
                 output,
                 v,
@@ -414,7 +391,7 @@ class Norm(torch.autograd.Function):
         v_grad = torch.empty_like(v)
 
         grid = lambda META: (triton.cdiv(ctx.V_SHAPE[1], META["BLOCK_ROW_SIZE"]),)
-        with torch.cuda.device(v.device):
+        with torch_device_fn.device(v.device):
             norm_bwd_kernel[grid](
                 v_grad,
                 norm_grad,

@@ -4,30 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    warps = [1, 2, 4, 8, 16, 32]
-    configs = [
-        triton.Config({"M_BLOCK_SIZE": 1, "N_BLOCK_SIZE": 2048}, num_warps=w)
-        for w in warps
-    ]
-    return configs
-
-
-def cfggen_batch():
-    warps = [1, 2, 4, 8, 16, 32]
-    configs = [
-        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=w)
-        for w in warps
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("triu"), key=["M", "N"])
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -55,7 +39,10 @@ def triu_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+@triton.autotune(
+    configs=runtime.get_triton_config("triu_batch"),
+    key=["batch", "MN", "N", "diagonal"],
+)
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,
@@ -93,7 +80,7 @@ def triu(A, diagonal=0):
     out = torch.empty_like(A)
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     M, N = A.shape[-2:]
-    with torch.cuda.device(A.device):
+    with torch_device_fn.device(A.device):
         if len(A.shape) == 2:
             grid = lambda meta: (triton.cdiv(M, meta["M_BLOCK_SIZE"]),)
             triu_kernel[grid](A, out, M, N, diagonal)
