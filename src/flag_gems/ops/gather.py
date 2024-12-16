@@ -259,5 +259,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
+    logging.debug("GEMS GATHER BACKWARD")
     result = torch.zeros_like(self)
     return scatter(result, dim, index, grad, reduce="add")
