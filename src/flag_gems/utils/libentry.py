@@ -95,10 +95,8 @@ class LibTuner(triton.runtime.Autotuner):
 
         connect.close()
         self.volumn = len(self.cache)
-        print("BEFORE: ", self.volumn)
 
     def store(self):
-        print("AFTER: ", self.volumn)
         if len(self.cache) == self.volumn:
             return
         connect = sqlite3.connect(self.cache_path)
