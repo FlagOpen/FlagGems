@@ -523,13 +523,15 @@ def test_accuracy_batch_norm(shape, dtype, affine, require_grad):
     ref_running_mean = to_reference(running_mean, True)
     ref_running_var = to_reference(running_var, True)
 
+    training = require_grad
+
     ref_out = torch.nn.functional.batch_norm(
         ref_inp,
         ref_running_mean,
         ref_running_var,
         weight=ref_weight,
         bias=ref_bias,
-        training=True,
+        training=training,
         eps=eps,
     )
 
@@ -540,7 +542,7 @@ def test_accuracy_batch_norm(shape, dtype, affine, require_grad):
             running_var,
             weight=weight,
             bias=bias,
-            training=True,
+            training=training,
             eps=eps,
         )
 
