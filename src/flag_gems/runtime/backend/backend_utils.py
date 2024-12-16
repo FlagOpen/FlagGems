@@ -1,7 +1,17 @@
 import os
 from dataclasses import dataclass
+from enum import Enum
 
 import yaml
+
+
+class Autograd(Enum):
+    enable = True
+    disable = False
+
+    @classmethod
+    def get_optional_value(cls):
+        return [member.name for member in cls]
 
 
 # Metadata template,  Each vendor needs to specialize instances of this template
