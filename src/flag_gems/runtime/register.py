@@ -73,11 +73,10 @@ class Register:
     def _set_info(self):
         for _, fn, hasbackward in self.config:
             fn_name = fn.__name__
-            self.backward_ops.append(
-                fn_name
-            ) if hasbackward is commom_utils.Autograd.enable else self.forward_ops.append(
-                fn_name
-            )
+            if hasbackward is commom_utils.Autograd.enable:
+                self.backward_ops.append(fn_name)
+            else:
+                self.forward_ops.append(fn_name)
 
     def get_all_ops(self):
         return self.forward_ops + self.backward_ops if self.debug else []
