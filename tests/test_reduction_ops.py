@@ -756,8 +756,7 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
     ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
     weight = torch.randn(kernel, dtype=dtype, device="cuda", requires_grad=True)
-    a = weight
-    if bias == True:
+    if bias is True:
         bias = torch.randn(
             [weight.shape[0]], dtype=dtype, device="cuda", requires_grad=True
         )

@@ -436,7 +436,7 @@ class Conv2d(torch.autograd.Function):
             groups,
         )
 
-        if bias == None:
+        if bias is None:
             bias_pointer = torch.zeros(out_c, device=input.device, dtype=output_dtype)
         else:
             bias_pointer = bias
@@ -465,9 +465,6 @@ class Conv2d(torch.autograd.Function):
             dilation_width,
             groups=groups,
         )
-
-        # if bias is not None:
-        #     output += bias.view(1, -1, 1, 1)
 
         ctx.save_for_backward(weight, input, bias)
 
