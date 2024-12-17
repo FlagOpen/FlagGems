@@ -10,12 +10,13 @@ from .runtime.register import Register
 __version__ = "2.1"
 device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
+registrar = Register
+current_work_registrar = None
 
 
-def enable(lib=aten_lib, unused=None):
-    if unused is None:
-        unused = []
-    Register(
+def enable(lib=aten_lib, unused=None, registrar=registrar):
+    global current_work_registrar
+    current_work_registrar = registrar(
         (
             ("abs", abs, Autograd.disable),
             ("add.Tensor", add, Autograd.disable),
@@ -35,7 +36,9 @@ def enable(lib=aten_lib, unused=None):
             ("clamp.Tensor", clamp_tensor, Autograd.disable),
             ("cos", cos, Autograd.disable),
             ("pad", pad, Autograd.disable),
+            ("constant_pad_nd", constant_pad_nd, Autograd.disable),
             ("cumsum", cumsum, Autograd.disable),
+            ("cummin", cummin, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div.Scalar", true_divide, Autograd.disable),
             ("div.Tensor_mode", div_mode, Autograd.disable),
@@ -72,6 +75,7 @@ def enable(lib=aten_lib, unused=None):
             ("_weight_norm", weight_norm, Autograd.enable),
             ("gt.Tensor", gt, Autograd.disable),
             ("gt.Scalar", gt_scalar, Autograd.disable),
+            ("instance_norm", instance_norm, Autograd.enable),
             ("isfinite", isfinite, Autograd.disable),
             ("isin.Tensor_Tensor", isin, Autograd.disable),
             ("isin.Scalar_Tensor", isin, Autograd.disable),
@@ -121,6 +125,7 @@ def enable(lib=aten_lib, unused=None):
             ("silu", silu, Autograd.enable),
             ("sin", sin, Autograd.disable),
             ("softmax.int", softmax, Autograd.enable),
+            ("sort", sort, Autograd.disable),
             ("sub.Tensor", sub, Autograd.disable),
             ("tanh", tanh, Autograd.enable),
             ("triu", triu, Autograd.disable),
@@ -191,21 +196,36 @@ def enable(lib=aten_lib, unused=None):
             ("diag", diag, Autograd.disable),
             ("diag_embed", diag_embed, Autograd.disable),
             ("diagonal_backward", diagonal_backward, Autograd.disable),
+            ("count_nonzero", count_nonzero, Autograd.disable),
+            ("logical_or", logical_or, Autograd.disable),
+            ("logical_and", logical_and, Autograd.disable),
+            ("logical_xor", logical_xor, Autograd.disable),
+            ("logical_not", logical_not, Autograd.disable),
         ),
-        user_unused_ops_list=unused,
+        user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
     )
 
 
 class use_gems:
-    def __init__(self):
+    def __init__(self, unused=None):
         self.lib = torch.library.Library("aten", "IMPL")
+        self.unused = [] if unused is None else unused
+        self.registrar = Register
 
     def __enter__(self):
-        enable(lib=self.lib)
+        enable(lib=self.lib, unused=self.unused, registrar=self.registrar)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        global current_work_registrar
         del self.lib
+        del self.unused
+        del self.registrar
+        del current_work_registrar
+
+
+def all_ops():
+    return current_work_registrar.get_all_ops()
 
 
 __all__ = [

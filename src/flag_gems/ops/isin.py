@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils.libentry import libentry
 
+from ..runtime import torch_device_fn
 from ..utils import triton_lang_extension as tle
 from .all import reduce_all
 from .any import reduce_any
@@ -107,7 +108,7 @@ def isin_by_comparation(
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch.cuda.device(in0_ravel.device.index):
+    with torch_device_fn.device(in0_ravel.device.index):
         isin_by_comparation_kernel[grid](
             in0_ravel,
             in1_ravel,  # in
@@ -230,7 +231,7 @@ def isin_by_search(
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch.cuda.device(in0_ravel.device.index):
+    with torch_device_fn.device(in0_ravel.device.index):
         isin_by_search_kernel[grid](
             in0_ravel,
             in1_ravel,  # in
