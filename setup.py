@@ -47,7 +47,6 @@ def detect_installed_package_from_group(
     for name in names:
         if _is_package_installed(name):
             installed.append(name)
-    print(f"INSTALLED_TRION_PACKAGE_NAME: {installed}")
     if len(installed) > 1:
         raise PackageConflictError(
             f"There are more than 1 packages ({installed}) installed in the mutually "
@@ -85,8 +84,7 @@ setup(
     ],
     install_requires=[
         f"{triton_package_name}>=2.2.0",
-        "torch>=2.2.0",  # To use custom op
-        "transformers>=4.40.2",
+        "torch>=2.2.0",
         "PyYAML",
     ],
     extras_require={
@@ -94,7 +92,10 @@ setup(
             "pytest>=7.1.0",
             "numpy>=1.26",
             "scipy>=1.14",
-        ]
+        ],
+        "example": [
+            "transformers>=4.40.2",
+        ],
     },
     url="https://github.com/FlagOpen/FlagGems",
     packages=find_packages("src"),

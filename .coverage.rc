@@ -2,4 +2,4 @@
 omit = [
     "*/.flaggems/*",
     "*/usr/lib/*",
-    ]
+]
