@@ -231,7 +231,7 @@ def norm_kernel(
         mask = m_idx < v_shape0 and row_mask
 
         v_offsets = m_idx * v_shape1 * v_shape2 + n_idx * v_shape2 + k_idx
-        v_value = tl.load(v + v_offsets, mask=mask)
+        v_value = tl.load(v + v_offsets, mask=mask).to(tl.float32)
         v_block += v_value * v_value
     v_sum = tl.sum(v_block, axis=1) + eps
     v_norm = tl.sqrt(v_sum[:, None])
@@ -286,7 +286,7 @@ class WeightNormInterface(torch.autograd.Function):
         v = v.contiguous()
         g = g.contiguous()
         output = torch.empty_like(v)
-        norm = torch.empty_like(g, dtype=torch.float32)
+        norm = torch.empty_like(g)
         if dim == 0:
             M = v.shape[0]
             N = math.prod(v.shape[1:])
@@ -352,69 +352,11 @@ class WeightNormInterface(torch.autograd.Function):
         return v_grad, g_grad, None
 
 
-class Norm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, v, dim):
-        logging.debug("GEMS NORM FORWARD")
-        v = v.contiguous()
-        output = torch.empty(
-            *[1 if i != dim else v.shape[dim] for i in range(v.ndim)],
-            dtype=v.dtype,
-            device=v.device,
-        )
-        v_shape = [
-            math.prod(v.shape[:dim]),
-            v.shape[dim],
-            math.prod(v.shape[dim + 1 :]),
-        ]
-
-        grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
-
-        with torch_device_fn.device(v.device):
-            norm_kernel[grid](
-                output,
-                v,
-                v_shape[0],
-                v_shape[1],
-                v_shape[2],
-                eps=torch.finfo(torch.float32).tiny,
-            )
-        ctx.save_for_backward(v, output)
-        ctx.V_SHAPE = v_shape
-        return output
-
-    @staticmethod
-    def backward(ctx, norm_grad):
-        logging.debug("GEMS NORM BACKWARD")
-        norm_grad = norm_grad.contiguous()
-        v, norm = ctx.saved_tensors
-        v_grad = torch.empty_like(v)
-
-        grid = lambda META: (triton.cdiv(ctx.V_SHAPE[1], META["BLOCK_ROW_SIZE"]),)
-        with torch_device_fn.device(v.device):
-            norm_bwd_kernel[grid](
-                v_grad,
-                norm_grad,
-                v,
-                norm,
-                ctx.V_SHAPE[0],
-                ctx.V_SHAPE[1],
-                ctx.V_SHAPE[2],
-                eps=torch.finfo(torch.float32).tiny,
-            )
-        return v_grad, None
-
-
 def weight_norm_interface(v, g, dim=0):
     return WeightNormInterface.apply(v, g, dim)
 
 
 def weight_norm(v, g, dim=0):
     dim = dim % v.ndim
-    has_half_dtype = v.dtype == torch.float16 or g.dtype == torch.float16
-    can_use_fused = (not has_half_dtype) and (dim == 0 or dim == v.ndim - 1)
-    if can_use_fused:
-        output, _ = weight_norm_interface(v, g, dim)
-        return output
-    else:
-        return v * (g / Norm.apply(v, dim))
+    output, _ = weight_norm_interface(v, g, dim)
+    return output
