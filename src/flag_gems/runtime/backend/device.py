@@ -49,6 +49,7 @@ class DeviceDetector(object):
             return self._get_vendor_from_sys()
 
     def _get_vendor_from_quick_cmd(self):
+        return "kunlunxin"
         cmd = {
             "cambricon": "mlu",
             "mthreads": "musa",
