@@ -1,1 +1,1 @@
-include src/flag_gems/runtime/backend/_nvidia/*.yaml
+recursive-include src/flag_gems/runtime/backend/ *.yaml
