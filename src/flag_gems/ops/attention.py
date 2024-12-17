@@ -30,6 +30,7 @@ def _attn_fwd_inner(
     KV_CTX: tl.constexpr,
     fp8_v: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
+    PRE_LOAD_V: tl.constexpr,
 ):
     # range of values handled by this stage
     if STAGE == 1:
@@ -51,6 +52,10 @@ def _attn_fwd_inner(
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         k = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+
+        if PRE_LOAD_V:
+            v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+
         qk = tl.dot(q, k)
 
         if HAS_ATTN_MASK:
@@ -90,7 +95,8 @@ def _attn_fwd_inner(
         # -- update output accumulator --
         acc = acc * alpha[:, None]
         # update acc
-        v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+        if not PRE_LOAD_V:
+            v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
@@ -103,33 +109,26 @@ def _attn_fwd_inner(
         V_block_ptr += BLOCK_N * stride_v_seqlen
 
         if HAS_ATTN_MASK:
-            # mask_block_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
             mask_block_ptr += BLOCK_N * stride_attn_mask_kv_seqlen
 
     return acc, l_i, m_i
 
 
-# We don't run auto-tuning every time to keep the tutorial fast. Keeping
-# the code below and commenting out the equivalent parameters is convenient for
-# re-tuning.
 configs = [
-    triton.Config({"BLOCK_M": BM, "BLOCK_N": BN}, num_stages=s, num_warps=w)
-    for BM in [64, 128]
-    for BN in [32, 64, 128]
+    triton.Config(
+        {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": PRE_LOAD_V},
+        num_stages=s,
+        num_warps=w,
+    )
+    for BM in [32, 64, 128]
+    for BN in [64, 128]
+    for PRE_LOAD_V in [True, False]
     for s in [1, 2, 3, 4]
     for w in [4, 8]
 ]
 
 
-def keep(conf):
-    BLOCK_M = conf.kwargs["BLOCK_M"]
-    BLOCK_N = conf.kwargs["BLOCK_N"]
-    if BLOCK_M * BLOCK_N < 128 * 128 and conf.num_warps == 8:
-        return False
-    return True
-
-
-@triton.autotune(list(filter(keep, configs)), key=["KV_CTX", "HEAD_DIM"])
+@triton.autotune(configs, key=["KV_CTX", "HEAD_DIM"])
 @triton.jit
 def _attn_fwd(
     Q,
@@ -141,33 +140,34 @@ def _attn_fwd(
     stride_q_batch,
     stride_q_head,
     stride_q_seqlen,
-    stride_q_headsize,  #
+    stride_q_headsize,
     stride_k_batch,
     stride_k_head,
     stride_k_seqlen,
-    stride_k_headsize,  #
+    stride_k_headsize,
     stride_v_batch,
     stride_v_head,
     stride_v_seqlen,
-    stride_v_headsize,  #
+    stride_v_headsize,
     stride_attn_mask_batch,
     stride_attn_mask_head,
     stride_attn_mask_q_seqlen,
-    stride_attn_mask_kv_seqlen,  #
+    stride_attn_mask_kv_seqlen,
     stride_o_batch,
     stride_o_head,
     stride_o_seqlen,
-    stride_o_headsize,  #
+    stride_o_headsize,
     Z,
     q_numhead,
     kv_numhead,
-    Q_CTX,  #
-    KV_CTX,  #
-    HEAD_DIM: tl.constexpr,  #
-    BLOCK_M: tl.constexpr,  #
-    BLOCK_N: tl.constexpr,  #
-    STAGE: tl.constexpr,  #
-    HAS_ATTN_MASK: tl.constexpr,  #
+    Q_CTX,
+    KV_CTX,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    STAGE: tl.constexpr,
+    HAS_ATTN_MASK: tl.constexpr,
+    PRE_LOAD_V: tl.constexpr,
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
@@ -252,20 +252,21 @@ def _attn_fwd(
             V_block_ptr,
             mask_block_ptr,
             stride_k_seqlen,
-            stride_v_seqlen,  #
-            stride_attn_mask_kv_seqlen,  #
+            stride_v_seqlen,
+            stride_attn_mask_kv_seqlen,
             start_m,
-            qk_scale,  #
+            qk_scale,
             q_load_mask,
             BLOCK_M,
             HEAD_DIM,
-            BLOCK_N,  #
+            BLOCK_N,
             4 - STAGE,
             offs_m,
             offs_n,
             KV_CTX,
-            V.dtype.element_ty == tl.float8e5,  #
-            HAS_ATTN_MASK,  #
+            V.dtype.element_ty == tl.float8e5,
+            HAS_ATTN_MASK,
+            PRE_LOAD_V,
         )
     # stage 2: on-band
     if STAGE & 2:
@@ -280,20 +281,21 @@ def _attn_fwd(
             V_block_ptr,
             mask_block_ptr,
             stride_k_seqlen,
-            stride_v_seqlen,  #
-            stride_attn_mask_kv_seqlen,  #
+            stride_v_seqlen,
+            stride_attn_mask_kv_seqlen,
             start_m,
-            qk_scale,  #
+            qk_scale,
             q_load_mask,
             BLOCK_M,
             HEAD_DIM,
-            BLOCK_N,  #
+            BLOCK_N,
             2,
             offs_m,
             offs_n,
             KV_CTX,
-            V.dtype.element_ty == tl.float8e5,  #
-            HAS_ATTN_MASK,  #
+            V.dtype.element_ty == tl.float8e5,
+            HAS_ATTN_MASK,
+            PRE_LOAD_V,
         )
     # epilogue
     acc = acc / l_i[:, None]
