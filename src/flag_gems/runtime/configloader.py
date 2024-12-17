@@ -62,7 +62,7 @@ class ConfigLoader(object):
                         cur_config["META"],
                         num_warps=cur_config["num_warps"],
                         num_stages=cur_config["num_stages"],
-                        num_ctas=cur_config["num_ctas"],
+                        # num_ctas=cur_config["num_ctas"],  # triton 2.1 not support
                     )
                 )
             else:
@@ -127,7 +127,7 @@ class ConfigLoader(object):
                     single_config["META"],
                     num_warps=current_config["num_warps"],
                     num_stages=current_config["num_stages"],
-                    num_ctas=current_config["num_ctas"],
+                    # num_ctas=current_config["num_ctas"],   # triton 2.1 not support
                 )
             )
         return configs

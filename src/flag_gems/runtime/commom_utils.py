@@ -21,13 +21,13 @@ class vendors(Enum):
         return [member.name for member in cls]
 
 
-vendors_map = {
+vendors_map = {  
+    "metax": vendors.METAX,
     "nvidia": vendors.NVIDIA,
     "cambricon": vendors.CAMBRICON,
     "iluvatar": vendors.ILUVATAR,
     "kunlunxin": vendors.KUNLUNXIN,
     "mthreads": vendors.MTHREADS,
     "hygon": vendors.HYGON,
-    "metax": vendors.METAX,
     "AMD": vendors.AMD,
 }
