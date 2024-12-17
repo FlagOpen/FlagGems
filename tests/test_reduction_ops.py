@@ -168,7 +168,6 @@ def test_accuracy_cross_entropy_loss_indices(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skip("random error")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -723,7 +722,6 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.select_scatter
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -785,7 +783,6 @@ def test_accuracy_slice_scatter_v2(shape, stride, dim, dtype, start, end, step):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("triton_musa unsupport")
 @pytest.mark.slice_scatter
 @pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1027,7 +1024,7 @@ SHAPE_DEPTHWISE = [
 ]
 
 
-# test for depthwise depends on  cuda
+# test for depthwise depends on  musa
 @pytest.mark.skip("conv_depthwise2d introduces failures, disable it temporarily")
 @pytest.mark.conv_depthwise2d
 @pytest.mark.parametrize("shape_input, shape_weight,kernel ", SHAPE_DEPTHWISE)
