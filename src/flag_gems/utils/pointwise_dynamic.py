@@ -467,7 +467,10 @@ class KernelGenerator:
         # cta_offsets
         code.writeline("# tile offsets")
         for i in range(ndim):
-            code.writeline(f"offset{i} = tile_id{i} * tile_size{i}")
+            # Or else: AssertionError: Block pointers only support 32 bit
+            # `offsets/block_shape`, add a `.to(tl.int32)` or use regular indexing
+            # for 64 bit support
+            code.writeline(f"offset{i} = (tile_id{i} * tile_size{i}).to(tl.int32)")
 
         # loads
         code.writeline("# loads")
@@ -517,7 +520,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_with_bptr(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -593,7 +596,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_without_bptr(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -612,7 +615,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -638,7 +641,7 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tl.program_id(0)")
+            code.writeline("pid = tle.program_id(0)")
             self.gen_num_tiles(code)
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
@@ -712,7 +715,7 @@ class KernelGenerator:
             )
 
     def gen_body_gsl_1d_tile(self, code):
-        code.writeline("num_ctas = tl.num_programs(0)")
+        code.writeline("num_ctas = tle.num_programs(0)")
         code.writeline("for j in range(0, tiles_per_cta):")
         with code.indent():
             code.writeline("tile_id = pid + j * num_ctas")
@@ -731,8 +734,8 @@ class KernelGenerator:
             return code
 
         with code.indent():
-            code.writeline("pid = tl.program_id(0)")
-            # code.writeline("num_ctas = tl.num_programs(0)")
+            code.writeline("pid = tle.program_id(0)")
+            # code.writeline("num_ctas = te.num_programs(0)")
             # monolitic kernel: one_tile_per_cta, it may requires a very large grid to compute
             code.writeline("if one_tile_per_cta: # monolitic kernel style")
             with code.indent():
@@ -827,6 +830,9 @@ class WrapperGenerator:
         else:
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = out0.numel()")
+            code.writeline("if num_tasks == 0:")
+            with code.indent():
+                self.gen_return(code)
             max_tile_size = self.config.max_tile_size
             code.writeline(
                 f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
@@ -852,6 +858,9 @@ class WrapperGenerator:
         else:
             code.writeline("shape = out0.shape")
             code.writeline("num_tasks = out0.numel()")
+            code.writeline("if num_tasks == 0:")
+            with code.indent():
+                self.gen_return(code)
             max_tile_size = self.config.max_tile_size
             code.writeline(
                 f"tile_sizes = heuristics_for_tile_size({max_tile_size}, num_tasks)"
@@ -893,7 +902,7 @@ class WrapperGenerator:
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -953,7 +962,7 @@ class WrapperGenerator:
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
 
-        code.writeline("with torch.cuda._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
@@ -1048,6 +1057,8 @@ class ModuleGenerator:
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
+        code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+        code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
         code.newline()
         return code

@@ -5,7 +5,9 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -25,7 +27,7 @@ def skip_rms_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     Y += pid * y_stride_r
     X += pid * x_stride_r
     R += pid * r_stride_r
@@ -59,7 +61,7 @@ class SkipRmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             skip_rms_norm_kernel[M,](
                 y, x, residual, weight, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
             )

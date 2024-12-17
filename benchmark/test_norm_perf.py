@@ -3,7 +3,11 @@ import torch
 
 from .attri_util import FLOAT_DTYPES, BenchLevel
 from .conftest import Config
-from .performance_utils import GenericBenchmark, unary_input_fn
+from .performance_utils import (
+    GenericBenchmark,
+    GenericBenchmarkExcluse1D,
+    unary_input_fn,
+)
 
 
 class NormBenchmark(GenericBenchmark):
@@ -51,6 +55,24 @@ def layernorm_input_fn(shape, dtype, device):
     yield inp, layer_shape, weight, bias
 
 
+def instancenorm_input_fn(shape, dtype, device):
+    C = shape[1]
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    weight = torch.randn((C,), dtype=dtype, device=device)
+    bias = torch.randn((C,), dtype=dtype, device=device)
+    running_mean = None
+    running_var = None
+    use_input_stats = True
+    momentum = 0.1
+    eps = 1e-5
+    cudnn_enabled = True
+    yield inp, weight, bias, running_mean, running_var, use_input_stats, momentum, eps, cudnn_enabled
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        running_mean = torch.randn((C,), dtype=dtype, device=device)
+        running_var = torch.randn((C,), dtype=dtype, device=device)
+        yield inp, weight, bias, running_mean, running_var, use_input_stats, momentum, eps, cudnn_enabled
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn",
     [
@@ -66,24 +88,41 @@ def layernorm_input_fn(shape, dtype, device):
             layernorm_input_fn,
             marks=pytest.mark.layer_norm,
         ),
+        pytest.param(
+            "instance_norm",
+            torch.instance_norm,
+            instancenorm_input_fn,
+            marks=pytest.mark.instance_norm,
+        ),
     ],
 )
-def test_group_and_layer_norm_benchmark(op_name, torch_op, input_fn):
+def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
     bench.run()
 
 
-def weight_norm_input_fn(shape, dtype, device):
+def weight_norm_interface_input_fn(shape, dtype, device):
     dim = 0
     v = torch.randn(shape, dtype=dtype, device=device)
     g = torch.randn(shape[dim], dtype=dtype, device=device)
     yield v, g, dim
 
 
+def weight_norm_input_fn(shape, dtype, device):
+    v = torch.randn(shape, dtype=dtype, device=device)
+    g = torch.randn(shape, dtype=dtype, device=device)
+    yield v, g, 0
+
+
 norm_operations = [
-    ("weight_norm_interface", torch._weight_norm_interface, weight_norm_input_fn),
+    (
+        "weight_norm_interface",
+        torch._weight_norm_interface,
+        weight_norm_interface_input_fn,
+    ),
+    ("weight_norm", torch._weight_norm, weight_norm_input_fn),
     ("vector_norm", torch.linalg.vector_norm, unary_input_fn),
 ]
 
@@ -96,5 +135,7 @@ norm_operations = [
     ],
 )
 def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
-    bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op
+    )
     bench.run()

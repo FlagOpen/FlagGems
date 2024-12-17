@@ -1,12 +1,15 @@
+import gc
 import logging
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
+import pytest
 import torch
 import triton
 import yaml
 
 import flag_gems
+from flag_gems.runtime import torch_backend_device, torch_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -22,11 +25,12 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch.backends.cuda.matmul.allow_tf32 = False
+torch_backend_device.matmul.allow_tf32 = False
+device = flag_gems.device
 
 
 class Benchmark:
-    device: str = "cuda"
+    device: str = device
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
@@ -189,11 +193,11 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch.cuda.synchronize()
+            torch_device_fn.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch.cuda.synchronize()
+            torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
@@ -245,9 +249,11 @@ class Benchmark:
                 kwargs.update(item)
         if self.is_backward:
             args = [
-                a.clone().requires_grad_()
-                if torch.is_tensor(a) and torch.is_floating_point(a)
-                else a
+                (
+                    a.clone().requires_grad_()
+                    if torch.is_tensor(a) and torch.is_floating_point(a)
+                    else a
+                )
                 for a in args
             ]
         return args, kwargs
@@ -268,32 +274,44 @@ class Benchmark:
             metrics = []
             for input in self.get_input_iter(dtype):
                 metric = BenchmarkMetrics()
-                args, kwargs = self.unpack_to_args_kwargs(input)
-                metric.shape_detail = self.record_shapes(*args, **kwargs)
-                if "latency_base" in self.to_bench_metrics:
-                    metric.latency_base = self.get_latency(
-                        self.torch_op, *args, **kwargs
-                    )
-                if "latency" in self.to_bench_metrics:
-                    if self.gems_op:
-                        metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
-                    else:
-                        with flag_gems.use_gems():
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
                             metric.latency = self.get_latency(
-                                self.torch_op, *args, **kwargs
+                                self.gems_op, *args, **kwargs
                             )
-                if "speedup" in self.to_bench_metrics:
-                    metric.speedup = metric.latency_base / metric.latency
-                if "tflops" in self.to_bench_metrics:
-                    metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
-                    # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                metrics.append(metric)
-                # TODO: try gc collect to avoid cuda out of memory
+                        else:
+                            with flag_gems.use_gems():
+                                metric.latency = self.get_latency(
+                                    self.torch_op, *args, **kwargs
+                                )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except Exception as e:
+                    metric.error_msg = str(e)
+                    pytest.fail(str(e))  # raise exception again
+                finally:
+                    metrics.append(metric)
+                    gc.collect()
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else "cuda",
+                mode="cpu" if Config.cpu_mode else device,
                 result=metrics,
             )
             print(result)
@@ -301,7 +319,6 @@ class Benchmark:
 
 
 class GenericBenchmark(Benchmark):
-
     """
     A generic benchmark class for most of the operations.
 

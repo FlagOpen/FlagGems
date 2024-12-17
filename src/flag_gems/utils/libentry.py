@@ -1,10 +1,12 @@
 import inspect
 import threading
 
-import torch
 import triton
 
-DEVICE_COUNT = torch.cuda.device_count()
+from .. import runtime
+from ..runtime import torch_device_fn
+
+DEVICE_COUNT = runtime.device.device_count
 
 
 class LibEntry(triton.KernelInterface):
@@ -90,7 +92,7 @@ class LibEntry(triton.KernelInterface):
                 k_args.append(val)
 
         entry_key = self.key(spec_args, dns_args, const_args)
-        device = torch.cuda.current_device()
+        device = torch_device_fn.current_device()
         cache = self.kernel_cache[device]
         while entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
@@ -122,7 +124,11 @@ class LibEntry(triton.KernelInterface):
                         raise RuntimeError("Invalid Runtime Function")
                     fn = fn.fn
                 for p in self.jit_function.params:
-                    if p.is_constexpr and p.name not in constexprs:
+                    if (
+                        p.is_constexpr
+                        and p.name not in constexprs
+                        and (p.default is not inspect._empty)
+                    ):
                         constexprs[p.name] = p.default
                 cache[entry_key] = (kernel, constexprs)
             return kernel, constexprs

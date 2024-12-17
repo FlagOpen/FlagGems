@@ -4,15 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
+from ..runtime.moduel_tool import tl_extra_module
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
-try:
-    from triton.language.extra.cuda.libdevice import rsqrt
-except ImportError:
-    try:
-        from triton.language.math import rsqrt
-    except ImportError:
-        from triton.language.libdevice import rsqrt
+rsqrt = tl_extra_module.rsqrt
 
 
 @libentry()
@@ -32,7 +29,7 @@ def group_norm_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
     group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
@@ -85,7 +82,7 @@ def group_norm_backward_kernel(
     BLOCK_GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
 
@@ -141,7 +138,7 @@ def weight_bias_backward_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_HW: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)
@@ -184,7 +181,7 @@ class GroupNorm(torch.autograd.Function):
         rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
         grid = (N * num_groups,)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             group_norm_kernel[grid](
                 x,
                 y,
@@ -222,7 +219,7 @@ class GroupNorm(torch.autograd.Function):
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
         grid = (N * num_groups,)
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             group_norm_backward_kernel[grid](
                 y_grad,
                 x,
