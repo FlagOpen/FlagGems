@@ -99,36 +99,49 @@ def test_perf_scatter():
     bench.run()
 
 
+def gather_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+
+    dim = random.choice([0, 1])
+    size_dim = shape[dim]
+    index_shape = [
+        random.randint(1, shape[0]),
+        random.randint(1, shape[1]),
+    ]
+    index = torch.empty(tuple(index_shape), dtype=torch.long, device=device)
+
+    m, n = index_shape
+
+    index_size_dim = index_shape[dim]
+    # make unique indices
+    for i in range(1 if dim == 0 else m):
+        for j in range(1 if dim == 1 else n):
+            ii = [i, j]
+            ii[dim] = slice(0, index.size(dim) + 1)
+            index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
+
+    yield inp, dim, index
+
+
 @pytest.mark.gather
 def test_perf_gather():
-    def gather_input_fn(shape, dtype, device):
-        inp = torch.randn(shape, dtype=dtype, device=device)
-
-        dim = random.choice([0, 1])
-        size_dim = shape[dim]
-        index_shape = [
-            random.randint(1, shape[0]),
-            random.randint(1, shape[1]),
-        ]
-        index = torch.empty(tuple(index_shape), dtype=torch.long, device=device)
-
-        m, n = index_shape
-
-        index_size_dim = index_shape[dim]
-        # make unique indices
-        for i in range(1 if dim == 0 else m):
-            for j in range(1 if dim == 1 else n):
-                ii = [i, j]
-                ii[dim] = slice(0, index.size(dim) + 1)
-                index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
-
-        yield inp, dim, index
-
     bench = TensorSelectBenchmark(
         op_name="gather",
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.gather_backward
+def test_perf_gather_backward():
+    bench = TensorSelectBenchmark(
+        op_name="gather_backward",
+        torch_op=torch.gather,
+        input_fn=gather_input_fn,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
 
