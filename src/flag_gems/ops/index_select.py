@@ -78,13 +78,14 @@ def index_select_backward_kernel(
     rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offsets < M
     cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
+
     grad_mask = rows_mask and (cols_offsets < N)
-    out_mask = rows_mask and (cols_offsets < outN)
+
     indices = tl.load(index + cols_offsets, mask=(cols_offsets < N), other=0)
     grad_off = rows_offsets * N + cols_offsets[None, :]
     out_off = rows_offsets * outN + indices[None, :]
     selected = tl.load(grad + grad_off, mask=grad_mask, other=0.0)
-    tl.store(out + out_off, selected, mask=out_mask)
+    tl.store(out + out_off, selected, mask=grad_mask)
 
 
 # function
