@@ -59,7 +59,8 @@ def detect_installed_package_from_group(
 
 
 triton_package_name = (
-    detect_installed_package_from_group(("triton", "pytorch-triton")) or "triton"
+    detect_installed_package_from_group(("triton", "triton-nightly", "pytorch-triton"))
+    or "triton"
 )
 
 # ----------------------------- Setup -----------------------------
@@ -86,6 +87,7 @@ setup(
         f"{triton_package_name}>=2.2.0",
         "torch>=2.2.0",  # To use custom op
         "transformers>=4.40.2",
+        "PyYAML",
     ],
     extras_require={
         "test": [
