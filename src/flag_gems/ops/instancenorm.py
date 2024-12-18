@@ -126,7 +126,7 @@ def instance_norm_persistent_kernel_multiline(
 
 @libentry()
 @triton.autotune(
-    configs=[runtime.get_triton_config("instance_norm_loop")],
+    configs=runtime.get_triton_config("instance_norm_loop"),
     key=["M", "N"],
 )
 @triton.jit(do_not_specialize=["eps"])

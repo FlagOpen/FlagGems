@@ -552,6 +552,7 @@ instancenorm:
   - 4
   - 8
   - 16
+
 instance_norm_loop:
 - gen: true
   param_map:
@@ -559,14 +560,14 @@ instance_norm_loop:
       TILE_N: tile_n
     num_warps: warps
   warps:
-  - 4
-  - 8
-  - 16
+    - 4
+    - 8
+    - 16
   tile_n:
-  - 1024
-  - 2048
-  - 4096
-  - 8192
+    - 1024
+    - 2048
+    - 4096
+    - 8192
 instance_norm_backward:
 - gen : true
   param_map:
@@ -574,8 +575,15 @@ instance_norm_backward:
       BLOCK_ROW_SIZE: block_m
       BLOCK_COL_SIZE: 2048
     num_warps: warps
-  warps: [4, 8, 16]
-  block_m: [1, 2, 4, 8]
+  warps:
+    - 4
+    - 8
+    - 16
+  block_m:
+    - 1
+    - 2
+    - 4
+    - 8
 
 instance_norm_weight_bias_backward:
 - gen : true
@@ -584,8 +592,15 @@ instance_norm_weight_bias_backward:
       BLOCK_BATCH_SIZE: block_m
       BLOCK_COL_SIZE: 2048
     num_warps: warps
-  warps: [4, 8, 16]
-  block_m: [1, 2, 4, 8]
+  warps:
+    - 4
+    - 8
+    - 16
+  block_m:
+    - 1
+    - 2
+    - 4
+    - 8
 
 count_nonzero:
 - gen : true
@@ -593,7 +608,10 @@ count_nonzero:
     META:
       BLOCK_SIZE: block_m
     num_warps: 4
-  block_m: [1024, 2048, 4096]
+  block_m:
+    - 1024
+    - 2048
+    - 4096
 cross_entropy_loss_sum_and_scale:
 - gen : true
   param_map:
