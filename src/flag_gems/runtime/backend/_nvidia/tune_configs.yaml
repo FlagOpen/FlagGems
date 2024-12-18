@@ -608,10 +608,11 @@ upsample_nearest2d:
 - gen : true
   param_map:
     META:
-      BLOCK_N: block_n
+      BLOCK_SIZE: block_n
     num_warps: warps
   block_n: [1024, 2048]
   warps: [4, 8]
+
 upsample_bicubic2d_aa:
 - gen : true
   param_map:
