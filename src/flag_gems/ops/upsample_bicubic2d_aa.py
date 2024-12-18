@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import device
+from ..runtime import device, torch_device_fn
 from ..utils import triton_lang_extension as tle
 
 device = device.name
@@ -503,16 +503,17 @@ def _upsample_bicubic2d_aa(
         if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0)
         else upsample_bicubic2d_aa_kernel
     )
-    kernel[grid](
-        output,
-        input,
-        N,
-        C,
-        OH,
-        OW,
-        IH,
-        IW,
-        reciprocal_scale_h,
-        reciprocal_scale_w,
-    )
+    with torch_device_fn.device(input.device):
+        kernel[grid](
+            output,
+            input,
+            N,
+            C,
+            OH,
+            OW,
+            IH,
+            IW,
+            reciprocal_scale_h,
+            reciprocal_scale_w,
+        )
     return output

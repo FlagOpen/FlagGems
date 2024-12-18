@@ -18,7 +18,7 @@ class Register:
         self.all_ops = []
         self.vendor_extend_configs = self.get_vendor_extend_op()
         self.vendor_unused_ops_list = self.get_vendor_unused_op()
-        self.unused_ops = user_unused_ops_list + list(self.vendor_unused_ops_list)
+        self.unused_ops = user_unused_ops_list + self.vendor_unused_ops_list
         self.config = config + self.vendor_extend_configs
         self.config_filter()
         self.for_each()
