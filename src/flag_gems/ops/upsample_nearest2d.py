@@ -5,21 +5,16 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..runtime import device
 from ..utils import triton_lang_extension as tle
 
 device = device.name
 
 
-def configs():
-    block = [1024, 2048]
-    warps = [4, 8]
-    return [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=wp) for bs in block for wp in warps
-    ]
-
-
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_triton_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+)
 @triton.heuristics(
     {
         "SAME_H": lambda args: args["OH"] == args["IH"],

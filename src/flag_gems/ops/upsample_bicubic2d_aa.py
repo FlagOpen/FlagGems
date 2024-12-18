@@ -5,29 +5,17 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..runtime import device
 from ..utils import triton_lang_extension as tle
 
 device = device.name
 
 
-def configs():
-    block = [(bx, by) for bx in (512, 256, 128, 64) for by in (2, 1)]
-    warps = [4, 8]
-    return [
-        triton.Config(
-            {
-                "BLOCK_X": bs[0],
-                "BLOCK_Y": bs[1],
-            },
-            num_warps=wp,
-        )
-        for bs in block
-        for wp in warps
-    ]
-
-
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_triton_config("upsample_bicubic2d_aa"),
+    key=["N", "C", "OH", "OW"],
+)
 @triton.jit
 def upsample_bicubic2d_aa_kernel(
     ptr_o,
@@ -378,7 +366,10 @@ def upsample_bicubic2d_aa_kernel(
 
 
 # upsample and downsample
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_triton_config("upsample_bicubic2d_aa"),
+    key=["N", "C", "OH", "OW"],
+)
 @triton.jit
 def general_interpolate_bicubic2d_aa_kernel(
     ptr_o,
