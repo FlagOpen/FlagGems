@@ -21,9 +21,10 @@ def select_scatter(inp, src, dim, index):
 
     if has_internal_overlapping(inp) == MemOverlap.Yes:
         out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
-    out = torch.empty_strided(
-        inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
-    )
+    else:
+        out = torch.empty_strided(
+            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
+        )
 
     copy(inp, out0=out)
     indices = [slice(None)] * inp.ndim
