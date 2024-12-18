@@ -3,6 +3,7 @@ import logging
 import torch
 
 from ..ops.copy import copy
+from ..utils.shape_utils import MemOverlap, has_internal_overlapping
 
 
 def select_scatter(inp, src, dim, index):
@@ -18,6 +19,8 @@ def select_scatter(inp, src, dim, index):
         list(src.shape) == valid_shape
     ), "Expected src to have a size equal to the slice of self"
 
+    if has_internal_overlapping(inp) == MemOverlap.Yes:
+        out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
     out = torch.empty_strided(
         inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
     )
