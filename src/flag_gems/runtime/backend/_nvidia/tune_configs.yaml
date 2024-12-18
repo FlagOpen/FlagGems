@@ -833,6 +833,8 @@ index_select_backward:
     num_warps: 4
   block_m:
   - 1
+  block_n:
+  - 1
   - 2
   - 4
   - 8
@@ -840,5 +842,3 @@ index_select_backward:
   - 512
   - 1024
   - 2048
-  block_n:
-  - 1
