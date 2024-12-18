@@ -6,7 +6,7 @@ import torch
 from flag_gems.utils import shape_utils
 
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
+from .performance_utils import GenericBenchmark, generate_tensor_input
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):
