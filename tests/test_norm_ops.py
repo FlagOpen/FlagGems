@@ -259,7 +259,7 @@ def test_accuracy_instancenorm(
             gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)
 
 
-WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, -1]))
+WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, 1]))
 
 
 @pytest.mark.weight_norm
@@ -298,8 +298,13 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
 
 
+WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
+    zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, -1])
+)
+
+
 @pytest.mark.weight_norm_interface
-@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
+@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
     dim = dim % len(shape)
