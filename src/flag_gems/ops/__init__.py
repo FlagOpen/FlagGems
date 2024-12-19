@@ -44,6 +44,7 @@ from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index_add import index_add
 from .index_select import index_select, index_select_backward
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -257,6 +258,7 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "index_add",
     "select_scatter",
     "slice_scatter",
     "masked_fill",

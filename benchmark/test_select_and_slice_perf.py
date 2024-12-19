@@ -244,5 +244,26 @@ def test_perf_index_select_backward():
         dtypes=FLOAT_DTYPES,
         is_backward=True,
     )
+    bench.run()
 
+
+@pytest.mark.index_add
+def test_index_add_perf():
+    def index_add_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        dim = 0
+        src_shape = list(inp.shape)
+        index_max = src_shape[dim]
+        index_len = index_max // 2
+        index = torch.randint(0, index_max, (index_len,), device="cuda")
+        src_shape[dim] = index_len
+        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        yield inp, dim, index, src
+
+    bench = TensorSelectBenchmark(
+        op_name="index_add",
+        torch_op=torch.index_add,
+        input_fn=index_add_input_fn,
+        dtypes=FLOAT_DTYPES,
+    )
     bench.run()
