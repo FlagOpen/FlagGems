@@ -1,9 +1,11 @@
 import logging
+import math
 
 import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
@@ -72,6 +74,77 @@ def index_select(inp, dim, index):
     if dim != out.ndim - 1:
         order = [i for i in range(out.ndim - 1)]
         order.insert(dim, out.ndim - 1)
+        return out.permute(order)
+    else:
+        return out
+
+
+def dim_compress_backward(inp, dims):
+    if isinstance(dims, int):
+        dims = [dims]
+    dim = inp.ndim
+    stride = inp.stride()
+    batch_dim = [i for i in range(dim) if i not in dims]
+    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
+    order = sorted_reduction_dim + batch_dim
+    return inp.permute(order).contiguous()
+
+
+# kernel
+@libentry()
+@triton.autotune(
+    configs=runtime.get_triton_config("index_select_backward"), key=["M", "N"]
+)
+@triton.jit
+def index_select_backward_kernel(
+    grad, out, M, N, block_dim, index, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+):
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
+    rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols_offsets = pid_y * BLOCK_N + tl.arange(0, BLOCK_N)
+
+    grad_mask = (rows_offsets < M) and (cols_offsets < N)
+    indices = tl.load(index + rows_offsets, mask=(rows_offsets < M), other=0)
+
+    for i in range(0, block_dim):
+        grad_off = (pid_x * block_dim + i) * N + cols_offsets
+        out_off = (indices * block_dim + i) * N + cols_offsets
+        selected = tl.load(grad + grad_off, mask=grad_mask, other=0.0)
+        tl.store(out + out_off, selected, mask=grad_mask)
+
+
+# function
+def index_select_backward(grad, self_sizes, dim, index):
+    logging.debug("GEMS INDEX SELECT BACKWARD")
+    assert dim >= -len(self_sizes) and dim < len(self_sizes), "Invalid dim"
+    assert index.ndim <= 1, "Index should have dimension 1 or 0"
+    for i in index:
+        assert i >= 0 and i < self_sizes[dim], "Index out of range"
+    if index.ndim == 0:
+        index = index.unsqueeze(0)
+    index_shape = list(index.shape)
+    dim = dim % len(self_sizes)
+    grad_shape = list(grad.shape)
+    assert grad_shape[dim] == index_shape[0], "Index out of range"
+    grad = dim_compress_backward(grad, dim)
+    grad_shape = list(grad.shape)
+    out_shape = list(grad.shape)
+    tem_shape = list(grad.shape[1:])
+    tem_shape[-1] = 1
+    block_dim = math.prod(tem_shape)
+    N = grad_shape[grad.ndim - 1]
+    M = grad.numel() // N // block_dim
+    out_shape[0] = self_sizes[dim]
+    out = torch.zeros(out_shape, dtype=grad.dtype, device=grad.device)
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        triton.cdiv(N, meta["BLOCK_N"]),
+    )
+    index_select_backward_kernel[grid](grad, out, M, N, block_dim, index)
+    if dim != 0:
+        order = [i for i in range(1, out.ndim)]
+        order.insert(dim, 0)
         return out.permute(order)
     else:
         return out
