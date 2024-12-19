@@ -454,8 +454,7 @@ def weight_norm_interface(v, g, dim=0):
 
 def weight_norm(v, g, dim=0):
     dim = dim % v.ndim
-    has_half_dtype = v.dtype == torch.float16 or g.dtype == torch.float16
-    can_use_fused = (not has_half_dtype) and (dim == 0 or dim == v.ndim - 1)
+    can_use_fused = dim == 0 or dim == v.ndim - 1
     if can_use_fused:
         output, _ = weight_norm_interface(v, g, dim)
         return output
