@@ -36,6 +36,8 @@ from typing import List, Dict, Any, Tuple
 
 from attri_util import BenchmarkMetrics, BenchmarkResult
 
+ENABLE_COMPARE = False
+
 
 @dataclass
 class SummaryResultOverDtype:
@@ -74,6 +76,16 @@ class SummaryResultOverDtype:
             f"{self.compared_int32_speedup:<20.6f}"
             f"{self.compared_bool_speedup:<20.6f}"
             f"{self.compared_cfloat_speedup:<20.6f}"
+            f"{all_shapes_status:<20}"
+        ) if ENABLE_COMPARE else (
+            f"{self.op_name:<30} "
+            f"{self.float16_speedup:<20.6f} "
+            f"{self.float32_speedup:<20.6f} "
+            f"{self.bfloat16_speedup:<20.6f} "
+            f"{self.int16_speedup:<20.6f} "
+            f"{self.int32_speedup:<20.6f} "
+            f"{self.bool_speedup:<20.6f} "
+            f"{self.cfloat_speedup:<20.6f}"
             f"{all_shapes_status:<20}"
         )
 
@@ -211,11 +223,12 @@ def summary_for_plot(benchmark_results):
             dtype_mapping.get(item.dtype, "float16_speedup"),
             avg_speedup,
         )
-        setattr(
-            summary[op_name],
-            "compared_" + dtype_mapping.get(item.dtype, "float16_speedup"),
-            avg_compared_speedup,
-        )
+        if ENABLE_COMPARE:
+            setattr(
+                summary[op_name],
+                "compared_" + dtype_mapping.get(item.dtype, "float16_speedup"),
+                avg_compared_speedup,
+            )
 
     # sort the keys based on `op_name`
     sorted_summary = sorted(summary.values(), key=lambda x: x.op_name)
@@ -236,6 +249,16 @@ def summary_for_plot(benchmark_results):
         f"{'comp_int32_speedup':<20}"
         f"{'comp_bool_speedup':<20}"
         f"{'comp_cfloat_speedup':<20}"
+        f"{'all_tests_passed':<20}"
+    ) if ENABLE_COMPARE else (
+        f"{'op_name':<30} "
+        f"{'float16_speedup':<20} "
+        f"{'float32_speedup':<20} "
+        f"{'bfloat16_speedup':<20} "
+        f"{'int16_speedup':<20} "
+        f"{'int32_speedup':<20} "
+        f"{'bool_speedup':<20} "
+        f"{'cfloat_speedup':<20}"
         f"{'all_tests_passed':<20}"
     )
 
@@ -268,6 +291,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not args.compare == "":
+        ENABLE_COMPARE = True
         compare_main(args.log_file_path, args.compare)
     else:
         main(args.log_file_path)
