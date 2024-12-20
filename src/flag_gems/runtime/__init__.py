@@ -6,7 +6,6 @@ config_loader = ConfigLoader()
 device = DeviceDetector()
 # torch_device_fn is like 'torch.cuda' object
 torch_device_fn = backend.gen_torch_device_object()
-tl_extra_module = moduel_tool.tl_extra_module
 # torch_backend_device is like 'torch.backend.cuda' object
 torch_backend_device = backend.get_torch_backend_device_fn()
 
