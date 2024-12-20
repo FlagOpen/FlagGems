@@ -934,6 +934,4 @@ index_select_backward:
   block_m:
   - 1
   block_n:
-  - 256
   - 1024
-  - 2048

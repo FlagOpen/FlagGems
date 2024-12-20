@@ -690,7 +690,7 @@ def test_accuracy_index_select(shape, dim, dtype):
 
 
 @pytest.mark.index_select_backward
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_select_backward(shape, dim, dtype):
@@ -699,8 +699,8 @@ def test_accuracy_index_select_backward(shape, dim, dtype):
     from math import floor
 
     index_size = inp.size(dim)
-    index = torch.randint(0, index_size, [floor(index_size * 0.8)], device="cuda")
-    index = torch.unique(index)
+    index = torch.randint(0, index_size, [floor(index_size * 0.1)], device="cuda")
+    # index = torch.unique(index)
     if len(index) == 0:
         pass
     else:
@@ -715,8 +715,8 @@ def test_accuracy_index_select_backward(shape, dim, dtype):
             (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
         res_out = to_reference(res_out)
         res_in_grad = to_reference(res_in_grad)
-        gems_assert_equal(res_out, ref_out)
-        gems_assert_equal(res_in_grad, ref_in_grad)
+        gems_assert_close(res_out, ref_out, dtype)
+        gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.masked_select

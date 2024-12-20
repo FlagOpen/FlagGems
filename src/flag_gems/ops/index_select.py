@@ -118,7 +118,7 @@ def index_select_backward_kernel(
         grad_off = (pid_x * num_blocks_per_CTA + i) * N + cols_offsets
         out_off = (indices * num_blocks_per_CTA + i) * N + cols_offsets
         selected = tl.load(grad + grad_off, mask=grad_mask, other=0.0)
-        tl.store(out + out_off, selected, mask=grad_mask)
+        tl.atomic_add(out + out_off, selected, mask=grad_mask)
 
 
 # function
@@ -141,12 +141,15 @@ def index_select_backward(grad, self_sizes, dim, index):
     N = grad_shape[grad.ndim - 1]
     M = grad.numel() // N // num_blocks_per_CTA
     out_shape[0] = self_sizes[dim]
-    out = torch.zeros(out_shape, dtype=grad.dtype, device=grad.device)
+    grad_type = grad.dtype
+    grad = grad.to(torch.float32)
+    out = torch.zeros(out_shape, dtype=torch.float32, device=grad.device)
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         triton.cdiv(N, meta["BLOCK_N"]),
     )
     index_select_backward_kernel[grid](grad, out, M, N, num_blocks_per_CTA, index)
+    out = out.to(grad_type)
     if dim != 0:
         order = [i for i in range(1, out.ndim)]
         order.insert(dim, 0)
