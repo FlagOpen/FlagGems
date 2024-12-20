@@ -97,7 +97,14 @@ def dim_compress_backward(inp, dims):
 )
 @triton.jit
 def index_select_backward_kernel(
-    grad, out, M, N, block_dim, index, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+    grad,
+    out,
+    M,
+    N,
+    num_blocks_per_CTA,
+    index,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     pid_x = tle.program_id(axis=0)
     pid_y = tle.program_id(axis=1)
@@ -107,9 +114,9 @@ def index_select_backward_kernel(
     grad_mask = (rows_offsets < M) and (cols_offsets < N)
     indices = tl.load(index + rows_offsets, mask=(rows_offsets < M), other=0)
 
-    for i in range(0, block_dim):
-        grad_off = (pid_x * block_dim + i) * N + cols_offsets
-        out_off = (indices * block_dim + i) * N + cols_offsets
+    for i in range(0, num_blocks_per_CTA):
+        grad_off = (pid_x * num_blocks_per_CTA + i) * N + cols_offsets
+        out_off = (indices * num_blocks_per_CTA + i) * N + cols_offsets
         selected = tl.load(grad + grad_off, mask=grad_mask, other=0.0)
         tl.store(out + out_off, selected, mask=grad_mask)
 
@@ -119,8 +126,6 @@ def index_select_backward(grad, self_sizes, dim, index):
     logging.debug("GEMS INDEX SELECT BACKWARD")
     assert dim >= -len(self_sizes) and dim < len(self_sizes), "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    for i in index:
-        assert i >= 0 and i < self_sizes[dim], "Index out of range"
     if index.ndim == 0:
         index = index.unsqueeze(0)
     index_shape = list(index.shape)
@@ -130,18 +135,18 @@ def index_select_backward(grad, self_sizes, dim, index):
     grad = dim_compress_backward(grad, dim)
     grad_shape = list(grad.shape)
     out_shape = list(grad.shape)
-    tem_shape = list(grad.shape[1:])
-    tem_shape[-1] = 1
-    block_dim = math.prod(tem_shape)
+    shape_for_block_counting = list(grad.shape[1:])
+    shape_for_block_counting[-1] = 1
+    num_blocks_per_CTA = math.prod(shape_for_block_counting)
     N = grad_shape[grad.ndim - 1]
-    M = grad.numel() // N // block_dim
+    M = grad.numel() // N // num_blocks_per_CTA
     out_shape[0] = self_sizes[dim]
     out = torch.zeros(out_shape, dtype=grad.dtype, device=grad.device)
     grid = lambda meta: (
         triton.cdiv(M, meta["BLOCK_M"]),
         triton.cdiv(N, meta["BLOCK_N"]),
     )
-    index_select_backward_kernel[grid](grad, out, M, N, block_dim, index)
+    index_select_backward_kernel[grid](grad, out, M, N, num_blocks_per_CTA, index)
     if dim != 0:
         order = [i for i in range(1, out.ndim)]
         order.insert(dim, 0)
