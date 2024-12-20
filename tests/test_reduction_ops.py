@@ -700,7 +700,6 @@ def test_accuracy_index_select_backward(shape, dim, dtype):
 
     index_size = inp.size(dim)
     index = torch.randint(0, index_size, [floor(index_size * 0.1)], device="cuda")
-    # index = torch.unique(index)
     if len(index) == 0:
         pass
     else:
