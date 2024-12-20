@@ -805,7 +805,6 @@ def test_accuracy_ne_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("Assertion Error")
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -854,7 +853,6 @@ def test_accuracy_minimum(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("Assertion Error")
 @pytest.mark.pow
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -871,7 +869,6 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.skip("Assertion Error")
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
