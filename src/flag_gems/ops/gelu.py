@@ -4,13 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime.moduel_tool import tl_extra_module
 from ..utils import pointwise_dynamic
+from ..utils.triton_lang_helper import tl_extra_shim
 
-erf = tl_extra_module.erf
-exp = tl_extra_module.exp
-pow = tl_extra_module.pow
-tanh = tl_extra_module.tanh
+erf = tl_extra_shim.erf
+exp = tl_extra_shim.exp
+pow = tl_extra_shim.pow
+tanh = tl_extra_shim.tanh
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])

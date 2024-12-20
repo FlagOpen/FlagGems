@@ -6,11 +6,12 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import tl_extra_module, torch_device_fn
+from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
+from ..utils.triton_lang_helper import tl_extra_shim
 
-pow = tl_extra_module.pow
+pow = tl_extra_shim.pow
 
 
 @libentry()
