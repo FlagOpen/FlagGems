@@ -3,8 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
-from ..utils.triton_lang_helper import tl_extra_shim
+from ..utils import pointwise_dynamic, tl_extra_shim
 
 _isinf = tl_extra_shim.isinf
 

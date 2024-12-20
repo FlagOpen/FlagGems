@@ -5,9 +5,8 @@ import triton
 import triton.language as tl
 
 from ..runtime import torch_device_fn
-from ..utils import libentry
+from ..utils import libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
-from ..utils.triton_lang_helper import tl_extra_shim
 
 rsqrt = tl_extra_shim.rsqrt
 
