@@ -97,7 +97,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
 
 @pytest.mark.argmin
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
-@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dim", DIM_LIST + [None])
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_argmin(shape, dim, keepdim, dtype):
