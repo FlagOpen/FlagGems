@@ -124,6 +124,7 @@ from .weightnorm import weight_norm, weight_norm_interface
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+from .kron import kron
 
 __all__ = [
     "all",
@@ -283,4 +284,5 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "kron",
 ]
