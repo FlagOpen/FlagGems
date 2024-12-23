@@ -309,3 +309,113 @@ def offset_calculator(inp, idx, strides, dim, isInp):
             idx_dim = add_on
         idx = idx // shape[d]
     return offsets if not isInp else (offsets - idx_dim)
+
+
+def check_tensor_attributes(data_list, is_tensor_list):
+    """
+    Checks if each element in data_list is a tensor and validates whether the corresponding boolean value in is_tensor_list is correct.
+
+    Parameters:
+    - data_list: A list containing tensor and non-tensor objects.
+    - is_tensor_list: A list of boolean values indicating whether the corresponding element in data_list is a tensor.
+
+    Returns:
+    - True if all elements' types match their corresponding boolean values in is_tensor_list.
+    - Raise Error otherwise, and prints the index and element that do not match.
+    """
+    # Check if both lists have the same length
+    if len(data_list) != len(is_tensor_list):
+        raise ValueError(
+            "Error: The lists of inputs and is_tensor must have the same length."
+        )
+
+    for i, (data, is_tensor) in enumerate(zip(data_list, is_tensor_list)):
+        actual_is_tensor = isinstance(data, torch.Tensor)
+
+        if actual_is_tensor != is_tensor:
+            raise ValueError(
+                f"Element at index {i} is incorrect. Expected {is_tensor}, but got {actual_is_tensor}."
+            )
+
+    return True
+
+
+_initial_missing = object()
+
+
+def reduce(function, sequence, initial=_initial_missing):
+    """
+    reduce(function, iterable[, initial]) -> value
+
+    Apply a function of two arguments cumulatively to the items of a sequence
+    or iterable, from left to right, so as to reduce the iterable to a single
+    value.  For example, reduce(lambda x, y: x+y, [1, 2, 3, 4, 5]) calculates
+    ((((1+2)+3)+4)+5).  If initial is present, it is placed before the items
+    of the iterable in the calculation, and serves as a default when the
+    iterable is empty.
+    """
+
+    it = iter(sequence)
+
+    if initial is _initial_missing:
+        try:
+            value = next(it)
+        except StopIteration:
+            raise TypeError(
+                "reduce() of empty iterable with no initial value"
+            ) from None
+    else:
+        value = initial
+
+    for element in it:
+        value = function(value, element)
+
+    return value
+
+
+try:
+    from _functools import reduce
+except ImportError:
+    pass
+
+IntLike = (int, torch.SymInt)
+
+
+def broadcast_shapes(*_shapes):
+    from torch.fx.experimental.symbolic_shapes import guard_size_oblivious
+
+    shapes = tuple(
+        (x,) if isinstance(x, IntLike) else x
+        for x in filter(lambda x: x is not None, _shapes)
+    )
+
+    # Short-circuits on no input
+    if len(shapes) == 0:
+        return None
+
+    # Type checking
+    # TODO: make common validations available as utils
+    for shape in shapes:
+        assert isinstance(shape, Sequence)
+
+    # Computes common shape
+    common_shape = [
+        1,
+    ] * reduce(max, (len(shape) for shape in shapes))
+    for arg_idx, shape in enumerate(shapes):
+        for idx in range(-1, -1 - len(shape), -1):
+            if guard_size_oblivious(common_shape[idx] == 1):
+                if shape[idx] < 0:
+                    raise ValueError(
+                        "Attempting to broadcast a dimension with negative length!"
+                    )
+                common_shape[idx] = shape[idx]
+            elif guard_size_oblivious(shape[idx] != 1):
+                if common_shape[idx] != shape[idx]:
+                    raise RuntimeError(
+                        f"Attempting to broadcast a dimension of length {shape[idx]} at {idx}! "
+                        f"Mismatching argument at index {arg_idx} had {shape}; but expected shape "
+                        f"should be broadcastable to {common_shape}"
+                    )
+
+    return common_shape

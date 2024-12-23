@@ -14,6 +14,9 @@ from flag_gems.utils.shape_utils import (
     all_the_same_shape,
     all_the_same_stride,
     broadcasted_stride,
+    broadcast_shapes,
+    check_tensor_attributes,
+
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
@@ -1125,6 +1128,11 @@ class PointwiseDynamicFunction:
             else:
                 outputs_that_need_allocation.append(i)
         # input arguments must be passed by position
+        if schema._is_tensor is not None:
+            if not check_tensor_attributes(args, (schema._is_tensor)):
+                raise ValueError(
+                    "Input arguments must be passed by position, and the corresponding dtype must be specified."
+                )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
         # output dtype promotions
@@ -1164,8 +1172,14 @@ class PointwiseDynamicFunction:
             # a simple strategy: all the undefined tensors will follow the first
             # tensor that is not broadcated, no attempts to simplify task, no reordering,
             # no dimenion collapsing
-            shapes = tuple(item.shape for item in tensors)
-            task_shape = torch.broadcast_shapes(*shapes)
+            shapes = tuple(item.shape for item in in_tensors)
+
+            task_shape = broadcast_shapes(*shapes)
+       
+            if out_tensors is not None and task_shape != (1,):
+                if not all(list(item.shape) == task_shape for item in out_tensors[0:]):
+                    raise ValueError(f"out tesnor shape is invalid, should be {task_shape} but is {list(item.shape)}!)
+
             ndim = len(task_shape)
             for item in tensors:
                 if item.shape == task_shape:
