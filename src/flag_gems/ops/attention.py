@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
 @triton.jit
@@ -351,40 +353,41 @@ def scaled_dot_product_attention(
         stride_attn_mask_q_seqlen = 1
         stride_attn_mask_kv_seqlen = 1
 
-    _attn_fwd[grid](
-        query,
-        key,
-        value,
-        attn_mask,
-        sm_scale,
-        o,  #
-        query.stride(0),
-        query.stride(1),
-        query.stride(2),
-        query.stride(3),  #
-        key.stride(0),
-        key.stride(1),
-        key.stride(2),
-        key.stride(3),  #
-        value.stride(0),
-        value.stride(1),
-        value.stride(2),
-        value.stride(3),  #
-        stride_attn_mask_batch,
-        stride_attn_mask_head,
-        stride_attn_mask_q_seqlen,
-        stride_attn_mask_kv_seqlen,  #
-        o.stride(0),
-        o.stride(1),
-        o.stride(2),
-        o.stride(3),  #
-        query.shape[0],
-        query.shape[1],
-        kv_head_num,  #
-        Q_CTX=query.shape[2],  #
-        KV_CTX=key.shape[2],  #
-        HEAD_DIM=HEAD_DIM_K,  #
-        STAGE=stage,  #
-        HAS_ATTN_MASK=HAS_ATTN_MASK,  #
-    )
-    return o
+    with torch_device_fn.device(query.device):
+        _attn_fwd[grid](
+            query,
+            key,
+            value,
+            attn_mask,
+            sm_scale,
+            o,  #
+            query.stride(0),
+            query.stride(1),
+            query.stride(2),
+            query.stride(3),  #
+            key.stride(0),
+            key.stride(1),
+            key.stride(2),
+            key.stride(3),  #
+            value.stride(0),
+            value.stride(1),
+            value.stride(2),
+            value.stride(3),  #
+            stride_attn_mask_batch,
+            stride_attn_mask_head,
+            stride_attn_mask_q_seqlen,
+            stride_attn_mask_kv_seqlen,  #
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            o.stride(3),  #
+            query.shape[0],
+            query.shape[1],
+            kv_head_num,  #
+            Q_CTX=query.shape[2],  #
+            KV_CTX=key.shape[2],  #
+            HEAD_DIM=HEAD_DIM_K,  #
+            STAGE=stage,  #
+            HAS_ATTN_MASK=HAS_ATTN_MASK,  #
+        )
+        return o
