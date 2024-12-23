@@ -10,7 +10,6 @@ import triton
 import yaml
 
 import flag_gems
-from flag_gems.runtime import torch_backend_device, torch_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
