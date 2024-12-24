@@ -125,7 +125,7 @@ configs = [
     for BM in [64, 128]
     for BN in [32, 64, 128]
     for PRE_LOAD_V in [True, False]
-    for s in [1, 2]
+    for s in [1, 2, 3]
     for w in [4, 8]
 ]
 
