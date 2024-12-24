@@ -184,6 +184,7 @@ class LogSoftmax(torch.autograd.Function):
                 M,
                 N,
                 K,
+                buffer_size_limit=1024,
             )
         return in_grad, None, None
 
