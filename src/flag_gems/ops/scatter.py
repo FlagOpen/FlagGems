@@ -287,3 +287,19 @@ def scatter(inp, dim, index, src, reduce=None):
 
     _scatter_func(src_strided, index, inp, out, dim, M, N, reduce)
     return out
+
+
+def scatter_(inp, dim, index, src, reduce=None):
+    logging.debug("GEMS SCATTER_")
+    inp = inp.contiguous()
+    index = index.contiguous()
+    src = src.contiguous()
+    out = inp
+
+    src_strided = src.as_strided(index.shape, src.stride()).contiguous()
+    # plain_idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
+    N = list(index.shape)[index.ndim - 1]
+    M = index.numel() // N
+
+    _scatter_func(src_strided, index, inp, out, dim, M, N, reduce)
+    return out
