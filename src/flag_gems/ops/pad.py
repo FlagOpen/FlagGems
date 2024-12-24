@@ -200,6 +200,7 @@ def generate_destination_passing_padding_wrapper(
                     code.writeline("IS_REPLICATE, ")
                     code.writeline("IS_CIRCULAR, ")
                     code.writeline("BLOCK_SIZE, ")
+                    code.writeline("buffer_size_limit=512, ")
             code.writeline(")")
 
         code.writeline("return out0")
