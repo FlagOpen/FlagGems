@@ -41,9 +41,12 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
+
 def heur_n_block_size(args):
     import builtins
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192 * 4)
+
 
 @libentry()
 @triton.heuristics(
@@ -63,7 +66,6 @@ def max_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-
     # m_offset = pidX * BLOCK_M + tl.arange(0, BLOCK_M)
     # offset = m_offset * N * K + tl.arange(0, BLOCK_N) * K + pidY
     # set offset

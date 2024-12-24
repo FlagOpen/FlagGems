@@ -8,6 +8,11 @@ from flag_gems.utils.random_utils import philox_cuda_seed_offset, uint_to_unifor
 
 
 def heur_block(args):
+    if args["N"] > 8192:
+        return 1024
+    else:
+        return 8192
+
     if args["N"] <= 512:
         return 512
     else:

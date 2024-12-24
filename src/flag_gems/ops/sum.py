@@ -55,9 +55,12 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 def heur_m_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
+
 def heur_n_block_size(args):
     import builtins
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192 * 4)
+
 
 @libentry()
 @triton.heuristics(

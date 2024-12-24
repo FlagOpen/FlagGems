@@ -136,7 +136,10 @@ def generate_destination_passing_padding_wrapper(
 
     with code.indent():
         # docstring
-        code.writeline("BLOCK_SIZE = 256")
+        code.writeline("num_ctas = 12")
+        code.writeline(
+            "BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(out0.numel(), num_ctas))"
+        )
         code.writeline("grid = (triton.cdiv(out0.numel(), BLOCK_SIZE), 1, 1)")
         code.newline()
 
