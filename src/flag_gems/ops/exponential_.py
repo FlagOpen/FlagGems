@@ -43,6 +43,7 @@ def fused_exponential_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -118,7 +119,7 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     with torch.cuda.device(device):
         fused_exponential_kernel[grid_fn](
-            x_, N, is_double, lambd, eps, philox_seed, philox_offset
+            x_, N, is_double, lambd, eps, philox_seed, philox_offset, buffer_size_limit=512
         )
     if not inplace:
         x.copy_(x_)

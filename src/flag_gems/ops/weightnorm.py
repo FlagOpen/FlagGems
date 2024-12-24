@@ -74,6 +74,7 @@ def weight_norm_kernel_last(
     eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
     bx = tl.program_id(axis=0) * BLOCK_COL_SIZE
@@ -114,6 +115,7 @@ def weight_norm_kernel_first(
     eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     by = tl.program_id(axis=0) * BLOCK_ROW_SIZE
@@ -170,6 +172,7 @@ def weight_norm_bwd_kernel_last(
     eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     tx = tl.arange(0, BLOCK_COL_SIZE)[:, None]
     bx = tl.program_id(axis=0) * BLOCK_COL_SIZE
@@ -234,6 +237,7 @@ def weight_norm_bwd_kernel_first(
     eps,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     ty = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     by = tl.program_id(axis=0) * BLOCK_ROW_SIZE
@@ -295,6 +299,7 @@ def norm_kernel(
     eps: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     pid = tl.program_id(axis=0) * BLOCK_ROW_SIZE
@@ -339,6 +344,7 @@ def norm_bwd_kernel(
     eps: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     tid_m = tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     pid = tl.program_id(axis=0) * BLOCK_ROW_SIZE
@@ -377,7 +383,7 @@ class WeightNormInterface(torch.autograd.Function):
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
             with torch.cuda.device(v.device):
                 weight_norm_kernel_first[grid](
-                    output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
+                    output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny, buffer_size_limit=1024,
                 )
         elif dim == v.ndim - 1:
             M = math.prod(v.shape[:-1])
@@ -385,7 +391,7 @@ class WeightNormInterface(torch.autograd.Function):
             grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
             with torch.cuda.device(v.device):
                 weight_norm_kernel_last[grid](
-                    output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
+                    output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny, buffer_size_limit=1024
                 )
         ctx.save_for_backward(v, g, norm)
         ctx.DIM = dim
@@ -416,6 +422,7 @@ class WeightNormInterface(torch.autograd.Function):
                     M,
                     N,
                     eps=torch.finfo(torch.float32).tiny,
+                    buffer_size_limit=1024,
                 )
         elif dim == v.ndim - 1:
             M = math.prod(v.shape[:dim])
@@ -432,6 +439,7 @@ class WeightNormInterface(torch.autograd.Function):
                     M,
                     N,
                     eps=torch.finfo(torch.float32).tiny,
+                    buffer_size_limit=1024,
                 )
         return v_grad, g_grad, None
 
@@ -462,6 +470,7 @@ class Norm(torch.autograd.Function):
                 v_shape[1],
                 v_shape[2],
                 eps=torch.finfo(torch.float32).tiny,
+                buffer_size_limit=1024,
             )
         ctx.save_for_backward(v, output)
         ctx.V_SHAPE = v_shape

@@ -45,6 +45,7 @@ def mv_kernel(
     stride_cn,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    buffer_size_limit: tl.constexpr, # NOTE: `constexpr` so it can be used as a shape value.
 ):
     pid = tl.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
@@ -83,5 +84,6 @@ def mv(inp, vec):
             inp.stride(1),
             vec.stride(0),
             out.stride(0),
+            buffer_size_limit=256,
         )
     return out
