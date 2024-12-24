@@ -9,7 +9,7 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 from flag_gems.utils.shape_utils import restride_dim
 
-from .scatter import scatter
+from .scatter import scatter_
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -278,5 +278,5 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 def gather_backward(grad, self, dim, index, sparse_grad):
     logging.debug("GEMS GATHER BACKWARD")
-    result = torch.zeros_like(self)
-    return scatter(result, dim, index, grad, reduce="add")
+    result = grad.new_zeros(self.shape)
+    return scatter_(result, dim, index, grad, reduce="add")
