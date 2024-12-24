@@ -8,24 +8,25 @@ import triton.language as tl
 from ..utils import dim_compress, libentry
 
 
-# torch.any: Tests if any elements in input evaluate to True. If the dtype of input
-#            is not BOOL, then test if any elements in input evaluate to non-zero value
-# In triton function, test if any elements in input evaluate to non-zero value is ok.
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 @triton.jit
 def reduce_any(a, b):
     return a or b
 
 
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+def heur_n_block_size(args):
+    import builtins
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192 * 4)
+
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
 @triton.jit
 def any_kernel_dim(
     inp,

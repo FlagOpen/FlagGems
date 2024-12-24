@@ -63,7 +63,7 @@ def heur_m_block_size(args):
 
 
 def heur_n_block_size(args):
-    return builtins.min(args["N"], 8192)
+    return builtins.min(args["N"], 8192 * 4)
 
 
 @libentry()

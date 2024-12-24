@@ -46,7 +46,7 @@ def heur_m_block_size(args):
 
 def heur_n_block_size(args):
     import builtins
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192 * 4)
 
 @libentry()
 @triton.heuristics(
