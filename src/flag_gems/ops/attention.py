@@ -58,7 +58,7 @@ def _attn_fwd_inner(
         if PRE_LOAD_V:
             v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
-        qk = tl.dot(q, k)
+        qk = tl.dot(q, k, allow_tf32=False)
 
         if HAS_ATTN_MASK:
             attn_mask = tl.load(
@@ -103,7 +103,7 @@ def _attn_fwd_inner(
             p = p.to(tl.float8e5)
         else:
             p = p.to(q.dtype)
-        acc = tl.dot(p, v, acc)
+        acc = tl.dot(p, v, acc, allow_tf32=False)
         # update m_i and l_i
         m_i = m_ij
 
@@ -122,10 +122,10 @@ configs = [
         num_stages=s,
         num_warps=w,
     )
-    for BM in [32, 64, 128]
-    for BN in [64, 128]
+    for BM in [64, 128]
+    for BN in [32, 64, 128]
     for PRE_LOAD_V in [True, False]
-    for s in [1, 2, 3, 4]
+    for s in [1, 2]
     for w in [4, 8]
 ]
 
