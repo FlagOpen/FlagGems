@@ -25,5 +25,5 @@ def randn_like(
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_cuda_seed_offset(increment)
     with torch.cuda.device(x.device):
-        randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+        randn_kernel[grid_fn](out, N, philox_seed, philox_offset, buffer_size_limit=512)
     return out
