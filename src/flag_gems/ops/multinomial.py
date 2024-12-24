@@ -7,14 +7,11 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
+from .. import runtime
+
 
 @libentry()
-@triton.heuristics(
-    {
-        "NBLOCK": lambda args: 128,
-        "num_warps": lambda args: 4,
-    }
-)
+@triton.heuristics(runtime.get_heuristics_config("multinomial"))
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
 def multinomial_with_replacement(
     cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr
