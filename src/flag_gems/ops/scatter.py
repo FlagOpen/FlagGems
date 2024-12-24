@@ -38,7 +38,7 @@ def generate_scatter_kernel(
     # the decorators
     code.writeline("@libentry()")
     code.writeline(
-        '@triton.autotune(configs=runtime.get_triton_config("scatter"), key=["M", "N"])'
+        '@triton.autotune(configs=runtime.get_triton_config("scatter"), key=["M", "N"], restore_value=["inp"])'
     )
     code.writeline("@triton.jit")
 
@@ -302,4 +302,4 @@ def scatter_(inp, dim, index, src, reduce=None):
     M = index.numel() // N
 
     _scatter_func(src_strided, index, inp, out, dim, M, N, reduce)
-    return out
+    return inp
