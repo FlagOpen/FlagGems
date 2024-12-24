@@ -20,8 +20,8 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos
-from .cov import cov
 from .count_nonzero import count_nonzero
+from .cov import cov
 from .cross_entropy_loss import cross_entropy_loss
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
@@ -45,6 +45,7 @@ from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index_add import index_add
 from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -103,7 +104,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
-from .slice_scatter import slice_scatter, slice_scatter_v2
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .sort import sort
 from .stack import stack
@@ -149,6 +150,7 @@ __all__ = [
     "clamp",
     "clamp_tensor",
     "cos",
+    "cov",
     "count_nonzero",
     "diag",
     "diag_embed",
@@ -257,9 +259,9 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "index_add",
     "select_scatter",
     "slice_scatter",
-    "slice_scatter_v2",
     "masked_fill",
     "masked_fill_",
     "_unique2",
