@@ -190,9 +190,9 @@ def heuristics_for_tile_size(max_tile_size, *sizes):
 
 # This should be part of CodeGenConfig
 def heuristics_for_num_warps(tile_size):
-    if tile_size < 2048:
+    if tile_size < 1024:
         return 4
-    elif tile_size < 4096:
+    elif tile_size < 2048:
         return 8
     else:
         return 16

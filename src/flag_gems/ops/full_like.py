@@ -4,7 +4,7 @@ import torch
 import triton
 
 from ..runtime import torch_device_fn
-from .full import check_dtype, full_kernel
+from .full import check_dtype, full_
 
 
 def full_like(
@@ -25,13 +25,5 @@ def full_like(
     fill_value = check_dtype(fill_value, dtype, device)
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(x.device):
-        full_kernel[grid_fn](
-            out,
-            N,
-            fill_value,
-            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-            BLOCK_SIZE=1024,
-        )
-    return out
+
+    return full_(out, N, dtype, device, fill_value)

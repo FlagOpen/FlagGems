@@ -116,9 +116,8 @@ def get_curent_device_extend_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
     tuples = vendor_module.get_register_op_config()
-    configs = {}
-    for item in tuples:
-        configs[item[0]] = item
+    configs = ()
+    configs += tuples
     return configs
 
 

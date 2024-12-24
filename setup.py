@@ -83,8 +83,8 @@ setup(
         "License :: OSI Approved :: Apache Software License",
     ],
     install_requires=[
-        f"{triton_package_name}>=2.2.0",
-        "torch>=2.2.0",
+        f"{triton_package_name}>=2.1.0",
+        "torch>=2.1.0",
         "PyYAML",
     ],
     extras_require={

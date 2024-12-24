@@ -9,6 +9,30 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
+def heur_block(args):
+    if args["N"] <= 1024:
+        return 1024
+    elif args["N"] <= 2048:
+        return 2048
+    else:
+        return 4096
+
+
+def heur_num_warps(args):
+    if args["N"] <= 1024:
+        return 4
+    elif args["N"] <= 2048:
+        return 8
+    else:
+        return 16
+
+
+@triton.heuristics(
+    {
+        "BLOCK_SIZE": heur_block,
+        "num_warps": heur_num_warps,
+    }
+)
 @libentry()
 @triton.jit(do_not_specialize=["value_scalar"])
 def fill_scalar_kernel(
@@ -54,9 +78,7 @@ def fill_scalar(input, value):
     logging.debug("GEMS FILL")
     out = torch.empty_like(input)
     N = out.numel()
-    BLOCK_SIZE = 512
-    grid = triton.cdiv(N, BLOCK_SIZE)
-
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(input.device):
-        fill_scalar_kernel[grid,](out, N, value, BLOCK_SIZE)
+        fill_scalar_kernel[grid_fn](out, N, value)
     return out

@@ -33,7 +33,7 @@ def arange_start(
     else:
         size = math.ceil((end - start) / step)
 
-    BLOCK_SIZE = 128
+    BLOCK_SIZE = 1024
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if dtype is None:

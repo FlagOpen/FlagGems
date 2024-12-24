@@ -53,6 +53,11 @@ def heur_block_n(args):
         "N",
     ],
 )
+@triton.heuristics(
+    {
+        "BLOCK_N": heur_block_n,
+    }
+)
 @triton.jit
 def min_kernel(
     inp,

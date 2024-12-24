@@ -5,8 +5,8 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 def heur_block_n(args):
@@ -23,8 +23,13 @@ def heur_num_warps(args):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
-
+@triton.autotune(
+    configs=runtime.get_triton_config("log_softmax"),
+    key=[
+        "M",
+        "N",
+    ],
+)
 @triton.heuristics(
     {
         "BLOCK_N": heur_block_n,
@@ -61,7 +66,19 @@ def log_softmax_kernel(
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_triton_config("log_softmax"),
+    key=[
+        "M",
+        "N",
+    ],
+)
+@triton.heuristics(
+    {
+        "BLOCK_N": heur_block_n,
+        "num_warps": heur_num_warps,
+    }
+)
 @triton.jit
 def log_softmax_backward_kernel(
     out_ptr,
@@ -76,28 +93,20 @@ def log_softmax_backward_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_offset = tl.arange(0, BLOCK_N)
 
-    scale = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-        scale += out_grad
-    scale = tl.sum(scale, 1)
+    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    out_ptrs = out_ptr + offsets
+    out = tl.load(out_ptrs, mask=mask).to(tl.float32)
+    out_grad_ptrs = out_grad_ptr + offsets
+    out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
 
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        out_ptrs = out_ptr + offsets
-        out = tl.load(out_ptrs, mask=mask).to(tl.float32)
-        out_grad_ptrs = out_grad_ptr + offsets
-        out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
-        in_grad = out_grad - tl.exp(out) * scale[:, None]
-        in_grad_ptrs = in_grad_ptr + offsets
-        tl.store(in_grad_ptrs, in_grad, mask=mask)
+    scale = tl.sum(out_grad, 1)
+    in_grad = out_grad - tl.exp(out.to(tl.float32)) * scale[:, None]
+
+    in_grad_ptrs = in_grad_ptr + offsets
+    tl.store(in_grad_ptrs, in_grad, mask=mask)
 
 
 class LogSoftmax(torch.autograd.Function):
@@ -122,7 +131,7 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch_device_fn.device(inp.device):
+        with torch.cuda.device(inp.device):
             log_softmax_kernel[grid](
                 out,
                 inp,
@@ -157,7 +166,7 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch_device_fn.device(in_grad.device):
+        with torch.cuda.device(in_grad.device):
             log_softmax_backward_kernel[grid](
                 out,
                 out_grad,

@@ -93,6 +93,7 @@ class Benchmark:
         self.to_bench_metrics = user_desired_metrics or self.metrics
         if (
             hasattr(self, "set_more_metrics")
+            and self.set_more_metrics() is not None
             and callable(getattr(self, "set_more_metrics"))
             and Config.bench_level == BenchLevel.COMPREHENSIVE
             and not Config.query

@@ -1090,9 +1090,9 @@ class PointwiseDynamicFunction:
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or CodeGenConfig(
-            512,
+            2048,
             (65536, 65536, 65536),
-            32,
+            16,
             True,
             prefer_1d_tile=int(triton.__version__[0]) < 3,
         )

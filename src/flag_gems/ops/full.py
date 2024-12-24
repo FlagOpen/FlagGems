@@ -28,6 +28,30 @@ def full_kernel(
     tl.store(output_ptr + offsets, fill_value, mask=mask)
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": k}, num_warps=w, num_stages=4)
+        for w in [2, 4, 8, 16]     # maca support up to 16
+        for k in [1024, 2048, 4096, 8192]
+    ],
+    key=[
+        "N",
+    ],
+)
+@triton.jit()
+def full_kernel_scale(
+    output_ptr,
+    N,
+    fill_value,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tle.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < N
+    tl.store(output_ptr + offsets, fill_value, mask=mask)
+
+
 ALL_INT_DTYPES = (torch.int8, torch.int16, torch.int32, torch.int64)
 ALL_FLOAT_DTYPES = (torch.bfloat16, torch.float16, torch.float32, torch.float64)
 
@@ -46,9 +70,39 @@ def check_dtype(fill_value, dtype, device):
         raise RuntimeError(
             f"value cannot be converted to type {dtype} without overflow"
         )
-    if dtype in ALL_FLOAT_DTYPES:
+    if dtype in [torch.double]:
         fill_value = torch.tensor(fill_value, dtype=dtype, device=device)
+
     return fill_value
+
+
+def full_(out, N, dtype, device, fill_value):
+    FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor)
+    is_scale = True
+    if FILL_VALUE_IS_PTR:
+        is_scale = False
+
+    if FILL_VALUE_IS_PTR and fill_value.numel() == 1 and dtype not in [torch.double]:
+        fill_value = fill_value.item()
+        is_scale = True
+
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(device):
+        if is_scale:
+            full_kernel_scale[grid_fn](
+                out,
+                N,
+                fill_value,
+            )
+        else:
+            full_kernel[grid_fn](
+                out,
+                N,
+                fill_value,
+                FILL_VALUE_IS_PTR=FILL_VALUE_IS_PTR,
+                BLOCK_SIZE=1024,
+            )
+    return out
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
@@ -67,13 +121,5 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(device):
-        full_kernel[grid_fn](
-            out,
-            N,
-            fill_value,
-            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-            BLOCK_SIZE=1024,
-        )
-    return out
+
+    return full_(out, N, dtype, device, fill_value)
