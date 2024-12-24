@@ -44,6 +44,7 @@ from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index_add import index_add
 from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -102,7 +103,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
-from .slice_scatter import slice_scatter, slice_scatter_v2
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .sort import sort
 from .stack import stack
@@ -257,9 +258,9 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "index_add",
     "select_scatter",
     "slice_scatter",
-    "slice_scatter_v2",
     "masked_fill",
     "masked_fill_",
     "_unique2",
