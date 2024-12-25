@@ -8,7 +8,7 @@ echo ID_SHA $ID_SHA
 source tools/run_command.sh
 COVERAGE_ARGS="--parallel-mode --omit "*/.flaggems/*","*/usr/lib/*" --source=./src,./tests --data-file=${ID_SHA}-op"
 bash tools/pytest_mark_check.sh && \
-run_command coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py
+run_command coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_blas_ops.py && \
 run_command coverage run ${COVERAGE_ARGS} -m pytest -s tests/test_attention_ops.py
 
 
