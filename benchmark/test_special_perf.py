@@ -98,6 +98,7 @@ def test_isin_perf():
     bench.run()
 
 
+@pytest.mark.skip("[XPytorch] Not implement API for XDNN")
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -225,6 +226,7 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.skip("[XPytorch] API Kernel Segmentation Fault")
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):
