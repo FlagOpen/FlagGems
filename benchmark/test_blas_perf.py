@@ -1,10 +1,9 @@
-import itertools
 from typing import Generator
 
 import pytest
 import torch
 
-from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, BenchLevel
+from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES, BenchLevel, model_shapes
 from .conftest import Config
 from .performance_utils import Benchmark, GenericBenchmark2DOnly
 
@@ -34,33 +33,8 @@ class BlasBenchmark(Benchmark):
             (8, 1848, 1536, 128256),
             (8, 1848, 1536, 152064),
         ]
-        return large_k_shapes
 
-        BS = [2**i for i in range(0, 9, 2)]
-
-        shapes_from_models_NK = [
-            # extract from llama3-8b
-            (1024, 4096),
-            (128256, 4096),
-            (14336, 4096),
-            (4096, 14336),
-            (4096, 4096),
-            (6144, 4096),
-            (28672, 4096),
-            # extract from qwen2.5-7b
-            (3584, 3584),
-            (18944, 3584),
-            (3584, 18944),
-            (152064, 3584),
-            (37888, 3584),
-            (512, 3584),
-            (4608, 3584),
-        ]
-
-        model_shaps = [
-            (16, bs, n, k)
-            for bs, (n, k) in itertools.product(BS, shapes_from_models_NK)
-        ]
+        model_shaps = model_shapes()
         return large_k_shapes + model_shaps
 
     def get_tflops(self, op, *args, **kwargs):

@@ -28,26 +28,30 @@ DEFAULT_SHAPES = [
 ]
 
 
-# This function is adapted from: https://github.com/pytorch-labs/tritonbench/blob/main/tritonbench/utils/triton_op.py
-def llama_shapes():
+def model_shapes():
     # batch sizes * seq lengths
-    BS = [2**i for i in range(0, 17)]
+    BS = [2**i for i in range(0, 9, 2)]
     # attn: wqkv, wo; ffn: w13, w2
-    KN = [
-        (4096, 12288),
+    NK = [
+        # extract from llama3-8b
+        (1024, 4096),
+        (128256, 4096),
+        (14336, 4096),
+        (4096, 14336),
         (4096, 4096),
-        (4096, 22016),
-        (11008, 4096),
-        (8192, 1280),
-        (1024, 8192),
-        (8192, 7168),
-        (3584, 8192),
-        (16384, 2304),
-        (2048, 16384),
-        (16384, 13312),
-        (6656, 16384),
+        (6144, 4096),
+        (28672, 4096),
+        # extract from qwen2.5-7b
+        (3584, 3584),
+        (18944, 3584),
+        (3584, 18944),
+        (152064, 3584),
+        (37888, 3584),
+        (512, 3584),
+        (4608, 3584),
     ]
-    return [(bs, n, k, None) for bs, (k, n) in itertools.product(BS, KN)]
+
+    return [(4, bs, n, k) for bs, (n, k) in itertools.product(BS, NK)]
 
 
 @dataclass
@@ -61,6 +65,8 @@ class BenchmarkMetrics:
     latency_base: Optional[float] = None
     # Latency in ms
     latency: Optional[float] = None
+    gbps_base: Optional[float] = None
+    gbps: Optional[float] = None
     # Speedup over baseline
     speedup: Optional[float] = None
     # Accuracy over baseline (not implemented yet)
@@ -170,22 +176,26 @@ class BenchmarkResult:
     result: List[BenchmarkMetrics]
 
     def __str__(self) -> str:
+        header_title = (
+            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
+            f"level={self.level})\n"
+        )
+        col_names = [
+            f"{'Status':<10}",
+            f"{'Torch Latency (ms)':>20}",
+            f"{'Gems Latency (ms)':>20}",
+            f"{'Gems Speedup':>20}",
+        ]
         if self.result[0].tflops and self.result[0].tflops != 0.0:
-            header = (
-                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
-                f"level={self.level})\n"
-                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20} {'TFLOPS':>20}"
-                f"{'Size Detail':>20}\n"
-                f"{'-' * 120}\n"
-            )
-        else:
-            header = (
-                f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, "
-                f"level={self.level})\n"
-                f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
-                f"{'Size Detail':>20}\n"
-                f"{'-' * 90}\n"
-            )
+            col_names.append(f"{'TFLOPS':>20}")
+        if self.result[0].gbps is not None:
+            col_names.append(f"{'Torch GBPS ':>20}")
+            col_names.append(f"{'Gems GBPS ':>20}")
+        col_names.append(f"{'Size Detail':>20}\n")
+        header_col_names = " ".join(col_names)
+        header_break = "-" * len(header_col_names) + "\n"
+        header = header_title + header_col_names + header_break
+
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
 
@@ -199,6 +209,10 @@ class BenchmarkResult:
         )
         latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
         speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
+        torch_gbps_str = (
+            f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
+        )
+        gems_gbps_str = f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
         if metrics.tflops and metrics.tflops != 0.0:
             tflops_str = (
                 f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
@@ -207,25 +221,19 @@ class BenchmarkResult:
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
+        data_line = (
+            f"{status:<10}"
+            f"{latency_base_str:>20}"
+            f"{latency_str:>20}"
+            f"{speedup_str:>20}"
+        )
         if metrics.tflops and metrics.tflops != 0.0:
-            return (
-                f"{status:<10}"
-                f"{latency_base_str:>20}"
-                f"{latency_str:>20}"
-                f"{speedup_str:>20}"
-                f"{tflops_str:>20}"
-                f"{' ' * 10}"
-                f"{shape_detail_str}\n"
-            )
-        else:
-            return (
-                f"{status:<10}"
-                f"{latency_base_str:>20}"
-                f"{latency_str:>20}"
-                f"{speedup_str:>20}"
-                f"{' ' * 10}"
-                f"{shape_detail_str}\n"
-            )
+            data_line += f"{tflops_str:>20}"
+        if metrics.gbps is not None:
+            data_line += f"{torch_gbps_str:>20}{gems_gbps_str:>20}"
+        data_line += " " * 10
+        data_line += f"{shape_detail_str}\n"
+        return data_line
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
         first_shape = (
