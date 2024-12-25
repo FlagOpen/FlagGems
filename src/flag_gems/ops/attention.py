@@ -382,9 +382,9 @@ def scaled_dot_product_attention(
             query.shape[0],
             query.shape[1],
             kv_head_num,  #
-            Q_CTX=query.shape[2],  #
-            KV_CTX=key.shape[2],  #
-            HEAD_DIM=HEAD_DIM_K,  #
+            query.shape[2],  #
+            key.shape[2],  #
+            HEAD_DIM_K,  #
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
         )
