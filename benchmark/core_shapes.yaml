@@ -173,6 +173,7 @@ ConvBenchmark:
 
 AttentionBenchmark:
   shapes:
+  - [4, 8, 512, 128]
   - [4, 8, 1024, 128]
   - [4, 8, 2048, 128]
   - [4, 8, 3072, 128]
