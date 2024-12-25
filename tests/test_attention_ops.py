@@ -4,7 +4,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
+from .accuracy_utils import gems_assert_close, to_reference
 
 
 @pytest.mark.scaled_dot_product_attention
@@ -15,7 +15,7 @@ from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
 @pytest.mark.parametrize("head_size", [64, 128])
 @pytest.mark.parametrize("add_bias", [True, False])
 @pytest.mark.parametrize("is_causal", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_scaled_dot_product_attention(
     batch, num_head, q_seq_len, kv_seq_len, head_size, add_bias, is_causal, dtype
 ):

@@ -6,6 +6,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from .. import runtime
+
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
 @triton.jit
@@ -116,21 +118,17 @@ def _attn_fwd_inner(
     return acc, l_i, m_i
 
 
-configs = [
-    triton.Config(
-        {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": PRE_LOAD_V},
-        num_stages=s,
-        num_warps=w,
-    )
-    for BM in [64, 128]
-    for BN in [32, 64, 128]
-    for PRE_LOAD_V in [True, False]
-    for s in [1, 2, 3]
-    for w in [4, 8]
-]
+def early_config_prune(configs, nargs, **kwargs):
+    return list(filter(lambda cfg: cfg.kwargs["BLOCK_N"] <= nargs["HEAD_DIM"], configs))
 
 
-@triton.autotune(configs, key=["KV_CTX", "HEAD_DIM"])
+@triton.autotune(
+    configs=runtime.get_triton_config("attention"),
+    key=["KV_CTX", "HEAD_DIM"],
+    prune_configs_by={
+        "early_config_prune": early_config_prune,
+    },
+)
 @triton.jit
 def _attn_fwd(
     Q,
