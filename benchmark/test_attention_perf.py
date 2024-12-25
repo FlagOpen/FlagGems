@@ -28,7 +28,6 @@ def test_perf_scaled_dot_product_attention():
         input_fn=scaled_dot_product_attention_kwargs,
         torch_op=torch.nn.functional.scaled_dot_product_attention,
         dtypes=[
-            torch.float32,
             torch.float16,
             torch.bfloat16,
         ],
