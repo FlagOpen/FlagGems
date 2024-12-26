@@ -315,7 +315,7 @@ QUANTILE_INTERPOLATION = (
 @pytest.mark.parametrize("q", QUANTILE_Q)
 @pytest.mark.parametrize("interpolation", QUANTILE_INTERPOLATION)
 def test_accuracy_quantile_without_dim(shape, dtype, q, interpolation):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
     q = torch.tensor(q, dtype=dtype, device=inp.device)
     ref_q = to_reference(q)
@@ -334,7 +334,7 @@ def test_accuracy_quantile_without_dim(shape, dtype, q, interpolation):
 @pytest.mark.parametrize("q", QUANTILE_Q)
 @pytest.mark.parametrize("interpolation", QUANTILE_INTERPOLATION)
 def test_accuracy_quantile_dim(shape, dim, keepdim, dtype, q, interpolation):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
     q = torch.tensor(q, dtype=dtype, device=inp.device)
     ref_q = to_reference(q)
