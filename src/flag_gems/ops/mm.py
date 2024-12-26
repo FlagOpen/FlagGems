@@ -6,24 +6,16 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import libentry
+from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 
-def heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
-
-
 @libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("mm"),
+@libtuner(
+    configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
 )
-@triton.heuristics(
-    {
-        "EVEN_K": heur_even_k,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit
 def mm_kernel(
     A,

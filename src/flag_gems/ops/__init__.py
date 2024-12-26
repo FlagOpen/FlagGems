@@ -6,6 +6,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
+from .attention import scaled_dot_product_attention
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_tensor,
@@ -44,6 +45,7 @@ from .gelu import gelu
 from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index_add import index_add
 from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -103,7 +105,7 @@ from .select_scatter import select_scatter
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
-from .slice_scatter import slice_scatter, slice_scatter_v2
+from .slice_scatter import slice_scatter
 from .softmax import softmax
 from .sort import sort
 from .stack import stack
@@ -258,9 +260,9 @@ __all__ = [
     "where_self",
     "where_scalar_self",
     "where_scalar_other",
+    "index_add",
     "select_scatter",
     "slice_scatter",
-    "slice_scatter_v2",
     "masked_fill",
     "masked_fill_",
     "_unique2",
@@ -275,6 +277,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "vstack",
     "repeat_interleave_tensor",
+    "scaled_dot_product_attention",
     "conv2d",
     "conv1d",
     "_conv_depthwise2d",

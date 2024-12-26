@@ -7,15 +7,16 @@ from .ops import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
-__version__ = "2.1"
+__version__ = "2.2"
 device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
+registrar = Register
+current_work_registrar = None
 
 
-def enable(lib=aten_lib, unused=None):
-    if unused is None:
-        unused = []
-    Register(
+def enable(lib=aten_lib, unused=None, registrar=registrar):
+    global current_work_registrar
+    current_work_registrar = registrar(
         (
             ("abs", abs, Autograd.disable),
             ("add.Tensor", add, Autograd.disable),
@@ -145,6 +146,11 @@ def enable(lib=aten_lib, unused=None):
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
             ("sum.dim_IntList", sum_dim, Autograd.disable),
+            (
+                "scaled_dot_product_attention",
+                scaled_dot_product_attention,
+                Autograd.disable,
+            ),
             ("all", all, Autograd.disable),
             ("all.dim", all_dim, Autograd.disable),
             ("all.dims", all_dims, Autograd.disable),
@@ -163,7 +169,7 @@ def enable(lib=aten_lib, unused=None):
             ("fill.Scalar", fill_scalar, Autograd.disable),
             ("fill.Tensor", fill_tensor, Autograd.disable),
             ("flip", flip, Autograd.disable),
-            ("slice_scatter", slice_scatter_v2, Autograd.disable),
+            ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
             ("index_select", index_select, Autograd.disable),
             ("tile", tile, Autograd.disable),
@@ -196,26 +202,37 @@ def enable(lib=aten_lib, unused=None):
             ("diag", diag, Autograd.disable),
             ("diag_embed", diag_embed, Autograd.disable),
             ("diagonal_backward", diagonal_backward, Autograd.disable),
+            ("index_add", index_add, Autograd.disable),
             ("count_nonzero", count_nonzero, Autograd.disable),
             ("logical_or", logical_or, Autograd.disable),
             ("logical_and", logical_and, Autograd.disable),
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
         ),
-        user_unused_ops_list=unused,
+        user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
     )
 
 
 class use_gems:
-    def __init__(self):
+    def __init__(self, unused=None):
         self.lib = torch.library.Library("aten", "IMPL")
+        self.unused = [] if unused is None else unused
+        self.registrar = Register
 
     def __enter__(self):
-        enable(lib=self.lib)
+        enable(lib=self.lib, unused=self.unused, registrar=self.registrar)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        global current_work_registrar
         del self.lib
+        del self.unused
+        del self.registrar
+        del current_work_registrar
+
+
+def all_ops():
+    return current_work_registrar.get_all_ops()
 
 
 __all__ = [
