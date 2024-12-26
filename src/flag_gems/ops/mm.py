@@ -12,10 +12,10 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @libtuner(
-    configs=runtime.get_triton_config("mm"),
+    configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
 )
-@triton.heuristics(runtime.get_heuristics_config("mm"))
+@triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit
 def mm_kernel(
     A,

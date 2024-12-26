@@ -13,7 +13,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 
 
-@triton.heuristics(runtime.get_heuristics_config("exponential_"))
+@triton.heuristics(runtime.get_heuristic_config("exponential_"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,

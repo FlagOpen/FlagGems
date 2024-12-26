@@ -29,7 +29,7 @@ except AttributeError:
 device_ = device
 
 
-@triton.heuristics(runtime.get_heuristics_config("randn"))
+@triton.heuristics(runtime.get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,

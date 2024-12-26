@@ -10,7 +10,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristics_config("index_select"))
+@triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
 def index_select_kernel(
     inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr

@@ -13,7 +13,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 
 
-@triton.heuristics(runtime.get_heuristics_config("uniform"))
+@triton.heuristics(runtime.get_heuristic_config("uniform"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def uniform_kernel(
     out_ptr,

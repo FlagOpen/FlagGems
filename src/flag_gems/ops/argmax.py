@@ -47,7 +47,7 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristics_config("argmax"))
+@triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.jit
 def argmax_kernel(
     inp,

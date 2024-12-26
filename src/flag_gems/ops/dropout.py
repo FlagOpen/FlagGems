@@ -13,7 +13,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 
 
-@triton.heuristics(runtime.get_heuristics_config("dropout"))
+@triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
@@ -65,7 +65,7 @@ def dropout_forward_kernel(
     tl.store(Y + off_3, y3, mask=off_3 < N, eviction_policy="evict_first")
 
 
-@triton.heuristics(runtime.get_heuristics_config("dropout"))
+@triton.heuristics(runtime.get_heuristic_config("dropout"))
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_backward_kernel(
     DY,

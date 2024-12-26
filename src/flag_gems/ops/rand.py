@@ -16,7 +16,7 @@ from ..runtime import device, torch_device_fn
 device_ = device
 
 
-@triton.heuristics(runtime.get_heuristics_config("rand"))
+@triton.heuristics(runtime.get_heuristic_config("rand"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def rand_kernel(
     out_ptr,

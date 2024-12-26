@@ -11,7 +11,7 @@ from .. import runtime
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristics_config("multinomial"))
+@triton.heuristics(runtime.get_heuristic_config("multinomial"))
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
 def multinomial_with_replacement(
     cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr

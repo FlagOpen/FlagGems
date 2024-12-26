@@ -11,7 +11,7 @@ from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristics_config("softmax_non_inner"))
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
 @triton.jit
 def softmax_kernel_non_inner(
     output_ptr,
@@ -83,7 +83,7 @@ def prev_multiple_of(a, b):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristics_config("softmax_inner"))
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit
 def softmax_kernel_inner(
     output_ptr,
@@ -160,14 +160,14 @@ def softmax_kernel_inner(
 # ------------------------  backward -------------------------------
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("softmax_non_inner"),
+    configs=runtime.get_tuned_config("softmax_non_inner"),
     key=[
         "M",
         "N",
         "K",
     ],
 )
-@triton.heuristics(runtime.get_heuristics_config("softmax_backward_non_inner"))
+@triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
 @triton.jit
 def softmax_backward_kernel_non_inner(
     out_ptr,
@@ -220,11 +220,11 @@ def softmax_backward_kernel_non_inner(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("softmax_inner"),
+    configs=runtime.get_tuned_config("softmax_inner"),
     key=["M", "N"],
 )
 @triton.heuristics(
-    values=runtime.get_heuristics_config("softmax_backward_inner"),
+    values=runtime.get_heuristic_config("softmax_backward_inner"),
 )
 @triton.jit
 def softmax_backward_kernel_inner(

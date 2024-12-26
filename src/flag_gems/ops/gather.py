@@ -36,7 +36,7 @@ def generate_gather_kernel(
     code.writeline("@libentry()")
     code.writeline("@triton.heuristics(")
     with code.indent():
-        code.writeline("runtime.get_heuristics_config('gather')")
+        code.writeline("runtime.get_heuristic_config('gather')")
     code.writeline(")")
     code.writeline("@triton.jit")
 
