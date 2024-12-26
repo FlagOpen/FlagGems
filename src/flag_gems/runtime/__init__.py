@@ -25,4 +25,10 @@ def get_heuristic_config(op_name):
     return config_loader.heuristics_config[op_name]
 
 
-__all__ = ["commom_utils", "backend", "device", "get_tuned_config"]
+__all__ = [
+    "commom_utils",
+    "backend",
+    "device",
+    "get_tuned_config",
+    "get_heuristic_config",
+]

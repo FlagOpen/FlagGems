@@ -195,14 +195,6 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
-def multinomial_NBLOCK(args):
-    return 128
-
-
-def multinomial_num_warps(args):
-    return 4
-
-
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -231,10 +223,6 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
-    },
-    "multinomial": {
-        "NBLOCK": multinomial_NBLOCK,
-        "num_warps": multinomial_num_warps,
     },
     "rand": {
         "BLOCK": rand_heur_block,
