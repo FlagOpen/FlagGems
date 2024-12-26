@@ -6,26 +6,11 @@ import triton.language as tl
 
 from ..utils import libentry
 
-def heur_block_size(arg):
-    def lagest_factor(args):
-        n = args[arg]
-        if n <= 1:
-            return n
-        ret = 1
-        for i in range(min(n, 256), 1, -1):
-            if n % i == 0:
-                ret = i
-                break
-        return ret
-    return lagest_factor
 
 @libentry()
-@triton.heuristics(
-    {
-        "BLOCK_SIZE_M": heur_block_size("M"),
-        "BLOCK_SIZE_N": heur_block_size("N"),
-        "BLOCK_SIZE_K": heur_block_size("K"),
-    }
+@triton.autotune(
+    configs=[], generate_configs="addmm",
+    key=["M", "N", "K"],
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_kernel(
