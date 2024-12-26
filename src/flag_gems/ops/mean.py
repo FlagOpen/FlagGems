@@ -71,7 +71,7 @@ def heur_n_block_size(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("mean"),
+#     configs=runtime.get_tuned_config("mean"),
 #     key=["M", "N"],
 # )
 @triton.heuristics(

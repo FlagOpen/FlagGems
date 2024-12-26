@@ -20,7 +20,7 @@ def heur_n_block_size(args):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("triu"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("triu"), key=["M", "N"])
 @triton.heuristics(
     values={
         "M_BLOCK_SIZE": heur_m_block_size,
@@ -63,7 +63,7 @@ def heur_mn_block_size(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("triu_batch"),
+#     configs=runtime.get_tuned_config("triu_batch"),
 #     key=["batch", "MN", "N", "diagonal"],
 # )
 @triton.heuristics(

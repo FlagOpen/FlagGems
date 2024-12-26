@@ -20,7 +20,7 @@ def heur_block_m(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("mv"),
+#     configs=runtime.get_tuned_config("mv"),
 #     key=["M", "N"],
 # )
 @triton.heuristics(

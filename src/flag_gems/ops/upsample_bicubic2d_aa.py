@@ -40,7 +40,7 @@ def heur_n_block_size(args):
 
 
 # @triton.autotune(
-#     configs=runtime.get_triton_config("upsample_bicubic2d_aa"),
+#     configs=runtime.get_tuned_config("upsample_bicubic2d_aa"),
 #     key=["N", "C", "OH", "OW"],
 # )
 @triton.heuristics(
@@ -400,7 +400,7 @@ def upsample_bicubic2d_aa_kernel(
 
 # upsample and downsample
 # @triton.autotune(
-#     configs=runtime.get_triton_config("upsample_bicubic2d_aa"),
+#     configs=runtime.get_tuned_config("upsample_bicubic2d_aa"),
 #     key=["N", "C", "OH", "OW"],
 # )
 @triton.heuristics(

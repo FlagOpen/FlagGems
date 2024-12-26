@@ -30,7 +30,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("var_mean"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -117,6 +117,7 @@ def heur_block_n(args):
 
 
 @libentry()
+# @triton.heuristics(runtime.get_heuristic_config("var_mean"))
 @triton.heuristics(
     {
         "BLOCK_N": heur_block_n,

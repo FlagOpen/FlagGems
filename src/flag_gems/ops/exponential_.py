@@ -10,6 +10,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+# from .. import runtime
 from ..runtime import torch_device_fn
 
 # def heur_block(args):
@@ -38,6 +39,7 @@ def heur_num_warps(args):
         "num_warps": heur_num_warps,
     }
 )
+# @triton.heuristics(runtime.get_heuristic_config("exponential_"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def fused_exponential_kernel(
     out_ptr,

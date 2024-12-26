@@ -23,7 +23,7 @@ def heur_block_n(args):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -77,7 +77,7 @@ def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -131,7 +131,7 @@ def max_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -185,7 +185,7 @@ def min_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,
@@ -239,7 +239,7 @@ def l0_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,

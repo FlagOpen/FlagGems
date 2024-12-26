@@ -34,8 +34,8 @@ def heur_even_k(args):
 
 
 @libentry()
-# @triton.autotune(
-#     configs=runtime.get_triton_config("mm"),
+# @libtuner(
+#     configs=runtime.get_tuned_config("mm"),
 #     key=["M", "N", "K"],
 # )
 @triton.heuristics(

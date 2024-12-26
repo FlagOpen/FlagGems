@@ -13,7 +13,7 @@ def heur_block_size(args):
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
+# @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.heuristics(
     values={
         "BLOCK_SIZE": heur_block_size,
@@ -32,7 +32,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("masked_fill"), key=["N"])
+# @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.heuristics(
     values={
         "BLOCK_SIZE": heur_block_size,

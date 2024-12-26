@@ -70,7 +70,7 @@ def log_softmax_kernel(
 
 
 @libentry()
-# @triton.autotune(configs=runtime.get_triton_config("log_softmax"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("log_softmax"), key=["M", "N"])
 @triton.heuristics(
     {
         "BLOCK_M": heur_block_m,

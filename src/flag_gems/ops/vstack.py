@@ -18,7 +18,7 @@ def heur_block_size(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("vstack"),
+#     configs=runtime.get_tuned_config("vstack"),
 #     key=[
 #         "max_tile_elems",
 #     ],

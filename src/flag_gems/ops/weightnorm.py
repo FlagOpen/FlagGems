@@ -25,7 +25,7 @@ def weight_norm_kernel_last_block_col(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
+#     configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
 # )
 @triton.heuristics(
     values={
@@ -81,7 +81,7 @@ def weight_norm_kernel_first_block_col(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
+#     configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
 # )
 @triton.heuristics(
     values={
@@ -137,7 +137,7 @@ def heur_block_weight_norm_bwd_kernel_last(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("weight_norm_kernel_last"), key=["M", "N"]
+#     configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]
 # )
 @triton.heuristics(
     values={
@@ -203,7 +203,7 @@ def heur_block_weight_norm_bwd_kernel_first(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("weight_norm_kernel_first"), key=["M", "N"]
+#     configs=runtime.get_tuned_config("weight_norm_kernel_first"), key=["M", "N"]
 # )
 @triton.heuristics(
     values={
@@ -342,7 +342,7 @@ def heur_col_weight_norm_except_dim_kernel(args):
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("weight_norm_kernel"),
+#     configs=runtime.get_tuned_config("weight_norm_kernel"),
 #     key=["v_shape0", "v_shape1", "v_shape2"],
 # )
 @triton.heuristics(
@@ -403,7 +403,7 @@ def weight_norm_except_dim_kernel(
 
 @libentry()
 # @triton.autotune(
-#     configs=runtime.get_triton_config("weight_norm_kernel"),
+#     configs=runtime.get_tuned_config("weight_norm_kernel"),
 #     key=["v_shape0", "v_shape1", "v_shape2"],
 # )
 @triton.heuristics(

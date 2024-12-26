@@ -42,6 +42,11 @@ def heur_divisible_k(args):
 
 
 @libentry()
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("bmm"),
+#     key=["M", "N", "K"],
+# )
+# @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.heuristics(
     {
         "TILE_M": heur_block_size("M"),

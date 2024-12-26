@@ -57,6 +57,7 @@ def heur_n_block_size(args):
 
 
 @libentry()
+# @triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.heuristics(
     values={
         "BLOCK_M": heur_m_block_size,

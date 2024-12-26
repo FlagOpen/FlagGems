@@ -19,7 +19,7 @@ def heur_block_size(args):
 
 
 # @triton.autotune(
-#     configs=runtime.get_triton_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+#     configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
 # )
 @triton.heuristics(
     {
