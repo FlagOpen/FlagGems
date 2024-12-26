@@ -7,7 +7,7 @@ from .ops import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
-__version__ = "2.1"
+__version__ = "2.2"
 device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
@@ -146,6 +146,11 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
             ("sum.dim_IntList", sum_dim, Autograd.disable),
+            (
+                "scaled_dot_product_attention",
+                scaled_dot_product_attention,
+                Autograd.disable,
+            ),
             ("all", all, Autograd.disable),
             ("all.dim", all_dim, Autograd.disable),
             ("all.dims", all_dims, Autograd.disable),
