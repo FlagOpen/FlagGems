@@ -462,6 +462,12 @@ def celoss_indices_smooth_bwd(
 
 
 @libentry()
+@triton.autotune(
+    configs=runtime.get_tuned_config("cross_entropy_loss_sum_and_scale"),
+    key=[
+        "N",
+    ],
+)
 @triton.jit
 def sum_and_scale(
     inp_ptr,

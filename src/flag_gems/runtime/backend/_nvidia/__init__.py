@@ -7,4 +7,4 @@ vendor_info = VendorInfoBase(
 CUSTOMIZED_UNUSED_OPS = ("cumsum", "cos", "add")
 
 
-__all__ = ["*"]
+__all__ = ["*", "HEURISTICS_CONFIGS"]
