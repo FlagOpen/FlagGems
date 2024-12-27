@@ -65,10 +65,12 @@ sum
 tanh
 triu"""
 
+g_cur_path = os.path.dirname(os.path.abspath(__file__))
 op_list = op_list.split("\n")
 
 def run_pytest_with_main(file_name, marker, ref):
-    args = [file_name, "-m", marker, "--ref", ref]
+    report_path = "{}/allure_triton_report".format(g_cur_path)
+    args = [file_name, "-m", marker, "--ref", ref, "--alluredir",report_path]
     result = pytest.main(args)
     
     if result == 0:
