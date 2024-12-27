@@ -9,11 +9,10 @@ from triton import next_power_of_2
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..runtime.moduel_tool import tl_extra_module
-from ..utils import libentry
+from ..utils import libentry, tl_extra_shim
 from ..utils.type_utils import get_accumulator_dtype
 
-rsqrt = tl_extra_module.rsqrt
+rsqrt = tl_extra_shim.rsqrt
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -285,8 +284,12 @@ def batch_norm_backward_kernel(
 
     if affine:
         weight = tl.load(feat_pid + weight_pointer)
-        weight_grad = 0.0
-        bias_grad = 0.0
+        weight_grad_acc = tl.zeros(
+            [BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32
+        )
+        bias_grad_acc = tl.zeros(
+            [BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32
+        )
 
     else:
         weight = 1.0
@@ -337,10 +340,12 @@ def batch_norm_backward_kernel(
         )
 
         if affine:
-            weight_grad += tl.sum(curr_pre_lin * curr_output_grad)
-            bias_grad += tl.sum(curr_output_grad)
+            weight_grad_acc += curr_pre_lin * curr_output_grad
+            bias_grad_acc += curr_output_grad
 
     if affine:
+        weight_grad = tl.sum(weight_grad_acc)
+        bias_grad = tl.sum(weight_grad_acc)
         tl.store(feat_pid + weight_grad_pointer, weight_grad)
         tl.store(feat_pid + bias_grad_pointer, bias_grad)
 
@@ -385,9 +390,8 @@ class BatchNorm(torch.autograd.Function):
         running_var = input if running_var is None else running_var
 
         # Launches 1D grid where each program operates over one feature.
-        grid = lambda _: (feat_dim,)
         with torch_device_fn.device(input.device):
-            batch_norm_forward_kernel[grid](
+            batch_norm_forward_kernel[(feat_dim,)](
                 input_3d,
                 weight,
                 bias,
@@ -431,9 +435,8 @@ class BatchNorm(torch.autograd.Function):
             weight_grad = bias_grad = None
 
         # Launches 1D grid where each program operates over one feature.
-        grid = lambda _: (feat_dim,)
         with torch_device_fn.device(input.device):
-            batch_norm_backward_kernel[grid](
+            batch_norm_backward_kernel[(feat_dim,)](
                 output_grad_3d,
                 input_3d,
                 mean,
