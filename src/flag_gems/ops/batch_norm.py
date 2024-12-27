@@ -60,7 +60,7 @@ def BLOCK_SIZE_SPATIAL_heuristic(args: Dict) -> int:
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("batch_norm"),
+    configs=runtime.get_tuned_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
     restore_value=["running_mean_pointer", "running_var_pointer"],
 )
@@ -203,7 +203,7 @@ def batch_norm_forward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("batch_norm"),
+    configs=runtime.get_tuned_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
 )
 @triton.heuristics(
