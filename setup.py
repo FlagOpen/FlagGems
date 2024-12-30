@@ -2,15 +2,9 @@ import glob
 import os
 from typing import List, Optional, Sequence
 
-import torch
 from pip._internal.metadata import get_default_environment
 from setuptools import find_packages, setup
-from torch.utils.cpp_extension import (
-    CUDA_HOME,
-    BuildExtension,
-    CppExtension,
-    CUDAExtension,
-)
+from torch.utils.cpp_extension import BuildExtension, CppExtension
 
 # ----------------------------- check triton -----------------------------
 # NOTE: this is used to check whether pytorch-triton or triton is installed. Since
@@ -78,38 +72,25 @@ library_name = "flag_gems"
 
 def get_extensions():
     debug_mode = os.getenv("DEBUG", "0") == "1"
-    use_cuda = os.getenv("USE_CUDA", "1") == "1"
     if debug_mode:
         print("Compiling in debug mode")
 
-    use_cuda = use_cuda and torch.cuda.is_available() and CUDA_HOME is not None
-    extension = CUDAExtension if use_cuda else CppExtension
-
+    extension = CppExtension
     extra_link_args = []
     extra_compile_args = {
         "cxx": [
             "-O3" if not debug_mode else "-O0",
             "-fdiagnostics-color=always",
         ],
-        "nvcc": [
-            "-O3" if not debug_mode else "-O0",
-        ],
     }
     if debug_mode:
         extra_compile_args["cxx"].append("-g")
-        extra_compile_args["nvcc"].append("-g")
         extra_link_args.extend(["-O0", "-g"])
 
     this_dir = os.path.dirname(os.path.curdir)
     src_dir = os.path.join(this_dir, "src")
     extensions_dir = os.path.join(src_dir, library_name, "csrc")
     sources = list(glob.glob(os.path.join(extensions_dir, "*.cpp")))
-
-    # extensions_cuda_dir = os.path.join(extensions_dir, "cuda")
-    # cuda_sources = list(glob.glob(os.path.join(extensions_cuda_dir, "*.cu")))
-
-    # if use_cuda:
-    #     sources += cuda_sources
 
     ext_modules = [
         extension(
