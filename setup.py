@@ -9,7 +9,7 @@ from torch.utils.cpp_extension import BuildExtension, CppExtension
 # ----------------------------- check triton -----------------------------
 # NOTE: this is used to check whether pytorch-triton or triton is installed. Since
 # the name for the package to be import is the name, but the names in package manager
-# are different. So we check it in this way
+# are different. So we check it in this way:
 # 1. If the triton that is installed via pytorch-triton, then it is the version that is
 # dependended by pytorch. Upgrading it may break torch. Be aware of the risk!
 # 2. If the triton is installed via torch, then maybe you are aware that you are using
