@@ -7,7 +7,7 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
-from flag_gems.utils.shape_utils import restride_dim
+from flag_gems.utils.shape_utils import has_internal_overlapping, restride_dim
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -327,6 +327,8 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logging.debug("GEMS SCATTER")
+    if has_internal_overlapping(inp):
+        inp = inp.contiguous()
     out = inp.clone()
 
     src_strided = src.as_strided(index.shape, src.stride())
@@ -353,8 +355,11 @@ def scatter(inp, dim, index, src, reduce=None):
 
 def scatter_(inp, dim, index, src, reduce=None):
     logging.debug("GEMS SCATTER_")
-    out = inp
+    assert not has_internal_overlapping(
+        inp
+    ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
+    out = inp
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
