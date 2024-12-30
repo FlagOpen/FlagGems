@@ -79,7 +79,7 @@ def dim_compress_backward(inp, dims):
 # kernel
 @libentry()
 @triton.autotune(
-    configs=runtime.get_triton_config("index_select_backward"),
+    configs=runtime.get_tuned_config("index_select_backward"),
     key=["M", "N"],
     reset_to_zero=["out"],
 )
