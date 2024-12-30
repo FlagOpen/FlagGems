@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
@@ -82,4 +82,5 @@ class Gelu(torch.autograd.Function):
 
 
 def gelu(A, *, approximate="none"):
+    print("\n.......test for mutibackend specific gelu........\n")
     return Gelu.apply(A, approximate)
