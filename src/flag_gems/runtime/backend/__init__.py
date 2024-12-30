@@ -39,7 +39,7 @@ res = {tensor}.{attr_name}
 def set_tl_extra_backend_module(vendor_name=None):
     global device_name, tl_extra_backend_module
     device_name = device_name or get_vendor_info(vendor_name).device_name
-    module_str = f"triton.language.extra.{device_name}.libdevice"
+    module_str = "triton.language.extra.xpu.libdevice"
     tl_extra_backend_module = importlib.import_module(module_str)
 
 
