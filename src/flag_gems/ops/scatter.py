@@ -8,6 +8,8 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
+from ..utils.shape_utils import MemOverlap, has_internal_overlapping
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
@@ -67,6 +69,11 @@ def generate_scatter_kernel(
             code.writeline(f"{stride_args}, # stride for index")
 
             for i in range(rank):
+                function_ns.create_name(f"src_stride_{i}")
+            stride_args = ", ".join(f"src_stride_{i}: int" for i in range(rank))
+            code.writeline(f"{stride_args}, # stride for src")
+
+            for i in range(rank):
                 function_ns.create_name(f"index_shape_{i}")
             shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
             code.writeline(f"{shape_args}, # shape for index")
@@ -102,6 +109,7 @@ def generate_scatter_kernel(
         #   1. Calculate inp_offsets and idx_offsets
         code.writeline("inp_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
         code.writeline("idx_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
+        code.writeline("src_offsets = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int64)")
         code.writeline("cur_idx = rows_offsets * N + cols_offsets")
 
         #   2. snippets
@@ -109,12 +117,13 @@ def generate_scatter_kernel(
             code.writeline(f"mod = cur_idx % index_shape_{i}")
             code.writeline(f"inp_offsets += mod * inp_stride_{i}")
             code.writeline(f"idx_offsets += mod * index_stride_{i}")
+            code.writeline(f"src_offsets += mod * src_stride_{i}")
             if i != (rank - 1):
                 code.writeline(f"cur_idx = cur_idx // index_shape_{i}")
 
         #   3. Use offsets to scatter
         code.writeline(
-            "cur_src = tl.load(src_strided + idx_offsets, mask=mask, other=0)"
+            "cur_src = tl.load(src_strided + src_offsets, mask=mask, other=0)"
         )
         code.writeline("cur_index = tl.load(index + idx_offsets, mask=mask, other=0)")
         code.writeline("inp_offsets += cur_index * stride_dim")
@@ -170,6 +179,7 @@ def generate_destination_passing_wrapper(
     with code.indent():
         code.writeline("inp_strides = list(inp.stride())")
         code.writeline("index_strides = index.stride()")
+        code.writeline("src_strides = src_strided.stride()")
         code.writeline("index_shapes = list(index.shape)")
         code.writeline("stride_dim = inp_strides[dim]")
         code.writeline("inp_strides[dim] = 0")
@@ -194,6 +204,9 @@ def generate_destination_passing_wrapper(
                 code.writeline(f"{s},")
 
                 s = ", ".join(f"index_strides[{i}]" for i in range(rank))
+                code.writeline(f"{s},")
+
+                s = ", ".join(f"src_strides[{i}]" for i in range(rank))
                 code.writeline(f"{s},")
 
                 s = ", ".join(f"index_shapes[{i}]" for i in range(rank))
@@ -275,12 +288,11 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logging.debug("GEMS SCATTER")
-    inp = inp.contiguous()
-    index = index.contiguous()
-    src = src.contiguous()
+    if has_internal_overlapping(inp) == MemOverlap.Yes:
+        inp = inp.contiguous()
     out = inp.clone()
 
-    src_strided = src.as_strided(index.shape, src.stride()).contiguous()
+    src_strided = src.as_strided(index.shape, src.stride())
     # plain_idx = torch.arange(0, index.numel(), device=inp.device).reshape(index.shape)
     N = list(index.shape)[index.ndim - 1]
     M = index.numel() // N
