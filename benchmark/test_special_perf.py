@@ -364,6 +364,7 @@ def test_perf_kron():
     class KronBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
             return None
+
     def kron_input_fn(shape, dtype, device):
         inp1 = generate_tensor_input(shape, dtype, device)
         inp2 = generate_tensor_input(shape, dtype, device)
