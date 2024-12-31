@@ -1,8 +1,10 @@
 import torch
 import triton
 import triton.language as tl
-from ..utils import triton_lang_extension as tle
+
 from .. import runtime
+from ..utils import triton_lang_extension as tle
+
 
 def prepare_tensor_for_kron(tensor_a, tensor_b):
     if tensor_a.numel() == 0 or tensor_b.numel() == 0:
@@ -13,8 +15,16 @@ def prepare_tensor_for_kron(tensor_a, tensor_b):
     if tensor_b.dim() == 0:
         tensor_b = tensor_b.unsqueeze(0)
 
-    a_shape = list(tensor_a.shape) if len(tensor_a.shape) >= 2 else [1] * (2 - len(tensor_a.shape)) + list(tensor_a.shape)
-    b_shape = list(tensor_b.shape) if len(tensor_b.shape) >= 2 else [1] * (2 - len(tensor_b.shape)) + list(tensor_b.shape)
+    a_shape = (
+        list(tensor_a.shape)
+        if len(tensor_a.shape) >= 2
+        else [1] * (2 - len(tensor_a.shape)) + list(tensor_a.shape)
+    )
+    b_shape = (
+        list(tensor_b.shape)
+        if len(tensor_b.shape) >= 2
+        else [1] * (2 - len(tensor_b.shape)) + list(tensor_b.shape)
+    )
 
     if len(a_shape) > len(b_shape):
         b_shape = [1] * (len(a_shape) - len(b_shape)) + b_shape
@@ -23,6 +33,7 @@ def prepare_tensor_for_kron(tensor_a, tensor_b):
 
     out_shape = tuple(a * b for a, b in zip(a_shape, b_shape))
     return tensor_a.reshape(*a_shape), tensor_b.reshape(*b_shape), out_shape
+
 
 def calculate_batch_indices(i, shape_a, shape_b):
     a_batch_dims = shape_a[:-2] or (1,)
@@ -43,20 +54,29 @@ def calculate_batch_indices(i, shape_a, shape_b):
 
     return a_idx, b_idx
 
+
 @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
 @triton.jit
 def kron_kernel(
-    a_ptr, b_ptr, c_ptr,
-    M, N,
-    M1, M2, N1, N2,
-    a_stride_0, a_stride_1,
-    b_stride_0, b_stride_1,
-    c_stride_0, c_stride_1,
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    M,
+    N,
+    M1,
+    M2,
+    N1,
+    N2,
+    a_stride_0,
+    a_stride_1,
+    b_stride_0,
+    b_stride_1,
+    c_stride_0,
+    c_stride_1,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     pid = tle.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
 
     pid_m = pid // grid_n
@@ -83,6 +103,7 @@ def kron_kernel(
     c_idx = offs_am[:, None] * c_stride_0 + offs_an[None, :] * c_stride_1
     tl.store(c_ptr + c_idx, c, mask=mask)
 
+
 def kron(A, B):
     if A.numel() == 0 or B.numel() == 0:
         return torch.empty(0, device=A.device, dtype=A.dtype)
@@ -108,8 +129,7 @@ def kron(A, B):
     B_view = B_prepared.reshape(-1, M2, N2)
 
     grid = lambda meta: (
-        triton.cdiv(M, meta['BLOCK_M']) *
-        triton.cdiv(N, meta['BLOCK_N']),
+        triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
     )
 
     if not A_view.is_contiguous():
@@ -123,15 +143,21 @@ def kron(A, B):
             A_view[a_idx],
             B_view[b_idx],
             C_reshaped[i],
-            M, N,
-            M1, M2, N1, N2,
-            A_view[a_idx].stride(0), A_view[a_idx].stride(1),
-            B_view[b_idx].stride(0), B_view[b_idx].stride(1),
-            C_reshaped[i].stride(0), C_reshaped[i].stride(1),
+            M,
+            N,
+            M1,
+            M2,
+            N1,
+            N2,
+            A_view[a_idx].stride(0),
+            A_view[a_idx].stride(1),
+            B_view[b_idx].stride(0),
+            B_view[b_idx].stride(1),
+            C_reshaped[i].stride(0),
+            C_reshaped[i].stride(1),
         )
 
     if A.dim() <= 1 and B.dim() <= 1 and A.numel() > 0 and B.numel() > 0:
         return C.reshape(-1)
 
     return C
-
