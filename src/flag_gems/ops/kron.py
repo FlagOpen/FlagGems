@@ -43,7 +43,7 @@ def calculate_batch_indices(i, shape_a, shape_b):
 
     return a_idx, b_idx
 
-@triton.autotune(configs=runtime.get_triton_config("kron"), key=["M", "N"])
+@triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
 @triton.jit
 def kron_kernel(
     a_ptr, b_ptr, c_ptr,
