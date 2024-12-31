@@ -48,6 +48,19 @@ def index_select_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+def index_select_backward_gbps(bench_fn_args, latency):
+    inp = bench_fn_args[0]
+    dim = bench_fn_args[1]
+    index = bench_fn_args[2]
+    index_unique = torch.unique(index)
+    io_amount = (
+        shape_utils.size_in_bytes(inp)
+        * (index.size(0) + index_unique.size(0))
+        // inp.size(dim)
+    )
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",
     [
@@ -242,6 +255,7 @@ def test_perf_index_select_backward():
         op_name="index_select_backward",
         torch_op=torch.index_select,
         dtypes=FLOAT_DTYPES,
+        get_gbps=index_select_backward_gbps,
         is_backward=True,
     )
     bench.run()

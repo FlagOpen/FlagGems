@@ -116,6 +116,9 @@ def index_select_backward(grad, self_sizes, dim, index):
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
     if index.ndim == 0:
         index = index.unsqueeze(0)
+    grad_init = grad.ndim
+    if grad_init == 1:
+        grad = grad.unsqueeze(1)
     index_shape = list(index.shape)
     dim = dim % len(self_sizes)
     grad_shape = list(grad.shape)
@@ -138,6 +141,8 @@ def index_select_backward(grad, self_sizes, dim, index):
     )
     index_select_backward_kernel[grid](grad, out, M, N, num_blocks_per_CTA, index)
     out = out.to(grad_type)
+    if grad_init == 1:
+        out = out.squeeze(1)
     if dim != 0:
         order = [i for i in range(1, out.ndim)]
         order.insert(dim, 0)
