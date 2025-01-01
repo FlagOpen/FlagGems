@@ -163,19 +163,24 @@ def generate_scatter_kernel(
             code.newline()
             code.writeline("if IS_ADD: ")
             with code.indent():
-                code.writeline(
-                    "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)"
-                )
-                code.writeline("res = cur_inp + cur_src")
-                code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
+                code.writeline("tl.atomic_add(out + inp_offsets, cur_src, mask=mask)")
 
             code.writeline("elif IS_MUL: ")
             with code.indent():
-                code.writeline(
-                    "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)"
-                )
-                code.writeline("res = cur_inp * cur_src")
-                code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
+                code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
+                code.writeline("block_stop = False")
+                code.writeline("while not block_stop:")
+                with code.indent():
+                    code.writeline
+                    code.writeline(
+                        "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
+                    )
+                    code.writeline("res = tl.where(stop, cur_inp, cur_inp * cur_src)")
+                    code.writeline(
+                        "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
+                    )
+                    code.writeline("stop |= cur_inp == cas_res")
+                    code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
 
             code.writeline("else: ")
             with code.indent():
@@ -327,9 +332,10 @@ _scatter_func = ScatterFunction()
 
 def scatter(inp, dim, index, src, reduce=None):
     logging.debug("GEMS SCATTER")
-    if has_internal_overlapping(inp):
-        inp = inp.contiguous()
     out = inp.clone()
+
+    if has_internal_overlapping(out):
+        out = out.contiguous()
 
     src_strided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
@@ -350,16 +356,18 @@ def scatter(inp, dim, index, src, reduce=None):
         reduce,
         int32_offset=use_int32_offset,
     )
+
     return out
 
 
 def scatter_(inp, dim, index, src, reduce=None):
     logging.debug("GEMS SCATTER_")
+    out = inp
+
     assert not has_internal_overlapping(
-        inp
+        out
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
 
-    out = inp
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
@@ -379,4 +387,5 @@ def scatter_(inp, dim, index, src, reduce=None):
         reduce,
         int32_offset=use_int32_offset,
     )
+
     return inp
