@@ -11,6 +11,7 @@ from .performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
+    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
 )
