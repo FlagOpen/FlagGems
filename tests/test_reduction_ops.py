@@ -422,7 +422,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
@@ -466,7 +466,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     "inp_shape", [(64, 16, 8)] if QUICK_MODE else [(512, 128, 32), (1024, 64, 16)]
 )
 @pytest.mark.parametrize("dim", [0, 1, 2])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)

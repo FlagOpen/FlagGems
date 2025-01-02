@@ -115,13 +115,53 @@ def test_perf_scatter():
     bench.run()
 
 
+@pytest.mark.scatter_add
+def test_perf_scatter_add():
+    def scatter_input_fn(shape, dtype, device):
+        input_gen = gather_input_fn(shape, dtype, device)
+        inp, dim, index = next(input_gen)
+        src_shape = list(size + 16 for size in index.shape)
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+
+        yield inp, dim, index, src, "add"
+
+    bench = TensorSelectBenchmark(
+        op_name="scatter.reduce",
+        torch_op=torch.scatter,
+        input_fn=scatter_input_fn,
+        get_gbps=gather_scatter_gbps,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.scatter_multiply
+def test_perf_scatter_multiply():
+    def scatter_input_fn(shape, dtype, device):
+        input_gen = gather_input_fn(shape, dtype, device)
+        inp, dim, index = next(input_gen)
+        src_shape = list(size + 16 for size in index.shape)
+        src = torch.randn(src_shape, dtype=dtype, device=device)
+
+        yield inp, dim, index, src, "multiply"
+
+    bench = TensorSelectBenchmark(
+        op_name="scatter.reduce",
+        torch_op=torch.scatter,
+        input_fn=scatter_input_fn,
+        get_gbps=gather_scatter_gbps,
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
 def gather_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
 
-    dim = random.randint(0, len(shape) - 1)
+    dim = -1
     size_dim = shape[dim]
     index_shape = list(shape)
-    index_shape[dim] = random.randint(1, shape[dim])
+    index_shape[dim] = shape[dim]
     index = torch.empty(index_shape, dtype=torch.long, device=device)
 
     m, n = index_shape
