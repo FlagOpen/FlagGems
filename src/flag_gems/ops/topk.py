@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 import triton.language.core as core
-from triton.language.standard import _log2, zeros_like
+from triton.language.standard import zeros_like
 
 from ..runtime import torch_device_fn
 from ..utils import libentry
@@ -23,6 +23,15 @@ _MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
 _MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
 _MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
 _MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
+
+
+def _log2(i: core.constexpr):
+    log2 = 0
+    n = i.value
+    while n > 1:
+        n >>= 1
+        log2 += 1
+    return core.constexpr(log2)
 
 
 @triton.jit

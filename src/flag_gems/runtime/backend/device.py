@@ -52,6 +52,7 @@ class DeviceDetector(object):
         cmd = {
             "cambricon": "mlu",
             "mthreads": "musa",
+            "iluvatar": "corex",
         }
         for vendor_name, flag in cmd.items():
             if hasattr(torch, flag):
