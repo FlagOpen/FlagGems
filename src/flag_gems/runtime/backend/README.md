@@ -25,9 +25,9 @@ VendorInfoBase(
     vendor_name="xxx", device_name="xxx", device_query_cmd="xxx"
 )
 ```
-- `vendor_name` is your vendorname like `nvidia`
+- `vendor_name` is your vendorname, like `nvidia`
 
-- `device_name` is your devicename like `cuda`
+- `device_name` is your devicename, like `cuda`
 
 - `device_query_cmd` is a command that can only be successfully executed on your vendor's device, like `nvidia-smi`
 
