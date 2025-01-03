@@ -53,6 +53,7 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .kron import kron
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_softmax import log_softmax
@@ -285,4 +286,5 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "kron",
 ]
