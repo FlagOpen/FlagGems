@@ -6,7 +6,16 @@ The `flag_gems` operator library provides the ability to access multiple backend
 Create a folder named after your vendor in the  `FlagGems/src/flag_gems/runtime/backend directory`, following the pattern `_vendorname`. For example, you can refer to the structure of  `FlagGems/src/flag_gems/runtime/backend/_nvidia`.
 
 #### step 2:
-Create the necessary files, including but not limited to `__init__.py`, `heuristics_config_utils.py`, `tune_configs.yaml`, as well as a folder named  `ops`
+Create the necessary files, including but not limited to `__init__.py`, `heuristics_config_utils.py`, `tune_configs.yaml`, as well as a folder named  `ops`,This is an example under _nvidia file:
+```
+├── __init__.py
+├── heuristics_config_utils.py
+├── ops
+│   ├── __init__.py
+│   ├── add.py
+│   └── gelu.py
+└── tune_configs.yaml
+```
 
 ##### step 2.1  `__init__.py`
 
@@ -36,7 +45,6 @@ from backend_utils import Autograd
 
 from . import add, gelu
 
-
 def get_specific_ops():
     return (
         ("add.Tensor", add.add, Autograd.disable),
@@ -47,4 +55,13 @@ def get_specific_ops():
 def get_unused_ops():
     return ("cumsum", "cos")
 ```
-and `get_specific_ops` is to get your vendor-customized operators, get_unused_ops() is to get a list of ops that vendors don't want users to use.
+- The `get_specific_ops` function is designed to retrieve vendor-customized operators. If this feature is not required, the function can return an `empty tuple: ()`. An item such as `"add.Tensor"`, `add.add`, `Autograd.disable` is used to describe operator registration details.
+
+
+    - `"add.Tensor"` denotes the name of the Aten operation you wish to replace.
+
+    - `add.add` represents the implementation of the add operator using Triton.
+
+    - `Autograd.enable/Autograd.disable` indicates whether the operator supports backward computation (gradient calculation) or not.
+
+- The `get_unused_ops()` function is intended to obtain a list of operations that vendors prefer users not to utilize. If this functionality is not needed, the function can also return an `empty tuple: ()`. An item such as `"cumsum"`  is a string type represents the name of op you don't want users to use it.
