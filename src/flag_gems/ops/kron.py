@@ -61,46 +61,46 @@ def kron_kernel(
     a_ptr,
     b_ptr,
     c_ptr,
-    M,
-    N,
-    M1,
-    M2,
-    N1,
-    N2,
-    a_stride_0,
-    a_stride_1,
-    b_stride_0,
-    b_stride_1,
-    c_stride_0,
-    c_stride_1,
+    M: tl.int64,
+    N: tl.int64,
+    M1: tl.int64,
+    M2: tl.int64,
+    N1: tl.int64,
+    N2: tl.int64,
+    a_stride_0: tl.int64,
+    a_stride_1: tl.int64,
+    b_stride_0: tl.int64,
+    b_stride_1: tl.int64,
+    c_stride_0: tl.int64,
+    c_stride_1: tl.int64,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid = tle.program_id(0)
-    grid_n = tl.cdiv(N, BLOCK_N)
+    pid = tle.program_id(0).to(tl.int64)
+    grid_n = tl.cdiv(N, BLOCK_N).to(tl.int64)
 
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
+    pid_m = (pid // grid_n).to(tl.int64)
+    pid_n = (pid % grid_n).to(tl.int64)
 
-    offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_an = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_am = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+    offs_an = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
 
     mask = (offs_am[:, None] < M) & (offs_an[None, :] < N)
 
-    a_row = offs_am[:, None] // M2
-    a_col = offs_an[None, :] // N2
-    b_row = offs_am[:, None] % M2
-    b_col = offs_an[None, :] % N2
+    a_row = (offs_am[:, None] // M2).to(tl.int64)
+    a_col = (offs_an[None, :] // N2).to(tl.int64)
+    b_row = (offs_am[:, None] % M2).to(tl.int64)
+    b_col = (offs_an[None, :] % N2).to(tl.int64)
 
-    a_idx = a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_row * b_stride_0 + b_col * b_stride_1
+    a_idx = (a_row * a_stride_0 + a_col * a_stride_1).to(tl.int64)
+    b_idx = (b_row * b_stride_0 + b_col * b_stride_1).to(tl.int64)
 
     a = tl.load(a_ptr + a_idx, mask=mask)
     b = tl.load(b_ptr + b_idx, mask=mask)
 
     c = a * b
 
-    c_idx = offs_am[:, None] * c_stride_0 + offs_an[None, :] * c_stride_1
+    c_idx = (offs_am[:, None] * c_stride_0 + offs_an[None, :] * c_stride_1).to(tl.int64)
     tl.store(c_ptr + c_idx, c, mask=mask)
 
 
@@ -143,18 +143,18 @@ def kron(A, B):
             A_view[a_idx],
             B_view[b_idx],
             C_reshaped[i],
-            M,
-            N,
-            M1,
-            M2,
-            N1,
-            N2,
-            A_view[a_idx].stride(0),
-            A_view[a_idx].stride(1),
-            B_view[b_idx].stride(0),
-            B_view[b_idx].stride(1),
-            C_reshaped[i].stride(0),
-            C_reshaped[i].stride(1),
+            int(M),
+            int(N),
+            int(M1),
+            int(M2),
+            int(N1),
+            int(N2),
+            int(A_view[a_idx].stride(0)),
+            int(A_view[a_idx].stride(1)),
+            int(B_view[b_idx].stride(0)),
+            int(B_view[b_idx].stride(1)),
+            int(C_reshaped[i].stride(0)),
+            int(C_reshaped[i].stride(1)),
         )
 
     if A.dim() <= 1 and B.dim() <= 1 and A.numel() > 0 and B.numel() > 0:
