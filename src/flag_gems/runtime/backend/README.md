@@ -6,7 +6,7 @@ The `flag_gems` operator library provides the ability to access multiple backend
 Create a folder named after your vendor in the  `FlagGems/src/flag_gems/runtime/backend directory`, following the pattern `_vendorname`. For example, you can refer to the structure of  `FlagGems/src/flag_gems/runtime/backend/_nvidia`.
 
 #### step 2:
-Create the necessary files, including but not limited to `__init__.py`, `heuristics_config_utils.py`, `tune_configs.yaml`, as well as a folder named  `ops`,This is an example under _nvidia file:
+Create the necessary files, including but not limited to `__init__.py`, `heuristics_config_utils.py`, `tune_configs.yaml`, as well as a folder named  `ops`. This is an example under _nvidia file:
 ```
 ├── __init__.py
 ├── heuristics_config_utils.py
