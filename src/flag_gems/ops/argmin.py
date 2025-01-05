@@ -11,12 +11,13 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 torch_dtype_to_tl_dtype_and_max_value = {
-    torch.int16 : (tl.int16, torch.iinfo(torch.int16).max),
-    torch.int32 : (tl.int32, torch.iinfo(torch.int32).max),
-    torch.float16 : (tl.float16, torch.finfo(torch.float16).max),
-    torch.float32 : (tl.float32, torch.finfo(torch.float32).max),
-    torch.bfloat16 : (tl.float32, torch.finfo(torch.float32).max),
+    torch.int16: (tl.int16, torch.iinfo(torch.int16).max),
+    torch.int32: (tl.int32, torch.iinfo(torch.int32).max),
+    torch.float16: (tl.float16, torch.finfo(torch.float16).max),
+    torch.float32: (tl.float32, torch.finfo(torch.float32).max),
+    torch.bfloat16: (tl.float32, torch.finfo(torch.float32).max),
 }
+
 
 @libentry()
 @triton.jit
@@ -58,18 +59,7 @@ def heur_block_n(args):
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_triton_config("argmin"),
-    key=[
-        "M",
-        "N",
-    ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("argmin"))
 @triton.jit
 def argmin_kernel(
     inp,
