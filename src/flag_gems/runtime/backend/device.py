@@ -6,7 +6,13 @@ from queue import Queue
 import torch  # noqa: F401
 
 from .. import backend, error
-from ..commom_utils import vendors_map
+from ..commom_utils import vendors, vendors_map
+
+UNSUPPORT_FP64 = [
+    vendors.CAMBRICON,
+    vendors.ILUVATAR,
+    vendors.KUNLUNXIN,
+]
 
 
 # A singleton class to manage device context.
@@ -34,6 +40,7 @@ class DeviceDetector(object):
             self.device_count = backend.gen_torch_device_object(
                 self.vendor_name
             ).device_count()
+            self.support_fp64 = self.vendor not in UNSUPPORT_FP64
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.
