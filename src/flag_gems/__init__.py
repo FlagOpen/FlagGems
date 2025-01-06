@@ -1,213 +1,267 @@
 import torch
 
 from . import testing  # noqa: F401
+from . import runtime
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
+from .runtime.commom_utils import Autograd
+from .runtime.register import Register
 
-__version__ = "2.1"
-
+__version__ = "2.2"
+device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
+registrar = Register
+current_work_registrar = None
 
 
-def enable(lib=aten_lib):
-    lib.impl("abs", abs, "CUDA")
-    lib.impl("abs_", abs_, "CUDA")
-    lib.impl("add.Tensor", add, "CUDA")
-    lib.impl("add_.Tensor", add_, "CUDA")
-    lib.impl("addmm", addmm, "CUDA")
-    lib.impl("arange.start_step", arange_start, "CUDA")
-    lib.impl("arange.start", arange_start, "CUDA")
-    lib.impl("arange", arange, "CUDA")
-    lib.impl("bitwise_and.Tensor", bitwise_and_tensor, "CUDA")
-    lib.impl("bitwise_and_.Tensor", bitwise_and_tensor_, "CUDA")
-    lib.impl("bitwise_and.Scalar", bitwise_and_scalar, "CUDA")
-    lib.impl("bitwise_and_.Scalar", bitwise_and_scalar_, "CUDA")
-    lib.impl("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, "CUDA")
-    lib.impl("bitwise_not", bitwise_not, "CUDA")
-    lib.impl("bitwise_not_", bitwise_not_, "CUDA")
-    lib.impl("bitwise_or.Tensor", bitwise_or_tensor, "CUDA")
-    lib.impl("bitwise_or_.Tensor", bitwise_or_tensor_, "CUDA")
-    lib.impl("bitwise_or.Scalar", bitwise_or_scalar, "CUDA")
-    lib.impl("bitwise_or_.Scalar", bitwise_or_scalar_, "CUDA")
-    lib.impl("bitwise_or.Scalar_Tensor", bitwise_or_scalar_tensor, "CUDA")
-    lib.impl("bmm", bmm, "CUDA")
-    lib.impl("clamp", clamp, "CUDA")
-    lib.impl("clamp_", clamp_, "CUDA")
-    lib.impl("clamp.Tensor", clamp_tensor, "CUDA")
-    lib.impl("clamp_.Tensor", clamp_tensor_, "CUDA")
-    lib.impl("cos", cos, "CUDA")
-    lib.impl("cos_", cos_, "CUDA")
-    lib.impl("pad", pad, "CUDA")
-    lib.impl("cumsum", cumsum, "CUDA")
-    lib.impl("div.Tensor", true_divide, "CUDA")
-    lib.impl("div_.Tensor", true_divide_, "CUDA")
-    lib.impl("div.Scalar", true_divide, "CUDA")
-    lib.impl("div_.Scalar", true_divide_, "CUDA")
-    lib.impl("div.Tensor_mode", div_mode, "CUDA")
-    lib.impl("div_.Tensor_mode", div_mode_, "CUDA")
-    lib.impl("div.Scalar_mode", div_mode, "CUDA")
-    lib.impl("div_.Scalar_mode", div_mode_, "CUDA")
-    lib.impl("divide.Tensor", true_divide, "CUDA")  # divide, an alias for div
-    lib.impl("divide.Scalar", true_divide, "CUDA")
-    lib.impl("divide.Tensor_mode", div_mode, "CUDA")
-    lib.impl("divide.Scalar_mode", div_mode, "CUDA")
-    lib.impl("divide_.Tensor", true_divide_, "CUDA")  # divide, an alias for div
-    lib.impl("divide_.Scalar", true_divide_, "CUDA")
-    lib.impl("divide_.Tensor_mode", div_mode_, "CUDA")
-    lib.impl("divide_.Scalar_mode", div_mode_, "CUDA")
-    lib.impl("true_divide.Tensor", true_divide, "CUDA")  # true_divide, an alias for div
-    lib.impl("true_divide.Scalar", true_divide, "CUDA")
-    lib.impl(
-        "true_divide_.Tensor", true_divide_, "CUDA"
-    )  # true_divide, an alias for div
-    lib.impl("true_divide_.Scalar", true_divide_, "CUDA")
-    lib.impl("floor_divide", floor_divide, "CUDA")
-    lib.impl("floor_divide.Scalar", floor_divide, "CUDA")
-    lib.impl("floor_divide_.Tensor", floor_divide_, "CUDA")
-    lib.impl("floor_divide_.Scalar", floor_divide_, "CUDA")
-    lib.impl("remainder.Tensor", remainder, "CUDA")
-    lib.impl("remainder_.Tensor", remainder_, "CUDA")
-    lib.impl("remainder.Scalar", remainder, "CUDA")
-    lib.impl("remainder_.Scalar", remainder_, "CUDA")
-    lib.impl("remainder.Scalar_Tensor", remainder, "CUDA")
-    lib.impl("native_dropout", native_dropout, "AutogradCUDA")
-    lib.impl("erf", erf, "CUDA")
-    lib.impl("erf_", erf_, "CUDA")
-    lib.impl("embedding", embedding, "AutogradCUDA")
-    lib.impl("eq.Tensor", eq, "CUDA")
-    lib.impl("eq.Scalar", eq_scalar, "CUDA")
-    lib.impl("exp", exp, "CUDA")
-    lib.impl("exp_", exp_, "CUDA")
-    lib.impl("exponential_", exponential_, "CUDA")
-    lib.impl("ge.Tensor", ge, "CUDA")
-    lib.impl("ge.Scalar", ge_scalar, "CUDA")
-    lib.impl("gelu", gelu, "AutogradCUDA")
-    lib.impl("gelu_", gelu_, "AutogradCUDA")
-    lib.impl("native_group_norm", group_norm, "AutogradCUDA")
-    lib.impl("gt.Tensor", gt, "CUDA")
-    lib.impl("gt.Scalar", gt_scalar, "CUDA")
-    lib.impl("isfinite", isfinite, "CUDA")
-    lib.impl("isin.Tensor_Tensor", isin, "CUDA")
-    lib.impl("isin.Scalar_Tensor", isin, "CUDA")
-    lib.impl("isin.Tensor_Scalar", isin, "CUDA")
-    lib.impl("isinf", isinf, "CUDA")
-    lib.impl("isnan", isnan, "CUDA")
-    lib.impl("minimum", minimum, "CUDA")
-    lib.impl("maximum", maximum, "CUDA")
-    lib.impl("native_layer_norm", layer_norm, "AutogradCUDA")
-    lib.impl("le.Tensor", le, "CUDA")
-    lib.impl("le.Scalar", le_scalar, "CUDA")
-    lib.impl("lt.Tensor", lt, "CUDA")
-    lib.impl("lt.Scalar", lt_scalar, "CUDA")
-    lib.impl("rms_norm", rms_norm, "CUDA")
-    lib.impl("rand", rand, "CUDA")
-    lib.impl("randn", randn, "CUDA")
-    lib.impl("rand_like", rand_like, "CUDA")
-    lib.impl("randn_like", randn_like, "CUDA")
-    lib.impl("zeros", zeros, "CUDA")
-    lib.impl("ones", ones, "CUDA")
-    lib.impl("full", full, "CUDA")
-    lib.impl("zeros_like", zeros_like, "CUDA")
-    lib.impl("ones_like", ones_like, "CUDA")
-    lib.impl("full_like", full_like, "CUDA")
-    lib.impl("resolve_neg", resolve_neg, "CUDA")
-    lib.impl("resolve_conj", resolve_conj, "CUDA")
-    lib.impl("normal.Tensor_float", normal_tensor_float, "CUDA")
-    lib.impl("normal.float_Tensor", normal_float_tensor, "CUDA")
-    lib.impl("normal.Tensor_Tensor", normal_tensor_tensor, "CUDA")
-    lib.impl("normal.float_float", normal_float_float, "CUDA")
-    lib.impl("uniform_", uniform_, "CUDA")
-    lib.impl("mean", mean, "CUDA")
-    lib.impl("mean.dim", mean_dim, "CUDA")
-    lib.impl("mm", mm, "CUDA")
-    lib.impl("mul.Tensor", mul, "CUDA")
-    lib.impl("mul_.Tensor", mul_, "CUDA")
-    lib.impl("multinomial", multinomial, "CUDA")
-    lib.impl("mv", mv, "CUDA")
-    lib.impl("ne.Tensor", ne, "CUDA")
-    lib.impl("ne.Scalar", ne_scalar, "CUDA")
-    lib.impl("neg", neg, "CUDA")
-    lib.impl("neg_", neg_, "CUDA")
-    lib.impl("pow.Scalar", pow_scalar, "CUDA")
-    lib.impl("pow.Tensor_Scalar", pow_tensor_scalar, "CUDA")
-    lib.impl("pow.Tensor_Tensor", pow_tensor_tensor, "CUDA")
-    lib.impl("pow_.Scalar", pow_tensor_scalar_, "CUDA")
-    lib.impl("pow_.Tensor", pow_tensor_tensor_, "CUDA")
-    lib.impl("reciprocal", reciprocal, "CUDA")
-    lib.impl("reciprocal_", reciprocal_, "CUDA")
-    lib.impl("relu", relu, "AutogradCUDA")
-    lib.impl("relu_", relu_, "AutogradCUDA")
-    lib.impl("rsqrt", rsqrt, "CUDA")
-    lib.impl("rsqrt_", rsqrt_, "CUDA")
-    lib.impl("sigmoid", sigmoid, "AutogradCUDA")
-    lib.impl("sigmoid_", sigmoid_, "AutogradCUDA")
-    lib.impl("silu", silu, "AutogradCUDA")
-    lib.impl("silu_", silu_, "AutogradCUDA")
-    lib.impl("sin", sin, "CUDA")
-    lib.impl("sin_", sin_, "CUDA")
-    lib.impl("softmax.int", softmax, "AutogradCUDA")
-    lib.impl("sub.Tensor", sub, "CUDA")
-    lib.impl("sub_.Tensor", sub_, "CUDA")
-    lib.impl("tanh", tanh, "AutogradCUDA")
-    lib.impl("tanh_", tanh_, "AutogradCUDA")
-    lib.impl("triu", triu, "CUDA")
-    lib.impl("topk", topk, "CUDA")
-    lib.impl("var_mean.correction", var_mean, "CUDA")
-    lib.impl("linalg_vector_norm", vector_norm, "CUDA")
-    lib.impl("where.self", where_self, "CUDA")
-    lib.impl("where.ScalarSelf", where_scalar_self, "CUDA")
-    lib.impl("where.ScalarOther", where_scalar_other, "CUDA")
-    lib.impl("max", max, "CUDA")
-    lib.impl("max.dim", max_dim, "CUDA")
-    lib.impl("min", min, "CUDA")
-    lib.impl("min.dim", min_dim, "CUDA")
-    lib.impl("amax", amax, "CUDA")
-    lib.impl("argmax", argmax, "CUDA")
-    lib.impl("prod", prod, "CUDA")
-    lib.impl("prod.dim_int", prod_dim, "CUDA")
-    lib.impl("sum", sum, "CUDA")
-    lib.impl("sum.dim_IntList", sum_dim, "CUDA")
-    lib.impl("all", all, "CUDA")
-    lib.impl("all.dim", all_dim, "CUDA")
-    lib.impl("all.dims", all_dims, "CUDA")
-    lib.impl("any", any, "CUDA")
-    lib.impl("any.dim", any_dim, "CUDA")
-    lib.impl("any.dims", any_dims, "CUDA")
-    lib.impl("log_softmax.int", log_softmax, "AutogradCUDA")
-    lib.impl("outer", outer, "AutogradCUDA")
-    lib.impl("cross_entropy_loss", cross_entropy_loss, "AutogradCUDA")
-    # lib.impl("scatter.src", scatter_src, "CUDA")
-    # lib.impl("scatter.reduce", scatter_reduce, "CUDA")
-    # lib.impl("gather", gather, "CUDA")
-    # lib.impl("gather.out", gather_out, "CUDA")
-    lib.impl("isclose", isclose, "CUDA")
-    lib.impl("allclose", allclose, "CUDA")
-    lib.impl("fill.Scalar", fill_scalar, "CUDA")
-    lib.impl("fill.Tensor", fill_tensor, "CUDA")
-    lib.impl("flip", flip, "CUDA")
-    lib.impl("tile", tile, "CUDA")
-    lib.impl("index_select", index_select, "CUDA")
-    lib.impl("masked_fill", masked_fill, "CUDA")
-    lib.impl("_unique2", _unique2, "CUDA")
-    lib.impl("nonzero", nonzero, "CUDA")
-    lib.impl("repeat", repeat, "CUDA")
-    lib.impl("masked_select", masked_select, "CUDA")
-    lib.impl("stack", stack, "CUDA")
-    lib.impl("hstack", hstack, "CUDA")
-    lib.impl("cat", cat, "CUDA")
-    lib.impl("repeat_interleave.self_int", repeat_interleave_self_int, "CUDA")
-    lib.impl("vstack", vstack, "CUDA")
+def enable(lib=aten_lib, unused=None, registrar=registrar):
+    global current_work_registrar
+    current_work_registrar = registrar(
+        (
+            ("abs", abs, Autograd.disable),
+            ("abs_", abs_, Autograd.disable),
+            ("add.Tensor", add, Autograd.disable),
+            ("add_.Tensor", add_, Autograd.disable),
+            ("addmm", addmm, Autograd.disable),
+            ("arange.start_step", arange_start, Autograd.disable),
+            ("arange.start", arange_start, Autograd.disable),
+            ("arange", arange, Autograd.disable),
+            ("bitwise_and.Tensor", bitwise_and_tensor, Autograd.disable),
+            ("bitwise_and_.Tensor_", bitwise_and_tensor_, Autograd.disable),
+            ("bitwise_and.Scalar", bitwise_and_scalar, Autograd.disable),
+            ("bitwise_and_.Scalar", bitwise_and_scalar_, Autograd.disable),
+            ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, Autograd.disable),
+            ("bitwise_not", bitwise_not, Autograd.disable),
+            ("bitwise_not_", bitwise_not_, Autograd.disable),
+            ("bitwise_or.Tensor", bitwise_or_tensor, Autograd.disable),
+            ("bitwise_or_.Tensor", bitwise_or_tensor_, Autograd.disable),
+            ("bitwise_or.Scalar", bitwise_or_scalar, Autograd.disable),
+            ("bitwise_or_.Scalar", bitwise_or_scalar_, Autograd.disable),
+            ("bitwise_or.Scalar_Tensor", bitwise_or_scalar_tensor, Autograd.disable),
+            ("bmm", bmm, Autograd.disable),
+            ("clamp", clamp, Autograd.disable),
+            ("clamp_", clamp_, Autograd.disable),
+            ("clamp.Tensor", clamp_tensor, Autograd.disable),
+            ("clamp_.Tensor", clamp_tensor_, Autograd.disable),
+            ("cos", cos, Autograd.disable),
+            ("cos_", cos_, Autograd.disable),
+            ("pad", pad, Autograd.disable),
+            ("constant_pad_nd", constant_pad_nd, Autograd.disable),
+            ("cumsum", cumsum, Autograd.disable),
+            ("cummin", cummin, Autograd.disable),
+            ("div.Tensor", true_divide, Autograd.disable),
+            ("div_.Tensor", true_divide_, Autograd.disable),
+            ("div.Scalar", true_divide, Autograd.disable),
+            ("div_.Scalar", true_divide_, Autograd.disable),
+            ("div.Tensor_mode", div_mode, Autograd.disable),
+            ("div_.Tensor_mode", div_mode_, Autograd.disable),
+            ("div.Scalar_mode", div_mode, Autograd.disable),
+            ("div_.Scalar_mode", div_mode_, Autograd.disable),
+            ("divide.Tensor", true_divide, Autograd.disable),  # divide, an alias for div
+            ("divide_.Tensor", true_divide_, Autograd.disable),  # divide, an alias for div
+            ("divide.Scalar", true_divide, Autograd.disable),
+            ("divide_.Scalar", true_divide_, Autograd.disable),
+            ("divide.Tensor_mode", div_mode, Autograd.disable),
+            ("divide_.Tensor_mode", div_mode_, Autograd.disable),
+            ("divide.Scalar_mode", div_mode, Autograd.disable),
+            ("divide_.Scalar_mode", div_mode_, Autograd.disable),
+            ("true_divide.Tensor", true_divide, Autograd.disable),  # true_divide, an alias for div
+            ("true_divide_.Tensor", true_divide_, Autograd.disable),  # true_divide, an alias for div
+            ("true_divide.Scalar", true_divide, Autograd.disable),
+            ("true_divide_.Scalar", true_divide_, Autograd.disable),
+            ("floor_divide", floor_divide, Autograd.disable),
+            ("floor_divide.Scalar", floor_divide, Autograd.disable),
+            ("remainder.Tensor", remainder, Autograd.disable),
+            ("remainder_.Tensor", remainder_, Autograd.disable),
+            ("remainder.Scalar", remainder, Autograd.disable),
+            ("remainder_.Scalar", remainder_, Autograd.disable),
+            ("remainder.Scalar_Tensor", remainder, Autograd.disable),
+            ("native_dropout", native_dropout, Autograd.enable),
+            ("erf", erf, Autograd.disable),
+            ("erf_", erf, Autograd.disable),
+            ("embedding", embedding, Autograd.enable),
+            ("eq.Tensor", eq, Autograd.disable),
+            ("eq.Scalar", eq_scalar, Autograd.disable),
+            ("exp", exp, Autograd.disable),
+            ("exp_", exp_, Autograd.disable),
+            ("exponential_", exponential_, Autograd.disable),
+            ("ge.Tensor", ge, Autograd.disable),
+            ("ge.Scalar", ge_scalar, Autograd.disable),
+            ("gelu", gelu, Autograd.enable),
+            ("gelu_", gelu_, Autograd.enable),
+            ("native_group_norm", group_norm, Autograd.enable),
+            ("_weight_norm_interface", weight_norm_interface, Autograd.enable),
+            ("_weight_norm", weight_norm, Autograd.enable),
+            ("gt.Tensor", gt, Autograd.disable),
+            ("gt.Scalar", gt_scalar, Autograd.disable),
+            ("instance_norm", instance_norm, Autograd.enable),
+            ("isfinite", isfinite, Autograd.disable),
+            ("isin.Tensor_Tensor", isin, Autograd.disable),
+            ("isin.Scalar_Tensor", isin, Autograd.disable),
+            ("isin.Tensor_Scalar", isin, Autograd.disable),
+            ("isinf", isinf, Autograd.disable),
+            ("isnan", isnan, Autograd.disable),
+            ("minimum", minimum, Autograd.disable),
+            ("maximum", maximum, Autograd.disable),
+            ("native_layer_norm", layer_norm, Autograd.enable),
+            ("le.Tensor", le, Autograd.disable),
+            ("le.Scalar", le_scalar, Autograd.disable),
+            ("lt.Tensor", lt, Autograd.disable),
+            ("lt.Scalar", lt_scalar, Autograd.disable),
+            ("rms_norm", rms_norm, Autograd.disable),
+            ("rand", rand, Autograd.disable),
+            ("randn", randn, Autograd.disable),
+            ("rand_like", rand_like, Autograd.disable),
+            ("randn_like", randn_like, Autograd.disable),
+            ("zeros", zeros, Autograd.disable),
+            ("ones", ones, Autograd.disable),
+            ("full", full, Autograd.disable),
+            ("zeros_like", zeros_like, Autograd.disable),
+            ("ones_like", ones_like, Autograd.disable),
+            ("full_like", full_like, Autograd.disable),
+            ("resolve_neg", resolve_neg, Autograd.disable),
+            ("resolve_conj", resolve_conj, Autograd.disable),
+            ("normal.Tensor_float", normal_tensor_float, Autograd.disable),
+            ("normal.float_Tensor", normal_float_tensor, Autograd.disable),
+            ("normal.Tensor_Tensor", normal_tensor_tensor, Autograd.disable),
+            ("uniform_", uniform_, Autograd.disable),
+            ("mean", mean, Autograd.disable),
+            ("mean.dim", mean_dim, Autograd.disable),
+            ("mm", mm, Autograd.disable),
+            ("mul.Tensor", mul, Autograd.disable),
+            ("multinomial", multinomial, Autograd.disable),
+            ("mv", mv, Autograd.disable),
+            ("ne.Tensor", ne, Autograd.disable),
+            ("ne.Scalar", ne_scalar, Autograd.disable),
+            ("neg", neg, Autograd.disable),
+            ("neg_", neg_, Autograd.disable),
+            ("pow.Scalar", pow_scalar, Autograd.disable),
+            ("pow.Tensor_Scalar", pow_tensor_scalar, Autograd.disable),
+            ("pow_.Scalar", pow_tensor_scalar_, Autograd.disable),
+            ("pow.Tensor_Tensor", pow_tensor_tensor, Autograd.disable),
+            ("pow_.Tensor", pow_tensor_tensor_, Autograd.disable),
+            ("reciprocal", reciprocal, Autograd.disable),
+            ("reciprocal_", reciprocal_, Autograd.disable),
+            ("relu", relu, Autograd.enable),
+            ("relu_", relu_, Autograd.enable),
+            ("rsqrt", rsqrt, Autograd.disable),
+            ("rsqrt_", rsqrt_, Autograd.disable),
+            ("sigmoid", sigmoid, Autograd.enable),
+            ("sigmoid_", sigmoid_, Autograd.enable),
+            ("silu", silu, Autograd.enable),
+            ("silu_", silu_, Autograd.enable),
+            ("sin", sin, Autograd.disable),
+            ("sin_", sin_, Autograd.disable),
+            ("softmax.int", softmax, Autograd.enable),
+            ("sort", sort, Autograd.disable),
+            ("sub.Tensor", sub, Autograd.disable),
+            ("sub_.Tensor", sub_, Autograd.disable),
+            ("tanh", tanh, Autograd.enable),
+            ("tanh_", tanh_, Autograd.enable),
+            ("triu", triu, Autograd.disable),
+            ("topk", topk, Autograd.disable),
+            ("var_mean.correction", var_mean, Autograd.disable),
+            ("linalg_vector_norm", vector_norm, Autograd.disable),
+            ("where.self_out", where_self_out, Autograd.disable),
+            ("where.self", where_self, Autograd.disable),
+            ("where.ScalarSelf", where_scalar_self, Autograd.disable),
+            ("where.ScalarOther", where_scalar_other, Autograd.disable),
+            ("max", max, Autograd.disable),
+            ("max.dim", max_dim, Autograd.disable),
+            ("min", min, Autograd.disable),
+            ("min.dim", min_dim, Autograd.disable),
+            ("amax", amax, Autograd.disable),
+            ("argmax", argmax, Autograd.disable),
+            ("prod", prod, Autograd.disable),
+            ("prod.dim_int", prod_dim, Autograd.disable),
+            ("sum", sum, Autograd.disable),
+            ("sum.dim_IntList", sum_dim, Autograd.disable),
+            (
+                "scaled_dot_product_attention",
+                scaled_dot_product_attention,
+                Autograd.disable,
+            ),
+            ("all", all, Autograd.disable),
+            ("all.dim", all_dim, Autograd.disable),
+            ("all.dims", all_dims, Autograd.disable),
+            ("any", any, Autograd.disable),
+            ("any.dim", any_dim, Autograd.disable),
+            ("any.dims", any_dims, Autograd.disable),
+            ("log_softmax.int", log_softmax, Autograd.enable),
+            ("outer", outer, Autograd.enable),
+            ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
+            ("scatter.src", scatter, Autograd.disable),
+            ("scatter.reduce", scatter, Autograd.disable),
+            ("gather", gather, Autograd.disable),
+            ("isclose", isclose, Autograd.disable),
+            ("allclose", allclose, Autograd.disable),
+            ("fill.Scalar", fill_scalar, Autograd.disable),
+            ("fill.Tensor", fill_tensor, Autograd.disable),
+            ("flip", flip, Autograd.disable),
+            ("slice_scatter", slice_scatter, Autograd.disable),
+            ("select_scatter", select_scatter, Autograd.disable),
+            ("index_select", index_select, Autograd.disable),
+            ("tile", tile, Autograd.disable),
+            ("masked_fill.Tensor", masked_fill, Autograd.disable),
+            ("masked_fill.Scalar", masked_fill, Autograd.disable),
+            ("masked_fill_.Tensor", masked_fill_, Autograd.disable),
+            ("masked_fill_.Scalar", masked_fill_, Autograd.disable),
+            ("_unique2", _unique2, Autograd.disable),
+            ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, Autograd.disable),
+            ("upsample_nearest2d", upsample_nearest2d, Autograd.disable),
+            ("nonzero", nonzero, Autograd.disable),
+            ("repeat", repeat, Autograd.disable),
+            ("masked_select", masked_select, Autograd.disable),
+            ("stack", stack, Autograd.disable),
+            ("hstack", hstack, Autograd.disable),
+            ("cat", cat, Autograd.disable),
+            (
+                "repeat_interleave.self_int",
+                repeat_interleave_self_int,
+                Autograd.disable,
+            ),
+            ("vstack", vstack, Autograd.disable),
+            ("repeat_interleave.Tensor", repeat_interleave_tensor, Autograd.disable),
+            (
+                "repeat_interleave.self_Tensor",
+                repeat_interleave_self_tensor,
+                Autograd.disable,
+            ),
+            ("randperm", randperm, Autograd.disable),
+            ("diag", diag, Autograd.disable),
+            ("diag_embed", diag_embed, Autograd.disable),
+            ("diagonal_backward", diagonal_backward, Autograd.disable),
+            ("index_add", index_add, Autograd.disable),
+            ("count_nonzero", count_nonzero, Autograd.disable),
+            ("logical_or", logical_or, Autograd.disable),
+            ("logical_and", logical_and, Autograd.disable),
+            ("logical_xor", logical_xor, Autograd.disable),
+            ("logical_not", logical_not, Autograd.disable),
+        ),
+        user_unused_ops_list=[] if unused is None else unused,
+        lib=lib,
+    )
 
 
 class use_gems:
-    def __init__(self):
+    def __init__(self, unused=None):
         self.lib = torch.library.Library("aten", "IMPL")
+        self.unused = [] if unused is None else unused
+        self.registrar = Register
 
     def __enter__(self):
-        enable(self.lib)
+        enable(lib=self.lib, unused=self.unused, registrar=self.registrar)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        global current_work_registrar
         del self.lib
+        del self.unused
+        del self.registrar
+        del current_work_registrar
+
+
+def all_ops():
+    return current_work_registrar.get_all_ops()
 
 
 __all__ = [

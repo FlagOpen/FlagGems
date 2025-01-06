@@ -3,15 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from ..utils import pointwise_dynamic, tl_extra_shim
 
-try:
-    from triton.language.extra.cuda.libdevice import isinf as _isinf
-except ImportError:
-    try:
-        from triton.language.math import isinf as _isinf
-    except ImportError:
-        from triton.language.libdevice import isinf as _isinf
+_isinf = tl_extra_shim.isinf
 
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])

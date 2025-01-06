@@ -5,7 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @triton.jit
@@ -21,7 +24,7 @@ def prod_kernel_mid(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -55,7 +58,7 @@ def prod(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         prod_kernel_mid[(mid_size, 1, 1)](inp, mid, M, block_size)
         prod_kernel_result[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
@@ -67,20 +70,11 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
-    ],
+    configs=runtime.get_tuned_config("prod"),
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
 )
 @triton.jit
 def prod_kernel(
@@ -93,20 +87,25 @@ def prod_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
-    result_index = tl.reduce(inp_vals, axis=1, combine_fn=reduce_mul)
 
+    acc = tl.full((BLOCK_M, BLOCK_N), value=1.0, dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+
+        # set mask
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
+        acc *= inp_vals
+    result_index = tl.reduce(acc, axis=1, combine_fn=reduce_mul)
+
+    offset_index = m_offset * K + pid_k
     out_ptrs = out + offset_index
+    mask1 = m_offset < M
     tl.store(out_ptrs, result_index, mask=mask1)
 
 
@@ -135,7 +134,7 @@ def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         prod_kernel[grid](inp, out, M, N, K)
 
     return out

@@ -4,16 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": k}, num_warps=w)
-        for w in [4, 8, 16, 32]
-        for k in [512, 1024, 2048, 4096]
-    ],
+    configs=runtime.get_tuned_config("vstack"),
     key=[
         "max_tile_elems",
     ],
@@ -38,8 +37,8 @@ def vstack_kernel(
     max_tile_elems,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    tensor_idx = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    tensor_idx = tle.program_id(axis=1)
     col_idx = tl.arange(0, BLOCK_SIZE)
 
     intensor_ptr = tl.where(tensor_idx == 0, itensor_ptr0, itensor_ptr1)
@@ -62,7 +61,7 @@ def vstack_kernel(
     tl.store(out_offset, out, mask=offset_mask)
 
 
-def vstack(tensors: list[torch.Tensor]):
+def vstack(tensors: list):
     logging.debug("GEMS VSTACK")
 
     tensors = torch.atleast_2d(tensors)
@@ -118,7 +117,7 @@ def vstack(tensors: list[torch.Tensor]):
             scheduled_num_tensors,
         )
         # Launch the kernel
-        with torch.cuda.device(c_tensors[0].device):
+        with torch_device_fn.device(c_tensors[0].device):
             vstack_kernel[grid](
                 itensors[0],
                 itensors[1],

@@ -7,6 +7,11 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+from ..runtime import device, torch_device_fn
+from ..utils import triton_lang_extension as tle
+
+device = device.name
+
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
@@ -18,7 +23,7 @@ def scan_part_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -53,7 +58,7 @@ def add_base_sum_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
@@ -79,9 +84,9 @@ def scan_part_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    pid_c = tl.program_id(2)
+    pid_a = tle.program_id(0)
+    pid_b = tle.program_id(1)
+    pid_c = tle.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -124,9 +129,9 @@ def add_base_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tl.program_id(0)
-    pid_b = tl.program_id(1)
-    pid_c = tl.program_id(2)
+    pid_a = tle.program_id(0)
+    pid_b = tle.program_id(1)
+    pid_c = tle.program_id(2)
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -158,12 +163,12 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
     partial_sum = torch.empty(part_num, dtype=dtype, device=inp.device)
 
     grid = (part_num,)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         scan_part_sum_kernel[grid](inp, out, partial_sum, n_ele, part_num, BLOCK_SIZE)
 
     if part_num >= 2:
         scan_then_fan_col(partial_sum, partial_sum, part_num, dtype)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             add_base_sum_kernel[grid](out, partial_sum, n_ele, part_num, BLOCK_SIZE)
 
 
@@ -176,14 +181,14 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
     grid = (A, part_num, C)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         scan_part_sum_abc_kernel[grid](
             inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
 
@@ -219,7 +224,7 @@ def cumsum(inp, dim=1, *, dtype=None):
 @libentry()
 @triton.jit(do_not_specialize=["K"])
 def normed_cumsum_kernel(inp, out, K, BLOCK: tl.constexpr):
-    row_start = tl.program_id(0) * K
+    row_start = tle.program_id(0) * K
     row_off = tl.arange(0, BLOCK)
     x = tl.load(inp + row_start + row_off, mask=row_off < K, other=0)
     if x.dtype.is_fp16():
@@ -261,9 +266,9 @@ def block_cumsum_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tl.program_id(0).to(tl.int64)
-    gridy = tl.program_id(1).to(tl.int64)
-    n_chunks = tl.num_programs(0)
+    gridx = tle.program_id(0).to(tl.int64)
+    gridy = tle.program_id(1).to(tl.int64)
+    n_chunks = tle.num_programs(0)
 
     for row in range(gridy * r, min((gridy + 1) * r, R)):
         curr_cumsum = tl.zeros((1,), tl.float32)
@@ -330,9 +335,9 @@ def block_update_kernel(
     # One CTA processes a (r, t*tile) chunk
     # rows = [ grid.y, grid.y + r )
     # cols = [ grid.x * t * tile, (grid.x + 1) * t * tile )
-    gridx = tl.program_id(0).to(tl.int64)
-    gridy = tl.program_id(1).to(tl.int64)
-    n_gridx = tl.num_programs(1)
+    gridx = tle.program_id(0).to(tl.int64)
+    gridy = tle.program_id(1).to(tl.int64)
+    n_gridx = tle.num_programs(1)
 
     base += gridy * n_gridx + gridx
     rscale_ptr += gridy * rscale_stride
@@ -373,9 +378,9 @@ def normed_cumsum(inp, dim=-1):
         inp = inp.transpose(dim, -1).contiguous()
         dim = -1
     out = torch.empty_like(inp)
-    with torch.cuda.device(inp.device.index):
+    with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch.cuda.get_device_properties("cuda").multi_processor_count
+        num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
@@ -414,7 +419,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device="cuda")
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

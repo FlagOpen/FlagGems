@@ -6,7 +6,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -17,7 +20,7 @@ def min_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -44,20 +47,11 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 8}, num_warps=8),
-        triton.Config({"BLOCK_M": 16}, num_warps=8),
-        triton.Config({"BLOCK_M": 32}, num_warps=8),
-    ],
+    configs=runtime.get_tuned_config("min"),
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
 )
 @triton.jit
 def min_kernel(
@@ -71,24 +65,31 @@ def min_kernel(
     BLOCK_N: tl.constexpr,
 ):
     # set offset
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
-    mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf")).to(tl.float32)
-    result_value, result_index = tl.min(inp_vals, axis=1, return_indices=True)
 
+    min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
+    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
+        # if return indices is not supported, call a tl.argmax in addition
+        # local_argmin = tl.argmin(inp_vals, 1)
+        update = local_min < min_values
+        min_values = tl.where(update, local_min, min_values)
+        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
+
+    offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
     out_index_ptrs = out_index + offset_index
-
-    tl.store(out_value_ptrs, result_value, mask=mask1)
-    tl.store(out_index_ptrs, result_index, mask=mask1)
+    mask1 = m_offset < M
+    tl.store(out_value_ptrs, min_values, mask=mask1)
+    tl.store(out_index_ptrs, argmin_values, mask=mask1)
 
 
 def min(inp):
@@ -102,7 +103,7 @@ def min(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out
@@ -132,7 +133,7 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N, K)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)

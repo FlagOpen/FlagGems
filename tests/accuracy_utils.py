@@ -1,3 +1,4 @@
+import importlib
 import itertools
 
 import torch
@@ -7,16 +8,21 @@ import flag_gems
 from .conftest import QUICK_MODE, TO_CPU
 
 
-def SkipTorchVersion(skip_pattern):
+def SkipVersion(module_name, skip_pattern):
     cmp = skip_pattern[0]
-    assert cmp in ("=", "<", ">")
+    assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
     try:
         M, N = skip_pattern[1:].split(".")
         M, N = int(M), int(N)
     except Exception:
-        raise "Cannot parse version number."
-    major, minor = torch.__version__.split(".")[:2]
-    major, minor = int(major), int(minor)
+        raise ValueError("Cannot parse version number from skip_pattern.")
+
+    try:
+        module = importlib.import_module(module_name)
+        version = module.__version__
+        major, minor = map(int, version.split(".")[:2])
+    except Exception:
+        raise ImportError(f"Cannot determine version of module: {module_name}")
 
     if cmp == "=":
         return major == M and minor == N
@@ -60,6 +66,51 @@ STACK_SHAPES = [
     [(16, 256), (16, 256)],
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
 ]
+CONTIGUOUS_SHAPE_STRIDES_1D = [
+    ((1,), (1,)),
+    ((1024,), (1,)),
+    ((1000000,), (1,)),
+]
+DILATED_SHAPE_STRIDES_1D = [
+    ((1,), (2,)),
+    ((1024,), (2,)),
+    ((1000000,), (2,)),
+]
+CONTIGUOUS_SHAPE_STRIDES_2D = [
+    ((1, 1024), (1024, 1)),
+    ((10000, 128), (128, 1)),
+]
+TRANSPOSED_SHAPE_STRIDES_2D = [
+    ((1024, 1), (1, 1024)),
+    ((128, 10000), (1, 128)),
+]
+CONTIGUOUS_SHAPE_STRIDES_3D = [
+    ((20, 320, 15), (4800, 15, 1)),
+    ((200, 40999, 3), (122997, 3, 1)),
+]
+TRANSPOSED_SHAPE_STRIDES_3D = [
+    ((320, 20, 15), (15, 4800, 1)),
+    ((3, 40999, 200), (1, 3, 122997)),
+]
+SHAPE_STRIDES = (
+    CONTIGUOUS_SHAPE_STRIDES_1D
+    + DILATED_SHAPE_STRIDES_1D
+    + CONTIGUOUS_SHAPE_STRIDES_2D
+    + TRANSPOSED_SHAPE_STRIDES_2D
+    + CONTIGUOUS_SHAPE_STRIDES_3D
+    + TRANSPOSED_SHAPE_STRIDES_3D
+)
+
+IRREGULAR_SHAPE_STRIDES = [((10, 10, 10, 10, 10), (1, 10000, 23, 399, 1024))]
+
+UPSAMPLE_SHAPES = [
+    (32, 16, 128, 128),
+    (15, 37, 256, 256),
+    (3, 5, 127, 127),
+    (128, 192, 42, 51),
+    (3, 7, 1023, 1025),
+]
+
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
@@ -75,10 +126,10 @@ def to_reference(inp, upcast=False):
     if inp is None:
         return None
     ref_inp = inp
-    if upcast:
-        ref_inp = ref_inp.to(torch.float64)
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
+    if upcast:
+        ref_inp = ref_inp.to(torch.float64)
     return ref_inp
 
 
@@ -96,9 +147,9 @@ def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
     )
 
 
-def gems_assert_equal(res, ref):
+def gems_assert_equal(res, ref, equal_nan=False):
     res = to_cpu(res, ref)
-    flag_gems.testing.assert_equal(res, ref)
+    flag_gems.testing.assert_equal(res, ref, equal_nan=equal_nan)
 
 
 def unsqueeze_tuple(t, max_len):

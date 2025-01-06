@@ -4,18 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=w)
-        for m in [32, 64, 128]
-        for n in [1, 2, 4, 8]
-        for s in [3, 4]
-        for w in [4, 8]
-    ],
+    configs=runtime.get_tuned_config("mv"),
     key=["M", "N"],
 )
 @triton.jit
@@ -32,7 +29,7 @@ def mv_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
     offset_m = tl.arange(0, BLOCK_M)[None, :]
     n_mask = offset_n < N
@@ -58,7 +55,7 @@ def mv(inp, vec):
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         mv_kernel[grid](
             inp,
             vec,

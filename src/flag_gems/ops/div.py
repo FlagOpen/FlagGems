@@ -4,15 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from ..utils import pointwise_dynamic, tl_extra_shim
 
-try:
-    from triton.language.extra.cuda.libdevice import div_rd, div_rz, trunc
-except ImportError:
-    try:
-        from triton.language.math import div_rd, div_rz, trunc
-    except ImportError:
-        from triton.language.libdevice import div_rd, div_rz, trunc
+div_rn = tl_extra_shim.div_rn
+div_rz = tl_extra_shim.div_rz
+fmod = tl_extra_shim.fmod
+trunc = tl_extra_shim.trunc
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -114,13 +111,45 @@ def _int_floordiv(x, y):
     return tl.where(c1 & c2, x // y - 1, x // y)
 
 
+# TO be consistent with python, numpy and torch, we have to implement it in the
+# following way.
+# CPython
+# https://github.com/python/cpython/blob/ace008c531dd685a30c1dd68f9b5ba35f20171cf/Objects/floatobject.c#L636
+# numpy
+# https://github.com/numpy/numpy/blob/a4ad142aa1282a77bbb05acd706cb57c9cc29846/numpy/_core/src/npymath/npy_math_internal.h.src#L532
+# torch
+# https://github.com/pytorch/pytorch/blob/d6d9183456cd07ca0b361a194b98c2fb196e7c36/c10/util/generic_math.h#L23
+@triton.jit
+def _float_floordiv(x, y):
+    # NOTE: fmod's sign is the same as the dividend
+    remainder = fmod(x, y)
+    imperfect = remainder != 0.0
+    different_sign = (x < 0) ^ (y < 0)
+
+    # NOTE: we have to use div_rn explicitly here
+    q = div_rn(x - remainder, y)
+    q = tl.where(imperfect & different_sign, q - 1, q)
+
+    floor_q = tl.math.floor(q)
+    c = q - floor_q > 0.5
+    floor_q = tl.where(c, floor_q + 1.0, floor_q)
+
+    q_is_zeros = q == 0.0
+    floor_q = tl.where(q_is_zeros, tl.where(different_sign, -0.0, 0.0), floor_q)
+
+    is_div_by_zero = y == 0.0
+    float_division = x / y
+    out = tl.where(is_div_by_zero, float_division, floor_q)
+    return out
+
+
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def floor_div_func(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor(div_rd(x, y))
+        return _float_floordiv(x, y)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
@@ -129,7 +158,7 @@ def floor_div_func_tensor_scalar(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor(div_rd(x, y))
+        return _float_floordiv(x, y)
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
@@ -138,7 +167,7 @@ def floor_div_func_scalar_tensor(x, y):
     if x.type.scalar.is_int() & x.type.scalar.is_int():
         return _int_floordiv(x, y)
     else:
-        return tl.math.floor(div_rd(x, y))
+        return _float_floordiv(x, y)
 
 
 def floor_divide(A, B):
