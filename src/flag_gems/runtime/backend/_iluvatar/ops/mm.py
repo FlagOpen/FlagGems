@@ -6,7 +6,6 @@ import triton.language as tl
 from triton.ops.matmul_perf_model import early_config_prune, estimate_matmul_time
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -131,7 +130,7 @@ def mm(a, b):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
-    with torch_device_fn.device(a.device):
+    with torch.cuda.device(a.device):
         mm_kernel[grid](
             a,
             b,

@@ -6,7 +6,6 @@ import triton.language as tl
 from triton.ops.matmul_perf_model import early_config_prune, estimate_matmul_time
 
 from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
@@ -135,6 +134,6 @@ def bmm(A, B):
         triton.cdiv(meta["N"], meta["BLOCK_N"]),
         batch,
     )
-    with torch_device_fn.device(A.device):
+    with torch.cuda.device(A.device):
         bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out
