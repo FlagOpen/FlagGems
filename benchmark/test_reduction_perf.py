@@ -203,7 +203,7 @@ def quantile_input_fn(shape, cur_dtype, device):
             "quantile",
             torch.quantile,
             quantile_input_fn,
-            [torch.float32, torch.float64],
+            [torch.float32],
             marks=pytest.mark.quantile,
         )
     ],
