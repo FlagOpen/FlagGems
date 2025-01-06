@@ -4,53 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 64},
-            num_stages=3,
-            num_warps=8,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 256, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
-            num_stages=4,
-            num_warps=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 32, "BLOCK_SIZE_K": 32},
-            num_stages=5,
-            num_warps=2,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
-            num_stages=5,
-            num_warps=2,
-        ),
-    ],
+    configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -74,8 +36,8 @@ def addmm_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_m = tle.program_id(0)
+    pid_n = tle.program_id(1)
 
     offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
@@ -124,7 +86,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch.cuda.device(mat1.device):
+    with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
             mat1,
             mat2,

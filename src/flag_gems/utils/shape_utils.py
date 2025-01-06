@@ -1,3 +1,4 @@
+import enum
 import functools
 import operator
 from typing import Iterable, Sequence, Tuple
@@ -5,6 +6,8 @@ from typing import Iterable, Sequence, Tuple
 import torch
 import triton
 import triton.language as tl
+
+from ..utils import triton_lang_extension as tle
 
 Shape = Tuple[int]
 Stride = Tuple[int]
@@ -223,6 +226,23 @@ def can_use_int32_index(a):
     return True
 
 
+class MemOverlap(enum.Enum):
+    No = 0
+    Yes = 1
+    TooHard = 2
+
+
+def has_internal_overlapping(x: torch.Tensor):
+    if x.is_contiguous():
+        return MemOverlap.No
+    if torch.ops.aten.is_non_overlapping_and_dense(x):
+        return MemOverlap.No
+    for size, stride in zip(x.size(), x.stride()):
+        if size > 1 and stride == 0:
+            return MemOverlap.Yes
+    return MemOverlap.TooHard
+
+
 def restride_dim(src, dim, shape, step=0, storage_offset=None):
     strides = list(src.stride())
     strides[dim] *= step
@@ -252,8 +272,8 @@ def add_on_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     rows_offset = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     rows_mask = rows_offset < M
 

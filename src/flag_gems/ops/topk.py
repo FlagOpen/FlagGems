@@ -7,7 +7,9 @@ import triton.language as tl
 import triton.language.core as core
 from triton.language.standard import _log2, zeros_like
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
@@ -15,8 +17,12 @@ _MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
 _MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
 _MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
 _MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
+_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
+_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
 _MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
 _MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
+_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
+_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
 
 
 @triton.jit
@@ -41,6 +47,28 @@ def _get_finfo_val(
             return _MIN_BFLOAT16_VAL
 
 
+@triton.jit
+def _get_iinfo_val(
+    dtype,
+    return_max,
+):
+    if dtype is tl.int16:
+        if return_max:
+            return _MAX_INT16_VAL
+        else:
+            return _MIN_INT16_VAL
+    elif dtype is tl.int32:
+        if return_max:
+            return _MAX_INT32_VAL
+        else:
+            return _MIN_INT32_VAL
+    elif dtype is tl.int64:
+        if return_max:
+            return _MAX_INT64_VAL
+        else:
+            return _MIN_INT64_VAL
+
+
 @libentry()
 @triton.jit
 def topk_stage1_kernel(
@@ -52,9 +80,9 @@ def topk_stage1_kernel(
     CHUNK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
-    cur_chunk_idx = tl.program_id(1)
-    chunk_num = tl.num_programs(1)
+    cur_batch = tle.program_id(0)
+    cur_chunk_idx = tle.program_id(1)
+    chunk_num = tle.num_programs(1)
 
     y_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
     index_ptr += cur_batch * chunk_num * k + cur_chunk_idx * k
@@ -111,18 +139,24 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
 
     # slice left/right with 'stride' 2**(n_dims - i - 1)
     mask = core.arange(0, 2)[None, :, None]
-    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape)
-    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape)
+    left = core.broadcast_to(tl.sum(y * (1 - mask), 1)[:, None, :], shape).to(x.dtype)
+    right = core.broadcast_to(tl.sum(y * mask, 1)[:, None, :], shape).to(x.dtype)
     left = core.reshape(left, x.shape)
     right = core.reshape(right, x.shape)
 
-    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape)
-    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape)
+    left_idx = core.broadcast_to(tl.sum(y_idx * (1 - mask), 1)[:, None, :], shape).to(
+        ids.dtype
+    )
+    right_idx = core.broadcast_to(tl.sum(y_idx * mask, 1)[:, None, :], shape).to(
+        ids.dtype
+    )
     left_idx = core.reshape(left_idx, ids.shape)
     right_idx = core.reshape(right_idx, ids.shape)
 
     # actual compare-and-swap
-    if core.constexpr(x.dtype.primitive_bitwidth) == 16:
+    if core.constexpr(x.dtype.primitive_bitwidth) == 8:
+        idtype = core.int8
+    elif core.constexpr(x.dtype.primitive_bitwidth) == 16:
         idtype = core.int16
     elif core.constexpr(x.dtype.primitive_bitwidth) == 32:
         idtype = core.int32
@@ -138,7 +172,9 @@ def _compare_and_swap(x, ids, flip, i: core.constexpr, n_dims: core.constexpr):
     cond = (left > right) ^ flip
     ret = ix ^ core.where(cond, ileft ^ iright, zeros_like(ix))
 
-    if core.constexpr(ids.dtype.primitive_bitwidth) == 16:
+    if core.constexpr(ids.dtype.primitive_bitwidth) == 8:
+        idx_dtype = core.int8
+    elif core.constexpr(ids.dtype.primitive_bitwidth) == 16:
         idx_dtype = core.int16
     elif core.constexpr(ids.dtype.primitive_bitwidth) == 32:
         idx_dtype = core.int32
@@ -207,7 +243,7 @@ def topk_stage2_kernel(
     BLOCK_SIZE: tl.constexpr,
     DESCENDING: tl.constexpr,
 ):
-    cur_batch = tl.program_id(0)
+    cur_batch = tle.program_id(0)
     chunk_x += cur_batch * N
     chunk_index += cur_batch * N
     y_ptr += cur_batch * k
@@ -268,7 +304,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
     stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
-    with torch.cuda.device(x.device):
+    with torch_device_fn.device(x.device):
         topk_stage1_kernel[
             batch_size,
             chunk_num,
@@ -284,7 +320,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-    with torch.cuda.device(x.device):
+    with torch_device_fn.device(x.device):
         topk_stage2_kernel[batch_size,](
             stage2_out,
             stage2_out_idx,

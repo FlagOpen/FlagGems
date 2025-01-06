@@ -1,11 +1,17 @@
 [English](./README.md)
 
+![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
+
+
 ## 介绍
 
 FlagGems是一个使用OpenAI推出的[Triton编程语言](https://github.com/openai/triton)实现的高性能通用算子库，旨在为大语言模型提供一系列可应用于PyTorch框架的算子，加速模型的推理与训练。
 
 FlagGems通过对PyTorch的后端aten算子进行覆盖重写，实现算子库的无缝替换，使用户能够在不修改模型代码的情况下平稳地切换到triton算子库。FlagGems不会影响aten后端的正常使用，并且会带来良好的性能提升。Triton语言为算子库提供了更好的可读性和易用性，同时保持了不逊于CUDA的算子性能，因此开发者只需付出较低的学习成本，即可参与FlagGems的算子开发与建设。
 
+我们为FlagGems创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
+
+ <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
 
 ## 特性
 
@@ -130,8 +136,8 @@ pip install .
     import flag_gems
 
     M, N, K = 1024, 1024, 1024
-    A = torch.randn((M, K), dtype=torch.float16, device="cuda")
-    B = torch.randn((K, N), dtype=torch.float16, device="cuda")
+    A = torch.randn((M, K), dtype=torch.float16, device=flag_gems.device)
+    B = torch.randn((K, N), dtype=torch.float16, device=flag_gems.device)
     with flag_gems.use_gems():
         C = torch.mm(A, B)
     ```
@@ -139,7 +145,7 @@ pip install .
 ### 执行
 
 1. 算子正确性测试
-    - 在CUDA上运行参考实现
+    - 在例如CUDA的异构设备上运行参考实现
         ```shell
         cd tests
         pytest test_xx_ops.py
@@ -193,7 +199,7 @@ pip install .
 
 FlagGems相比Torch Eager模式下ATen算子库的加速比如下图所示。其中，每个算子的加速比综合了多个形状测例的数据，代表该算子的整体性能。
 
-![算子加速比](./assets/speedup-0814-chn.png)
+![算子加速比](./assets/speedup-1218-chn.png)
 
 ## 贡献代码
 

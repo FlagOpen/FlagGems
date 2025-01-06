@@ -6,6 +6,10 @@ import flag_gems
 
 device = flag_gems.device
 
+import flag_gems
+
+device = flag_gems.device
+
 
 def pytest_addoption(parser):
     parser.addoption(

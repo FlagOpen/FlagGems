@@ -3,15 +3,9 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from ..utils import pointwise_dynamic, tl_extra_shim
 
-try:
-    from triton.language.extra.cuda.libdevice import pow as _pow
-except ImportError:
-    try:
-        from triton.language.math import pow as _pow
-    except ImportError:
-        from triton.language.libdevice import pow as _pow
+_pow = tl_extra_shim.pow
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])

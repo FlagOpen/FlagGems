@@ -4,7 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -15,7 +17,7 @@ def fill_scalar_kernel(
     value_scalar,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     cols = tl.arange(0, BLOCK_SIZE)
     offset = pid * BLOCK_SIZE + cols
     tl.store(out_ptr + offset, value_scalar, mask=offset < N)
@@ -29,7 +31,7 @@ def fill_tensor_kernel(
     value_ptr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     cols = tl.arange(0, BLOCK_SIZE)
     offset = pid * BLOCK_SIZE + cols
     value_scalar = tl.load(value_ptr)  # load the value from the tensor.
@@ -43,7 +45,7 @@ def fill_tensor(input, value):
     BLOCK_SIZE = 512
     grid = triton.cdiv(N, BLOCK_SIZE)
 
-    with torch.cuda.device(input.device):
+    with torch_device_fn.device(input.device):
         fill_tensor_kernel[grid,](out, N, value, BLOCK_SIZE)
     return out
 
@@ -55,6 +57,6 @@ def fill_scalar(input, value):
     BLOCK_SIZE = 512
     grid = triton.cdiv(N, BLOCK_SIZE)
 
-    with torch.cuda.device(input.device):
+    with torch_device_fn.device(input.device):
         fill_scalar_kernel[grid,](out, N, value, BLOCK_SIZE)
     return out

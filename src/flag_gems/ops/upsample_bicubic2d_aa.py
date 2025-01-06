@@ -5,24 +5,17 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import device, torch_device_fn
+from ..utils import triton_lang_extension as tle
 
-def configs():
-    block = [(bx, by) for bx in (512, 256, 128, 64) for by in (2, 1)]
-    warps = [4, 8]
-    return [
-        triton.Config(
-            {
-                "BLOCK_X": bs[0],
-                "BLOCK_Y": bs[1],
-            },
-            num_warps=wp,
-        )
-        for bs in block
-        for wp in warps
-    ]
+device = device.name
 
 
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_tuned_config("upsample_bicubic2d_aa"),
+    key=["N", "C", "OH", "OW"],
+)
 @triton.jit
 def upsample_bicubic2d_aa_kernel(
     ptr_o,
@@ -38,8 +31,8 @@ def upsample_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
@@ -373,7 +366,10 @@ def upsample_bicubic2d_aa_kernel(
 
 
 # upsample and downsample
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_tuned_config("upsample_bicubic2d_aa"),
+    key=["N", "C", "OH", "OW"],
+)
 @triton.jit
 def general_interpolate_bicubic2d_aa_kernel(
     ptr_o,
@@ -389,8 +385,8 @@ def general_interpolate_bicubic2d_aa_kernel(
     BLOCK_X: tl.constexpr,
     BLOCK_Y: tl.constexpr,
 ):
-    pid_x = tl.program_id(axis=0)
-    pid_y = tl.program_id(axis=1)
+    pid_x = tle.program_id(axis=0)
+    pid_y = tle.program_id(axis=1)
     ow = (pid_x * BLOCK_X + tl.arange(0, BLOCK_X)) % OW
     oh = (pid_y * BLOCK_Y + tl.arange(0, BLOCK_Y)) % OH
 
@@ -486,7 +482,7 @@ def _upsample_bicubic2d_aa(
     scales_w: Optional[float] = None,
 ):
     logging.debug("GEMS UPSAMPLE BICUBIC2D AA")
-    assert input.is_cuda
+    assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
 
@@ -507,16 +503,17 @@ def _upsample_bicubic2d_aa(
         if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0)
         else upsample_bicubic2d_aa_kernel
     )
-    kernel[grid](
-        output,
-        input,
-        N,
-        C,
-        OH,
-        OW,
-        IH,
-        IW,
-        reciprocal_scale_h,
-        reciprocal_scale_w,
-    )
+    with torch_device_fn.device(input.device):
+        kernel[grid](
+            output,
+            input,
+            N,
+            C,
+            OH,
+            OW,
+            IH,
+            IW,
+            reciprocal_scale_h,
+            reciprocal_scale_w,
+        )
     return output

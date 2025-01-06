@@ -5,7 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -16,7 +19,7 @@ def mean_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(0)
+    pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
@@ -49,7 +52,7 @@ def mean(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
@@ -57,16 +60,13 @@ def mean(inp, *, dtype=None):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
-        for m in [1, 2, 4, 8]
-    ],
+    configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
-    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     X = X + pid * N
     Mean = Mean + pid
     row_mask = pid < M
@@ -107,7 +107,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
-    with torch.cuda.device(x.device):
+    with torch_device_fn.device(x.device):
         mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
         out = out.squeeze(dim)

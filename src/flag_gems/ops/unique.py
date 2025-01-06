@@ -4,6 +4,9 @@ import triton.language as tl
 
 from flag_gems.utils.libentry import libentry
 
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
+
 
 @libentry()
 @triton.jit
@@ -87,8 +90,8 @@ def output_counts_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -148,8 +151,8 @@ def quick_output_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -227,8 +230,8 @@ def local_quick_unique_flat_kernel(
     tile_size: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -315,8 +318,8 @@ def global_quick_unique_flat_kernel(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_quick_unique_flat_impl(
             pid,
@@ -388,7 +391,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
         data_out = torch.empty_like(sorted_data)
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch_device_fn.device(sorted_data.device.index):
         local_quick_unique_flat_kernel[grid](
             sorted_data,  # in
             local_unique,
@@ -484,8 +487,8 @@ def local_ne_flat_kernel(
     tiles_per_cta: int,
     tile_size: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     # grid-stride-loop style kernel
     for j in range(0, tiles_per_cta):
         global_pid = pid + j * ctas_num
@@ -588,8 +591,8 @@ def global_cumsum_flat_kernel(
     one_tile_per_cta: tl.constexpr,
     return_counts: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    ctas_num = tl.num_programs(0)
+    pid = tle.program_id(0)
+    ctas_num = tle.num_programs(0)
     if one_tile_per_cta:  # monolitic kernel style
         global_cumsum_flat_impl(
             pid,
@@ -663,7 +666,7 @@ def sorted_indices_unique_flat(
         idx = torch.empty_like(inverse_indices)
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch_device_fn.device(sorted_data.device.index):
         local_ne_flat_kernel[grid](
             sorted_data,  # in
             ne_result,
@@ -732,7 +735,7 @@ def simple_unique_flat(
     unique_size = torch.empty([1], dtype=torch.int64, device=sorted_data.device)
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch_device_fn.device(sorted_data.device.index):
         simple_unique_flat_kernel[grid](
             sorted_data,
             sorted_indices,  # in
@@ -751,7 +754,7 @@ def simple_unique_flat(
     if return_counts:
         idx = idx[:out_size]
         counts = torch.empty_like(idx)
-        with torch.cuda.device(sorted_data.device.index):
+        with torch_device_fn.device(sorted_data.device.index):
             output_counts_flat_kernel[grid](
                 idx,
                 num_tasks,  # in
@@ -771,17 +774,17 @@ def _unique2(
     return_counts: bool = False,
 ):
     if in0.numel() <= 8192:
-        sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
+        sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
             sorted_data, sorted_indices, return_inverse, return_counts
         )
     elif return_inverse:
-        sorted_data, sorted_indices = torch.sort(in0.ravel(), stable=False)
+        sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_indices_unique_flat(
             sorted_data, sorted_indices, return_counts
         )
     else:
-        sorted_data, _ = torch.sort(in0.ravel(), stable=False)
+        sorted_data, _ = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts
         )

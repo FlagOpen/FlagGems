@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 
@@ -15,6 +15,8 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton.language as tl")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems import runtime")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code
@@ -29,24 +31,15 @@ def generate_scatter_kernel(
     code.newline()
 
     # the autotune function
-    code.writeline("def cfggen():")
-    with code.indent():
-        code.writeline("block_m = [1, 2, 4, 8]")
-        code.writeline("block_n = [256, 512, 1024, 2048]")
-        code.writeline("configs = [")
-        with code.indent():
-            code.writeline('triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)')
-            code.writeline("for m in block_m")
-            code.writeline("for n in block_n")
-        code.writeline("]")
-        code.writeline("return configs")
 
     code.newline()
     code.newline()
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline('@triton.autotune(configs=cfggen(), key=["M", "N"])')
+    code.writeline(
+        '@triton.autotune(configs=runtime.get_tuned_config("scatter"), key=["M", "N"])'
+    )
     code.writeline("@triton.jit")
 
     # signature
@@ -92,8 +85,8 @@ def generate_scatter_kernel(
 
     # Kernel Code
     with code.indent():
-        code.writeline("pid_x = tl.program_id(0)")
-        code.writeline("pid_y = tl.program_id(1)")
+        code.writeline("pid_x = tle.program_id(0)")
+        code.writeline("pid_y = tle.program_id(1)")
         code.writeline(
             "rows_offsets = pid_x * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]"
         )
@@ -255,7 +248,7 @@ class ScatterFunction:
 
             file_name = f"scatter_rank_{key}_pid_{self.pid}.py"
 
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load

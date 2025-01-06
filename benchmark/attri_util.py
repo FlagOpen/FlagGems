@@ -7,9 +7,7 @@ import torch
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
-BOOL_DTYPES = [
-    torch.bool,
-]
+BOOL_DTYPES = [torch.bool]
 
 DEFAULT_WARMUP_COUNT = 1000
 DEFAULT_ITER_COUNT = 100
@@ -63,6 +61,8 @@ class BenchmarkMetrics:
     latency_base: Optional[float] = None
     # Latency in ms
     latency: Optional[float] = None
+    gbps_base: Optional[float] = None
+    gbps: Optional[float] = None
     # Speedup over baseline
     speedup: Optional[float] = None
     # Accuracy over baseline (not implemented yet)
@@ -71,6 +71,8 @@ class BenchmarkMetrics:
     tflops: Optional[float] = None
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
+    # Error message
+    error_msg: Optional[str] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
@@ -170,36 +172,64 @@ class BenchmarkResult:
     result: List[BenchmarkMetrics]
 
     def __str__(self) -> str:
-        header = (
-            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode}, level={self.level})\n"
-            f"{'Size':<10} {'Torch Latency (ms)':>20} {'Gems Latency (ms)':>20} {'Gems Speedup':>20}"
-            f"{'Size Detail':>20}\n"
-            f"{'-' * 90}\n"
+        header_title = (
+            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
+            f"level={self.level})\n"
         )
+        col_names = [
+            f"{'Status':<10}",
+            f"{'Torch Latency (ms)':>20}",
+            f"{'Gems Latency (ms)':>20}",
+            f"{'Gems Speedup':>20}",
+        ]
+        if self.result[0].tflops and self.result[0].tflops != 0.0:
+            col_names.append(f"{'TFLOPS':>20}")
+        if self.result[0].gbps is not None:
+            col_names.append(f"{'Torch GBPS ':>20}")
+            col_names.append(f"{'Gems GBPS ':>20}")
+        col_names.append(f"{'Size Detail':>20}\n")
+        header_col_names = " ".join(col_names)
+        header_break = "-" * len(header_col_names) + "\n"
+        header = header_title + header_col_names + header_break
+
         metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
         return header + metrics_lines
 
     def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
-        self.gen_legacy_shape(metrics)
-        legacy_shape_str = (
-            metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
-        )
+        # self.gen_legacy_shape(metrics)
+        # legacy_shape_str = (
+        #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
+        # )
         latency_base_str = (
             f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
         )
         latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
         speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
+        torch_gbps_str = (
+            f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
+        )
+        gems_gbps_str = f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
+        if metrics.tflops and metrics.tflops != 0.0:
+            tflops_str = (
+                f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
+            )
         shape_detail_str = (
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
-        return (
-            f"{legacy_shape_str:<10}"
+        status = "SUCCESS" if metrics.error_msg is None else "FAILED"
+        data_line = (
+            f"{status:<10}"
             f"{latency_base_str:>20}"
             f"{latency_str:>20}"
             f"{speedup_str:>20}"
-            f"{' ' * 10}"
-            f"{shape_detail_str}\n"
         )
+        if metrics.tflops and metrics.tflops != 0.0:
+            data_line += f"{tflops_str:>20}"
+        if metrics.gbps is not None:
+            data_line += f"{torch_gbps_str:>20}{gems_gbps_str:>20}"
+        data_line += " " * 10
+        data_line += f"{shape_detail_str}\n"
+        return data_line
 
     def gen_legacy_shape(self, metrics: BenchmarkMetrics) -> Optional[int]:
         first_shape = (

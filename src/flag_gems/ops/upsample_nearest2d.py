@@ -5,22 +5,17 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import device, torch_device_fn
+from ..utils import triton_lang_extension as tle
 
-def configs():
-    block = [1024, 2048]
-    warps = [4, 8]
-    return [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=wp) for bs in block for wp in warps
-    ]
+device = device.name
 
 
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
-@triton.heuristics(
-    {
-        "SAME_H": lambda args: args["OH"] == args["IH"],
-        "SAME_W": lambda args: args["OW"] == args["IW"],
-    }
+@triton.autotune(
+    configs=runtime.get_tuned_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
 )
+@triton.heuristics(runtime.get_heuristic_config("upsample_nearest2d"))
 @triton.jit
 def upsample_nearest2d_kernel(
     ptr_o,
@@ -37,7 +32,7 @@ def upsample_nearest2d_kernel(
     SAME_H: tl.constexpr,
     SAME_W: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
+    pid = tle.program_id(axis=0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     ow = idx % OW
     oh = idx // OW % OH
@@ -65,7 +60,7 @@ def upsample_nearest2d(
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
     logging.debug("GEMS UPSAMPLE NEAREST2D")
-    assert input.is_cuda
+    assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
     OH, OW = output_size
@@ -82,7 +77,8 @@ def upsample_nearest2d(
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
     total_threads = N * C * OH * OW
     grid = lambda META: (triton.cdiv(total_threads, META["BLOCK_SIZE"]),)
-    upsample_nearest2d_kernel[grid](
-        output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
-    )
+    with torch_device_fn.device(input.device):
+        upsample_nearest2d_kernel[grid](
+            output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
+        )
     return output

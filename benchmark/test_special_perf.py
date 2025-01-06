@@ -3,12 +3,13 @@ import random
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
+    GenericBenchmarkExcluse3D,
     generate_tensor_input,
 )
 
@@ -24,13 +25,6 @@ def topk_input_fn(shape, dtype, device):
     #     yield {"x": x, "k": k, "dim": -1, "sorted": False},
 
 
-def sort_input_fn(shape, dtype, device):
-    inp = generate_tensor_input(shape, dtype, device)
-    yield inp, {"dim": -1},
-    if Config.bench_level == BenchLevel.COMPREHENSIVE:
-        yield inp, {"dim": 0},
-
-
 def resolve_neg_input_fn(shape, dtype, device):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     yield x.conj().imag,
@@ -44,7 +38,6 @@ def resolve_conj_input_fn(shape, dtype, device):
 special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
-    ("sort", torch.sort, FLOAT_DTYPES, sort_input_fn),
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
@@ -89,8 +82,7 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=[torch.float16, torch.float32]
-        + INT_DTYPES,  # not support for torch.bfloat16
+        dtypes=INT_DTYPES,
     )
     bench.run()
 
@@ -100,14 +92,31 @@ def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield inp, {"sorted": True, "return_inverse": True, "return_counts": False},
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            yield inp, {"sorted": True, "return_inverse": False, "return_counts": True},
 
     bench = GenericBenchmark2DOnly(
         input_fn=unique_input_fn,
         op_name="unique",
         torch_op=torch.unique,
         dtypes=INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.sort
+def test_perf_sort():
+    class SortBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [(1024, 1), (1024, 512)]
+
+    def sort_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp, {"dim": -1, "descending": False},
+
+    bench = SortBenchmark(
+        input_fn=sort_input_fn,
+        op_name="sort",
+        torch_op=torch.sort,
+        dtypes=INT_DTYPES + FLOAT_DTYPES,
     )
     bench.run()
 
@@ -243,4 +252,108 @@ def test_perf_upsample_nearest2d():
         torch_op=torch._C._nn.upsample_nearest2d,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+class ConvBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+@pytest.mark.conv2d
+def test_perf_conv2d():
+    def conv2d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_h,
+            input_w,
+            out_c,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = ConvBenchmark(
+        input_fn=conv2d_input_fn,
+        op_name="conv2d",
+        torch_op=torch.nn.functional.conv2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.diag
+def test_perf_diag():
+    def diag_input_fn(shape, dtype, device):
+        input = generate_tensor_input(shape, dtype, device)
+        diagonal = random.randint(-4, 4)
+        yield input, {
+            "diagonal": diagonal,
+        },
+
+    bench = GenericBenchmarkExcluse3D(
+        input_fn=diag_input_fn,
+        op_name="diag",
+        torch_op=torch.diag,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.diag_embed
+def test_perf_diag_embed():
+    def diag_embed_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield {"input": inp},
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield {"input": inp, "offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = EmbeddingBenchmark(
+        input_fn=diag_embed_input_fn,
+        op_name="diag_embed",
+        torch_op=torch.diag_embed,
+        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+    )
+
+    bench.run()
+
+
+@pytest.mark.diagonal_backward
+def test_perf_diagonal_backward():
+    def diagonal_backward_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        yield inp,
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield inp, {"offset": 1, "dim1": 0, "dim2": -1},
+
+    bench = GenericBenchmarkExcluse1D(
+        input_fn=diagonal_backward_input_fn,
+        op_name="diagonal_backward",
+        torch_op=torch.diagonal,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
+    )
+
     bench.run()
