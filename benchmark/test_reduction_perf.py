@@ -118,6 +118,9 @@ def nll_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = torch.randint(0, shape[-1], (shape[0],), device=device)
     yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
 def cumsum_input_fn(shape, cur_dtype, device):
