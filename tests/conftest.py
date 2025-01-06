@@ -1,14 +1,19 @@
+import os
 import json
 import logging
+import flag_gems
+import pytest
+
+device = flag_gems.device
 
 
 def pytest_addoption(parser):
     parser.addoption(
         "--ref",
         action="store",
-        default="cuda",
+        default=device,
         required=False,
-        choices=["cuda", "cpu"],
+        choices=[device, "cpu"],
         help="device to run reference tests on",
     )
     parser.addoption(
@@ -92,3 +97,32 @@ def pytest_runtest_teardown(item, nextitem):
 def pytest_sessionfinish(session, exitstatus):
     if RECORD_LOG:
         logging.info(json.dumps(RUNTEST_INFO, indent=2))
+
+test_results = {}
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item, nextitem):
+    test_results[item.nodeid]= {'params': None, 'result': None} 
+        
+    param_values = {}
+    request = item._request
+    if hasattr(request, 'node') and hasattr(request.node, 'callspec'):
+        param_values = request.node.callspec.params
+
+    test_results[item.nodeid]['params'] = param_values
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    if report.when == "call":  
+        test_results[report.nodeid]['result'] = report.outcome
+
+def pytest_terminal_summary(terminalreporter):
+    if os.path.exists('result.json'):
+        with open('result.json', 'r') as json_file:
+            existing_data = json.load(json_file)
+        existing_data.update(test_results)
+    else:
+        existing_data = test_results
+
+    with open('result.json', 'w') as json_file:
+        json.dump(existing_data, json_file, indent=4,default=str)
