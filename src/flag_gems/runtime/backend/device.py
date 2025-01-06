@@ -1,5 +1,7 @@
 import os
 import subprocess
+import threading
+from queue import Queue
 
 import torch  # noqa: F401
 
@@ -42,11 +44,11 @@ class DeviceDetector(object):
         vendor_from_env = self._get_vendor_from_env()
         if vendor_from_env is not None:
             return backend.get_vendor_info(vendor_from_env)
-        try:
-            # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
-            return self._get_vendor_from_lib()
-        except Exception:
-            return self._get_vendor_from_sys()
+        # try:
+        #     # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
+        #     return self._get_vendor_from_lib()
+        # except Exception:
+        return self._get_vendor_from_sys()
 
     def _get_vendor_from_quick_cmd(self):
         cmd = {
@@ -64,14 +66,32 @@ class DeviceDetector(object):
 
     def _get_vendor_from_sys(self):
         vendor_infos = backend.get_vendor_infos()
+        result_single_info = Queue()
+
+        def runcmd(single_info):
+            device_query_cmd = single_info.device_query_cmd
+            try:
+                result = subprocess.run(
+                    [device_query_cmd], capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    result_single_info.put(single_info)
+            except subprocess.CalledProcessError:
+                pass
+
+        threads = []
         for single_info in vendor_infos:
             # Get the vendor information by running system commands.
-            result = subprocess.run(
-                [single_info.device_query_cmd], capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                return single_info
-        error.device_not_found()
+            thread = threading.Thread(target=runcmd, args=(single_info,))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+        if result_single_info.empty():
+            error.device_not_found()
+        else:
+            return result_single_info.get()
 
     def get_vendor_name(self):
         return self.vendor_name
