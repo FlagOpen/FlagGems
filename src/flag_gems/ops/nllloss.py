@@ -10,7 +10,7 @@ from .cross_entropy_loss import sum_and_scale
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({"BLOCK_N": n}, num_warps=4) for n in [1, 16, 256]],
+    configs=[triton.Config({"BLOCK_N": n}, num_warps=4) for n in [1, 4, 32, 128]],
     key=["N"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
@@ -92,7 +92,7 @@ def nll_loss_2d_bwd_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({"BLOCK_D": d}, num_warps=4) for d in [1, 4, 16]],
+    configs=[triton.Config({"BLOCK_D": d}, num_warps=4) for d in [8, 32, 128]],
     key=["C", "D"],
 )
 @triton.jit(do_not_specialize=["ignore_index"])
