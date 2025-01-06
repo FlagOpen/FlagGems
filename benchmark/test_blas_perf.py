@@ -127,6 +127,9 @@ class MvAndOuterBenchmark(GenericBenchmark2DOnly):
     Benchmark for MV and Outer operations
     """
 
+    def set_more_shapes(self):
+        return None
+
     def get_input_iter(self, cur_dtype) -> Generator:
         for m, n in self.shapes:
             yield from self.input_fn(m, n, cur_dtype, self.device)
