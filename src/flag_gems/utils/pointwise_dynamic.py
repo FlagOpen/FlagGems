@@ -12,10 +12,9 @@ from flag_gems.utils.shape_utils import (
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
-    broadcasted_stride,
     broadcast_shapes,
+    broadcasted_stride,
     check_tensor_attributes,
-
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
@@ -1165,10 +1164,10 @@ class PointwiseDynamicFunction:
             shapes = tuple(item.shape for item in in_tensors)
 
             task_shape = broadcast_shapes(*shapes)
-       
+
             if out_tensors is not None and task_shape != (1,):
                 if not all(list(item.shape) == task_shape for item in out_tensors[0:]):
-                    raise ValueError(f"out tesnor shape is invalid, should be {task_shape} but is {list(item.shape)}!)
+                    raise ValueError(f"out tesnor shape is invalid, should be {task_shape} but is {list(item.shape)}!")
 
             ndim = len(task_shape)
             for item in tensors:

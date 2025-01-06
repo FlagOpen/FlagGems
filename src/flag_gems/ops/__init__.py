@@ -24,7 +24,11 @@ from .bitwise_or import (
 )
 from .bmm import bmm
 from .cat import cat
+<<<<<<< Updated upstream
 from .clamp import clamp, clamp_tensor, clamp_, clamp_tensor_
+=======
+from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+>>>>>>> Stashed changes
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
@@ -33,6 +37,9 @@ from .count_nonzero import count_nonzero
 from .cross_entropy_loss import cross_entropy_loss
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
+from .diag import diag
+from .diag_embed import diag_embed
+from .diagonal import diagonal_backward
 from .div import (
     div_mode,
     div_mode_,

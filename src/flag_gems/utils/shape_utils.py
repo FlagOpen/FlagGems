@@ -460,6 +460,11 @@ def broadcast_shapes(*_shapes):
                     )
 
     return common_shape
+<<<<<<< Updated upstream
+=======
+
+
+>>>>>>> Stashed changes
 def offsetCalculator(inp, idx, strides, dim, isInp):
     ndim = inp.ndim
     shape = list(inp.shape)
