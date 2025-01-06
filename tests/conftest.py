@@ -1,8 +1,8 @@
-import os
 import json
+import os
 import logging
-import flag_gems
 import pytest
+import flag_gems
 
 device = flag_gems.device
 
@@ -102,8 +102,7 @@ test_results = {}
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
-    test_results[item.nodeid]= {'params': None, 'result': None} 
-        
+    test_results[item.nodeid]= {'params': None, 'result': None}
     param_values = {}
     request = item._request
     if hasattr(request, 'node') and hasattr(request.node, 'callspec'):
@@ -113,7 +112,7 @@ def pytest_runtest_protocol(item, nextitem):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
-    if report.when == "call":  
+    if report.when == "call":
         test_results[report.nodeid]['result'] = report.outcome
 
 def pytest_terminal_summary(terminalreporter):
