@@ -57,10 +57,6 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("div_.Tensor_mode", div_mode_, Autograd.disable),
             ("div.Scalar_mode", div_mode, Autograd.disable),
             ("div_.Scalar_mode", div_mode_, Autograd.disable),
-<<<<<<< Updated upstream
-            ("divide.Tensor", true_divide, Autograd.disable),  # divide, an alias for div
-            ("divide_.Tensor", true_divide_, Autograd.disable),  # divide, an alias for div
-=======
             (
                 "divide.Tensor",
                 true_divide,
@@ -71,17 +67,12 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
                 true_divide_,
                 Autograd.disable,
             ),  # divide, an alias for div
->>>>>>> Stashed changes
             ("divide.Scalar", true_divide, Autograd.disable),
             ("divide_.Scalar", true_divide_, Autograd.disable),
             ("divide.Tensor_mode", div_mode, Autograd.disable),
             ("divide_.Tensor_mode", div_mode_, Autograd.disable),
             ("divide.Scalar_mode", div_mode, Autograd.disable),
             ("divide_.Scalar_mode", div_mode_, Autograd.disable),
-<<<<<<< Updated upstream
-            ("true_divide.Tensor", true_divide, Autograd.disable),  # true_divide, an alias for div
-            ("true_divide_.Tensor", true_divide_, Autograd.disable),  # true_divide, an alias for div
-=======
             (
                 "true_divide.Tensor",
                 true_divide,
@@ -92,7 +83,6 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
                 true_divide_,
                 Autograd.disable,
             ),  # true_divide, an alias for div
->>>>>>> Stashed changes
             ("true_divide.Scalar", true_divide, Autograd.disable),
             ("true_divide_.Scalar", true_divide_, Autograd.disable),
             ("floor_divide", floor_divide, Autograd.disable),

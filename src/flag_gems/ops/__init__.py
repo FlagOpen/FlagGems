@@ -24,11 +24,7 @@ from .bitwise_or import (
 )
 from .bmm import bmm
 from .cat import cat
-<<<<<<< Updated upstream
-from .clamp import clamp, clamp_tensor, clamp_, clamp_tensor_
-=======
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
->>>>>>> Stashed changes
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
@@ -50,9 +46,6 @@ from .div import (
     true_divide,
     true_divide_,
 )
-from .diag import diag
-from .diag_embed import diag_embed
-from .diagonal import diagonal_backward
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
