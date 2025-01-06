@@ -32,18 +32,23 @@ KEEPDIM_DIMS = (
         (1, 64, 32, 32, 64),
     ],
 )
+@pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
+def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     HW = H * W
     inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    weight = torch.randn(
-        size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
-    bias = torch.randn(
-        size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    if wb_none:
+        weight = None
+        bias = None
+    else:
+        weight = torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        bias = torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -68,16 +73,20 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-        ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
-    )
-    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-        res_out, (inp, weight, bias), out_grad
-    )
+    if wb_none:
+        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    else:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
     group_size = C // num_groups
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
-    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
 
 
 @pytest.mark.layer_norm
@@ -94,8 +103,9 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
         (4096, 256),
     ],
 )
+@pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_layernorm(shape, dtype):
+def test_accuracy_layernorm(shape, dtype, wb_none):
     M = shape[0]
     N = shape[1]
     layer_shape = [
@@ -104,12 +114,16 @@ def test_accuracy_layernorm(shape, dtype):
     inp = torch.randn(
         shape[:2], dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    weight = torch.randn(
-        layer_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
-    bias = torch.randn(
-        layer_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    if wb_none:
+        weight = None
+        bias = None
+    else:
+        weight = torch.randn(
+            layer_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        bias = torch.randn(
+            layer_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
@@ -137,15 +151,19 @@ def test_accuracy_layernorm(shape, dtype):
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-        ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
-    )
-    (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-        res_out, (inp, weight, bias), out_grad
-    )
+    if wb_none:
+        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    else:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
-    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
-    gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
 
 @pytest.mark.instance_norm
@@ -180,19 +198,24 @@ def test_accuracy_instancenorm(
         return
 
     B, C = shape[:2]
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     if has_weight_bias:
-        weight = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
-        bias = torch.randn(size=(C,), dtype=dtype, device="cuda", requires_grad=True)
+        weight = torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
+        bias = torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
+        )
     else:
         weight, bias = None, None
     running_mean = (
-        torch.randn(size=(C,), dtype=torch.float32, device="cuda")
+        torch.randn(size=(C,), dtype=torch.float32, device=flag_gems.device)
         if has_running_stats
         else None
     )
     running_var = (
-        torch.randn(size=(C,), dtype=torch.float32, device="cuda").abs() + 1e-5
+        torch.randn(size=(C,), dtype=torch.float32, device=flag_gems.device).abs()
+        + 1e-5
         if has_running_stats
         else None
     )
@@ -259,13 +282,12 @@ def test_accuracy_instancenorm(
             gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)
 
 
-WEIGHT_NORM_SHAPE_DTYPE_DIM = list(
-    zip(REDUCTION_SHAPES, FLOAT_DTYPES, [-1] if QUICK_MODE else [0, -1, -1])
-)
+WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, 1]))
 
 
 @pytest.mark.weight_norm
-@pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
+@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm(shape, dtype, dim):
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -277,8 +299,8 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     )
     reduce_size = v.numel() // shape[dim]
 
-    ref_v = to_reference(v, False)
-    ref_g = to_reference(g, False)
+    ref_v = to_reference(v, True)
+    ref_g = to_reference(g, True)
     ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
     with flag_gems.use_gems():
         res_w_out = torch._weight_norm(v, g, dim)
@@ -287,7 +309,7 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     res_w_grad = torch.randn(
         shape, dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    ref_w_grad = to_reference(res_w_grad, False)
+    ref_w_grad = to_reference(res_w_grad, True)
 
     ref_v_grad, ref_g_grad = torch.autograd.grad(
         ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
@@ -299,8 +321,14 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
 
 
+WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
+    zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, -1])
+)
+
+
 @pytest.mark.weight_norm_interface
-@pytest.mark.parametrize("shape, dtype, dim", WEIGHT_NORM_SHAPE_DTYPE_DIM)
+@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)

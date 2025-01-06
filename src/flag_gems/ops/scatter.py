@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 
@@ -38,7 +38,7 @@ def generate_scatter_kernel(
     # the decorators
     code.writeline("@libentry()")
     code.writeline(
-        '@triton.autotune(configs=runtime.get_triton_config("scatter"), key=["M", "N"])'
+        '@triton.autotune(configs=runtime.get_tuned_config("scatter"), key=["M", "N"])'
     )
     code.writeline("@triton.jit")
 
@@ -248,7 +248,7 @@ class ScatterFunction:
 
             file_name = f"scatter_rank_{key}_pid_{self.pid}.py"
 
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load

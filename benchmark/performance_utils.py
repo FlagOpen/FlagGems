@@ -1,4 +1,5 @@
 import gc
+import importlib
 import logging
 import time
 from typing import Any, Generator, List, Optional, Tuple
@@ -9,7 +10,6 @@ import triton
 import yaml
 
 import flag_gems
-from flag_gems.runtime import torch_backend_device, torch_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -25,8 +25,34 @@ from .attri_util import (
 )
 from .conftest import Config
 
-torch_backend_device.matmul.allow_tf32 = False
+torch_backend_device = flag_gems.runtime.torch_backend_device
+torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
+torch_backend_device.matmul.allow_tf32 = False
+
+
+def SkipVersion(module_name, skip_pattern):
+    cmp = skip_pattern[0]
+    assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
+    try:
+        M, N = skip_pattern[1:].split(".")
+        M, N = int(M), int(N)
+    except Exception:
+        raise ValueError("Cannot parse version number from skip_pattern.")
+
+    try:
+        module = importlib.import_module(module_name)
+        version = module.__version__
+        major, minor = map(int, version.split(".")[:2])
+    except Exception:
+        raise ImportError(f"Cannot determine version of module: {module_name}")
+
+    if cmp == "=":
+        return major == M and minor == N
+    elif cmp == "<":
+        return (major, minor) < (M, N)
+    else:
+        return (major, minor) > (M, N)
 
 
 class Benchmark:
@@ -103,7 +129,7 @@ class Benchmark:
 
     def set_more_metrics(self):
         """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
-        return None
+        return []
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
         # Validate user-specified dtypes
