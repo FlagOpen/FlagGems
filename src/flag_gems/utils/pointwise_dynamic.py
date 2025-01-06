@@ -12,7 +12,7 @@ from flag_gems.utils.shape_utils import (
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
-    broadcast_shapes,
+    broadcast_shape,
     broadcasted_stride,
     check_tensor_attributes,
 )
@@ -1163,12 +1163,14 @@ class PointwiseDynamicFunction:
             # no dimenion collapsing
             shapes = tuple(item.shape for item in in_tensors)
 
-            task_shape = broadcast_shapes(*shapes)
+            task_shape = broadcast_shape(*shapes)
 
             if out_tensors is not None and task_shape != (1,):
-                if not all(list(item.shape) == task_shape for item in out_tensors[0:]):
-                    raise ValueError(f"out tesnor shape is invalid, should be {task_shape} but is {list(item.shape)}!")
-
+                for index, item in enumerate(out_tensors):
+                    if list(item.shape) != list(task_shape):
+                        raise ValueError(
+                            f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
+                        )
             ndim = len(task_shape)
             for item in tensors:
                 if item.shape == task_shape:

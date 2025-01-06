@@ -354,7 +354,8 @@ def offset_calculator(inp, idx, strides, dim, isInp):
 
 def check_tensor_attributes(data_list, is_tensor_list):
     """
-    Checks if each element in data_list is a tensor and validates whether the corresponding boolean value in is_tensor_list is correct.
+    Checks if each element in data_list is a tensor and validates whether the corresponding
+    boolean value in is_tensor_list is correct.
 
     Parameters:
     - data_list: A list containing tensor and non-tensor objects.
@@ -414,15 +415,10 @@ def reduce(function, sequence, initial=_initial_missing):
     return value
 
 
-try:
-    from _functools import reduce
-except ImportError:
-    pass
-
 IntLike = (int, torch.SymInt)
 
 
-def broadcast_shapes(*_shapes):
+def broadcast_shape(*_shapes):
     from torch.fx.experimental.symbolic_shapes import guard_size_oblivious
 
     shapes = tuple(
@@ -460,11 +456,8 @@ def broadcast_shapes(*_shapes):
                     )
 
     return common_shape
-<<<<<<< Updated upstream
-=======
 
 
->>>>>>> Stashed changes
 def offsetCalculator(inp, idx, strides, dim, isInp):
     ndim = inp.ndim
     shape = list(inp.shape)

@@ -605,24 +605,6 @@ def test_accuracy_trunc_div_(shape, dtype):
             f"{torch.max(torch.abs(ref_out - res_out))}"
         )
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-@pytest.mark.trunc_divide
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
-def test_accuracy_trunc_divide_scalar_scalar(dtype):
-    if dtype == torch.float32:
-        inp1 = float(np.float32(random.random() + 0.01))
-        inp2 = float(np.float32(random.random() + 0.01))
-    else:
-        inp1 = random.randint(1, 100)
-        inp2 = random.randint(1, 100)
-
-    ref_out = torch.div(inp1, inp2, rounding_mode="trunc")
-    with flag_gems.use_gems():
-        res_out = torch.div(inp1, inp2, rounding_mode="trunc")
-
-    if dtype == torch.int64:
-        gems_assert_equal(res_out, ref_out)
-    else:
-        gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.trunc_divide
@@ -761,24 +743,6 @@ def test_accuracy_floor_div_int_(shape, dtype):
         with flag_gems.use_gems():
             res_out = inp1.floor_divide_(d)
         gems_assert_equal(res_out, ref_out)
-@pytest.mark.floor_divide
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
-def test_accuracy_floor_divide_scalar_scalar(dtype):
-    if dtype == torch.float32:
-        inp1 = float(np.float32(random.random() + 0.01))
-        inp2 = float(np.float32(random.random() + 0.01))
-    else:
-        inp1 = random.randint(1, 100)
-        inp2 = random.randint(1, 100)
-
-    ref_out = torch.floor_divide(inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.floor_divide(inp1, inp2)
-
-    if dtype == torch.int64:
-        gems_assert_equal(res_out, ref_out)
-    else:
-        gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.floor_divide
@@ -1704,7 +1668,6 @@ def test_accuracy_logical_or(shape, dtype):
         inp2 = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
-<<<<<<< Updated upstream
 
     ref_out = torch.logical_or(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
@@ -1729,32 +1692,6 @@ def test_accuracy_logical_and(shape, dtype):
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
-=======
-
-    ref_out = torch.logical_or(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.logical_or(inp1, inp2)
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.logical_and
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
-def test_accuracy_logical_and(shape, dtype):
-    if dtype in ALL_FLOAT_DTYPES:
-        inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    elif dtype in ALL_INT_DTYPES:
-        inp1 = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
-        inp2 = torch.randint(-1000, 1000, shape, dtype=dtype, device=flag_gems.device)
-    elif dtype in BOOL_TYPES:
-        inp1 = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
-        inp2 = torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = to_reference(inp1)
-    ref_inp2 = to_reference(inp2)
-
->>>>>>> Stashed changes
     ref_out = torch.logical_and(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.logical_and(inp1, inp2)
