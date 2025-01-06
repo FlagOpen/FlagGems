@@ -424,7 +424,7 @@ class GenericBenchmark2DOnly(GenericBenchmarkFilterShapes):
 
 
 def generate_tensor_input(shape, dtype, device):
-    if dtype in FLOAT_DTYPES + [torch.float64]:
+    if dtype in FLOAT_DTYPES:
         return torch.randn(shape, dtype=dtype, device=device)
     elif dtype in INT_DTYPES:
         return torch.randint(
