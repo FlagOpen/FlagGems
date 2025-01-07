@@ -296,9 +296,7 @@ def mm_kernel(
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
 
-def mini_matrix_scenario(
-    a, b, l2_cache_size=40 * 1024 * 1024, cache_usage_threshold=0.8
-):
+def mini_mm_scenario(a, b, l2_cache_size=40 * 1024 * 1024, cache_usage_threshold=0.8):
     return (
         a.shape[0] <= 256
         and (a.numel() * a.element_size() + b.shape[0] * b.element_size())
@@ -443,7 +441,7 @@ def mm(a, b):
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     dot_out_dtype = tl.float32
-    if b_column_major_flag and mini_matrix_scenario(
+    if b_column_major_flag and mini_mm_scenario(
         a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD
     ):
         return iobound_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag)
