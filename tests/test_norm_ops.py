@@ -139,6 +139,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
             bias=bias,
             eps=eps,
         )
+
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
@@ -376,8 +377,8 @@ def test_accuracy_rmsnorm(shape, dtype):
         return weight * hidden_states
 
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
-    with flag_gems.use_gems():
-        res_out = torch.rms_norm(inp, weight=weight, eps=eps)
+
+    res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
     gems_assert_close(res_out, ref_out, dtype)
 
