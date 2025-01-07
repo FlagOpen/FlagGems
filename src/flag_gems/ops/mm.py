@@ -110,7 +110,7 @@ def mm_kernel_with_grouped_k(
 @triton.autotune(configs=runtime.get_tuned_config("sum"), key=["M", "N"])
 @triton.jit
 def group_merge_kernel(
-    SRC,  # [B, M, N] 3D Tensor
+    SRC,  # [SPLIT_K, M, N] 3D Tensor
     DST,  # [M, N]
     SPLIT_K,
     M,
