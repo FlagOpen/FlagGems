@@ -51,11 +51,11 @@ class DeviceDetector(object):
         vendor_from_env = self._get_vendor_from_env()
         if vendor_from_env is not None:
             return backend.get_vendor_info(vendor_from_env)
-        # try:
-        #     # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
-        #     return self._get_vendor_from_lib()
-        # except Exception:
-        return self._get_vendor_from_sys()
+        try:
+            # Obtaining a vendor_info from the methods provided by torch or triton, but is not currently implemented.
+            return self._get_vendor_from_lib()
+        except Exception:
+            return self._get_vendor_from_sys()
 
     def _get_vendor_from_quick_cmd(self):
         cmd = {
@@ -83,7 +83,7 @@ class DeviceDetector(object):
                 )
                 if result.returncode == 0:
                     result_single_info.put(single_info)
-            except subprocess.CalledProcessError:
+            except:  # noqa: E722
                 pass
 
         threads = []
