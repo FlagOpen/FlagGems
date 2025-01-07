@@ -605,6 +605,12 @@ mm_iobound:
   num_stages: 6
   num_warps: 4
 mm:
+- META:  # for largek
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
+  num_stages: 3
+  num_warps: 8
 - META:
     BLOCK_M: 128
     BLOCK_N: 256
