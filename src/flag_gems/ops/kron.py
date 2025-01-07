@@ -7,9 +7,6 @@ from ..utils import triton_lang_extension as tle
 
 
 def prepare_tensor_for_kron(tensor_a, tensor_b):
-    if tensor_a.numel() == 0 or tensor_b.numel() == 0:
-        return tensor_a, tensor_b, ()
-
     if tensor_a.dim() == 0:
         tensor_a = tensor_a.unsqueeze(0)
     if tensor_b.dim() == 0:
@@ -106,7 +103,8 @@ def kron_kernel(
 
 def kron(A, B):
     if A.numel() == 0 or B.numel() == 0:
-        return torch.empty(0, device=A.device, dtype=A.dtype)
+        _, _, out_shape = prepare_tensor_for_kron(A, B)
+        return torch.empty(out_shape, device=A.device, dtype=A.dtype)
 
     if A.dim() == 0 and B.dim() == 0:
         return A * B
