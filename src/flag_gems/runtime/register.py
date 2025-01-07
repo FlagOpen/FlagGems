@@ -29,17 +29,17 @@ class Register:
         ]
 
     def get_vendor_extend_op(self):
-        if self.device.vendor != commom_utils.vendors.NVIDIA:
+        if self.device.vendor == commom_utils.vendors.NVIDIA:
             return backend.get_curent_device_extend_op(self.device.vendor_name)
         return ()
 
     def get_vendor_unused_op(self):
-        if self.device.vendor != commom_utils.vendors.NVIDIA:
+        if self.device.vendor == commom_utils.vendors.NVIDIA:
             return backend.get_curent_device_unused_op(self.device.vendor_name)
         return []
 
     def register_impl(self, key, fn, has_backward):
-        if self.device.vendor != commom_utils.vendors.NVIDIA:
+        if self.device.vendor == commom_utils.vendors.NVIDIA:
             if key in self.extend_configs_dict:
                 single_item = self.extend_configs_dict[key]
                 _, fn, has_backward = single_item
