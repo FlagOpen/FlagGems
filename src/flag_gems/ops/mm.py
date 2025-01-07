@@ -167,9 +167,7 @@ def iobound_mm_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
-    b_column_major: tl.constexpr,
 ):
     # matrix multiplication
     pid = tle.program_id(0)
@@ -392,8 +390,6 @@ def iobound_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag):
             c.stride(0),
             c.stride(1),
             dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
-            b_column_major=b_column_major_flag,
         )
     return c
 
