@@ -107,46 +107,37 @@ def mm_kernel_with_grouped_k(
 
 
 @libentry()
+@triton.autotune(configs=runtime.get_tuned_config("sum"), key=["M", "N"])
 @triton.jit
 def group_merge_kernel(
-    SRC,  # [SPLIT_K * M, N] 2D Tensor
+    SRC,  # [B, M, N] 3D Tensor
     DST,  # [M, N]
+    SPLIT_K,
     M,
     N,
-    stride_sm,
-    stride_sn,
-    stride_dm,
-    stride_dn,
-    dot_out_dtype: tl.constexpr,
+    stride_k,
+    stride_m,
+    stride_n,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    SPLIT_K: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    offs_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    stride_sk = M * N
-
-    offs_m = pid_m
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    mask_m = offs_m < (M * SPLIT_K)
+    mask_m = offs_m < M
     mask_n = offs_n < N
 
-    acc = tl.zeros((1, BLOCK_N), dtype=DST.dtype.element_ty)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
     for k in range(SPLIT_K):
         src_ptr = (
-            SRC
-            + k * stride_sk
-            + offs_m[:, None] * stride_dm
-            + offs_n[None, :] * stride_sn
+            SRC + k * stride_k + offs_m[:, None] * stride_m + offs_n[None, :] * stride_n
         )
-        sub_matrix = tl.load(src_ptr, mask=mask_m[:, None] & mask_n[None, :], other=0)
+        sub_matrix = tl.load(src_ptr, mask=mask_m[:, None] & mask_n[None, :], other=0.0)
 
         acc += sub_matrix
-
-    dst_ptr = DST + offs_m[:, None] * stride_dm + offs_n[None, :] * stride_dn
+    acc = acc.to(DST.dtype.element_ty)
+    dst_ptr = DST + offs_m[:, None] * stride_m + offs_n[None, :] * stride_n
     tl.store(dst_ptr, acc, mask=mask_m[:, None] & mask_n[None, :])
 
 
@@ -338,6 +329,7 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
     logging.debug("GEMS MM (SPLITK)")
     GROUP_K_LENGTH = 1024
     SPLIT_K = triton.cdiv(K, GROUP_K_LENGTH)
+    # TODO: float32 or c_dtype
     multi_c = torch.empty((SPLIT_K, M, N), device=a.device, dtype=c_dtype)
     # 1st kernel: compute partial results
     grid = lambda META: (
@@ -363,25 +355,22 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
             GROUP_K_LENGTH=GROUP_K_LENGTH,
         )
 
-    c_reshape = multi_c.view(SPLIT_K * M, N)
-    BLOCK_N = 32
-    BLOCK_M = 16
     # 2nd kernel: merge partial results
-    grid = (M, triton.cdiv(N, BLOCK_N))
+    grid2 = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
+    )
     with torch_device_fn.device(a.device):
-        group_merge_kernel[grid](
-            c_reshape,
+        group_merge_kernel[grid2](
+            multi_c,
             c,
+            SPLIT_K,
             M,
             N,
-            c_reshape.stride(0),
-            c_reshape.stride(1),
-            c.stride(0),
-            c.stride(1),
+            multi_c.stride(0),
+            multi_c.stride(1),
+            multi_c.stride(2),
             dot_out_dtype=dot_out_dtype,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            SPLIT_K=SPLIT_K,
         )
     return c
 
