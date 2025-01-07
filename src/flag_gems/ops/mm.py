@@ -143,8 +143,8 @@ def group_merge_kernel(
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("mm_iobound"),
-    # configs=runtime.get_tuned_config("mm_iobound") + runtime.get_tuned_config("mm"),
+    # configs=runtime.get_tuned_config("mm_iobound"),
+    configs=runtime.get_tuned_config("mm_iobound") + runtime.get_tuned_config("mm"),
     # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
 )
@@ -335,6 +335,10 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]) * SPLIT_K,
     )
+    grid2 = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
+    )
     with torch_device_fn.device(a.device):
         mm_kernel_with_grouped_k[grid](
             a,
@@ -354,13 +358,7 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
             SPLIT_K=SPLIT_K,
             GROUP_K_LENGTH=GROUP_K_LENGTH,
         )
-
-    # 2nd kernel: merge partial results
-    grid2 = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
+        # 2nd kernel: merge partial results
         group_merge_kernel[grid2](
             multi_c,
             c,
