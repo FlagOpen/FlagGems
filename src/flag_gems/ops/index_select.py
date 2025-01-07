@@ -13,7 +13,14 @@ from ..utils import triton_lang_extension as tle
 @triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
 def index_select_kernel(
-    inp, out, M, N, index, index_len, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+    inp,
+    out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    index,
+    index_len: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     pid_x = tle.program_id(axis=0)
     pid_y = tle.program_id(axis=1)
