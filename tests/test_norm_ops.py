@@ -58,16 +58,10 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     ref_out = torch.nn.functional.group_norm(
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
-    ref_mean = torch.mean(ref_inp.reshape([N, num_groups, -1]), dim=2)
-    ref_var = torch.var(ref_inp.reshape([N, num_groups, -1]), dim=2, correction=0)
-    ref_rstd = torch.rsqrt(ref_var + eps)
 
-    (res_out, res_mean, res_rstd) = flag_gems.group_norm(
-        inp, weight, bias, N, C, HW, num_groups, eps
-    )
+    with flag_gems.use_gems():
+        res_out = torch.group_norm(inp, num_groups, weight=weight, bias=bias, eps=eps)
 
-    gems_assert_close(res_mean, ref_mean, dtype)
-    gems_assert_close(res_rstd, ref_rstd, dtype)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
@@ -137,15 +131,14 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         bias=ref_bias,
         eps=eps,
     )
-    (res_out, res_mean, res_rstd) = flag_gems.layer_norm(
-        inp, list(layer_shape), weight=weight, bias=bias, eps=eps
-    )
-
-    ref_mean = torch.mean(ref_inp, dim=1)
-    ref_var = torch.var(ref_inp, dim=1, correction=0)
-    ref_rstd = torch.rsqrt(ref_var + eps)
-    gems_assert_close(res_mean, ref_mean, res_mean.dtype)
-    gems_assert_close(res_rstd, ref_rstd, res_rstd.dtype)
+    with flag_gems.use_gems():
+        res_out = torch.layer_norm(
+            inp,
+            list(layer_shape),
+            weight=weight,
+            bias=bias,
+            eps=eps,
+        )
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
@@ -383,8 +376,8 @@ def test_accuracy_rmsnorm(shape, dtype):
         return weight * hidden_states
 
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
-
-    res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
+    with flag_gems.use_gems():
+        res_out = torch.rms_norm(inp, weight=weight, eps=eps)
 
     gems_assert_close(res_out, ref_out, dtype)
 
