@@ -32,7 +32,7 @@ def test_accuracy_bert(prompt, dtype):
     with flag_gems.use_gems():
         with torch.no_grad():
             res_outputs = res_model(**res_inputs).last_hidden_state
-    res_outputs = res_outputs.to("cpu")
+
     maxdiff = torch.max(torch.abs(ref_outputs - res_outputs))
     succeed = True
     if (
