@@ -544,6 +544,7 @@ def test_accuracy_erf(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_erf_(shape, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device="cuda")
     ref_inp = to_reference(inp.clone())
 

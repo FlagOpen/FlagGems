@@ -9,12 +9,14 @@ from triton.runtime.jit import JITFunction
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
+    MemOverlap,
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
-    broadcast_shape,
+    broadcast_shapes,
     broadcasted_stride,
     check_tensor_attributes,
+    has_internal_overlapping,
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
@@ -1124,6 +1126,11 @@ class PointwiseDynamicFunction:
                 )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
+        # input arguments must be dense and no overlapping
+        for input in in_tensors:
+            if has_internal_overlapping(input) == MemOverlap.Yes:
+                raise ValueError("Input arguments must be dense and no overlapping.")
+
         # output dtype promotions
         outputs_dtypes_for_allocation = []
         for i in outputs_that_need_allocation:
@@ -1163,9 +1170,9 @@ class PointwiseDynamicFunction:
             # no dimenion collapsing
             shapes = tuple(item.shape for item in in_tensors)
 
-            task_shape = broadcast_shape(*shapes)
+            task_shape = broadcast_shapes(shapes)
 
-            if out_tensors is not None and task_shape != (1,):
+            if out_tensors:
                 for index, item in enumerate(out_tensors):
                     if list(item.shape) != list(task_shape):
                         raise ValueError(

@@ -94,7 +94,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("remainder.Scalar_Tensor", remainder, Autograd.disable),
             ("native_dropout", native_dropout, Autograd.enable),
             ("erf", erf, Autograd.disable),
-            ("erf_", erf, Autograd.disable),
+            ("erf_", erf_, Autograd.disable),
             ("embedding", embedding, Autograd.enable),
             ("eq.Tensor", eq, Autograd.disable),
             ("eq.Scalar", eq_scalar, Autograd.disable),
