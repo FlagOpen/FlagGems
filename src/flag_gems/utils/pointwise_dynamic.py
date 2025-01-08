@@ -1127,8 +1127,8 @@ class PointwiseDynamicFunction:
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
         # input arguments must be dense and no overlapping
-        for input in in_tensors:
-            if has_internal_overlapping(input) == MemOverlap.Yes:
+        for out in out_tensors:
+            if has_internal_overlapping(out) == MemOverlap.Yes:
                 raise ValueError("Input arguments must be dense and no overlapping.")
 
         # output dtype promotions
