@@ -126,6 +126,8 @@ def early_config_prune(configs, nargs, **kwargs):
     configs=runtime.get_tuned_config("attention"),
     key=["KV_CTX", "HEAD_DIM"],
     prune_configs_by={
+        "perf_model": None,
+        "top_k": 1.0,
         "early_config_prune": early_config_prune,
     },
 )

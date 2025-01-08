@@ -36,6 +36,7 @@ class LibTuner(triton.runtime.Autotuner):
                 arg_names,
                 configs,
                 key,
+                False,
                 reset_to_zero,
                 restore_value,
                 prune_configs_by,
