@@ -486,6 +486,7 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         (16, 3),
         (32, 32, 32),
         (8, 32, 224, 224),
+        (2050, 16, 32, 32),
         (8, 16, 3, 224, 224),
     ],
 )

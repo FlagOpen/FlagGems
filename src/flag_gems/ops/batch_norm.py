@@ -1,11 +1,9 @@
 import logging
-from typing import Dict
 
 import torch
 import triton
 import triton.language as tl
 from torch import Tensor
-from triton import next_power_of_2
 
 from .. import runtime
 from ..runtime import torch_device_fn
@@ -34,26 +32,6 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
     return input
 
 
-def BLOCK_SIZE_SPATIAL_heuristic(args: Dict) -> int:
-    """
-    Approximates an appropriate spatial block size for batch normalization
-    using a heuristic.
-
-    Args:
-        args: Arguments to batch normalization kernel.
-
-    Returns:
-        Appropriate spatial block size.
-    """
-    # Preferrably, the batch and spatial dimensions would both be loaded,
-    # and normalization would be conducted in one step.
-    # However, for large inputs, that is not feasible given memory constraints.
-    # Thus, a maximum of 16384 elements are loaded at once.
-    BLOCK_SIZE_BATCH = next_power_of_2(args["batch_dim"])
-    BLOCK_SIZE_SPATIAL = next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_SIZE_SPATIAL, max(1, 2**14 // BLOCK_SIZE_BATCH))
-
-
 # NOTE: This part of the kernel code is copied and modified
 # from the https://github.com/BobMcDear/attorch codebase.
 
@@ -64,12 +42,7 @@ def BLOCK_SIZE_SPATIAL_heuristic(args: Dict) -> int:
     key=["batch_dim", "spatial_dim"],
     restore_value=["running_mean_pointer", "running_var_pointer"],
 )
-@triton.heuristics(
-    {
-        "BLOCK_SIZE_BATCH": lambda args: next_power_of_2(args["batch_dim"]),
-        "BLOCK_SIZE_SPATIAL": BLOCK_SIZE_SPATIAL_heuristic,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("batch_norm"))
 @triton.jit
 def batch_norm_forward_kernel(
     input_pointer,
@@ -93,53 +66,53 @@ def batch_norm_forward_kernel(
     affine: tl.constexpr,
     save_stats: tl.constexpr,
     is_train: tl.constexpr,
-    BLOCK_SIZE_BATCH: tl.constexpr,
-    BLOCK_SIZE_SPATIAL: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     feat_pid = tl.program_id(axis=0)
 
-    batch_offset = tl.arange(0, BLOCK_SIZE_BATCH)
-    batch_mask = batch_offset < batch_dim
-
     # traning mode default track_running_stat
     if is_train:
-        count = 0
-        mean = 0.0
-        var = 0.0
+        mean = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        var = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        cnt = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.int32)
 
-        for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
-            spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
-                0, BLOCK_SIZE_SPATIAL
-            )
-            spatial_mask = spatial_offset < spatial_dim
+        m_num_steps = tl.cdiv(batch_dim, BLOCK_M)
+        n_num_steps = tl.cdiv(spatial_dim, BLOCK_N)
 
-            curr_input_pointer = (
-                input_pointer
-                + input_feat_stride * feat_pid
-                + input_batch_stride * batch_offset[:, None]
-                + input_spatial_stride * spatial_offset[None, :]
-            )
-            curr_input = tl.load(
-                curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
+        for m_step in range(0, m_num_steps):
+            for n_step in range(0, n_num_steps):
+                spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
+                spatial_mask = spatial_offset < spatial_dim
 
-            spatial_count = min(
-                BLOCK_SIZE_SPATIAL, spatial_dim - block_ind * BLOCK_SIZE_SPATIAL
-            )
-            curr_count = spatial_count * batch_dim
-            count += curr_count
+                batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
+                batch_mask = batch_offset < batch_dim
 
-            prev_mean = mean
-            mean += (tl.sum(curr_input) - curr_count * mean) / count
-            deltas = tl.where(
-                batch_mask[:, None] & spatial_mask[None, :],
-                (curr_input - mean) * (curr_input - prev_mean),
-                0.0,
-            )
-            var += tl.sum(deltas)
+                curr_input_pointer = (
+                    input_pointer
+                    + input_feat_stride * feat_pid
+                    + input_batch_stride * batch_offset[:, None]
+                    + input_spatial_stride * spatial_offset[None, :]
+                )
 
-        var /= count
+                mask = batch_mask[:, None] & spatial_mask[None, :]
+                curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
+
+                step = m_step * n_num_steps + n_step + 1
+                new_mean = tl.where(mask, mean + (curr_input - mean) / step, mean)
+                new_var = tl.where(
+                    mask, var + (curr_input - new_mean) * (curr_input - mean), var
+                )
+                cnt += mask.to(tl.int32)
+                mean = new_mean
+                var = new_var
+
+        final_mean = tl.sum(mean * cnt) / (batch_dim * spatial_dim)
+        var = tl.sum(var + cnt * (mean - final_mean) * (mean - final_mean)) / (
+            batch_dim * spatial_dim
+        )
         inv_std = rsqrt(var + eps)
+        mean = final_mean
 
         if save_stats:
             tl.store(feat_pid + mean_pointer, mean)
@@ -170,35 +143,37 @@ def batch_norm_forward_kernel(
         weight = 1.0
         bias = 0.0
 
-    for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
-        spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
-            0, BLOCK_SIZE_SPATIAL
-        )
-        spatial_mask = spatial_offset < spatial_dim
+    for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
+        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
+            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
+            batch_mask = batch_offset < batch_dim
 
-        curr_input_pointer = (
-            input_pointer
-            + input_feat_stride * feat_pid
-            + input_batch_stride * batch_offset[:, None]
-            + input_spatial_stride * spatial_offset[None, :]
-        )
-        curr_output_pointer = (
-            output_pointer
-            + output_feat_stride * feat_pid
-            + output_batch_stride * batch_offset[:, None]
-            + output_spatial_stride * spatial_offset[None, :]
-        )
+            spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
+            spatial_mask = spatial_offset < spatial_dim
 
-        curr_input = tl.load(
-            curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-        ).to(tl.float32)
-        output = weight * (curr_input - mean) * inv_std + bias
+            curr_input_pointer = (
+                input_pointer
+                + input_feat_stride * feat_pid
+                + input_batch_stride * batch_offset[:, None]
+                + input_spatial_stride * spatial_offset[None, :]
+            )
+            curr_output_pointer = (
+                output_pointer
+                + output_feat_stride * feat_pid
+                + output_batch_stride * batch_offset[:, None]
+                + output_spatial_stride * spatial_offset[None, :]
+            )
 
-        tl.store(
-            curr_output_pointer,
-            output,
-            mask=batch_mask[:, None] & spatial_mask[None, :],
-        )
+            curr_input = tl.load(
+                curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
+            ).to(tl.float32)
+            output = weight * (curr_input - mean) * inv_std + bias
+
+            tl.store(
+                curr_output_pointer,
+                output,
+                mask=batch_mask[:, None] & spatial_mask[None, :],
+            )
 
 
 @libentry()
@@ -206,12 +181,7 @@ def batch_norm_forward_kernel(
     configs=runtime.get_tuned_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
 )
-@triton.heuristics(
-    {
-        "BLOCK_SIZE_BATCH": lambda args: next_power_of_2(args["batch_dim"]),
-        "BLOCK_SIZE_SPATIAL": BLOCK_SIZE_SPATIAL_heuristic,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("batch_norm"))
 @triton.jit
 def batch_norm_backward_kernel(
     output_grad_pointer,
@@ -234,120 +204,115 @@ def batch_norm_backward_kernel(
     input_grad_feat_stride,
     input_grad_spatial_stride,
     affine: tl.constexpr,
-    BLOCK_SIZE_BATCH: tl.constexpr,
-    BLOCK_SIZE_SPATIAL: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     feat_pid = tl.program_id(axis=0)
-
-    batch_offset = tl.arange(0, BLOCK_SIZE_BATCH)
-    batch_mask = batch_offset < batch_dim
 
     mean = tl.load(feat_pid + mean_pointer).to(tl.float32)
     inv_std = tl.load(feat_pid + inv_std_pointer).to(tl.float32)
 
-    term1 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32)
-    term2 = tl.zeros([BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32)
+    term1 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
 
-    for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
-        spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
-            0, BLOCK_SIZE_SPATIAL
-        )
-        spatial_mask = spatial_offset < spatial_dim
+    for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
+        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
+            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
+            batch_mask = batch_offset < batch_dim
 
-        curr_output_grad_pointer = (
-            output_grad_pointer
-            + output_grad_feat_stride * feat_pid
-            + output_grad_batch_stride * batch_offset[:, None]
-            + output_grad_spatial_stride * spatial_offset[None, :]
-        )
-        curr_input_pointer = (
-            input_pointer
-            + input_feat_stride * feat_pid
-            + input_batch_stride * batch_offset[:, None]
-            + input_spatial_stride * spatial_offset[None, :]
-        )
+            spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
+            spatial_mask = spatial_offset < spatial_dim
 
-        curr_input = tl.load(
-            curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-        ).to(tl.float32)
+            curr_output_grad_pointer = (
+                output_grad_pointer
+                + output_grad_feat_stride * feat_pid
+                + output_grad_batch_stride * batch_offset[:, None]
+                + output_grad_spatial_stride * spatial_offset[None, :]
+            )
+            curr_input_pointer = (
+                input_pointer
+                + input_feat_stride * feat_pid
+                + input_batch_stride * batch_offset[:, None]
+                + input_spatial_stride * spatial_offset[None, :]
+            )
 
-        curr_pre_lin = (curr_input - mean) * inv_std
-        curr_output_grad = tl.load(
-            curr_output_grad_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-        ).to(tl.float32)
+            mask = batch_mask[:, None] & spatial_mask[None, :]
+            curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
 
-        term1 += curr_pre_lin * curr_output_grad
-        term2 += curr_output_grad
+            curr_pre_lin = (curr_input - mean) * inv_std
+            curr_output_grad = tl.load(curr_output_grad_pointer, mask=mask).to(
+                tl.float32
+            )
+
+            term1 += curr_pre_lin * curr_output_grad
+            term2 += curr_output_grad
 
     term1 = tl.sum(term1)
     term2 = tl.sum(term2)
 
     if affine:
         weight = tl.load(feat_pid + weight_pointer)
-        weight_grad_acc = tl.zeros(
-            [BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32
-        )
-        bias_grad_acc = tl.zeros(
-            [BLOCK_SIZE_BATCH, BLOCK_SIZE_SPATIAL], dtype=tl.float32
-        )
+        weight_grad_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        bias_grad_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
 
     else:
         weight = 1.0
 
     count = batch_dim * spatial_dim
 
-    for block_ind in range(0, tl.cdiv(spatial_dim, BLOCK_SIZE_SPATIAL)):
-        spatial_offset = block_ind * BLOCK_SIZE_SPATIAL + tl.arange(
-            0, BLOCK_SIZE_SPATIAL
-        )
-        spatial_mask = spatial_offset < spatial_dim
+    for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
+        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
+            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
+            batch_mask = batch_offset < batch_dim
 
-        curr_output_grad_pointer = (
-            output_grad_pointer
-            + output_grad_feat_stride * feat_pid
-            + output_grad_batch_stride * batch_offset[:, None]
-            + output_grad_spatial_stride * spatial_offset[None, :]
-        )
-        curr_input_pointer = (
-            input_pointer
-            + input_feat_stride * feat_pid
-            + input_batch_stride * batch_offset[:, None]
-            + input_spatial_stride * spatial_offset[None, :]
-        )
-        curr_input_grad_pointer = (
-            input_grad_pointer
-            + input_grad_feat_stride * feat_pid
-            + input_grad_batch_stride * batch_offset[:, None]
-            + input_grad_spatial_stride * spatial_offset[None, :]
-        )
+            spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
+            spatial_mask = spatial_offset < spatial_dim
 
-        curr_input = tl.load(
-            curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-        ).to(tl.float32)
-        curr_pre_lin = (curr_input - mean) * inv_std
-        curr_output_grad = tl.load(
-            curr_output_grad_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-        ).to(tl.float32)
-        curr_input_grad = (
-            inv_std
-            * weight
-            * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
-        )
-        tl.store(
-            curr_input_grad_pointer,
-            curr_input_grad,
-            mask=batch_mask[:, None] & spatial_mask[None, :],
-        )
+            curr_output_grad_pointer = (
+                output_grad_pointer
+                + output_grad_feat_stride * feat_pid
+                + output_grad_batch_stride * batch_offset[:, None]
+                + output_grad_spatial_stride * spatial_offset[None, :]
+            )
+            curr_input_pointer = (
+                input_pointer
+                + input_feat_stride * feat_pid
+                + input_batch_stride * batch_offset[:, None]
+                + input_spatial_stride * spatial_offset[None, :]
+            )
+            curr_input_grad_pointer = (
+                input_grad_pointer
+                + input_grad_feat_stride * feat_pid
+                + input_grad_batch_stride * batch_offset[:, None]
+                + input_grad_spatial_stride * spatial_offset[None, :]
+            )
 
-        if affine:
-            weight_grad_acc += curr_pre_lin * curr_output_grad
-            bias_grad_acc += curr_output_grad
+            curr_input = tl.load(
+                curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
+            ).to(tl.float32)
+            curr_pre_lin = (curr_input - mean) * inv_std
+            curr_output_grad = tl.load(
+                curr_output_grad_pointer,
+                mask=batch_mask[:, None] & spatial_mask[None, :],
+            ).to(tl.float32)
+            curr_input_grad = (
+                inv_std
+                * weight
+                * (curr_output_grad - (term1 * curr_pre_lin + term2) / count)
+            )
+            tl.store(
+                curr_input_grad_pointer,
+                curr_input_grad,
+                mask=batch_mask[:, None] & spatial_mask[None, :],
+            )
+
+            if affine:
+                weight_grad_acc += curr_pre_lin * curr_output_grad
+                bias_grad_acc += curr_output_grad
 
     if affine:
-        weight_grad = tl.sum(weight_grad_acc)
-        bias_grad = tl.sum(weight_grad_acc)
-        tl.store(feat_pid + weight_grad_pointer, weight_grad)
-        tl.store(feat_pid + bias_grad_pointer, bias_grad)
+        tl.store(feat_pid + weight_grad_pointer, tl.sum(weight_grad_acc))
+        tl.store(feat_pid + bias_grad_pointer, tl.sum(bias_grad_acc))
 
 
 class BatchNorm(torch.autograd.Function):
