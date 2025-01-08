@@ -9,10 +9,6 @@ from .cross_entropy_loss import sum_and_scale
 
 
 @libentry()
-@triton.autotune(
-    configs=[triton.Config({"BLOCK_N": n}, num_warps=4) for n in [1, 4, 32, 128]],
-    key=["N"],
-)
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_2d_fwd_kernel(
     inp_ptr,
@@ -23,7 +19,7 @@ def nll_loss_2d_fwd_kernel(
     ignore_index,
     N,
     C,
-    BLOCK_N: tl.constexpr,
+    BLOCK_N: tl.constexpr = 128,
 ):
     pid_n = tl.program_id(0)
     offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -91,10 +87,6 @@ def nll_loss_2d_bwd_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[triton.Config({"BLOCK_D": d}, num_warps=4) for d in [8, 32, 128]],
-    key=["C", "D"],
-)
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_multi_fwd_kernel(
     inp_ptr,
@@ -106,7 +98,7 @@ def nll_loss_multi_fwd_kernel(
     N,
     C,
     D,
-    BLOCK_D: tl.constexpr,
+    BLOCK_D: tl.constexpr = 128,
 ):
     pid_n = tl.program_id(1)
     pid_d = tl.program_id(0)
