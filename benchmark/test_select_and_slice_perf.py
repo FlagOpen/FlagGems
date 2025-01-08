@@ -15,12 +15,13 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
 
     def set_more_shapes(self):
         shapes = super().set_more_shapes()
-        return [
+        shapes = [
             # this filter is for scatter
             shape
             for shape in shapes
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16
         ]
+        return shapes
 
 
 def index_select_input_fn(shape, cur_dtype, device):
@@ -102,7 +103,6 @@ def test_perf_scatter():
         inp, dim, index = next(input_gen)
         src_shape = list(size + 16 for size in index.shape)
         src = torch.randn(src_shape, dtype=dtype, device=device)
-
         yield inp, dim, index, src
 
     bench = TensorSelectBenchmark(
@@ -130,7 +130,7 @@ def test_perf_scatter_add():
         torch_op=torch.scatter,
         input_fn=scatter_input_fn,
         get_gbps=gather_scatter_gbps,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=[torch.float32],
     )
     bench.run()
 
@@ -161,19 +161,8 @@ def gather_input_fn(shape, dtype, device):
     dim = -1
     size_dim = shape[dim]
     index_shape = list(shape)
-    index_shape[dim] = shape[dim]
-    index = torch.empty(index_shape, dtype=torch.long, device=device)
-
-    m, n = index_shape
-
-    index_size_dim = index_shape[dim]
-    # make unique indices
-    for i in range(1 if dim == 0 else m):
-        for j in range(1 if dim == 1 else n):
-            ii = [i, j]
-            ii[dim] = slice(0, index.size(dim) + 1)
-            index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
-
+    index_shape[dim] = 2 * shape[dim]
+    index = torch.randint(0, size_dim, index_shape, dtype=torch.long, device=device)
     yield inp, dim, index
 
 
@@ -203,7 +192,7 @@ def test_perf_gather_backward():
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         get_gbps=gather_scatter_gbps,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32],
         is_backward=True,
     )
     bench.run()

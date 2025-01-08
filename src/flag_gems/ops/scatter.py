@@ -35,7 +35,7 @@ def generate_scatter_kernel(
 
     code.writeline("def heur_block(args):")
     with code.indent():
-        code.writeline("return 256")
+        code.writeline("return 128")
     code.newline()
     code.newline()
 
@@ -118,7 +118,7 @@ def generate_scatter_kernel(
         code.writeline("offsets = pid * LOOP * BLOCK + tl.arange(0, BLOCK)")
 
         #   1. Calculate inp_offsets and idx_offsets
-        code.writeline("for loop_iter in range(LOOP):")
+        code.writeline("for loop_iter in tl.static_range(LOOP):")
         with code.indent():
             code.writeline("mask = offsets < N")
             code.writeline("cur_idx = offsets")
@@ -164,7 +164,6 @@ def generate_scatter_kernel(
             code.writeline("if IS_ADD: ")
             with code.indent():
                 code.writeline("tl.atomic_add(out + inp_offsets, cur_src, mask=mask)")
-
             code.writeline("elif IS_MUL: ")
             with code.indent():
                 code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
