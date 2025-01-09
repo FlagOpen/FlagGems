@@ -27,12 +27,10 @@ def get_heuristic_config(op_name):
 
 def replace_customized_ops(_globals):
     if device.vendor != commom_utils.vendors.NVIDIA:
-        customized_op_infos = backend.get_curent_device_extend_op()
-        for single_op_info in customized_op_infos:
-            op_fun = single_op_info[1]
-            op_fun_name = op_fun.__name__
+        customized_op_infos = backend.get_curent_device_extend_op(device.vendor_name)
+        for fn_name, fn in customized_op_infos:
             try:
-                _globals[op_fun_name] = op_fun
+                _globals[fn_name] = fn
             except RuntimeError as e:
                 error.customized_op_replace_error(e)
 
@@ -43,4 +41,5 @@ __all__ = [
     "device",
     "get_tuned_config",
     "get_heuristic_config",
+    "replace_customized_ops",
 ]
