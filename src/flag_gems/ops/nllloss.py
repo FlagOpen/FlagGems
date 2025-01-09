@@ -42,14 +42,6 @@ def nll_loss_2d_fwd_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_N": n, "BLOCK_C": c}, num_warps=4)
-        for n in [256, 512, 1024]
-        for c in [1, 4, 16]
-    ],
-    key=["N", "C"],
-)
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_2d_bwd_kernel(
     out_grad_ptr,
@@ -60,30 +52,28 @@ def nll_loss_2d_bwd_kernel(
     total_weight,
     N,
     C,
-    BLOCK_N: tl.constexpr,
-    BLOCK_C: tl.constexpr,
+    grad_stride,
+    BLOCK_N: tl.constexpr = 128,
 ):
     pid_n = tl.program_id(0)
-    pid_c = tl.program_id(1)
     offsets_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offsets_c = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
 
     mask_n = offsets_n < N
-    mask_block = offsets_n[:, None] < N and offsets_c[None, :] < C
 
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
-    out_grad = (tl.load(out_grad_ptr + offsets_n, mask=mask_n, other=0).to(tl.float32))[
-        :, None
-    ]
-    ignore_mask = (tgt != ignore_index)[:, None]
+    ignore_mask = not (tgt == ignore_index) and mask_n
 
-    w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=mask_n, other=0).to(tl.float32)[:, None]
+    if w_ptr is None:
+        w_tgt = 1
+    else:
+        w_tgt = tl.load(w_ptr + tgt, mask=mask_n, other=0).to(tl.float32)
 
-    mask_inp = mask_block and offsets_c[None, :] == tgt[:, None]
-    inp_grad = -1 * out_grad * w_tgt / total_weight
-    inp_grad_ptrs = inp_grad_ptr + offsets_n[:, None] * C + offsets_c[None, :]
-    tl.store(inp_grad_ptrs, inp_grad.to(tl.float32), mask=(mask_inp & ignore_mask))
+    out_grad_ptrs = out_grad_ptr + offsets_n * grad_stride
+    out_grad = tl.load(out_grad_ptrs, mask=mask_n, other=0).to(tl.float32)
+
+    inp_grad = tl.where(ignore_mask, -1 * out_grad * w_tgt / total_weight, 0)
+    inp_grad_ptrs = inp_grad_ptr + offsets_n * C + tgt
+    tl.store(inp_grad_ptrs, inp_grad, mask=mask_n)
 
 
 @libentry()
@@ -98,41 +88,34 @@ def nll_loss_multi_fwd_kernel(
     N,
     C,
     D,
-    BLOCK_D: tl.constexpr = 128,
+    BLOCK_ND: tl.constexpr = 128,
 ):
-    pid_n = tl.program_id(1)
-    pid_d = tl.program_id(0)
-    offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    pid_nd = tl.program_id(0)
+    offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
+    offset_d = (offset_nd % D)[None, :]
+    offset_n = (offset_nd // D)[:, None]
 
-    tgt_ptrs = tgt_ptr + pid_n * D + offset_d
-    mask_d = offset_d < D
-    tgt = tl.load(tgt_ptrs, mask=mask_d, other=0)
+    mask_block = offset_n < N and offset_d < D
 
-    ignore_mask = not (tgt == ignore_index) and mask_d
+    tgt_ptrs = tgt_ptr + offset_n * D + offset_d
+    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
+    ignore_mask = not (tgt == ignore_index) and mask_block
 
     if w_ptr is None:
         w_tgt = 1
     else:
         w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
-    w_tgt_ptrs = w_tgt_ptr + pid_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=mask_d)
+    w_tgt_ptrs = w_tgt_ptr + offset_n * D + offset_d
+    tl.store(w_tgt_ptrs, w_tgt, mask=mask_block)
 
-    inp_tgt_ptrs = inp_ptr + pid_n * C * D + tgt * D + offset_d
+    inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
     out = inp_tgt * w_tgt * -1
-    out_ptrs = out_ptr + pid_n * D + offset_d
-    tl.store(out_ptrs, out, mask=mask_d)
+    out_ptrs = out_ptr + offset_n * D + offset_d
+    tl.store(out_ptrs, out, mask=mask_block)
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_C": c, "BLOCK_D": d}, num_warps=4)
-        for c in [256, 512, 1024]
-        for d in [1, 4, 16]
-    ],
-    key=["C", "D"],
-)
 @triton.jit(do_not_specialize=["ignore_index", "total_weight"])
 def nll_loss_multi_bwd_kernel(
     out_grad_ptr,
@@ -144,33 +127,32 @@ def nll_loss_multi_bwd_kernel(
     N,
     C,
     D,
-    BLOCK_C: tl.constexpr,
-    BLOCK_D: tl.constexpr,
+    grad_stride_n,
+    grad_stride_d,
+    BLOCK_ND: tl.constexpr = 128,
 ):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
-    offset_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    pid_nd = tl.program_id(0)
+    offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
+    offset_d = offset_nd % D[None, :]
+    offset_n = offset_nd // D[:, None]
 
-    tgt_ptrs = tgt_ptr + pid_n * D + offset_d
-    mask_tgt = offset_d < D
-    tgt = tl.load(tgt_ptrs, mask=mask_tgt, other=0)
+    mask_block = offset_n < N and offset_d < D
 
-    ignore_mask = (tgt != ignore_index)[None, :]
+    tgt_ptrs = tgt_ptr + offset_n * D + offset_d
+    tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
+    ignore_mask = not (tgt == ignore_index) and mask_block
 
-    w_ptrs = w_ptr + tgt
-    w_tgt = tl.load(w_ptrs, mask=mask_tgt, other=0).to(tl.float32)[None, :]
-    out_grad_ptrs = out_grad_ptr + pid_n * D + offset_d
-    out_grad = (tl.load(out_grad_ptrs, mask=mask_tgt, other=0).to(tl.float32))[None, :]
+    if w_ptr is None:
+        w_tgt = 1
+    else:
+        w_tgt = tl.load(w_ptr + tgt, mask=mask_block, other=0).to(tl.float32)
 
-    for off in range(0, C, BLOCK_C):
-        offset_c = off + tl.arange(0, BLOCK_C)
-        inp_mask = offset_c[:, None] < C and offset_d[None, :] < D
-        inp_mask = inp_mask and offset_c[:, None] == tgt
-        inp_grad = -1 * out_grad * w_tgt / total_weight
-        inp_grad_ptrs = (
-            inp_grad_ptr + pid_n * C * D + offset_c[:, None] * D + offset_d[None, :]
-        )
-        tl.store(inp_grad_ptrs, inp_grad.to(tl.float32), mask=(inp_mask & ignore_mask))
+    out_grad_ptrs = out_grad_ptr + offset_n * grad_stride_n + offset_d * grad_stride_d
+    out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(tl.float32)
+
+    inp_grad = tl.where(ignore_mask, -1 * out_grad * w_tgt / total_weight, 0)
+    inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
+    tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
 
 
 # Negative Log Likelihood Loss (NLLLoss)
@@ -225,7 +207,7 @@ class NegativeLogLikeLoss(torch.autograd.Function):
         w_tgt = torch.empty(shape, dtype=inp.dtype, device=inp.device)
 
         if inp.ndim > 2:
-            grid = lambda meta: (triton.cdiv(D, meta["BLOCK_D"]), N)
+            grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
             with torch.cuda.device(inp.device):
                 nll_loss_multi_fwd_kernel[grid](
                     inp, tgt, w, w_tgt, out, ignore_index, N, C, D
@@ -274,21 +256,36 @@ class NegativeLogLikeLoss(torch.autograd.Function):
         )
         shape = ctx.shape
 
-        out_grad = out_grad.broadcast_to(shape).contiguous()
-        inp_grad = torch.zeros(inp.shape, dtype=inp.dtype, device=inp.device)
+        out_grad = out_grad.contiguous().broadcast_to(shape)
+        inp_grad = torch.zeros_like(inp)
 
         if inp.ndim > 2:
-            grid = lambda meta: (N, triton.cdiv(D, meta["BLOCK_D"]))
+            grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
             nll_loss_multi_bwd_kernel[grid](
-                out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C, D
+                out_grad,
+                tgt,
+                w,
+                inp_grad,
+                ignore_index,
+                total_weight,
+                N,
+                C,
+                D,
+                out_grad.stride()[0],
+                out_grad.stride()[-1],
             )
         else:
-            grid = lambda meta: (
-                triton.cdiv(N, meta["BLOCK_N"]),
-                triton.cdiv(C, meta["BLOCK_C"]),
-            )
+            grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
             nll_loss_2d_bwd_kernel[grid](
-                out_grad, tgt, w, inp_grad, ignore_index, total_weight, N, C
+                out_grad,
+                tgt,
+                w,
+                inp_grad,
+                ignore_index,
+                total_weight,
+                N,
+                C,
+                out_grad.stride()[-1],
             )
 
         return inp_grad, None, None, None, None, None
