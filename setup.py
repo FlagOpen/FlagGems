@@ -62,10 +62,27 @@ triton_package_name = (
     or "triton"
 )
 
+
 # ----------------------------- Setup -----------------------------
+def get_version() -> str:
+    import os
+
+    def is_corex():
+        import torch
+
+        return hasattr(torch, "corex") and torch.corex
+
+    version = "2.2.0"
+    if is_corex() and os.getenv("GEMS_LOCAL_VERSION_IDENTIFIER"):
+        triton_local_version_identifier = os.getenv("GEMS_LOCAL_VERSION_IDENTIFIER")
+        return version + "+" + triton_local_version_identifier
+    else:
+        return version
+
+
 setup(
     name="flag_gems",
-    version="2.2",
+    version=get_version(),
     authors=[
         {"name": "Zhixin Li", "email": "strongspoon@outlook.com"},
         {"name": "Tongxin Bai", "email": "waffle.bai@gmail.com"},
@@ -83,7 +100,7 @@ setup(
         "License :: OSI Approved :: Apache Software License",
     ],
     install_requires=[
-        f"{triton_package_name}>=2.2.0",
+        f"{triton_package_name}>=2.1.0",
         "torch>=2.2.0",
         "PyYAML",
     ],

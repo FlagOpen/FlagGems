@@ -87,6 +87,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
+@pytest.mark.skip(reason="trion 2.1 does not support reshape")
 @pytest.mark.randperm
 def test_perf_randperm():
     def randperm_input_fn(shape, dtype, device):

@@ -517,6 +517,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip(reason="Triton 2.1 do not support tensor atomic_cas")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]

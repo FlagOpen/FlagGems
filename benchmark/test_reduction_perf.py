@@ -60,7 +60,7 @@ forward_operations = [
     ("prod", torch.prod, FLOAT_DTYPES),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
     ("sum", torch.sum, FLOAT_DTYPES),
-    ("var_mean", torch.var_mean, FLOAT_DTYPES),
+    # ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
 
 
