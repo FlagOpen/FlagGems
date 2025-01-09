@@ -176,21 +176,29 @@ class LibEntry(triton.KernelInterface):
 
     def key(self, spec_args, dns_args, const_args):
         spec_key = [
-            (arg.dtype, arg.data_ptr() % self.divisibility == 0)
-            if hasattr(arg, "data_ptr")
-            else (type(arg), arg)
+            (
+                (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                if hasattr(arg, "data_ptr")
+                else (type(arg), arg)
+            )
             for arg in spec_args
         ]
         dns_key = [
-            arg.dtype
-            if hasattr(arg, "data_ptr")
-            else type(arg)
-            if not isinstance(arg, int)
-            else "i32"
-            if -(2**31) <= arg and arg <= 2**31 - 1
-            else "u64"
-            if 2**63 <= arg and arg <= 2**64 - 1
-            else "i64"
+            (
+                arg.dtype
+                if hasattr(arg, "data_ptr")
+                else (
+                    type(arg)
+                    if not isinstance(arg, int)
+                    else (
+                        "i32"
+                        if -(2**31) <= arg and arg <= 2**31 - 1
+                        else "u64"
+                        if 2**63 <= arg and arg <= 2**64 - 1
+                        else "i64"
+                    )
+                )
+            )
             for arg in dns_args
         ]
         # const args passed by position
