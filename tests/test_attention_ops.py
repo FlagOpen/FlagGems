@@ -33,11 +33,11 @@ def test_scaled_dot_product_attention(
         -0.05, 0.05, (batch, num_head, q_seq_len, kv_seq_len)
     ).astype(np.float32)
 
-    query = torch.tensor(np_query, device="cuda", dtype=dtype)
-    key = torch.tensor(np_key, device="cuda", dtype=dtype)
-    value = torch.tensor(np_value, device="cuda", dtype=dtype)
+    query = torch.tensor(np_query, device="musa", dtype=dtype)
+    key = torch.tensor(np_key, device="musa", dtype=dtype)
+    value = torch.tensor(np_value, device="musa", dtype=dtype)
     if add_bias:
-        attn_bias = torch.tensor(np_attn_bias, device="cuda", dtype=dtype)
+        attn_bias = torch.tensor(np_attn_bias, device="musa", dtype=dtype)
     else:
         attn_bias = None
 

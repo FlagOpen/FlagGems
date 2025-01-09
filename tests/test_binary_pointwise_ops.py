@@ -975,7 +975,7 @@ def test_accuracy_sub_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skip("Assertion Error")
+@pytest.mark.skip("RuntimeError")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

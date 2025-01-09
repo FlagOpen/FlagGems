@@ -109,8 +109,8 @@ def randn_heur_num_warps(args):
 
 def softmax_heur_tile_k(args):
     MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
+    NUM_SMS = torch.musa.get_device_properties(
+        torch.musa.current_device()
     ).multi_processor_count
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
