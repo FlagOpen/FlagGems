@@ -19,7 +19,6 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
-@pytest.mark.skip("Operation not supported")
 @pytest.mark.addmm
 @pytest.mark.linear
 @pytest.mark.matmul
@@ -61,7 +60,6 @@ def test_accuracy_bmm(M, N, K, dtype):
 
 
 # TODO: failed at (1, 1, 2)
-@pytest.mark.skip("Operation not supported")
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
