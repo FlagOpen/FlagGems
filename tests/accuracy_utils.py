@@ -173,6 +173,17 @@ def to_reference(inp, upcast=False):
     return ref_inp
 
 
+def to_result(inp, downcast=None):
+    if inp is None:
+        return None
+    res_inp = inp
+    if TO_CPU:
+        res_inp = res_inp.to(flag_gems.device)
+    if downcast:
+        res_inp = res_inp.to(downcast)
+    return res_inp
+
+
 def to_cpu(res, ref):
     if TO_CPU:
         res = res.to("cpu")

@@ -150,7 +150,7 @@ from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
 from .sum import sum, sum_dim
-from .tanh import tanh, tanh_
+from .tanh import tanh, tanh_, tanh_backward
 from .tile import tile
 from .topk import topk
 from .triu import triu
@@ -314,6 +314,7 @@ __all__ = [
     "sub_",
     "tanh",
     "tanh_",
+    "tanh_backward",
     "tile",
     "triu",
     "topk",
