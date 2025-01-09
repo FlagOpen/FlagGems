@@ -109,6 +109,7 @@ bmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
+
 argmax:
 - META:
     BLOCK_M: 8
@@ -121,17 +122,13 @@ argmax:
   num_warps: 8
 log_softmax:
 - META:
+    BLOCK_M: 1
+- META:
+    BLOCK_M: 2
+- META:
+    BLOCK_M: 4
+- META:
     BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
 mm:
 - META:
     BLOCK_M: 128
@@ -252,6 +249,20 @@ mm:
     SPLIT_K: 1
   num_stages: 5
   num_warps: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 256
+    BLOCK_K: 32
+    SPLIT_K: 1
+  num_stages: 2
+  num_warps: 8
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -290,28 +301,22 @@ test_libentry:
 min:
 - META:
     BLOCK_M: 8
-    BLOCK_N: 256
   num_warps: 8
 - META:
     BLOCK_M: 16
-    BLOCK_N: 512
   num_warps: 8
 - META:
     BLOCK_M: 32
-    BLOCK_N: 512
   num_warps: 8
 prod:
 - META:
     BLOCK_M: 8
-    BLOCK_N: 256
   num_warps: 8
 - META:
     BLOCK_M: 16
-    BLOCK_N: 512
   num_warps: 8
 - META:
     BLOCK_M: 32
-    BLOCK_N: 512
   num_warps: 8
 max:
 - META:
@@ -375,6 +380,18 @@ addmm:
     BLOCK_SIZE_K: 32
   num_stages: 5
   num_warps: 2
+- META:
+    BLOCK_SIZE_M: 128
+    BLOCK_SIZE_N: 128
+    BLOCK_SIZE_K: 128
+  num_stages: 2
+  num_warps: 8
+- META:
+    BLOCK_SIZE_M: 256
+    BLOCK_SIZE_N: 256
+    BLOCK_SIZE_K: 32
+  num_stages: 2
+  num_warps: 8
 cross_entropy_loss:
 - META:
     BLOCK_C: 256
@@ -549,7 +566,6 @@ masked_select:
   - 4
   - 8
   - 16
-  - 32
   blocks:
   - 256
   - 512
@@ -667,7 +683,6 @@ upsample_bicubic2d_aa:
   block_x: [512, 256, 128, 64]
   block_y: [2, 1]
   warps: [4, 8]
-
 mv:
 - gen: true
   param_map:
@@ -702,7 +717,6 @@ nonzero:
   - 4
   - 8
   - 16
-  - 32
   blocks:
   - 256
   - 512
@@ -775,7 +789,6 @@ vstack:
   - 4
   - 8
   - 16
-  - 32
   blocks:
   - 512
   - 1024
@@ -840,7 +853,6 @@ triu:
   - 4
   - 8
   - 16
-  - 32
 triu_batch:
 - gen: true
   param_map:
@@ -854,7 +866,6 @@ triu_batch:
   - 4
   - 8
   - 16
-  - 32
 weight_norm_kernel_last:
 - gen: true
   param_map:
@@ -950,15 +961,3 @@ var_mean:
   - 4
   - 8
   - 16
-batch_norm:
-- gen: true
-  param_map:
-    META: {}
-    num_warps: warps
-  warps:
-  - 1
-  - 2
-  - 4
-  - 8
-  - 16
-  - 32

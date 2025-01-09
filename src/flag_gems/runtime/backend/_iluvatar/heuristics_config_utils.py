@@ -11,15 +11,15 @@ def argmax_heur_block_n(args):
 
 
 def bmm_heur_divisible_m(args):
-    return args["M"] % args["TILE_M"] == 0
+    return args["M"] % args["BLOCK_M"] == 0
 
 
 def bmm_heur_divisible_n(args):
-    return args["N"] % args["TILE_N"] == 0
+    return args["N"] % args["BLOCK_N"] == 0
 
 
 def bmm_heur_divisible_k(args):
-    return args["K"] % args["TILE_K"] == 0
+    return args["K"] % args["BLOCK_K"] == 0
 
 
 def dropout_heur_block(args):
@@ -195,17 +195,6 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
-def batch_norm_heur_block_m(args):
-    return min(2048, triton.next_power_of_2(args["batch_dim"]))
-
-
-def batch_norm_heur_block_n(args):
-    # A maximum of 16384 elements are loaded at once.
-    BLOCK_M = batch_norm_heur_block_m(args)
-    BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
-    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
-
-
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -272,9 +261,5 @@ HEURISTICS_CONFIGS = {
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,
-    },
-    "batch_norm": {
-        "BLOCK_M": batch_norm_heur_block_m,
-        "BLOCK_N": batch_norm_heur_block_n,
     },
 }
