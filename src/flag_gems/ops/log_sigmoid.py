@@ -2,7 +2,7 @@ import triton
 import triton.language as tl
 import torch
 
-# Triton 内核函数
+
 @triton.autotune(
     configs=[
         triton.Config({'BLOCK_SIZE': 128}, num_stages=1, num_warps=4),
@@ -19,14 +19,13 @@ def log_sigmoid_forward(x_ptr, output_ptr, n_elements: tl.constexpr, BLOCK_SIZE:
     x = tl.load(x_ptr + offsets, mask=mask)
     
     log2e: tl.constexpr = 1.4426950408889634
-    threshold: tl.constexpr = -10.0  # 设置阈值
+    threshold: tl.constexpr = -10.0  
     
-    # 数值稳定性处理
     result = tl.where(x < threshold, x, -tl.log(1 + tl.exp2(-x.to(tl.float32) * log2e)))
     
     tl.store(output_ptr + offsets, result, mask=mask)
 
-# 自定义 log_sigmoid 函数
+
 def log_sigmoid(x):
     if not isinstance(x, torch.Tensor):
         x = torch.tensor(x, dtype=torch.float32, device='cuda')
@@ -35,7 +34,7 @@ def log_sigmoid(x):
     n_elements = x.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
     
-    # 调用 Triton 内核函数
+  
     log_sigmoid_forward[grid](x_ptr=x, output_ptr=output, n_elements=n_elements)
     
     return output
