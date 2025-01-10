@@ -962,3 +962,19 @@ batch_norm:
   - 8
   - 16
   - 32
+vdot:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: blocks
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  blocks:
+  - 64
+  - 256
+  - 512
+  - 1024
+  - 2048
