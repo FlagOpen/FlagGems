@@ -30,7 +30,7 @@ def nll_loss_2d_fwd_kernel(
     ignore_mask = not (tgt == ignore_index) and mask_n
 
     if w_ptr is None:
-        w_tgt = 1
+        w_tgt = ignore_mask
     else:
         w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
     tl.store(w_tgt_ptr + offsets_n, w_tgt, mask=mask_n)
@@ -46,7 +46,7 @@ def nll_loss_2d_fwd_kernel(
 def nll_loss_2d_bwd_kernel(
     out_grad_ptr,
     tgt_ptr,
-    w_ptr,
+    w_tgt_ptr,
     inp_grad_ptr,
     ignore_index,
     total_weight,
@@ -63,10 +63,7 @@ def nll_loss_2d_bwd_kernel(
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_n
 
-    if w_ptr is None:
-        w_tgt = 1
-    else:
-        w_tgt = tl.load(w_ptr + tgt, mask=mask_n, other=0).to(tl.float32)
+    w_tgt = tl.load(w_tgt_ptr + offsets_n, mask=mask_n, other=0).to(tl.float32)
 
     out_grad_ptrs = out_grad_ptr + offsets_n * grad_stride
     out_grad = tl.load(out_grad_ptrs, mask=mask_n, other=0).to(tl.float32)
@@ -102,7 +99,7 @@ def nll_loss_multi_fwd_kernel(
     ignore_mask = not (tgt == ignore_index) and mask_block
 
     if w_ptr is None:
-        w_tgt = 1
+        w_tgt = ignore_mask
     else:
         w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
     w_tgt_ptrs = w_tgt_ptr + offset_n * D + offset_d
@@ -120,7 +117,7 @@ def nll_loss_multi_fwd_kernel(
 def nll_loss_multi_bwd_kernel(
     out_grad_ptr,
     tgt_ptr,
-    w_ptr,
+    w_tgt_ptr,
     inp_grad_ptr,
     ignore_index,
     total_weight,
@@ -142,10 +139,9 @@ def nll_loss_multi_bwd_kernel(
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_block
 
-    if w_ptr is None:
-        w_tgt = 1
-    else:
-        w_tgt = tl.load(w_ptr + tgt, mask=mask_block, other=0).to(tl.float32)
+    w_tgt = tl.load(w_tgt_ptr + offset_n * D + offset_d, mask=mask_block, other=0).to(
+        tl.float32
+    )
 
     out_grad_ptrs = out_grad_ptr + offset_n * grad_stride_n + offset_d * grad_stride_d
     out_grad = tl.load(out_grad_ptrs, mask=mask_block, other=0).to(tl.float32)
@@ -193,7 +189,7 @@ class NegativeLogLikeLoss(torch.autograd.Function):
         dim = inp.ndim
         N = 1 if dim == 1 else shape[0]
         C = shape[0] if dim == 1 else shape[1]
-        D = inp.numel() // N // C
+        D = target.numel() // N
         axis = 0 if dim == 1 else 1
         del shape[axis]
 
@@ -203,8 +199,8 @@ class NegativeLogLikeLoss(torch.autograd.Function):
         inp = inp.contiguous()
         tgt = target.contiguous()
         w = None if weight is None else weight.contiguous()
-        out = torch.empty(shape, dtype=inp.dtype, device=inp.device)
-        w_tgt = torch.empty(shape, dtype=inp.dtype, device=inp.device)
+        out = torch.empty(shape, dtype=torch.float32, device=inp.device)
+        w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
 
         if inp.ndim > 2:
             grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
@@ -231,7 +227,7 @@ class NegativeLogLikeLoss(torch.autograd.Function):
             out = res
 
         if inp.requires_grad:
-            ctx.save_for_backward(inp, tgt, w)
+            ctx.save_for_backward(inp, tgt, w_tgt)
             ctx.N = N
             ctx.C = C
             ctx.D = D
@@ -239,12 +235,12 @@ class NegativeLogLikeLoss(torch.autograd.Function):
             ctx.total_weight = wgt_sum if reduction == 1 else 1
             ctx.shape = shape
 
-        return out
+        return out.to(inp.dtype)
 
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS NLLLoss BWD")
-        inp, tgt, w = ctx.saved_tensors
+        inp, tgt, w_tgt = ctx.saved_tensors
         N = ctx.N
         C = ctx.C
         D = ctx.D
@@ -264,7 +260,7 @@ class NegativeLogLikeLoss(torch.autograd.Function):
             nll_loss_multi_bwd_kernel[grid](
                 out_grad,
                 tgt,
-                w,
+                w_tgt,
                 inp_grad,
                 ignore_index,
                 total_weight,
@@ -279,7 +275,7 @@ class NegativeLogLikeLoss(torch.autograd.Function):
             nll_loss_2d_bwd_kernel[grid](
                 out_grad,
                 tgt,
-                w,
+                w_tgt,
                 inp_grad,
                 ignore_index,
                 total_weight,
