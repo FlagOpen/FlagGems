@@ -129,6 +129,8 @@ def early_config_prune(configs, nargs, **kwargs):
         "perf_model": None,
         "top_k": 1.0,
         "early_config_prune": early_config_prune,
+        "perf_model": None,
+        "top_k": 1.0,
     },
 )
 @triton.jit
