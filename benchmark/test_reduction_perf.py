@@ -162,6 +162,13 @@ def cumsum_input_fn(shape, cur_dtype, device):
                 ),
             ],
         ),
+        pytest.param(
+            "cumprod",
+            torch.cumprod,
+            cumsum_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.cumprod,
+        ),
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
