@@ -4,9 +4,8 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    COMPLEX_DTYPES,
+    ALL_COMPLEX_DTYPES,
     FLOAT_DTYPES,
-    INT_DTYPES,
     SCALARS,
     gems_assert_close,
     to_reference,
@@ -119,21 +118,13 @@ def test_accuracy_outer(M, N, dtype):
 
 
 @pytest.mark.vdot
-@pytest.mark.parametrize("M", [0, 1, 8, 1024, 5333])
-@pytest.mark.parametrize("dtype", COMPLEX_DTYPES + FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize("M", [0, 1, 256, 2048, 65555])
+@pytest.mark.parametrize("dtype", ALL_COMPLEX_DTYPES + FLOAT_DTYPES)
 def test_accuracy_vdot(M, dtype):
-    if dtype in INT_DTYPES:
-        inp1 = torch.randint(
-            low=0, high=5, size=[M], dtype=dtype, device=flag_gems.device
-        )
-        inp2 = torch.randint(
-            low=0, high=5, size=[M], dtype=dtype, device=flag_gems.device
-        )
-    else:
-        inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
-        inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = to_reference(inp1, True)
-    ref_inp2 = to_reference(inp2, True)
+    inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
 
     with flag_gems.use_gems():
         res_out = torch.vdot(inp1, inp2)

@@ -206,6 +206,16 @@ def batch_norm_heur_block_n(args):
     return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
 
 
+def vdot_heur_block_size(args):
+    n = args["n_elements"]
+    if n < 1024:
+        return 32
+    elif n < 8192:
+        return 256
+    else:
+        return 1024
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -276,5 +286,8 @@ HEURISTICS_CONFIGS = {
     "batch_norm": {
         "BLOCK_M": batch_norm_heur_block_m,
         "BLOCK_N": batch_norm_heur_block_n,
+    },
+    "vdot": {
+        "BLOCK_SIZE": vdot_heur_block_size,
     },
 }

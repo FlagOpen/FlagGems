@@ -49,10 +49,7 @@ def compute_vdot(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("vdot"),
-    key=["n_elements"],
-)
+@triton.heuristics(runtime.get_heuristic_config("vdot"))
 @triton.jit
 def vdot_kernel(
     inp_ptr,
@@ -86,10 +83,7 @@ def vdot_kernel(
 
 # support old version triton which do not support tl.split
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("vdot"),
-    key=["n_elements"],
-)
+@triton.heuristics(runtime.get_heuristic_config("vdot"))
 @triton.jit()
 def vdot_kernel_backwards_compatible(
     inp_ptr,
@@ -126,10 +120,7 @@ def vdot_kernel_backwards_compatible(
 
 # only support real number
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("vdot"),
-    key=["n_elements"],
-)
+@triton.heuristics(runtime.get_heuristic_config("vdot"))
 @triton.jit()
 def dot_kernel(
     inp_ptr,
@@ -142,8 +133,8 @@ def dot_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp = tl.load(inp_ptr + offset, mask=mask)
-    other = tl.load(other_ptr + offset, mask=mask)
+    inp = tl.load(inp_ptr + offset, mask=mask).to(tl.float32)
+    other = tl.load(other_ptr + offset, mask=mask).to(tl.float32)
 
     out = tl.sum(inp * other)
     tl.atomic_add(out_ptr, out)
@@ -208,8 +199,8 @@ def vdot(input: Tensor, other: Tensor):
 
         return torch.view_as_complex(output_real)
     else:
-        output = torch.zeros([], dtype=inp.dtype, device=inp.device)
+        output = torch.zeros([], dtype=torch.float32, device=inp.device)
         n_elements = inp.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         dot_kernel[grid](inp, other, output, n_elements=n_elements)
-        return output
+        return output.to(inp.dtype)
