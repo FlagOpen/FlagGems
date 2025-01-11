@@ -119,10 +119,21 @@ def test_accuracy_outer(M, N, dtype):
 
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", [0, 1, 256, 2048, 65555])
+@pytest.mark.parametrize(
+    "is_conj", [(False, False), (False, True), (True, False), (True, True)]
+)
 @pytest.mark.parametrize("dtype", ALL_COMPLEX_DTYPES + FLOAT_DTYPES)
-def test_accuracy_vdot(M, dtype):
+def test_accuracy_vdot(M, dtype, is_conj):
+    inp1_is_conj, inp2_is_conj = is_conj
+
     inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+
+    if inp1_is_conj:
+        inp1 = inp1.conj()
+    if inp2_is_conj:
+        inp2 = inp2.conj()
+
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)
 
