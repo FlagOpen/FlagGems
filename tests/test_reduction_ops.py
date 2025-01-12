@@ -874,3 +874,53 @@ def test_accuracy_depthwise2d(
         inp, weight, kernel, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
+
+
+SHAPE_CONV3D = [
+    ((1, 3, 8, 8, 8), (8, 3, 3, 3, 3), 1),
+    ((2, 32, 16, 16, 16), (16, 16, 5, 5, 5), 2),
+    ((1, 12, 8, 8, 8), (8, 3, 3, 3, 3), 4),
+    # ((4, 32, 32, 32, 32),(32, 32, 7, 7, 7), 1),
+    # ((8, 64, 64, 64, 64),(64, 64, 9, 9, 9), 1),
+]
+
+
+@pytest.mark.conv3d
+@pytest.mark.parametrize("shape_input, shape_weight, groups", SHAPE_CONV3D)
+@pytest.mark.parametrize("strides", [1, (2, 2, 2), (3, 3, 3)])
+@pytest.mark.parametrize("paddings", [0, (1, 1, 1), (0, 1, 2)])
+@pytest.mark.parametrize("dilations", [1, (2, 2, 2), (1, 2, 3)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_conv3d(
+    shape_input, shape_weight, groups, strides, paddings, dilations, dtype
+):
+    inp = torch.randn(
+        shape_input, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_inp = to_reference(inp, True)
+    torch.backends.cudnn.allow_tf32 = True
+    weight = torch.randn(shape_weight, dtype=dtype, device=flag_gems.device)
+    ref_weight = to_reference(weight, True)
+
+    ref_out = torch.nn.functional.conv3d(
+        ref_inp,
+        ref_weight,
+        bias=None,
+        groups=groups,
+        stride=strides,
+        padding=paddings,
+        dilation=dilations,
+    ).to(dtype)
+
+    res_out = flag_gems.conv3d(
+        inp,
+        weight,
+        bias=None,
+        groups=groups,
+        stride=strides,
+        padding=paddings,
+        dilation=dilations,
+    )
+
+    reduce_dim = shape_weight[-1] * shape_weight[-2] * shape_weight[-3]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)

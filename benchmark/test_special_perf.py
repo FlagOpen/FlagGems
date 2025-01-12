@@ -264,7 +264,7 @@ class ConvBenchmark(GenericBenchmark):
 
 @pytest.mark.conv2d
 def test_perf_conv2d():
-    def conv2d_input_fn(shape, dtype, device):
+    def conv3d_input_fn(shape, dtype, device):
         (
             batch,
             input_c,
@@ -294,9 +294,9 @@ def test_perf_conv2d():
 
     torch.backends.cudnn.allow_tf32 = False
     bench = ConvBenchmark(
-        input_fn=conv2d_input_fn,
-        op_name="conv2d",
-        torch_op=torch.nn.functional.conv2d,
+        input_fn=conv3d_input_fn,
+        op_name="conv3d",
+        torch_op=torch.nn.functional.conv3d,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()

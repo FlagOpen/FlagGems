@@ -10,6 +10,7 @@ from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
     Config,
+    GenericBenchmark,
     GenericBenchmark2DOnly,
     SkipVersion,
     generate_tensor_input,
@@ -183,6 +184,70 @@ def test_perf_count_nonzero():
         input_fn=count_nonzero_input_fn,
         op_name="count_nonzero",
         torch_op=torch.count_nonzero,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class Conv3dBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        self.shapes = []
+        shapes = super().set_more_shapes()
+        shapes = [
+            (n, c, d, h, w, o_c, k_d, k_h, k_w, stride, padding, groups)
+            for n in [2 * i for i in range(1, 2)]
+            for c in [16 * i for i in range(8, 9)]
+            for d in [128 * i for i in range(5, 9)]
+            for h in [128 * i for i in range(5, 9)]
+            for w in [128 * i for i in range(5, 9)]
+            for o_c in [128 * i for i in range(8, 9)]
+            for k_d in [32 * i for i in range(1, 4)]
+            for k_h in [32 * i for i in range(1, 4)]
+            for k_w in [32 * i for i in range(1, 4)]
+            for stride in [1, (2, 2, 2), (3, 3, 3)]
+            for padding in [0, (1, 1, 1), (0, 1, 2)]
+            for groups in [1, 2, 4, 8]
+        ]
+        return shapes
+
+
+@pytest.mark.conv3d
+def test_perf_conv3d():
+    def conv3d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_d,
+            input_h,
+            input_w,
+            out_c,
+            kernel_d,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_d, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_d, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Conv3dBenchmark(
+        input_fn=conv3d_input_fn,
+        op_name="conv3d",
+        torch_op=torch.nn.functional.conv3d,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
