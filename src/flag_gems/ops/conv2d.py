@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry
 
 
@@ -30,55 +31,9 @@ def conv2d_output_size(
     return (in_size + 2 * padding - dilation * (kernel_size - 1) - 1) // stride + 1
 
 
-def conv2d_forward_config(
-    BLOCK_NI_HO_WO: int,
-    BLOCK_CI: int,
-    BLOCK_CO: int,
-    n_warps: int,
-    num_stages: int,
-) -> triton.Config:
-    """
-    Creates a triton.Config object for conv2d_forward_kernel
-    given meta-parameters for auto-tuning.
-
-    Args:
-        BLOCK_NI_HO_WO: Block size across the input n, output height, and
-                        output width dimensions.
-        BLOCK_CI: Block size across the input c dimension.
-        BLOCK_CO: Block size across the output c dimension.
-        n_warps: Number of warps to use for the kernel when compiled for GPUs.
-        num_stages: Number of stages the compiler uses to software-pipeline.
-
-    Returns:
-        Kernel configuration.
-    """
-    return triton.Config(
-        {"BLOCK_NI_HO_WO": BLOCK_NI_HO_WO, "BLOCK_CI": BLOCK_CI, "BLOCK_CO": BLOCK_CO},
-        num_warps=n_warps,
-        num_stages=num_stages,
-    )
-
-
 @libentry()
 @triton.autotune(
-    configs=[
-        # conv2d_forward_config(128, 32, 128, n_warps=2, num_stages=4),
-        # conv2d_forward_config(256, 32, 64, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 32, 128, n_warps=2, num_stages=4),
-        # conv2d_forward_config(128, 32, 64, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 32, 64, n_warps=2, num_stages=4),
-        # conv2d_forward_config(128, 32, 16, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 128, 128, n_warps=2, num_stages=4),
-        # conv2d_forward_config(128, 128, 64, n_warps=2, num_stages=4),
-        # conv2d_forward_config(128, 64, 32, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 64, 64, n_warps=2, num_stages=4),
-        # conv2d_forward_config(64, 16, 16, n_warps=2, num_stages=4),
-        # conv2d_forward_config(256, 16, 16, n_warps=2, num_stages=4),
-        # conv2d_forward_config(128, 16, 16, n_warps=2, num_stages=4),
-        conv2d_forward_config(32, 16, 16, n_warps=2, num_stages=4),
-        # conv2d_forward_config(256, 16, 32, n_warps=2, num_stages=4),
-        # conv2d_forward_config(128, 16, 32, n_warps=2, num_stages=4),
-    ],
+    configs=runtime.get_tuned_config("conv2d_forward"),
     key=[
         "in_n",
         "weight_c",
@@ -226,11 +181,7 @@ def conv2d_forward_kernel(
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config(
-            {"BLOCK_CI_HK_WK": 16, "BLOCK_CO": 16, "BLOCK_NO": 16}, num_stages=5
-        ),
-    ],
+    configs=runtime.get_tuned_config("conv2d_backward_weight"),
     key=[
         "in_n",
         "input_height",
@@ -303,7 +254,7 @@ def conv2d_backward_kernel_weight(
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
     out_grad_pointer += (output_c_offset * output_c_stride)[None, :] + (
         pid_groups * output_c_stride * out_c
-    )[None, :]
+    )[:, None]
 
     weight_pointer += (
         pid_groups * weight_n_stride * out_c + output_c_offset * weight_n_stride
@@ -317,7 +268,7 @@ def conv2d_backward_kernel_weight(
 
     input_pointer += (ci_point_value * input_c_stride)[:, None] + (
         pid_groups * input_c_stride * input_c
-    )[:, None]
+    )[None, :]
 
     # calculate the values of the input based on the width and height of the output by looping
     accum = tl.zeros((BLOCK_CI_HK_WK, BLOCK_CO), dtype=tl.float32)
@@ -506,7 +457,7 @@ class Conv2d(torch.autograd.Function):
             revert_weight = revert_weight.reshape(
                 groups, out_c, weight_c, weight_height, weight_width
             )
-            revert_weight = revert_weight.transpose(1, 2).contiguous()
+            revert_weight = revert_weight.transpose(1, 2)
             revert_weight = revert_weight.reshape(
                 groups * weight_c, out_c, weight_height, weight_width
             ).contiguous()
@@ -527,7 +478,7 @@ class Conv2d(torch.autograd.Function):
             dtype=out_grad.dtype,
         )
 
-        # 使用索引操作将原张量的值复制到新张量中
+        # copy out_grad to new_out
         if stride_height > 1 or stride_width > 1:
             for i in range(out_grad.shape[2]):
                 for j in range(out_grad.shape[3]):
@@ -585,7 +536,7 @@ class Conv2d(torch.autograd.Function):
             weight_c,
             weight_height,
             weight_width,
-            dtype=torch.float32,
+            dtype=weight.dtype,
             device=device,
         )
 

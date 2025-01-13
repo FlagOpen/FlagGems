@@ -752,19 +752,6 @@ SHAPE_CONV2D = [
     ((32, 16, 9, 9), (32, 4, 5, 5), 4),
     ((18, 16, 11, 11), (16, 8, 3, 3), 2),
     ((9, 16, 6, 6), (128, 8, 3, 3), 2),
-    # depthwise shape
-    # ((32, 4, 8, 8), (32, 1, 2, 2), 4),
-    # ((18, 16, 4, 4), (16, 1, 2, 2), 16),
-    # ((9, 32, 4, 4), (128, 1, 2, 2), 32),
-    # ((32, 16, 8, 8), (32, 1, 4, 4), 16),
-    # ((18, 8, 4, 4), (16, 1, 2, 2), 8),
-    # ((9, 4, 4, 4), (128, 1, 2, 2), 4),
-    # ((32, 4, 8, 8), (32, 1, 3, 3), 4),
-    # ((18, 16, 13, 13), (16, 1, 5, 5), 16),
-    # ((9, 32, 8, 8), (128, 1, 3, 3), 32),
-    # ((32, 16, 9, 9), (32, 1, 5, 5), 16),
-    # ((18, 8, 7, 7), (16, 1, 3, 3), 8),
-    # ((9, 4, 6, 6), (128, 1, 3, 3), 4),
 ]
 
 
@@ -837,6 +824,7 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
     gems_assert_close(
         res_in_grad.to(dtype), ref_in_grad.to(dtype), dtype, reduce_dim=weight.shape[2]
     )
+
     gems_assert_close(
         res_weight_grad, ref_weight_grad.to(dtype), dtype, reduce_dim=weight.shape[0]
     )
