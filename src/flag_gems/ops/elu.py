@@ -130,6 +130,5 @@ class Elu(torch.autograd.Function):
         return y
 
 
-
 def elu(x: torch.tensor, alpha: float = 1.0):
     return Elu.apply(x, alpha)
