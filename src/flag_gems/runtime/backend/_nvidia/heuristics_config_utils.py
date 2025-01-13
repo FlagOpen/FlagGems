@@ -75,6 +75,10 @@ def mm_heur_even_k(args):
     return args["K"] % args["BLOCK_K"] == 0
 
 
+def mm_splitk_heur_even_k(args):
+    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+
+
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -223,6 +227,9 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+    },
+    "mm_splitk": {
+        "EVEN_K": mm_splitk_heur_even_k,
     },
     "rand": {
         "BLOCK": rand_heur_block,

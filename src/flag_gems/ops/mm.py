@@ -18,9 +18,10 @@ CACHE_USAGE_THRESHOLD = 0.7
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("mm_iobound"),
+    configs=runtime.get_tuned_config("mm_iobound") + runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
 )
+@triton.heuristics(runtime.get_heuristic_config("mm_splitk"))
 @triton.jit
 def mm_kernel_with_grouped_k(
     A,
@@ -42,6 +43,7 @@ def mm_kernel_with_grouped_k(
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,  # Number of split-K groups
     GROUP_K_LENGTH: tl.constexpr,
+    EVEN_K: tl.constexpr,
 ):
     pid = tl.program_id(0)
     assert GROUP_K_LENGTH % BLOCK_K == 0, "GROUP_K_LENGTH must be divisible by BLOCK_K"
@@ -82,11 +84,14 @@ def mm_kernel_with_grouped_k(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
 
-    for k in range(0, tl.cdiv(group_k_length, BLOCK_K)):  #
-        k_remaining = k_start + group_k_length - k * BLOCK_K
-        # TODO: ADD EVEN_K:
-        a = tl.load(A_ptr, mask=offs_k[None, :] < k_remaining, other=0.0)
-        b = tl.load(B_ptr, mask=offs_k[:, None] < k_remaining, other=0.0)
+    for k in range(0, tl.cdiv(group_k_length, BLOCK_K)):
+        if EVEN_K:
+            a = tl.load(A_ptr)
+            b = tl.load(B_ptr)
+        else:
+            k_remaining = k_start + group_k_length - k * BLOCK_K
+            a = tl.load(A_ptr, mask=offs_k[None, :] < k_remaining, other=0.0)
+            b = tl.load(B_ptr, mask=offs_k[:, None] < k_remaining, other=0.0)
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
