@@ -6,7 +6,7 @@ global specific_ops, unused_ops
 specific_ops = None
 unused_ops = None
 vendor_info = VendorInfoBase(
-    vendor_name="nvidia", device_name="cuda", device_query_cmd="nvidia-smi"
+    vendor_name="iluvatar", device_name="cuda", device_query_cmd="ixsmi"
 )
 
 

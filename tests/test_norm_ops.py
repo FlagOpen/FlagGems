@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -58,16 +60,10 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     ref_out = torch.nn.functional.group_norm(
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
-    ref_mean = torch.mean(ref_inp.reshape([N, num_groups, -1]), dim=2)
-    ref_var = torch.var(ref_inp.reshape([N, num_groups, -1]), dim=2, correction=0)
-    ref_rstd = torch.rsqrt(ref_var + eps)
 
-    (res_out, res_mean, res_rstd) = flag_gems.group_norm(
-        inp, weight, bias, N, C, HW, num_groups, eps
-    )
+    with flag_gems.use_gems():
+        res_out = torch.group_norm(inp, num_groups, weight=weight, bias=bias, eps=eps)
 
-    gems_assert_close(res_mean, ref_mean, dtype)
-    gems_assert_close(res_rstd, ref_rstd, dtype)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
@@ -137,15 +133,15 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         bias=ref_bias,
         eps=eps,
     )
-    (res_out, res_mean, res_rstd) = flag_gems.layer_norm(
-        inp, list(layer_shape), weight=weight, bias=bias, eps=eps
-    )
+    with flag_gems.use_gems():
+        res_out = torch.layer_norm(
+            inp,
+            list(layer_shape),
+            weight=weight,
+            bias=bias,
+            eps=eps,
+        )
 
-    ref_mean = torch.mean(ref_inp, dim=1)
-    ref_var = torch.var(ref_inp, dim=1, correction=0)
-    ref_rstd = torch.rsqrt(ref_var + eps)
-    gems_assert_close(res_mean, ref_mean, res_mean.dtype)
-    gems_assert_close(res_rstd, ref_rstd, res_rstd.dtype)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
@@ -475,3 +471,102 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         res_out = torch.linalg.vector_norm(inp, ord, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.batch_norm
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (16, 3),
+        (32, 32, 32),
+        (8, 32, 224, 224),
+        (2050, 16, 32, 32),
+        (8, 16, 3, 224, 224),
+    ],
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+@pytest.mark.parametrize("require_grad", [True, False])
+def test_accuracy_batch_norm(shape, dtype, affine, require_grad):
+    C = shape[1]
+    inp = torch.randn(
+        size=shape, dtype=dtype, device=flag_gems.device, requires_grad=require_grad
+    )
+    weight = (
+        torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=require_grad
+        )
+        if affine
+        else None
+    )
+    bias = (
+        torch.randn(
+            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=require_grad
+        )
+        if affine
+        else None
+    )
+
+    running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
+    running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+
+    eps = 1e-5
+
+    ref_inp = to_reference(inp, True)
+    ref_weight = to_reference(weight, True)
+    ref_bias = to_reference(bias, True)
+    ref_running_mean = to_reference(running_mean, True)
+    ref_running_var = to_reference(running_var, True)
+
+    training = require_grad
+
+    ref_out = torch.nn.functional.batch_norm(
+        ref_inp,
+        ref_running_mean,
+        ref_running_var,
+        weight=ref_weight,
+        bias=ref_bias,
+        training=training,
+        eps=eps,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.batch_norm(
+            inp,
+            running_mean,
+            running_var,
+            weight=weight,
+            bias=bias,
+            training=training,
+            eps=eps,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(running_mean, ref_running_mean, dtype)
+    gems_assert_close(running_var, ref_running_var, dtype)
+
+    if not require_grad:
+        return
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+    reduce_dim = int(math.prod(shape) / C)
+
+    if affine:
+        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+        )
+        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+            res_out, (inp, weight, bias), out_grad
+        )
+
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
+        gems_assert_close(
+            res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
+        )
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim)
+    else:
+        (ref_in_grad,) = torch.autograd.grad(ref_out, (ref_inp,), ref_grad)
+        (res_in_grad,) = torch.autograd.grad(res_out, (inp,), out_grad)
+
+        gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
