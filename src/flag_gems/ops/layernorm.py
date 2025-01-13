@@ -237,8 +237,6 @@ def layer_norm_backward_kernel(
     BLOCK_COL_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
-    if pid >= M:
-        return
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -246,8 +244,8 @@ def layer_norm_backward_kernel(
     Mean += pid
     Rstd += pid
 
-    mean = tl.load(Mean).to(tl.float32)
-    rstd = tl.load(Rstd).to(tl.float32)
+    mean = tl.load(Mean, mask=row_mask).to(tl.float32)
+    rstd = tl.load(Rstd, mask=row_mask).to(tl.float32)
 
     dx_part2 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     dx_part3 = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
