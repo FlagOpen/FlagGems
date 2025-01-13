@@ -1,10 +1,18 @@
 from backend_utils import Autograd
 
-from . import add, gelu
+from . import gelu, tanh
+
+from torch_musa import current_device, get_device_capability
 
 
 def get_specific_ops():
-    return ()
+    if get_device_capability(current_device())[0] >= 3:
+        return (
+            ("gelu", gelu.gelu, Autograd.enable),
+            ("tanh", tanh.tanh, Autograd.enable),
+        )
+    else:
+        return ()
 
 
 def get_unused_ops():
