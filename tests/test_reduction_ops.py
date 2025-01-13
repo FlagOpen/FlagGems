@@ -855,3 +855,16 @@ def test_accuracy_depthwise2d(
         inp, weight, kernel, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.elu
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("alpha", [0.5, 1.0, 2.0])
+def test_accuracy_elu(shape, dtype, alpha):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_out = torch.nn.functional.elu(x, alpha)
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.elu(x, alpha)
+    gems_assert_close(res_out, ref_out, dtype)
