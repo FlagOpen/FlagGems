@@ -30,6 +30,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diff import diff
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
 from .embedding import embedding
@@ -289,4 +290,5 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "diff",
 ]
