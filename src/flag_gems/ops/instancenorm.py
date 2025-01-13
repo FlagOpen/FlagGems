@@ -408,7 +408,7 @@ def weight_bias_backward_kernel(
     for b_off in range(0, B, BLOCK_BATCH_SIZE):
         bid = b_off + tl.arange(0, BLOCK_BATCH_SIZE)[:, None]
         mid = bid * C + cid
-        row_mask = mid < M
+        row_mask = bid < B
         mean = tl.load(Mean + mid, mask=row_mask).to(tl.float32)
         rstd = tl.load(Rstd + mid, mask=row_mask).to(tl.float32)
         for off in range(0, N, BLOCK_COL_SIZE):
