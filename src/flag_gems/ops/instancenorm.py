@@ -332,6 +332,8 @@ def instance_norm_backward_kernel(
 ):
     pid = tl.program_id(0) * BLOCK_ROW_SIZE + tl.arange(0, BLOCK_ROW_SIZE)[:, None]
     c_offsets = pid % C
+    if pid >= M:
+        return
     row_mask = pid < M
     dY += pid * N
     X += pid * N
@@ -339,8 +341,8 @@ def instance_norm_backward_kernel(
     Mean += pid
     Rstd += pid
 
-    mean = tl.load(Mean, mask=row_mask, other=0.0).to(tl.float32)
-    rstd = tl.load(Rstd, mask=row_mask, other=1.0).to(tl.float32)
+    mean = tl.load(Mean).to(tl.float32)
+    rstd = tl.load(Rstd).to(tl.float32)
     if HAS_WEIGHT_BIAS:
         w = tl.load(W + c_offsets, mask=row_mask).to(tl.float32)
     else:
