@@ -190,7 +190,7 @@ def test_perf_count_nonzero():
 
 def elu_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
-    alpha = random.choice([0.5, 1.0, 2.0])  # 闅忔満閫夋嫨涓?涓? alpha 鍊?
+    alpha = random.choice([0.5, 1.0, 2.0]) 
     yield inp, alpha
 
 
