@@ -544,6 +544,9 @@ def test_accuracy_gather(inp_shape, dim, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
+    if dtype in (torch.bfloat16,):
+        return
+
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad)
 

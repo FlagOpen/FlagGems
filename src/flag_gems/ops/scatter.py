@@ -163,7 +163,9 @@ def generate_scatter_kernel(
             code.newline()
             code.writeline("if IS_ADD: ")
             with code.indent():
-                code.writeline("tl.atomic_add(out + inp_offsets, cur_src, mask=mask)")
+                code.writeline(
+                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                )
             code.writeline("elif IS_MUL: ")
             with code.indent():
                 code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
@@ -176,7 +178,7 @@ def generate_scatter_kernel(
                     )
                     code.writeline("res = tl.where(stop, cur_inp, cur_inp * cur_src)")
                     code.writeline(
-                        "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res)"
+                        "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
                     )
                     code.writeline("stop |= cur_inp == cas_res")
                     code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
