@@ -31,6 +31,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import native_dropout
+from .elu import elu
 from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf
@@ -287,4 +288,5 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "elu",
 ]

@@ -185,3 +185,20 @@ def test_perf_count_nonzero():
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
+
+
+def elu_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    alpha = random.choice([0.5, 1.0, 2.0])  # 闅忔満閫夋嫨涓?涓? alpha 鍊?
+    yield inp, alpha
+
+
+@pytest.mark.elu
+def test_perf_elu():
+    bench = GenericBenchmark2DOnly(
+        input_fn=elu_input_fn,
+        op_name="elu",
+        torch_op=torch.nn.functional.elu,
+        dtypes=[torch.float32],
+    )
+    bench.run()
