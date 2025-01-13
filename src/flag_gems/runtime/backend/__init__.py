@@ -134,7 +134,7 @@ def get_vendor_infos():
     return infos
 
 
-def get_curent_device_extend_op(vendor_name=None):
+def get_current_device_extend_op(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
     global ops_module, fused_module, customized_ops
     if customized_ops is not None:
