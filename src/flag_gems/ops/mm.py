@@ -73,8 +73,8 @@ def mm_kernel_with_grouped_k(
     k_start = pid_k * GROUP_K_LENGTH
     offs_k = k_start + tl.arange(0, BLOCK_K)
 
-    offs_am = tl.max_contiguous(tl.multiple_of(offs_m, BLOCK_M), BLOCK_M)
-    offs_bn = tl.max_contiguous(tl.multiple_of(offs_n, BLOCK_N), BLOCK_N)
+    offs_am = tl.max_contiguous(tl.multiple_of(offs_m % M, BLOCK_M), BLOCK_M)
+    offs_bn = tl.max_contiguous(tl.multiple_of(offs_n % N, BLOCK_N), BLOCK_N)
 
     # pointers
     A_ptr = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
@@ -118,6 +118,7 @@ def group_merge_kernel(
     stride_k,
     stride_m,
     stride_n,
+    dot_out_dtype: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -127,7 +128,7 @@ def group_merge_kernel(
     mask_m = offs_m < M
     mask_n = offs_n < N
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
 
     for k in range(SPLIT_K):
         src_ptr = (
@@ -323,7 +324,10 @@ def get_higher_dtype(a, b):
 
 def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
     logging.debug("GEMS MM (SPLITK)")
-    GROUP_K_LENGTH = 1024
+    if M * N * K < 1024 * 1024:
+        GROUP_K_LENGTH = 1024
+    else:
+        GROUP_K_LENGTH = 10240
     SPLIT_K = triton.cdiv(K, GROUP_K_LENGTH)
     # TODO: float32 or c_dtype
     multi_c = torch.empty((SPLIT_K, M, N), device=a.device, dtype=c_dtype)
@@ -354,6 +358,7 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
             SPLIT_K=SPLIT_K,
             GROUP_K_LENGTH=GROUP_K_LENGTH,
         )
+        # return torch.sum(multi_c, dim=0)
         # 2nd kernel: merge partial results
         group_merge_kernel[grid2](
             multi_c,
@@ -437,9 +442,8 @@ def mm(a, b):
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     dot_out_dtype = tl.float32
-    if b_column_major_flag and mini_mm_scenario(
-        a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD
-    ):
+
+    if mini_mm_scenario(a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD):
         return iobound_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag)
     elif largek_mm_scenario(M, N, K):
         return splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag)
