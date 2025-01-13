@@ -210,8 +210,8 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction):
     target_shape = list(shape)
     del target_shape[dim]
 
-    inp = torch.randn(shape[:2], dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randint(0, shape[dim], shape[:1], device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    target = torch.randint(0, shape[dim], target_shape, device="cuda")
     weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
