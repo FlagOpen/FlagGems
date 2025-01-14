@@ -197,4 +197,5 @@ def kron(A, B):
 
     if A.dim() <= 1 and B.dim() <= 1:
         return C.reshape(-1)
+
     return C
