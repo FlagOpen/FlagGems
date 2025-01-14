@@ -165,8 +165,8 @@ def test_accuracy_reciprocal(shape, dtype):
 def test_accuracy_elu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
-
     ref_out = torch.nn.functional.elu(ref_inp)
+
     with flag_gems.use_gems():
         res_out = torch.nn.functional.elu(inp)
 
