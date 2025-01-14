@@ -95,6 +95,25 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.argmin
+@pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST + [None])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_argmin(shape, dim, keepdim, dtype):
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-1024, 1024, size=shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.argmin(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.argmin(inp, dim=dim, keepdim=keepdim)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -193,9 +212,10 @@ def test_accuracy_cumsum(shape, dtype):
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
         inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+        ref_inp = to_reference(inp)
     else:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp, True)
+        ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
     with flag_gems.use_gems():

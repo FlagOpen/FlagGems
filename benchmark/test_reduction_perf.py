@@ -11,6 +11,7 @@ from .performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark2DOnly,
+    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
 )
@@ -52,6 +53,7 @@ forward_operations = [
     ("amax", torch.amax, FLOAT_DTYPES),
     ("any", torch.any, FLOAT_DTYPES),
     ("argmax", torch.argmax, FLOAT_DTYPES),
+    ("argmin", torch.argmin, FLOAT_DTYPES),
     ("max", torch.max, FLOAT_DTYPES),
     ("mean", torch.mean, FLOAT_DTYPES),
     ("min", torch.min, FLOAT_DTYPES),
@@ -153,7 +155,12 @@ def cumsum_input_fn(shape, cur_dtype, device):
             torch.cummin,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=pytest.mark.cummin,
+            marks=[
+                pytest.mark.cummin,
+                pytest.mark.skipif(
+                    SkipVersion("triton", "<3.0"), reason="triton not supported"
+                ),
+            ],
         ),
     ],
 )
