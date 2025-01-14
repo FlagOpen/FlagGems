@@ -132,6 +132,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("triu", triu, Autograd.disable),
             ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
+            ("vdot", vdot, Autograd.disable),
             ("linalg_vector_norm", vector_norm, Autograd.disable),
             ("where.self_out", where_self_out, Autograd.disable),
             ("where.self", where_self, Autograd.disable),
