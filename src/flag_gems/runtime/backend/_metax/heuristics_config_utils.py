@@ -10,14 +10,6 @@ def argmax_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
-def argmin_heur_block_m(args):
-    return 4 if args["M"] < 4096 else 8
-
-
-def argmin_heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
-
-
 def bmm_heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
@@ -28,6 +20,14 @@ def bmm_heur_divisible_n(args):
 
 def bmm_heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
+
+
+def argmin_heur_block_m(args):
+    return 4 if args["M"] < 4096 else 8
+
+
+def argmin_heur_block_n(args):
+    return min(4096, triton.next_power_of_2(args["N"]))
 
 
 def dropout_heur_block(args):
