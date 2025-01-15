@@ -49,9 +49,9 @@ def nll_loss_forward_kernel(
         tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
         tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
         counter = tl.load(out_ptr + 2)
-        total_out = tl.load(out_ptr)
-        total_wgt = tl.load(out_ptr + 1)
         if counter == tl.num_programs(0):
+            total_out = tl.load(out_ptr)
+            total_wgt = tl.load(out_ptr + 1)
             tl.store(out_ptr + 3, total_out / total_wgt)
     # sum
     else:
@@ -148,9 +148,9 @@ def nll_loss2d_forward_kernel(
         tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
         tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
         counter = tl.load(out_ptr + 2)
-        total_out = tl.load(out_ptr)
-        total_wgt = tl.load(out_ptr + 1)
         if counter == tl.num_programs(0):
+            total_out = tl.load(out_ptr)
+            total_wgt = tl.load(out_ptr + 1)
             tl.store(out_ptr + 3, total_out / total_wgt)
     # sum
     else:
