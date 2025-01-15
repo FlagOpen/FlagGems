@@ -51,7 +51,7 @@ def compute_vdot(
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("vdot"))
 @triton.jit
-def vdot_kernel(
+def vdot_kernel_complex_contigous(
     inp_ptr,
     other_ptr,
     out_ptr,
@@ -85,29 +85,34 @@ def vdot_kernel(
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("vdot"))
 @triton.jit()
-def vdot_kernel_backwards_compatible(
+def vdot_kernel_complex(
     inp_ptr,
     other_ptr,
     out_ptr,
     n_elements,
     inp_is_conj: tl.constexpr,
     other_is_conj: tl.constexpr,
+    inp_stride: tl.constexpr,
+    other_stride: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
 
-    base_offset = 2 * pid * BLOCK_SIZE + 2 * tl.arange(0, BLOCK_SIZE)
+    base_offset = 2 * pid * BLOCK_SIZE + 2 * tl.arange(0, BLOCK_SIZE) + tl.arange(0, 1)
 
-    real_offset = base_offset[:, None] + tl.arange(0, 1)
-    imag_offset = real_offset + 1
+    inp_real_offset = inp_stride * base_offset
+    inp_imag_offset = inp_real_offset + 1
 
-    mask = (base_offset < n_elements)[:, None]
+    other_real_offset = other_stride * base_offset
+    other_imag_offset = other_real_offset + 1
 
-    inp_real = tl.load(inp_ptr + real_offset, mask=mask)
-    inp_imag = tl.load(inp_ptr + imag_offset, mask=mask)
+    mask = base_offset < n_elements
 
-    other_real = tl.load(other_ptr + real_offset, mask=mask)
-    other_imag = tl.load(other_ptr + imag_offset, mask=mask)
+    inp_real = tl.load(inp_ptr + inp_real_offset, mask=mask)
+    inp_imag = tl.load(inp_ptr + inp_imag_offset, mask=mask)
+
+    other_real = tl.load(other_ptr + other_real_offset, mask=mask)
+    other_imag = tl.load(other_ptr + other_imag_offset, mask=mask)
 
     # Compute based on conjugate flags
     out_real, out_imag = compute_vdot(
@@ -127,14 +132,16 @@ def dot_kernel(
     other_ptr,
     out_ptr,
     n_elements,
+    inp_stride: tl.constexpr,
+    other_stride: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp = tl.load(inp_ptr + offset, mask=mask).to(tl.float32)
-    other = tl.load(other_ptr + offset, mask=mask).to(tl.float32)
+    inp = tl.load(inp_ptr + inp_stride * offset, mask=mask).to(tl.float32)
+    other = tl.load(other_ptr + other_stride * offset, mask=mask).to(tl.float32)
 
     out = tl.sum(inp * other)
     tl.atomic_add(out_ptr, out)
@@ -153,10 +160,10 @@ def vdot(input: Tensor, other: Tensor):
         input.size() == other.size()
     ), f"Input tensors must have the same size. Got {input.size()} and {other.size()}."
 
-    inp = input.contiguous()
-    other = other.contiguous()
+    inp = input
+    is_contiguous = inp.is_contiguous() and other.is_contiguous()
 
-    if input.is_complex():
+    if inp.is_complex():
         inp_is_conj = False
         other_is_conj = False
 
@@ -178,8 +185,8 @@ def vdot(input: Tensor, other: Tensor):
 
         grid = lambda meta: (triton.cdiv(n_complex, meta["BLOCK_SIZE"]),)
 
-        if tl_support_split:
-            vdot_kernel[grid](
+        if tl_support_split and is_contiguous:
+            vdot_kernel_complex_contigous[grid](
                 inp_real,
                 other_real,
                 output_real,
@@ -188,19 +195,33 @@ def vdot(input: Tensor, other: Tensor):
                 other_is_conj=other_is_conj,
             )
         else:
-            vdot_kernel_backwards_compatible[grid](
+            inp_stride = inp.stride()[0]
+            other_stride = other.stride()[0]
+
+            vdot_kernel_complex[grid](
                 inp_real,
                 other_real,
                 output_real,
                 n_elements=n_elements,
                 inp_is_conj=inp_is_conj,
                 other_is_conj=other_is_conj,
+                inp_stride=inp_stride,
+                other_stride=other_stride,
             )
 
         return torch.view_as_complex(output_real)
     else:
+        inp_stride = inp.stride()[0]
+        other_stride = other.stride()[0]
         output = torch.zeros([], dtype=torch.float32, device=inp.device)
         n_elements = inp.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        dot_kernel[grid](inp, other, output, n_elements=n_elements)
+        dot_kernel[grid](
+            inp,
+            other,
+            output,
+            n_elements=n_elements,
+            inp_stride=inp_stride,
+            other_stride=other_stride,
+        )
         return output.to(inp.dtype)

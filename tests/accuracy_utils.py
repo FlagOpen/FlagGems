@@ -119,8 +119,6 @@ ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOA
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex64]
-ALL_COMPLEX_DTYPES = [torch.complex32] + COMPLEX_DTYPES
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-2, -1, 0, 1]

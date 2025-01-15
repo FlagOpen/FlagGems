@@ -4,9 +4,9 @@ import torch
 import flag_gems
 
 from .accuracy_utils import (
-    ALL_COMPLEX_DTYPES,
     FLOAT_DTYPES,
     SCALARS,
+    UT_SHAPES_1D,
     gems_assert_close,
     to_reference,
 )
@@ -118,16 +118,20 @@ def test_accuracy_outer(M, N, dtype):
 
 
 @pytest.mark.vdot
-@pytest.mark.parametrize("M", [0, 1, 256, 2048, 65555])
+@pytest.mark.parametrize("M", UT_SHAPES_1D)
 @pytest.mark.parametrize(
     "is_conj", [(False, False), (False, True), (True, False), (True, True)]
 )
-@pytest.mark.parametrize("dtype", ALL_COMPLEX_DTYPES + FLOAT_DTYPES)
-def test_accuracy_vdot(M, dtype, is_conj):
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
+@pytest.mark.parametrize("stride", [1, 2])
+def test_accuracy_vdot(M, is_conj, dtype, stride):
     inp1_is_conj, inp2_is_conj = is_conj
 
     inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+
+    inp1 = inp1[::stride]
+    inp2 = inp2[::stride]
 
     if inp1_is_conj:
         inp1 = inp1.conj()
@@ -139,8 +143,5 @@ def test_accuracy_vdot(M, dtype, is_conj):
 
     with flag_gems.use_gems():
         res_out = torch.vdot(inp1, inp2)
-    if dtype == torch.complex32:
-        # torch.vdot currently not support complex32
-        return
     ref_out = torch.vdot(ref_inp1, ref_inp2)
     gems_assert_close(res_out, ref_out, dtype)
