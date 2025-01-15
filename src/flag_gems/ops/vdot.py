@@ -51,7 +51,7 @@ def compute_vdot(
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("vdot"))
 @triton.jit
-def vdot_kernel_complex_contigous(
+def vdot_kernel_complex_contiguous(
     inp_ptr,
     other_ptr,
     out_ptr,
@@ -186,7 +186,7 @@ def vdot(input: Tensor, other: Tensor):
         grid = lambda meta: (triton.cdiv(n_complex, meta["BLOCK_SIZE"]),)
 
         if tl_support_split and is_contiguous:
-            vdot_kernel_complex_contigous[grid](
+            vdot_kernel_complex_contiguous[grid](
                 inp_real,
                 other_real,
                 output_real,
