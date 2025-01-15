@@ -22,6 +22,7 @@ from .clamp import clamp, clamp_tensor
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv3d import conv3d
 from .cos import cos
 from .count_nonzero import count_nonzero
 from .cross_entropy_loss import cross_entropy_loss
@@ -154,6 +155,7 @@ __all__ = [
     "clamp_tensor",
     "cos",
     "count_nonzero",
+    "conv3d",
     "diag",
     "diag_embed",
     "diagonal_backward",
