@@ -100,7 +100,7 @@ def triton_do_bench_rewritten(
     else:
         cache = torch.empty(int(256e6), dtype=torch.int8, device=device_type)
 
-    if fixed_warmup_rep_runs:
+    if not fixed_warmup_rep_runs:
         # Estimate the runtime of the function
         start_event = di.Event(enable_timing=True)
         end_event = di.Event(enable_timing=True)
