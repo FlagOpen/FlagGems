@@ -5,7 +5,6 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry
-from .cross_entropy_loss import sum_and_scale
 
 
 @libentry()
@@ -13,12 +12,12 @@ from .cross_entropy_loss import sum_and_scale
 def nll_loss_forward_kernel(
     inp_ptr,
     tgt_ptr,
-    w_ptr,
-    w_tgt_ptr,
+    wgt_ptr,
     out_ptr,
     ignore_index,
     N,
     C,
+    reduction: tl.constexpr = 1,
     BLOCK_N: tl.constexpr = 128,
 ):
     pid_n = tl.program_id(0)
@@ -29,16 +28,35 @@ def nll_loss_forward_kernel(
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_n
 
-    if w_ptr is None:
-        w_tgt = ignore_mask.to(tl.float32)
+    if wgt_ptr is None:
+        wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
-    tl.store(w_tgt_ptr + offsets_n, w_tgt, mask=mask_n)
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     inp_tgt_ptrs = inp_ptr + offsets_n * C + tgt
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
-    out = inp_tgt * w_tgt * -1
-    tl.store(out_ptr + offsets_n, out, mask=mask_n)
+    out = inp_tgt * wgt_tgt * -1
+
+    # none
+    if reduction == 0:
+        tl.store(out_ptr + offsets_n, out, mask=mask_n)
+    # mean
+    elif reduction == 1:
+        total_out = tl.sum(out)
+        total_wgt = tl.sum(wgt_tgt)
+        tl.atomic_add(out_ptr, total_out, sem="relaxed")  # output
+        tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
+        tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
+        counter = tl.load(out_ptr + 2)
+        total_out = tl.load(out_ptr)
+        total_wgt = tl.load(out_ptr + 1)
+        tl.store(
+            out_ptr + 3, total_out / total_wgt, mask=(counter == tl.num_programs(0))
+        )
+    # sum
+    else:
+        total_out = tl.sum(out)
+        tl.atomic_add(out_ptr, total_out, sem="relaxed")
 
 
 @libentry()
@@ -46,7 +64,7 @@ def nll_loss_forward_kernel(
 def nll_loss_backward_kernel(
     out_grad_ptr,
     tgt_ptr,
-    w_ptr,
+    wgt_ptr,
     inp_grad_ptr,
     ignore_index,
     total_weight,
@@ -63,19 +81,22 @@ def nll_loss_backward_kernel(
     tgt = tl.load(tgt_ptr + offsets_n, mask=mask_n, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_n
 
-    if w_ptr is None:
-        w_tgt = ignore_mask
+    if wgt_ptr is None:
+        wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offsets_n
         out_grad = tl.load(out_grad_ptrs, mask=mask_n, other=0).to(tl.float32)
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
+    if reduction == 1:
+        total_w = tl.load(total_weight).to(tl.float32)
+    else:
+        total_w = 1
 
-    total_w = tl.load(total_weight).to(tl.float32)
-    inp_grad = tl.where(ignore_mask, -1 * out_grad * w_tgt / total_w, 0)
+    inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
     inp_grad_ptrs = inp_grad_ptr + offsets_n * C + tgt
     tl.store(inp_grad_ptrs, inp_grad, mask=mask_n)
 
@@ -85,38 +106,56 @@ def nll_loss_backward_kernel(
 def nll_loss2d_forward_kernel(
     inp_ptr,
     tgt_ptr,
-    w_ptr,
-    w_tgt_ptr,
+    wgt_ptr,
     out_ptr,
     ignore_index,
     N,
     C,
     D,
+    reduction: tl.constexpr = 1,
     BLOCK_ND: tl.constexpr = 128,
 ):
     pid_nd = tl.program_id(0)
     offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
-    offset_d = (offset_nd % D)[None, :]
-    offset_n = (offset_nd // D)[:, None]
+    offset_d = offset_nd % D
+    offset_n = offset_nd // D
 
-    mask_block = offset_n < N and offset_d < D
+    mask_block = offset_nd < N * D
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_block
 
-    if w_ptr is None:
-        w_tgt = ignore_mask.to(tl.float32)
+    if wgt_ptr is None:
+        wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
-    w_tgt_ptrs = w_tgt_ptr + offset_n * D + offset_d
-    tl.store(w_tgt_ptrs, w_tgt, mask=mask_block)
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     inp_tgt_ptrs = inp_ptr + offset_n * C * D + tgt * D + offset_d
     inp_tgt = tl.load(inp_tgt_ptrs, mask=ignore_mask, other=0).to(tl.float32)
-    out = inp_tgt * w_tgt * -1
-    out_ptrs = out_ptr + offset_n * D + offset_d
-    tl.store(out_ptrs, out, mask=mask_block)
+    out = inp_tgt * wgt_tgt * -1
+
+    # none
+    if reduction == 0:
+        out_ptrs = out_ptr + offset_n * D + offset_d
+        tl.store(out_ptrs, out, mask=mask_block)
+    # mean
+    elif reduction == 1:
+        total_out = tl.sum(out)
+        total_wgt = tl.sum(wgt_tgt)
+        tl.atomic_add(out_ptr, total_out, sem="relaxed")  # output
+        tl.atomic_add(out_ptr + 1, total_wgt, sem="relaxed")  # weight
+        tl.atomic_add(out_ptr + 2, 1, sem="release")  # counter
+        counter = tl.load(out_ptr + 2)
+        total_out = tl.load(out_ptr)
+        total_wgt = tl.load(out_ptr + 1)
+        tl.store(
+            out_ptr + 3, total_out / total_wgt, mask=(counter == tl.num_programs(0))
+        )
+    # sum
+    else:
+        total_out = tl.sum(out)
+        tl.atomic_add(out_ptr, total_out, sem="relaxed")
 
 
 @libentry()
@@ -124,7 +163,7 @@ def nll_loss2d_forward_kernel(
 def nll_loss2d_backward_kernel(
     out_grad_ptr,
     tgt_ptr,
-    w_ptr,
+    wgt_ptr,
     inp_grad_ptr,
     ignore_index,
     total_weight,
@@ -136,19 +175,19 @@ def nll_loss2d_backward_kernel(
 ):
     pid_nd = tl.program_id(0)
     offset_nd = pid_nd * BLOCK_ND + tl.arange(0, BLOCK_ND)
-    offset_d = offset_nd % D[None, :]
-    offset_n = offset_nd // D[:, None]
+    offset_d = offset_nd % D
+    offset_n = offset_nd // D
 
-    mask_block = offset_n < N and offset_d < D
+    mask_block = offset_nd < N * D
 
     tgt_ptrs = tgt_ptr + offset_n * D + offset_d
     tgt = tl.load(tgt_ptrs, mask=mask_block, other=0)
     ignore_mask = not (tgt == ignore_index) and mask_block
 
-    if w_ptr is None:
-        w_tgt = ignore_mask
+    if wgt_ptr is None:
+        wgt_tgt = ignore_mask.to(tl.float32)
     else:
-        w_tgt = tl.load(w_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
 
     if reduction == 0:
         out_grad_ptrs = out_grad_ptr + offset_n * D + offset_d
@@ -156,8 +195,11 @@ def nll_loss2d_backward_kernel(
     else:
         out_grad = tl.load(out_grad_ptr).to(tl.float32)
 
-    total_w = tl.load(total_weight).to(tl.float32)
-    inp_grad = tl.where(ignore_mask, -1 * out_grad * w_tgt / total_w, 0)
+    if reduction == 1:
+        total_w = tl.load(total_weight).to(tl.float32)
+    else:
+        total_w = 1
+    inp_grad = tl.where(ignore_mask, -1 * out_grad * wgt_tgt / total_w, 0)
     inp_grad_ptrs = inp_grad_ptr + offset_n * C * D + tgt * D + offset_d
     tl.store(inp_grad_ptrs, inp_grad, mask=mask_block)
 
@@ -205,25 +247,46 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
 
     self = self.contiguous()
     target = target.contiguous()
-    w = None if weight is None else weight.contiguous()
+    weight = None if weight is None else weight.contiguous()
 
-    out = torch.empty(shape, dtype=self.dtype, device=self.device)
-    w_tgt = torch.empty(shape, dtype=self.dtype, device=self.device)
-    total_weight = torch.ones([], dtype=self.dtype, device=self.device)
+    # redution: 0-None, 1-mean, 2-sum
+    if reduction == 0:
+        out = torch.empty(shape, dtype=self.dtype, device=self.device)
+    elif reduction == 1:
+        out = torch.zeros(
+            [
+                4,
+            ],
+            dtype=torch.float32,
+            device=self.device,
+        )
+    else:
+        out = torch.zeros([], dtype=torch.float32, device=self.device)
 
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
     with torch.cuda.device(self.device):
-        nll_loss_forward_kernel[grid](self, target, w, w_tgt, out, ignore_index, N, C)
+        nll_loss_forward_kernel[grid](
+            self,
+            target,
+            weight,
+            out,
+            ignore_index,
+            N,
+            C,
+            reduction,
+        )
 
     # redution: 0-None, 1-mean, 2-sum
-    if reduction == 1:
-        output = torch.empty([], dtype=self.dtype, device=self.device)
-        sum_and_scale[(1,)](out, output, N, True, scale=w_tgt, mean_num=total_weight)
-    elif reduction == 2:
-        output = torch.empty([], dtype=self.dtype, device=self.device)
-        sum_and_scale[(1,)](out, output, N, False)
-    else:
+    if reduction == 0:
         output = out
+        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+    elif reduction == 1:
+        out = out.to(self.dtype)
+        output = out[3]
+        total_weight = out[1]
+    else:
+        output = out.to(self.dtype)
+        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
 
     return output, total_weight
 
@@ -248,17 +311,18 @@ def nll_loss_backward(
     grad_input = torch.zeros_like(self).contiguous()
 
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
-    nll_loss_backward_kernel[grid](
-        grad_output,
-        target,
-        weight,
-        grad_input,
-        ignore_index,
-        total_weight,
-        N,
-        C,
-        reduction,
-    )
+    with torch.cuda.device(self.device):
+        nll_loss_backward_kernel[grid](
+            grad_output,
+            target,
+            weight,
+            grad_input,
+            ignore_index,
+            total_weight,
+            N,
+            C,
+            reduction,
+        )
 
     return grad_input
 
@@ -276,27 +340,36 @@ def nll_loss2d_forward(self, target, weight=None, reduction=1, ignore_index=-100
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()
 
-    out = torch.empty(shape, dtype=self.dtype, device=self.device)
-    w_tgt = torch.empty(shape, dtype=self.dtype, device=self.device)
-    total_weight = torch.ones([], dtype=self.dtype, device=self.device)
+    if reduction == 0:
+        out = torch.empty(shape, dtype=self.dtype, device=self.device)
+    elif reduction == 1:
+        out = torch.zeros(
+            [
+                4,
+            ],
+            dtype=torch.float32,
+            device=self.device,
+        )
+    else:
+        out = torch.zeros([], dtype=torch.float32, device=self.device)
 
     grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
     with torch.cuda.device(self.device):
         nll_loss2d_forward_kernel[grid](
-            self, target, weight, w_tgt, out, ignore_index, N, C, D
+            self, target, weight, out, ignore_index, N, C, D, reduction
         )
 
     # redution: 0-None, 1-mean, 2-sum
-    if reduction == 1:
-        output = torch.empty([], dtype=self.dtype, device=self.device)
-        sum_and_scale[(1,)](
-            out, output, N * D, True, scale=w_tgt, mean_num=total_weight
-        )
-    elif reduction == 2:
-        output = torch.empty([], dtype=self.dtype, device=self.device)
-        sum_and_scale[(1,)](out, output, N * D, False)
-    else:
+    if reduction == 0:
         output = out
+        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+    elif reduction == 1:
+        out = out.to(self.dtype)
+        output = out[3]
+        total_weight = out[1]
+    else:
+        output = out.to(self.dtype)
+        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
 
     return output, total_weight
 
@@ -320,17 +393,18 @@ def nll_loss2d_backward(
     grad_input = torch.zeros_like(self).contiguous()
 
     grid = lambda meta: (triton.cdiv(N * D, meta["BLOCK_ND"]),)
-    nll_loss2d_backward_kernel[grid](
-        grad_output,
-        target,
-        weight,
-        grad_input,
-        ignore_index,
-        total_weight,
-        N,
-        C,
-        D,
-        reduction,
-    )
+    with torch.cuda.device(self.device):
+        nll_loss2d_backward_kernel[grid](
+            grad_output,
+            target,
+            weight,
+            grad_input,
+            ignore_index,
+            total_weight,
+            N,
+            C,
+            D,
+            reduction,
+        )
 
     return grad_input

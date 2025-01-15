@@ -202,17 +202,21 @@ def test_accuracy_cross_entropy_loss_probabilities(
 
 @pytest.mark.NLLLoss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
+@pytest.mark.parametrize("weight", [True, False])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("ignore_index", [1, 200, -100])
-def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction):
+def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
     dim = 1
     target_shape = list(shape)
     del target_shape[dim]
 
     inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
     target = torch.randint(0, shape[dim], target_shape, device="cuda")
-    weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    if weight:
+        weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+    else:
+        weight = None
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target)
     ref_weight = to_reference(weight, True)
