@@ -67,7 +67,12 @@ def test_scaled_dot_product_attention(
         )
 
     with flag_gems.use_gems():
-        flaggem_result = torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
-        )
+        if is_causal:
+            flaggem_result = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, scale=scale, is_causal=is_causal
+            )
+        else:
+            flaggem_result = torch.nn.functional.scaled_dot_product_attention(
+                query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
+            )
     gems_assert_close(flaggem_result, torch_result, dtype)
