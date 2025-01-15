@@ -8,8 +8,6 @@ from torch import Tensor
 from .. import runtime
 from ..utils import libentry
 
-tl_support_split = hasattr(tl, "split")
-
 
 @triton.jit
 def compute_vdot(
@@ -46,39 +44,6 @@ def compute_vdot(
         out_imag = tl.sum(-inp_real * other_imag + inp_imag * other_real)
 
     return out_real, out_imag
-
-
-@libentry()
-@triton.heuristics(runtime.get_heuristic_config("vdot"))
-@triton.jit
-def vdot_kernel_complex_contiguous(
-    inp_ptr,
-    other_ptr,
-    out_ptr,
-    n_elements,
-    inp_is_conj: tl.constexpr,
-    other_is_conj: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tl.program_id(0)
-
-    offset = pid * BLOCK_SIZE * 2 + tl.arange(0, BLOCK_SIZE * 2)
-
-    mask = offset < n_elements
-
-    inp = tl.load(inp_ptr + offset, mask=mask)
-    other = tl.load(other_ptr + offset, mask=mask)
-
-    inp_real, inp_imag = tl.split(tl.reshape(inp, (BLOCK_SIZE, 2)))
-    other_real, other_imag = tl.split(tl.reshape(other, (BLOCK_SIZE, 2)))
-
-    # Compute based on conjugate flags
-    out_real, out_imag = compute_vdot(
-        inp_real, inp_imag, other_real, other_imag, inp_is_conj, other_is_conj
-    )
-
-    tl.atomic_add(out_ptr, out_real)
-    tl.atomic_add(out_ptr + 1, out_imag)
 
 
 # support old version triton which do not support tl.split
@@ -161,7 +126,8 @@ def vdot(input: Tensor, other: Tensor):
     ), f"Input tensors must have the same size. Got {input.size()} and {other.size()}."
 
     inp = input
-    is_contiguous = inp.is_contiguous() and other.is_contiguous()
+    inp_stride = inp.stride()[0]
+    other_stride = other.stride()[0]
 
     if inp.is_complex():
         inp_is_conj = False
@@ -185,34 +151,19 @@ def vdot(input: Tensor, other: Tensor):
 
         grid = lambda meta: (triton.cdiv(n_complex, meta["BLOCK_SIZE"]),)
 
-        if tl_support_split and is_contiguous:
-            vdot_kernel_complex_contiguous[grid](
-                inp_real,
-                other_real,
-                output_real,
-                n_elements=n_elements,
-                inp_is_conj=inp_is_conj,
-                other_is_conj=other_is_conj,
-            )
-        else:
-            inp_stride = inp.stride()[0]
-            other_stride = other.stride()[0]
-
-            vdot_kernel_complex[grid](
-                inp_real,
-                other_real,
-                output_real,
-                n_elements=n_elements,
-                inp_is_conj=inp_is_conj,
-                other_is_conj=other_is_conj,
-                inp_stride=inp_stride,
-                other_stride=other_stride,
-            )
+        vdot_kernel_complex[grid](
+            inp_real,
+            other_real,
+            output_real,
+            n_elements=n_elements,
+            inp_is_conj=inp_is_conj,
+            other_is_conj=other_is_conj,
+            inp_stride=inp_stride,
+            other_stride=other_stride,
+        )
 
         return torch.view_as_complex(output_real)
     else:
-        inp_stride = inp.stride()[0]
-        other_stride = other.stride()[0]
         output = torch.zeros([], dtype=torch.float32, device=inp.device)
         n_elements = inp.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
