@@ -6,7 +6,6 @@ from typing import Any, Generator, List, Optional, Tuple
 
 import pytest
 import torch
-import triton
 import yaml
 
 import flag_gems
@@ -55,9 +54,17 @@ def SkipVersion(module_name, skip_pattern):
         return (major, minor) > (M, N)
 
 
-def triton_testing_do_bench_rewritting(fn, warmup=25, rep=100, grad_to_none=None,
-                                       quantiles=None, fast_flush=True, return_mode="mean",
-                                       device_type="cuda", fixed_warmup_rep_runs=True):
+def triton_do_bench_rewritten(
+    fn,
+    warmup=25,
+    rep=100,
+    grad_to_none=None,
+    quantiles=None,
+    fast_flush=True,
+    return_mode="mean",
+    device_type="cuda",
+    fixed_warmup_rep_runs=True,
+):
     """
     This is a rewritten version of the original `triton.testing.do_bench` function.
 
@@ -132,7 +139,9 @@ def triton_testing_do_bench_rewritting(fn, warmup=25, rep=100, grad_to_none=None
         end_event[i].record()
     # Record clocks
     di.synchronize()
-    times = torch.tensor([s.elapsed_time(e) for s, e in zip(start_event, end_event)], dtype=torch.float)
+    times = torch.tensor(
+        [s.elapsed_time(e) for s, e in zip(start_event, end_event)], dtype=torch.float
+    )
     if quantiles is not None:
         ret = torch.quantile(times, torch.tensor(quantiles, dtype=torch.float)).tolist()
         if len(ret) == 1:
@@ -333,7 +342,7 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
-            latency = triton_testing_do_bench_rewritting(
+            latency = triton_do_bench_rewritten(
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
