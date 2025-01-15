@@ -6,6 +6,7 @@ from .amax import amax
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
+from .argmin import argmin
 from .attention import scaled_dot_product_attention
 from .batch_norm import batch_norm
 from .bitwise_and import (
@@ -75,6 +76,12 @@ from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nllloss import (
+    nll_loss2d_backward,
+    nll_loss2d_forward,
+    nll_loss_backward,
+    nll_loss_forward,
+)
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
@@ -250,6 +257,7 @@ __all__ = [
     "sum_dim",
     "amax",
     "argmax",
+    "argmin",
     "prod",
     "prod_dim",
     "var_mean",
@@ -288,5 +296,9 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "nll_loss_forward",
+    "nll_loss_backward",
+    "nll_loss2d_forward",
+    "nll_loss2d_backward",
     "vdot",
 ]

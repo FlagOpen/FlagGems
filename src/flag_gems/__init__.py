@@ -12,6 +12,7 @@ device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
+runtime.replace_customized_ops(globals())
 
 
 def enable(lib=aten_lib, unused=None, registrar=registrar):
@@ -143,6 +144,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("min.dim", min_dim, Autograd.disable),
             ("amax", amax, Autograd.disable),
             ("argmax", argmax, Autograd.disable),
+            ("argmin", argmin, Autograd.disable),
             ("prod", prod, Autograd.disable),
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
@@ -161,6 +163,10 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("log_softmax.int", log_softmax, Autograd.enable),
             ("outer", outer, Autograd.enable),
             ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
+            ("nll_loss_forward", nll_loss_forward, Autograd.disable),
+            ("nll_loss_backward", nll_loss_backward, Autograd.disable),
+            ("nll_loss2d_forward", nll_loss2d_forward, Autograd.disable),
+            ("nll_loss2d_backward", nll_loss2d_backward, Autograd.disable),
             ("scatter.src", scatter, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
             ("gather", gather, Autograd.disable),
