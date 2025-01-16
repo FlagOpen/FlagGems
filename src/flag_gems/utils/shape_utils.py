@@ -1,4 +1,3 @@
-import enum
 import functools
 import operator
 from typing import Iterable, Sequence, Tuple
