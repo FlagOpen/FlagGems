@@ -77,6 +77,12 @@ from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nllloss import (
+    nll_loss2d_backward,
+    nll_loss2d_forward,
+    nll_loss_backward,
+    nll_loss_forward,
+)
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
@@ -291,4 +297,8 @@ __all__ = [
     "logical_not",
     "sort",
     "kron",
+    "nll_loss_forward",
+    "nll_loss_backward",
+    "nll_loss2d_forward",
+    "nll_loss2d_backward",
 ]
