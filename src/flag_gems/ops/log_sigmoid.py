@@ -11,7 +11,7 @@ from ..utils import pointwise_dynamic
 def log_sigmoid_forward(x):
     max_val = tl.maximum(-x, 0.0)
     exp_max_val = tl.exp(-max_val)
-    exp_x_max_val = tl.exp(-x-max_val)
+    exp_x_max_val = tl.exp(-x - max_val)
 
     return -max_val - tl.log(exp_max_val + exp_x_max_val)
 
