@@ -119,6 +119,7 @@ from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh, tanh_backward
+from .threshold import threshold, threshold_backward
 from .tile import tile
 from .topk import topk
 from .triu import triu
@@ -248,6 +249,8 @@ __all__ = [
     "sub",
     "tanh",
     "tanh_backward",
+    "threshold",
+    "threshold_backward",
     "tile",
     "triu",
     "topk",
