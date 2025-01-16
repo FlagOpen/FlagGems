@@ -111,7 +111,7 @@ from .rsqrt import rsqrt
 from .scatter import scatter
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_backward
-from .silu import silu
+from .silu import silu, silu_backward
 from .sin import sin
 from .slice_scatter import slice_scatter
 from .softmax import softmax
@@ -247,6 +247,7 @@ __all__ = [
     "sigmoid",
     "sigmoid_backward",
     "silu",
+    "silu_backward",
     "sin",
     "softmax",
     "sub",
