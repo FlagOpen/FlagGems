@@ -266,7 +266,7 @@ class WeightNormInterface(torch.autograd.Function):
         v = v.contiguous()
         g = g.contiguous()
         output = torch.empty_like(v)
-        norm = torch.empty_like(g)
+        norm = torch.empty_like(g, dtype=torch.float32)
         if dim == 0:
             M = v.shape[0]
             N = math.prod(v.shape[1:])
@@ -285,7 +285,7 @@ class WeightNormInterface(torch.autograd.Function):
                 )
         ctx.save_for_backward(v, g, norm)
         ctx.DIM = dim
-        return output, norm
+        return output, norm.to(v.dtype)
 
     @staticmethod
     def backward(ctx, w_grad, norm_grad):
@@ -479,7 +479,7 @@ class WeightNormExceptDim(torch.autograd.Function):
         logging.debug("GEMS NORM FORWARD")
         v = v.contiguous()
         output = torch.empty_like(v)
-        norm = torch.empty_like(g)
+        norm = torch.empty_like(g, dtype=torch.float32)
         v_shape = [
             math.prod(v.shape[:dim]),
             v.shape[dim],
