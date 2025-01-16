@@ -381,20 +381,24 @@ def test_accuracy_rsqrt_(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sigmoid(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    res_inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_inp = to_reference(res_inp, True)
 
     ref_out = torch.sigmoid(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.sigmoid(inp)
+        res_out = torch.sigmoid(res_inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = torch.randn_like(ref_out)
+    res_grad = to_result(ref_grad, dtype)
+    res_out = to_result(ref_out, dtype)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad, retain_graph=True)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
