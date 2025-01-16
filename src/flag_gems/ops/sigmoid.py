@@ -1,6 +1,5 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -21,34 +20,22 @@ def sigmoid_forward(x):
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
-def sigmoid_backward(y, dy):
+def sigmoid_backward_kernel(dy, y):
     y_f32 = y.to(tl.float32)
     dy_f32 = dy.to(tl.float32)
     return dy_f32 * (1.0 - y_f32) * y_f32
 
 
-class Sigmoid(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A):
-        logging.debug("GEMS SIGMOID FORWARD")
-        if A.requires_grad is True:
-            out = sigmoid_forward(A.to(torch.float32))
-            ctx.save_for_backward(out)
-            return out.to(A.dtype)
-        else:
-            out = sigmoid_forward(A)
-            return out
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logging.debug("GEMS SIGMOID BACKWARD")
-        (out,) = ctx.saved_tensors
-        in_grad = sigmoid_backward(out, out_grad)
-        return in_grad
+def sigmoid(self):
+    logging.debug("GEMS SIGMOID FORWARD")
+    output = sigmoid_forward(self)
+    return output
 
 
-def sigmoid(A):
-    return Sigmoid.apply(A)
+def sigmoid_backward(grad_output, output):
+    logging.debug("GEMS SIGMOID BACKWARD")
+    grad_input = sigmoid_backward_kernel(grad_output, output)
+    return grad_input
 
 
 class InplaceSigmoid(torch.autograd.Function):
@@ -68,7 +55,7 @@ class InplaceSigmoid(torch.autograd.Function):
     def backward(ctx, out_grad):
         logging.debug("GEMS SIGMOID_ BACKWARD")
         (out,) = ctx.saved_tensors
-        in_grad = sigmoid_backward(out, out_grad)
+        in_grad = sigmoid_backward_kernel(out, out_grad)
         return in_grad
 
 
