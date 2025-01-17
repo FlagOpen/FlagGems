@@ -32,7 +32,7 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
 from .dropout import dropout, dropout_backward
-from .embedding import embedding
+from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
@@ -180,6 +180,7 @@ __all__ = [
     "dropout_backward",
     "erf",
     "embedding",
+    "embedding_backward",
     "eq",
     "eq_scalar",
     "exp",
