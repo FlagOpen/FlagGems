@@ -11,6 +11,7 @@ from .accuracy_utils import (
     REDUCTION_SHAPES,
     gems_assert_close,
     to_reference,
+    to_result,
 )
 from .conftest import QUICK_MODE
 
@@ -43,47 +44,54 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
         torch.cuda.manual_seed_all(0)
 
     HW = H * W
-    inp = torch.randn(
+    res_inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
     )
     if wb_none:
-        weight = None
-        bias = None
+        res_weight = None
+        res_bias = None
     else:
-        weight = torch.randn(
+        res_weight = torch.randn(
             size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
         )
-        bias = torch.randn(
+        res_bias = torch.randn(
             size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
         )
     eps = 1e-5
 
-    ref_inp = to_reference(inp, True)
-    ref_weight = to_reference(weight, True)
-    ref_bias = to_reference(bias, True)
+    ref_inp = to_reference(res_inp, True)
+    ref_weight = to_reference(res_weight, True)
+    ref_bias = to_reference(res_bias, True)
 
     ref_out = torch.nn.functional.group_norm(
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
 
     with flag_gems.use_gems():
-        res_out = torch.group_norm(inp, num_groups, weight=weight, bias=bias, eps=eps)
+        res_out = torch.group_norm(
+            res_inp, num_groups, weight=res_weight, bias=res_bias, eps=eps
+        )
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = torch.randn_like(ref_out)
+    res_grad = to_result(ref_grad, dtype)
+    res_out = to_result(ref_out, dtype)
 
     if wb_none:
-        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+        (ref_in_grad,) = torch.autograd.grad(
+            ref_out, ref_inp, ref_grad, retain_graph=True
+        )
+        with flag_gems.use_gems():
+            (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
     else:
         (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad, retain_graph=True
         )
-        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-            res_out, (inp, weight, bias), out_grad
-        )
+        with flag_gems.use_gems():
+            (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+                res_out, (res_inp, res_weight, res_bias), res_grad
+            )
         gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
     group_size = C // num_groups
