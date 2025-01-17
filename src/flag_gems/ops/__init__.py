@@ -51,7 +51,7 @@ from .div import (
 )
 from .dropout import dropout, dropout_backward
 from .elu import elu
-from .embedding import embedding
+from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
@@ -232,6 +232,7 @@ __all__ = [
     "erf",
     "erf_",
     "embedding",
+    "embedding_backward",
     "eq",
     "eq_scalar",
     "exp",

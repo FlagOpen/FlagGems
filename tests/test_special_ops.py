@@ -215,29 +215,37 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    indices = torch.randint(
+    res_indices = torch.randint(
         0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
     )
-    embedding = torch.randn(
+    res_embedding = torch.randn(
         (EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True
     )
-    ref_embedding = to_reference(embedding)
-    ref_indices = to_reference(indices)
+    ref_embedding = to_reference(res_embedding)
+    ref_indices = to_reference(res_indices)
 
     ref_out = torch.nn.functional.embedding(
         ref_indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
     with flag_gems.use_gems():
         res_out = torch.nn.functional.embedding(
-            indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
+            res_indices,
+            res_embedding,
+            padding_idx,
+            scale_grad_by_freq=scale_grad_by_freq,
         )
-    out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
-
     gems_assert_close(res_out, ref_out, dtype)
+
+    ref_grad = torch.randn_like(ref_out)
+    res_grad = to_result(ref_grad)
+    res_out = to_result(ref_out)
+
+    (ref_in_grad,) = torch.autograd.grad(
+        ref_out, ref_embedding, ref_grad, retain_graph=True
+    )
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, res_embedding, res_grad)
+
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
