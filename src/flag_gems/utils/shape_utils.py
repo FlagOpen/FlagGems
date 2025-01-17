@@ -348,7 +348,7 @@ def offset_calculator(inp, idx, strides, dim, isInp):
     return offsets if not isInp else (offsets - idx_dim)
 
 
-def offsetCalculator(inp, idx, strides, dim, isInp):
+def offsetCalculator(inp, idx, strides, dim, isInp=False):
     ndim = inp.ndim
     shape = list(inp.shape)
     offsets = 0
