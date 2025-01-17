@@ -166,7 +166,7 @@ def test_accuracy_gelu(shape, dtype, approximate):
 
     ref_grad = torch.randn_like(ref_inp)
     res_grad = to_result(ref_grad, dtype)
-    res_out = to_result(res_out, dtype)
+    res_out = to_result(ref_out, dtype)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad, retain_graph=True)
     with flag_gems.use_gems():

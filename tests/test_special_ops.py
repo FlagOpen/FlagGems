@@ -22,6 +22,7 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     to_reference,
+    to_result,
 )
 from .conftest import TO_CPU
 
@@ -40,8 +41,10 @@ def test_accuracy_dropout(shape, p, dtype):
 
     if TO_CPU or shape == (1,):
         shape = (32768,)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp)
+    res_inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_inp = to_reference(res_inp)
 
     # NOTE: ensure that scalars are float32(instead of float64)
     # in some cases, casting up then casting down have different result
@@ -50,25 +53,17 @@ def test_accuracy_dropout(shape, p, dtype):
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.dropout(inp, p, True)
-
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+        res_out = torch.nn.functional.dropout(res_inp, p, True)
 
     res_out = to_reference(res_out)
-    res_in_grad = to_reference(res_in_grad)
-
-    exp_equal = (p * p + one_minus_p * one_minus_p) * inp.numel()
+    exp_equal = (p * p + one_minus_p * one_minus_p) * res_inp.numel()
     num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     if TO_CPU:
         from flag_gems.testing import RESOLUTION
 
         zero_equal = torch.eq(res_out, torch.zeros_like(res_out))
         num_zero = torch.sum(zero_equal).item()
-        assert abs(num_zero / inp.numel() - p) <= 0.05
+        assert abs(num_zero / res_inp.numel() - p) <= 0.05
         scale_equal = torch.isclose(
             res_out, ref_inp / one_minus_p, rtol=RESOLUTION[dtype]
         )
@@ -76,12 +71,17 @@ def test_accuracy_dropout(shape, p, dtype):
     else:
         assert (
             abs(num_equal - exp_equal) / exp_equal <= 0.05
-        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
 
-        num_equal = torch.sum(torch.isclose(ref_in_grad, res_in_grad)).item()
-        assert (
-            abs(num_equal - exp_equal) / exp_equal <= 0.05
-        ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
+    ref_grad = torch.randn_like(ref_out)
+    res_grad = to_result(ref_grad)
+    res_out = to_result(ref_out)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad, retain_graph=True)
+    with flag_gems.use_gems():
+        (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device=flag_gems.device):
