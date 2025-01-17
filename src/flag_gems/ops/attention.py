@@ -56,11 +56,11 @@ def _attn_fwd_inner(
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         k = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
-
         if PRE_LOAD_V:
             v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
         qk = tl.dot(q, k, allow_tf32=False)
+        # qk = qk.to(tl.float32)
 
         if HAS_ATTN_MASK:
             attn_mask = tl.load(
@@ -77,8 +77,7 @@ def _attn_fwd_inner(
                 qk *= 1.44269504
                 qk = qk + tl.where(mask, 0, -1.0e6)
             else:
-                qk_scale *= 1.44269504
-                qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
+                qk = qk * qk_scale * 1.44269504 + tl.where(mask, 0, -1.0e6)
 
             m_ij = tl.maximum(m_i, tl.max(qk, 1))
             qk -= m_ij[:, None]
@@ -89,8 +88,7 @@ def _attn_fwd_inner(
                 qk *= 1.44269504
                 qk = qk - m_ij[:, None]
             else:
-                qk_scale *= 1.44269504
-                qk = qk * qk_scale - m_ij[:, None]
+                qk = qk * qk_scale * 1.44269504 - m_ij[:, None]
         p = tl.math.exp2(qk)
         l_ij = tl.sum(p, 1)
         # -- update m_i and l_i
@@ -105,6 +103,7 @@ def _attn_fwd_inner(
             p = p.to(tl.float8e5)
         else:
             p = p.to(q.dtype)
+        p = p.to(v.dtype)
         acc = tl.dot(p, v, acc, allow_tf32=False)
         # update m_i and l_i
         m_i = m_ij
@@ -323,7 +322,7 @@ def scaled_dot_product_attention(
     assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
-    o = torch.empty_like(query)
+    o = torch.empty_like(value)
 
     stage = 3 if is_causal else 1
 
