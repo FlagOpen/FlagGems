@@ -11,9 +11,187 @@ from ..utils import triton_lang_extension as tle
 
 try:
     L2_CACHE_SIZE = torch_device_fn.get_device_properties(0).L2_cache_size
+    SM_COUNT = torch_device_fn.get_device_properties(0).multi_processor_count
 except AttributeError:
     L2_CACHE_SIZE = 40 * 1024 * 1024  # 40MB in bytes
+    SM_COUNT = 82  # nvidia 3090
 CACHE_USAGE_THRESHOLD = 0.7
+
+
+@triton.jit()
+def swizzle_tile(
+    tile_id,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    # re-order program ID for better L2 performance
+    width = GROUP_M * grid_n
+    group_id = tile_id // width
+    group_size = tl.minimum(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (tile_id % group_size)
+    pid_n = (tile_id % width) // group_size
+    return pid_m, pid_n
+
+
+@libentry()
+@triton.jit()
+def first_wave(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    locks,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    total_full_tiles_streamk,
+    total_partial_tiles_streamk,
+    iters_per_tile,
+    ACC_TYPE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    pid = tl.program_id(0)  # FROM 0 TO 108
+    start_iter = pid * total_full_tiles_streamk + tl.minimum(
+        pid, total_partial_tiles_streamk
+    )
+    last_iter = (pid + 1) * total_full_tiles_streamk + tl.minimum(
+        pid + 1, total_partial_tiles_streamk
+    )
+    while start_iter < last_iter:
+        end_iter = tl.minimum(
+            start_iter + (iters_per_tile - start_iter % iters_per_tile), last_iter
+        )
+        # where are we in the grid
+        tile_id = start_iter // iters_per_tile
+        pid_m, pid_n = swizzle_tile(
+            tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M
+        )
+
+        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        rk = tl.arange(0, BLOCK_K)
+
+        if stride_am == 1:
+            ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+        else:
+            ram = rm % M
+        if stride_bk == 1:
+            rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+        else:
+            rbn = rn % N
+
+        # pointers
+        A_ptr = (
+            A
+            + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+            + BLOCK_K * stride_ak * (start_iter % iters_per_tile)
+        )
+        B_ptr = (
+            B
+            + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+            + BLOCK_K * stride_bk * (start_iter % iters_per_tile)
+        )
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
+
+        for current_iter in range(start_iter, end_iter):
+            # TODO: when k is not even, we need to load the data from A and B with mask.
+            a = tl.load(A_ptr)
+            b = tl.load(B_ptr)
+            acc += tl.dot(a, b, out_dtype=ACC_TYPE, allow_tf32=False)
+            A_ptr += BLOCK_K * stride_ak
+            B_ptr += BLOCK_K * stride_bk
+
+        if (
+            end_iter % iters_per_tile == 0
+        ):  # last iteration of the tile always happens before its start on another SM
+            C_ptr = C + (
+                rm[:, None] * stride_cm + rn[None, :] * stride_cn
+            )  # compute inside the if/else to avoid spilling!
+            tl.store(C_ptr, acc)
+            if (
+                start_iter % iters_per_tile != 0
+            ):  # only if tile has been partially processed
+                tl.atomic_xchg(locks + tile_id, 1)
+        else:
+            while tl.atomic_cas(locks + tile_id, 1, 1) != 1:
+                pass
+            C_ptr = C + (
+                rm[:, None] * stride_cm + rn[None, :] * stride_cn
+            )  # compute inside the if/else to avoid spilling!
+            tl.atomic_add(C_ptr, acc, sem="relaxed")
+        start_iter = end_iter
+
+
+@libentry()
+@triton.jit()
+def classic_tiles_mm(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    total_tiles_streamk,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    ACC_TYPE: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    # first wave has done more tiles than there are SMs, we adjust pid
+    tile_id = tl.program_id(0) + total_tiles_streamk
+    pid_m, pid_n = swizzle_tile(tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M)
+
+    # do matrix multiplication
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    # pointers
+    if stride_am == 1:
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    else:
+        ram = rm % M
+    if stride_bk == 1:
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    else:
+        rbn = rn % N
+
+    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        a = tl.load(A)
+        b = tl.load(B)
+        acc += tl.dot(a, b, out_dtype=ACC_TYPE, allow_tf32=False)
+        A += BLOCK_K * stride_ak
+        B += BLOCK_K * stride_bk
+    acc = acc.to(tl.float32)  # restore C.dtype.element_ty
+    # rematerialize rm and rn to save registers
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    tl.store(C, acc)
 
 
 @libentry()
@@ -37,7 +215,7 @@ def mm_kernel_with_grouped_k(
     stride_cb,
     stride_cm,
     stride_cn,
-    dot_out_dtype: tl.constexpr,
+    acc_type: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -75,14 +253,20 @@ def mm_kernel_with_grouped_k(
     k_start = pid_k * GROUP_K_LENGTH
     offs_k = k_start + tl.arange(0, BLOCK_K)
 
-    offs_am = tl.max_contiguous(tl.multiple_of(offs_m % M, BLOCK_M), BLOCK_M)
-    offs_bn = tl.max_contiguous(tl.multiple_of(offs_n % N, BLOCK_N), BLOCK_N)
+    if stride_am == 1:
+        offs_am = tl.max_contiguous(tl.multiple_of(offs_m % M, BLOCK_M), BLOCK_M)
+    else:
+        offs_am = offs_m % M
 
+    if stride_bk == 1:
+        offs_bn = offs_n % N
+    else:
+        offs_bn = tl.max_contiguous(tl.multiple_of(offs_n % N, BLOCK_N), BLOCK_N)
     # pointers
     A_ptr = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     B_ptr = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_type)
 
     for k in range(0, tl.cdiv(group_k_length, BLOCK_K)):
         if EVEN_K:
@@ -95,7 +279,7 @@ def mm_kernel_with_grouped_k(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=acc_type, allow_tf32=False)
         A_ptr += BLOCK_K * stride_ak
         B_ptr += BLOCK_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -123,7 +307,7 @@ def group_merge_kernel(
     stride_k,
     stride_m,
     stride_n,
-    dot_out_dtype: tl.constexpr,
+    acc_type: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -133,7 +317,7 @@ def group_merge_kernel(
     mask_m = offs_m < M
     mask_n = offs_n < N
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_type)
 
     for k in range(SPLIT_K):
         src_ptr = (
@@ -169,7 +353,7 @@ def iobound_mm_kernel(
     stride_bn,
     stride_cm,
     stride_cn,
-    dot_out_dtype: tl.constexpr,
+    acc_type: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -194,7 +378,7 @@ def iobound_mm_kernel(
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_type)
     for k in range(0, tl.cdiv(K, BLOCK_K)):
         if EVEN_K:
             a = tl.load(A)
@@ -207,7 +391,7 @@ def iobound_mm_kernel(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=acc_type, allow_tf32=False)
         A += BLOCK_K * stride_ak
         B += BLOCK_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -241,13 +425,12 @@ def mm_kernel(
     stride_bn,
     stride_cm,
     stride_cn,
-    dot_out_dtype: tl.constexpr,
+    acc_type: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
-    b_column_major: tl.constexpr,
 ):
     # matrix multiplication
     pid = tle.program_id(0)
@@ -265,13 +448,19 @@ def mm_kernel(
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = tl.arange(0, BLOCK_K)
 
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    if stride_am == 1:
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    else:
+        ram = rm % M
+    if stride_bk == 1:
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    else:
+        rbn = rn % N
 
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=acc_type)
     for k in range(0, tl.cdiv(K, BLOCK_K)):
         if EVEN_K:
             a = tl.load(A)
@@ -284,7 +473,7 @@ def mm_kernel(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=acc_type, allow_tf32=False)
         A += BLOCK_K * stride_ak
         B += BLOCK_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -297,9 +486,6 @@ def mm_kernel(
     tl.store(C, acc, mask=mask)
 
 
-_ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
-
-
 def mini_mm_scenario(a, b, l2_cache_size=40 * 1024 * 1024, cache_usage_threshold=0.8):
     return (
         a.shape[0] <= 256
@@ -308,15 +494,25 @@ def mini_mm_scenario(a, b, l2_cache_size=40 * 1024 * 1024, cache_usage_threshold
     )
 
 
-def largek_mm_scenario(M, N, K):
-    return False
-    # return K > N * 10 and K > M * 10
+def streamk_scenario(a, b, M, N, K):
+    # TODO: this my change sometime according to the realbenchmark result
+    return (
+        a.dtype in [torch.float16]
+        and b.dtype in [torch.float16]
+        and M > 1024
+        and N > 1024
+        and K > M * 10
+    )
+
+
+def two_stages_splitk_mm_scenario(M, N, K):
+    return (M < 32 or N < 32) and (K > M * 10 or K > N * 10)
 
 
 def get_higher_dtype(a, b):
     if a is b:
         return a
-
+    _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
     assert a in _ordered_datatypes
     assert b in _ordered_datatypes
 
@@ -327,12 +523,89 @@ def get_higher_dtype(a, b):
             return a
 
 
-def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
-    logging.debug("GEMS MM (SPLITK)")
-    if M * N * K < 1024 * 1024:
-        GROUP_K_LENGTH = 1024
+def streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=108):
+    # TODO: profile to different settings for different chip
+    if b.stride(0) == 1:
+        BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 128
+        num_stages = 3
+        num_warps = 8
     else:
-        GROUP_K_LENGTH = 10240
+        BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 64
+        num_stages = 3
+        num_warps = 16
+
+    GROUP_M = 8
+    number_blocks_m = triton.cdiv(M, BLOCK_M)
+    number_blocks_n = triton.cdiv(N, BLOCK_N)
+
+    total_tiles = number_blocks_m * number_blocks_n
+    iters_per_tile = triton.cdiv(K, BLOCK_K)
+    tiles_per_wave = sm_count
+
+    # tiles that would executed in the last wave in general situation.
+    # and this is the tiles that we are going to adopt streamk)
+    total_tiles_streamk = total_tiles % tiles_per_wave
+    # mini wave
+    total_iters_streamk = total_tiles_streamk * iters_per_tile
+    total_full_tiles_streamk = total_iters_streamk // tiles_per_wave
+    total_partial_tiles_streamk = total_iters_streamk % tiles_per_wave
+
+    locks = torch.zeros((total_tiles_streamk,), device=a.device, dtype=torch.int32)
+
+    with torch_device_fn.device(a.device):
+        first_wave[(tiles_per_wave,)](
+            b,
+            c,
+            M,
+            N,
+            K,
+            locks,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            total_full_tiles_streamk=total_full_tiles_streamk,
+            total_partial_tiles_streamk=total_partial_tiles_streamk,
+            iters_per_tile=iters_per_tile,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            ACC_TYPE=acc_type,
+            GROUP_M=GROUP_M,
+            num_stages=num_stages,
+            num_warps=num_warps,
+        )
+
+        classic_tiles_mm[(total_tiles - total_tiles_streamk,)](
+            a,
+            b,
+            c,
+            M,
+            N,
+            K,
+            a.stride(0),
+            a.stride(1),
+            b.stride(0),
+            b.stride(1),
+            c.stride(0),
+            c.stride(1),
+            total_tiles_streamk=total_tiles_streamk,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            ACC_TYPE=acc_type,
+            GROUP_M=GROUP_M,
+            num_stages=num_stages,
+            num_warps=num_warps,
+        )
+    return c
+
+
+def splitk_mm(a, b, c, M, N, K, c_dtype, acc_type):
+    logging.debug("GEMS MM (SPLITK)")
+    GROUP_K_LENGTH = 1024
     SPLIT_K = triton.cdiv(K, GROUP_K_LENGTH)
     # TODO: float32 or c_dtype
     multi_c = torch.empty((SPLIT_K, M, N), device=a.device, dtype=c_dtype)
@@ -359,7 +632,7 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
             multi_c.stride(0),
             multi_c.stride(1),
             multi_c.stride(2),
-            dot_out_dtype=dot_out_dtype,
+            acc_type=acc_type,
             SPLIT_K=SPLIT_K,
             GROUP_K_LENGTH=GROUP_K_LENGTH,
         )
@@ -374,12 +647,12 @@ def splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag):
             multi_c.stride(0),
             multi_c.stride(1),
             multi_c.stride(2),
-            dot_out_dtype=dot_out_dtype,
+            acc_type=acc_type,
         )
     return c
 
 
-def iobound_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag):
+def iobound_mm(a, b, c, M, N, K, acc_type):
     logging.debug("GEMS MM (iobound)")
     # launch kernel
     grid = lambda META: (
@@ -399,13 +672,13 @@ def iobound_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag):
             b.stride(1),
             c.stride(0),
             c.stride(1),
-            dot_out_dtype=dot_out_dtype,
         )
     return c
 
 
-def general_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag):
+def general_mm(a, b, c, M, N, K, acc_type):
     logging.debug("GEMS MM (general)")
+    # print("general_mm", M, N, K)
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -424,9 +697,8 @@ def general_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag):
             b.stride(1),
             c.stride(0),
             c.stride(1),
-            dot_out_dtype=dot_out_dtype,
+            acc_type=acc_type,
             GROUP_M=8,
-            b_column_major=b_column_major_flag,
         )
     return c
 
@@ -438,7 +710,6 @@ def mm(a, b):
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
         b = b.contiguous()
-    b_column_major_flag = b.stride(0) == 1 and b.stride(1) == b.size(0)
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
@@ -446,11 +717,13 @@ def mm(a, b):
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
-    dot_out_dtype = tl.float32
+    acc_type = tl.float32
 
     if mini_mm_scenario(a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD):
-        return iobound_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag)
-    elif largek_mm_scenario(M, N, K):
-        return splitk_mm(a, b, c, M, N, K, c_dtype, dot_out_dtype, b_column_major_flag)
+        return iobound_mm(a, b, c, M, N, K, acc_type)
+    elif streamk_scenario(a, b, SM_COUNT):
+        streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=SM_COUNT)
+    elif two_stages_splitk_mm_scenario(M, N, K):
+        return splitk_mm(a, b, c, M, N, K, c_dtype, acc_type)
     else:
-        return general_mm(a, b, c, M, N, K, dot_out_dtype, b_column_major_flag)
+        return general_mm(a, b, c, M, N, K, acc_type)
