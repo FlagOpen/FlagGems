@@ -165,102 +165,91 @@ def weight_bias_backward_kernel(
 
     if dW is not None:
         dw = tl.sum((x_f32 - mean) * rstd * grad_y)
-        tl.store(dW + pid, dw.to(x.dtype))
+        tl.store(dW + pid, dw)
     if dB is not None:
         db = tl.sum(grad_y)
-        tl.store(dB + pid, db.to(x.dtype))
+        tl.store(dB + pid, db)
 
 
-class GroupNorm(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
-        logging.debug("GEMS GROUPNORM FORWARD")
-        group_size = C // num_groups
-        x = x.contiguous()
-        if weight is not None:
-            weight = weight.contiguous()
-        if bias is not None:
-            bias = bias.contiguous()
-        y = torch.empty_like(x)
-        mean = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
-        rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
-        grid = (N * num_groups,)
+def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
+    logging.debug("GEMS GROUPNORM FORWARD")
 
-        with torch_device_fn.device(x.device):
-            group_norm_kernel[grid](
-                x,
-                y,
-                weight,
-                bias,
-                mean,
-                rstd,
-                group_size,
-                C,
-                HW,
-                num_groups,
-                eps,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
-                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
-            )
-        if x.requires_grad:
-            ctx.save_for_backward(x, weight, bias, mean, rstd)
-            ctx.num_groups = num_groups
-            ctx.group_size = group_size
-            ctx.N = N
-            ctx.C = C
-            ctx.HW = HW
-        return y, mean, rstd
+    group_size = C // group
+    input = input.contiguous()
+    weight = None if weight is None else weight.contiguous()
+    bias = None if bias is None else bias.contiguous()
 
-    @staticmethod
-    def backward(ctx, y_grad, mean_grad, rstd_grad):
-        logging.debug("GEMS GROUPNORM BACKWARD")
-        y_grad = y_grad.contiguous()
-        (x, weight, bias, mean, rstd) = ctx.saved_tensors
-        num_groups = ctx.num_groups
-        group_size = ctx.group_size
-        N = ctx.N
-        C = ctx.C
-        HW = ctx.HW
-        x_grad = torch.empty_like(x)
-        grid = (N * num_groups,)
-        with torch_device_fn.device(x.device):
+    y = torch.empty_like(input)
+    mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
+    rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
+
+    grid = (N * group,)
+    with torch_device_fn.device(input.device):
+        group_norm_kernel[grid](
+            input,
+            y,
+            weight,
+            bias,
+            mean,
+            rstd,
+            group_size,
+            C,
+            HxW,
+            group,
+            eps,
+            BLOCK_GROUP_SIZE=triton.next_power_of_2(C // group),
+            BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
+        )
+    return y, mean, rstd
+
+
+def group_norm_backward(
+    grad_out, input, mean, rstd, weight, N, C, HxW, group, output_mask
+):
+    logging.debug("GEMS GROUPNORM BACKWARD")
+
+    grad_out = grad_out.contiguous()
+    group_size = C // group
+
+    if output_mask[0] is False:
+        grad_inp = None
+    else:
+        grad_inp = torch.empty_like(input)
+        grid = (N * group,)
+        with torch_device_fn.device(input.device):
             group_norm_backward_kernel[grid](
-                y_grad,
-                x,
+                grad_out,
+                input,
                 weight,
                 mean,
                 rstd,
-                num_groups,
+                group,
                 group_size,
-                x_grad,
+                grad_inp,
                 C,
-                HW,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // num_groups),
-                BLOCK_HW_SIZE=triton.next_power_of_2(HW),
+                HxW,
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // group),
+                BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
             )
-        if weight is None and bias is None:
-            return x_grad, None, None, None, None, None, None, None
+    if output_mask[1] is False and output_mask[2] is False:
+        return grad_inp, None, None
 
-        weight_grad = None if weight is None else torch.empty_like(weight)
-        bias_grad = None if bias is None else torch.empty_like(bias)
-        with torch_device_fn.device(x.device):
-            weight_bias_backward_kernel[(C, 1, 1)](
-                y_grad,
-                x,
-                mean,
-                rstd,
-                weight_grad,
-                bias_grad,
-                num_groups,
-                group_size,
-                N,
-                C,
-                HW,
-                BLOCK_N=triton.next_power_of_2(N),
-                BLOCK_HW=triton.next_power_of_2(HW),
-            )
-        return x_grad, None, None, None, None, weight_grad, bias_grad, None
-
-
-def group_norm(x, weight, bias, N, C, HW, num_groups, eps):
-    return GroupNorm.apply(x, N, C, HW, num_groups, weight, bias, eps)
+    weight_grad = None if output_mask[1] is False else torch.empty_like(weight)
+    bias_grad = None if output_mask[2] is False else torch.empty_like(weight)
+    with torch_device_fn.device(input.device):
+        weight_bias_backward_kernel[(C, 1, 1)](
+            grad_out,
+            input,
+            mean,
+            rstd,
+            weight_grad,
+            bias_grad,
+            group,
+            group_size,
+            N,
+            C,
+            HxW,
+            BLOCK_N=triton.next_power_of_2(N),
+            BLOCK_HW=triton.next_power_of_2(HxW),
+        )
+    return grad_inp, weight_grad, bias_grad
