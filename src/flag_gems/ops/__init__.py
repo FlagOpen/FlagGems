@@ -31,7 +31,7 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
-from .dropout import native_dropout
+from .dropout import dropout, dropout_backward
 from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf
@@ -181,7 +181,8 @@ __all__ = [
     "zeros",
     "ones",
     "full",
-    "native_dropout",
+    "dropout",
+    "dropout_backward",
     "erf",
     "embedding",
     "eq",
