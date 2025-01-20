@@ -972,3 +972,18 @@ batch_norm:
   - 8
   - 16
   - 32
+
+index_put:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE0: block_size0
+      BLOCK_SIZE1: block_size1
+  block_size0:
+  - 16
+  - 64
+  - 256
+  block_size1:
+  - 16
+  - 64
+  - 256
