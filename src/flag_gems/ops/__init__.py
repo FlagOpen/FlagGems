@@ -78,7 +78,7 @@ from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
-from .layernorm import layer_norm
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .linspace import linspace
 from .log import log
@@ -271,6 +271,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "layer_norm_backward",
     "weight_norm_interface",
     "weight_norm",
     "le",
