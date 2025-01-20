@@ -250,7 +250,7 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logging.debug("INDEX PUT")
+    logging.debug("GEMS INDEX PUT")
 
     indices = list(indices)
     target_shape = get_max_rank_shape(indices)
