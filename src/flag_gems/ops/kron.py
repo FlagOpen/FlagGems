@@ -5,6 +5,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import triton_lang_extension as tle
 
 
@@ -167,33 +168,35 @@ def kron(A, B):
     a_batch_stride = M1 * N1
     b_batch_stride = M2 * N2
     c_batch_stride = M * N
+    with torch_device_fn.device(A.device):
+        grid = lambda meta: (
+            batch_size
+            * triton.cdiv(M, meta["BLOCK_M"])
+            * triton.cdiv(N, meta["BLOCK_N"]),
+        )
 
-    grid = lambda meta: (
-        batch_size * triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"]),
-    )
-
-    kron_kernel[grid](
-        A_view,
-        B_view,
-        C_reshaped,
-        batch_indices,
-        batch_size,
-        M,
-        N,
-        M1,
-        M2,
-        N1,
-        N2,
-        A_view.stride(1),
-        A_view.stride(2),
-        B_view.stride(1),
-        B_view.stride(2),
-        C_reshaped.stride(1),
-        C_reshaped.stride(2),
-        a_batch_stride,
-        b_batch_stride,
-        c_batch_stride,
-    )
+        kron_kernel[grid](
+            A_view,
+            B_view,
+            C_reshaped,
+            batch_indices,
+            batch_size,
+            M,
+            N,
+            M1,
+            M2,
+            N1,
+            N2,
+            A_view.stride(1),
+            A_view.stride(2),
+            B_view.stride(1),
+            B_view.stride(2),
+            C_reshaped.stride(1),
+            C_reshaped.stride(2),
+            a_batch_stride,
+            b_batch_stride,
+            c_batch_stride,
+        )
 
     if A.dim() <= 1 and B.dim() <= 1:
         return C.reshape(-1)
