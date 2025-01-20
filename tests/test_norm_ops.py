@@ -122,64 +122,64 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    M = shape[0]
-    N = shape[1]
-    layer_shape = [
-        N,
-    ]
-    inp = torch.randn(
-        shape[:2], dtype=dtype, device=flag_gems.device, requires_grad=True
+    res_inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
     )
     if wb_none:
-        weight = None
-        bias = None
+        res_weight = None
+        res_bias = None
     else:
-        weight = torch.randn(
-            layer_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        res_weight = torch.randn(
+            shape[1:], dtype=dtype, device=flag_gems.device, requires_grad=True
         )
-        bias = torch.randn(
-            layer_shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        res_bias = torch.randn(
+            shape[1:], dtype=dtype, device=flag_gems.device, requires_grad=True
         )
     eps = 1e-5
 
-    ref_inp = to_reference(inp, True)
-    ref_weight = to_reference(weight, True)
-    ref_bias = to_reference(bias, True)
+    ref_inp = to_reference(res_inp)
+    ref_weight = to_reference(res_weight)
+    ref_bias = to_reference(res_bias)
 
     ref_out = torch.layer_norm(
         ref_inp,
-        list(layer_shape),
+        shape[1:],
         weight=ref_weight,
         bias=ref_bias,
         eps=eps,
     )
     with flag_gems.use_gems():
         res_out = torch.layer_norm(
-            inp,
-            list(layer_shape),
-            weight=weight,
-            bias=bias,
+            res_inp,
+            shape[1:],
+            weight=res_weight,
+            bias=res_bias,
             eps=eps,
         )
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
+    ref_grad = torch.randn_like(ref_out)
+    res_grad = to_result(ref_grad)
+    res_out = to_result(ref_out)
 
     if wb_none:
-        (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+        (ref_in_grad,) = torch.autograd.grad(
+            ref_out, ref_inp, ref_grad, retain_graph=True
+        )
+        with flag_gems.use_gems():
+            (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
     else:
         (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad
+            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad, retain_graph=True
         )
-        (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-            res_out, (inp, weight, bias), out_grad
-        )
-        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
-        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
+        with flag_gems.use_gems():
+            (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
+                res_out, (res_inp, res_weight, res_bias), res_grad
+            )
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0])
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=math.prod(shape[1:]))
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
