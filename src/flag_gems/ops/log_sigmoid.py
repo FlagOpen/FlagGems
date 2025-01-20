@@ -9,11 +9,7 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def log_sigmoid_forward(x):
-    max_val = tl.maximum(-x, 0.0)
-    exp_max_val = tl.exp(-max_val)
-    exp_x_max_val = tl.exp(-x - max_val)
-
-    return -max_val - tl.log(exp_max_val + exp_x_max_val)
+    return tl.minimum(x, 0.0) - tl.log(1.0 + tl.exp(-tl.abs(x).to(tl.float32)))
 
 
 def log_sigmoid(x):
