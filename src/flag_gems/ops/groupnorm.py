@@ -209,11 +209,13 @@ def group_norm_backward(
     logging.debug("GEMS GROUPNORM BACKWARD")
 
     grad_out = grad_out.contiguous()
+    input = input.contiguous()
+    mean = mean.contiguous()
+    rstd = rstd.contiguous()
+    weight = None if weight is None else weight.contiguous()
     group_size = C // group
 
-    if output_mask[0] is False:
-        grad_inp = None
-    else:
+    if output_mask[0]:
         grad_inp = torch.empty_like(input)
         grid = (N * group,)
         with torch_device_fn.device(input.device):
@@ -231,11 +233,14 @@ def group_norm_backward(
                 BLOCK_GROUP_SIZE=triton.next_power_of_2(C // group),
                 BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
             )
+    else:
+        grad_inp = None
+
     if output_mask[1] is False and output_mask[2] is False:
         return grad_inp, None, None
 
-    weight_grad = None if output_mask[1] is False else torch.empty_like(weight)
-    bias_grad = None if output_mask[2] is False else torch.empty_like(weight)
+    weight_grad = torch.empty_like(weight) if output_mask[1] else None
+    bias_grad = torch.empty_like(weight) if output_mask[2] else None
     with torch_device_fn.device(input.device):
         weight_bias_backward_kernel[(C, 1, 1)](
             grad_out,
