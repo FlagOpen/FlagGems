@@ -108,8 +108,6 @@ def generate_index_put_kernel(
             for i in range(indices_len)
         ]
         code.writeline(f"index_mask = {' & '.join(index_mask)}")
-        # comp = [f"input_shape{i}" for i in range(indices_len, inp_rank)] + ["1"]
-        # code.writeline(f"mask1 = offset1 < {' * '.join(comp)}")
         code.writeline("mask1 = offset1 < N")
         code.writeline("mask = index_mask & mask0 & mask1")
         code.newline()
@@ -158,12 +156,8 @@ def generate_index_put_wrapper(
         code.writeline("values_shape = values.shape")
         code.writeline("values_stride = values.stride()")
         code.writeline("M = indices[0].numel()")
-        # code.writeline("N = input.numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
-        # code.writeline("grid0 = triton.cdiv(volume(indices0_shape), BLOCK_SIZE0)")
-        # code.writeline("grid1 = triton.cdiv(volume(input_shape[len(indices): ]), BLOCK_SIZE1)")
-        # code.writeline("grid = (grid0, grid1)")
         code.writeline("grid = lambda meta: (")
         with code.indent():
             code.writeline("triton.cdiv(M, meta['BLOCK_SIZE0']), ")
@@ -208,7 +202,6 @@ def generate_code(
     generate_index_put_wrapper(
         inp_rank, indices_len, index_rank, wrapper_name, kernel_name, code
     )
-    # breakpoint()
     return code
 
 
@@ -234,7 +227,6 @@ class IndexPutFunction:
             with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
-            # load
             spec = importlib.util.spec_from_file_location(
                 f"_gen_module_rank_{key}_pid_{self.pid}",
                 f.name,
