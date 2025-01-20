@@ -55,7 +55,7 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
-from .layernorm import layer_norm
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .logical_and import logical_and
@@ -211,6 +211,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "layer_norm_backward",
     "weight_norm_interface",
     "weight_norm",
     "le",
