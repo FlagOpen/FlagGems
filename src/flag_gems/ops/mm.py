@@ -672,6 +672,7 @@ def iobound_mm(a, b, c, M, N, K, acc_type):
             b.stride(1),
             c.stride(0),
             c.stride(1),
+            acc_type=acc_type,
         )
     return c
 
@@ -721,7 +722,7 @@ def mm(a, b):
 
     if mini_mm_scenario(a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD):
         return iobound_mm(a, b, c, M, N, K, acc_type)
-    elif streamk_scenario(a, b, SM_COUNT):
+    elif streamk_scenario(a, b, M, N, K):
         streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=SM_COUNT)
     elif two_stages_splitk_mm_scenario(M, N, K):
         return splitk_mm(a, b, c, M, N, K, c_dtype, acc_type)
