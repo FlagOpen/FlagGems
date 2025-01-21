@@ -980,10 +980,10 @@ index_put:
       BLOCK_SIZE0: block_size0
       BLOCK_SIZE1: block_size1
   block_size0:
-  - 16
-  - 64
-  - 256
+  - 1
+  - 2
+  - 4
   block_size1:
-  - 16
-  - 64
-  - 256
+  - 1024
+  - 2048
+  - 4096
