@@ -974,3 +974,24 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 
     gems_assert_close(res_value, ref_value, dtype)
     gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.vdot
+@pytest.mark.parametrize("size", [63, 256, 1025, 4096])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_vdot(size, dtype):
+    np.random.seed(0)
+    np_input = np.random.uniform(-0.05, 0.05, (size)).astype(np.float32)
+    np_other = np.random.uniform(-0.05, 0.05, (size)).astype(np.float32)
+
+    input = torch.tensor(np_input, device="cuda", dtype=dtype)
+    other = torch.tensor(np_other, device="cuda", dtype=dtype)
+
+    ref_input = to_reference(input, False)
+    ref_other = to_reference(other, False)
+
+    torch_result = torch.vdot(ref_input, ref_other)
+    with flag_gems.use_gems():
+        flaggem_result = torch.vdot(input, other)
+
+    gems_assert_close(torch_result, flaggem_result, dtype)
