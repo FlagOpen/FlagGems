@@ -15,7 +15,9 @@ def heur_block_n(args):
 
 
 def heur_block_m(args):
-    return triton.next_power_of_2(args["M"])
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["M"]), 4096)
 
 
 @libentry()
@@ -42,6 +44,7 @@ def mv_kernel(
     stride_cn: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    buffer_size_limit: tl.constexpr,  # NOTE: `constexpr` so it can be used as a shape value.
 ):
     pid = tle.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
@@ -80,5 +83,6 @@ def mv(inp, vec):
             inp.stride(1),
             vec.stride(0),
             out.stride(0),
+            buffer_size_limit=256,
         )
     return out

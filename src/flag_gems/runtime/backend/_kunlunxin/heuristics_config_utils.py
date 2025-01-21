@@ -10,6 +10,16 @@ def argmax_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
+def argmin_heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def argmin_heur_block_n(args):
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
+
 def bmm_heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
@@ -62,12 +72,20 @@ def gather_heur_block_n(args):
     return min(2048, triton.next_power_of_2(args["N"]))
 
 
+def index_add_heur_block_m(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def index_add_heur_block_n(args):
+    return min(8192, args["N"])
+
+
 def index_select_heur_block_m(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
 
 
 def index_select_heur_block_n(args):
-    return 64  # args["N"]
+    return 256  # args["N"]
 
 
 def mm_heur_even_k(args):
@@ -194,10 +212,25 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def batch_norm_heur_block_m(args):
+    return min(2048, triton.next_power_of_2(args["batch_dim"]))
+
+
+def batch_norm_heur_block_n(args):
+    # A maximum of 16384 elements are loaded at once.
+    BLOCK_M = batch_norm_heur_block_m(args)
+    BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
+    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,
+    },
+    "argmin": {
+        "BLOCK_M": argmin_heur_block_m,
+        "BLOCK_N": argmin_heur_block_n,
     },
     "bmm": {
         "DIVISIBLE_M": bmm_heur_divisible_m,
@@ -219,6 +252,10 @@ HEURISTICS_CONFIGS = {
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
+    },
+    "index_add": {
+        "BLOCK_M": index_add_heur_block_m,
+        "BLOCK_N": index_add_heur_block_n,
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
@@ -260,5 +297,9 @@ HEURISTICS_CONFIGS = {
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,
+    },
+    "batch_norm": {
+        "BLOCK_M": batch_norm_heur_block_m,
+        "BLOCK_N": batch_norm_heur_block_n,
     },
 }
