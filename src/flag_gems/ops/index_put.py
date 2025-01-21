@@ -118,8 +118,8 @@ def generate_index_put_kernel(
         code.writeline(f"input_offset = {' + '.join(comp)}")
         comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
         comp += [
-            f"input_idx{i-indices_len} * values_stride{i}"
-            for i in range(index_rank, index_rank + inp_rank - indices_len)
+            f"input_idx{indices_len+i} * values_stride{index_rank+i}"
+            for i in range(inp_rank - indices_len)
         ]
         code.writeline(f"values_offset = {' + '.join(comp)}")
         code.newline()
