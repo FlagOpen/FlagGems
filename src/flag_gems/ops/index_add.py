@@ -99,7 +99,9 @@ def generate_index_add_kernel(
             code.writeline(
                 "add_on = tl.load(src + src_idx, mask=mask, other=0) * alpha"
             )
-            code.writeline("tl.atomic_add(out + input_idx, add_on, mask=input_mask)")
+            code.writeline(
+                "tl.atomic_add(out + input_idx, add_on, mask=input_mask, sem='relaxed')"
+            )
             # TODO: tl.atomic_add doesn't support bfloat16! The following method may be unsafe.
             # code.writeline("cur_out = tl.load(out + input_idx, mask=input_mask)")
             # code.writeline("tl.store(out + input_idx, cur_out + add_on, mask=input_mask)")
