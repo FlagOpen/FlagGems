@@ -1,4 +1,3 @@
-import enum
 import functools
 import operator
 from typing import Iterable, Sequence, Tuple
@@ -8,6 +7,7 @@ import triton
 import triton.language as tl
 
 from ..utils import triton_lang_extension as tle
+from .codegen_config_utils import get_heuristics_for_num_warps
 
 Shape = Tuple[int]
 Stride = Tuple[int]
@@ -190,12 +190,7 @@ def heuristics_for_tile_size(max_tile_size, *sizes):
 
 # This should be part of CodeGenConfig
 def heuristics_for_num_warps(tile_size):
-    if tile_size < 2048:
-        return 4
-    elif tile_size < 4096:
-        return 8
-    else:
-        return 16
+    return get_heuristics_for_num_warps(tile_size)
 
 
 def dim_compress(inp, dims):
@@ -226,21 +221,15 @@ def can_use_int32_index(a):
     return True
 
 
-class MemOverlap(enum.Enum):
-    No = 0
-    Yes = 1
-    TooHard = 2
-
-
 def has_internal_overlapping(x: torch.Tensor):
     if x.is_contiguous():
-        return MemOverlap.No
+        return False
     if torch.ops.aten.is_non_overlapping_and_dense(x):
-        return MemOverlap.No
+        return False
     for size, stride in zip(x.size(), x.stride()):
         if size > 1 and stride == 0:
-            return MemOverlap.Yes
-    return MemOverlap.TooHard
+            return True
+    return True
 
 
 def restride_dim(src, dim, shape, step=0, storage_offset=None):

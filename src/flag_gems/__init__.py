@@ -12,6 +12,7 @@ device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
+runtime.replace_customized_ops(globals())
 
 
 def enable(lib=aten_lib, unused=None, registrar=registrar):
@@ -24,6 +25,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),
             ("arange", arange, Autograd.disable),
+            ("batch_norm", batch_norm, Autograd.enable),
             ("bitwise_and.Tensor", bitwise_and_tensor, Autograd.disable),
             ("bitwise_and.Scalar", bitwise_and_scalar, Autograd.disable),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, Autograd.disable),
@@ -142,6 +144,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("min.dim", min_dim, Autograd.disable),
             ("amax", amax, Autograd.disable),
             ("argmax", argmax, Autograd.disable),
+            ("argmin", argmin, Autograd.disable),
             ("prod", prod, Autograd.disable),
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
@@ -160,9 +163,14 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("log_softmax.int", log_softmax, Autograd.enable),
             ("outer", outer, Autograd.enable),
             ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
+            ("nll_loss_forward", nll_loss_forward, Autograd.disable),
+            ("nll_loss_backward", nll_loss_backward, Autograd.disable),
+            ("nll_loss2d_forward", nll_loss2d_forward, Autograd.disable),
+            ("nll_loss2d_backward", nll_loss2d_backward, Autograd.disable),
             ("scatter.src", scatter, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
             ("gather", gather, Autograd.disable),
+            ("gather_backward", gather_backward, Autograd.disable),
             ("isclose", isclose, Autograd.disable),
             ("allclose", allclose, Autograd.disable),
             ("fill.Scalar", fill_scalar, Autograd.disable),
