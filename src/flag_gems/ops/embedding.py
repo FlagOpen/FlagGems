@@ -127,7 +127,12 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
 
 
 def embedding_backward(
-    grad_outputs, indices, num_weights, padding_idx, scale_grad_by_freq, sparse
+    grad_outputs,
+    indices,
+    num_weights,
+    padding_idx=-1,
+    scale_grad_by_freq=False,
+    sparse=False,
 ):
     logging.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"

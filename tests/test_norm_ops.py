@@ -11,7 +11,6 @@ from .accuracy_utils import (
     REDUCTION_SHAPES,
     gems_assert_close,
     to_reference,
-    to_result,
 )
 from .conftest import QUICK_MODE
 
@@ -43,20 +42,13 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    HW = H * W
-    res_inp = torch.randn(
-        size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=flag_gems.device)
     if wb_none:
         res_weight = None
         res_bias = None
     else:
-        res_weight = torch.randn(
-            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
-        res_bias = torch.randn(
-            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
+        res_weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+        res_bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
     eps = 1e-5
 
     ref_inp = to_reference(res_inp, True)
@@ -74,28 +66,81 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_grad = torch.randn_like(ref_out)
-    res_grad = to_result(ref_grad, dtype)
-    res_out = to_result(ref_out, dtype)
 
+@pytest.mark.group_norm
+@pytest.mark.native_group_norm
+@pytest.mark.parametrize(
+    "N, C, H, W, num_groups",
+    [
+        (16, 3, 16, 16, 1),
+        (32, 32, 32, 32, 8),
+        (1, 32, 32, 32, 8),
+        (1, 32, 32, 32, 16),
+        (1, 64, 32, 32, 16),
+        (1, 64, 32, 32, 32),
+        (1, 64, 32, 32, 64),
+    ],
+)
+@pytest.mark.parametrize("wb_none", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
+    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    res_mean = torch.randn([N, num_groups], dtype=dtype, device=flag_gems.device)
+    res_rstd = torch.randn([N, num_groups], dtype=dtype, device=flag_gems.device)
     if wb_none:
-        (ref_in_grad,) = torch.autograd.grad(
-            ref_out, ref_inp, ref_grad, retain_graph=True
-        )
-        with flag_gems.use_gems():
-            (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
+        res_weight = None
+        output_mask = [True, False, False]
     else:
-        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad, retain_graph=True
-        )
-        with flag_gems.use_gems():
-            (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-                res_out, (res_inp, res_weight, res_bias), res_grad
-            )
-        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
-        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
+        res_weight = torch.randn(C, dtype=dtype, device=flag_gems.device)
+        output_mask = [True, True, True]
+
+    ref_inp = to_reference(res_inp)
+    ref_grad = to_reference(res_grad)
+    ref_mean = to_reference(res_mean)
+    ref_rstd = to_reference(res_rstd)
+    ref_weight = to_reference(res_weight)
+
     group_size = C // num_groups
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
+    HxW = H * W
+
+    (
+        ref_in_grad,
+        ref_weight_grad,
+        ref_bias_grad,
+    ) = torch.ops.aten.native_group_norm_backward(
+        ref_grad,
+        ref_inp,
+        ref_mean,
+        ref_rstd,
+        ref_weight,
+        N,
+        C,
+        HxW,
+        num_groups,
+        output_mask,
+    )
+    with flag_gems.use_gems():
+        (
+            res_in_grad,
+            res_weight_grad,
+            res_bias_grad,
+        ) = torch.ops.aten.native_group_norm_backward(
+            res_grad,
+            res_inp,
+            res_mean,
+            res_rstd,
+            res_weight,
+            N,
+            C,
+            HxW,
+            num_groups,
+            output_mask,
+        )
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HxW)
+    if not wb_none:
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HxW)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HxW)
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="to_cpu unknown error")
@@ -122,24 +167,18 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_inp = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if wb_none:
         res_weight = None
         res_bias = None
     else:
-        res_weight = torch.randn(
-            shape[1:], dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
-        res_bias = torch.randn(
-            shape[1:], dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
+        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
     eps = 1e-5
 
-    ref_inp = to_reference(res_inp)
-    ref_weight = to_reference(res_weight)
-    ref_bias = to_reference(res_bias)
+    ref_inp = to_reference(res_inp, True)
+    ref_weight = to_reference(res_weight, True)
+    ref_bias = to_reference(res_bias, True)
 
     ref_out = torch.layer_norm(
         ref_inp,
@@ -159,27 +198,82 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_grad = torch.randn_like(ref_out)
-    res_grad = to_result(ref_grad)
-    res_out = to_result(ref_out)
 
+@pytest.mark.layer_norm
+@pytest.mark.native_layer_norm
+@pytest.mark.parametrize(
+    "shape",
+    (
+        [(1, 40999)]
+        if QUICK_MODE
+        else [
+            (200, 36),
+            (4096, 100),
+            (1, 40999),
+            (100, 40499),
+            (4096, 256),
+        ]
+    ),
+)
+@pytest.mark.parametrize("wb_none", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_layernorm_backward(shape, dtype, wb_none):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    res_mean = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+    res_rstd = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
     if wb_none:
-        (ref_in_grad,) = torch.autograd.grad(
-            ref_out, ref_inp, ref_grad, retain_graph=True
-        )
-        with flag_gems.use_gems():
-            (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
+        res_weight = None
+        res_bias = None
+        output_mask = [True, False, False]
     else:
-        (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
-            ref_out, (ref_inp, ref_weight, ref_bias), ref_grad, retain_graph=True
+        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        output_mask = [True, True, True]
+
+    normalized_shape = shape[1:]
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+    ref_mean = to_reference(res_mean, True)
+    ref_rstd = to_reference(res_rstd, True)
+    ref_weight = to_reference(res_weight, True)
+    ref_bias = to_reference(res_bias, True)
+
+    (
+        ref_in_grad,
+        ref_weight_grad,
+        ref_bias_grad,
+    ) = torch.ops.aten.native_layer_norm_backward(
+        ref_grad,
+        ref_inp,
+        normalized_shape,
+        ref_mean,
+        ref_rstd,
+        ref_weight,
+        ref_bias,
+        output_mask,
+    )
+    with flag_gems.use_gems():
+        (
+            res_in_grad,
+            res_weight_grad,
+            res_bias_grad,
+        ) = torch.ops.aten.native_layer_norm_backward(
+            res_grad,
+            res_inp,
+            normalized_shape,
+            res_mean,
+            res_rstd,
+            res_weight,
+            res_bias,
+            output_mask,
         )
-        with flag_gems.use_gems():
-            (res_in_grad, res_weight_grad, res_bias_grad) = torch.autograd.grad(
-                res_out, (res_inp, res_weight, res_bias), res_grad
-            )
-        gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=shape[0])
-        gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])
-    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=math.prod(shape[1:]))
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    if not wb_none:
+        gems_assert_close(res_weight_grad, ref_weight_grad, dtype)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
