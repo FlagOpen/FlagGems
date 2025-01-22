@@ -18,7 +18,6 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     to_reference,
-    to_result,
 )
 from .conftest import TO_CPU
 
@@ -1851,9 +1850,7 @@ def test_accuracy_logical_xor(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_threshold(shape, dtype):
-    res_inp = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(res_inp, True)
     threshold = 0
     value = 100
@@ -1864,12 +1861,23 @@ def test_accuracy_threshold(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_grad = torch.randn_like(ref_out)
-    res_grad = to_result(ref_grad, dtype)
-    res_out = to_result(ref_out, dtype)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad, retain_graph=True)
+@pytest.mark.threshold
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_threshold_backward(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    threshold = 0
+    value = 100
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.threshold_backward(ref_grad, ref_inp, threshold, value)
     with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
+        res_in_grad = torch.ops.aten.threshold_backward(
+            res_grad, res_inp, threshold, value
+        )
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)

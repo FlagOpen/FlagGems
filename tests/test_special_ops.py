@@ -22,7 +22,6 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     to_reference,
-    to_result,
 )
 from .conftest import TO_CPU
 
@@ -42,7 +41,9 @@ def test_accuracy_dropout(shape, p, dtype):
     if TO_CPU or shape == (1,):
         shape = (32768,)
     res_inp = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+        shape,
+        dtype=dtype,
+        device=flag_gems.device,
     )
     ref_inp = to_reference(res_inp)
 
@@ -73,13 +74,23 @@ def test_accuracy_dropout(shape, p, dtype):
             abs(num_equal - exp_equal) / exp_equal <= 0.05
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
 
-    ref_grad = torch.randn_like(ref_out)
-    res_grad = to_result(ref_grad)
-    res_out = to_result(ref_out)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad, retain_graph=True)
+@pytest.mark.dropout
+@pytest.mark.native_dropout
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_dropout_backward(shape, p, dtype):
+    res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_mask = torch.randint(0, 2, shape, dtype=torch.bool, device=flag_gems.device)
+    ref_grad = to_reference(res_grad)
+    ref_mask = to_reference(res_mask)
+
+    scale = 1.0 / (1.0 - p)
+
+    ref_in_grad = torch.ops.aten.native_dropout_backward(ref_grad, ref_mask, scale)
     with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, res_inp, res_grad)
+        res_in_grad = torch.ops.aten.native_dropout_backward(res_grad, res_mask, scale)
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
@@ -236,15 +247,33 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         )
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_grad = torch.randn_like(ref_out)
-    res_grad = to_result(ref_grad)
-    res_out = to_result(ref_out)
 
-    (ref_in_grad,) = torch.autograd.grad(
-        ref_out, ref_embedding, ref_grad, retain_graph=True
+@pytest.mark.embedding
+@pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
+@pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
+@pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
+@pytest.mark.parametrize("N", [8] if TO_CPU else [128, 256, 4096])
+@pytest.mark.parametrize("padding_idx", [-1, 1, 2])
+@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_embedding_backward(
+    EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype
+):
+    res_grad = torch.randn((Batch, M, N), device=flag_gems.device, dtype=dtype)
+    res_indices = torch.randint(0, EmbeddingSize, (Batch, M), device=flag_gems.device)
+    num_weights = EmbeddingSize
+    sparse = False
+
+    ref_grad = to_reference(res_grad)
+    ref_indices = to_reference(res_indices)
+
+    ref_in_grad = torch.ops.aten.embedding_backward(
+        ref_grad, ref_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
     )
     with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, res_embedding, res_grad)
+        res_in_grad = torch.ops.aten.embedding_backward(
+            res_grad, res_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
+        )
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
