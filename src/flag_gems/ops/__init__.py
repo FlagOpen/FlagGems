@@ -41,7 +41,7 @@ from .fill import fill_scalar, fill_tensor
 from .flip import flip
 from .full import full
 from .full_like import full_like
-from .gather import gather
+from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu
 from .groupnorm import group_norm
@@ -76,6 +76,12 @@ from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
 from .neg import neg
+from .nllloss import (
+    nll_loss2d_backward,
+    nll_loss2d_forward,
+    nll_loss_backward,
+    nll_loss_forward,
+)
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
@@ -179,6 +185,7 @@ __all__ = [
     "fill_tensor",
     "exponential_",
     "gather",
+    "gather_backward",
     "flip",
     "ones_like",
     "full_like",
@@ -290,4 +297,8 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "nll_loss_forward",
+    "nll_loss_backward",
+    "nll_loss2d_forward",
+    "nll_loss2d_backward",
 ]
