@@ -18,7 +18,8 @@ def tanh_kernel(x):
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_backward_kernel(y, dy):
-    return dy * (1.0 - y * y)
+    y = y.to(tl.float32)
+    return dy.to(tl.float32) * (1.0 - y * y)
 
 
 def tanh(self):
