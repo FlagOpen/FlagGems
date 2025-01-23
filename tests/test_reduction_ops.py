@@ -839,15 +839,13 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
             res_out, (inp, weight), out_grad
         )
 
-    gems_assert_close(
-        res_in_grad.to(dtype), ref_in_grad.to(dtype), dtype, reduce_dim=weight.shape[2]
-    )
+    gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=weight.shape[2])
 
     gems_assert_close(
-        res_weight_grad, ref_weight_grad.to(dtype), dtype, reduce_dim=weight.shape[0]
+        res_weight_grad, ref_weight_grad, dtype, reduce_dim=weight.shape[0]
     )
     if bias is not None:
-        gems_assert_close(res_bias_grad, ref_bias_grad.to(dtype), dtype)
+        gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
 
 
 SHAPE_DEPTHWISE = [
