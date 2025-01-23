@@ -775,7 +775,6 @@ SHAPE_CONV2D = [
 ]
 
 
-# @pytest.mark.skip("conv2d introduces failures, disable it temporarily")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
@@ -784,7 +783,6 @@ SHAPE_CONV2D = [
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
 def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation, bias):
-    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
