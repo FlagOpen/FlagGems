@@ -95,11 +95,11 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
         res_weight = torch.randn(C, dtype=dtype, device=flag_gems.device)
         output_mask = [True, True, True]
 
-    ref_inp = to_reference(res_inp)
-    ref_grad = to_reference(res_grad)
-    ref_mean = to_reference(res_mean)
-    ref_rstd = to_reference(res_rstd)
-    ref_weight = to_reference(res_weight)
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+    ref_mean = to_reference(res_mean, True)
+    ref_rstd = to_reference(res_rstd, True)
+    ref_weight = to_reference(res_weight, True)
 
     group_size = C // num_groups
     HxW = H * W
