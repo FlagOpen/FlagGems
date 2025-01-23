@@ -14,6 +14,7 @@ class TensorSelectBenchmark(GenericBenchmark):
         return ["gbps"]
 
     def set_more_shapes(self):
+        return []
         return super().set_more_shapes()
 
 
