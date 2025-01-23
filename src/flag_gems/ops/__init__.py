@@ -145,7 +145,7 @@ from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
-from .softmax import softmax
+from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
@@ -318,6 +318,7 @@ __all__ = [
     "sin",
     "sin_",
     "softmax",
+    "softmax_backward",
     "sub",
     "sub_",
     "tanh",
