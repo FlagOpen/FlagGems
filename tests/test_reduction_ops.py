@@ -365,7 +365,7 @@ def test_accuracy_log_softmax(shape, dtype, dim):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.log_softmax(ref_inp, dim=dim)
@@ -373,11 +373,27 @@ def test_accuracy_log_softmax(shape, dtype, dim):
         res_out = torch.nn.functional.log_softmax(inp, dim=dim)
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(res_out)
-    ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+@pytest.mark.log_softmax
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dim", [0, 1] if flag_gems.vendor_name == "cambricon" else [1])
+def test_accuracy_log_softmax_backward(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
+    res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_out = torch.randn_like(res_grad)
+    ref_grad = to_reference(res_grad, True)
+    ref_out = to_reference(res_out, True)
+
+    ref_in_grad = torch.ops.aten._log_softmax_backward_data(
+        ref_grad, ref_out, dim, ref_grad.dtype
+    )
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten._log_softmax_backward_data(
+            res_grad, res_out, dim, dtype
+        )
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
