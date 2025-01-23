@@ -1869,15 +1869,12 @@ def test_accuracy_threshold_backward(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_inp)
     threshold = 0
-    value = 100
 
     ref_inp = to_reference(res_inp, True)
     ref_grad = to_reference(res_grad, True)
 
-    ref_in_grad = torch.ops.aten.threshold_backward(ref_grad, ref_inp, threshold, value)
+    ref_in_grad = torch.ops.aten.threshold_backward(ref_grad, ref_inp, threshold)
     with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.threshold_backward(
-            res_grad, res_inp, threshold, value
-        )
+        res_in_grad = torch.ops.aten.threshold_backward(res_grad, res_inp, threshold)
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
