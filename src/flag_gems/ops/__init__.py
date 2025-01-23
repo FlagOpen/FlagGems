@@ -81,7 +81,7 @@ from .le import le, le_scalar
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
-from .log_softmax import log_softmax
+from .log_softmax import log_softmax, log_softmax_backward
 from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
@@ -344,6 +344,7 @@ __all__ = [
     "var_mean",
     "vector_norm",
     "log_softmax",
+    "log_softmax_backward",
     "outer",
     "cross_entropy_loss",
     "where_self_out",
