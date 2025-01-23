@@ -31,8 +31,8 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
-from .dropout import native_dropout
-from .embedding import embedding
+from .dropout import dropout, dropout_backward
+from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
@@ -43,8 +43,8 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
-from .gelu import gelu
-from .groupnorm import group_norm
+from .gelu import gelu, gelu_backward
+from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
@@ -55,7 +55,7 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
-from .layernorm import layer_norm
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .log_softmax import log_softmax
 from .logical_and import logical_and
@@ -109,8 +109,8 @@ from .rms_norm import rms_norm
 from .rsqrt import rsqrt
 from .scatter import scatter
 from .select_scatter import select_scatter
-from .sigmoid import sigmoid
-from .silu import silu
+from .sigmoid import sigmoid, sigmoid_backward
+from .silu import silu, silu_backward
 from .sin import sin
 from .slice_scatter import slice_scatter
 from .softmax import softmax
@@ -118,7 +118,8 @@ from .sort import sort
 from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
-from .tanh import tanh
+from .tanh import tanh, tanh_backward
+from .threshold import threshold, threshold_backward
 from .tile import tile
 from .topk import topk
 from .triu import triu
@@ -175,9 +176,11 @@ __all__ = [
     "zeros",
     "ones",
     "full",
-    "native_dropout",
+    "dropout",
+    "dropout_backward",
     "erf",
     "embedding",
+    "embedding_backward",
     "eq",
     "eq_scalar",
     "exp",
@@ -193,7 +196,9 @@ __all__ = [
     "ge",
     "ge_scalar",
     "gelu",
+    "gelu_backward",
     "group_norm",
+    "group_norm_backward",
     "gt",
     "gt_scalar",
     "index_select",
@@ -204,6 +209,7 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "layer_norm_backward",
     "weight_norm_interface",
     "weight_norm",
     "le",
@@ -241,11 +247,16 @@ __all__ = [
     "rsqrt",
     "scatter",
     "sigmoid",
+    "sigmoid_backward",
     "silu",
+    "silu_backward",
     "sin",
     "softmax",
     "sub",
     "tanh",
+    "tanh_backward",
+    "threshold",
+    "threshold_backward",
     "tile",
     "triu",
     "topk",
