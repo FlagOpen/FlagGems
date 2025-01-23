@@ -41,7 +41,12 @@ def swizzle_tile(
 
 
 @libentry()
-@triton.jit()
+@triton.heuristics(
+    {
+        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"]) == 0,
+    }
+)
+@triton.jit
 def first_wave(
     A,
     B,
@@ -64,8 +69,9 @@ def first_wave(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    EVEN_K: tl.constexpr,
 ):
-    pid = tl.program_id(0)  # FROM 0 TO 108
+    pid = tl.program_id(0)  # pid range from 0 to sm_count
     start_iter = pid * total_full_tiles_streamk + tl.minimum(
         pid, total_partial_tiles_streamk
     )
@@ -73,10 +79,11 @@ def first_wave(
         pid + 1, total_partial_tiles_streamk
     )
     while start_iter < last_iter:
+        # #Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
         end_iter = tl.minimum(
             start_iter + (iters_per_tile - start_iter % iters_per_tile), last_iter
         )
-        # where are we in the grid
+
         tile_id = start_iter // iters_per_tile
         pid_m, pid_n = swizzle_tile(
             tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M
@@ -109,9 +116,14 @@ def first_wave(
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
 
         for current_iter in range(start_iter, end_iter):
-            # TODO: when k is not even, we need to load the data from A and B with mask.
-            a = tl.load(A_ptr)
-            b = tl.load(B_ptr)
+            if EVEN_K:
+                a = tl.load(A_ptr)
+                b = tl.load(B_ptr)
+            else:
+                k_mask = (current_iter % iters_per_tile) * BLOCK_K + rk < K
+                _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
+                a = tl.load(A_ptr, mask=k_mask[None, :], other=_0)
+                b = tl.load(B_ptr, mask=k_mask[:, None], other=_0)
             acc += tl.dot(a, b, out_dtype=ACC_TYPE, allow_tf32=False)
             A_ptr += BLOCK_K * stride_ak
             B_ptr += BLOCK_K * stride_bk
@@ -138,7 +150,12 @@ def first_wave(
 
 
 @libentry()
-@triton.jit()
+@triton.heuristics(
+    {
+        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"]) == 0,
+    }
+)
+@triton.jit
 def classic_tiles_mm(
     A,
     B,
@@ -158,6 +175,7 @@ def classic_tiles_mm(
     BLOCK_K: tl.constexpr,
     ACC_TYPE: tl.constexpr,
     GROUP_M: tl.constexpr,
+    EVEN_K: tl.constexpr,
 ):
     # first wave has done more tiles than there are SMs, we adjust pid
     tile_id = tl.program_id(0) + total_tiles_streamk
@@ -181,12 +199,18 @@ def classic_tiles_mm(
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
     for k in range(0, tl.cdiv(K, BLOCK_K)):
-        a = tl.load(A)
-        b = tl.load(B)
+        if EVEN_K:
+            a = tl.load(A)
+            b = tl.load(B)
+        else:
+            k_remaining = K - k * BLOCK_K
+            _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
+            a = tl.load(A, mask=rk[None, :] < k_remaining, other=_0)
+            b = tl.load(B, mask=rk[:, None] < k_remaining, other=_0)
         acc += tl.dot(a, b, out_dtype=ACC_TYPE, allow_tf32=False)
         A += BLOCK_K * stride_ak
         B += BLOCK_K * stride_bk
-    acc = acc.to(tl.float32)  # restore C.dtype.element_ty
+    acc = acc.to(C.dtype.element_ty)
     # rematerialize rm and rn to save registers
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -199,7 +223,11 @@ def classic_tiles_mm(
     configs=runtime.get_tuned_config("mm_iobound") + runtime.get_tuned_config("mm"),
     key=["M", "N", "K", "stride_am", "stride_bk"],
 )
-@triton.heuristics(runtime.get_heuristic_config("mm_splitk"))
+@triton.heuristics(
+    {
+        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"]) == 0,
+    }
+)
 @triton.jit
 def mm_kernel_with_grouped_k(
     A,
@@ -259,9 +287,10 @@ def mm_kernel_with_grouped_k(
         offs_am = offs_m % M
 
     if stride_bk == 1:
-        offs_bn = offs_n % N
-    else:
         offs_bn = tl.max_contiguous(tl.multiple_of(offs_n % N, BLOCK_N), BLOCK_N)
+    else:
+        offs_bn = offs_n % N
+
     # pointers
     A_ptr = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
     B_ptr = B + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
@@ -372,8 +401,15 @@ def iobound_mm_kernel(
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = tl.arange(0, BLOCK_K)
 
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    if stride_am == 1:
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    else:
+        ram = rm % M
+
+    if stride_bk == 1:
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
+    else:
+        rbn = rn % N
 
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
@@ -672,7 +708,6 @@ def iobound_mm(a, b, c, M, N, K, acc_type):
             b.stride(1),
             c.stride(0),
             c.stride(1),
-            acc_type=acc_type,
         )
     return c
 
@@ -722,7 +757,7 @@ def mm(a, b):
 
     if mini_mm_scenario(a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD):
         return iobound_mm(a, b, c, M, N, K, acc_type)
-    elif streamk_scenario(a, b, M, N, K):
+    elif streamk_scenario(a, b, SM_COUNT):
         streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=SM_COUNT)
     elif two_stages_splitk_mm_scenario(M, N, K):
         return splitk_mm(a, b, c, M, N, K, c_dtype, acc_type)
