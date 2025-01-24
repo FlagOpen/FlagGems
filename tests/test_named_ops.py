@@ -61,6 +61,7 @@ reduction_ops_ut_map = {
     ),
     "argmax": ("test_accuracy_argmax",),
     "cumsum": ("test_accuracy_cumsum",),
+    "cumprod": ("test_accuracy_cumprod",),
     "rmsnorm": ("test_accuracy_rmsnorm",),
     "skip_layernorm": ("test_accuracy_skip_layernorm",),
     "skip_rmsnorm": ("test_accuracy_skip_rmsnorm",),

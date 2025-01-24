@@ -27,6 +27,7 @@ from .count_nonzero import count_nonzero
 from .cross_entropy_loss import cross_entropy_loss
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
+from .cumprod import cumprod
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -168,6 +169,7 @@ __all__ = [
     "cummin",
     "cumsum",
     "normed_cumsum",
+    "cumprod",
     "true_divide",
     "div_mode",
     "floor_divide",
