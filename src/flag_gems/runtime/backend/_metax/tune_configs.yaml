@@ -510,6 +510,43 @@ index_select:
   - 1024
   - 2048
   - 4096
+diff_1d:
+- gen: true
+  param_map:
+    META:
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_diff:
+  - 1
+  - 16
+  - 256
+  - 1024
+diff:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_DIFF: block_diff
+    num_warps: warps
+  warps:
+  - 4
+  - 8
+  - 16
+  block_m:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 32
+  block_diff:
+  - 1
+  - 16
+  - 256
+  - 1024
 layer_norm_persistent:
 - gen: true
   param_map:
