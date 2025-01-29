@@ -132,6 +132,10 @@ def mse_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = generate_tensor_input(shape, cur_dtype, device)
     yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield inp, target, {"reduction": "mean"}
+        yield inp, target, {"reduction": "sum"}
+        yield inp, target, {"reduction": "none"}
 
 
 @pytest.mark.parametrize(

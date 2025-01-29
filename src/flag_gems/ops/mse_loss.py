@@ -7,7 +7,7 @@ import triton
 import triton.language as tl
 
 from ..runtime import torch_device_fn
-from ..utils import libentry
+from ..utils import libentry, pointwise_dynamic
 from ..utils import triton_lang_extension as tle
 
 
@@ -58,6 +58,12 @@ def kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     tl.store(out, sum_val)
 
 
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def func(x, y):
+    return (x - y) * (x - y)
+
+
 class Reduction(Enum):
     NONE = 0
     MEAN = 1
@@ -67,7 +73,7 @@ class Reduction(Enum):
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     logging.debug("GEMS MSE LOSS")
     if reduction == Reduction.NONE.value:
-        return torch.pow(inp - target, 2)
+        return func(inp, target)
 
     M = inp.numel()
     dtype = inp.dtype
