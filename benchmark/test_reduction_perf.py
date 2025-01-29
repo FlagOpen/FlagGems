@@ -128,6 +128,12 @@ def cumsum_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
+def mse_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, target
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
@@ -177,6 +183,13 @@ def cumsum_input_fn(shape, cur_dtype, device):
             nll_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.NLLLoss,
+        ),
+        pytest.param(
+            "mse_loss",
+            torch.nn.functional.mse_loss,
+            mse_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.MSELoss,
         ),
     ],
 )
