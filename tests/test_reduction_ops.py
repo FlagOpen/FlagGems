@@ -929,6 +929,7 @@ def test_accuracy_depthwise2d(
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.mse_loss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
