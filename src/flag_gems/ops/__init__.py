@@ -8,7 +8,7 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .attention import scaled_dot_product_attention
-from .batch_norm import batch_norm
+from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_tensor,
@@ -151,6 +151,7 @@ __all__ = [
     "arange",
     "arange_start",
     "batch_norm",
+    "batch_norm_backward",
     "bitwise_and_tensor",
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",
