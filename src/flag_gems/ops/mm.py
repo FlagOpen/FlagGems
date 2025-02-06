@@ -130,7 +130,8 @@ def first_wave(
             C_ptr = C + (
                 rm[:, None] * stride_cm + rn[None, :] * stride_cn
             )  # compute inside the if/else to avoid spilling!
-            tl.store(C_ptr, acc)
+            mask = (rm < M)[:, None] & (rn < N)[None, :]
+            tl.store(C_ptr, acc, mask=mask)
             if (
                 start_iter % iters_per_tile != 0
             ):  # only if tile has been partially processed
@@ -141,7 +142,8 @@ def first_wave(
             C_ptr = C + (
                 rm[:, None] * stride_cm + rn[None, :] * stride_cn
             )  # compute inside the if/else to avoid spilling!
-            tl.atomic_add(C_ptr, acc, sem="relaxed")
+            mask = (rm < M)[:, None] & (rn < N)[None, :]
+            tl.atomic_add(C_ptr, acc, mask=mask, sem="relaxed")
         start_iter = end_iter
 
 
@@ -205,7 +207,8 @@ def classic_tiles_mm(
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-    tl.store(C, acc)
+    mask = (rm < M)[:, None] & (rn < N)[None, :]
+    tl.store(C, acc, mask=mask)
 
 
 @libentry()
@@ -728,7 +731,7 @@ def mm(a, b):
     if mini_mm_scenario(a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD):
         return iobound_mm(a, b, c, M, N, K, acc_type)
     elif streamk_scenario(a, b, M, N, K):
-        streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=SM_COUNT)
+        return streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=SM_COUNT)
     elif two_stages_splitk_mm_scenario(M, N, K):
         return splitk_mm(a, b, c, M, N, K, c_dtype, acc_type)
     else:
