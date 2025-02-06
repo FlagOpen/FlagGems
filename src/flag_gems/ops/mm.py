@@ -10,8 +10,13 @@ from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 try:
-    L2_CACHE_SIZE = torch_device_fn.get_device_properties(0).L2_cache_size
-    SM_COUNT = torch_device_fn.get_device_properties(0).multi_processor_count
+    device_id = torch_device_fn.current_device()
+except AttributeError:
+    device_id = 0
+
+try:
+    L2_CACHE_SIZE = torch_device_fn.get_device_properties(device_id).L2_cache_size
+    SM_COUNT = torch_device_fn.get_device_properties(device_id).multi_processor_count
 except AttributeError:
     L2_CACHE_SIZE = 40 * 1024 * 1024  # 40MB in bytes
     SM_COUNT = 82  # nvidia 3090
@@ -81,12 +86,12 @@ def first_wave(
         pid + 1, total_partial_tiles_streamk
     )
     while start_iter < last_iter:
-        # #Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
-        end_iter = tl.minimum(
-            start_iter + (iters_per_tile - start_iter % iters_per_tile), last_iter
-        )
+        remain_iters = start_iter % iters_per_tile
+        # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
+        end_iter = tl.minimum(start_iter + (iters_per_tile - remain_iters), last_iter)
 
         tile_id = start_iter // iters_per_tile
+
         pid_m, pid_n = swizzle_tile(
             tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M
         )
@@ -102,12 +107,12 @@ def first_wave(
         A_ptr = (
             A
             + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-            + BLOCK_K * stride_ak * (start_iter % iters_per_tile)
+            + BLOCK_K * stride_ak * remain_iters
         )
         B_ptr = (
             B
             + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
-            + BLOCK_K * stride_bk * (start_iter % iters_per_tile)
+            + BLOCK_K * stride_bk * remain_iters
         )
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=ACC_TYPE)
 
@@ -123,18 +128,14 @@ def first_wave(
             acc += tl.dot(a, b, out_dtype=ACC_TYPE, allow_tf32=False)
             A_ptr += BLOCK_K * stride_ak
             B_ptr += BLOCK_K * stride_bk
-
-        if (
-            end_iter % iters_per_tile == 0
-        ):  # last iteration of the tile always happens before its start on another SM
+        # last iteration of the tile always happens before its start on another SM
+        if end_iter % iters_per_tile == 0:
             C_ptr = C + (
                 rm[:, None] * stride_cm + rn[None, :] * stride_cn
             )  # compute inside the if/else to avoid spilling!
             mask = (rm < M)[:, None] & (rn < N)[None, :]
             tl.store(C_ptr, acc, mask=mask)
-            if (
-                start_iter % iters_per_tile != 0
-            ):  # only if tile has been partially processed
+            if remain_iters != 0:  # only if tile has been partially processed
                 tl.atomic_xchg(locks + tile_id, 1)
         else:
             while tl.atomic_cas(locks + tile_id, 1, 1) != 1:
@@ -504,8 +505,12 @@ def mini_mm_scenario(a, b, l2_cache_size=40 * 1024 * 1024, cache_usage_threshold
 
 def streamk_scenario(a, b, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
+    # Currently, the best configuration for streamk has only been tested on A100(capability[0] > 7).
+    # The optimal settings for other devices need to be determined through real testing.
+    capability = torch_device_fn.get_device_capability(device_id)
     return (
-        a.dtype in [torch.float16]
+        capability[0] > 7
+        and a.dtype in [torch.float16]
         and b.dtype in [torch.float16]
         and M > 1024
         and N > 1024
