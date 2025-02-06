@@ -1133,9 +1133,6 @@ batch_norm:
     META: {}
     num_warps: warps
   warps:
-  - 1
-  - 2
   - 4
   - 8
   - 16
-  - 32
