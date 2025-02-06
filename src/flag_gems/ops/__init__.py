@@ -90,6 +90,7 @@ from .outer import outer
 from .pad import constant_pad_nd, pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
+from .quantile import quantile
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -263,6 +264,7 @@ __all__ = [
     "argmin",
     "prod",
     "prod_dim",
+    "quantile",
     "var_mean",
     "vector_norm",
     "log_softmax",
