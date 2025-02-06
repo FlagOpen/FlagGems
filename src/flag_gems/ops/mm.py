@@ -17,6 +17,8 @@ except AttributeError:
     SM_COUNT = 82  # nvidia 3090
 CACHE_USAGE_THRESHOLD = 0.7
 
+# TODO: make ALLOW_TF32 as an input params.
+
 
 @triton.jit()
 def swizzle_tile(
@@ -93,14 +95,8 @@ def first_wave(
         rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
         rk = tl.arange(0, BLOCK_K)
 
-        if stride_am == 1:
-            ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-        else:
-            ram = rm % M
-        if stride_bk == 1:
-            rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-        else:
-            rbn = rn % N
+        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
         # pointers
         A_ptr = (
@@ -186,14 +182,8 @@ def classic_tiles_mm(
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = tl.arange(0, BLOCK_K)
     # pointers
-    if stride_am == 1:
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    else:
-        ram = rm % M
-    if stride_bk == 1:
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    else:
-        rbn = rn % N
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
@@ -281,15 +271,8 @@ def mm_kernel_with_grouped_k(
     k_start = pid_k * GROUP_K_LENGTH
     offs_k = k_start + tl.arange(0, BLOCK_K)
 
-    if stride_am == 1:
-        offs_am = tl.max_contiguous(tl.multiple_of(offs_m % M, BLOCK_M), BLOCK_M)
-    else:
-        offs_am = offs_m % M
-
-    if stride_bk == 1:
-        offs_bn = tl.max_contiguous(tl.multiple_of(offs_n % N, BLOCK_N), BLOCK_N)
-    else:
-        offs_bn = offs_n % N
+    offs_am = tl.max_contiguous(tl.multiple_of(offs_m % M, BLOCK_M), BLOCK_M)
+    offs_bn = tl.max_contiguous(tl.multiple_of(offs_n % N, BLOCK_N), BLOCK_N)
 
     # pointers
     A_ptr = A + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
@@ -362,14 +345,17 @@ def group_merge_kernel(
 
 @libentry()
 @libtuner(
-    # configs=runtime.get_tuned_config("mm_iobound"),
-    configs=runtime.get_tuned_config("mm_iobound") + runtime.get_tuned_config("mm"),
+    configs=runtime.get_tuned_config("mm_iobound"),
     # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
 )
-@triton.heuristics(runtime.get_heuristic_config("mm"))
+@triton.heuristics(
+    {
+        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"]) == 0,
+    }
+)
 @triton.jit
-def iobound_mm_kernel(
+def mm_kernel_iobound(
     A,
     B,
     C,
@@ -388,11 +374,9 @@ def iobound_mm_kernel(
     BLOCK_K: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    # matrix multiplication
+    # column major tile
     pid = tle.program_id(0)
-
     grid_m = tl.cdiv(M, BLOCK_M)
-
     pid_m = pid % grid_m
     pid_n = pid // grid_m
 
@@ -401,15 +385,8 @@ def iobound_mm_kernel(
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = tl.arange(0, BLOCK_K)
 
-    if stride_am == 1:
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    else:
-        ram = rm % M
-
-    if stride_bk == 1:
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    else:
-        rbn = rn % N
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
@@ -446,9 +423,13 @@ def iobound_mm_kernel(
     # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
 )
-@triton.heuristics(runtime.get_heuristic_config("mm"))
+@triton.heuristics(
+    {
+        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"]) == 0,
+    }
+)
 @triton.jit
-def mm_kernel(
+def mm_kernel_general(
     A,
     B,
     C,
@@ -468,30 +449,18 @@ def mm_kernel(
     GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    # matrix multiplication
-    pid = tle.program_id(0)
+    # swizzle pid to make better use of the L2 cache
+    pid_m_, pid_n_ = tle.program_id(0), tle.program_id(1)
+    num_pid_m, num_pid_n = tl.num_programs(0), tl.num_programs(1)
+    pid_m, pid_n = tl.swizzle2d(pid_m_, pid_n_, num_pid_m, num_pid_n, GROUP_M)
 
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // (group_size)
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     rk = tl.arange(0, BLOCK_K)
 
-    if stride_am == 1:
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    else:
-        ram = rm % M
-    if stride_bk == 1:
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    else:
-        rbn = rn % N
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
     A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
     B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
@@ -590,6 +559,7 @@ def streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=108):
 
     with torch_device_fn.device(a.device):
         first_wave[(tiles_per_wave,)](
+            a,
             b,
             c,
             M,
@@ -695,7 +665,7 @@ def iobound_mm(a, b, c, M, N, K, acc_type):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
-        iobound_mm_kernel[grid](
+        mm_kernel_iobound[grid](
             a,
             b,
             c,
@@ -708,19 +678,19 @@ def iobound_mm(a, b, c, M, N, K, acc_type):
             b.stride(1),
             c.stride(0),
             c.stride(1),
+            acc_type=acc_type,
         )
     return c
 
 
 def general_mm(a, b, c, M, N, K, acc_type):
     logging.debug("GEMS MM (general)")
-    # print("general_mm", M, N, K)
-    # launch kernel
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        triton.cdiv(M, META["BLOCK_M"]),
+        triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
-        mm_kernel[grid](
+        mm_kernel_general[grid](
             a,
             b,
             c,
@@ -757,7 +727,7 @@ def mm(a, b):
 
     if mini_mm_scenario(a, b, L2_CACHE_SIZE, CACHE_USAGE_THRESHOLD):
         return iobound_mm(a, b, c, M, N, K, acc_type)
-    elif streamk_scenario(a, b, SM_COUNT):
+    elif streamk_scenario(a, b, M, N, K):
         streamk_mm(a, b, c, M, N, K, c_dtype, acc_type, sm_count=SM_COUNT)
     elif two_stages_splitk_mm_scenario(M, N, K):
         return splitk_mm(a, b, c, M, N, K, c_dtype, acc_type)

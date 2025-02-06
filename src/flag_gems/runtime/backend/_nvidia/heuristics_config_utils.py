@@ -79,14 +79,6 @@ def index_select_heur_block_n(args):
     return max(m, 16)
 
 
-def mm_heur_even_k(args):
-    return args["K"] % args["BLOCK_K"] == 0
-
-
-def mm_splitk_heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
-
-
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -247,12 +239,6 @@ HEURISTICS_CONFIGS = {
     "index_select": {
         "BLOCK_M": index_select_heur_block_m,
         "BLOCK_N": index_select_heur_block_n,
-    },
-    "mm": {
-        "EVEN_K": mm_heur_even_k,
-    },
-    "mm_splitk": {
-        "EVEN_K": mm_splitk_heur_even_k,
     },
     "rand": {
         "BLOCK": rand_heur_block,
