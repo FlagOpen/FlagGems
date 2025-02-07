@@ -167,7 +167,11 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
-from .weightnorm import weight_norm, weight_norm_interface
+from .weightnorm import (
+    weight_norm,
+    weight_norm_interface,
+    weight_norm_interface_backward,
+)
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -274,6 +278,7 @@ __all__ = [
     "layer_norm",
     "layer_norm_backward",
     "weight_norm_interface",
+    "weight_norm_interface_backward",
     "weight_norm",
     "le",
     "le_scalar",
