@@ -116,7 +116,12 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("gelu_backward", gelu_backward, Autograd.disable),
             ("native_group_norm", group_norm, Autograd.disable),
             ("native_group_norm_backward", group_norm_backward, Autograd.disable),
-            ("_weight_norm_interface", weight_norm_interface, Autograd.enable),
+            ("_weight_norm_interface", weight_norm_interface, Autograd.disable),
+            (
+                "_weight_norm_interface_backward",
+                weight_norm_interface_backward,
+                Autograd.disable,
+            ),
             ("_weight_norm", weight_norm, Autograd.enable),
             ("gt.Tensor", gt, Autograd.disable),
             ("gt.Scalar", gt_scalar, Autograd.disable),

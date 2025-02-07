@@ -452,10 +452,8 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
-    v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    g = torch.randn(
-        shape[dim], dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    v = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    g = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
     reduce_size = v.numel() // shape[dim]
 
     ref_v = to_reference(v, True)
@@ -465,20 +463,32 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
     with flag_gems.use_gems():
         res_w_out, res_norm_out = torch._weight_norm_interface(v, g, dim)
     gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
-    gems_assert_close(
-        res_norm_out, ref_norm_out, res_norm_out.dtype, reduce_dim=reduce_size
-    )
+    gems_assert_close(res_norm_out, ref_norm_out, dtype, reduce_dim=reduce_size)
 
-    res_w_grad = torch.randn_like(v)
+
+@pytest.mark.weight_norm_interface
+@pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_weightnorm_interface_backward(shape, dtype, dim):
+    dim = dim % len(shape)
+    res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_v = torch.randn_like(res_w_grad)
+    res_g = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
+    res_norm = torch.randn_like(res_g)
+
     ref_w_grad = to_reference(res_w_grad, True)
+    ref_v = to_reference(res_v, True)
+    ref_g = to_reference(res_g, True)
+    ref_norm = to_reference(res_norm, True)
 
-    ref_v_grad, ref_g_grad = torch.autograd.grad(
-        ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
+    ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
+        ref_w_grad, ref_v, ref_g, ref_norm, dim
     )
-    res_v_grad, res_g_grad = torch.autograd.grad(
-        res_w_out, (v, g), grad_outputs=res_w_grad
-    )
-
+    with flag_gems.use_gems():
+        res_v_grad, res_g_grad = torch.ops.aten._weight_norm_interface_backward(
+            res_w_grad, res_v, res_g, res_norm, dim
+        )
+    reduce_size = res_v.numel() // shape[dim]
     gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size)
     gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
 
