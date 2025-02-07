@@ -423,17 +423,16 @@ def test_accuracy_weightnorm(shape, dtype, dim):
         res_w_out = torch._weight_norm(v, g, dim)
     gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
-    res_w_grad = torch.randn(
-        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_w_grad = to_reference(res_w_grad, True)
 
     ref_v_grad, ref_g_grad = torch.autograd.grad(
         ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
     )
-    res_v_grad, res_g_grad = torch.autograd.grad(
-        res_w_out, (v, g), grad_outputs=res_w_grad
-    )
+    with flag_gems.use_gems():
+        res_v_grad, res_g_grad = torch.autograd.grad(
+            res_w_out, (v, g), grad_outputs=res_w_grad
+        )
     gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size)
     gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size)
 
