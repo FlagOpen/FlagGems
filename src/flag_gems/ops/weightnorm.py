@@ -389,66 +389,83 @@ def weight_norm_except_dim_bwd_kernel(
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
-class WeightNormExceptDim(torch.autograd.Function):
+def weight_norm_except_dim(v, g, dim):
+    logging.debug("GEMS WEIGHT NORM EXCEPT DIM FORWARD")
+    v = v.contiguous()
+    output = torch.empty_like(v)
+    norm = torch.empty_like(g, dtype=torch.float32)
+    v_shape = [
+        math.prod(v.shape[:dim]),
+        v.shape[dim],
+        math.prod(v.shape[dim + 1 :]),
+    ]
+
+    grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
+
+    with torch_device_fn.device(v.device):
+        weight_norm_except_dim_kernel[grid](
+            output,
+            norm,
+            v,
+            g,
+            v_shape[0],
+            v_shape[1],
+            v_shape[2],
+            eps=torch.finfo(torch.float32).tiny,
+        )
+    return output, norm
+
+
+def weight_norm_except_dim_backward(grad, v, g, norm, dim):
+    logging.debug("GEMS WEIGHT NORM EXCEPT DIM BACKWARD")
+    grad = grad.contiguous()
+    v_grad = torch.empty_like(v)
+    g_grad = torch.empty_like(g)
+    v_shape = [
+        math.prod(v.shape[:dim]),
+        v.shape[dim],
+        math.prod(v.shape[dim + 1 :]),
+    ]
+
+    grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
+    with torch_device_fn.device(v.device):
+        weight_norm_except_dim_bwd_kernel[grid](
+            v_grad,
+            g_grad,
+            grad,
+            v,
+            g,
+            norm,
+            *v_shape,
+            eps=torch.finfo(torch.float32).tiny,
+        )
+    return v_grad, g_grad
+
+
+class WeightNorm(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, v, g, dim):
-        logging.debug("GEMS NORM FORWARD")
-        v = v.contiguous()
-        output = torch.empty_like(v)
-        norm = torch.empty_like(g, dtype=torch.float32)
-        v_shape = [
-            math.prod(v.shape[:dim]),
-            v.shape[dim],
-            math.prod(v.shape[dim + 1 :]),
-        ]
-
-        grid = lambda META: (triton.cdiv(v_shape[1], META["BLOCK_ROW_SIZE"]),)
-
-        with torch_device_fn.device(v.device):
-            weight_norm_except_dim_kernel[grid](
-                output,
-                norm,
-                v,
-                g,
-                v_shape[0],
-                v_shape[1],
-                v_shape[2],
-                eps=torch.finfo(torch.float32).tiny,
-            )
+    def forward(ctx, v, g, dim=0):
+        dim = dim % v.ndim
+        can_use_fused = dim == 0 or dim == v.ndim - 1
+        if can_use_fused:
+            output, norm = weight_norm_interface(v, g, dim)
+        else:
+            output, norm = weight_norm_except_dim(v, g, dim)
         ctx.save_for_backward(v, g, norm)
-        ctx.V_SHAPE = v_shape
+        ctx.dim = dim
+        ctx.can_use_fused = can_use_fused
         return output
 
     @staticmethod
     def backward(ctx, grad):
-        logging.debug("GEMS NORM BACKWARD")
-        grad = grad.contiguous()
         v, g, norm = ctx.saved_tensors
-        v_grad = torch.empty_like(v)
-        g_grad = torch.empty_like(g)
-
-        grid = lambda META: (triton.cdiv(ctx.V_SHAPE[1], META["BLOCK_ROW_SIZE"]),)
-        with torch_device_fn.device(v.device):
-            weight_norm_except_dim_bwd_kernel[grid](
-                v_grad,
-                g_grad,
-                grad,
-                v,
-                g,
-                norm,
-                ctx.V_SHAPE[0],
-                ctx.V_SHAPE[1],
-                ctx.V_SHAPE[2],
-                eps=torch.finfo(torch.float32).tiny,
-            )
+        dim = ctx.dim
+        if ctx.can_use_fused:
+            v_grad, g_grad = weight_norm_interface_backward(grad, v, g, norm, dim)
+        else:
+            v_grad, g_grad = weight_norm_except_dim_backward(grad, v, g, norm, dim)
         return v_grad, g_grad, None
 
 
 def weight_norm(v, g, dim=0):
-    dim = dim % v.ndim
-    can_use_fused = dim == 0 or dim == v.ndim - 1
-    if can_use_fused:
-        output, _ = weight_norm_interface(v, g, dim)
-        return output
-    else:
-        return WeightNormExceptDim.apply(v, g, dim)
+    return WeightNorm.apply(v, g, dim)
