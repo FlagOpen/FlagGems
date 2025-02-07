@@ -199,77 +199,73 @@ def weight_norm_bwd_kernel_first(
     tl.store(g_grad + row_offset, g_grad_value, mask=row_mask)
 
 
-class WeightNormInterface(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, v, g, dim):
-        logging.debug("GEMS WEIGHTNORM FORWARD")
-        v = v.contiguous()
-        g = g.contiguous()
-        output = torch.empty_like(v)
-        norm = torch.empty_like(g, dtype=torch.float32)
-        if dim == 0:
-            M = v.shape[0]
-            N = math.prod(v.shape[1:])
-            grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch_device_fn.device(v.device):
-                weight_norm_kernel_first[grid](
-                    output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-                )
-        elif dim == v.ndim - 1:
-            M = math.prod(v.shape[:-1])
-            N = v.shape[dim]
-            grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-            with torch_device_fn.device(v.device):
-                weight_norm_kernel_last[grid](
-                    output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
-                )
-        ctx.save_for_backward(v, g, norm)
-        ctx.DIM = dim
-        return output, norm.to(v.dtype)
+def weight_norm_interface(v, g, dim=0):
+    logging.debug("GEMS WEIGHTNORM FORWARD")
+    v = v.contiguous()
+    g = g.contiguous()
+    output = torch.empty_like(v)
+    norm = torch.empty_like(g)
+    if dim == 0:
+        M = v.shape[0]
+        N = math.prod(v.shape[1:])
+        grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+        with torch_device_fn.device(v.device):
+            weight_norm_kernel_first[grid](
+                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
+            )
+    elif dim == v.ndim - 1:
+        M = math.prod(v.shape[:-1])
+        N = v.shape[dim]
+        grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
+        with torch_device_fn.device(v.device):
+            weight_norm_kernel_last[grid](
+                output, norm, v, g, M, N, eps=torch.finfo(torch.float32).tiny
+            )
+    return output, norm
 
-    @staticmethod
-    def backward(ctx, w_grad, norm_grad):
-        logging.debug("GEMS WEIGHTNORM BACKWARD")
-        v, g, norm = ctx.saved_tensors
-        dim = ctx.DIM
-        w_grad = w_grad.contiguous()
-        norm_grad = norm_grad.contiguous()
-        v_grad = torch.empty_like(v)
-        g_grad = torch.empty_like(g)
 
-        if dim == 0:
-            M = v.shape[0]
-            N = math.prod(v.shape[1:])
-            grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch_device_fn.device(v.device):
-                weight_norm_bwd_kernel_first[grid](
-                    v_grad,
-                    g_grad,
-                    w_grad,
-                    v,
-                    g,
-                    norm,
-                    M,
-                    N,
-                    eps=torch.finfo(torch.float32).tiny,
-                )
-        elif dim == v.ndim - 1:
-            M = math.prod(v.shape[:dim])
-            N = v.shape[dim]
-            grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
-            with torch_device_fn.device(v.device):
-                weight_norm_bwd_kernel_last[grid](
-                    v_grad,
-                    g_grad,
-                    w_grad,
-                    v,
-                    g,
-                    norm,
-                    M,
-                    N,
-                    eps=torch.finfo(torch.float32).tiny,
-                )
-        return v_grad, g_grad, None
+def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
+    logging.debug("GEMS WEIGHTNORM BACKWARD")
+    w_grad = w_grad.contiguous()
+    saved_v = saved_v.contiguous()
+    saved_g = saved_g.contiguous()
+    saved_norms = saved_norms.contiguous()
+    v_grad = torch.empty_like(saved_v)
+    g_grad = torch.empty_like(saved_g)
+
+    if dim == 0:
+        M = saved_v.shape[0]
+        N = math.prod(saved_v.shape[1:])
+        grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
+        with torch_device_fn.device(saved_v.device):
+            weight_norm_bwd_kernel_first[grid](
+                v_grad,
+                g_grad,
+                w_grad,
+                saved_v,
+                saved_g,
+                saved_norms,
+                M,
+                N,
+                eps=torch.finfo(torch.float32).tiny,
+            )
+    elif dim == saved_v.ndim - 1:
+        M = math.prod(saved_v.shape[:dim])
+        N = saved_v.shape[dim]
+        grid = lambda META: (triton.cdiv(N, META["BLOCK_COL_SIZE"]),)
+        with torch_device_fn.device(saved_v.device):
+            weight_norm_bwd_kernel_last[grid](
+                v_grad,
+                g_grad,
+                w_grad,
+                saved_v,
+                saved_g,
+                saved_norms,
+                M,
+                N,
+                eps=torch.finfo(torch.float32).tiny,
+            )
+    return v_grad, g_grad
 
 
 @libentry()
@@ -446,10 +442,6 @@ class WeightNormExceptDim(torch.autograd.Function):
                 eps=torch.finfo(torch.float32).tiny,
             )
         return v_grad, g_grad, None
-
-
-def weight_norm_interface(v, g, dim=0):
-    return WeightNormInterface.apply(v, g, dim)
 
 
 def weight_norm(v, g, dim=0):
