@@ -82,9 +82,12 @@ class LibTuner(triton.runtime.Autotuner):
             attrs = -5 if major_version == 2 else -4
             for k, v in cfg_ls[:attrs]:
                 config.kwargs[k] = eval(v)
-            config.num_warps = eval(cfg_ls[attrs][1])
-            config.num_ctas = eval(cfg_ls[attrs + 1][1])
-            config.num_stages = eval(cfg_ls[attrs + 2][1])
+            [[_, num_warps]] = filter(lambda x: x[0] == "num_warps", cfg_ls)
+            [[_, num_ctas]] = filter(lambda x: x[0] == "num_ctas", cfg_ls)
+            [[_, num_stages]] = filter(lambda x: x[0] == "num_stages", cfg_ls)
+            config.num_warps = eval(num_warps)
+            config.num_ctas = eval(num_ctas)
+            config.num_stages = eval(num_stages)
             if major_version == 2:
                 config.enable_warp_specialization = eval(cfg_ls[attrs + 3][1])
                 config.enable_persistent = eval(cfg_ls[attrs + 4][1])
