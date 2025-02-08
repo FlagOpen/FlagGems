@@ -935,8 +935,8 @@ def test_accuracy_depthwise2d(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mse_loss(shape, dtype, reduction):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    target = torch.randn(shape, dtype=dtype, device="cuda")
 
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
