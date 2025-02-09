@@ -6,8 +6,10 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
+from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
+
+from .scatter import scatter_
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -42,28 +44,18 @@ def generate_gather_kernel(
 
     # signature
     code.writeline(f"def {kernel_name}(")
-    function_ns = NameSpace()
     with code.indent():
         if rank > 0:
             code.writeline("inp,")
-            function_ns.create_name("inp")
             code.writeline("out,")
-            function_ns.create_name("out")
             code.writeline("index,")
-            function_ns.create_name("index")
 
-            for i in range(rank):
-                function_ns.create_name(f"inp_stride_{i}")
             stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for inp")
 
-            for i in range(rank):
-                function_ns.create_name(f"index_stride_{i}")
             stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for index")
 
-            for i in range(rank):
-                function_ns.create_name(f"index_shape_{i}")
             shape_args = ", ".join(f"index_shape_{i}: int" for i in range(rank))
             code.writeline(f"{shape_args}, # shape for index")
 
@@ -254,3 +246,9 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
     _gather_func(inp_strided, out, index, dim, stride_dim, M, N)
     return out
+
+
+def gather_backward(grad, self, dim, index, sparse_grad):
+    logging.debug("GEMS GATHER BACKWARD")
+    result = grad.new_zeros(self.shape)
+    return scatter_(result, dim, index, grad, reduce="add")
