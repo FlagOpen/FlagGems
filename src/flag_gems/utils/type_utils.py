@@ -1,7 +1,10 @@
+import functools
+
 import torch
 from torch._prims_common import ELEMENTWISE_TYPE_PROMOTION_KIND, elementwise_dtypes
 
 
+@functools.lru_cache(maxsize=None)
 def type_promotion(*args, type_promotion: ELEMENTWISE_TYPE_PROMOTION_KIND):
     computation_dtype, result_dtype = elementwise_dtypes(
         *args,
