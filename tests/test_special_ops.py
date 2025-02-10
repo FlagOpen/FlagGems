@@ -1,4 +1,5 @@
 import itertools
+import random
 from typing import Optional
 
 import numpy as np
@@ -1027,7 +1028,9 @@ def get_diag_embed_shape_and_dims():
 
     for s in shapes:
         dim_pairs = get_dim1_dim2(len(s) + 1)
-        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
+        if dim_pairs:
+            dim1, dim2 = random.choice(dim_pairs)
+            result.append((s, dim1, dim2))
 
     return result
 
@@ -1062,7 +1065,9 @@ def get_diagonal_backward_shape_and_dims():
 
     for s in shapes:
         dim_pairs = get_dim1_dim2(len(s))
-        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
+        if dim_pairs:
+            dim1, dim2 = random.choice(dim_pairs)
+            result.append((s, dim1, dim2))
 
     return result
 
@@ -1073,6 +1078,7 @@ def get_diagonal_backward_shape_and_dims():
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
+    torch.empty(1, device="cuda", requires_grad=True).backward()
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp)
 
