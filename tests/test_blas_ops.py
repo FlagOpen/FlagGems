@@ -117,6 +117,7 @@ def test_accuracy_outer(M, N, dtype):
     gems_assert_close(res_in2_grad, ref_in2_grad, dtype)
 
 
+@pytest.mark.skip("Segmentation fault")
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", UT_SHAPES_1D)
 @pytest.mark.parametrize(

@@ -204,7 +204,6 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skip("cost too long")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):

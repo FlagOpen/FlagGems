@@ -231,7 +231,6 @@ def test_slice_scatter_perf():
     bench.run()
 
 
-@pytest.mark.skip()
 @pytest.mark.select_scatter
 def test_select_scatter_perf():
     def select_scatter_input_fn(shape, dtype, device):
