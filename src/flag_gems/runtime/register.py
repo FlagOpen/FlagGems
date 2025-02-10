@@ -44,9 +44,6 @@ class Register:
         self.lib.impl(key, fn, device_key)
 
     def for_each(self):
-        self.extend_configs_dict = {}
-        for item in self.vendor_extend_configs:
-            self.extend_configs_dict[item[0]] = item
         try:
             for key, func, has_backward in self.config:
                 self.register_impl(key, func, has_backward)

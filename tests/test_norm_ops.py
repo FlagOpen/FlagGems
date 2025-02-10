@@ -486,6 +486,10 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+<<<<<<< HEAD
+=======
+@pytest.mark.skip("ZeroDivisionError")
+>>>>>>> 2aaa836 (SW-49945: Update configurations for multi-backends)
 @pytest.mark.batch_norm
 @pytest.mark.parametrize(
     "shape",

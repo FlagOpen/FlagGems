@@ -168,9 +168,14 @@ def get_heuristic_config(vendor_name=None):
 
 
 def get_heuristic_config(vendor_name=None):
-    global vendor_module
-    get_vendor_module(vendor_name)
-    return vendor_module.HEURISTICS_CONFIGS
+    # import_vendor_extra_lib(vendor_name)
+    global heuristic_config_module
+    heuristic_config_module = importlib.import_module(
+        f"_{vendor_name}.heuristics_config_utils"
+    )
+    if hasattr(heuristic_config_module, "HEURISTICS_CONFIGS"):
+        return heuristic_config_module.HEURISTICS_CONFIGS
+    return None
 
 
 def get_tune_config(vendor_name=None):

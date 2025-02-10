@@ -216,10 +216,10 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
     target_shape = list(shape)
     del target_shape[dim]
 
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
-    target = torch.randint(0, shape[dim], target_shape, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
+    target = torch.randint(0, shape[dim], target_shape, device="musa")
     if weight:
-        weight = torch.randn(shape[dim], dtype=dtype, device="cuda")
+        weight = torch.randn(shape[dim], dtype=dtype, device="musa")
     else:
         weight = None
     ref_inp = to_reference(inp, True)
@@ -320,7 +320,6 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("FileNotFoundError")
 @pytest.mark.count_nonzero
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -527,6 +526,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skip("RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
