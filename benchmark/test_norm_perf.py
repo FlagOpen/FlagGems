@@ -122,6 +122,14 @@ def batchnorm_input_fn(shape, dtype, device):
     ],
 )
 def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
+    if op_name == "layer_norm":
+        pytest.skip("[TritonXPU][TODO-FIX] layer_norm error: 'scf.for'.")
+    elif op_name == "instance_norm":
+        pytest.skip(
+            "[TritonXPU][XPytorch] instance_norm [XDNN_PYTORCH][native_batch_norm.cpp:459]."
+        )
+    elif op_name == "batch_norm":
+        pytest.skip("[TritonXPU][TODO-FIX] batch_norm error: 'scf.for'.")
     bench = NormBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )

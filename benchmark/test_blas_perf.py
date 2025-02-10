@@ -132,6 +132,10 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn):
+    if op_name in ["mm", "addmm", "bmm"]:
+        pytest.skip("[TritonXPU] wait for mm patch")
+    elif op_name == "mv":
+        pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )

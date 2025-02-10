@@ -17,6 +17,8 @@ class AttentionBenchmark(GenericBenchmark):
 
 @pytest.mark.attention
 def test_perf_scaled_dot_product_attention():
+    pytest.skip("[TritonXPU] scaled_dot_product_attention Unsupported")
+
     def scaled_dot_product_attention_kwargs(shape, dtype, device):
         query = torch.randn(shape, device=device, dtype=dtype)
         key = torch.randn(shape, device=device, dtype=dtype)

@@ -73,6 +73,8 @@ def index_select_gbps(bench_fn_args, latency):
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
     if op_name == "masked_select":
         pytest.skip("[TritonXPU] masked_select tl.cumsum Unsupported")
+    elif op_name == "index_select":
+        pytest.skip("[TritonXPU] 700 runtime error")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -130,6 +132,8 @@ def test_perf_scatter():
 
 @pytest.mark.gather
 def test_perf_gather():
+    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
+
     def gather_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
 
@@ -172,6 +176,8 @@ def slice_scatter_gbps(bench_fn_args, latency):
 
 @pytest.mark.slice_scatter
 def test_slice_scatter_perf():
+    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
+
     def slice_scatter_input_fn(shape, dtype, device):
         dim = 0 if len(shape) == 1 else 1
         start = 0

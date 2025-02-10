@@ -92,6 +92,10 @@ def test_isin_perf():
 
 @pytest.mark.unique
 def test_perf_unique():
+    pytest.skip(
+        "[TritonXPU][XDNN_PYTORCH][sort.cpp:551] scalar type of (ret_data, ret_index) : (kint16, kint64)"
+    )
+
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield inp, {"sorted": True, "return_inverse": True, "return_counts": False},
@@ -107,6 +111,10 @@ def test_perf_unique():
 
 @pytest.mark.sort
 def test_perf_sort():
+    pytest.skip(
+        "[TritonXPU][XDNN_PYTORCH][sort.cpp:624] scalar type of (ret_data, ret_index) : (kint16, kint64) "
+    )
+
     class SortBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
             return [(1024, 1), (1024, 512)]
@@ -236,6 +244,8 @@ def test_perf_upsample_bicubic2d_aa():
 
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
+    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
+
     def upsample_nearest2d_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
@@ -269,6 +279,10 @@ class ConvBenchmark(GenericBenchmark):
 
 @pytest.mark.conv2d
 def test_perf_conv2d():
+    pytest.skip(
+        "[TritonXPU][XDNN_PYTORCH][convolution.cpp:435]  (kbfloat16, kbfloat16, kbfloat16, kint16)"
+    )
+
     def conv2d_input_fn(shape, dtype, device):
         (
             batch,
@@ -327,6 +341,8 @@ def test_perf_diag():
 
 @pytest.mark.diag_embed
 def test_perf_diag_embed():
+    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
+
     def diag_embed_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield {"input": inp},

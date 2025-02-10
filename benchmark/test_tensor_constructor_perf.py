@@ -83,6 +83,8 @@ tensor_constructor_operations = [
     ],
 )
 def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
+    if op_name == "masked_fill":
+        pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
     bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
     bench.run()
 

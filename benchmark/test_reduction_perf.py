@@ -72,6 +72,16 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
+    if op_name == "var_mean":
+        pytest.skip(
+            "[TritonXPU][TODO FIX] var_mean error: op requires the same type for all operands and results"
+        )
+    elif op_name == "log_softmax":
+        pytest.skip(
+            "[TritonXPU][TODO FIX] log_softmax error:  size mismatch when packing elements for LLVM struct"
+        )
+    elif op_name in ["argmin", "prod", "log_softmax"]:
+        pytest.skip("[TritonXPU][TODO FIX] Failed to tune buffer size.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -169,10 +179,10 @@ def cumsum_input_fn(shape, cur_dtype, device):
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if op_name == "CrossEntropyLoss":
         pytest.skip("[TritonXPU] CrossEntropyLoss tl.reduce(axis=0) Unsupported")
-    elif op_name == "nonzero":
-        pytest.skip("[TritonXPU] nonzero tl.cumsum Unsupported")
-    elif op_name == "cumsum":
-        pytest.skip("[TritonXPU] cumsum tl.cumsum Unsupported")
+    elif op_name in ["cumsum", "cummin", "nonzero"]:
+        pytest.skip("[TritonXPU] tl.cumsum Unsupported")
+    elif op_name == "log_softmax":
+        pytest.skip("[TritonXPU][TODO FIX] Failed to tune buffer size.")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
@@ -181,6 +191,8 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
+    pytest.skip("[TritonXPU] tl.cumsum Unsupported")
+
     def count_nonzero_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
         dim = random.choice([None, 0, 1])
