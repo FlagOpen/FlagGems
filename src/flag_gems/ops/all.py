@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
@@ -20,8 +19,24 @@ def reduce_all(a, b):
     return a and b
 
 
+def heur_m_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def heur_n_block_size(args):
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192 * 4)
+
+
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
 @triton.jit
 def all_kernel_dim(
     inp,
