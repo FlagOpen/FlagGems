@@ -277,6 +277,7 @@ class ConvBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(True, reason="Conv2d not registered yet")
 @pytest.mark.conv2d
 def test_perf_conv2d():
     pytest.skip(
