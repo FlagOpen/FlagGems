@@ -9,22 +9,6 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-
-def heur_block_size(arg):
-    def lagest_factor(args):
-        n = args[arg]
-        if n <= 1:
-            return n
-        ret = 1
-        for i in range(min(n, 256), 1, -1):
-            if n % i == 0:
-                ret = i
-                break
-        return ret
-
-    return lagest_factor
-
-
 def heur_group_m(args):
     return 1
 
@@ -42,16 +26,12 @@ def heur_divisible_k(args):
 
 
 @libentry()
-# @triton.autotune(
-#     configs=runtime.get_tuned_config("bmm"),
-#     key=["M", "N", "K"],
-# )
-# @triton.heuristics(runtime.get_heuristic_config("bmm"))
+@triton.autotune(
+    configs=[], generate_configs="bmm",
+    key=["M", "N", "K"],
+)
 @triton.heuristics(
     {
-        "TILE_M": heur_block_size("M"),
-        "TILE_N": heur_block_size("N"),
-        "TILE_K": heur_block_size("K"),
         "GROUP_M": heur_group_m,
         "DIVISIBLE_M": heur_divisible_m,
         "DIVISIBLE_N": heur_divisible_n,

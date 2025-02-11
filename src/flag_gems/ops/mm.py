@@ -9,40 +9,20 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-
-def heur_block_size(arg):
-    def lagest_factor(args):
-        n = args[arg]
-        if n <= 1:
-            return n
-        ret = 1
-        for i in range(min(n, 256), 1, -1):
-            if n % i == 0:
-                ret = i
-                break
-        return ret
-
-    return lagest_factor
-
-
 def heur_split_k(args):
     return 1
-
 
 def heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
 @libentry()
-# @libtuner(
-#     configs=runtime.get_tuned_config("mm"),
-#     key=["M", "N", "K"],
-# )
+@triton.autotune(
+    configs=[], generate_configs="mm",
+    key=["M", "N", "K"],
+)
 @triton.heuristics(
     {
-        "BLOCK_M": heur_block_size("M"),
-        "BLOCK_N": heur_block_size("N"),
-        "BLOCK_K": heur_block_size("K"),
         "SPLIT_K": heur_split_k,
         "EVEN_K": heur_even_k,
     }
