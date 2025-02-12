@@ -244,7 +244,7 @@ def test_perf_upsample_bicubic2d_aa():
 
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
-    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
+    pytest.skip("[TritonXPU][TODO-FIX] Fatal Python error: Segmentation fault.")
 
     def upsample_nearest2d_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
@@ -341,8 +341,6 @@ def test_perf_diag():
 
 @pytest.mark.diag_embed
 def test_perf_diag_embed():
-    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
-
     def diag_embed_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield {"input": inp},

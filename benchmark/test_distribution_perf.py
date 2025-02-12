@@ -35,8 +35,6 @@ def normal_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_distribution_benchmark(op_name, torch_op, input_fn):
-    if op_name == "exponential_":
-        pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
     bench = GenericBenchmark(
         input_fn=input_fn,
         op_name=op_name,

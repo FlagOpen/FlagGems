@@ -6,7 +6,7 @@ import torch
 import triton
 from triton.runtime.jit import JITFunction
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
     all_c_contiguous,
@@ -945,6 +945,7 @@ class WrapperGenerator:
                         code.writeline(f"tile_size{i}=tile_sizes[{i}],")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
+                code.writeline("buffer_size_limit=2048,")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -991,6 +992,7 @@ class WrapperGenerator:
                     code.writeline("tile_size=tile_size,")
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
+                code.writeline("buffer_size_limit=2048,")
             code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):
@@ -1254,7 +1256,7 @@ class PointwiseDynamicFunction:
             f"{'bptr_' if (not self.config.prefer_1d_tile and self.config.prefer_block_pointer) else ''}"
             f"pid_{self.pid}.py"
         )
-        with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+        with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
             f.write(code.getvalue())
 
         # load

@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import has_internal_overlapping, restride_dim
 
@@ -33,12 +33,11 @@ def generate_scatter_kernel(
 
     # the autotune function
 
-    code.newline()
-    code.newline()
-
     code.writeline("def heur_block(args):")
     with code.indent():
-        code.writeline("return 128")
+        code.writeline(
+            'return triton.next_power_of_2(triton.cdiv(triton.cdiv(args["N"], 12), 4))'
+        )  # LOOP = 4
     code.newline()
     code.newline()
 
@@ -49,36 +48,23 @@ def generate_scatter_kernel(
     code.newline()
 
     # the decorators
-    # code.writeline("@triton.heuristics(")
-    # with code.indent():
-    #     code.writeline("{")
-    #     with code.indent():
-    #         code.writeline('"BLOCK": heur_block,')
-    #         code.writeline('"LOOP": loop_count,')
-    #     code.writeline("}")
-    # code.writeline(")")
-    # inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
-    # index_stride_vars = ",".join(f"'index_stride_{i}'" for i in range(rank))
-    # src_stride_vars = ",".join(f"'src_stride_{i}'" for i in range(rank))
-    # shape_vars = ",".join(f"'shape_{i}'" for i in range(rank))
-    # code.writeline(
-    #     f"@triton.jit(do_not_specialize=['N','stride_dim','inp_size_dim',"
-    #     f"{inp_stride_vars},{index_stride_vars},{src_stride_vars},{shape_vars}])"
-    # )
-
     code.writeline("@libentry()")
-    # code.writeline(
-    #     '@triton.autotune(configs=runtime.get_triton_config("scatter"), key=["M", "N"])'
-    # )
     code.writeline("@triton.heuristics(")
     with code.indent():
-        code.writeline("values={")
+        code.writeline("{")
         with code.indent():
-            code.writeline('"BLOCK_M": heur_block_m,')
-            code.writeline('"BLOCK_N": heur_block_n,')
-        code.writeline("},")
+            code.writeline('"BLOCK": heur_block,')
+            code.writeline('"LOOP": loop_count,')
+        code.writeline("}")
     code.writeline(")")
-    code.writeline("@triton.jit")
+    inp_stride_vars = ",".join(f"'inp_stride_{i}'" for i in range(rank))
+    index_stride_vars = ",".join(f"'index_stride_{i}'" for i in range(rank))
+    src_stride_vars = ",".join(f"'src_stride_{i}'" for i in range(rank))
+    shape_vars = ",".join(f"'shape_{i}'" for i in range(rank))
+    code.writeline(
+        f"@triton.jit(do_not_specialize=['N','stride_dim','inp_size_dim',"
+        f"{inp_stride_vars},{index_stride_vars},{src_stride_vars},{shape_vars}])"
+    )
 
     # signature
     code.writeline(f"def {kernel_name}(")
@@ -89,22 +75,16 @@ def generate_scatter_kernel(
             code.writeline("inp,")
             code.writeline("out,")
 
-            stride_args = ", ".join(
-                f"inp_stride_{i}: tl.constexpr" for i in range(rank)
-            )
+            stride_args = ", ".join(f"inp_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for inp")
 
-            stride_args = ", ".join(
-                f"index_stride_{i}: tl.constexpr" for i in range(rank)
-            )
+            stride_args = ", ".join(f"index_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for index")
 
-            stride_args = ", ".join(
-                f"src_stride_{i}: tl.constexpr" for i in range(rank)
-            )
+            stride_args = ", ".join(f"src_stride_{i}: int" for i in range(rank))
             code.writeline(f"{stride_args}, # stride for src")
 
-            shape_args = ", ".join(f"shape_{i}: tl.constexpr" for i in range(rank))
+            shape_args = ", ".join(f"shape_{i}: int" for i in range(rank))
             code.writeline(f"{shape_args}, # shape")
             code.writeline("inp_size_dim,")
             code.writeline("stride_dim,")
@@ -315,7 +295,7 @@ class ScatterFunction:
 
             file_name = f"scatter_rank_{key}_pid_{self.pid}.py"
 
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load

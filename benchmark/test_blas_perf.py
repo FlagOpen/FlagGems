@@ -138,8 +138,6 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn):
-    if op_name == "mv":
-        pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
     )
@@ -191,6 +189,8 @@ class VdotBenchmark(BlasBenchmark):
 
 @pytest.mark.vdot
 def test_vdot_benchmark():
+    pytest.skip("[TritonXPU] Xpytorch randn complex64 type error")
+
     def vdot_input_fn(m, cur_dtype, device):
         inp1 = torch.randn([m], dtype=cur_dtype, device=device)
         inp2 = torch.randn([m], dtype=cur_dtype, device=device)

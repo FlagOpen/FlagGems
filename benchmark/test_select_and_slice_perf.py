@@ -79,7 +79,7 @@ def index_select_gbps(bench_fn_args, latency):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
     if op_name == "masked_select":
-        pytest.skip("[TritonXPU] masked_select tl.cumsum Unsupported")
+        pytest.skip("[TritonXPU] tl.cumsum Unsupported")
     elif op_name == "index_select":
         pytest.skip("[TritonXPU] 700 runtime error")
     bench = TensorSelectBenchmark(
@@ -173,7 +173,7 @@ def gather_input_fn(shape, dtype, device):
 
 @pytest.mark.gather
 def test_perf_gather():
-    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
+    pytest.skip("[TritonXPU][TODO-FIX] 2D Shape[-1] <= core_num * buffer_size Limit.")
     bench = TensorSelectBenchmark(
         op_name="gather",
         torch_op=torch.gather,
@@ -193,6 +193,9 @@ def slice_scatter_gbps(bench_fn_args, latency):
 
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
+    pytest.skip(
+        "[RuntimeError: Check ret == 0 failed, scatter_add_, Not implement api for xdnn.]"
+    )
     bench = TensorSelectBenchmark(
         op_name="gather_backward",
         torch_op=torch.gather,
@@ -206,8 +209,6 @@ def test_perf_gather_backward():
 
 @pytest.mark.slice_scatter
 def test_slice_scatter_perf():
-    pytest.skip("[TritonXPU][TODO-FIX] Failed to tune buffer size.")
-
     def slice_scatter_input_fn(shape, dtype, device):
         dim = 0 if len(shape) == 1 else 1
         start = 0

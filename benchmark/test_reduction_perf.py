@@ -74,14 +74,18 @@ forward_operations = [
 def test_general_reduction_perf(op_name, torch_op, dtypes):
     if op_name == "var_mean":
         pytest.skip(
-            "[TritonXPU][TODO FIX] var_mean error: op requires the same type for all operands and results"
+            "[TritonXPU][TODO FIX] error: op requires the same type for all operands and results"
         )
-    elif op_name == "log_softmax":
+    elif op_name == "prod":
         pytest.skip(
-            "[TritonXPU][TODO FIX] log_softmax error:  size mismatch when packing elements for LLVM struct"
+            "[TritonXPU][TODO FIX] size mismatch when packing elements for LLVM struc."
         )
-    elif op_name in ["argmin", "prod", "log_softmax"]:
-        pytest.skip("[TritonXPU][TODO FIX] Failed to tune buffer size.")
+    elif op_name == "argmin":
+        pytest.skip(
+            "[TritonXPU][TODO FIX] dynamic_func() missing 1 required positional argument: 'dtype_max_value'."
+        )
+    elif op_name == "softmax":
+        pytest.skip("[TritonXPU][TODO FIX] Fatal Python error: Segmentation fault.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -197,8 +201,12 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
         pytest.skip("[TritonXPU] CrossEntropyLoss tl.reduce(axis=0) Unsupported")
     elif op_name in ["cumsum", "cummin", "nonzero"]:
         pytest.skip("[TritonXPU] tl.cumsum Unsupported")
+    elif op_name == "nll_loss":
+        pytest.skip("[TritonXPU] atomic cal error.")
     elif op_name == "log_softmax":
-        pytest.skip("[TritonXPU][TODO FIX] Failed to tune buffer size.")
+        pytest.skip(
+            "[TritonXPU][TODOFIX] error:  size mismatch when packing elements for LLVM struct ."
+        )
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
