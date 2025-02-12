@@ -279,11 +279,12 @@ def test_topk(
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_conj(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    x = torch.randn(size=shape, dtype=dtype, device="cpu")
     y = x.conj()
     assert y.is_conj()
     with flag_gems.use_gems():
-        z = y.resolve_conj()
+        res_y = y.to(device=flag_gems.device)
+        z = res_y.resolve_conj()
     assert not z.is_conj()
 
 
