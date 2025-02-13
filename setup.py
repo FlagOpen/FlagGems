@@ -1,12 +1,15 @@
+import glob
+import os
 from typing import List, Optional, Sequence
 
 from pip._internal.metadata import get_default_environment
 from setuptools import find_packages, setup
+from torch.utils.cpp_extension import BuildExtension, CppExtension
 
 # ----------------------------- check triton -----------------------------
 # NOTE: this is used to check whether pytorch-triton or triton is installed. Since
 # the name for the package to be import is the name, but the names in package manager
-# are different. So we check it in this way
+# are different. So we check it in this way:
 # 1. If the triton that is installed via pytorch-triton, then it is the version that is
 # dependended by pytorch. Upgrading it may break torch. Be aware of the risk!
 # 2. If the triton is installed via torch, then maybe you are aware that you are using
@@ -62,6 +65,45 @@ triton_package_name = (
     or "triton"
 )
 
+
+# --------------------------- flagems c extension ------------------------
+library_name = "flag_gems"
+
+
+def get_extensions():
+    debug_mode = os.getenv("DEBUG", "0") == "1"
+    if debug_mode:
+        print("Compiling in debug mode")
+
+    extension = CppExtension
+    extra_link_args = []
+    extra_compile_args = {
+        "cxx": [
+            "-O3" if not debug_mode else "-O0",
+            "-fdiagnostics-color=always",
+        ],
+    }
+    if debug_mode:
+        extra_compile_args["cxx"].append("-g")
+        extra_link_args.extend(["-O0", "-g"])
+
+    this_dir = os.path.dirname(os.path.curdir)
+    src_dir = os.path.join(this_dir, "src")
+    extensions_dir = os.path.join(src_dir, library_name, "csrc")
+    sources = list(glob.glob(os.path.join(extensions_dir, "*.cpp")))
+
+    ext_modules = [
+        extension(
+            f"{library_name}._C",
+            sources,
+            extra_compile_args=extra_compile_args,
+            extra_link_args=extra_link_args,
+        )
+    ]
+
+    return ext_modules
+
+
 # ----------------------------- Setup -----------------------------
 setup(
     name="flag_gems",
@@ -104,5 +146,7 @@ setup(
     package_data={
         "flag_gems.runtime": ["*/**/*.yaml"],
     },
+    ext_modules=get_extensions(),
     setup_requires=["setuptools"],
+    cmdclass={"build_ext": BuildExtension},
 )
