@@ -123,12 +123,16 @@ def test_perf_sort():
 
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
+    class MultinomialBenchmark(GenericBenchmark2DOnly):
+        def set_more_shapes(self):
+            return [(1024, 2**i) for i in range(0, 20, 4)]
+
     def multinomial_input_fn(shape, dtype, device):
         dist = torch.rand(shape, dtype=dtype, device=device)
         n_samples = 10000
         yield dist, n_samples, True,
 
-    bench = GenericBenchmark2DOnly(
+    bench = MultinomialBenchmark(
         input_fn=multinomial_input_fn,
         op_name="multinomial",
         torch_op=torch.multinomial,
@@ -305,6 +309,14 @@ def test_perf_conv2d():
 
 @pytest.mark.diag
 def test_perf_diag():
+    class DiagBenchmark(GenericBenchmarkExcluse3D):
+        def set_more_shapes(self):
+            more_shapes_1d = [
+                (2**16,),
+            ]
+            more_shapes_2d = [(10000, 2**i) for i in (0, 8, 15)]
+            return more_shapes_1d + more_shapes_2d
+
     def diag_input_fn(shape, dtype, device):
         input = generate_tensor_input(shape, dtype, device)
         diagonal = random.randint(-4, 4)
@@ -312,7 +324,7 @@ def test_perf_diag():
             "diagonal": diagonal,
         },
 
-    bench = GenericBenchmarkExcluse3D(
+    bench = DiagBenchmark(
         input_fn=diag_input_fn,
         op_name="diag",
         torch_op=torch.diag,

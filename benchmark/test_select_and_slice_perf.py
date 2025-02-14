@@ -5,13 +5,12 @@ import torch
 
 from flag_gems.utils import shape_utils
 
-from .attri_util import FLOAT_DTYPES
+from .attri_util import DEFAULT_METRICS, FLOAT_DTYPES
 from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):
-    def set_more_metrics(self):
-        return ["gbps"]
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["gbps"]
 
     def set_more_shapes(self):
         shapes = super().set_more_shapes()
@@ -254,6 +253,13 @@ def test_select_scatter_perf():
     bench.run()
 
 
+def index_add_gbps(bench_fn_args, latency):
+    input, dim, index, src = bench_fn_args
+    io_mount = sum(shape_utils.size_in_bytes(item) for item in [index, src])
+    io_mount += 2 * shape_utils.size_in_bytes(input)
+    return io_mount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):
@@ -267,10 +273,11 @@ def test_index_add_perf():
         src = torch.randn(src_shape, dtype=dtype, device="cuda")
         yield inp, dim, index, src
 
-    bench = TensorSelectBenchmark(
+    bench = GenericBenchmark2DOnly(
         op_name="index_add",
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
         dtypes=FLOAT_DTYPES,
+        get_gbps=index_add_gbps,
     )
     bench.run()
