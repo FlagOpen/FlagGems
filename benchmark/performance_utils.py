@@ -394,10 +394,10 @@ class GenericBenchmark(Benchmark):
 
     def set_more_shapes(self):
         more_shapes_1d = [
-            (2**28,),
+            (2**20,),
         ]
-        more_shapes_2d = [(10000, 2**i) for i in (0, 8, 16)]
-        more_shapes_3d = [(100, 2**i, 100) for i in (0, 8, 16)]
+        more_shapes_2d = [(10000, 2**i) for i in (0, 8, 15)]
+        more_shapes_3d = [(100, 2**i, 100) for i in (0, 8, 15)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
