@@ -1,5 +1,6 @@
 from .libentry import (
     libentry,
+    libtuner,
     TOTAL_CORE_NUM,
     TOTAL_CLUSTER_NUM,
     MAX_NRAM_SIZE,
@@ -32,6 +33,7 @@ __all__ = [
     "MAX_GRID_SIZE_Z",
     "MAX_GRID_SIZES",
     "libentry",
+    "libtuner",
     "pointwise_dynamic",
     "dim_compress",
     "restride_dim",

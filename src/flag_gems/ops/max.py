@@ -7,6 +7,9 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, cfggen_reduce_op, prune_reduce_config, TOTAL_CORE_NUM
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -160,24 +163,11 @@ def heur_block_n(args):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 4}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 16}, num_warps=8, num_stages=5),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=4),
-        triton.Config({"BLOCK_M": 32}, num_warps=8, num_stages=5),
-    ],
+    configs=runtime.get_triton_config("max"),
     key=[
         "M",
         "N",
     ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-    }
 )
 @triton.jit
 def max_kernel(
@@ -194,16 +184,21 @@ def max_kernel(
     pid_m = tl.program_id(0)
     pid_k = tl.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    offset_index = m_offset * K + pid_k
-    # set mask
+    result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
+    result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
+    for i in range(0, N, BLOCK_N):
+        n_offset = i + tl.arange(0, BLOCK_N)
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+        # set mask
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+        max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
+        update_mask = max_value > result_value
+        result_value = tl.where(update_mask, max_value, result_value)
+        result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
-    result_value, result_index = tl.max(inp_vals, axis=1, return_indices=True)
-
+    offset_index = m_offset * K + pid_k
     out_value_ptrs = out_value + offset_index
     out_index_ptrs = out_index + offset_index
 
@@ -213,19 +208,20 @@ def max_kernel(
 
 def max(inp):
     logging.debug("GEMS MAX")
+    inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
     device = inp.device
     mid_size = TOTAL_CORE_NUM
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), mid_size), )
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         if torch.is_floating_point(inp):
             if M <= 65536:
                 out = torch.empty([], dtype=dtype, device=device)
                 max_kernel_float_once[(1, 1, 1)](inp, out, M)
             else:
-                out = torch.full([], float("-inf"), dtype=torch.float32, device=device)
+                out = torch.full([], torch.finfo(torch.float32).min, dtype=torch.float32, device=device)
                 max_kernel_float[grid](inp, out, M)
         elif dtype == torch.int64:
             mid = torch.empty([mid_size], dtype=dtype, device=device)
@@ -264,7 +260,7 @@ def max_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         max_kernel[grid](inp, out_value, out_index, M, N, K)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)

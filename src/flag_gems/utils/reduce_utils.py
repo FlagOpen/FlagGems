@@ -3,15 +3,10 @@ import triton
 import triton.language as tl
 
 from .libentry import TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from .. import runtime
 
 def cfggen_reduce_op():
-    block_size = [1024, 2048, 4096, 8192, 16384, 32768, 65536]
-    num_stage = [1, 3]
-    configs=[
-        triton.Config({"BLOCK_SIZE": m}, num_warps=1, num_stages=s) for m in block_size for s in num_stage
-    ]
-    return configs
-
+    return runtime.get_triton_config("common_reduce_ops")
 
 def cfggen_reduce_op2():
     block_size = [2048, 4096, 8192, 16384, 32768]

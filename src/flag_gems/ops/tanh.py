@@ -4,23 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import tl_extra_module
 from ..utils import pointwise_dynamic
 
-try:
-    from triton.language.extra.mlu.libdevice import pow
-except ImportError:
-    try:
-        from triton.language.math import pow
-    except ImportError:
-        from triton.language.libdevice import pow
-
-try:
-    from triton.language.extra.mlu.libdevice import fast_tanh as _tanh
-except ImportError:
-    try:
-        from triton.language.math import tanh as _tanh
-    except ImportError:
-        from triton.language.libdevice import fast_tanh as _tanh
+pow = tl_extra_module.pow
+_tanh = tl_extra_module.fast_tanh
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])

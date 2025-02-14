@@ -6,6 +6,8 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, cfggen_reduce_op
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 MAX_NRAM_C_FORWARD = 16384 * 2
 
@@ -93,7 +95,7 @@ class RmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             if BLOCK_SIZE <= MAX_NRAM_C_FORWARD:
                 logging.debug("GEMS LAYERNORM FORWARD NOT USING C SPLIT")
                 rms_norm_kernel[M,](y, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)

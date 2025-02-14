@@ -4,29 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import libentry, TOTAL_CORE_NUM
 from ..utils.shape_utils import can_use_int32_index
-
-
-def cfggen():
-    configs = [
-        triton.Config({"M_BLOCK_SIZE": 1}, num_warps=1, num_stages=3),
-        triton.Config({"M_BLOCK_SIZE": 4}, num_warps=1, num_stages=3),
-        triton.Config({"M_BLOCK_SIZE": 8}, num_warps=1, num_stages=3),
-        triton.Config({"M_BLOCK_SIZE": 16}, num_warps=1, num_stages=3),
-    ]
-    return configs
-
-
-def cfggen_batch():
-    configs = [
-        triton.Config({"BATCH_BLOCK_SIZE": 1, "MN_BLOCK_SIZE": 512}, num_warps=1)
-    ]
-    return configs
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("triu"), key=["M", "N"])
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_kernel(
     X,
@@ -76,7 +62,10 @@ def triu_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen_batch(), key=["batch", "MN", "N", "diagonal"])
+@triton.autotune(
+    configs=runtime.get_triton_config("triu_batch"),
+    key=["batch", "MN", "N", "diagonal"],
+)
 @triton.jit(do_not_specialize=["diagonal"])
 def triu_batch_kernel(
     X,
@@ -119,7 +108,7 @@ def triu(A, diagonal=0):
     assert len(A.shape) > 1, "Input tensor must have at least 2 dimensions"
     use_int64_index = not can_use_int32_index(A)
     M, N = A.shape[-2:]
-    with torch.cuda.device(A.device):
+    with torch_device_fn.device(A.device):
         if len(A.shape) == 2:
             grid = lambda meta: (min(triton.cdiv(M, meta["M_BLOCK_SIZE"]), TOTAL_CORE_NUM),)
             # A large value for n_block_size can lead to insufficient MLU resources,

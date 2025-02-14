@@ -6,6 +6,9 @@ import pytest
 import torch
 from datetime import datetime
 
+import flag_gems
+from flag_gems.runtime import torch_device_fn
+
 from .attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
@@ -22,6 +25,9 @@ try:
     from torch_mlu.utils.model_transfer import transfer
 except ImportError:
     pass
+
+device = flag_gems.device
+
 
 class BenchConfig:
     def __init__(self):
@@ -43,12 +49,12 @@ def pytest_addoption(parser):
     parser.addoption(
         "--mode",
         action="store",
-        default="mlu",
+        default=device,
         required=False,
-        choices=["cuda", "cpu", "mlu"],
+        choices=[device, "cpu"],
         help=(
             "Specify how to measure latency, "
-            "'cpu' for CPU-side measurement or 'cuda' for GPU-side measurement."
+            f"'cpu' for CPU-side measurement or {device} for GPU-side measurement."
         ),
     )
 
@@ -180,18 +186,24 @@ BUILTIN_MARKS = {
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
-    else:
-        note_info = (
-            "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
-            "\nThis field will be removed in a future release."
-        )
-        print(note_info)
+    # else:
+    #     note_info = (
+    #         "\n\nNote: The 'size' field below is for backward compatibility with previous versions of the benchmark. "
+    #         "\nThis field will be removed in a future release."
+    #     )
+    #     print(note_info)
+
+
+@pytest.fixture(scope="function", autouse=True)
+def clear_function_cache():
+    yield
+    torch_device_fn.empty_cache()
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clear_cuda_cache():
+def clear_module_cache():
     yield
-    torch.cuda.empty_cache()
+    torch_device_fn.empty_cache()
 
 
 @pytest.fixture()

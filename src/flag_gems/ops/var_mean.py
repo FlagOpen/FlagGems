@@ -3,18 +3,13 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
+from .. import runtime
 from ..utils import dim_compress, libentry, cfggen_reduce_op, prune_reduce_config, count_divisible_by_2
 from ..utils import TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    block_n = [1024, 2048]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1)
-        for m in block_m
-        for n in block_n
-    ]
-    return configs
 
 @triton.jit
 def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
@@ -28,7 +23,7 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("var_mean"), key=["M", "N"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
     X,
@@ -219,7 +214,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         count = torch.zeros([TOTAL_CORE_NUM], dtype=torch.float, device=x.device)
         loop_num = count_divisible_by_2(TOTAL_CORE_NUM) + 1
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             var_mean_kernel_1[grid](x, acc, average, count, M)
             var_mean_kernel_2[(1,)](
                 acc, average, count, var, mean, M, correction, BLOCK_NUM=TOTAL_CORE_NUM, ITER_NUM=loop_num)
@@ -236,7 +231,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
         grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), TOTAL_CORE_NUM),)
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             var_mean_welford_kernel[grid](x, var, mean, M, N, correction)
 
     if not keepdim:

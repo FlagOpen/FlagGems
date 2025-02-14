@@ -7,6 +7,9 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 def config_prune(configs, named_args, **kwargs):
     M = named_args["M"]
@@ -23,6 +26,8 @@ def config_prune(configs, named_args, **kwargs):
             config = copy.deepcopy(config)
             BLOCK_M = config.kwargs["BLOCK_M"] = M
             num_stages = config.num_stages = 1
+        elif BLOCK_M >= M:
+            continue
         key = (BLOCK_M, BLOCK_N, num_warps, num_stages)
         # Only keep one config for the same key
         configs_map.setdefault(key, config)
@@ -33,12 +38,7 @@ def config_prune(configs, named_args, **kwargs):
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_stages=s, num_warps=1)
-        for m in [64, 128, 256, 512, 1024]
-        for n in [16, 32, 64, 128]
-        for s in [1, 3]
-    ],
+    configs=runtime.get_triton_config("mv"),
     key=["M", "N"],
     prune_configs_by={'early_config_prune': config_prune},
 )
@@ -93,7 +93,7 @@ def mv(inp, vec):
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         mv_kernel[grid](
             inp,
             vec,

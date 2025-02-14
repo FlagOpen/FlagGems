@@ -7,24 +7,15 @@ import triton.language as tl
 import logging
 from ..utils import dim_compress, libentry, cfggen_reduce_op, prune_reduce_config, TOTAL_CORE_NUM
 
-try:
-    from triton.language.extra.mlu.libdevice import pow
-except ImportError:
-    try:
-        from triton.language.math import pow
-    except ImportError:
-        from triton.language.libdevice import pow
+from .. import runtime
+from ..runtime import tl_extra_module, torch_device_fn
+from ..utils import triton_lang_extension as tle
 
+pow = tl_extra_module.pow
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=1) for m in block_m
-    ]
-    return configs
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
@@ -103,7 +94,7 @@ def l2_norm_kernel_2(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def max_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
@@ -174,7 +165,7 @@ def max_norm_kernel_1(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def min_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 
@@ -244,7 +235,7 @@ def min_norm_kernel_1(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.jit
 def l0_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
@@ -313,7 +304,7 @@ def l0_norm_kernel_1(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("vector_norm"), key=["M", "N"])
 @triton.jit(do_not_specialize=["ord"])
 def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     # Map the program id to the row of X it should compute.
@@ -402,8 +393,8 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
-    with torch.cuda.device(x.device):
-        if dim is None or len(dim) == x.ndim:
+    with torch_device_fn.device(x.device):
+        if (not dim) or len(dim) == x.ndim:
             dim = list(range(x.ndim))
             shape = [1] * x.ndim
             x = dim_compress(x, dim)
@@ -417,7 +408,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             elif ord == float("inf"):
                 max_norm_kernel_1[grid](x, out, M)
             elif ord == -float("inf"):
-                out = torch.full(shape, fill_value=float("inf"),dtype=torch.float, device=x.device)
+                out = torch.full(shape, fill_value=torch.finfo(torch.float32).max, dtype=torch.float, device=x.device)
                 min_norm_kernel_1[grid](x, out, M)
             elif ord == 0:
                 l0_norm_kernel_1[grid](x, out, M)

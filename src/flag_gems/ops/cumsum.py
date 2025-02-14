@@ -7,6 +7,10 @@ import copy
 import triton.language as tl
 
 from flag_gems.utils import libentry, TOTAL_CORE_NUM, TOTAL_CLUSTER_NUM, MAX_GRID_SIZE_Y
+from ..runtime import device, torch_device_fn
+from ..utils import triton_lang_extension as tle
+
+device = device.name
 
 MAX_C_MLU_CUMSUM = 8192
 MAX_C_MLU_SPILT_CUMSUM = 32768
@@ -391,12 +395,12 @@ def cumsum(inp, dim=1, *, dtype=None):
             triton.cdiv(N, BLOCK_N),
             triton.cdiv(K, meta["BLOCK_K"]),
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             cumsum_kernel_mid[grid](inp, mid_out, prefix_sum_inp, M, N, K, BLOCK_N, dtypestr)
             cumsum_blelloch[blelloch_grid](prefix_sum_inp, prefix_sum, M, triton.cdiv(N, BLOCK_N), K, dtypestr)
             cumsum_kernel_result[grid](mid_out, prefix_sum, out, M, N, K, BLOCK_N, dtypestr)
     else:
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             cumsum_blelloch[blelloch_grid](inp, out, M, N, K, dtypestr)
     return out
 
@@ -558,7 +562,7 @@ def normed_cumsum(inp, dim=-1):
         inp = inp.transpose(dim, -1).contiguous()
         dim = -1
     out = torch.empty_like(inp)
-    with torch.cuda.device(inp.device.index):
+    with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         num_sms = TOTAL_CORE_NUM # torch.cuda.get_device_properties("cuda").multi_processor_count
         TILE = 2048
@@ -599,7 +603,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device="cuda")
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

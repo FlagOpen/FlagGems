@@ -6,6 +6,8 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 def get_configs():
     configs = []

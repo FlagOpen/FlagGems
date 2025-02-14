@@ -3,6 +3,9 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils.libentry import libentry, TOTAL_CORE_NUM
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
+
 
 @libentry()
 @triton.autotune(
@@ -39,7 +42,7 @@ def get_ne_kernel(
       a = tl.load(sorted_data_ptr + offset, mask=mask)
       b = tl.load(sorted_data_2 + offset, mask=mask)
       # ne
-      ne_result = (i0 > 0) * (a != b)
+      ne_result = (offset > 0) * (a != b)
       tl.store(ne_out_ptr + offset, ne_result, mask=mask)
 
 
@@ -166,7 +169,7 @@ def sorted_unique_flat(
     sorted_data_2[1:] = sorted_data[:-1]
 
     # launch kernel
-    with torch.cuda.device(sorted_data.device.index):
+    with torch_device_fn.device(sorted_data.device.index):
         get_ne_kernel[grid](
             sorted_data,
             sorted_data_2,
@@ -195,7 +198,7 @@ def sorted_unique_flat(
         idx_next = torch.roll(idx, -1)
         idx_next[-1] = sorted_data_size
         counts = torch.zeros_like(idx)
-        with torch.cuda.device(sorted_data.device.index):
+        with torch_device_fn.device(sorted_data.device.index):
             get_output_counts_kernel[grid](
                 idx,
                 idx_next,

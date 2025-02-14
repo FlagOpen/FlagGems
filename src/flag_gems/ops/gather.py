@@ -5,7 +5,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 from flag_gems.utils.shape_utils import restride_dim
 
@@ -16,6 +16,9 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton.language as tl")
     code.newline()
     code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems import runtime")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
+
     code.newline()
     code.newline()
     return code
@@ -31,23 +34,25 @@ def generate_gather_kernel(
     # make the inlined function visible in the context
     code.newline()
 
-    # the autotune function
-    code.writeline("def cfggen():")
+    code.writeline("def heur_block_m(args):")
     with code.indent():
-        code.writeline("bs = [128, 256, 512, 1024, 2048, 4096, 8192, 8192*2, 8192*4]")
-        code.writeline("configs = [")
-        with code.indent():
-            code.writeline('triton.Config({"BLOCK_SIZE": n}, num_warps=1, num_stages=1)')
-            code.writeline("for n in bs")
-        code.writeline("]")
-        code.writeline("return configs")
+        code.writeline(
+            "return min(4, triton.next_power_of_2(triton.cdiv(args['N'], 2048)))"
+        )
+
+    code.newline()
+    code.writeline("def heur_block_n(args):")
+    with code.indent():
+        code.writeline("return min(2048, triton.next_power_of_2(args['N']))")
 
     code.newline()
     code.newline()
 
     # the decorators
     code.writeline("@libentry()")
-    code.writeline('@triton.autotune(configs=cfggen(), key=["N"])')
+    code.writeline(
+        '@triton.autotune(configs=runtime.get_triton_config("gather"), key=["N"])'
+    )
     code.writeline("@triton.jit")
 
     # signature
@@ -227,7 +232,7 @@ class GatherFunction:
 
             file_name = f"gather_rank_{key}_pid_{self.pid}.py"
 
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load

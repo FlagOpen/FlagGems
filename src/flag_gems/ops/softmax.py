@@ -8,6 +8,9 @@ import triton.backends.mlu.driver as driver
 import math
 
 from ..utils import libentry, TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from .. import runtime
+from ..utils import triton_lang_extension as tle
+from ..runtime import torch_device_fn
 
 MAX_N = 16384
 
@@ -633,7 +636,7 @@ class Softmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N  # post_dim
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             if K > 1:
                 logging.debug("GEMS SOFTMAX USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
@@ -673,7 +676,7 @@ class Softmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch.cuda.device(in_grad.device):
+        with torch_device_fn.device(in_grad.device):
             if K > 1:
                 logging.debug("GEMS SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)

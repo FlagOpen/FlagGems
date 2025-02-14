@@ -8,6 +8,8 @@ import triton.language.core as core
 from triton.language.standard import _log2, zeros_like
 
 from ..utils import libentry, MAX_GRID_SIZE_X, TOTAL_CORE_NUM
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
@@ -15,8 +17,12 @@ _MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
 _MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
 _MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
 _MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
+_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
+_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
 _MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
 _MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
+_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
+_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
 
 
 @triton.jit
@@ -39,6 +45,28 @@ def _get_finfo_val(
             return _MAX_BFLOAT16_VAL
         else:
             return _MIN_BFLOAT16_VAL
+
+
+@triton.jit
+def _get_iinfo_val(
+    dtype,
+    return_max,
+):
+    if dtype is tl.int16:
+        if return_max:
+            return _MAX_INT16_VAL
+        else:
+            return _MIN_INT16_VAL
+    elif dtype is tl.int32:
+        if return_max:
+            return _MAX_INT32_VAL
+        else:
+            return _MIN_INT32_VAL
+    elif dtype is tl.int64:
+        if return_max:
+            return _MAX_INT64_VAL
+        else:
+            return _MIN_INT64_VAL
 
 
 @libentry()
@@ -379,10 +407,13 @@ def topk_bubble_kernel(
             tep_index = n_block_ind * k
             topk_buffer_n[:, tep_index:tep_index + k] = local_buffer
             topk_buffer_index_n[:, tep_index:tep_index + k] = local_buffer_ind
-
-        global_res, global_res_ind = get_topk_bubble_res(
-            topk_buffer_n, topk_buffer_index_n, k, 1, mask_val, DESCENDING,
-            TILE_M, TILE_N_NUM * k)
+        if TILE_N_NUM > 1:
+            global_res, global_res_ind = get_topk_bubble_res(
+                topk_buffer_n, topk_buffer_index_n, k, 1, mask_val, DESCENDING,
+                TILE_M, TILE_N_NUM * k)
+        else:
+            global_res = topk_buffer_n
+            global_res_ind = topk_buffer_index_n
 
         # Store topk.
         store_ptrs = m_offset * k + tl.arange(0, k)[None, :]
@@ -451,7 +482,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             topk_stage1_kernel[
                 batch_size,
                 chunk_num,
@@ -467,7 +498,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         stage2_elem_cnt = chunk_num * k
         BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             topk_stage2_kernel[batch_size,](
                 stage2_out,
                 stage2_out_idx,

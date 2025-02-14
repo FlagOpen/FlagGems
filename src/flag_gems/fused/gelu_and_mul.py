@@ -4,15 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime.moduel_tool import tl_extra_module
 from ..utils import pointwise_dynamic
 
-try:
-    from triton.language.extra.mlu.libdevice import fast_erf, fast_tanh
-except ImportError:
-    try:
-        from triton.language.math import erf, tanh
-    except ImportError:
-        from triton.language.libdevice import fast_erf, fast_tanh
+fast_erf = tl_extra_module.fast_erf
+fast_tanh = tl_extra_module.fast_tanh
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])

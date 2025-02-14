@@ -4,7 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from ..utils import libentry, dim_compress, TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from .. import runtime
+from ..utils import triton_lang_extension as tle
 
 import math
 
@@ -49,6 +51,15 @@ def ld_st_1(indices,
     embedding_weight = tl.load(weight_ptr + weight_offsets, in_mask[:, None])
     out_offsets = in_offsets[:, None] * N + tl.arange(0, N)
     tl.store(out_ptr + out_offsets, embedding_weight, in_mask[:, None])
+
+
+def heur_block_m(args):
+    return min(4, triton.next_power_of_2(triton.cdiv(256, args["N"])))
+
+
+def heur_block_n(args):
+    m = min(triton.next_power_of_2(triton.cdiv(args["N"], 16)), 512)
+    return max(m, 16)
 
 
 @libentry()
@@ -112,21 +123,6 @@ def one_batch_index_select_kernel(  # 2D
 
 
 
-def cfggen():
-    block_batch = [1] + [4 * 2**i for i in range(4)]
-    # TODO: perf is the best when BLOCK_INDEX is 1
-    block_index = [1] + [8 * 2**i for i in range(4)]
-    # keep block_c large to reduce configs
-    block_c = [256 * 2**i for i in range(4)]
-
-    configs = [
-        triton.Config({"BLOCK_BATCH": m, "BLOCK_INDEX": n, "BLOCK_C": c})
-        for m in block_batch
-        for n in block_index
-        for c in block_c
-    ]
-    return configs
-
 def config_prune(configs, named_args, **kwargs):
     # TODO: bad perf when BLOCK_BATCH is 1
     batch_dim = max(named_args["batch_dim"], 2)
@@ -180,7 +176,7 @@ def ld_st_2(inp, out, batch_offsets, index_offsets, c_offsets, inp_strides_0, in
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["batch_dim", "index_dim", "c_dim"], prune_configs_by={"early_config_prune": config_prune})
+@triton.autotune(configs=runtime.get_triton_config("index_select"), key=["batch_dim", "index_dim", "c_dim"], prune_configs_by={"early_config_prune": config_prune})
 #@triton.autotune(configs=[triton.Config({"BLOCK_BATCH": 1, "BLOCK_INDEX": 1, "BLOCK_C": 2048*6})], key=["batch_dim", "index_dim", "c_dim"])
 @triton.jit
 def multi_batch_index_select_kernel(inp, index, out, batch_dim, select_dim, c_dim, index_dim, dtype_size, inp_numel,

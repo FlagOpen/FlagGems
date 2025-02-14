@@ -7,6 +7,9 @@ import triton.language as tl
 
 from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
 from ..utils.shape_utils import can_use_int32_index
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -49,17 +52,8 @@ def amax_kernel_1(
     tl.atomic_max(out, _tmp)
 
 
-def cfggen_opt():
-    tile_num_n = [1, 2, 4, 8, 16, 48]
-    num_stage = [1, 3]
-    configs = [
-        triton.Config({"TILE_NUM_N": n}, num_warps=1, num_stages=s) for n in tile_num_n for s in num_stage
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen_opt(), key=["N"])
+@triton.autotune(configs=runtime.get_triton_config("amax_kernel_opt"), key=["N"])
 @triton.jit
 def amax_kernel_opt(
     inp,
@@ -93,17 +87,8 @@ def amax_kernel_opt(
         tl.atomic_max(new_out, max_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    block_n = [1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=1, num_stages=3) for m in block_m for n in block_n
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("amax_kernel"), key=["M", "N"])
 @triton.jit
 def amax_kernel(
     inp,
@@ -160,15 +145,16 @@ def amax(inp, dim=None, keepdim=False):
                 amax_kernel_once[(1, 1, 1)](inp, out, M)
             return out
         else:
+            outdtype = torch.float32
             if not keepdim:
-                out = torch.full([], float("-inf"), dtype=torch.float32, device=inp.device)
+                out = torch.full([], torch.finfo(outdtype).min, dtype=outdtype, device=inp.device)
             else:
                 shape = list(inp.shape)
                 for i in range(0, inp.dim()):
                     shape[i] = 1
-                out = torch.full(shape, float("-inf"), dtype=torch.float32, device=inp.device)
+                out = torch.full(shape, torch.finfo(outdtype).min, dtype=outdtype, device=inp.device)
             grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 amax_kernel_1[grid](inp, out, M, INT64_INDEX=use_int64_index)
             return out.to(dtype)
     else:
@@ -187,13 +173,13 @@ def amax(inp, dim=None, keepdim=False):
             shape[i] = 1
         M = inp.numel() // N
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             if N > 1048576:
                 out = torch.empty(shape, dtype=dtype, device=inp.device)
                 grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_M']), TOTAL_CORE_NUM), )
                 amax_kernel[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
             else :
-                out = torch.full(shape, -float("inf"), dtype=torch.float32, device=inp.device)
+                out = torch.full(shape, torch.finfo(torch.float32).min, dtype=torch.float32, device=inp.device)
                 grid = lambda meta: (min(triton.cdiv(TOTAL_CORE_NUM, meta["TILE_NUM_N"]), M), meta["TILE_NUM_N"])
                 amax_kernel_opt[grid](inp, out, M, N, INT64_INDEX=use_int64_index)
         if not keepdim:

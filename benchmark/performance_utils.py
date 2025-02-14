@@ -1,12 +1,15 @@
+import gc
 import logging
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
+import pytest
 import torch
 import triton
 import yaml
 
 import flag_gems
+from flag_gems.runtime import torch_backend_device, torch_device_fn
 
 from .attri_util import (
     BOOL_DTYPES,
@@ -20,12 +23,14 @@ from .attri_util import (
     OperationAttribute,
     check_metric_dependencies,
 )
-from .conftest import Config, CPU_MODE
+from .conftest import Config
 
-torch.backends.mlu.matmul.allow_tf32 = False
+torch_backend_device.matmul.allow_tf32 = False
+device = flag_gems.device
+
 
 class Benchmark:
-    device: str = "cuda"
+    device: str = device
     DEFAULT_METRICS = DEFAULT_METRICS
     DEFAULT_DTYPES = FLOAT_DTYPES
     DEFAULT_SHAPES = DEFAULT_SHAPES
@@ -41,6 +46,7 @@ class Benchmark:
         torch_op,
         dtypes=None,
         is_backward=False,
+        **kwargs,
     ):
         self.op_name = op_name
         if is_backward:
@@ -63,6 +69,11 @@ class Benchmark:
         self.to_bench_dtypes = self.dtypes
         self.to_bench_metrics = self.metrics
 
+        # additional properties
+        for k in kwargs:
+            if hasattr(self, k):
+                setattr(self, k, kwargs[k])
+
     def set_metrics(self, user_desired_metrics: Optional[List[str]]):
         # Validate user-specified metrics
         if user_desired_metrics:
@@ -80,6 +91,19 @@ class Benchmark:
                 )
 
         self.to_bench_metrics = user_desired_metrics or self.metrics
+        if (
+            hasattr(self, "set_more_metrics")
+            and callable(getattr(self, "set_more_metrics"))
+            and Config.bench_level == BenchLevel.COMPREHENSIVE
+            and not Config.query
+        ):
+            for metric in self.set_more_metrics():
+                if metric not in self.to_bench_metrics:
+                    self.to_bench_metrics.append(metric)
+
+    def set_more_metrics(self):
+        """Base method (optional to override in subclasses). Returns additional shapes if applicable."""
+        return None
 
     def set_dtypes(self, user_desired_dtypes: Optional[List[torch.dtype]]):
         # Validate user-specified dtypes
@@ -137,6 +161,7 @@ class Benchmark:
             ):
                 # Merge shapes using subclass-specific logic
                 additional_shapes = self.set_more_shapes()
+                # self.shapes = additional_shapes
                 if additional_shapes:
                     self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
         except yaml.YAMLError as e:
@@ -188,11 +213,11 @@ class Benchmark:
         if Config.cpu_mode:
             for i in range(Config.warm_up):
                 fn()
-            torch.mlu.synchronize()
+            torch_device_fn.synchronize()
             start = time.time()
             for i in range(Config.repetition):
                 fn()
-            torch.mlu.synchronize()
+            torch_device_fn.synchronize()
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
@@ -204,6 +229,12 @@ class Benchmark:
             )
         # average latency in ms
         return latency
+
+    def get_gbps(self, args, latency=None):
+        # """Return the dynamic input iterator for each Operator."""
+        raise NotImplementedError(
+            "Each Benchmark must implement its own input iterator."
+        )
 
     def get_tflops(self, op, *args, **kwargs):
         """This method is currently not really implemented and serves as a placeholder.
@@ -244,9 +275,11 @@ class Benchmark:
                 kwargs.update(item)
         if self.is_backward:
             args = [
-                a.clone().requires_grad_()
-                if torch.is_tensor(a) and torch.is_floating_point(a)
-                else a
+                (
+                    a.clone().requires_grad_()
+                    if torch.is_tensor(a) and torch.is_floating_point(a)
+                    else a
+                )
                 for a in args
             ]
         return args, kwargs
@@ -267,32 +300,49 @@ class Benchmark:
             metrics = []
             for input in self.get_input_iter(dtype):
                 metric = BenchmarkMetrics()
-                args, kwargs = self.unpack_to_args_kwargs(input)
-                metric.shape_detail = self.record_shapes(*args, **kwargs)
-                if "latency_base" in self.to_bench_metrics:
-                    metric.latency_base = self.get_latency(
-                        self.torch_op, *args, **kwargs
-                    )
-                if "latency" in self.to_bench_metrics:
-                    if self.gems_op:
-                        metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
-                    else:
-                        with flag_gems.use_gems():
+                try:
+                    args, kwargs = self.unpack_to_args_kwargs(input)
+                    metric.shape_detail = self.record_shapes(*args, **kwargs)
+                    if "latency_base" in self.to_bench_metrics:
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
+                    if "latency" in self.to_bench_metrics:
+                        if self.gems_op:
                             metric.latency = self.get_latency(
-                                self.torch_op, *args, **kwargs
+                                self.gems_op, *args, **kwargs
                             )
-                if "speedup" in self.to_bench_metrics:
-                    metric.speedup = metric.latency_base / metric.latency
-                if "tflops" in self.to_bench_metrics:
-                    metric.tflops = self.get_tflops(self.torch_op, *args, **kwargs)
-                    # utilization = metric.tflops / metric.latency / 1e12 * 1e3
-                metrics.append(metric)
-                # TODO: try gc collect to avoid cuda out of memory
+                        else:
+                            with flag_gems.use_gems():
+                                metric.latency = self.get_latency(
+                                    self.torch_op, *args, **kwargs
+                                )
+                    if "speedup" in self.to_bench_metrics:
+                        metric.speedup = metric.latency_base / metric.latency
+                    if "gbps" in self.to_bench_metrics:
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
+                        metric.gbps = self.get_gbps(args, latency=metric.latency)
+                    if "tflops" in self.to_bench_metrics:
+                        metric.tflops = (
+                            self.get_tflops(self.torch_op, *args, **kwargs)
+                            / metric.latency
+                            / 1e12
+                            * 1e3
+                        )
+                        # utilization = metric.tflops / metric.latency / 1e12 * 1e3
+                except Exception as e:
+                    metric.error_msg = str(e)
+                    pytest.fail(str(e))  # raise exception again
+                finally:
+                    metrics.append(metric)
+                    gc.collect()
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
                 dtype=str(dtype),
-                mode="cpu" if Config.cpu_mode else "cuda",
+                mode="cpu" if Config.cpu_mode else device,
                 result=metrics,
             )
             print(result)
@@ -300,7 +350,6 @@ class Benchmark:
 
 
 class GenericBenchmark(Benchmark):
-
     """
     A generic benchmark class for most of the operations.
 
@@ -319,11 +368,10 @@ class GenericBenchmark(Benchmark):
 
     def set_more_shapes(self):
         more_shapes_1d = [
-            (4,),
-            (1024,),
+            (2**28,),
         ]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        more_shapes_2d = [(10000, 2**i) for i in (0, 8, 16)]
+        more_shapes_3d = [(100, 2**i, 100) for i in (0, 8, 16)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:

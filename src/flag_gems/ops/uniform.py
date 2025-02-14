@@ -1,13 +1,17 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_mlu_seed_offset, uint_to_uniform_float
+from flag_gems.utils.random_utils import (
+    philox_backend_seed_offset,
+    uint_to_uniform_float,
+)
 from flag_gems.utils.shape_utils import volume
 from triton.language.extra.mlu.libdevice import philox as _philox
 from ..utils import libentry, TOTAL_CORE_NUM
+
+from ..runtime import torch_device_fn
 
 
 def heur_block(args):
@@ -65,7 +69,7 @@ def uniform_(self, from_=0.0, to=1.0, *, generator=None):
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_mlu_seed_offset(increment)
-    with torch.cuda.device(self.device):
+    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    with torch_device_fn.device(self.device):
         uniform_kernel[grid_fn](self, N, philox_seed, philox_offset, from_, to, num_warps=1, num_stages=3)
     return self

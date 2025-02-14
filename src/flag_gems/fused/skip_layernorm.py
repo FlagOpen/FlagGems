@@ -5,8 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import libentry, TOTAL_CORE_NUM
+from ..utils import triton_lang_extension as tle
 
 # When the reduced dimension is greater than MAX_C_MLU_SKIP_LAYERNORM_FORWARD, it is necessary to split the reduced dimension
 MAX_C_MLU_SKIP_LAYERNORM_FORWARD = 8192

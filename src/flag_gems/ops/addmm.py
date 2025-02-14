@@ -4,93 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
+from ..runtime import torch_device_fn
 from ..utils import libentry
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config(
-            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 128, 'BLOCK_SIZE_K': 128},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 256, 'BLOCK_SIZE_K': 128},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 1024, 'BLOCK_SIZE_K': 64},
-            num_warps=4,
-            num_stages=1,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 64, 'BLOCK_SIZE_N': 512, 'BLOCK_SIZE_K': 128},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 128, 'BLOCK_SIZE_N': 512, 'BLOCK_SIZE_K': 128},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 512, 'BLOCK_SIZE_K': 128},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_SIZE_M': 256, 'BLOCK_SIZE_N': 1024, 'BLOCK_SIZE_K': 128},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 64},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 64, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 384},
-            num_warps=1,
-            num_stages=1,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 768, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 256},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 192, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 256},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 768, "BLOCK_SIZE_K": 256},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 128, "BLOCK_SIZE_K": 128},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 256, "BLOCK_SIZE_N": 512, "BLOCK_SIZE_K": 256},
-            num_warps=4,
-            num_stages=5,
-        ),
-        triton.Config(
-            {"BLOCK_SIZE_M": 128, "BLOCK_SIZE_N": 512, "BLOCK_SIZE_K": 256},
-            num_warps=4,
-            num_stages=5,
-        ),
-    ],
+    configs=runtime.get_triton_config("addmm"),
     key=["M", "N", "K"],
 )
 @triton.heuristics(
@@ -187,7 +109,7 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch.cuda.device(mat1.device):
+    with torch_device_fn.device(mat1.device):
         addmm_kernel[grid](
             mat1,
             mat2,

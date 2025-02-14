@@ -7,15 +7,13 @@ import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
 from ..utils.shape_utils import can_use_int32_index
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 def cfggen_reduce_op():
-    block_size = [4096, 8192, 16384, 32768, 65536, 131072]
-    num_stage = [1, 3]
-    configs=[
-        triton.Config({"BLOCK_SIZE": m}, num_warps=1, num_stages=s) for m in block_size for s in num_stage
-    ]
-    return configs
+    return runtime.get_triton_config("argmax_kernel_1")
 
 
 @libentry()
@@ -86,15 +84,7 @@ def argmax_kernel_2(mid_value, mid_index, out, real_size, mid_size: tl.constexpr
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({
-            "BLOCK_M": m,
-            "BLOCK_N": n
-        },
-        num_stages=3,
-        num_warps=1) for m in [4, 8]
-        for n in [4096, 8192, 16384]
-    ],
+    configs=runtime.get_triton_config("argmax"),
     key=[
         "M",
         "N",
@@ -160,7 +150,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
         if M <= 65536:
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 argmax_kernel_once[(1, 1, 1)](inp, out, M)
         else:
             grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM),)
@@ -168,7 +158,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             real_size = torch.empty([], dtype=torch.int32, device=inp.device)
             mid_value = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
             mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
-            with torch.cuda.device(inp.device):
+            with torch_device_fn.device(inp.device):
                 argmax_kernel_1[grid](
                     inp,
                     mid_value,
@@ -200,7 +190,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             argmax_kernel[grid](inp, out_index, M, N, K, INT64_INDEX=use_int64_index)
 
         return out_index

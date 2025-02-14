@@ -12,7 +12,7 @@ for i in `ls model*test.py `; do
 
 	echo "testing file : "$i
 
-	pytest $i -sv --capture=no -s --log-cli-level debug 2>&1 | tee ${dirp}/${i%.*}.log
+	pytest $i -sv --durations=20  --capture=no -s --log-cli-level debug 2>&1 | tee ${dirp}/${i%.*}.log
 
 done
 

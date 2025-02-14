@@ -7,30 +7,20 @@ import copy
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 from ..utils.type_utils import get_accumulator_dtype
 
 MAX_C_MLU_LAYERNORM_FORWARD = 8192
 MAX_C_MLU_LAYERNORM_BACKWARD = 5120
 
-def cfggen_middle_n():
-    block_m = [1, 2, 4, 8, 12, 18, 22, 32]
-
-    warps = [1]
-    num_stages = [1, 3]
-    configs = [
-        triton.Config({
-            "BLOCK_ROW_SIZE": m,
-        },
-                      num_warps=w,
-                      num_stages=s) 
-        for m in block_m
-        for w in warps for s in num_stages
-    ]
-    return configs
-
 
 @libentry()
-@triton.autotune(configs=cfggen_middle_n(), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_triton_config("layer_norm_persistent"),
+    key=["M", "N"],
+)
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_middle_n(
     X,
@@ -154,23 +144,9 @@ def layer_norm_kernel_non_inner(
     # Write output
     tl.store(Y + cols, y, mask=mask)
 
-def cfggen1():
-    block_m = [1, 2, 8, 14, 22]
-    block_n = [i for i in range(1024, 8192, 1024)]
-    warps = [1]
-    num_stages = [1, 3]
-    configs = [
-        triton.Config({
-            "BLOCK_ROW_SIZE": m,
-            "BLOCK_COL_SIZE": n
-        },
-                      num_warps=w,
-                      num_stages=s) for m in block_m for n in block_n
-        for w in warps for s in num_stages
-    ]
-    return configs
+
 @libentry()
-@triton.autotune(configs=cfggen1(), key=["M", "N"], prune_configs_by={'early_config_prune': config_prune})
+@triton.autotune(configs=runtime.get_triton_config("layer_norm_loop"), key=["M", "N"], prune_configs_by={'early_config_prune': config_prune})
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_inner(
     X,
@@ -479,11 +455,11 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
         if N <= MAX_C_MLU_LAYERNORM_FORWARD:
             grid = lambda META: (min(triton.cdiv(M, META["BLOCK_ROW_SIZE"]), TOTAL_CORE_NUM),)
-            with torch.cuda.device(x.device):
+            with torch_device_fn.device(x.device):
                 layer_norm_kernel_middle_n[grid](x, y, weight, bias, mean, rstd, M, eps, N)
         else:
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch.cuda.device(x.device):
+            with torch_device_fn.device(x.device):
                 layer_norm_kernel_inner[grid](x, y, weight, bias, mean, rstd, M, eps, N)
         ctx.save_for_backward(x, weight, mean, rstd)
         ctx.M = M
@@ -503,7 +479,7 @@ class LayerNorm(torch.autograd.Function):
             # enqueue kernel using forward pass heuristics
             # also compute partial sums for DW and DB
             grid = lambda META: (min(triton.cdiv(M, META['BLOCK_ROW_SIZE']), TOTAL_CORE_NUM),)
-            with torch.cuda.device(x.device):
+            with torch_device_fn.device(x.device):
                 layer_norm_backward_kernel_middle_n[grid](
                     in_grad,
                     out_grad,

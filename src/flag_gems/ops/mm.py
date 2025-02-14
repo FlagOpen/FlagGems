@@ -4,7 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import libentry, libtuner
+from ..utils import triton_lang_extension as tle
 
 
 def heur_even_k(args):
@@ -12,90 +15,8 @@ def heur_even_k(args):
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        # basic configs for compute-bound matmuls
-        triton.Config(
-            {'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_M': 256, 'BLOCK_N': 128, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_M': 256, 'BLOCK_N': 256, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_M': 256, 'BLOCK_N': 1024, 'BLOCK_K': 64, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=1,
-        ),
-        triton.Config(
-            {'BLOCK_M': 64, 'BLOCK_N': 512, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_M': 128, 'BLOCK_N': 512, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_M': 256, 'BLOCK_N': 512, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {'BLOCK_M': 256, 'BLOCK_N': 1024, 'BLOCK_K': 128, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 384, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=1,
-        ),
-        triton.Config(
-            {"BLOCK_M": 768, "BLOCK_N": 64, "BLOCK_K": 256, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 192, "BLOCK_N": 128, "BLOCK_K": 256, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 768, "BLOCK_K": 256, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 128, "BLOCK_K": 128, "SPLIT_K": 1},
-            num_warps=1,
-            num_stages=4,
-        ),
-        triton.Config(
-            {"BLOCK_M": 256, "BLOCK_N": 512, "BLOCK_K": 256, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=5,
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 512, "BLOCK_K": 256, "SPLIT_K": 1},
-            num_warps=4,
-            num_stages=5,
-        ),
-    ],
+@libtuner(
+    configs=runtime.get_triton_config("mm"),
     key=["M", "N", "K"],
 )
 @triton.heuristics(
@@ -214,7 +135,7 @@ def mm(a, b):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
-    with torch.cuda.device(a.device):
+    with torch_device_fn.device(a.device):
         mm_kernel[grid](
             a,
             b,

@@ -5,7 +5,7 @@ from typing import Callable, List, Mapping
 
 import torch
 
-from flag_gems.utils.code_cache import cache_dir
+from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 import triton
@@ -59,9 +59,11 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("from triton import language as tl")
     code.newline()
+    code.writeline("from flag_gems.runtime import torch_device_fn")
     code.writeline("from flag_gems.utils.shape_utils import volume")
     code.writeline("from flag_gems.utils import libentry, MAX_GRID_SIZE_X")
     code.writeline("from flag_gems.utils.type_utils import type_promotion")
+    code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
     code.newline()
     return code
@@ -173,7 +175,7 @@ def generate_destination_passing_repeat_wrapper(
         code.writeline("# kernel launch")
 
         # launch kernel
-        code.writeline("with torch.cuda.device(in0.device.index):")
+        code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             kernel_launch: str = f"{kernel_name}[grid]("
             code.writeline(kernel_launch)
@@ -439,7 +441,7 @@ class RepeatFunction:
 
             file_name = f"repeat_rank_{key}_pid_{self.pid}.py"
 
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
+            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
                 f.write(code.getvalue())
 
             # load
@@ -489,7 +491,7 @@ def repeat_2d_kernel(
             inp = tl.load(inp_ptrs).reshape(1, C)
             repeat_inp = inp.broadcast_to(repeat_C, C).reshape(repeat_C * C)
             out_offset_c = tl.arange(0, repeat_C * C)
-            for n_idx in tl.static_range(0, repeat_N):
+            for n_idx in range(0, repeat_N):
                 out_ptrs = out_ptr + N * n_idx * repeat_C * C + batch_idx * repeat_C * C + out_offset_c
                 tl.store(out_ptrs, repeat_inp)
         else:
@@ -498,8 +500,8 @@ def repeat_2d_kernel(
                 inp_ptrs = inp_ptr + batch_idx * C + offset_c
                 inp_mask = offset_c < C
                 inp = tl.load(inp_ptrs, mask=inp_mask, other=0)
-                for c_idx in tl.static_range(0, repeat_C):
-                    for n_idx in tl.static_range(0, repeat_N):
+                for c_idx in range(0, repeat_C):
+                    for n_idx in range(0, repeat_N):
                         out_ptrs = out_ptr + N * n_idx * repeat_C * C + batch_idx * repeat_C * C + c_idx * C + offset_c
                         tl.store(out_ptrs, inp, mask=inp_mask)
 

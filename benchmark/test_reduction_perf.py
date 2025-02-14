@@ -1,11 +1,15 @@
+import random
 from typing import Generator
 
 import pytest
 import torch
 
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES
+from flag_gems.utils import shape_utils
+
+from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
+    Config,
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
@@ -17,20 +21,30 @@ class UnaryReductionBenchmark(Benchmark):
     Base class for benchmarking reduction operations.
     """
 
+    def set_more_metrics(self):
+        return ["gbps"]
+
+    def get_gbps(self, args, latency):
+        inp = args[0]
+        io_amount = sum([shape_utils.size_in_bytes(item) for item in [inp, inp]])
+        return io_amount * 1e-9 / (latency * 1e-3)
+
     def set_more_shapes(self):
         more_shapes_1d = [
-            (4,),
-            (1024,),
+            (1025 * 1024,),
             (1024 * 1024 * 1024,),
         ]
-        more_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 21, 4)]
+        more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = generate_tensor_input(shape, cur_dtype, self.device)
-            yield inp,
+            if inp.ndim > 1:
+                yield inp, 1
+            else:
+                yield inp,
 
 
 forward_operations = [
@@ -88,6 +102,14 @@ def cross_entropy_loss_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     target = torch.randint(0, shape[-1], (shape[0],), device=device)
     yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+        yield inp, target, {
+            "weight": weight,
+            "reduction": "sum",
+            "label_smoothing": 0.1,
+        }
 
 
 def cumsum_input_fn(shape, cur_dtype, device):
@@ -114,7 +136,7 @@ def cumsum_input_fn(shape, cur_dtype, device):
         ),
         pytest.param(
             "CrossEntropyLoss",
-            torch.nn.CrossEntropyLoss(),
+            torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.CrossEntropyLoss,
@@ -126,10 +148,34 @@ def cumsum_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=pytest.mark.cumsum,
         ),
+        # pytest.param(
+        #     "cummin",
+        #     torch.cummin,
+        #     cumsum_input_fn,
+        #     FLOAT_DTYPES + INT_DTYPES,
+        #     marks=pytest.mark.cummin,
+        # ),
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
+    bench.run()
+
+
+@pytest.mark.count_nonzero
+def test_perf_count_nonzero():
+    def count_nonzero_input_fn(shape, dtype, device):
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        dim = random.choice([None, 0, 1])
+
+        yield inp, dim
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=count_nonzero_input_fn,
+        op_name="count_nonzero",
+        torch_op=torch.count_nonzero,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()

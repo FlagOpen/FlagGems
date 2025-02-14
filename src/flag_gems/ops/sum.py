@@ -6,6 +6,9 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -40,16 +43,8 @@ def sum_kernel_1(
     tl.atomic_add(out, sum_val)
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
-
-
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("sum"), key=["M", "N"])
 @triton.jit
 def sum_kernel(
     inp,
@@ -98,7 +93,7 @@ def sum(inp, *, dtype=None):
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     out = torch.zeros([], dtype=torch.float32, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         sum_kernel_1[grid](inp, out, M)
     return out.to(dtype)
 
@@ -109,6 +104,13 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
+
+    if dim == []:
+        if not keepdim:
+            return sum(inp, dtype=dtype)
+        else:
+            dim_num = inp.ndim
+            return torch.reshape(sum(inp, dtype=dtype), [1] * dim_num)
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
@@ -122,7 +124,7 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=dtype, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         sum_kernel[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)

@@ -4,19 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import broadcastable, libentry, TOTAL_CORE_NUM
-
-
-def cfggen():
-    configs = [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=1)
-        for bs in [64, 256, 512, 1024, 2048, 4096, 8192, 8192*2, 8192*4]
-    ]
-    return configs
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["n_elements"])
+@triton.autotune(configs=runtime.get_triton_config("masked_select"), key=["n_elements"])
 @triton.jit
 def masked_select_kernel(
     inp_ptr,
@@ -55,7 +50,7 @@ def masked_select_kernel(
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["n_elements"])
+@triton.autotune(configs=runtime.get_triton_config("masked_select"), key=["n_elements"])
 @triton.jit
 def cast_bool2float_kernel(
     select_mask_ptr,
@@ -97,13 +92,14 @@ def masked_select(inp, mask):
     n_elements = inp.numel()
     mask_faster = mask_flattened
     grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    if n_elements <= 2**24:
-        # faster cumsum in float type
-        mask_faster = torch.empty_like(mask_flattened, dtype=torch.float32)
-        cast_bool2float_kernel[grid](mask, mask_faster, n_elements)
+    with torch_device_fn.device(inp.device):
+        if n_elements <= 2**24:
+            # faster cumsum in float type
+            mask_faster = torch.empty_like(mask_flattened, dtype=torch.float32)
+            cast_bool2float_kernel[grid](mask, mask_faster, n_elements)
 
-    prefix_sum = mask_faster.cumsum(axis=0)
-    out = torch.empty(int(prefix_sum[-1].item()), dtype=inp.dtype, device=inp.device)
+        prefix_sum = mask_faster.cumsum(axis=0)
+        out = torch.empty(int(prefix_sum[-1].item()), dtype=inp.dtype, device=inp.device)
 
-    masked_select_kernel[grid](inp, mask_flattened, prefix_sum, out, n_elements)
+        masked_select_kernel[grid](inp, mask_flattened, prefix_sum, out, n_elements)
     return out

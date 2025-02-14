@@ -6,17 +6,13 @@ import triton
 import triton.language as tl
 
 from ..utils import dim_compress, libentry, cfggen_reduce_op2, TOTAL_CORE_NUM
-
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if all elements in input evaluate to non-zero value
 # In triton function, test if all elements in input evaluate to non-zero value is ok.
-def cfggen():
-    block_m = [1, 2, 4, 8]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4) for m in block_m
-    ]
-    return configs
 
 
 @triton.jit
@@ -25,7 +21,7 @@ def reduce_all(a, b):
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.autotune(configs=runtime.get_triton_config("all"), key=["M", "N"])
 @triton.jit
 def all_kernel_dim(
     inp,
@@ -90,7 +86,7 @@ def all(inp):
 
     out = torch.ones([], dtype=torch.int32, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         all_kernel_1[grid](inp, out, M)
 
     return out.to(torch.bool)
@@ -114,7 +110,7 @@ def all_dim(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             all_kernel_dim[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
@@ -123,6 +119,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 def all_dims(inp, dim=None, keepdim=False):
     logging.debug("GEMS ALL DIMS")
+
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)
     assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
@@ -139,7 +136,7 @@ def all_dims(inp, dim=None, keepdim=False):
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         all_kernel_dim[grid](inp, out, M, N)
     if not keepdim:
         out = out.squeeze(dim=dim)

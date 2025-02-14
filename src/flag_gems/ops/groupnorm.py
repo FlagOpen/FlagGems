@@ -4,15 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import torch_device_fn
+from ..runtime.moduel_tool import tl_extra_module
 from ..utils import libentry, TOTAL_CORE_NUM
+from ..utils import triton_lang_extension as tle
 
-try:
-    from triton.language.extra.mlu.libdevice import rsqrt
-except ImportError:
-    try:
-        from triton.language.math import rsqrt
-    except ImportError:
-        from triton.language.libdevice import rsqrt
+rsqrt = tl_extra_module.rsqrt
 
 
 @libentry()
@@ -600,7 +597,7 @@ class GroupNorm(torch.autograd.Function):
         rstd = torch.empty((N, num_groups), dtype=x.dtype, device=x.device)
         grid = lambda meta: ( N * triton.cdiv(num_groups, meta["SPLIT"]),)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             group_norm_kernel_opt[grid](
                 x,
                 y,
@@ -637,7 +634,7 @@ class GroupNorm(torch.autograd.Function):
         weight_grad = torch.empty_like(weight)
         bias_grad = torch.empty_like(weight)
         grid = lambda meta: ( N * triton.cdiv(num_groups, meta["SPLIT"]),)
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             group_norm_backward_kernel_opt[grid](
                 y_grad,
                 x,

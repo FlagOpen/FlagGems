@@ -5,15 +5,14 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_SIZE": k}, num_warps=w, num_stages=1)
-        for w in [1]
-        for k in [256, 512, 1024, 2048, 4096, 8192, 32768, 65536]
-    ],
+    configs=runtime.get_triton_config("nonzero"),
     key=[
         "n_elements",
     ],
@@ -69,7 +68,7 @@ def nonzero(inp, *, as_tuple=False):
     num_nonzeros = n_elements
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
     grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         nonzero_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
 
     num_nonzeros = prefix_sum[n_elements - 1].item()

@@ -1,19 +1,23 @@
-DEVICE = "mlu"
 try:
     from torch_mlu.utils.model_transfer import transfer
 except ImportError:
-    DEVICE = "cuda"
+    pass
 import json
 import logging
+
+import flag_gems
+
+device = flag_gems.device
+DEVICE = device
 
 
 def pytest_addoption(parser):
     parser.addoption(
         "--ref",
         action="store",
-        default="mlu",
+        default=device,
         required=False,
-        choices=["cuda", "cpu", "mlu"],
+        choices=[device, "cpu"],
         help="device to run reference tests on",
     )
     parser.addoption(

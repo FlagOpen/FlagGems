@@ -7,6 +7,9 @@ import copy
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM, MAX_NRAM_SIZE
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 MAX_N = 16384
 
@@ -245,15 +248,7 @@ def log_softmax_tile_mode_for_inner(M, N, BLOCK_M, BLOCK_N):
         return 2
 
 @triton.autotune(
-    configs=[
-        triton.Config({
-            "BLOCK_M": m,
-            "BLOCK_N": 2**n
-        },
-                      num_stages=s,
-                      num_warps=1) for m in [1, 2, 4, 8]
-        for n in range(10, 15, 1) for s in [1, 3]
-    ],
+    configs=runtime.get_triton_config("log_softmax"),
     key=[
         "M",
         "N",
@@ -644,7 +639,7 @@ class LogSoftmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N
 
-        with torch.cuda.device(inp.device):
+        with torch_device_fn.device(inp.device):
             if K > 1:
                 logging.debug("GEMS LOGSOFTMAX USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
@@ -685,7 +680,7 @@ class LogSoftmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch.cuda.device(in_grad.device):
+        with torch_device_fn.device(in_grad.device):
             if K > 1:
                 logging.debug("GEMS LOG SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)

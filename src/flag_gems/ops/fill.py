@@ -5,6 +5,8 @@ import triton
 import triton.language as tl
 
 from ..utils import libentry, TOTAL_CORE_NUM
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @triton.autotune(
@@ -67,7 +69,7 @@ def fill_tensor(input, value):
     # grid = triton.cdiv(N, BLOCK_SIZE)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 
-    with torch.cuda.device(input.device):
+    with torch_device_fn.device(input.device):
         fill_tensor_kernel[grid_fn](out, N, value)
     return out
 
@@ -79,6 +81,6 @@ def fill_scalar(input, value):
     # grid = triton.cdiv(N, BLOCK_SIZE)
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 
-    with torch.cuda.device(input.device):
+    with torch_device_fn.device(input.device):
         fill_scalar_kernel[grid_fn](out, N, value)
     return out

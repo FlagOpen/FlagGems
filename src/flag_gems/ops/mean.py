@@ -5,9 +5,12 @@ import torch
 import triton
 import triton.language as tl
 import logging
-from ..utils import libentry, cfggen_reduce_op, TOTAL_CORE_NUM
+from ..utils import libentry, cfggen_reduce_op, dim_compress, TOTAL_CORE_NUM
 import math
-from ..utils import dim_compress
+
+from .. import runtime
+from ..runtime import torch_device_fn
+from ..utils import triton_lang_extension as tle
 
 
 @libentry()
@@ -43,17 +46,14 @@ def mean(inp, *, dtype=None):
     grid = lambda meta: (min(triton.cdiv(M, meta['BLOCK_SIZE']), TOTAL_CORE_NUM), )
     out = torch.zeros([], dtype=torch.float32, device=inp.device)
 
-    with torch.cuda.device(inp.device):
+    with torch_device_fn.device(inp.device):
         mean_kernel_1[grid](inp, out, M)
     return out.to(dtype)
 
 
 @libentry()
 @triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": m, "BLOCK_N": 1024}, num_warps=4)
-        for m in [1, 2, 4, 8]
-    ],
+    configs=runtime.get_triton_config("mean"),
     key=["M", "N"],
 )
 @triton.jit
@@ -103,7 +103,7 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     M = x.numel() // N
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (min(triton.cdiv(M, META["BLOCK_M"]), TOTAL_CORE_NUM),)
-    with torch.cuda.device(x.device):
+    with torch_device_fn.device(x.device):
         mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
         out = out.squeeze(dim)

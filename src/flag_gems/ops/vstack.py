@@ -11,6 +11,7 @@ from ..utils.tensor_wrapper import StridedBuffer
 from ..utils.code_cache import cache_dir
 from ..utils.code_utils import IndentedBuffer
 from ..utils import libentry, TOTAL_CORE_NUM
+from ..utils import triton_lang_extension as tle
 
 
 class VstackKernelCode(IndentedBuffer):
@@ -61,6 +62,7 @@ import math
 import torch
 import triton
 from triton import language as tl
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, TOTAL_CORE_NUM, MAX_NRAM_SIZE
         """)
 
@@ -82,7 +84,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
     output_shape = list(c_tensors[0].shape)
     output_shape[0] = total_rows
     output = torch.empty(output_shape, device=device, dtype=dtype)
-    with torch.cuda.device(device):
+    with torch_device_fn.device(device):
         {kernel_name}[(TOTAL_CORE_NUM,)]({args})
     return output
         """,
@@ -195,24 +197,20 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                 input_idx = i - 1
                                 if self.input_num == 2:
                                     self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
-                                elif self.input_num == 3:
-                                    if i == 1:
-                                        self.writeline(f"if input_iter == {input_idx}:")
-                                        with self.indent():
-                                            self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
-                                    else:
-                                        self.writeline(f"else:")
-                                        with self.indent():
-                                            self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
                                 else:
                                     if i == 1:
                                         self.writeline(f"if input_iter == {input_idx}:")
                                         with self.indent():
                                             self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
                                     else:
-                                        self.writeline(f"elif input_iter == {input_idx}:")
-                                        with self.indent():
-                                            self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
+                                        if i < self.input_num - 1:
+                                            self.writeline(f"elif input_iter == {input_idx}:")
+                                            with self.indent():
+                                                self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
+                                        else:
+                                            self.writeline(f"else:")
+                                            with self.indent():
+                                                self.writeline(f"condidate_num = idx_{idx} - idx_{i}")
                             self.writeline("input_iter += 1")
 
 

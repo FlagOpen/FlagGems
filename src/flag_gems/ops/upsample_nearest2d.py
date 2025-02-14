@@ -6,16 +6,16 @@ import triton
 import triton.language as tl
 from flag_gems.utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM
 
+from .. import runtime
+from ..runtime import device, torch_device_fn
+from ..utils import triton_lang_extension as tle
 
-def configs():
-    block = [1024, 2048, 4096, 8192, 16384]
-    warps = [1]
-    return [
-        triton.Config({"BLOCK_SIZE": bs}, num_warps=wp) for bs in block for wp in warps
-    ]
+device = device.name
 
 
-@triton.autotune(configs=configs(), key=["N", "C", "OH", "OW"])
+@triton.autotune(
+    configs=runtime.get_triton_config("upsample_nearest2d"), key=["N", "C", "OH", "OW"]
+)
 @triton.heuristics(
     {
         "SAME_H": lambda args: args["OH"] == args["IH"],
@@ -159,7 +159,7 @@ def upsample_nearest2d(
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
     logging.debug("GEMS UPSAMPLE NEAREST2D")
-    assert input.is_cuda
+    assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
     OH, OW = output_size
@@ -175,25 +175,26 @@ def upsample_nearest2d(
     # allocate output
     output = torch.empty((N, C, OH, OW), device=input.device, dtype=input.dtype)
 
-    if reciprocal_scale_h == 0.5 and reciprocal_scale_w == 0.5 and IH / OH == 0.5 and IW / OW == 0.5:
-        if N * C > 48:
-            upsample_nearest2d_kernel_opt[TOTAL_CORE_NUM, ](
-                output, input, N, C, OH, OW, IH, IW
-            )
+    with torch_device_fn.device(input.device):
+        if reciprocal_scale_h == 0.5 and reciprocal_scale_w == 0.5 and IH / OH == 0.5 and IW / OW == 0.5:
+            if N * C > 48:
+                upsample_nearest2d_kernel_opt[TOTAL_CORE_NUM, ](
+                    output, input, N, C, OH, OW, IH, IW
+                )
+            else:
+                upsample_nearest2d_kernel_opt_tile_h[TOTAL_CORE_NUM, ](
+                    output, input, N, C, OH, OW, IH, IW
+                )
         else:
-            upsample_nearest2d_kernel_opt_tile_h[TOTAL_CORE_NUM, ](
-                output, input, N, C, OH, OW, IH, IW
+            total_threads = N * C * OH * OW
+            # incase grid check error
+            def grid_fn(META):
+                num_threads = triton.cdiv(total_threads, META["BLOCK_SIZE"])
+                grid_x = min(num_threads, MAX_GRID_SIZE_X)
+                grid_y = triton.cdiv(num_threads, grid_x)
+                return (grid_x, grid_y, )
+            upsample_nearest2d_kernel[grid_fn](
+                output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
             )
-    else:
-        total_threads = N * C * OH * OW
-        # incase grid check error
-        def grid_fn(META):
-            num_threads = triton.cdiv(total_threads, META["BLOCK_SIZE"])
-            grid_x = min(num_threads, MAX_GRID_SIZE_X)
-            grid_y = triton.cdiv(num_threads, grid_x)
-            return (grid_x, grid_y, )
-        upsample_nearest2d_kernel[grid_fn](
-            output, input, N, C, OH, OW, IH, IW, reciprocal_scale_h, reciprocal_scale_w
-        )
 
     return output
