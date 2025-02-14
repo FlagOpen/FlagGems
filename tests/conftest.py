@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 
 import pytest
 
@@ -12,6 +13,8 @@ import flag_gems
 
 device = flag_gems.device
 
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+filename = f"test_detail_and_result_{timestamp}.json"
 
 def pytest_addoption(parser):
     parser.addoption(
@@ -126,8 +129,8 @@ def pytest_runtest_logreport(report):
 
 
 def pytest_terminal_summary(terminalreporter):
-    if os.path.exists("result.json"):
-        with open("result.json", "r") as json_file:
+    if os.path.exists(filename):
+        with open(filename, "r") as json_file:
             existing_data = json.load(json_file)
         existing_data.update(test_results)
     else:
