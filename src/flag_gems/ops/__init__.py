@@ -1,5 +1,5 @@
 from .abs import abs
-from .add import add
+from .add import add, inplace_add
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -148,6 +148,7 @@ __all__ = [
     "any_dim",
     "any_dims",
     "add",
+    "inplace_add",
     "abs",
     "addmm",
     "arange",

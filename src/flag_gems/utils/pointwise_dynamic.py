@@ -1125,13 +1125,6 @@ class PointwiseDynamicFunction:
         outputs_that_need_allocation: List[int] = []
         out_tensors = []
 
-        # for i in range(schema.num_output_tensors()):
-        #     k = f"out{i}"
-        #     if k in kwargs:
-        #         out_tensors.append(kwargs[k])
-        #     else:
-        #         outputs_that_need_allocation.append(i)
-
         # input arguments must be passed by position
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 

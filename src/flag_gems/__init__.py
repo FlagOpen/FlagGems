@@ -21,6 +21,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
         (
             ("abs", abs, Autograd.disable),
             ("add.Tensor", add, Autograd.disable),
+            ("add_.Tensor", inplace_add, Autograd.disable),
             ("addmm", addmm, Autograd.disable),
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),

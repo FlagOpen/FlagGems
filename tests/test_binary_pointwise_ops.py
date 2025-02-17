@@ -43,6 +43,29 @@ def test_accuracy_add(shape, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.inplace_add
+# @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+# @pytest.mark.parametrize("alpha", SCALARS)
+# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(3, 3)])
+@pytest.mark.parametrize("alpha", [1.0])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_inplace_add(shape, alpha, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_inp1.add_(ref_inp2)
+    # TODO(zzk):  maximum recursion
+    # with flag_gems.use_gems():
+    # inp1.add_(inp2)
+
+    flag_gems.ops.inplace_add(inp1, inp2)
+
+    gems_assert_close(ref_inp1, inp1, dtype)
+
+
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
