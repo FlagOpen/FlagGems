@@ -77,6 +77,7 @@ class FunctionSchema:
         dtypes: Optional[List[Optional[type]]] = None,
         num_outputs: Optional[int] = None,
         promotion_methods=None,
+        is_inplace=False,
     ):
         if is_tensor is not None:
             _check_typed_list(is_tensor, bool)
@@ -137,6 +138,11 @@ class FunctionSchema:
         self._num_input_tensors = sum(self._is_tensor)
         self._num_non_tensor_inputs = self._num_inputs - self._num_input_tensors
         self._input_id = self._compute_input_id()
+        self._is_inplace = is_inplace
+        if self._is_inplace:
+            assert (
+                self._num_outputs == 1
+            ), "Inplace operation should have only single output"
 
     @staticmethod
     def canonicalize_promotion_methods(promotion_methods):
@@ -186,14 +192,16 @@ class FunctionSchema:
 
         output_types = []
 
-        if outputs_in_arg:
-            for i in range(self.num_outputs()):
-                output_types.append(f"StridedBuffer(a{1}!)")
-            input_types.extend(output_types)
-        else:
-            for _ in range(self.num_outputs()):
-                output_types.append("StridedBuffer")
+        if not self._is_inplace:
+            if outputs_in_arg:
+                for i in range(self.num_outputs()):
+                    output_types.append(f"StridedBuffer(a{1}!)")
+                input_types.extend(output_types)
+            else:
+                for _ in range(self.num_outputs()):
+                    output_types.append("StridedBuffer")
         sig = f'Pointwise: {", ".join(input_types)} -> {", ".join(output_types)}'
+        print("signature is: ", sig)
         return sig
 
     def _compute_input_id(self):
@@ -786,9 +794,11 @@ class WrapperGenerator:
         # tensors). We emphasize that these parameters are added in-addition, we enforce
         # that they be passed by keyword. After all, out0, out1, ... does not mismatch
         # names form the scalar function, since it does not have output parameters.
+        # if not schema._is_inplace:
         params.append("/")
         params.append("*")  # output params must be passed by keyword
 
+        # if not schema._is_inplace:
         for i in range(schema.num_output_tensors()):
             params.append(f"{self.output_name(i)}: Union[torch.Tensor, StridedBuffer]")
         code.writeline(f"def {self.name}({_cs(params)}): ")
@@ -1081,7 +1091,13 @@ class PointwiseDynamicFunction:
 
     def __call__(self, *args, **kwargs):
         # inputs must be passed by position, outputs must be passed by keyword
+        print("Before prepare args is: ", args)
+        print("Before prepare kwargs is: ", kwargs)
+
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
+        print("After prepare args is: ", args)
+        print("After prepare kwargs is: ", kwargs)
+
         overload = self.instantiate(ndim)
         out = overload(*args, **kwargs)
         # NOTE: overload keeps the type of outputs:
@@ -1108,14 +1124,27 @@ class PointwiseDynamicFunction:
         schema = self.fx
         outputs_that_need_allocation: List[int] = []
         out_tensors = []
-        for i in range(schema.num_output_tensors()):
-            k = f"out{i}"
-            if k in kwargs:
-                out_tensors.append(kwargs[k])
-            else:
-                outputs_that_need_allocation.append(i)
+
+        # for i in range(schema.num_output_tensors()):
+        #     k = f"out{i}"
+        #     if k in kwargs:
+        #         out_tensors.append(kwargs[k])
+        #     else:
+        #         outputs_that_need_allocation.append(i)
+
         # input arguments must be passed by position
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
+
+        for i in range(schema.num_output_tensors()):
+            k = f"out{i}"
+
+            if not schema._is_inplace:
+                if k in kwargs:
+                    out_tensors.append(kwargs[k])
+                else:
+                    outputs_that_need_allocation.append(i)
+            else:
+                out_tensors.append(in_tensors[0])
 
         # output dtype promotions
         outputs_dtypes_for_allocation = []
@@ -1125,7 +1154,11 @@ class PointwiseDynamicFunction:
             _, dtype = type_promotion(*promote_args, type_promotion=method)
             outputs_dtypes_for_allocation.append(dtype)
 
+        print("outputs_dtypes_for_allocation is: ", outputs_dtypes_for_allocation)
+        print("outputs_that_need_allocation is: ", outputs_that_need_allocation)
+
         tensors = out_tensors + in_tensors
+
         if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 torch.empty_like(tensors[0], dtype=dtype)
@@ -1197,6 +1230,12 @@ class PointwiseDynamicFunction:
                     task_shape,
                     broadcasted_stride(item.shape, item.stride(), task_shape),
                 )
+
+        if schema._is_inplace:
+            # Inplace operator only have single output.
+            # need to check args[0] is tensor
+            kwargs["out0"] = args[0]
+
         return (ndim, args, kwargs)
 
     def _unwrap(self, tensors):
@@ -1278,6 +1317,7 @@ def pointwise_dynamic(
     num_outputs: Optional[int] = None,
     promotion_methods: Optional[Tuple[int, ...]] = None,
     config: Optional[CodeGenConfig] = None,
+    is_inplace=False,
 ):
     def decorator(fn):
         nonlocal num_inputs
@@ -1289,6 +1329,7 @@ def pointwise_dynamic(
             dtypes=dtypes,
             num_outputs=num_outputs,
             promotion_methods=promotion_methods,
+            is_inplace=is_inplace,
         )
         return PointwiseDynamicFunction(op_desc, fn, config)
 
