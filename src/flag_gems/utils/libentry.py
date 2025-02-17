@@ -6,7 +6,7 @@ import triton
 from .. import runtime
 from ..runtime import torch_device_fn
 
-DEVICE_COUNT = runtime.device.device_count
+DEVICE_COUNT = runtime.device.device_coun
 
 
 class LibEntry(triton.KernelInterface):
