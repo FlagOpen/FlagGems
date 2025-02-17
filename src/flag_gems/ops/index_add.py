@@ -4,30 +4,35 @@ import torch
 import triton
 import triton.language as tl
 
+from .. import runtime
 from ..utils import dim_compress, libentry
 
-
-def cfggen():
-    block_m = [1, 2, 4]
-    block_n = [128, 1024, 2048, 4096]
-    configs = [
-        triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
-        for m in block_m
-        for n in block_n
-    ]
-    return configs
+# def cfggen():
+#     block_m = [1, 2, 4]
+#     block_n = [128, 1024, 2048, 4096]
+#     configs = [
+#         triton.Config({"BLOCK_M": m, "BLOCK_N": n}, num_warps=4)
+#         for m in block_m
+#         for n in block_n
+#     ]
+#     return configs
 
 
 @libentry()
-@triton.autotune(configs=cfggen(), key=["M", "N"])
+# @triton.autotune(configs=cfggen(), key=["M", "N"])
+@triton.heuristics(runtime.get_heuristic_config("index_add"))
+# @triton.autotune(
+#     configs=[], generate_configs="index_add", op_affiliation="cluster", row_sign="M", col_sign="N",
+#     key=["M", "N"],
+# )
 @triton.jit
 def index_add_kernel(
     inp,
     out,
     index,
     src,
-    M,
-    N,
+    M: tl.constexpr,
+    N: tl.constexpr,
     alpha,
     inp_len,
     BLOCK_M: tl.constexpr,
