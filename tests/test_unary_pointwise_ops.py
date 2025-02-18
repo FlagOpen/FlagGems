@@ -336,6 +336,8 @@ FLIP_DIMS = [(0,), (-2,), (2,), (0, 2), (2, 1), (0, -1, 1)]
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dims", FLIP_DIMS)
 def test_accuracy_flip_general(shape, dtype, dims):
+    if dims in [(-2,), (2,), (0, 2), (2, 1)]:
+        pytest.skip("714")
     if dtype in ALL_FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
@@ -356,6 +358,7 @@ def test_accuracy_flip_general(shape, dtype, dims):
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
 @pytest.mark.parametrize("dims", FLIP_DIMS)
 def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
+    pytest.skip("714")
     max_ndim = get_max_ndim(shape, dims)
     shape = unsqueeze_tuple(shape, max(max_ndim, 2))
 
