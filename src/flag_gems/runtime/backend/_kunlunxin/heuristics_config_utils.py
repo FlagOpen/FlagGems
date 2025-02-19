@@ -93,6 +93,7 @@ def mm_heur_even_k(args):
 
 
 def rand_heur_block(args):
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12 * 4))  # CLUSTER_NUM = 12
     if args["N"] <= 512:
         return 512
     else:
