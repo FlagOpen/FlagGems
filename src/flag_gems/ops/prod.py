@@ -7,7 +7,7 @@ import triton.language as tl
 
 # from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import libentry
+from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
 
@@ -77,13 +77,6 @@ def heur_n_block_size(args):
 
 
 @libentry()
-# @triton.autotune(
-#     configs=runtime.get_tuned_config("prod"),
-#     key=[
-#         "M",
-#         "N",
-#     ],
-# )
 @triton.heuristics(
     values={
         "BLOCK_M": heur_m_block_size,
@@ -96,59 +89,56 @@ def prod_kernel(
     out,
     M,
     N,
-    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # set offset
-    pid_m = tle.program_id(0)
-    pid_k = tle.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
 
-    acc = tl.full((BLOCK_M, BLOCK_N), value=1.0, dtype=tl.float32)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
+    # Map the program id to the row of inp it should compute.
+    pid = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    inp = inp + pid * N
+    out = out + pid
+    row_mask = pid < M
 
-        # set mask
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=1.0).to(tl.float32)
-        acc *= inp_vals
-    result_index = tl.reduce(acc, axis=1, combine_fn=reduce_mul)
+    _prod = tl.zeros([BLOCK_M, BLOCK_N], dtype=cdtype)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
 
-    offset_index = m_offset * K + pid_k
-    out_ptrs = out + offset_index
-    mask1 = m_offset < M
-    tl.store(out_ptrs, result_index, mask=mask1)
+        a = tl.load(inp + cols, mask, other=0).to(cdtype)
+        tmp = _prod + a
+        _prod = tl.where(mask, tmp, _prod)
+
+    prod = tl.reduce(_prod, axis=1, combine_fn=reduce_mul)[:, None]
+    tl.store(out, prod, row_mask)
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS PROD DIM")
-
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
-    dim = dim % inp.ndim
-    N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
-
-    inp = inp.contiguous()
-
-    shape_list = list(shape)
-    shape_list[dim] = 1
-
+    logging.debug("GEMS prod DIM")
     if dtype is None:
         dtype = inp.dtype
-    out = torch.empty(shape_list, dtype=dtype, device=inp.device)
+        if dtype is torch.bool:
+            dtype = torch.int64
+
+    shape = list(inp.shape)
+    dim = [dim % inp.ndim]
+    inp = dim_compress(inp, dim)
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = inp.numel() // N
+
+    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    with torch.cuda.device(inp.device):
+        prod_kernel[grid](inp, out, M, N)
     if not keepdim:
-        out = torch.squeeze(out, dim)
-
-    grid = lambda meta: (
-        triton.cdiv(M, meta["BLOCK_M"]),
-        K,
-    )
-    with torch_device_fn.device(inp.device):
-        prod_kernel[grid](inp, out, M, N, K)
-
+        out = out.squeeze(dim=dim)
     return out
