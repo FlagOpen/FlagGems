@@ -88,28 +88,20 @@ def argmin_kernel(
     # min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
     if tl_dtype is tl.int16:
         tl_dtype = tl.int32
-    min_values = tl.full([BLOCK_M], dtype=tl_dtype, value=dtype_max_value)
-    argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-    for start_n in range(0, N, BLOCK_N):
-        n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
-        inp_ptrs = inp + offset
-        # inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=dtype_max_value)
-        local_min, local_argmin = tl.min(
-            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-        )
-        # if return indices is not supported, call a tl.argmin in addition
-        # local_argmin = tl.argmin(inp_vals, 1)
-        update = local_min < min_values
-        min_values = tl.where(update, local_min, min_values)
-        argmin_values = tl.where(update, start_n + local_argmin, argmin_values)
-
+    n_offset = tl.arange(0, BLOCK_N)
+    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
     offset_index = m_offset * K + pid_k
-    out_index_ptrs = out_index + offset_index
+    # set mask
     mask1 = m_offset < M
-    tl.store(out_index_ptrs, argmin_values, mask=mask1)
+    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    inp_ptrs = inp + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    # inp_vals = tl.where(mask, inp_vals, -float("inf"))
+    _, result_index = tl.min(inp_vals, axis=1, return_indices=True)
+
+    out_index_ptrs = out_index + offset_index
+
+    tl.store(out_index_ptrs, result_index, mask=mask1)
 
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
