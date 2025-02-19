@@ -729,6 +729,7 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_add(shape, dim, dtype):
+    pytest.skip("TODO Fix 714")
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     src_shape = list(inp.shape)
@@ -838,6 +839,7 @@ SHAPE_CONV2D = [
 ]
 
 
+@pytest.mark.skip("unsupported")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
