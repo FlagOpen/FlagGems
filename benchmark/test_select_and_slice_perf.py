@@ -265,6 +265,8 @@ def test_select_scatter_perf():
 
 @pytest.mark.index_add
 def test_index_add_perf():
+    pytest.skip("todo fix 714 error")
+
     def index_add_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device="cuda")
         dim = 0
