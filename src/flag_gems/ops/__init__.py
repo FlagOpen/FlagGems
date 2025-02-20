@@ -8,7 +8,7 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .attention import scaled_dot_product_attention
-from .batch_norm import batch_norm
+from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_tensor,
@@ -31,8 +31,8 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
-from .dropout import native_dropout
-from .embedding import embedding
+from .dropout import dropout, dropout_backward
+from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar
 from .erf import erf
 from .exp import exp
@@ -43,8 +43,8 @@ from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
-from .gelu import gelu
-from .groupnorm import group_norm
+from .gelu import gelu, gelu_backward
+from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
@@ -55,10 +55,10 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
-from .layernorm import layer_norm
+from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .log_sigmoid import log_sigmoid
-from .log_softmax import log_softmax
+from .log_softmax import log_softmax, log_softmax_backward
 from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
@@ -112,16 +112,17 @@ from .rms_norm import rms_norm
 from .rsqrt import rsqrt
 from .scatter import scatter
 from .select_scatter import select_scatter
-from .sigmoid import sigmoid
-from .silu import silu
+from .sigmoid import sigmoid, sigmoid_backward
+from .silu import silu, silu_backward
 from .sin import sin
 from .slice_scatter import slice_scatter
-from .softmax import softmax
+from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
-from .tanh import tanh
+from .tanh import tanh, tanh_backward
+from .threshold import threshold, threshold_backward
 from .tile import tile
 from .topk import topk
 from .triu import triu
@@ -133,7 +134,11 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
-from .weightnorm import weight_norm, weight_norm_interface
+from .weightnorm import (
+    weight_norm,
+    weight_norm_interface,
+    weight_norm_interface_backward,
+)
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -153,6 +158,7 @@ __all__ = [
     "arange",
     "arange_start",
     "batch_norm",
+    "batch_norm_backward",
     "bitwise_and_tensor",
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",
@@ -180,9 +186,11 @@ __all__ = [
     "zeros",
     "ones",
     "full",
-    "native_dropout",
+    "dropout",
+    "dropout_backward",
     "erf",
     "embedding",
+    "embedding_backward",
     "eq",
     "eq_scalar",
     "exp",
@@ -198,7 +206,9 @@ __all__ = [
     "ge",
     "ge_scalar",
     "gelu",
+    "gelu_backward",
     "group_norm",
+    "group_norm_backward",
     "gt",
     "gt_scalar",
     "index_select",
@@ -209,7 +219,9 @@ __all__ = [
     "isinf",
     "isnan",
     "layer_norm",
+    "layer_norm_backward",
     "weight_norm_interface",
+    "weight_norm_interface_backward",
     "weight_norm",
     "le",
     "le_scalar",
@@ -246,11 +258,17 @@ __all__ = [
     "rsqrt",
     "scatter",
     "sigmoid",
+    "sigmoid_backward",
     "silu",
+    "silu_backward",
     "sin",
     "softmax",
+    "softmax_backward",
     "sub",
     "tanh",
+    "tanh_backward",
+    "threshold",
+    "threshold_backward",
     "tile",
     "triu",
     "topk",
@@ -269,6 +287,7 @@ __all__ = [
     "var_mean",
     "vector_norm",
     "log_softmax",
+    "log_softmax_backward",
     "outer",
     "cross_entropy_loss",
     "where_self_out",
