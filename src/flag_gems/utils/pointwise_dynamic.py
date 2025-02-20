@@ -9,10 +9,14 @@ from triton.runtime.jit import JITFunction
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
+    MemOverlap,
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
+    broadcast_shapes,
     broadcasted_stride,
+    check_tensor_attributes,
+    has_internal_overlapping,
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
@@ -1115,7 +1119,17 @@ class PointwiseDynamicFunction:
             else:
                 outputs_that_need_allocation.append(i)
         # input arguments must be passed by position
+        if schema._is_tensor is not None:
+            if not check_tensor_attributes(args, (schema._is_tensor)):
+                raise ValueError(
+                    "Input arguments must be passed by position, and the corresponding dtype must be specified."
+                )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
+
+        # input arguments must be dense and no overlapping
+        for out in out_tensors:
+            if has_internal_overlapping(out) == MemOverlap.Yes:
+                raise ValueError("Input arguments must be dense and no overlapping.")
 
         # output dtype promotions
         outputs_dtypes_for_allocation = []
@@ -1154,8 +1168,16 @@ class PointwiseDynamicFunction:
             # a simple strategy: all the undefined tensors will follow the first
             # tensor that is not broadcated, no attempts to simplify task, no reordering,
             # no dimenion collapsing
-            shapes = tuple(item.shape for item in tensors)
-            task_shape = torch.broadcast_shapes(*shapes)
+            shapes = tuple(item.shape for item in in_tensors)
+
+            task_shape = broadcast_shapes(shapes)
+
+            if out_tensors:
+                for index, item in enumerate(out_tensors):
+                    if list(item.shape) != list(task_shape):
+                        raise ValueError(
+                            f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
+                        )
             ndim = len(task_shape)
             for item in tensors:
                 if item.shape == task_shape:
