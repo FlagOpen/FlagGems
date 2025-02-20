@@ -114,16 +114,6 @@ UPSAMPLE_SHAPES = [
 ]
 
 
-
-UPSAMPLE_SHAPES = [
-    (32, 16, 128, 128),
-    (15, 37, 256, 256),
-    (3, 5, 127, 127),
-    (128, 192, 42, 51),
-    (3, 7, 1023, 1025),
-]
-
-
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
@@ -146,6 +136,7 @@ def to_reference(inp, upcast=False):
         else:
             ref_inp = ref_inp.to(torch.float64)
     return ref_inp
+
 
 def to_reference_fp64(inp, upcast=False):
     if inp is None:

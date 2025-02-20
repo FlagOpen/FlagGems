@@ -1,3 +1,4 @@
+import random
 from typing import Generator
 
 import pytest
@@ -11,7 +12,6 @@ from .performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
-    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
 )
@@ -148,14 +148,13 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES,
             marks=pytest.mark.log_softmax,
         ),
-        ### TODO:ERROR
-        # pytest.param(
-        #     "nonzero",
-        #     torch.nonzero,
-        #     unary_input_fn,
-        #     FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
-        #     marks=pytest.mark.nonzero,
-        # ),
+        pytest.param(
+            "nonzero",
+            torch.nonzero,
+            unary_input_fn,
+            FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+            marks=pytest.mark.nonzero,
+        ),
         pytest.param(
             "CrossEntropyLoss",
             torch.nn.functional.cross_entropy,
@@ -250,59 +249,5 @@ def quantile_input_fn(shape, cur_dtype, device):
 def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
     bench = quantileBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
-    )
-    bench.run()
-
-
-@pytest.mark.slice_scatter
-def test_slice_scatter_perf():
-    def slice_scatter_input_fn(shape, dtype, device):
-        dim = random.choice([0, 1])
-        start = 16
-        end = 1024
-        step = 2
-
-        inp = torch.randn(shape, dtype=dtype, device=device)
-
-        range = end - start
-        valid_shape = list(inp.shape)
-        if end < start:
-            range = 0
-        elif (end - start) > valid_shape[dim]:
-            range = valid_shape[dim]
-            start = 0
-            end = valid_shape[dim]
-
-        valid_shape[dim] = (range + (step - 1)) // step
-        src = torch.randn(valid_shape, dtype=dtype, device=device)
-        yield inp, src, dim, start, end, step
-
-    bench = GenericBenchmark2DOnly(
-        op_name="slice_scatter",
-        torch_op=torch.slice_scatter,
-        input_fn=slice_scatter_input_fn,
-        dtypes=FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.select_scatter
-def test_select_scatter_perf():
-    def select_scatter_input_fn(shape, dtype, device):
-        dim = random.choice([0, 1])
-        index = random.randint(0, shape[dim] - 1)
-        inp = torch.randn(shape, dtype=dtype, device=device)
-
-        src_shape = list(inp.shape)
-        del src_shape[dim]
-        src = torch.randn(src_shape, dtype=dtype, device=device)
-
-        yield inp, src, dim, index
-
-    bench = GenericBenchmark2DOnly(
-        op_name="select_scatter",
-        torch_op=torch.select_scatter,
-        input_fn=select_scatter_input_fn,
-        dtypes=FLOAT_DTYPES,
     )
     bench.run()

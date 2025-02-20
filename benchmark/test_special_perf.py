@@ -40,8 +40,8 @@ special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
-    # ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
-    # ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
+    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
+    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
 ]
 
 
@@ -65,7 +65,6 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.skip("cost too long")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -89,7 +88,6 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skip()
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -358,25 +356,6 @@ def test_perf_diagonal_backward():
         torch_op=torch.diagonal,
         dtypes=FLOAT_DTYPES,
         is_backward=True,
-    )
-
-    bench.run()
-
-
-@pytest.mark.diag_embed
-def test_perf_diag_embed():
-    def diag_embed_input_fn(shape, dtype, device):
-        inp = generate_tensor_input(shape, dtype, device)
-        yield {"input": inp},
-
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            yield {"input": inp, "offset": 1, "dim1": 0, "dim2": -1},
-
-    bench = EmbeddingBenchmark(
-        input_fn=diag_embed_input_fn,
-        op_name="diag_embed",
-        torch_op=torch.diag_embed,
-        dtypes=FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
     )
 
     bench.run()

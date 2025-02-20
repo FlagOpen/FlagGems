@@ -16,17 +16,6 @@ torch_device_fn = backend.gen_torch_device_object()
 # torch_backend_device is like 'torch.backend.cuda' object
 torch_backend_device = backend.get_torch_backend_device_fn()
 
-"""
-The dependency order of the sub-directory is strict, and changing the order arbitrarily may cause errors.
-"""
-
-# torch_device_fn is like 'torch.cuda' object
-backend.set_torch_backend_device_fn(device.vendor_name)
-torch_device_fn = backend.gen_torch_device_object()
-
-# torch_backend_device is like 'torch.backend.cuda' object
-torch_backend_device = backend.get_torch_backend_device_fn()
-
 
 def get_tuned_config(op_name):
     return config_loader.get_tuned_config(op_name)

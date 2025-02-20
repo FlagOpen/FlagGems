@@ -462,12 +462,6 @@ def celoss_indices_smooth_bwd(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("cross_entropy_loss_sum_and_scale"),
-    key=[
-        "N",
-    ],
-)
 @triton.jit
 def sum_and_scale(
     inp_ptr,
@@ -549,6 +543,7 @@ class CrossEntropyLoss(torch.autograd.Function):
                 )
         elif label_smoothing == 0:
             # target indices
+            w_tgt = torch.empty(shape, dtype=torch.float32, device=inp.device)
             with torch_device_fn.device(inp.device):
                 celoss_indices_kernel[grid](
                     inp,
