@@ -90,7 +90,7 @@ from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
 from .mse_loss import mse_loss
-from .mul import mul, mul
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
 from .ne import ne, ne_scalar
@@ -101,7 +101,6 @@ from .nllloss import (
     nll_loss_backward,
     nll_loss_forward,
 )
-
 from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones

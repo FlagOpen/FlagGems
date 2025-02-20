@@ -394,6 +394,7 @@ def test_accuracy_sigmoid_(shape, dtype):
 
 SPECIAL_VALUES = [float("-inf"), float("inf"), -300]
 
+
 @pytest.mark.log_sigmoid
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
