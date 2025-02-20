@@ -11,19 +11,6 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-def cfggen():
-    block_m = [1, 2, 4, 8, 32]
-    block_n = [256, 512, 1024, 2048]
-    warps = [4, 8, 16]
-    configs = [
-        triton.Config({"BLOCK_ROW_SIZE": m, "BLOCK_COL_SIZE": n}, num_warps=w)
-        for m in block_m
-        for n in block_n
-        for w in warps
-    ]
-    return configs
-
-
 @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_norm_kernel_last"), key=["M", "N"]

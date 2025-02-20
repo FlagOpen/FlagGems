@@ -200,12 +200,6 @@ def clear_module_cache():
     torch_device_fn.empty_cache()
 
 
-@pytest.fixture(scope="module", autouse=True)
-def clear_musa_cache():
-    yield
-    torch.musa.empty_cache()
-
-
 @pytest.fixture()
 def extract_and_log_op_attributes(request):
     print("")

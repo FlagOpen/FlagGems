@@ -74,8 +74,7 @@ def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{device_name}"
-    # torch_device_fn_device = importlib.import_module(module_str)
-    torch_device_fn_device = None
+    torch_device_fn_device = importlib.import_module(module_str)
 
 
 def get_torch_backend_device_fn():
@@ -154,17 +153,6 @@ def get_curent_device_unused_op(vendor_name=None):
     global vendor_module
     get_vendor_module(vendor_name)
     return list(vendor_module.CUSTOMIZED_UNUSED_OPS)
-
-
-def get_heuristic_config(vendor_name=None):
-    # import_vendor_extra_lib(vendor_name)
-    global heuristic_config_module
-    heuristic_config_module = importlib.import_module(
-        f"_{vendor_name}.heuristics_config_utils"
-    )
-    if hasattr(heuristic_config_module, "HEURISTICS_CONFIGS"):
-        return heuristic_config_module.HEURISTICS_CONFIGS
-    return None
 
 
 def get_heuristic_config(vendor_name=None):

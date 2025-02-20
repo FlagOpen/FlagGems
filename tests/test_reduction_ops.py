@@ -268,7 +268,6 @@ CUMMIN_SHAPES = (
 )
 
 
-@pytest.mark.skip("AssertionError")
 @pytest.mark.skipif(
     SkipVersion("triton", "<3.0"),
     reason="Skipping when associative_scan only support single tensor input.",
@@ -518,7 +517,6 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skip("RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -716,104 +714,6 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.select_scatter
-@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dim", DIM_LIST)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_select_scatter(shape, dim, dtype):
-    import random
-
-    index = random.randint(0, shape[dim] - 1)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-
-    src_shape = list(inp.shape)
-    del src_shape[dim]
-    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
-
-    ref_inp = to_reference(inp)
-    ref_src = to_reference(src)
-    ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.select_scatter
-def test_accuracy_select_scatter_with_self_overlapping_input():
-    dim = 0
-    index = 1
-    inp = torch.randn((1, 4), device=flag_gems.device).broadcast_to((3, 4))
-    src = torch.randn((4,), device=flag_gems.device)
-
-    ref_inp = to_reference(inp)
-    ref_src = to_reference(src)
-    ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.slice_scatter
-@pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("start", [16, 64])
-@pytest.mark.parametrize("end", [1024, 256])
-@pytest.mark.parametrize("step", [1, 2])
-def test_accuracy_slice_scatter(shape, stride, dim, dtype, start, end, step):
-    inp = torch.empty_strided(shape, stride, dtype=dtype, device=flag_gems.device)
-    inp.copy_(1)
-
-    valid_shape = list(inp.shape)
-    size = valid_shape[dim]
-
-    start = start % size
-    end = end % (size + 1)
-
-    if end < start:
-        end, start = start, end
-    elif end == start:
-        end = size
-
-    valid_shape[dim] = (end - start + step - 1) // step
-
-    src = torch.rand(valid_shape, dtype=dtype, device=flag_gems.device)
-
-    ref_inp = to_reference(inp)
-    ref_src = to_reference(src)
-    ref_out = torch.slice_scatter(
-        ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
-    )
-
-    res_out = flag_gems.ops.slice_scatter(
-        inp, dim=dim, src=src, start=start, end=end, step=step
-    )
-
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.slice_scatter
-def test_accuracy_slice_scatter_with_self_overlapping_input():
-    inp = torch.randn((3, 1), device=flag_gems.device).broadcast_to((3, 8))
-    src = torch.rand((3, 4), device=flag_gems.device)
-
-    start = 0
-    end = 8
-    step = 2
-    dim = 1
-    ref_inp = to_reference(inp)
-    ref_src = to_reference(src)
-    ref_out = torch.slice_scatter(
-        ref_inp, dim=dim, src=ref_src, start=start, end=end, step=step
-    )
-    res_out = flag_gems.ops.slice_scatter(
-        inp, dim=dim, src=src, start=start, end=end, step=step
-    )
-
-    gems_assert_equal(res_out, ref_out)
-
-
 # TODO: failed at (200, 40999, 3)
 @pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -853,13 +753,13 @@ def test_accuracy_index_select(shape, dim, dtype):
         0, index_size, [floor(index_size * 0.8)], device=flag_gems.device
     )
 
-#     ref_inp = to_reference(inp)
-#     ref_index = to_reference(index)
-#     ref_out = torch.index_select(ref_inp, dim, ref_index)
-#     with flag_gems.use_gems():
-#         res_out = torch.index_select(inp, dim, index)
+    ref_inp = to_reference(inp)
+    ref_index = to_reference(index)
+    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    with flag_gems.use_gems():
+        res_out = torch.index_select(inp, dim, index)
 
-#     gems_assert_equal(res_out, ref_out)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.masked_select
@@ -870,10 +770,10 @@ def test_accuracy_masked_select(shape, dtype, threshold):
     mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
 
     ref_inp = to_reference(inp)
-    ref_index = to_reference(index)
-    ref_out = torch.index_select(ref_inp, dim, ref_index)
+    ref_mask = to_reference(mask)
+    ref_out = torch.masked_select(ref_inp, ref_mask)
     with flag_gems.use_gems():
-        res_out = torch.index_select(inp, dim, index)
+        res_out = torch.masked_select(inp, mask)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -928,7 +828,6 @@ SHAPE_CONV2D = [
 ]
 
 
-@pytest.mark.skip("zero divisor")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
@@ -1057,8 +956,8 @@ def test_accuracy_depthwise2d(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mse_loss(shape, dtype, reduction):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=dtype, device="musa")
+    target = torch.randn(shape, dtype=dtype, device="musa")
 
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
