@@ -1,4 +1,5 @@
 import random
+import time
 
 import pytest
 import torch
@@ -19,6 +20,9 @@ from .accuracy_utils import (
     to_reference,
 )
 from .conftest import QUICK_MODE
+
+# Make sure every thread has same seed.
+random.seed(time.time() // 100)
 
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 DIM_LIST = [1] if QUICK_MODE else [0, 1]
@@ -337,8 +341,11 @@ def test_accuracy_count_nonzero(shape, dtype):
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_log_softmax(shape, dtype):
-    dim = 1
+@pytest.mark.parametrize("dim", [0, 1])
+def test_accuracy_log_softmax(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
