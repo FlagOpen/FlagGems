@@ -408,7 +408,7 @@ def test_accuracy_floor_div_float(shape, dtype):
     gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
-@pytest.mark.skip("Assertion Error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -472,7 +472,7 @@ def test_accuracy_floor_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skip("Assertion Error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.remainder
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -975,7 +975,7 @@ def test_accuracy_sub_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skip("RuntimeError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

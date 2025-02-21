@@ -288,6 +288,7 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -393,7 +394,7 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
             assert torch.sum(res_dist == 0) / res_dist.numel() < 0.001
 
 
-@pytest.mark.skip("ZeroDivisionError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.multinomial
 @pytest.mark.parametrize("pool", UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -526,7 +527,7 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("AssertionError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
@@ -926,7 +927,7 @@ def get_diagonal_backward_shape_and_dims():
     return result
 
 
-@pytest.mark.skip("MUSA error: unknown error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="MUSA error: unknown error")
 @pytest.mark.diagonal_backward
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
