@@ -6,7 +6,13 @@ import torch
 
 from flag_gems.utils import shape_utils
 
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .attri_util import (
+    BOOL_DTYPES,
+    DEFAULT_METRICS,
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    BenchLevel,
+)
 from .performance_utils import (
     Benchmark,
     Config,
@@ -18,12 +24,13 @@ from .performance_utils import (
 
 
 class UnaryReductionBenchmark(Benchmark):
+    DEFAULT_METRICS = DEFAULT_METRICS[:] + ["gbps"]
     """
     Base class for benchmarking reduction operations.
     """
 
-    def set_more_metrics(self):
-        return ["gbps"]
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def get_gbps(self, args, latency):
         inp = args[0]
