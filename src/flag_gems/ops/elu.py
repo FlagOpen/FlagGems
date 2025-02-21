@@ -12,6 +12,6 @@ def elu_forward_kernel(x, alpha):
     return tl.where(x > 0, x, alpha * (tl.exp(x.to(tl.float32)) - 1))
 
 
-def elu(A, alpha=1.0):
+def elu(A, alpha=1.0, scale=1, input_scale=1):
     logging.debug("GEMS ELU")
     return elu_forward_kernel(A, alpha)
