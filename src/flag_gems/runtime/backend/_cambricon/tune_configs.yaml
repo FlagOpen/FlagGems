@@ -992,19 +992,23 @@ scatter:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
+      BLOCK_SIZE: block_s
+    num_warps: 1
+    num_stages: 1
+  block_s:
+  - 64
+  - 128
   - 256
+  - 384
   - 512
+  - 768
+  - 896
   - 1024
   - 2048
+  - 4096
+  - 8192
+  - 16384
+  - 32768
 #######################################
 sum:
 - gen: true
