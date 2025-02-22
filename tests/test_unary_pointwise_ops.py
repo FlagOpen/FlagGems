@@ -84,20 +84,35 @@ def test_accuracy_exp(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_accuracy_gelu(shape, dtype, approximate):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.gelu(ref_inp, approximate=approximate)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.gelu(inp, approximate=approximate)
+        res_out = torch.nn.functional.gelu(res_inp, approximate=approximate)
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+@pytest.mark.gelu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+def test_accuracy_gelu_backward(shape, dtype, approximate):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_out = torch.randn_like(res_inp)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_out = to_reference(res_out, True)
+
+    ref_in_grad = torch.ops.aten.gelu_backward(
+        ref_out, ref_inp, approximate=approximate
+    )
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.gelu_backward(
+            res_out, res_inp, approximate=approximate
+        )
+
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -163,21 +178,14 @@ def test_accuracy_reciprocal(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_relu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.relu(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.relu(inp)
+        res_out = torch.nn.functional.relu(res_inp)
 
     gems_assert_close(res_out, ref_out, dtype)
-
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
-
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.rsqrt
@@ -198,20 +206,30 @@ def test_accuracy_rsqrt(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sigmoid(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     ref_out = torch.sigmoid(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.sigmoid(inp)
+        res_out = torch.sigmoid(res_inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+@pytest.mark.sigmoid
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_sigmoid_backward(shape, dtype):
+    res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_out)
+
+    ref_out = to_reference(res_out, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.sigmoid_backward(ref_grad, ref_out)
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.sigmoid_backward(res_grad, res_out)
+
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -240,20 +258,30 @@ def test_accuracy_log_sigmoid(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.silu(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.silu(inp)
+        res_out = torch.nn.functional.silu(res_inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+@pytest.mark.silu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_silu_backward(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.silu_backward(ref_grad, ref_inp)
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.silu_backward(res_grad, res_inp)
+
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -275,20 +303,30 @@ def test_accuracy_sin(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tanh(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     ref_out = torch.tanh(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.tanh(inp)
+        res_out = torch.tanh(res_inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(inp)
-    ref_grad = to_reference(out_grad, True)
 
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+@pytest.mark.tanh
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_tanh_backward(shape, dtype):
+    res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_out)
+
+    ref_out = to_reference(res_out, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.tanh_backward(ref_grad, ref_out)
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.tanh_backward(res_grad, res_out)
+
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
