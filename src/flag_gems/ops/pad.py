@@ -4,13 +4,12 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-
-from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
-
 import triton
 import triton.language as tl
-from flag_gems.utils import libentry, TOTAL_CORE_NUM
+
+from flag_gems.utils import TOTAL_CORE_NUM, libentry
+from flag_gems.utils.code_cache import code_cache_dir
+from flag_gems.utils.code_utils import IndentedBuffer, NameSpace
 
 
 # --------------------------- padding wrapper genration -----------------------------------
@@ -453,12 +452,14 @@ class PadFunction:
 
 _pad_func = PadFunction()
 
+
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_SIZE": 2**n}, num_stages=s)
-            for n in range(10, 16, 2)
-            for s in [1, 3]
+        # triton.Config({"BLOCK_SIZE": 2**n}, num_stages=s)
+        #     for n in range(10, 16, 2)
+        #     for s in [1, 3]
+        triton.Config({"BLOCK_SIZE": 2**10}, num_stages=3)
     ],
     key=["inp_elements"],
 )
@@ -485,12 +486,14 @@ def pad_1d_constant_kernel(
         out_mask = out_offset < out_elements
         tl.store(out_ptr + out_offset, inp, mask=out_mask)
 
+
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_H": n}, num_stages=s)
-            for n in [1, 4, 8, 12, 16, 24]
-            for s in [1, 3]
+        # triton.Config({"BLOCK_H": n}, num_stages=s)
+        #     for n in [1, 4, 8, 12, 16, 24]
+        #     for s in [1, 3]
+        triton.Config({"BLOCK_H": 8}, num_stages=3)
     ],
     key=["H", "W"],
 )
@@ -517,7 +520,9 @@ def pad_2d_constant_kernel(
         offset_h = tl.arange(0, BLOCK_H) + batch_idx - pad_top
         offset_w = tl.arange(0, out_W) - pad_left
         offsets = offset_h[:, None] * W + offset_w[None, :]
-        mask = (offset_h[:, None] >= 0 and offset_h[:, None] < H) and (offset_w[None, :] >= 0 and offset_w[None, :] < W)
+        mask = (offset_h[:, None] >= 0 and offset_h[:, None] < H) and (
+            offset_w[None, :] >= 0 and offset_w[None, :] < W
+        )
         inp = tl.load(inp_ptr + offsets, mask=mask, other=pad_value)
 
         out_offset_c = tl.arange(0, out_W)
@@ -525,6 +530,7 @@ def pad_2d_constant_kernel(
         out_offsets = out_offset_n[:, None] * out_W + out_offset_c[None, :]
         out_mask = out_offset_n[:, None] < out_H and out_offset_c[None, :] < out_W
         tl.store(out_ptr + out_offsets, inp, mask=out_mask)
+
 
 def pad(self, pad, mode="constant", value=None):
     logging.debug("GEMS CONSTANT PAD ND")
@@ -541,40 +547,75 @@ def pad(self, pad, mode="constant", value=None):
         pad_after = [0 for _ in range(ndim)]
         pad_pair = pad_size // 2
         for i in range(pad_pair):
-              pad_before[ndim - i - 1] = pad[2 * i]
-              pad_after[ndim - i - 1] = pad[2 * i + 1]
+            pad_before[ndim - i - 1] = pad[2 * i]
+            pad_after[ndim - i - 1] = pad[2 * i + 1]
 
         inp_shape = list(self.shape)
         out_shape = list(self.shape)
         for i in range(ndim):
-              out_shape[i] += pad_before[i] + pad_after[i]
+            out_shape[i] += pad_before[i] + pad_after[i]
         out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
 
         if ndim == 1:
-            grid = lambda meta: (min(triton.cdiv(out_shape[0], meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
+            grid = lambda meta: (
+                min(triton.cdiv(out_shape[0], meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),
+            )
             pad_1d_constant_kernel[grid](
-                  self.contiguous(), out, inp_shape[0], value,
-                  pad_before[-1], pad_after[-1])
+                self.contiguous(),
+                out,
+                inp_shape[0],
+                value,
+                pad_before[-1],
+                pad_after[-1],
+            )
             return out
 
         if ndim == 2:
-            grid = lambda meta: (min(triton.cdiv(out_shape[0], meta["BLOCK_H"]), TOTAL_CORE_NUM),)
+            grid = lambda meta: (
+                min(triton.cdiv(out_shape[0], meta["BLOCK_H"]), TOTAL_CORE_NUM),
+            )
             pad_2d_constant_kernel[grid](
-                  self.contiguous(), out, inp_shape[0], inp_shape[1], value,
-                  pad_before[-1], pad_after[-1], pad_before[-2], pad_after[-2])
+                self.contiguous(),
+                out,
+                inp_shape[0],
+                inp_shape[1],
+                value,
+                pad_before[-1],
+                pad_after[-1],
+                pad_before[-2],
+                pad_after[-2],
+            )
             return out
 
         if ndim == 3:
-            out[:pad_before[0]] = torch.full(
-                out[0:pad_before[0]].shape, value, dtype=self.dtype, device=self.device)
-            out[pad_before[0]+inp_shape[0]:] = torch.full(
-                out[pad_before[0]+inp_shape[0]:].shape, value, dtype=self.dtype, device=self.device)
+            out[: pad_before[0]] = torch.full(
+                out[0 : pad_before[0]].shape,
+                value,
+                dtype=self.dtype,
+                device=self.device,
+            )
+            out[pad_before[0] + inp_shape[0] :] = torch.full(
+                out[pad_before[0] + inp_shape[0] :].shape,
+                value,
+                dtype=self.dtype,
+                device=self.device,
+            )
 
             for i in range(pad_before[0], pad_before[0] + inp_shape[0]):
-                grid = lambda meta: (min(triton.cdiv(out_shape[1], meta["BLOCK_H"]), TOTAL_CORE_NUM),)
+                grid = lambda meta: (
+                    min(triton.cdiv(out_shape[1], meta["BLOCK_H"]), TOTAL_CORE_NUM),
+                )
                 pad_2d_constant_kernel[grid](
-                    self[i-pad_before[0]].contiguous(), out[i], inp_shape[1], inp_shape[2], value,
-                    pad_before[-1], pad_after[-1], pad_before[-2], pad_after[-2])
+                    self[i - pad_before[0]].contiguous(),
+                    out[i],
+                    inp_shape[1],
+                    inp_shape[2],
+                    value,
+                    pad_before[-1],
+                    pad_after[-1],
+                    pad_before[-2],
+                    pad_after[-2],
+                )
             return out
 
     if mode == "reflect":

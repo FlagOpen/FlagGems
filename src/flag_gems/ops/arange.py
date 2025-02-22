@@ -6,20 +6,21 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..utils import libentry, TOTAL_CORE_NUM
-from ..utils import triton_lang_extension as tle
+from ..utils import TOTAL_CORE_NUM, libentry
+
+# from ..utils import triton_lang_extension as tle
 
 
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config(kwargs={'BLOCK_SIZE': 1024}, num_stages=3, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 4096}, num_stages=3, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 8192}, num_stages=3, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 16384}, num_stages=3, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 65536}, num_stages=3, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=3, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 4096}, num_stages=3, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 8192}, num_stages=3, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 16384}, num_stages=3, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 65536}, num_stages=3, num_warps=1),
     ],
-    key=['size'],
+    key=["size"],
 )
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
@@ -33,6 +34,7 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
         arange_val = offset * step + start
         tl.store(y_ptr + offset, arange_val, mask=offset < size)
 
+
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
@@ -43,9 +45,11 @@ def arange_start(
     else:
         size = math.ceil((end - start) / step)
 
-    assert size < torch.iinfo(torch.int32).max, f"Size {size} is not less than the maximum int32 value max_int32"
+    assert (
+        size < torch.iinfo(torch.int32).max
+    ), f"Size {size} is not less than the maximum int32 value max_int32"
 
-    grid = lambda META: (min(triton.cdiv(size, META['BLOCK_SIZE']), TOTAL_CORE_NUM), )
+    grid = lambda META: (min(triton.cdiv(size, META["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
 
     if dtype is None:
         dtype = torch.int64

@@ -4,22 +4,23 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import TOTAL_CORE_NUM
 from ..runtime import device, torch_device_fn
-from ..utils import libentry
-from ..utils import triton_lang_extension as tle
+from ..utils import TOTAL_CORE_NUM
+
+# from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
 
 device_ = device
 
+
 @triton.autotune(
     configs=[
-        triton.Config(kwargs={'BLOCK_SIZE': 1024}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 4096}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 16384}, num_stages=1, num_warps=1),
-        triton.Config(kwargs={'BLOCK_SIZE': 65536}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 4096}, num_stages=1, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 16384}, num_stages=1, num_warps=1),
+        # triton.Config(kwargs={'BLOCK_SIZE': 65536}, num_stages=1, num_warps=1),
     ],
-    key=['n_elements'],
+    key=["n_elements"],
 )
 @triton.jit
 def ones_kernel(
@@ -36,7 +37,6 @@ def ones_kernel(
         offsets = block_start_offset + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
         tl.store(output_ptr + offsets, 1.0, mask=mask)
-
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):

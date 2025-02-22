@@ -1,20 +1,22 @@
 import logging
+import math
 
 import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry, dim_compress, TOTAL_CORE_NUM, MAX_NRAM_SIZE
 from .. import runtime
-from ..utils import triton_lang_extension as tle
+from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM, libentry
 
-import math
+# from ..utils import triton_lang_extension as tle
+
 
 def get_max_block_size(dtype_size):
     return MAX_NRAM_SIZE // 3 // dtype_size
 
+
 def config_prune(configs, named_args, **kwargs):
-    N = named_args['N']
+    N = named_args["N"]
     dtype_size = named_args["dtype_size"]
     max_block_size = get_max_block_size(dtype_size)
 
@@ -27,26 +29,23 @@ def config_prune(configs, named_args, **kwargs):
             index_block_size.append(ibs)
             pruned_configs.append(config)
 
-    in_n_elements = named_args['in_n_elements']
+    in_n_elements = named_args["in_n_elements"]
 
     # make sure at least one config is at the load-balance sweet point
     if in_n_elements % TOTAL_CORE_NUM == 0:
         bs = min(max(in_n_elements // TOTAL_CORE_NUM, 1) * N, max_block_size)
     else:
         bs = min(max(in_n_elements // TOTAL_CORE_NUM, 1) * N + 1, max_block_size)
-    if (bs + N -1) // N not in index_block_size:
-        pruned_configs.append(triton.Config(kwargs={"BLOCK_SIZE": bs}, num_stages=1, num_warps=1))
+    if (bs + N - 1) // N not in index_block_size:
+        pruned_configs.append(
+            triton.Config(kwargs={"BLOCK_SIZE": bs}, num_stages=1, num_warps=1)
+        )
 
     return pruned_configs
 
 
 @triton.jit
-def ld_st_1(indices,
-            N: tl.constexpr,
-            weight_ptr,
-            in_mask,
-            in_offsets,
-            out_ptr):
+def ld_st_1(indices, N: tl.constexpr, weight_ptr, in_mask, in_offsets, out_ptr):
     weight_offsets = indices[:, None] * N + tl.arange(0, N)
     embedding_weight = tl.load(weight_ptr + weight_offsets, in_mask[:, None])
     out_offsets = in_offsets[:, None] * N + tl.arange(0, N)
@@ -66,24 +65,25 @@ def heur_block_n(args):
 @triton.autotune(
     configs=[
         # [512, 65536]
-        triton.Config(kwargs={'BLOCK_SIZE': 512 * 2**i}, num_stages=1, num_warps=1) for i in range(8)
+        # triton.Config(kwargs={'BLOCK_SIZE': 512 * 2**i}, num_stages=1, num_warps=1) for i in range(8)
+        triton.Config(kwargs={"BLOCK_SIZE": 512 * 2**4}, num_stages=1, num_warps=1)
     ],
-    key=['N', "in_n_elements"],
+    key=["N", "in_n_elements"],
     prune_configs_by={
         "early_config_prune": config_prune,
     },
 )
 @triton.jit
 def one_batch_index_select_kernel(  # 2D
-        out_ptr,
-        in_ptr,
-        in_n_elements: tl.constexpr,
-        weight_ptr,
-        N: tl.constexpr,
-        dtype_size,
-        inp_numel,
-        BLOCK_SIZE: tl.constexpr):
-
+    out_ptr,
+    in_ptr,
+    in_n_elements: tl.constexpr,
+    weight_ptr,
+    N: tl.constexpr,
+    dtype_size,
+    inp_numel,
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(axis=0)
 
@@ -109,7 +109,8 @@ def one_batch_index_select_kernel(  # 2D
             extra_one = pid < remn_num
 
             block_offset = iter_start + (
-                (base_num + 1) * pid if extra_one else (base_num * pid + remn_num))
+                (base_num + 1) * pid if extra_one else (base_num * pid + remn_num)
+            )
             block_len = base_num + extra_one
 
         in_offsets = block_offset + tl.arange(0, INDEX_BLOCK_SIZE)
@@ -120,7 +121,6 @@ def one_batch_index_select_kernel(  # 2D
             ld_st_1(indices_int32, N, weight_ptr, in_mask, in_offsets, out_ptr)
         else:
             ld_st_1(indices, N, weight_ptr, in_mask, in_offsets, out_ptr)
-
 
 
 def config_prune(configs, named_args, **kwargs):
@@ -161,27 +161,69 @@ def config_prune(configs, named_args, **kwargs):
         for block_index in block_indices:
             for block_c in block_cs:
                 if block_batch * block_index * block_c <= max_bs:
-                    new_configs.append(triton.Config({"BLOCK_BATCH": block_batch, "BLOCK_INDEX": block_index, "BLOCK_C": block_c},
-                                                 num_warps = 1, num_stages = 1))
+                    new_configs.append(
+                        triton.Config(
+                            {
+                                "BLOCK_BATCH": block_batch,
+                                "BLOCK_INDEX": block_index,
+                                "BLOCK_C": block_c,
+                            },
+                            num_warps=1,
+                            num_stages=1,
+                        )
+                    )
     return new_configs
 
-@triton.jit
-def ld_st_2(inp, out, batch_offsets, index_offsets, c_offsets, inp_strides_0, inp_strides_1, out_strides_0, out_strides_1, index_cur, input_output_mask):
-    input_offsets = (batch_offsets * inp_strides_0)[:, None, None] + ((index_cur * inp_strides_1)[:, None] + c_offsets[None, :])[None, :, :]
 
-    output_offsets = (batch_offsets * out_strides_0)[:, None, None] + ((index_offsets * out_strides_1)[:, None] + c_offsets[None, :])[None, :, :]
+@triton.jit
+def ld_st_2(
+    inp,
+    out,
+    batch_offsets,
+    index_offsets,
+    c_offsets,
+    inp_strides_0,
+    inp_strides_1,
+    out_strides_0,
+    out_strides_1,
+    index_cur,
+    input_output_mask,
+):
+    input_offsets = (batch_offsets * inp_strides_0)[:, None, None] + (
+        (index_cur * inp_strides_1)[:, None] + c_offsets[None, :]
+    )[None, :, :]
+
+    output_offsets = (batch_offsets * out_strides_0)[:, None, None] + (
+        (index_offsets * out_strides_1)[:, None] + c_offsets[None, :]
+    )[None, :, :]
 
     selected = tl.load(inp + input_offsets, mask=input_output_mask, other=0.0)
     tl.store(out + output_offsets, selected, mask=input_output_mask)
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_triton_config("index_select"), key=["batch_dim", "index_dim", "c_dim"], prune_configs_by={"early_config_prune": config_prune})
-#@triton.autotune(configs=[triton.Config({"BLOCK_BATCH": 1, "BLOCK_INDEX": 1, "BLOCK_C": 2048*6})], key=["batch_dim", "index_dim", "c_dim"])
+@triton.autotune(
+    configs=runtime.get_triton_config("index_select"),
+    key=["batch_dim", "index_dim", "c_dim"],
+    prune_configs_by={"early_config_prune": config_prune},
+)
+# @triton.autotune(configs=[triton.Config({"BLOCK_BATCH": 1, "BLOCK_INDEX": 1, "BLOCK_C": 2048*6})],
+# key=["batch_dim", "index_dim", "c_dim"])
 @triton.jit
-def multi_batch_index_select_kernel(inp, index, out, batch_dim, select_dim, c_dim, index_dim, dtype_size, inp_numel,
-        BLOCK_BATCH: tl.constexpr, BLOCK_INDEX: tl.constexpr, BLOCK_C: tl.constexpr):
-
+def multi_batch_index_select_kernel(
+    inp,
+    index,
+    out,
+    batch_dim,
+    select_dim,
+    c_dim,
+    index_dim,
+    dtype_size,
+    inp_numel,
+    BLOCK_BATCH: tl.constexpr,
+    BLOCK_INDEX: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
     pid_x = tl.program_id(axis=0)
     num_programs = tl.num_programs(axis=0)
 
@@ -220,25 +262,52 @@ def multi_batch_index_select_kernel(inp, index, out, batch_dim, select_dim, c_di
         c_offsets = block_id_c * block_c + tl.arange(0, block_c)
         c_mask = c_offsets < c_dim
 
-        input_output_mask = batch_mask[:, None, None] and (index_mask[:, None] and c_mask[None, :])[None, :, :]
+        input_output_mask = (
+            batch_mask[:, None, None]
+            and (index_mask[:, None] and c_mask[None, :])[None, :, :]
+        )
 
-        index_cur = tl.load(index + index_offsets, mask = index_mask, other = 0)
+        index_cur = tl.load(index + index_offsets, mask=index_mask, other=0)
         # TODO: remove dtype_size once contiguous DMA is ensured
         if index.dtype != tl.int32 and small_out:
             index_cur_int32 = index_cur.to(tl.int32)
-            ld_st_2(inp, out, batch_offsets, index_offsets, c_offsets, inp_strides_0, inp_strides_1, out_strides_0, out_strides_1, index_cur_int32, input_output_mask)
+            ld_st_2(
+                inp,
+                out,
+                batch_offsets,
+                index_offsets,
+                c_offsets,
+                inp_strides_0,
+                inp_strides_1,
+                out_strides_0,
+                out_strides_1,
+                index_cur_int32,
+                input_output_mask,
+            )
         else:
-            ld_st_2(inp, out, batch_offsets, index_offsets, c_offsets, inp_strides_0, inp_strides_1, out_strides_0, out_strides_1, index_cur, input_output_mask)
+            ld_st_2(
+                inp,
+                out,
+                batch_offsets,
+                index_offsets,
+                c_offsets,
+                inp_strides_0,
+                inp_strides_1,
+                out_strides_0,
+                out_strides_1,
+                index_cur,
+                input_output_mask,
+            )
 
 
 def index_select(inp, dim, index):
     logging.debug("GEMS INDEX SELECT")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.ndim <= 1, "Index should have dimension 1 or 0"
-    #TODO: index is on device, should it be a kernel (like cnnl __assert_fail__) to check this?
+    # TODO: index is on device, should it be a kernel (like cnnl __assert_fail__) to check this?
     assert ((i >= 0 and i < inp.size(dim)) for i in index), "Index out of range"
 
-    #TODO: make sure input is contiguous
+    # TODO: make sure input is contiguous
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
@@ -252,7 +321,7 @@ def index_select(inp, dim, index):
     inp_numel = inp.numel()
     batch_dim = math.prod(inp_shape[:dim])
     select_dim = inp_shape[dim]
-    c_dim = math.prod(inp_shape[(dim + 1):])
+    c_dim = math.prod(inp_shape[(dim + 1) :])
 
     out_shape = inp_shape
     out_shape[dim] = index_dim
@@ -269,10 +338,29 @@ def index_select(inp, dim, index):
         def grid_fn(meta):
             index_block_size_grid = max(meta["BLOCK_SIZE"] // c_dim, 1)
             index_block_num = triton.cdiv(index_dim, index_block_size_grid)
-            return (min(index_block_num, TOTAL_CORE_NUM), )
+            return (min(index_block_num, TOTAL_CORE_NUM),)
 
-        one_batch_index_select_kernel[grid_fn](out, index, index_dim, inp, c_dim, dtype_size, inp_numel)
+        one_batch_index_select_kernel[grid_fn](
+            out, index, index_dim, inp, c_dim, dtype_size, inp_numel
+        )
     else:
-        grid = lambda meta: (min(triton.cdiv(batch_dim, meta["BLOCK_BATCH"]) * triton.cdiv(index_dim, meta["BLOCK_INDEX"]) * triton.cdiv(c_dim, meta["BLOCK_C"]), TOTAL_CORE_NUM),)
-        multi_batch_index_select_kernel[grid](inp, index, out, batch_dim, select_dim, c_dim, index_dim, dtype_size, inp_numel)
+        grid = lambda meta: (
+            min(
+                triton.cdiv(batch_dim, meta["BLOCK_BATCH"])
+                * triton.cdiv(index_dim, meta["BLOCK_INDEX"])
+                * triton.cdiv(c_dim, meta["BLOCK_C"]),
+                TOTAL_CORE_NUM,
+            ),
+        )
+        multi_batch_index_select_kernel[grid](
+            inp,
+            index,
+            out,
+            batch_dim,
+            select_dim,
+            c_dim,
+            index_dim,
+            dtype_size,
+            inp_numel,
+        )
     return out
