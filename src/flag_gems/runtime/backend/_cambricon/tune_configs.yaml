@@ -18,13 +18,13 @@ common_reduce_ops:
   # - 3
 #######################################
 bmm:
-- META:
-    TILE_M: 32
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 1
-  num_warps: 4
-  num_stages: 2
+# - META:
+#     TILE_M: 32
+#     TILE_N: 32
+#     TILE_K: 32
+#     GROUP_M: 1
+#   num_warps: 4
+#   num_stages: 2
 # - META:
 #     TILE_M: 64
 #     TILE_N: 32
@@ -95,13 +95,13 @@ bmm:
 #     GROUP_M: 2
 #   num_warps: 4
 #   num_stages: 3
-# - META:
-#     TILE_M: 128
-#     TILE_N: 128
-#     TILE_K: 32
-#     GROUP_M: 2
-#   num_warps: 4
-#   num_stages: 3
+- META:
+    TILE_M: 128
+    TILE_N: 128
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 3
 # - META:
 #     TILE_M: 64
 #     TILE_N: 64
@@ -217,13 +217,13 @@ log_softmax:
   - 16384
 #######################################
 mm:
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 1
+# - META:
+#     BLOCK_M: 128
+#     BLOCK_N: 128
+#     BLOCK_K: 128
+#     SPLIT_K: 1
+#   num_stages: 4
+#   num_warps: 1
 # - META:
 #     BLOCK_M: 256
 #     BLOCK_N: 128
@@ -266,13 +266,13 @@ mm:
 #     SPLIT_K: 1
 #   num_stages: 4
 #   num_warps: 4
-# - META:
-#     BLOCK_M: 256
-#     BLOCK_N: 1024
-#     BLOCK_K: 128
-#     SPLIT_K: 1
-#   num_stages: 4
-#   num_warps: 4
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 1024
+    BLOCK_K: 128
+    SPLIT_K: 1
+  num_stages: 4
+  num_warps: 4
 # - META:
 #     BLOCK_M: 64
 #     BLOCK_N: 64
@@ -403,18 +403,18 @@ prod:
   num_warps: 8
 #######################################
 max:
-- META:
-    BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 1
+# - META:
+#     BLOCK_M: 8
+#     BLOCK_N: 256
+#   num_warps: 1
 # - META:
 #     BLOCK_M: 16
 #     BLOCK_N: 512
 #   num_warps: 1
-# - META:
-#     BLOCK_M: 32
-#     BLOCK_N: 512
-#   num_warps: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 512
+  num_warps: 1
 #######################################
 addmm:
 - META:
