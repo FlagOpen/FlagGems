@@ -1,17 +1,17 @@
 import torch
 
-try:
-    import torch_mlu
-    from torch_mlu.utils.model_transfer import transfer
-except ImportError:
-    pass
-
-from . import testing  # noqa: F401
+# from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
+
+# try:
+# import torch_mlu
+# from torch_mlu.utils.model_transfer import transfer
+# except ImportError:
+#     pass
 
 
 __version__ = "2.1"
@@ -136,7 +136,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("sub.Tensor", sub, Autograd.disable),
             ("tanh", tanh, Autograd.enable),
             ("triu", triu, Autograd.disable),
-            ("topk", topk, Autograd.disable),
+            # ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
             ("linalg_vector_norm", vector_norm, Autograd.disable),
             ("where.self_out", where_self_out, Autograd.disable),
