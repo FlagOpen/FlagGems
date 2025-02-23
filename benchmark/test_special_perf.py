@@ -37,7 +37,7 @@ def resolve_conj_input_fn(shape, dtype, device):
 
 special_operations = [
     # Sorting Operations
-    ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
+    # ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn), # "trion 2.1 does not support reshape"
     # Complex Operations
     ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
     ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
@@ -102,6 +102,7 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skip(reason="trion 2.1 does not support reshape")
 @pytest.mark.sort
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
