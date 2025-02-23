@@ -40,7 +40,7 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
 @triton.autotune(
     configs=runtime.get_tuned_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
-    restore_value=["running_mean_pointer", "running_var_pointer"],
+    # restore_value=["running_mean_pointer", "running_var_pointer"],
 )
 @triton.heuristics(runtime.get_heuristic_config("batch_norm"))
 @triton.jit
