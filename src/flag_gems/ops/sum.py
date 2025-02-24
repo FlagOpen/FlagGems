@@ -102,8 +102,7 @@ def sum_kernel(
         mask = row_mask and col_mask
 
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
-        tmp = _sum + a
-        _sum = tl.where(mask, tmp, _sum)
+        _sum += a
 
     sum = tl.sum(_sum, axis=1)[:, None]
     tl.store(out, sum, row_mask)

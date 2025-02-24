@@ -27,7 +27,7 @@ class Outer(torch.autograd.Function):
         inp, weight = ctx.saved_tensors
 
         inp_grad = mv(out_grad, weight)
-        weight_grad = mv(out_grad.t(), inp)
+        weight_grad = mv(out_grad.t().contiguous(), inp)
 
         return inp_grad, weight_grad
 
