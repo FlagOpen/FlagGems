@@ -370,8 +370,9 @@ def test_accuracy_div_scalar_scalar(dtype):
 def test_accuracy_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = to_reference(inp1, False)
-    ref_inp2 = to_reference(inp2, False)
+    upcast = True if flag_gems.vendor_name != "cambricon" else False
+    ref_inp1 = to_reference(inp1, upcast)
+    ref_inp2 = to_reference(inp2, upcast)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
     with flag_gems.use_gems():
