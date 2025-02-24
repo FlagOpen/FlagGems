@@ -60,7 +60,8 @@ def diag_1d_to_2d(x, diagonal=0):
     output = torch.zeros((M, M), dtype=x.dtype, device=x.device)
 
     stride = x.stride(0)
-    BLOCK_SIZE = 128
+    # BLOCK_SIZE = 128
+    BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(N, 12))
 
     grid = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
 
@@ -94,6 +95,7 @@ def diag_2d_to_1d(x, diagonal=0):
 
 
 def diag(x, diagonal=0):
+    # import pudb; pudb.set_trace()
     if x.dim() == 1:
         return diag_1d_to_2d(x, diagonal)
     elif x.dim() == 2:
