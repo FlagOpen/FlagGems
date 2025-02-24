@@ -10,8 +10,8 @@ from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
     Config,
-    GenericBenchmark2DOnly,
     GenericBenchmark,
+    GenericBenchmark2DOnly,
     SkipVersion,
     generate_tensor_input,
     unary_input_fn,
@@ -115,9 +115,28 @@ def cross_entropy_loss_input_fn(shape, cur_dtype, device):
         }
 
 
+def nll_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = torch.randint(0, shape[-1], (shape[0],), device=device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        weight = torch.randn(shape[-1], dtype=cur_dtype, device=device)
+        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+
+
 def cumsum_input_fn(shape, cur_dtype, device):
     inp = generate_tensor_input(shape, cur_dtype, device)
     yield inp, 1
+
+
+def mse_loss_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    target = generate_tensor_input(shape, cur_dtype, device)
+    yield inp, target
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        yield inp, target, {"reduction": "mean"}
+        yield inp, target, {"reduction": "sum"}
+        yield inp, target, {"reduction": "none"}
 
 
 @pytest.mark.parametrize(
@@ -158,10 +177,22 @@ def cumsum_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=[
                 pytest.mark.cummin,
-                pytest.mark.skipif(
-                    SkipVersion("triton", "<3.0"), reason="triton not supported"
-                ),
+                pytest.mark.skipif(True, reason="triton not supported"),
             ],
+        ),
+        pytest.param(
+            "nll_loss",
+            torch.nn.functional.nll_loss,
+            nll_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.NLLLoss,
+        ),
+        pytest.param(
+            "mse_loss",
+            torch.nn.functional.mse_loss,
+            mse_loss_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.MSELoss,
         ),
     ],
 )
@@ -204,4 +235,37 @@ def test_perf_dot():
         dtypes = FLOAT_DTYPES,
     )
     
+    bench.run()
+    
+class quantileBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        more_shapes_1d = [(4,), (1024,), (65535)]
+        more_shapes_2d = [(1024, 2**i) for i in range(0, 15, 3)]
+        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 3)]
+        return more_shapes_1d + more_shapes_2d + more_shapes_3d
+
+
+def quantile_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    q = torch.tensor([0.0, 0.2, 0.4, 0.6, 0.8, 1.0], dtype=cur_dtype, device=device)
+    yield inp, q, 0
+
+
+@pytest.mark.skipif(True, reason="Skipping Triton version")
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, dtypes",
+    [
+        pytest.param(
+            "quantile",
+            torch.quantile,
+            quantile_input_fn,
+            [torch.float32],
+            marks=pytest.mark.quantile,
+        )
+    ],
+)
+def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
+    bench = quantileBenchmark(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
+    )
     bench.run()

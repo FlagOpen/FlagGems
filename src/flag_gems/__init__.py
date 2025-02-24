@@ -12,6 +12,7 @@ device = runtime.device.name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
+runtime.replace_customized_ops(globals())
 
 
 def enable(lib=aten_lib, unused=None, registrar=registrar):
@@ -130,7 +131,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("sub.Tensor", sub, Autograd.disable),
             ("tanh", tanh, Autograd.enable),
             ("triu", triu, Autograd.disable),
-            ("topk", topk, Autograd.disable),
+            # ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
             ("linalg_vector_norm", vector_norm, Autograd.disable),
             ("where.self_out", where_self_out, Autograd.disable),
@@ -159,12 +160,18 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("any", any, Autograd.disable),
             ("any.dim", any_dim, Autograd.disable),
             ("any.dims", any_dims, Autograd.disable),
+            ("quantile", quantile, Autograd.disable),
             ("log_softmax.int", log_softmax, Autograd.enable),
             ("outer", outer, Autograd.enable),
             ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
+            ("nll_loss_forward", nll_loss_forward, Autograd.disable),
+            ("nll_loss_backward", nll_loss_backward, Autograd.disable),
+            ("nll_loss2d_forward", nll_loss2d_forward, Autograd.disable),
+            ("nll_loss2d_backward", nll_loss2d_backward, Autograd.disable),
             ("scatter.src", scatter, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
             ("gather", gather, Autograd.disable),
+            ("gather_backward", gather_backward, Autograd.disable),
             ("isclose", isclose, Autograd.disable),
             ("allclose", allclose, Autograd.disable),
             ("fill.Scalar", fill_scalar, Autograd.disable),
@@ -172,7 +179,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("flip", flip, Autograd.disable),
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
-            ("index_select", index_select, Autograd.disable),
+            # ("index_select", index_select, Autograd.disable),
             ("tile", tile, Autograd.disable),
             ("masked_fill.Tensor", masked_fill, Autograd.disable),
             ("masked_fill.Scalar", masked_fill, Autograd.disable),
@@ -210,6 +217,9 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
             ("dot", dot, Autograd.disable),
+            ("log_sigmoid", log_sigmoid, Autograd.disable),
+            ("vdot", vdot, Autograd.disable),
+            ("mse_loss", mse_loss, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
