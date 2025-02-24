@@ -1,12 +1,155 @@
 import inspect
+import sqlite3
 import threading
+import weakref
+from typing import Dict
 
 import triton
 
 from .. import runtime
 from ..runtime import torch_device_fn
+from .code_cache import config_cache_dir
 
-DEVICE_COUNT = runtime.device.device_coun
+DEVICE_COUNT = runtime.device.device_count
+ATTRS = {
+    (2, 2): 5,
+    (2, 3): 5,
+    (3, 0): 4,
+    (3, 1): 4,
+    (3, 2): 8,
+}
+version = triton.__version__.split(".")
+major_version, minor_version = eval(version[0]), eval(version[1])
+
+
+class LibTuner(triton.runtime.Autotuner):
+    def __init__(
+        self,
+        fn,
+        arg_names,
+        configs,
+        key,
+        reset_to_zero,
+        restore_value,
+        pre_hook=None,
+        post_hook=None,
+        prune_configs_by: Dict = None,
+        warmup=25,
+        rep=100,
+        use_cuda_graph=False,
+    ):
+        if major_version == 2:
+            super().__init__(
+                fn,
+                arg_names,
+                configs,
+                key,
+                reset_to_zero,
+                restore_value,
+                prune_configs_by,
+                warmup,
+                rep,
+            )
+            self.base_fn = fn
+            while not inspect.isfunction(self.base_fn):
+                self.base_fn = self.base_fn.fn
+        else:
+            super().__init__(
+                fn,
+                arg_names,
+                configs,
+                key,
+                reset_to_zero,
+                restore_value,
+                pre_hook,
+                post_hook,
+                prune_configs_by,
+                warmup,
+                rep,
+                use_cuda_graph,
+            )
+        self.__name__ = self.base_fn.__name__
+        self.cache_path = config_cache_dir() / "TunedConfig.db"
+        self.preload()
+        weakref.finalize(self, self.store)
+
+    def preload(self):
+        connect = sqlite3.connect(self.cache_path)
+        c = connect.cursor()
+        c.execute(
+            f"CREATE TABLE IF NOT EXISTS {self.__name__} (key TEXT PRIMARY KEY, config TEXT)"
+        )
+        cursor = c.execute(f"SELECT key, config from {self.__name__}")
+
+        for row in cursor:
+            key_str, config_str = row
+            key = [eval(k) for k in key_str[1:-1].split(", ")]
+
+            cfg_ls = [item.split(": ") for item in config_str.split(", ")]
+            kwargs = {}
+            numargs = {}
+            attrs = ATTRS[(major_version, minor_version)]
+            for k, v in cfg_ls[:-attrs]:
+                kwargs[k] = eval(v)
+            for k, v in cfg_ls[-attrs:]:
+                numargs[k] = eval(v)
+            config = triton.Config(kwargs, **numargs)
+            self.cache[tuple(key)] = config
+
+        connect.close()
+        self.volumn = len(self.cache)
+
+    def store(self):
+        if len(self.cache) == self.volumn:
+            return
+        connect = sqlite3.connect(self.cache_path)
+        c = connect.cursor()
+        c.execute(
+            f"CREATE TABLE IF NOT EXISTS {self.__name__} (key TEXT PRIMARY KEY, config TEXT)"
+        )
+        for key, config in self.cache.items():
+            c.execute(
+                f"INSERT OR IGNORE INTO {self.__name__} (key, config) VALUES (?, ?)",
+                (str(key), config.__str__()),
+            )
+
+        connect.commit()
+        connect.close()
+
+
+def libtuner(
+    configs,
+    key,
+    prune_configs_by=None,
+    reset_to_zero=None,
+    restore_value=None,
+    pre_hook=None,
+    post_hook=None,
+    warmup=25,
+    rep=100,
+    use_cuda_graph=False,
+):
+    """
+    Decorator for triton library autotuner.
+    """
+
+    def decorator(fn):
+        return LibTuner(
+            fn,
+            fn.arg_names,
+            configs,
+            key,
+            reset_to_zero,
+            restore_value,
+            pre_hook=pre_hook,
+            post_hook=post_hook,
+            prune_configs_by=prune_configs_by,
+            warmup=warmup,
+            rep=rep,
+            use_cuda_graph=use_cuda_graph,
+        )
+
+    return decorator
 
 
 class LibEntry(triton.KernelInterface):
@@ -19,7 +162,6 @@ class LibEntry(triton.KernelInterface):
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
 
-        fn = self.fn
         while not isinstance(fn, triton.runtime.JITFunction):
             fn = fn.fn
         self.jit_function: triton.runtime.JITFunction = fn
