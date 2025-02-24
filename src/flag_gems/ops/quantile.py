@@ -12,21 +12,33 @@ from ..utils import triton_lang_extension as tle
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 
 
+# def heur_block_q(args):
+#     return triton.next_power_of_2(min(triton.cdiv(args["Q"], 8), 16))
+
+
+# def heur_block_n(args):
+#     if args["N"] >= 65536:
+#         return triton.next_power_of_2(triton.cdiv(args["N"], 512))
+#     elif args["N"] >= 4096:
+#         return triton.next_power_of_2(triton.cdiv(args["N"], 128))
+#     elif args["N"] >= 64:
+#         return 32
+#     elif args["N"] >= 32:
+#         return 4
+#     else:
+#         return 1
+
+
 def heur_block_q(args):
-    return triton.next_power_of_2(min(triton.cdiv(args["Q"], 8), 16))
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["Q"]), 1024)
 
 
 def heur_block_n(args):
-    if args["N"] >= 65536:
-        return triton.next_power_of_2(triton.cdiv(args["N"], 512))
-    elif args["N"] >= 4096:
-        return triton.next_power_of_2(triton.cdiv(args["N"], 128))
-    elif args["N"] >= 64:
-        return 32
-    elif args["N"] >= 32:
-        return 4
-    else:
-        return 1
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 1024)
 
 
 @libentry()
@@ -79,7 +91,7 @@ def quantile_kernel(
         tl.store(out_ptrs, inp_upper, mask_out)
 
     elif interpolation == "nearest":
-        q_round = tl.extra.cuda.libdevice.rint(q_block)
+        q_round = tl.extra.xpu.libdevice.rint(q_block)
         out_block = tl.where(q_round == q_upper, inp_upper, inp_lower)
         tl.store(out_ptrs, out_block, mask_out)
 
