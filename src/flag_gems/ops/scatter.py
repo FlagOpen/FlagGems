@@ -287,7 +287,7 @@ class ScatterFunction:
             code = generate_code(
                 args,
                 "_scatter_wrapper",
-                "_scatter_jit_function",
+                "_scatter_flaggems_jit_function",
                 code,
             )
 

@@ -405,7 +405,7 @@ class PadFunction:
                 args,
                 "_wrapper",
                 "_wrapper_out",
-                "_jit_function",
+                "_pad_flaggems_jit_function",
                 code,
             )
 
