@@ -64,19 +64,6 @@ def generate_gather_kernel(
     code.newline()
     code.newline()
 
-    code.writeline("def heur_block_m(args):")
-    with code.indent():
-        code.writeline('return triton.next_power_of_2(triton.cdiv(args["M"], 12))')
-
-    code.newline()
-
-    code.writeline("def heur_block_n(args):")
-    with code.indent():
-        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 8192)')
-
-    code.newline()
-    code.newline()
-
     # the decorators
     code.writeline("@libentry()")
     # code.writeline('@triton.autotune(configs=cfggen(), key=["M", "N"])')
