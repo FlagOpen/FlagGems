@@ -9,7 +9,11 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def elu_forward_kernel(x, alpha, scale, input_scale):
-    return tl.where(x > 0, scale * input_scale * x, scale * alpha * (tl.exp(x.to(tl.float32)) * input_scale - 1))
+    return tl.where(
+        x > 0, 
+        scale * input_scale * x, 
+        scale * alpha * (tl.exp(x.to(tl.float32)) * input_scale - 1),
+    )
 
 
 def elu(A, alpha=1.0, scale=1, input_scale=1):
