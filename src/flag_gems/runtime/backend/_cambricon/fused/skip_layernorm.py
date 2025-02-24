@@ -5,13 +5,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import backend_module, torch_device_fn
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+from ..utils import TOTAL_CORE_NUM
 
 # When the reduced dimension is greater than MAX_C_MLU_SKIP_LAYERNORM_FORWARD,
 # it is necessary to split the reduced dimension.
 MAX_C_MLU_SKIP_LAYERNORM_FORWARD = 8192
-TOTAL_CORE_NUM = backend_module.TOTAL_CORE_NUM
 
 
 def cfggen_middle_n():

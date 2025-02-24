@@ -4,7 +4,6 @@ from .configloader import ConfigLoader
 
 config_loader = ConfigLoader()
 device = DeviceDetector()
-backend_module = backend.get_vendor_module(device.vendor_name)
 
 """
 The dependency order of the sub-directory is strict, and changing the order arbitrarily may cause errors.

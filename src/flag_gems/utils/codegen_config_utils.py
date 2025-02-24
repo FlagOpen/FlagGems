@@ -4,7 +4,7 @@ from typing import Tuple
 import triton
 
 from flag_gems.runtime import device
-from flag_gems.runtime.backend import get_vendor_module
+from flag_gems.runtime.backend import vendor_module
 from flag_gems.runtime.commom_utils import vendors
 
 
@@ -56,11 +56,13 @@ CODEGEN_COFIGS = {
     ),
     vendors.CAMBRICON: CodeGenConfig(
         8192,
-        tuple([get_vendor_module("cambricon").TOTAL_CORE_NUM, 1, 1]),
+        tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
         32,
         False,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
-    ),
+    )
+    if vendor_module.vendor_info.vendor_name == "cambricon"
+    else None,
     vendors.METAX: CodeGenConfig(
         2048,
         (65536, 65536, 65536),

@@ -67,9 +67,9 @@ import triton
 from triton import language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.runtime import backend_module
-TOTAL_CORE_NUM = backend_module.utils.TOTAL_CORE_NUM
-MAX_NRAM_SIZE = backend_module.utils.MAX_NRAM_SIZE
+from flag_gems.runtime.backend import vendor_module
+TOTAL_CORE_NUM = vendor_module.TOTAL_CORE_NUM
+MAX_NRAM_SIZE = vendor_module.MAX_NRAM_SIZE
         """
         )
 

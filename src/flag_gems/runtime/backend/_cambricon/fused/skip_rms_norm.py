@@ -5,10 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import backend_module, torch_device_fn
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-TOTAL_CORE_NUM = backend_module.TOTAL_CORE_NUM
+from ..utils import TOTAL_CORE_NUM
 
 
 def get_configs():
@@ -108,7 +108,7 @@ def skip_rms_norm_kernel(
 class SkipRmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, residual, normalized_shape, weight, eps=1e-5):
-        logging.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
+        logging.debug("GEMS_CAMBRICON SKIP RMSNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)
