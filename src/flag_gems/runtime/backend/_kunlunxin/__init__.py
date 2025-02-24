@@ -4,7 +4,7 @@ vendor_info = VendorInfoBase(
     vendor_name="kunlunxin", device_name="cuda", device_query_cmd="xpu-smi"
 )
 
-CUSTOMIZED_UNUSED_OPS = "cumsum"
+CUSTOMIZED_UNUSED_OPS = ("cumsum", "topk", "sort")
 
 
 __all__ = ["*"]

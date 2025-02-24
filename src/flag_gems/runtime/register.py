@@ -28,9 +28,6 @@ class Register:
         ]
 
     def get_vendor_unused_op(self):
-        if self.device.vendor == commom_utils.vendors.KUNLUNXIN:
-            return []
-
         if self.device.vendor != commom_utils.vendors.NVIDIA:
             return backend.get_curent_device_unused_op(self.device.vendor_name)
         return []
