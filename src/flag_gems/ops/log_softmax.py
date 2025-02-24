@@ -12,6 +12,8 @@ from ..utils import triton_lang_extension as tle
 
 
 def heur_block_n(args):
+    if args["N"] > 8192:
+        return 64
     return builtins.min(args["N"], 8192)
 
 
@@ -183,4 +185,5 @@ class LogSoftmax(torch.autograd.Function):
 
 
 def log_softmax(x, dim=-1, dtype=None):
+    # Close CoreTiling
     return LogSoftmax.apply(x, dim, dtype)
