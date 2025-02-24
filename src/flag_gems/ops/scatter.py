@@ -153,24 +153,17 @@ def generate_scatter_kernel(
             code.writeline("if IS_ADD: ")
             with code.indent():
                 code.writeline(
-                    "tl.atomic_add(out + inp_offsets, cur_src, mask=mask, sem='relaxed')"
+                    "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)"
                 )
+                code.writeline("res = cur_inp + cur_src")
+                code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
             code.writeline("elif IS_MUL: ")
             with code.indent():
-                code.writeline("stop = tl.where(mask, 0, 1).to(tl.int1)")
-                code.writeline("block_stop = False")
-                code.writeline("while not block_stop:")
-                with code.indent():
-                    code.writeline
-                    code.writeline(
-                        "cur_inp = tl.load(out + inp_offsets, mask=mask, other=0)"
-                    )
-                    code.writeline("res = tl.where(stop, cur_inp, cur_inp * cur_src)")
-                    code.writeline(
-                        "cas_res = tl.atomic_cas(out + inp_offsets, cur_inp, res, sem='relaxed')"
-                    )
-                    code.writeline("stop |= cur_inp == cas_res")
-                    code.writeline("block_stop = tl.sum(stop.to(tl.int32)) == BLOCK")
+                code.writeline(
+                    "cur_inp = tl.load(inp + inp_offsets, mask=mask, other=0)"
+                )
+                code.writeline("res = cur_inp * cur_src")
+                code.writeline("tl.store(out + inp_offsets, res, mask=mask)")
 
             code.writeline("else: ")
             with code.indent():
