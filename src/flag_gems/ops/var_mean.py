@@ -15,7 +15,7 @@ def heur_block_m(args):
 
 
 def heur_block_n(args):
-    return args["N"]
+    return min(8192, triton.next_power_of_2(args["N"]))
 
 
 @triton.jit
