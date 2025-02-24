@@ -1,17 +1,12 @@
 import importlib
 import logging
 import os
-from typing import Any, Callable, List, Mapping, Optional, Tuple
+from typing import Callable, Mapping
 
 import torch
-import triton
-import triton.language as tl
 
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
-from flag_gems.utils.tensor_wrapper import StridedBuffer
-
-from ..utils.pointwise_dynamic import pointwise_dynamic
 
 
 class FlipKernelCode(IndentedBuffer):
@@ -201,53 +196,51 @@ def get_w_dim(args):
         )
         if self.merge_flip_dims_flags[self.merge_dim_size - 2]:
             # [flip, no-flip]
-            self.writeline(f"# flip low-2d [flip, no-flip]")
+            self.writeline("# flip low-2d [flip, no-flip]")
             self.writeline(
                 f"dst_offset += (num_y - pid_y - 1) * step * merge_shape_{self.merge_dim_size - 1}"
             )
-            self.writeline(f"if H_DIM != 0:")
+            self.writeline("if H_DIM != 0:")
             with self.indent():
                 self.writeline(
-                    f"offset = tl.arange(0, H_DIM)[:,None]*W_DIM + tl.arange(0, W_DIM)[None,:]"
+                    "offset = tl.arange(0, H_DIM)[:,None]*W_DIM + tl.arange(0, W_DIM)[None,:]"
                 )
-                self.writeline(f"tail = step % H_DIM")
-                self.writeline(f"iter = step // H_DIM")
-                self.writeline(f"for i in range(0, iter):")
+                self.writeline("tail = step % H_DIM")
+                self.writeline("iter = step // H_DIM")
+                self.writeline("for i in range(0, iter):")
                 with self.indent():
-                    self.writeline(f"in_offset = src_offset + i * H_DIM*W_DIM")
+                    self.writeline("in_offset = src_offset + i * H_DIM*W_DIM")
                     self.writeline(
-                        f"out_offset = dst_offset + tail * W_DIM + (iter - i - 1) * H_DIM*W_DIM"
+                        "out_offset = dst_offset + tail * W_DIM + (iter - i - 1) * H_DIM*W_DIM"
                     )
                     self.writeline(
-                        f"src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
+                        "src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
                     )
-                    self.writeline(f"src = tl.flip(src, [0])")
+                    self.writeline("src = tl.flip(src, [0])")
                     self.writeline(
-                        f"tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
+                        "tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
                     )
-                self.writeline(f"if tail > 0:")
+                self.writeline("if tail > 0:")
                 with self.indent():
-                    self.writeline(f"# process tail.")
-                    self.writeline(f"in_offset = src_offset + iter * H_DIM*W_DIM")
-                    self.writeline(f"out_offset = dst_offset - (H_DIM-tail)*W_DIM")
-                    self.writeline(f"mask = offset < tail*W_DIM")
+                    self.writeline("# process tail.")
+                    self.writeline("in_offset = src_offset + iter * H_DIM*W_DIM")
+                    self.writeline("out_offset = dst_offset - (H_DIM-tail)*W_DIM")
+                    self.writeline("mask = offset < tail*W_DIM")
                     self.writeline(
-                        f"src = tl.load(x_ptr + offset + in_offset, mask=mask, other=0.0, cache_modifier='.cg')"
+                        "src = tl.load(x_ptr + offset + in_offset, mask=mask, other=0.0, cache_modifier='.cg')"
                     )
-                    self.writeline(f"src = tl.flip(src, [0])")
-                    self.writeline(f"mask = offset >= (H_DIM - tail) * W_DIM")
+                    self.writeline("src = tl.flip(src, [0])")
+                    self.writeline("mask = offset >= (H_DIM - tail) * W_DIM")
                     self.writeline(
-                        f"tl.store(out_ptr + offset + out_offset, src, mask=mask, cache_modifier='.cg')"
+                        "tl.store(out_ptr + offset + out_offset, src, mask=mask, cache_modifier='.cg')"
                     )
-            self.writeline(f"else:")
+            self.writeline("else:")
             with self.indent():
-                self.writeline(f"offset = tl.arange(0, W_DIM)")
+                self.writeline("offset = tl.arange(0, W_DIM)")
                 self.writeline(f"iter = merge_shape_{self.merge_dim_size-1} // W_DIM")
                 self.writeline(f"tail = merge_shape_{self.merge_dim_size-1} % W_DIM")
-                self.writeline(
-                    f"src = tl.zeros((W_DIM,), dtype=x_ptr.dtype.element_ty)"
-                )
-                self.writeline(f"for i in range(0, step):")
+                self.writeline("src = tl.zeros((W_DIM,), dtype=x_ptr.dtype.element_ty)")
+                self.writeline("for i in range(0, step):")
                 with self.indent():
                     self.writeline(
                         f"in_offset = src_offset + i * merge_shape_{self.merge_dim_size-1}"
@@ -255,71 +248,69 @@ def get_w_dim(args):
                     self.writeline(
                         f"out_offset = dst_offset + (step - i - 1) * merge_shape_{self.merge_dim_size-1}"
                     )
-                    self.writeline(f"for j in range(0, iter):")
+                    self.writeline("for j in range(0, iter):")
                     with self.indent():
-                        self.writeline(f"new_offset = offset + j*W_DIM")
+                        self.writeline("new_offset = offset + j*W_DIM")
                         self.writeline(
-                            f"src = tl.load(x_ptr + in_offset + new_offset, cache_modifier='.cg')"
+                            "src = tl.load(x_ptr + in_offset + new_offset, cache_modifier='.cg')"
                         )
                         self.writeline(
-                            f"tl.store(out_ptr + out_offset + new_offset, src, cache_modifier='.cg')"
+                            "tl.store(out_ptr + out_offset + new_offset, src, cache_modifier='.cg')"
                         )
-                    self.writeline(f"if tail > 0:")
+                    self.writeline("if tail > 0:")
                     with self.indent():
-                        self.writeline(f"new_offset = offset + iter*W_DIM")
-                        self.writeline(f"mask = offset < tail")
+                        self.writeline("new_offset = offset + iter*W_DIM")
+                        self.writeline("mask = offset < tail")
                         self.writeline(
-                            f"src = tl.load(x_ptr + in_offset + new_offset, mask=mask, cache_modifier='.cg')"
+                            "src = tl.load(x_ptr + in_offset + new_offset, mask=mask, cache_modifier='.cg')"
                         )
                         self.writeline(
-                            f"tl.store(out_ptr + out_offset + new_offset, src, mask=mask, cache_modifier='.cg')"
+                            "tl.store(out_ptr + out_offset + new_offset, src, mask=mask, cache_modifier='.cg')"
                         )
         else:
             # [no-flip, flip]
-            self.writeline(f"# flip low-2d [no-flip, flip]")
+            self.writeline("# flip low-2d [no-flip, flip]")
             self.writeline(
                 f"dst_offset += pid_y * step * merge_shape_{self.merge_dim_size - 1}"
             )
-            self.writeline(f"if H_DIM != 0:")
+            self.writeline("if H_DIM != 0:")
             with self.indent():
                 self.writeline(
-                    f"offset = tl.arange(0, H_DIM)[:,None]*W_DIM + tl.arange(0, W_DIM)[None,:]"
+                    "offset = tl.arange(0, H_DIM)[:,None]*W_DIM + tl.arange(0, W_DIM)[None,:]"
                 )
-                self.writeline(f"tail = step % H_DIM")
-                self.writeline(f"iter = step // H_DIM")
-                self.writeline(f"for i in range(0, iter):")
+                self.writeline("tail = step % H_DIM")
+                self.writeline("iter = step // H_DIM")
+                self.writeline("for i in range(0, iter):")
                 with self.indent():
-                    self.writeline(f"in_offset = src_offset + i * H_DIM*W_DIM")
-                    self.writeline(f"out_offset = dst_offset + i * H_DIM*W_DIM")
+                    self.writeline("in_offset = src_offset + i * H_DIM*W_DIM")
+                    self.writeline("out_offset = dst_offset + i * H_DIM*W_DIM")
                     self.writeline(
-                        f"src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
+                        "src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
                     )
-                    self.writeline(f"src = tl.flip(src, [1])")
+                    self.writeline("src = tl.flip(src, [1])")
                     self.writeline(
-                        f"tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
+                        "tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
                     )
-                self.writeline(f"if tail > 0:")
+                self.writeline("if tail > 0:")
                 with self.indent():
-                    self.writeline(f"# process tail.")
-                    self.writeline(f"in_offset = src_offset + iter * H_DIM*W_DIM")
-                    self.writeline(f"out_offset = dst_offset + iter * H_DIM*W_DIM")
-                    self.writeline(f"mask = offset < tail*W_DIM")
+                    self.writeline("# process tail.")
+                    self.writeline("in_offset = src_offset + iter * H_DIM*W_DIM")
+                    self.writeline("out_offset = dst_offset + iter * H_DIM*W_DIM")
+                    self.writeline("mask = offset < tail*W_DIM")
                     self.writeline(
-                        f"src = tl.load(x_ptr + offset + in_offset, mask=mask, other=0.0, cache_modifier='.cg')"
+                        "src = tl.load(x_ptr + offset + in_offset, mask=mask, other=0.0, cache_modifier='.cg')"
                     )
-                    self.writeline(f"src = tl.flip(src, [1])")
+                    self.writeline("src = tl.flip(src, [1])")
                     self.writeline(
-                        f"tl.store(out_ptr + offset + out_offset, src, mask=mask, cache_modifier='.cg')"
+                        "tl.store(out_ptr + offset + out_offset, src, mask=mask, cache_modifier='.cg')"
                     )
-            self.writeline(f"else:")
+            self.writeline("else:")
             with self.indent():
-                self.writeline(f"offset = tl.arange(0, W_DIM)")
-                self.writeline(
-                    f"src = tl.zeros((W_DIM,), dtype=x_ptr.dtype.element_ty)"
-                )
+                self.writeline("offset = tl.arange(0, W_DIM)")
+                self.writeline("src = tl.zeros((W_DIM,), dtype=x_ptr.dtype.element_ty)")
                 self.writeline(f"tail = merge_shape_{self.merge_dim_size-1} % W_DIM")
                 self.writeline(f"iter = merge_shape_{self.merge_dim_size-1} // W_DIM")
-                self.writeline(f"for i in range(0, step):")
+                self.writeline("for i in range(0, step):")
                 with self.indent():
                     self.writeline(
                         f"in_offset = src_offset + i * merge_shape_{self.merge_dim_size-1}"
@@ -327,30 +318,31 @@ def get_w_dim(args):
                     self.writeline(
                         f"out_offset = dst_offset + i * merge_shape_{self.merge_dim_size-1}"
                     )
-                    self.writeline(f"if tail > 0:")
+                    self.writeline("if tail > 0:")
                     with self.indent():
-                        self.writeline(f"new_offset = in_offset + iter * W_DIM")
-                        self.writeline(f"mask = offset < tail")
+                        self.writeline("new_offset = in_offset + iter * W_DIM")
+                        self.writeline("mask = offset < tail")
                         self.writeline(
-                            f"src = tl.load(x_ptr + new_offset + offset, mask=mask, cache_modifier='.cg')"
+                            "src = tl.load(x_ptr + new_offset + offset, mask=mask, cache_modifier='.cg')"
                         )
-                        self.writeline(f"src = tl.flip(src, [0])")
-                        self.writeline(f"mask = offset >= (W_DIM-tail)")
+                        self.writeline("src = tl.flip(src, [0])")
+                        self.writeline("mask = offset >= (W_DIM-tail)")
                         self.writeline(
-                            f"tl.store(out_ptr + out_offset - (W_DIM - tail) + offset, src, mask=mask, cache_modifier='.cg')"
+                            "tl.store(out_ptr + out_offset - (W_DIM - tail) + offset, \
+                                src, mask=mask, cache_modifier='.cg')"
                         )
-                    self.writeline(f"for j in range(0, iter):")
+                    self.writeline("for j in range(0, iter):")
                     with self.indent():
-                        self.writeline(f"new_in_offset = in_offset + j * W_DIM")
+                        self.writeline("new_in_offset = in_offset + j * W_DIM")
                         self.writeline(
-                            f"new_out_offset = tail + out_offset + (iter - j - 1) * W_DIM"
+                            "new_out_offset = tail + out_offset + (iter - j - 1) * W_DIM"
                         )
                         self.writeline(
-                            f"src = tl.load(x_ptr + new_in_offset + offset, cache_modifier='.cg')"
+                            "src = tl.load(x_ptr + new_in_offset + offset, cache_modifier='.cg')"
                         )
-                        self.writeline(f"src = tl.flip(src, [0])")
+                        self.writeline("src = tl.flip(src, [0])")
                         self.writeline(
-                            f"tl.store(out_ptr + new_out_offset + offset, src, cache_modifier='.cg')"
+                            "tl.store(out_ptr + new_out_offset + offset, src, cache_modifier='.cg')"
                         )
 
     def __kernel(self):
@@ -369,13 +361,13 @@ def get_w_dim(args):
             with self.indent():
                 self.writeline("src_offset = 0")
                 self.writeline("dst_offset = 0")
-                self.writeline(f"temp_high_id = high_id")
+                self.writeline("temp_high_id = high_id")
                 # get src_offset and dst offset
                 if self.merge_dim_size > 2:
                     for i in range(self.merge_dim_size - 2):
                         self.writeline(f"tmp_stride = merge_stride_{i} // low_task")
                         self.writeline(f"id_{i} = temp_high_id // tmp_stride")
-                        self.writeline(f"temp_high_id = temp_high_id % tmp_stride")
+                        self.writeline("temp_high_id = temp_high_id % tmp_stride")
                         self.writeline(f"src_offset += id_{i} * merge_stride_{i}")
                         if not self.merge_flip_dims_flags[i]:
                             self.writeline(f"dst_offset += id_{i} * merge_stride_{i}")
@@ -388,78 +380,78 @@ def get_w_dim(args):
                     self.__kernel_flip_2d()
                 elif self.merge_dim_size == 1:
                     assert self.merge_flip_dims_flags[0]
-                    self.writeline(f"offset = tl.arange(0, W_DIM)")
+                    self.writeline("offset = tl.arange(0, W_DIM)")
                     self.writeline(
                         f"step = merge_shape_{self.merge_dim_size - 1} // num_y"
                     )
                     self.writeline(
                         f"tail = merge_shape_{self.merge_dim_size - 1} % num_y"
                     )
-                    self.writeline(f"# process step.")
-                    self.writeline(f"src_offset = pid_y * step")
-                    self.writeline(f"dst_offset = tail + (num_y - pid_y - 1) * step")
-                    self.writeline(f"step_iter = step // W_DIM")
-                    self.writeline(f"step_tail = step % W_DIM")
-                    self.writeline(f"for i in range(0, step_iter):")
+                    self.writeline("# process step.")
+                    self.writeline("src_offset = pid_y * step")
+                    self.writeline("dst_offset = tail + (num_y - pid_y - 1) * step")
+                    self.writeline("step_iter = step // W_DIM")
+                    self.writeline("step_tail = step % W_DIM")
+                    self.writeline("for i in range(0, step_iter):")
                     with self.indent():
-                        self.writeline(f"in_offset = src_offset + i * W_DIM")
+                        self.writeline("in_offset = src_offset + i * W_DIM")
                         self.writeline(
-                            f"out_offset = dst_offset + step_tail + (step_iter - i - 1) * W_DIM"
+                            "out_offset = dst_offset + step_tail + (step_iter - i - 1) * W_DIM"
                         )
                         self.writeline(
-                            f"src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
+                            "src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
                         )
-                        self.writeline(f"src = tl.flip(src, [0])")
+                        self.writeline("src = tl.flip(src, [0])")
                         self.writeline(
-                            f"tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
+                            "tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
                         )
-                    self.writeline(f"if step_tail > 0:")
+                    self.writeline("if step_tail > 0:")
                     with self.indent():
-                        self.writeline(f"in_offset = src_offset + step_iter * W_DIM")
-                        self.writeline(f"out_offset = dst_offset")
-                        self.writeline(f"mask = offset < step_tail")
+                        self.writeline("in_offset = src_offset + step_iter * W_DIM")
+                        self.writeline("out_offset = dst_offset")
+                        self.writeline("mask = offset < step_tail")
                         self.writeline(
-                            f"src = tl.load(x_ptr + offset + in_offset, mask=mask, cache_modifier='.cg')"
+                            "src = tl.load(x_ptr + offset + in_offset, mask=mask, cache_modifier='.cg')"
                         )
-                        self.writeline(f"src = tl.flip(src, [0])")
-                        self.writeline(f"mask = offset >= (W_DIM - step_tail)")
+                        self.writeline("src = tl.flip(src, [0])")
+                        self.writeline("mask = offset >= (W_DIM - step_tail)")
                         self.writeline(
-                            f"tl.store(out_ptr + offset + out_offset - (W_DIM - step_tail), src, mask=mask, cache_modifier='.cg')"
+                            "tl.store(out_ptr + offset + out_offset - (W_DIM - step_tail), \
+                                src, mask=mask, cache_modifier='.cg')"
                         )
-                    self.writeline(f"if pid_y == num_y - 1:")
+                    self.writeline("if pid_y == num_y - 1:")
                     with self.indent():
-                        self.writeline(f"# process tail.")
-                        self.writeline(f"src_offset = num_y * step")
-                        self.writeline(f"dst_offset = 0")
-                        self.writeline(f"tail_iter = tail // W_DIM")
-                        self.writeline(f"tail_remain = tail % W_DIM")
-                        self.writeline(f"for i in range(0, tail_iter):")
+                        self.writeline("# process tail.")
+                        self.writeline("src_offset = num_y * step")
+                        self.writeline("dst_offset = 0")
+                        self.writeline("tail_iter = tail // W_DIM")
+                        self.writeline("tail_remain = tail % W_DIM")
+                        self.writeline("for i in range(0, tail_iter):")
                         with self.indent():
-                            self.writeline(f"in_offset = src_offset + i * W_DIM")
+                            self.writeline("in_offset = src_offset + i * W_DIM")
                             self.writeline(
-                                f"out_offset = dst_offset + tail_remain + (tail_iter - i - 1) * W_DIM"
+                                "out_offset = dst_offset + tail_remain + (tail_iter - i - 1) * W_DIM"
                             )
                             self.writeline(
-                                f"src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
+                                "src = tl.load(x_ptr + offset + in_offset, cache_modifier='.cg')"
                             )
-                            self.writeline(f"src = tl.flip(src, [0])")
+                            self.writeline("src = tl.flip(src, [0])")
                             self.writeline(
-                                f"tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
+                                "tl.store(out_ptr + offset + out_offset, src, cache_modifier='.cg')"
                             )
-                        self.writeline(f"if tail_remain > 0:")
+                        self.writeline("if tail_remain > 0:")
                         with self.indent():
+                            self.writeline("in_offset = src_offset + tail_iter * W_DIM")
+                            self.writeline("out_offset = dst_offset")
+                            self.writeline("mask = offset < tail_remain")
                             self.writeline(
-                                f"in_offset = src_offset + tail_iter * W_DIM"
+                                "src = tl.load(x_ptr + offset + in_offset, mask=mask, cache_modifier='.cg')"
                             )
-                            self.writeline(f"out_offset = dst_offset")
-                            self.writeline(f"mask = offset < tail_remain")
+                            self.writeline("src = tl.flip(src, [0])")
+                            self.writeline("mask = offset >= (W_DIM-tail_remain)")
                             self.writeline(
-                                f"src = tl.load(x_ptr + offset + in_offset, mask=mask, cache_modifier='.cg')"
-                            )
-                            self.writeline(f"src = tl.flip(src, [0])")
-                            self.writeline(f"mask = offset >= (W_DIM-tail_remain)")
-                            self.writeline(
-                                f"tl.store(out_ptr + offset + out_offset - (W_DIM - tail_remain), src, mask=mask, cache_modifier='.cg')"
+                                "tl.store(out_ptr + offset + out_offset - (W_DIM - tail_remain), \
+                                    src, mask=mask, cache_modifier='.cg')"
                             )
                 else:
                     raise RuntimeError(f"merge dim size error({self.merge_dim_size})")
@@ -490,7 +482,8 @@ def get_w_dim(args):
 
         extra_args_str = f"{merge_shapes_args_str}, {merge_strides_args_str}"
         if is_declare:
-            return f"x_ptr, out_ptr, {extra_args_str}, merge_dim_size, high_task: tl.constexpr, low_task: tl.constexpr, H_DIM: tl.constexpr, W_DIM: tl.constexpr"
+            return f"x_ptr, out_ptr, {extra_args_str}, merge_dim_size, high_task: tl.constexpr, \
+                low_task: tl.constexpr, H_DIM: tl.constexpr, W_DIM: tl.constexpr"
         else:
             return f"x, out, {extra_args_str}, merge_dim_size, high_task, low_task"
 
@@ -529,6 +522,7 @@ def get_w_dim(args):
 
 
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
+    logging.debug("GEMS_CAMBRICON FLIP")
     if not A.is_contiguous():
         A = A.contiguous()
     return FlipKernelCode()(A, dims)

@@ -6,7 +6,6 @@ from triton.language.extra.mlu.libdevice import philox as _philox
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,

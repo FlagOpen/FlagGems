@@ -4,12 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
-
 from ..utils.pointwise_dynamic import pointwise_dynamic
-
-# _isfinited = tl_extra_shim.isfinited
-# _finitef = tl_extra_shim.finitef
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
@@ -23,8 +18,6 @@ def isfinite_func(x):
         return (x.to(tl.int16, bitcast=True) & 0x7FFF) < 0x7C00
     elif x.dtype.is_bf16():
         return (x.to(tl.int16, bitcast=True) & 0x7FFF) < 0x7F80
-
-    # return _isfinited(x) if x.dtype.is_fp64() else _finitef(x.to(tl.float32))
 
 
 def isfinite(

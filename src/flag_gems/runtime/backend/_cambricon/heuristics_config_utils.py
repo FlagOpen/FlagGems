@@ -1,7 +1,7 @@
 import torch
 import triton
 
-from .utils import TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM
+from .utils import TOTAL_CORE_NUM
 
 
 def argmax_heur_block_m(args):

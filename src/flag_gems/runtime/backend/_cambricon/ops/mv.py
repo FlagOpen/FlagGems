@@ -1,6 +1,5 @@
 import copy
 import logging
-import math
 
 import torch
 import triton
@@ -9,17 +8,14 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
-from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
+from ..utils import MAX_NRAM_SIZE
 
 
 def config_prune(configs, named_args, **kwargs):
     M = named_args["M"]
-    N = named_args["N"]
     configs_map = {}
     pruned_configs = []
-    n_per_core = math.ceil(N / TOTAL_CORE_NUM)
     for config in configs:
         kw = config.kwargs
         BLOCK_M, BLOCK_N, num_warps, num_stages = (

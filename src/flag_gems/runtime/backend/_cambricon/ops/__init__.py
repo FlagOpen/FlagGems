@@ -1,5 +1,3 @@
-from flag_gems.runtime.backend.backend_utils import Autograd
-
 from .abs import abs
 from .add import add
 from .addmm import addmm
@@ -204,6 +202,7 @@ __all__ = [
     "randn",
     "rand_like",
     "randn_like",
+    "resolve_neg",
     "resolve_conj",
     "normal_tensor_float",
     "normal_float_tensor",
@@ -212,6 +211,7 @@ __all__ = [
     "mv",
     "ne",
     "ne_scalar",
+    "neg",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_tensor",

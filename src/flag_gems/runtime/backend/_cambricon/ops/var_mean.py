@@ -7,14 +7,12 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils import (
     MAX_NRAM_SIZE,
     TOTAL_CORE_NUM,
     cfggen_reduce_op,
     count_divisible_by_2,
-    prune_reduce_config,
 )
 
 

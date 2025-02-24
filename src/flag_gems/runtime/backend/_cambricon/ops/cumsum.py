@@ -8,9 +8,8 @@ import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
-from ..utils import MAX_GRID_SIZE_Y, TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM
+from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
 
 device = device.name
 
@@ -29,8 +28,6 @@ def cumsum_blelloch_impl(
     TILE_N: tl.constexpr,
     TILE_NUM: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
     x_block = tl.reshape(in_block, (BLOCK_M, TILE_NUM, TILE_N, BLOCK_K))
     # Trans TILE_N and apply blelloch in TILE_N dim
     x_block = tl.trans(x_block, 0, 2, 1, 3)
@@ -207,7 +204,6 @@ def get_reduction_dim_block_size(N):
 
 def config_prune_mid(configs, named_args, **kwargs):
     M = named_args["M"]
-    N = named_args["N"]
     K = named_args["K"]
     BLOCK_N = named_args["BLOCK_N"]
     configs_map = {}

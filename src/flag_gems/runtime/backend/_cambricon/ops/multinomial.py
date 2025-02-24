@@ -9,7 +9,6 @@ from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
-    uniform,
 )
 
 

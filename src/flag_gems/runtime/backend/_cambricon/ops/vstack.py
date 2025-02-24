@@ -2,17 +2,12 @@ import importlib
 import logging
 import math
 import os
-from typing import Any, Callable, List, Mapping, Optional, Tuple
+from typing import Callable, Mapping
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
-from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils import TOTAL_CORE_NUM
 
@@ -34,7 +29,6 @@ class VstackKernelCode(IndentedBuffer):
 
     def __init(self, tensors):
         """Initialize the vstack kernel."""
-        num_tensors = len(tensors)
         self.device = tensors[0].device
         self.dtype = tensors[0].dtype
         for tensor in tensors:
@@ -131,7 +125,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
 )
 @triton.jit
         """,
-            config_keys=f"'total_size'",
+            config_keys="'total_size'",
         )
 
     def __kernel(self):
@@ -222,7 +216,8 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                                     f"x = tl.load(input_{i} + in_offset, mask=in_offset < need_num)"
                                                 )
                                                 self.writeline(
-                                                    f"tl.store(output + dst_offset, x, mask=dst_offset<idx_{i}+per_fetch_num)"
+                                                    f"tl.store(output + dst_offset, x, \
+                                                        mask=dst_offset<idx_{i}+per_fetch_num)"
                                                 )
                                         self.writeline("else:")
                                         with self.indent():
@@ -237,7 +232,8 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                                     "dst_offset = pid * deal_num + i + block"
                                                 )
                                                 self.writeline(
-                                                    f"x = tl.load(input_{i} + in_offset, mask=in_offset < idx_{idx}-idx_{i})"
+                                                    f"x = tl.load(input_{i} + in_offset, \
+                                                        mask=in_offset < idx_{idx}-idx_{i})"
                                                 )
                                                 self.writeline(
                                                     f"tl.store(output + dst_offset, x, mask=dst_offset<idx_{idx})"
@@ -270,7 +266,7 @@ def {wrapper_name}(tensors, inputs, idx, total_size, input_num, deal_num, is_sma
                                                     f"condidate_num = idx_{idx} - idx_{i}"
                                                 )
                                         else:
-                                            self.writeline(f"else:")
+                                            self.writeline("else:")
                                             with self.indent():
                                                 self.writeline(
                                                     f"condidate_num = idx_{idx} - idx_{i}"

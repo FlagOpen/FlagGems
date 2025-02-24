@@ -4,13 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
-
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .all import all
-
-# _isfinited = tl_extra_shim.isfinited
-# _finitef = tl_extra_shim.finitef
 
 
 @pointwise_dynamic(

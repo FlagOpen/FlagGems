@@ -5,10 +5,8 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.cross_entropy_loss import sum_and_scale
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils import TOTAL_CORE_NUM
 from .sum import sum

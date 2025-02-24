@@ -7,11 +7,10 @@ from typing import Callable, List, Mapping, Tuple, Union
 
 import torch
 
-from flag_gems.utils import libentry
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
+from ..utils import TOTAL_CORE_NUM
 from .vstack import vstack
 
 
@@ -79,7 +78,8 @@ class StackKernelCode(IndentedBuffer):
                         )
                     if s != inp0_shape:
                         raise RuntimeError(
-                            f"stack expects each tensor to be equal size, but got {{inp0_shape}} at entry 0 and {{s}} at entry {{i+1}}"
+                            f"stack expects each tensor to be equal size, \
+                                but got {{inp0_shape}} at entry 0 and {{s}} at entry {{i+1}}"
                         )
 
                 if dim < 0:
@@ -300,35 +300,49 @@ class StackKernelCode(IndentedBuffer):
                     if core_idx !=core_used -1:
                         for repeat_idx in range(TASK_PER_CORE//N_LOW_NUM):
                             repeat_offset = in_offset + repeat_idx*N_LOW_NUM*low
-                            load_trans_store(low, tensor_num, {tensors},repeat_offset, buffer_repeat,buffer_repeat_offset,output,out_repeat_offset)
+                            load_trans_store(low, tensor_num, {tensors},repeat_offset, buffer_repeat,\\
+                                buffer_repeat_offset,output,out_repeat_offset)
                         if (TASK_PER_CORE%N_LOW_NUM) > 0:
                             normal_remain_offset = in_offset + (TASK_PER_CORE//N_LOW_NUM)*N_LOW_NUM*low
                             if low >64:
-                                buffer_normal_remain = tl.empty(shape=[TASK_PER_CORE%N_LOW_NUM,tensor_num, low], dtype=output.dtype.element_ty)
+                                buffer_normal_remain = tl.empty(shape=[TASK_PER_CORE%N_LOW_NUM,tensor_num, low], \\
+                                    dtype=output.dtype.element_ty)
                             else:
-                                buffer_normal_remain = tl.empty(shape=[tensor_num,TASK_PER_CORE%N_LOW_NUM, low], dtype=output.dtype.element_ty)
-                            buffer_normal_remain_offset = tl.arange(0, TASK_PER_CORE%N_LOW_NUM)[:, None]*low+tl.arange(0, low)[None,:]
+                                buffer_normal_remain = tl.empty(shape=[tensor_num,TASK_PER_CORE%N_LOW_NUM, low], \\
+                                    dtype=output.dtype.element_ty)
+                            buffer_normal_remain_offset = tl.arange(0, TASK_PER_CORE%N_LOW_NUM)[:, None]*low + \\
+                                tl.arange(0, low)[None,:]
                             out_normal_remain_offset= \\
                                 tl.arange(0, TASK_PER_CORE%N_LOW_NUM)[:,None,None]*low*tensor_num+\\
                                 tl.arange(0, tensor_num)[None,:,None]*low+\\
                                 tl.arange(0, low)[None, None,:]
-                            load_trans_store(low, tensor_num, {tensors},normal_remain_offset, buffer_normal_remain,buffer_normal_remain_offset,output,out_normal_remain_offset)
+                            load_trans_store(low, tensor_num, {tensors},normal_remain_offset, buffer_normal_remain,\\
+                                buffer_normal_remain_offset,output,out_normal_remain_offset)
                     else:
                         for repeat_idx in range(TASK_LAST_CORE_REPEAT//N_LOW_NUM):
                             repeat_offset = in_offset + repeat_idx*N_LOW_NUM*low
-                            load_trans_store(low, tensor_num, {tensors},repeat_offset, buffer_repeat,buffer_repeat_offset,output,out_repeat_offset)
+                            load_trans_store(low, tensor_num, {tensors},repeat_offset, buffer_repeat,\\
+                                buffer_repeat_offset,output,out_repeat_offset)
                         if (TASK_LAST_CORE_REPEAT%N_LOW_NUM) >0 :
                             last_core_remain_offset = in_offset + (TASK_LAST_CORE_REPEAT//N_LOW_NUM)*N_LOW_NUM*low
                             if low >64:
-                                buffer_last_core_remain = tl.empty(shape=[TASK_LAST_CORE_REPEAT%N_LOW_NUM,tensor_num, low], dtype=output.dtype.element_ty)
+                                buffer_last_core_remain = \\
+                                    tl.empty(shape=[TASK_LAST_CORE_REPEAT%N_LOW_NUM,tensor_num, low], \\
+                                        dtype=output.dtype.element_ty)
                             else:
-                                buffer_last_core_remain = tl.empty(shape=[tensor_num,TASK_LAST_CORE_REPEAT%N_LOW_NUM, low], dtype=output.dtype.element_ty)
-                            buffer_last_core_remain_offset = tl.arange(0, TASK_LAST_CORE_REPEAT%N_LOW_NUM)[:, None]*low+tl.arange(0, low)[None,:]
+                                buffer_last_core_remain = \\
+                                    tl.empty(shape=[tensor_num,TASK_LAST_CORE_REPEAT%N_LOW_NUM, low], \\
+                                    dtype=output.dtype.element_ty)
+                            buffer_last_core_remain_offset = \\
+                                tl.arange(0, TASK_LAST_CORE_REPEAT%N_LOW_NUM)[:, None]*low + \\
+                                tl.arange(0, low)[None,:]
                             out_last_core_remain_offset= \\
                                 tl.arange(0, TASK_LAST_CORE_REPEAT%N_LOW_NUM)[:,None,None]*low*tensor_num+\\
                                 tl.arange(0, tensor_num)[None,:,None]*low+\\
                                 tl.arange(0, low)[None, None,:]
-                            load_trans_store(low, tensor_num, {tensors},last_core_remain_offset, buffer_last_core_remain,buffer_last_core_remain_offset,output,out_last_core_remain_offset)
+                            load_trans_store(low, tensor_num, {tensors},last_core_remain_offset, \\
+                                buffer_last_core_remain, buffer_last_core_remain_offset, \\
+                                output,out_last_core_remain_offset)
                 elif LOW_NUM>0:
                     # The memory space is sufficient to hold at least one set of "low * type_bytes"
                     core_idx = tl.program_id(0)

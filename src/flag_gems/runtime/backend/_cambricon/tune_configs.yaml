@@ -993,16 +993,6 @@ count_nonzero:
     - 2048
     - 4096
 #######################################
-cross_entropy_loss_sum_and_scale:
-- gen : true
-  param_map:
-    META:
-      BLOCK_N: block_n
-  block_n:
-  - 64
-  - 256
-  - 1024
-#######################################
 upsample_bicubic2d_aa:
 - gen : true
   param_map:

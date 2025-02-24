@@ -4,15 +4,12 @@ import math
 
 import torch
 import triton
-import triton.backends.mlu.driver as driver
 import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
-from ..utils import MAX_NRAM_SIZE, TOTAL_CLUSTER_NUM, TOTAL_CORE_NUM
+from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
 MAX_N = 16384
 
@@ -386,10 +383,9 @@ def config_prune3(configs, named_args, **kwargs):
     pruned_configs = []
     for config in configs:
         kw = config.kwargs
-        TILE_K, TILE_N, num_warps, num_stages = (
+        TILE_K, TILE_N, num_stages = (
             kw["TILE_K"],
             kw["TILE_N"],
-            config.num_warps,
             config.num_stages,
         )
         # Align the lowest dimension to 256B while loading/storing data.

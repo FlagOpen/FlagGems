@@ -1,7 +1,7 @@
 import importlib
 import logging
 import os
-from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, List, Mapping, Optional, Tuple
 
 import torch
 import triton
@@ -220,7 +220,15 @@ class KernelGenerator:
                 code.writeline("configs=[")
                 with code.indent():
                     code.writeline(
-                        "triton.Config({'tile_size0':1024}, num_stages=3, num_warps=1), triton.Config({'tile_size0':2048}, num_stages=3, num_warps=1), triton.Config({'tile_size0':4096}, num_stages=3, num_warps=1), triton.Config({'tile_size0':8192}, num_stages=3, num_warps=1), triton.Config({'tile_size0':16384}, num_stages=3, num_warps=1), triton.Config({'tile_size0':21760}, num_stages=3, num_warps=1), triton.Config({'tile_size0':32768}, num_stages=3, num_warps=1)"
+                        """
+                        triton.Config({'tile_size0':1024}, num_stages=3, num_warps=1),
+                        triton.Config({'tile_size0':2048}, num_stages=3, num_warps=1),
+                        triton.Config({'tile_size0':4096}, num_stages=3, num_warps=1),
+                        triton.Config({'tile_size0':8192}, num_stages=3, num_warps=1),
+                        triton.Config({'tile_size0':16384}, num_stages=3, num_warps=1),
+                        triton.Config({'tile_size0':21760}, num_stages=3, num_warps=1),
+                        triton.Config({'tile_size0':32768}, num_stages=3, num_warps=1)
+                        """
                     )
                 code.writeline("],")
                 code.writeline("key=['num_tasks'],")

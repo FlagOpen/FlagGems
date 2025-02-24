@@ -7,7 +7,6 @@ import triton.language as tl
 
 from flag_gems.runtime import backend_module, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 TOTAL_CORE_NUM = backend_module.TOTAL_CORE_NUM
 
@@ -119,7 +118,7 @@ class SkipRmsNorm(torch.autograd.Function):
         weight = weight.contiguous()
         y = torch.empty_like(x)
 
-        with torch.cuda.device(x.device):
+        with torch_device_fn.device(x.device):
             skip_rms_norm_kernel[TOTAL_CORE_NUM,](
                 x, y, residual, weight, eps, x.stride(dim - 1), M, N
             )

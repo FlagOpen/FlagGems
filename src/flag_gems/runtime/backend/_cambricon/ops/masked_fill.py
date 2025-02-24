@@ -6,7 +6,6 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import broadcastable_to, libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils import MAX_GRID_SIZE_X
 

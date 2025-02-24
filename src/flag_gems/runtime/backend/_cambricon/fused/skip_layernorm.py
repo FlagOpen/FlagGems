@@ -7,9 +7,9 @@ import triton.language as tl
 
 from flag_gems.runtime import backend_module, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
-# When the reduced dimension is greater than MAX_C_MLU_SKIP_LAYERNORM_FORWARD, it is necessary to split the reduced dimension
+# When the reduced dimension is greater than MAX_C_MLU_SKIP_LAYERNORM_FORWARD,
+# it is necessary to split the reduced dimension.
 MAX_C_MLU_SKIP_LAYERNORM_FORWARD = 8192
 TOTAL_CORE_NUM = backend_module.TOTAL_CORE_NUM
 
@@ -62,7 +62,6 @@ def skip_layer_norm_middle_n_kernel(
     b = tl.load(B + cols_off)
     for row in range(row_start, M, step):
         row_off = row + tl.arange(0, BLOCK_ROW_SIZE)
-        col_mask = cols_off < N
         mask = row_off[:, None] < M
         off = row_off[:, None] * N
         x = tl.load(X + off, mask, other=0.0).to(tl.float32)
@@ -191,7 +190,7 @@ class SkipLayerNorm(torch.autograd.Function):
                 )
         else:
             grid = lambda META: (triton.cdiv(M, META["BLOCK_ROW_SIZE"]),)
-            with torch.cuda.device(x.device):
+            with torch_device_fn.device(x.device):
                 skip_layer_norm_kernel[grid](y, x, residual, weight, bias, M, eps, N)
         return y
 

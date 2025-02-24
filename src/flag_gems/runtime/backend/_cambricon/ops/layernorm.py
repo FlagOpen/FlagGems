@@ -1,4 +1,3 @@
-import copy
 import logging
 import math
 
@@ -9,7 +8,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.type_utils import get_accumulator_dtype
 
 from ..utils import TOTAL_CORE_NUM
@@ -55,7 +53,6 @@ def layer_norm_kernel_middle_n(
         b = tl.load(B + cols_off)
     for row in range(row_start, M, step):
         row_off = row + tl.arange(0, BLOCK_ROW_SIZE)
-        col_mask = cols_off < N
         mask = row_off[:, None] < M
         off = row_off[:, None] * N
         x = tl.load(X + off, mask, other=0.0).to(tl.float32)

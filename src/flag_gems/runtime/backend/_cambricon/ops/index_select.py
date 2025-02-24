@@ -6,8 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -199,7 +198,6 @@ def ld_st_2(
     key=["batch_dim", "index_dim", "c_dim"],
     prune_configs_by={"early_config_prune": config_prune},
 )
-# @triton.autotune(configs=[triton.Config({"BLOCK_BATCH": 1, "BLOCK_INDEX": 1, "BLOCK_C": 2048*6})], key=["batch_dim", "index_dim", "c_dim"])
 @triton.jit
 def multi_batch_index_select_kernel(
     inp,

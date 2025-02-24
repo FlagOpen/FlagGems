@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -11,7 +10,11 @@ from ..utils import TOTAL_CORE_NUM
 from .mv import mv
 
 
-# The outer kernel requires 3 parameters to determine the splitting method, but during actual tuning, you only need to determine the total size of the split blocks. Based on the second input length N and the total size of the split blocks, the 3 parameters that determine the splitting method can be calculated. Therefore, the conversion between these two is achieved through early_config_prune.
+# The outer kernel requires 3 parameters to determine the splitting method,
+# but during actual tuning, you only need to determine the total size of the split blocks.
+# Based on the second input length N and the total size of the split blocks,
+# the 3 parameters that determine the splitting method can be calculated.
+# Therefore, the conversion between these two is achieved through early_config_prune.
 def early_config_prune(configs, named_args, **kwargs):
     if "N" in kwargs:
         N = kwargs["N"]
@@ -64,7 +67,6 @@ def outer_kernel(
     m_tasks_num = tl.cdiv(M, BLOCK_M)
     n_tasks_num = tl.cdiv(N, BLOCK_N)
     total_tasks_num = m_tasks_num * n_tasks_num
-    tasks_num_per_pid = total_tasks_num // num_jobs
 
     if NEED_LOOP_N:
         for task_id in range(pid, total_tasks_num, num_jobs):

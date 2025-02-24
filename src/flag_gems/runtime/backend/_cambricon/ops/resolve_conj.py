@@ -2,7 +2,6 @@ import logging
 
 import torch
 import triton
-import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -17,7 +16,7 @@ def resolve_conj(A: torch.Tensor):
     logging.debug("GEMS_CAMBRICON RESOLVE_CONJ")
     assert (
         A.dtype == torch.cfloat
-    ), f"The `resolve_conj` operation in FlagGems currently only supports the `torch.cfloat` type"
+    ), "The `resolve_conj` operation in FlagGems currently only supports the `torch.cfloat` type"
     if A.is_conj():
         typed_view = torch.view_as_real(A.conj()).view(torch.int64)
         out = conj_func(typed_view)

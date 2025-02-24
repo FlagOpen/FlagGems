@@ -1,7 +1,6 @@
 import math
 
 import triton
-import triton.language as tl
 
 from flag_gems import runtime
 

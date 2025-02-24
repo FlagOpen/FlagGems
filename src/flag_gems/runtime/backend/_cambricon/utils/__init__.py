@@ -16,7 +16,7 @@ MAX_GRID_SIZES = [
 ]
 MAX_GRID_SIZE_X, MAX_GRID_SIZE_Y, MAX_GRID_SIZE_Z = MAX_GRID_SIZES
 
-from .reduce_utils import *
+from .reduce_utils import *  # noqa F403 F401
 
 # from .pointwise_dynamic import pointwise_dynamic
 

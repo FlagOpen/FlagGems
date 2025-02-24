@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -8,7 +7,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
@@ -33,7 +31,7 @@ def sum_kernel_1(
     num_jobs = tl.num_programs(axis=0)
     block_start = pid * BLOCK_SIZE
     step = num_jobs * BLOCK_SIZE
-    _tmp = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    _tmp = tl.zeros([BLOCK_SIZE], dtype=cdtype)
     block_start = block_start.to(tl.int64)
     for off in range(block_start, M, step):
         offset = off + tl.arange(0, BLOCK_SIZE)
@@ -93,7 +91,7 @@ def sum(inp, *, dtype=None):
             dtype = torch.int32
 
     grid = lambda meta: (min(triton.cdiv(M, meta["BLOCK_SIZE"]), TOTAL_CORE_NUM),)
-    out = torch.zeros([], dtype=torch.float32, device=inp.device)
+    out = torch.zeros([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
         sum_kernel_1[grid](inp, out, M)

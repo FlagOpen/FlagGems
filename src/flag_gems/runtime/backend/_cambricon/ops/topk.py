@@ -4,15 +4,12 @@ import math
 import torch
 import triton
 import triton.language as tl
-import triton.language.core as core
-from triton.language.standard import _log2, zeros_like
 
-from flag_gems.ops.topk import argsort, topk_stage1_kernel, topk_stage2_kernel
+from flag_gems.ops.topk import topk_stage1_kernel, topk_stage2_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
-from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM
+from ..utils import TOTAL_CORE_NUM
 
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
@@ -140,7 +137,7 @@ def topk_config_prune(configs, named_args, **kwargs):
         config.kwargs["TILE_N_NUM"] = triton.cdiv(N, tile_n)
         new_configs.append(config)
 
-    if not N in BLOCK_N and N <= max(BLOCK_N):
+    if (N not in BLOCK_N) and (N <= max(BLOCK_N)):
         for tm in BLOCK_BATCH:
             new_configs.append(
                 triton.Config(

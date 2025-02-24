@@ -7,7 +7,6 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM
 

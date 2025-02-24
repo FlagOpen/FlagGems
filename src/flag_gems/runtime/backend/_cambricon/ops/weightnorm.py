@@ -9,7 +9,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
@@ -105,8 +104,6 @@ def config_prune_for_first(configs, named_args, **kwargs):
     pruned_configs = []
     for k, v in configs_map.items():
         pruned_configs.append(v)
-    # Add a heuristic config.
-    extra_config = copy.deepcopy(pruned_configs[0])
     return pruned_configs
 
 
