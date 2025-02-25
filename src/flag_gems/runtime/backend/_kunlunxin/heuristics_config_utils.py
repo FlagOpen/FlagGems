@@ -77,6 +77,12 @@ def index_add_heur_block_m(args):
 
 
 def index_add_heur_block_n(args):
+    # if args["N"] > 8192:
+    #     return 64
+    # if args["N"] > 256:
+    #     return 256
+
+    # return args["N"]
     return min(8192, triton.next_power_of_2(args["N"]))
 
 
@@ -85,12 +91,7 @@ def index_select_heur_block_m(args):
 
 
 def index_select_heur_block_n(args):
-    if args["N"] > 8192:
-        return 64
-    if args["N"] > 256:
-        return 256
-
-    return args["N"]
+    return 64
 
 
 def mm_heur_even_k(args):
