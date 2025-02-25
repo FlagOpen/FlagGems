@@ -71,10 +71,10 @@ def instance_norm_persistent_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("instancenorm"),
-    key=["M", "N"],
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("instancenorm"),
+#     key=["M", "N"],
+# )
 @triton.jit(do_not_specialize=["eps"])
 def instance_norm_persistent_kernel_multiline(
     in_ptr,
@@ -310,10 +310,27 @@ def update_running_stats_kernel(
     tl.store(running_var_ptr + cid, new_running_var, mask=col_mask)
 
 
+def instance_norm_backward_kernel_heur_block_row_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))  # cluster_num
+
+
+def instance_norm_backward_kernel_heur_block_col_size(args):
+    return 128
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("instance_norm_backward"),
-    key=["M", "N", "C"],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("instance_norm_backward"),
+#     key=["M", "N", "C"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": instance_norm_backward_kernel_heur_block_row_size,
+        "BLOCK_COL_SIZE": instance_norm_backward_kernel_heur_block_col_size,
+    },
 )
 @triton.jit
 def instance_norm_backward_kernel(
