@@ -68,10 +68,10 @@ def layer_norm_persistent_kernel(
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("layer_norm_persistent"),
-    key=["M", "N"],
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("layer_norm_persistent"),
+#     key=["M", "N"],
+# )
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel_multiline(
     in_ptr,
@@ -218,10 +218,26 @@ def layer_norm_loop_kernel(
         tl.store(out_ptr + pid * N + n_offsets, out)
 
 
+def layer_norm_backward_kernel_heur_block_row_size(args):
+    return 1
+
+
+def layer_norm_backward_kernel_heur_block_col_size(args):
+    import builtins
+
+    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("layer_norm_backward"),
-    key=["M", "N"],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("layer_norm_backward"),
+#     key=["M", "N"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": layer_norm_backward_kernel_heur_block_row_size,
+        "BLOCK_COL_SIZE": layer_norm_backward_kernel_heur_block_col_size,
+    },
 )
 @triton.jit
 def layer_norm_backward_kernel(
@@ -286,10 +302,26 @@ def layer_norm_backward_kernel(
         tl.store(dX + cols, dx, mask=mask)
 
 
+def weight_bias_backward_kernel_heur_block_row_size(args):
+    return 1
+
+
+def weight_bias_backward_kernel_heur_block_col_size(args):
+    import builtins
+
+    return builtins.min(args["N"], 8192)
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("weight_bias_backward"),
-    key=["N"],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("weight_bias_backward"),
+#     key=["N"],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_ROW_SIZE": weight_bias_backward_kernel_heur_block_row_size,
+        "BLOCK_COL_SIZE": weight_bias_backward_kernel_heur_block_col_size,
+    },
 )
 @triton.jit
 def weight_bias_backward_kernel(
