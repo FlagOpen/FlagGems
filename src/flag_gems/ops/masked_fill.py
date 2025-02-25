@@ -8,7 +8,8 @@ from ..utils import broadcastable_to, libentry
 from ..utils import triton_lang_extension as tle
 
 
-def heur_block_size(args):
+def masked_fill_kernel_heur_block_size(args):
+    return 8192
     return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # cluster_num
 
 
@@ -16,11 +17,13 @@ def heur_block_size(args):
 # @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.heuristics(
     values={
-        "BLOCK_SIZE": heur_block_size,
+        "BLOCK_SIZE": masked_fill_kernel_heur_block_size,
     },
 )
 @triton.jit
-def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
+def masked_fill_kernel(
+    inp, expand_mask, value, out, N: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     pid = tle.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < N
@@ -31,11 +34,15 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
     tl.store(out + offsets, value, fill_mask and mask)
 
 
+def masked_fill_kernel_self_heur_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # cluster_num
+
+
 @libentry()
 # @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.heuristics(
     values={
-        "BLOCK_SIZE": heur_block_size,
+        "BLOCK_SIZE": masked_fill_kernel_self_heur_block_size,
     },
 )
 @triton.jit
