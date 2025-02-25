@@ -4,18 +4,27 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
+# from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
+def nonzero_kernel_heur_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["n_elements"], 12))  # cluster_num
+
+
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("nonzero"),
-    key=[
-        "n_elements",
-    ],
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("nonzero"),
+#     key=[
+#         "n_elements",
+#     ],
+# )
+@triton.heuristics(
+    values={
+        "BLOCK_SIZE": nonzero_kernel_heur_block_size,
+    },
 )
 @triton.jit
 def nonzero_kernel(

@@ -298,7 +298,6 @@ def test_accuracy_cummin(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
-@pytest.mark.skip("cumsum unsupported")
 @pytest.mark.nonzero
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
