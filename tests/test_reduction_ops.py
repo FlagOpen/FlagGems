@@ -952,10 +952,6 @@ def test_accuracy_depthwise2d(
     gems_assert_close(res_out, ref_out, dtype)
 
 
-
-
-
-
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,)),
     ((32, 32), ((8,), (8,)), (8,)),
@@ -1055,8 +1051,8 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
-    
-    
+
+
 @pytest.mark.dot
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

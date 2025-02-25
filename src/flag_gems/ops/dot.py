@@ -5,7 +5,6 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
@@ -13,41 +12,29 @@ from ..utils import triton_lang_extension as tle
 
 @libentry()
 @triton.jit
-def dot_kernel(
-    x_ptr,
-    y_ptr,
-    out_ptr,
-    N,
-    BLOCK_SIZE: tl.constexpr
-):
+def dot_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
     block_start = pid * BLOCK_SIZE
 
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    
+
     mask = offsets < N
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
     y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
     partial_sum = tl.sum(x * y)
-    
+
     tl.atomic_add(out_ptr, partial_sum)
 
 
 @libentry()
 @triton.jit
-def dot_kernel_1(
-    x_ptr,
-    y_ptr,
-    mid_ptr,
-    N,
-    BLOCK_SIZE: tl.constexpr
-):
+def dot_kernel_1(x_ptr, y_ptr, mid_ptr, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
     block_start = pid * BLOCK_SIZE
 
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    
+
     mask = offsets < N
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
     y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
@@ -58,12 +45,7 @@ def dot_kernel_1(
 
 @libentry()
 @triton.jit
-def dot_kernel_2(
-    mid_ptr, 
-    out_ptr,
-    M,
-    BLOCK_MID: tl.constexpr
-):
+def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid = mid_ptr + offset
     mask = offset < M
@@ -74,17 +56,17 @@ def dot_kernel_2(
 
 def dot(x, y):
     logging.debug("Triton Dot Product")
-        
+
     assert x.shape == y.shape, "Input vectors must have the same shape"
     assert x.dim() == 1, "Input must be 1D tensors"
 
-    N = x.shape[0] 
+    N = x.shape[0]
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(N)))
-    
+
     # if N <= 2560000:
     mid_size = triton.cdiv(N, block_size)
     block_mid = triton.next_power_of_2(mid_size)
-    
+
     grid_1 = (mid_size, 1, 1)
     grid_2 = (1, 1, 1)
 
@@ -109,5 +91,3 @@ def dot(x, y):
     #             dot_kernel[grid](x, y, out, N, block_size)
 
     return out
-
-

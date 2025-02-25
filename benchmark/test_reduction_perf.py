@@ -12,7 +12,6 @@ from .performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
-    SkipVersion,
     generate_tensor_input,
     unary_input_fn,
 )
@@ -227,16 +226,17 @@ def test_perf_dot():
         if inp.dim() > 1:
             inp = inp.flatten()
         yield inp, inp
-    
+
     bench = GenericBenchmark(
-        input_fn = dot_input_fn,
-        op_name = "dot",
-        torch_op = torch.dot,
-        dtypes = FLOAT_DTYPES,
+        input_fn=dot_input_fn,
+        op_name="dot",
+        torch_op=torch.dot,
+        dtypes=FLOAT_DTYPES,
     )
-    
+
     bench.run()
-    
+
+
 class quantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         more_shapes_1d = [(4,), (1024,), (65535)]

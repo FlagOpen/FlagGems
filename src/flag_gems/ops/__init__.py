@@ -31,6 +31,7 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import div_mode, floor_divide, remainder, true_divide
+from .dot import dot
 from .dropout import native_dropout
 from .embedding import embedding
 from .eq import eq, eq_scalar
@@ -138,7 +139,6 @@ from .weightnorm import weight_norm, weight_norm_interface
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-from .dot import dot
 
 __all__ = [
     "log_sigmoid",
