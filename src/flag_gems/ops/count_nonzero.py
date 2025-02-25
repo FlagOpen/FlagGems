@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
+# from .. import runtime
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
@@ -22,10 +22,21 @@ def count_nonzero_kernel_1(x_ptr, out_ptr, numel, BLOCK_SIZE: tl.constexpr):
     tl.atomic_add(out_ptr, nonzero_count)
 
 
+def heur_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["numel"], 12))
+
+
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
+# @triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
+@triton.heuristics(
+    {
+        "BLOCK_SIZE": heur_block_size,
+    }
+)
 @triton.jit
-def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
+def count_nonzero_kernel(
+    x_ptr, out_ptr, N: tl.constexpr, numel: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     pid_x = tle.program_id(0)
 
     nonzero_count = tl.full((), value=0, dtype=out_ptr.dtype.element_ty)
@@ -41,9 +52,16 @@ def count_nonzero_kernel(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
+# @triton.autotune(configs=runtime.get_tuned_config("count_nonzero"), key=["numel"])
+@triton.heuristics(
+    {
+        "BLOCK_SIZE": heur_block_size,
+    }
+)
 @triton.jit
-def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.constexpr):
+def count_nonzero_combin_kernel_1(
+    x_ptr, out_ptr, N: tl.constexpr, numel: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
     pid_x = tle.program_id(0)
     nonzero_count = tl.full((), value=0, dtype=out_ptr.dtype.element_ty)
     for start_n in range(0, N, BLOCK_SIZE):
@@ -58,7 +76,12 @@ def count_nonzero_combin_kernel_1(x_ptr, out_ptr, N, numel, BLOCK_SIZE: tl.const
 @libentry()
 @triton.jit
 def count_nonzero_combin_kernel(
-    x_ptr, combin_ptr, N, combin_N, numel, BLOCK_SIZE: tl.constexpr
+    x_ptr,
+    combin_ptr,
+    N: tl.constexpr,
+    combin_N: tl.constexpr,
+    numel: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid_x = tle.program_id(0)
     pid_y = tle.program_id(1)
@@ -109,7 +132,8 @@ def count_nonzero(x, dim=None):
 
         out = torch.zeros(1, dtype=torch.int64, device=x.device)
 
-        BLOCK_SIZE = 1024
+        cluset_num = 12
+        BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(numel, cluset_num))
         grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
 
         count_nonzero_kernel_1[grid](x, out, numel, BLOCK_SIZE=BLOCK_SIZE)

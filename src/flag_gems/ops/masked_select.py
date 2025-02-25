@@ -4,14 +4,22 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
+# from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import broadcastable, libentry
 from ..utils import triton_lang_extension as tle
 
 
+def heur_block_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["n_elements"], 12))  # cluster_num
+
+
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("masked_select"), key=["n_elements"])
+@triton.heuristics(
+    values={
+        "BLOCK_SIZE": heur_block_size,
+    },
+)
 @triton.jit
 def masked_select_kernel(
     inp_ptr,
