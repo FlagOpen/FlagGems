@@ -3,9 +3,10 @@ import pytest
 import torch
 
 import flag_gems
-device = flag_gems.device
 
 from .accuracy_utils import gems_assert_close, to_reference
+
+device = flag_gems.device
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")

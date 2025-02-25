@@ -1,5 +1,6 @@
 import pytest
 import torch
+
 import flag_gems
 
 from .performance_utils import GenericBenchmark

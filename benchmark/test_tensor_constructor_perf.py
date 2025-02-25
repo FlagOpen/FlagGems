@@ -2,6 +2,7 @@ import math
 
 import pytest
 import torch
+
 import flag_gems
 
 from .attri_util import BenchLevel
@@ -101,4 +102,3 @@ def test_perf_randperm():
         dtypes=[torch.int32, torch.int64],
     )
     bench.run()
-

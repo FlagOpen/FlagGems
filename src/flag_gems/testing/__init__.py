@@ -11,6 +11,7 @@ RESOLUTION = {
     torch.complex64: 1.3e-6,
 }
 
+
 def assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
     assert res.dtype == dtype
     ref = ref.to(dtype)

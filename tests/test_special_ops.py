@@ -532,7 +532,9 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.int32]) # torch_musa complains sort doesn't support Short
+@pytest.mark.parametrize(
+    "dtype", [torch.int32]
+)  # torch_musa complains sort doesn't support Short
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
@@ -1008,7 +1010,9 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
                 x = x[:hiddensize]
                 break
     else:
-        x = torch.arange(hiddensize, dtype=torch.int32, device=flag_gems.device).to(dtype)
+        x = torch.arange(hiddensize, dtype=torch.int32, device=flag_gems.device).to(
+            dtype
+        )
     y = torch.empty((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
 
     # Each row use different shuffled index.

@@ -28,7 +28,7 @@ def tanh_backward(y, dy):
 class Tanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS TANH FORWARD")   
+        logging.debug("GEMS TANH FORWARD")
         if A.requires_grad is True:
             out = tanh_forward(A.to(torch.float32))
             ctx.save_for_backward(out)

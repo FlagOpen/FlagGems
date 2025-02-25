@@ -26,7 +26,9 @@ def gelu_none(x):
 @triton.jit
 def gelu_tanh(x):
     output = (
-        0.5 * x * (1 + fast_tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
+        0.5
+        * x
+        * (1 + fast_tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
     )
     return output
 

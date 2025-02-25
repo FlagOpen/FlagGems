@@ -4,8 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
 import flag_gems
+
+from ..utils import libentry
+
 backend_device = torch.musa.device if flag_gems.device == "musa" else torch.cuda.device
 
 

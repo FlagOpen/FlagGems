@@ -3,10 +3,12 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 import flag_gems
-device = flag_gems.device
 
 from ..utils import dim_compress, libentry
+
+device = flag_gems.device
 
 
 def cfggen():

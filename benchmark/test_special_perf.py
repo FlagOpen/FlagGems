@@ -2,6 +2,7 @@ import random
 
 import pytest
 import torch
+
 import flag_gems
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel

@@ -1,7 +1,7 @@
-import os
-import subprocess
 import argparse
 import atexit
+import os
+import subprocess
 
 test_file_list = [
     "test_unary_pointwise_ops.py",

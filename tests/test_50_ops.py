@@ -1,5 +1,6 @@
 import os
 import re
+
 import pytest
 
 test_file_list = [
@@ -68,15 +69,17 @@ triu"""
 g_cur_path = os.path.dirname(os.path.abspath(__file__))
 op_list = op_list.split("\n")
 
+
 def run_pytest_with_main(file_name, marker, ref):
     report_path = "{}/allure_triton_report".format(g_cur_path)
-    args = [file_name, "-m", marker, "--ref", ref, "--alluredir",report_path]
+    args = [file_name, "-m", marker, "--ref", ref, "--alluredir", report_path]
     result = pytest.main(args)
-    
+
     if result == 0:
         print("Test passed!")
     else:
         print("Test failed!")
+
 
 if __name__ == "__main__":
     ops_dict = {}
@@ -88,9 +91,8 @@ if __name__ == "__main__":
 
         matches = re.findall(r"@pytest\.mark\.([a-zA-Z_][a-zA-Z0-9_]*)(?=\s|$)", code)
         for op in matches:
-            ops_dict.update({op:file})
+            ops_dict.update({op: file})
 
-    
     for op in ops_dict.keys():
         file = ops_dict[op]
         if op in op_list:

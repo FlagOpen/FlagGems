@@ -3,8 +3,8 @@ from typing import Generator
 
 import pytest
 import torch
-import flag_gems
 
+import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
@@ -157,7 +157,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             marks=[
                 pytest.mark.nonzero,
                 pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError"),
-            ]
+            ],
         ),
         pytest.param(
             "CrossEntropyLoss",
@@ -173,8 +173,10 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=[
                 pytest.mark.cumsum,
-                pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError"),
-            ]
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
         ),
         pytest.param(
             "cummin",
@@ -193,8 +195,10 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES,
             marks=[
                 pytest.mark.NLLLoss,
-                pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError"),
-            ]
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
         ),
         pytest.param(
             "mse_loss",
@@ -203,8 +207,10 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES,
             marks=[
                 pytest.mark.MSELoss,
-                pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError"),
-            ]
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
         ),
     ],
 )
