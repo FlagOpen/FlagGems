@@ -10,7 +10,7 @@ div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
 trunc = tl_extra_shim.trunc
-xpu_trunc_div = tl_extra_shim.xpu_trunc_div
+xpu_trunc_div = tl_extra_shim.xpu_trunc_div  # use it if we need to cmp result with xpu
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -47,19 +47,19 @@ def true_divide(A, B):
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func(x, y):
-    return xpu_trunc_div(x, y)
+    return trunc(div_rz(x, y))
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_tensor_scalar(x, y):
-    return xpu_trunc_div(x, y)
+    return trunc(div_rz(x, y))
 
 
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def trunc_div_func_scalar_tensor(x, y):
-    return xpu_trunc_div(x, y)
+    return trunc(div_rz(x, y))
 
 
 def trunc_divide(A, B):
