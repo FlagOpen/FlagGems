@@ -9,7 +9,7 @@ from ..utils import triton_lang_extension as tle
 
 
 def masked_fill_kernel_heur_block_size(args):
-    return 8192
+    # return 8192
     return triton.next_power_of_2(triton.cdiv(args["N"], 12))  # cluster_num
 
 
