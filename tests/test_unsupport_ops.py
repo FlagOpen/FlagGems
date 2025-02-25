@@ -32,9 +32,9 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype):
     HW = H * W
-    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="musa", requires_grad=True)
-    weight = torch.randn(size=(C,), dtype=dtype, device="musa", requires_grad=True)
-    bias = torch.randn(size=(C,), dtype=dtype, device="musa", requires_grad=True)
+    inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True)
+    bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True)
     eps = 1e-5
 
     ref_inp = to_reference(inp, False)

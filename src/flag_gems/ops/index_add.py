@@ -3,6 +3,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import flag_gems
+device = flag_gems.device
 
 from ..utils import dim_compress, libentry
 
@@ -55,7 +57,7 @@ def index_add_kernel(
 def index_add(inp, dim, index, src, alpha=1):
     logging.debug("GEMS INDEX ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device="musa")
+        torch.ones(tuple(index.shape), dtype=torch.bool, device=device)
     ), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert index.numel() == src.size(
