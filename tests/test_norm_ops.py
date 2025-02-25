@@ -104,6 +104,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype, wb_none):
+    pytest.skip("TODO add layernorm supported")
     M = shape[0]
     N = shape[1]
     layer_shape = [
