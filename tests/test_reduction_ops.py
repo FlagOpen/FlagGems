@@ -1,5 +1,6 @@
 import random
 
+import numpy as np
 import pytest
 import torch
 
@@ -952,20 +953,91 @@ def test_accuracy_depthwise2d(
 
 
 
-@pytest.mark.dot
-@pytest.mark.parametrize("shape", UT_SHAPES_1D)
+
+
+
+INDEX_PUT_SHAPE_ACC_FALSE = (
+    ((2**28,), ((2**16,),), (2**16,)),
+    ((32, 32), ((8,), (8,)), (8,)),
+    ((32, 32), ((8,), (2, 8)), (8,)),
+    ((32, 32), ((2, 8),), (32,)),
+    ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+    ((512, 512, 512), ((2, 128), (128,), (128,)), (128,)),
+    ((512, 512, 512), ((2, 128),), (512,)),
+    (
+        (64, 64, 64),
+        (
+            (2, 8),
+            (2, 8),
+        ),
+        (2, 8, 64),
+    ),
+)
+
+
+def gen_indices(input_shape, indices_shape, accumulate):
+    indices = []
+    for i, shape in enumerate(indices_shape):
+        index = np.random.choice(
+            np.arange(input_shape[i]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device=flag_gems.device))
+    return indices
+
+
+@pytest.mark.index_put
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_dot_tensor_tensor(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = to_reference(inp1, False)
-    ref_inp2 = to_reference(inp2, False)
+def test_index_put_acc_false(input_shape, indices_shape, values_shape, dtype):
+    accumulate = False
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, accumulate)
+    values = torch.randn(
+        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
 
-    ref_out = torch.dot(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.dot(inp1, inp2)
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values)
+    ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
+    out = flag_gems.index_put(inp, indices, values, accumulate)
+    gems_assert_close(out, ref_out, dtype)
 
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+INDEX_PUT_SHAPE_ACC_TRUE = (
+    ((2**28,), ((2**16,),), (2**16,)),
+    ((32, 32), ((8,), (8,)), (8,)),
+    ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+    ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8)),
+)
+
+
+@pytest.mark.index_put
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
+    accumulate = True
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, accumulate)
+    values = torch.randn(
+        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values)
+    ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
+    out = flag_gems.index_put(inp, indices, values, accumulate)
+    gems_assert_close(out, ref_out, dtype)
+
 
 @pytest.mark.mse_loss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
@@ -983,3 +1055,19 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
+    
+    
+@pytest.mark.dot
+@pytest.mark.parametrize("shape", UT_SHAPES_1D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_dot_tensor_tensor(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, False)
+    ref_inp2 = to_reference(inp2, False)
+
+    ref_out = torch.dot(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.dot(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
