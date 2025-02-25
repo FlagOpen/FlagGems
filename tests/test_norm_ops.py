@@ -85,6 +85,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
 
 
+@pytest.mark.skip("TODO add layernorm supported")
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
@@ -104,7 +105,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype, wb_none):
-    pytest.skip("TODO add layernorm supported")
     M = shape[0]
     N = shape[1]
     layer_shape = [

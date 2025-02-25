@@ -723,12 +723,12 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 
 
 # TODO: failed at (200, 40999, 3)
+@pytest.mark.skip("TODO Fix 714")
 @pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_add(shape, dim, dtype):
-    pytest.skip("TODO Fix 714")
     inp = torch.randn(shape, dtype=dtype, device="cuda")
 
     src_shape = list(inp.shape)
