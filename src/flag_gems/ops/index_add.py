@@ -4,11 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-
+from ..runtime import backend
 from ..utils import dim_compress, libentry
 
-device = flag_gems.device
+device = backend.device_name
 
 
 def cfggen():
