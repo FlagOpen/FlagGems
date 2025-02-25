@@ -76,14 +76,6 @@ def test_general_reduction_perf(op_name, torch_op, dtypes):
         pytest.skip(
             "[TritonXPU][TODO FIX] error: op requires the same type for all operands and results"
         )
-    elif op_name == "prod":
-        pytest.skip(
-            "[TritonXPU][TODO FIX] size mismatch when packing elements for LLVM struc."
-        )
-    elif op_name == "argmin":
-        pytest.skip(
-            "[TritonXPU][TODO FIX] dynamic_func() missing 1 required positional argument: 'dtype_max_value'."
-        )
     elif op_name == "softmax":
         pytest.skip("[TritonXPU][TODO FIX] Fatal Python error: Segmentation fault.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)

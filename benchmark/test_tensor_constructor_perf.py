@@ -87,9 +87,10 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-@pytest.mark.skip("[TritonXPU] randperm tl.cumsum Unsupported")
 @pytest.mark.randperm
 def test_perf_randperm():
+    pytest.skip("[TritonXPU] randperm tl.cumsum Unsupported")
+
     def randperm_input_fn(shape, dtype, device):
         yield {"n": shape[0], "dtype": dtype, "device": device},
 

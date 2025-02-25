@@ -66,9 +66,10 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.skip("[TritonXPU] isin tl.cumsum Unsupported")
 @pytest.mark.isin
 def test_isin_perf():
+    pytest.skip("[TritonXPU] isin tl.cumsum Unsupported")
+
     def isin_input_fn(shape, dtype, device):
         elements = generate_tensor_input(shape, dtype, device)
         test_elements = generate_tensor_input(shape, dtype, device)
@@ -132,9 +133,10 @@ def test_perf_sort():
     bench.run()
 
 
-@pytest.mark.skip("[TritonXPU] multinomial tl.cumsum Unsupported")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
+    pytest.skip("[TritonXPU] multinomial tl.cumsum Unsupported")
+
     def multinomial_input_fn(shape, dtype, device):
         dist = torch.rand(shape, dtype=dtype, device=device)
         n_samples = 10000
@@ -214,9 +216,9 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skip("[TritonXPU] upsample_bicubic2d_aa Legalize Pass Failed")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
+    @pytest.skip("[TritonXPU] upsample_bicubic2d_aa Legalize Pass Failed")
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
