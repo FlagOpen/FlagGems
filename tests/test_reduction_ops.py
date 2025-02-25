@@ -211,10 +211,10 @@ def test_accuracy_nll_loss(shape, dtype, ignore_index, reduction, weight):
     target_shape = list(shape)
     del target_shape[dim]
 
-    inp = torch.randn(shape, dtype=dtype, device="musa", requires_grad=True)
-    target = torch.randint(0, shape[dim], target_shape, device="musa")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    target = torch.randint(0, shape[dim], target_shape, device=flag_gems.device)
     if weight:
-        weight = torch.randn(shape[dim], dtype=dtype, device="musa")
+        weight = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
     else:
         weight = None
     ref_inp = to_reference(inp, True)
@@ -722,14 +722,14 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_index_add(shape, dim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="musa")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     src_shape = list(inp.shape)
     index_max = src_shape[dim]
     index_len = index_max
-    index = torch.randperm(index_len, device="musa")
+    index = torch.randperm(index_len, device=flag_gems.device)
     src_shape[dim] = index_len
-    src = torch.randn(src_shape, dtype=dtype, device="musa")
+    src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     alpha = 2
 
     ref_inp = to_reference(inp)
@@ -959,8 +959,8 @@ def test_accuracy_depthwise2d(
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mse_loss(shape, dtype, reduction):
     dim = 1
-    inp = torch.randn(shape, dtype=dtype, device="musa")
-    target = torch.randn(shape, dtype=dtype, device="musa")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
