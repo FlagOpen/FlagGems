@@ -97,8 +97,6 @@ def masked_fill(inp, mask, value):
         value,
         out,
         N,
-        isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
-        isOPEN_TTXPU_F_STORE_MASK_SIM=True,
         isCloseUnrollControl=True,
     )
 
@@ -142,8 +140,5 @@ def masked_fill_(inp, mask, value):
         expand_mask.to(torch.int),
         value,
         N,
-        isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
-        isOPEN_TTXPU_F_STORE_MASK_SIM=True,
-        isCloseUnrollControl=True,
     )
     return inp
