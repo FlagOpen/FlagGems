@@ -85,10 +85,27 @@ def masked_fill(inp, mask, value):
     if N == 0:
         return out
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    masked_fill_kernel[grid](inp, expand_mask.to(torch.int), value, out, N,
-                             isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
-                             isOPEN_TTXPU_F_STORE_MASK_SIM=True,
-                             isCloseUnrollControl=True)
+
+    import os
+
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+
+    masked_fill_kernel[grid](
+        inp,
+        expand_mask.to(torch.int),
+        value,
+        out,
+        N,
+        isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+        isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+        isCloseUnrollControl=True,
+    )
+
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+        del os.environ["TRITONXPU_STORE_MASK_SIM"]
     return out
 
 
@@ -120,9 +137,13 @@ def masked_fill_(inp, mask, value):
     if N == 0:
         return inp
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    masked_fill_kernel_self[grid](inp, expand_mask.to(torch.int), value, N,
-                                  isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
-                                  isOPEN_TTXPU_F_STORE_MASK_SIM=True,
-                                  isCloseUnrollControl=True
-                                 )
+    masked_fill_kernel_self[grid](
+        inp,
+        expand_mask.to(torch.int),
+        value,
+        N,
+        isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+        isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+        isCloseUnrollControl=True,
+    )
     return inp
