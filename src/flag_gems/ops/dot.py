@@ -9,7 +9,6 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-
 @libentry()
 @triton.jit
 def dot_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
@@ -22,9 +21,8 @@ def dot_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
     x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
     y = tl.load(y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
 
-    partial_sum = tl.sum(x * y)
-
-    tl.atomic_add(out_ptr, partial_sum)
+    sum = tl.sum(x * y)
+    tl.store(out_ptr, sum)
 
 
 @libentry()
@@ -61,33 +59,33 @@ def dot(x, y):
     assert x.dim() == 1, "Input must be 1D tensors"
 
     N = x.shape[0]
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(N)))
+    
+    # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel, and performance is better when N < 4096
+    if N >= 4096:
+        block_size = triton.next_power_of_2(math.ceil(math.sqrt(N)))
 
-    # if N <= 2560000:
-    mid_size = triton.cdiv(N, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+        mid_size = triton.cdiv(N, block_size)
+        block_mid = triton.next_power_of_2(mid_size)
 
-    grid_1 = (mid_size, 1, 1)
-    grid_2 = (1, 1, 1)
+        grid_1 = (mid_size, 1, 1)
+        grid_2 = (1, 1, 1)
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
-    out = torch.empty([], dtype=x.dtype, device=x.device)
+        mid = torch.empty((mid_size,), dtype=torch.float32, device=x.device)
+        out = torch.empty([], dtype=x.dtype, device=x.device)
 
-    with torch_device_fn.device(x.device):
-        dot_kernel_1[grid_1](x, y, mid, N, block_size)
-        dot_kernel_2[grid_2](mid, out, mid_size, block_mid)
+        with torch_device_fn.device(x.device):
+            dot_kernel_1[grid_1](x, y, mid, N, block_size)
+            dot_kernel_2[grid_2](mid, out, mid_size, block_mid)
 
-    # else:
-    #     grid_size = triton.cdiv(N, block_size)
-    #     grid = (grid_size,1,1)
+    else:
+        block_size = triton.next_power_of_2(math.ceil(N))
+        
+        grid = (1, 1, 1)
 
-    #     with torch_device_fn.device(x.device):
-    #         if x.dtype != torch.float32:
-    #             out = torch.zeros([], dtype=torch.float32, device=x.device)
-    #             dot_kernel[grid](x, y, out, N, block_size)
-    #             out = out.to(x.dtype)
-    #         else:
-    #             out = torch.zeros([], dtype=x.dtype, device=x.device)
-    #             dot_kernel[grid](x, y, out, N, block_size)
+        out = torch.empty([], dtype=torch.float32, device=x.device)
+
+        with torch_device_fn.device(x.device):
+            dot_kernel[grid](x, y, out, N, block_size)
+            out = out.to(x.dtype)
 
     return out
