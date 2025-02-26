@@ -175,7 +175,6 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
             torch.repeat_interleave,
             repeat_interleave_self_int_input_fn,
             FLOAT_DTYPES,
-            # [torch.float32],
             marks=pytest.mark.repeat_interleave_self_int,
         ),
         pytest.param(
