@@ -151,13 +151,25 @@ class SkipLayerNorm(torch.autograd.Function):
         with torch.cuda.device(x.device):
             if N > 64 * 64:
                 skip_layer_norm_kernel_tile[M,](
-                    y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE,
-                    isCloseUnrollControl=True
+                    y,
+                    x,
+                    residual,
+                    weight,
+                    bias,
+                    N,
+                    1,
+                    N,
+                    1,
+                    N,
+                    1,
+                    N,
+                    eps,
+                    BLOCK_SIZE,
+                    isCloseUnrollControl=True,
                 )
             else:
                 skip_layer_norm_kernel[M,](
-                    y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE,
-                    isCloseUnrollControl=True
+                    y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE
                 )
         return y
 
@@ -170,8 +182,21 @@ class SkipLayerNorm(torch.autograd.Function):
 
         with torch_device_fn.device(x.device):
             skip_layer_norm_kernel[M,](
-                y, x, residual, weight, bias, N, 1, N, 1, N, 1, N, eps, BLOCK_SIZE,
-                isCloseUnrollControl=True
+                y,
+                x,
+                residual,
+                weight,
+                bias,
+                N,
+                1,
+                N,
+                1,
+                N,
+                1,
+                N,
+                eps,
+                BLOCK_SIZE,
+                isCloseUnrollControl=True,
             )
         return y
 
