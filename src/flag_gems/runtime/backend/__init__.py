@@ -26,14 +26,14 @@ def import_vendor_extra_lib(vendor_name=None):
     if vendor_extra_lib_imported is True:
         return
     global ops_module, fused_module, heuristic_config_module
-    try:
-        ops_module = importlib.import_module(f"_{vendor_name}.ops")
-    except Exception:
-        pass
-    try:
-        fused_module = importlib.import_module(f"_{vendor_name}.fused")
-    except Exception:
-        pass
+    # try:
+    ops_module = importlib.import_module(f"_{vendor_name}.ops")
+    # except Exception:
+    #     pass
+    # try:
+    fused_module = importlib.import_module(f"_{vendor_name}.fused")
+    # except Exception:
+    #     pass
     vendor_extra_lib_imported = True
 
 
