@@ -956,7 +956,7 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
         inf = torch.tensor(float("inf"), dtype=dtype)
         for i in range(0, hiddensize):
             x[i] = tmp.item()
-            tmp = torch.nextafter(tmp.cuda(), inf.cuda())
+            tmp = torch.nextafter(tmp, inf)
             if tmp.item() == inf.item():
                 hiddensize = i
                 x = x[:hiddensize]
