@@ -3,6 +3,7 @@ import random
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import FLOAT_DTYPES
@@ -78,10 +79,11 @@ def index_select_gbps(bench_fn_args, latency):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
-    if op_name == "masked_select":
-        pytest.skip("[TritonXPU] tl.cumsum Unsupported")
-    elif op_name == "index_select":
-        pytest.skip("[TritonXPU] 700 runtime error")
+    if flag_gems.vendor_name == "kunlunxin":
+        if op_name == "masked_select":
+            pytest.skip("[TritonXPU] tl.cumsum Unsupported")
+        elif op_name == "index_select":
+            pytest.skip("[TritonXPU] 700 runtime error")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -171,9 +173,9 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.gather
 def test_perf_gather():
-    pytest.skip("[TritonXPU][TODO-FIX] 2D Shape[-1] <= core_num * buffer_size Limit.")
     bench = TensorSelectBenchmark(
         op_name="gather",
         torch_op=torch.gather,
@@ -263,10 +265,9 @@ def test_select_scatter_perf():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.index_add
 def test_index_add_perf():
-    pytest.skip("todo fix 714 error")
-
     def index_add_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device="cuda")
         dim = 0

@@ -114,7 +114,7 @@ def test_accuracy_argmin(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("reduce0 unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -164,7 +164,7 @@ def test_accuracy_cross_entropy_loss_indices(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skip("reduce0 unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -202,7 +202,7 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skip("unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.NLLLoss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("weight", [True, False])
@@ -247,7 +247,7 @@ CUMSUM_SHAPES = (
 )
 
 
-@pytest.mark.skip("cumsum unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
@@ -276,7 +276,7 @@ CUMMIN_SHAPES = (
     SkipVersion("triton", "<3.0"),
     reason="Skipping when associative_scan only support single tensor input.",
 )
-@pytest.mark.skip("cumsum unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.cummin
 @pytest.mark.parametrize("shape", CUMMIN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
@@ -319,7 +319,7 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skip("unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.count_nonzero
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -362,7 +362,7 @@ def test_accuracy_log_softmax(shape, dtype):
 
 
 # TODO: failed at (1, 2) (200, 40999, 3)
-@pytest.mark.skip("reduce0 unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Unsupported")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
@@ -386,7 +386,7 @@ def test_accuracy_softmax(shape, dtype, dim):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skip("reduce0 unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
@@ -723,7 +723,7 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 
 
 # TODO: failed at (200, 40999, 3)
-@pytest.mark.skip("TODO Fix 714")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -837,7 +837,7 @@ SHAPE_CONV2D = [
 ]
 
 
-@pytest.mark.skip("unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])

@@ -4,6 +4,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -186,10 +188,9 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.vdot
 def test_vdot_benchmark():
-    pytest.skip("[TritonXPU] Xpytorch randn complex64 type error")
-
     def vdot_input_fn(m, cur_dtype, device):
         inp1 = torch.randn([m], dtype=cur_dtype, device=device)
         inp2 = torch.randn([m], dtype=cur_dtype, device=device)

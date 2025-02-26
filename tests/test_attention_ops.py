@@ -7,7 +7,7 @@ import flag_gems
 from .accuracy_utils import gems_assert_close, to_reference
 
 
-@pytest.mark.skip("unsupported")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("batch", [8, 16])
 @pytest.mark.parametrize("num_head", [1, 8])

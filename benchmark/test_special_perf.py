@@ -3,6 +3,8 @@ import random
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Config,
@@ -58,18 +60,18 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    if op_name == "topk":
-        pytest.skip("[TritonXPU] topk 3D Legalize Unsupported")
+    if flag_gems.vendor_name == "kunlunxin":
+        if op_name == "topk":
+            pytest.skip("[TritonXPU] topk 3D Legalize Unsupported")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.isin
 def test_isin_perf():
-    pytest.skip("[TritonXPU] isin tl.cumsum Unsupported")
-
     def isin_input_fn(shape, dtype, device):
         elements = generate_tensor_input(shape, dtype, device)
         test_elements = generate_tensor_input(shape, dtype, device)
@@ -91,12 +93,9 @@ def test_isin_perf():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.unique
 def test_perf_unique():
-    pytest.skip(
-        "[TritonXPU][XDNN_PYTORCH][sort.cpp:551] scalar type of (ret_data, ret_index) : (kint16, kint64)"
-    )
-
     def unique_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
         yield inp, {"sorted": True, "return_inverse": True, "return_counts": False},
@@ -110,12 +109,9 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.sort
 def test_perf_sort():
-    pytest.skip(
-        "[TritonXPU][XDNN_PYTORCH][sort.cpp:624] scalar type of (ret_data, ret_index) : (kint16, kint64) "
-    )
-
     class SortBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
             return [(1024, 1), (1024, 512)]
@@ -133,10 +129,9 @@ def test_perf_sort():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
-    pytest.skip("[TritonXPU] multinomial tl.cumsum Unsupported")
-
     def multinomial_input_fn(shape, dtype, device):
         dist = torch.rand(shape, dtype=dtype, device=device)
         n_samples = 10000
@@ -216,9 +211,9 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
-    @pytest.skip("[TritonXPU] upsample_bicubic2d_aa Legalize Pass Failed")
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
@@ -244,10 +239,9 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
-    pytest.skip("[TritonXPU][TODO-FIX] Fatal Python error: Segmentation fault.")
-
     def upsample_nearest2d_input_fn(shape, dtype, device):
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
@@ -282,10 +276,6 @@ class ConvBenchmark(GenericBenchmark):
 @pytest.mark.skipif(True, reason="Conv2d not registered yet")
 @pytest.mark.conv2d
 def test_perf_conv2d():
-    pytest.skip(
-        "[TritonXPU][XDNN_PYTORCH][convolution.cpp:435]  (kbfloat16, kbfloat16, kbfloat16, kint16)"
-    )
-
     def conv2d_input_fn(shape, dtype, device):
         (
             batch,
