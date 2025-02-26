@@ -554,6 +554,11 @@ def _upsample_bicubic2d_aa(
         if (reciprocal_scale_w >= 1.0) or (reciprocal_scale_h >= 1.0)
         else upsample_bicubic2d_aa_kernel
     )
+
+    import os
+
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
     with torch_device_fn.device(input.device):
         kernel[grid](
             output,
@@ -566,7 +571,11 @@ def _upsample_bicubic2d_aa(
             IW,
             reciprocal_scale_h,
             reciprocal_scale_w,
-            isOPEN_TTXPU_F_OHTER_VALUE_SIM = True,
-            isOPEN_TTXPU_F_STORE_MASK_SIM = True,
         )
+
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+        del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
     return output
