@@ -3,7 +3,7 @@ import logging
 import torch
 import triton
 
-from ..ops.copy import copy
+from ..ops.copy import copy, copy_slice
 from ..utils.shape_utils import has_internal_overlapping
 
 
@@ -33,11 +33,11 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
         )
 
     ndim = inp.ndim
-    copy(inp, out0=out)
+    copy_slice(inp, out0=out)
 
     indices = [slice(None)] * ndim
     indices[dim] = slice(start, end, step)
     out_ = out[indices]
-    copy(src, out0=out_)
+    copy_slice(src, out0=out_)
 
     return out
