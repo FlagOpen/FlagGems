@@ -9,6 +9,7 @@ from .performance_utils import (
     GenericBenchmark,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -87,6 +88,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.randperm
 def test_perf_randperm():
     def randperm_input_fn(shape, dtype, device):

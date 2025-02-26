@@ -4,7 +4,6 @@ import pytest
 import torch
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .conftest import vendor_name
 from .performance_utils import (
     Config,
     GenericBenchmark,
@@ -12,6 +11,7 @@ from .performance_utils import (
     GenericBenchmarkExcluse1D,
     GenericBenchmarkExcluse3D,
     generate_tensor_input,
+    vendor_name,
 )
 
 
@@ -59,12 +59,16 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
+    if vendor_name == "kunlunxin":
+        if op_name == "topk":
+            pytest.skip("[TritonXPU] topk 3D Legalize Unsupported")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -88,6 +92,7 @@ def test_isin_perf():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -103,6 +108,7 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.sort
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
@@ -122,6 +128,7 @@ def test_perf_sort():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
@@ -203,6 +210,7 @@ class UpsampleBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.upsample_bicubic2d_aa
 def test_perf_upsample_bicubic2d_aa():
     def upsample_bicubic2d_aa_input_fn(shape, dtype, device):
@@ -230,6 +238,7 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):

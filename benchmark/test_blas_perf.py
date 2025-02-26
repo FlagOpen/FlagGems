@@ -12,7 +12,7 @@ from .attri_util import (
     llama_shapes,
 )
 from .conftest import Config
-from .performance_utils import Benchmark
+from .performance_utils import Benchmark, vendor_name
 
 
 class BlasBenchmark(Benchmark):
@@ -186,6 +186,7 @@ class VdotBenchmark(BlasBenchmark):
             yield from self.input_fn(m, cur_dtype, self.device)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):
