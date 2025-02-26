@@ -73,7 +73,15 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
+    import os
+
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+
     with torch_device_fn.device(inp.device):
-        kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction, isOPEN_TTXPU_F_OHTER_VALUE_SIM=True)
-        kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, isOPEN_TTXPU_F_OHTER_VALUE_SIM=True)
+        kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
+        kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+
     return out
