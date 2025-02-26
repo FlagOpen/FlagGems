@@ -812,6 +812,7 @@ class WrapperGenerator:
             f"out{i}.shape" for i in range(schema.num_output_tensors())
         ]
         check: str = " == ".join(params)
+        # code.writeline(f"import pudb; pudb.set_trace()")
         code.writeline(f"assert {check}, 'operand shapes mismatch'")
 
     def gen_task_partition(self, code: IndentedBuffer):
