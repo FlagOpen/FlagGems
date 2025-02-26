@@ -18,7 +18,8 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
-        return []
+        if vendor_name == "kunlunxin":
+            return []
         shapes = super().set_more_shapes()
         shapes = [
             # this filter is for scatter
