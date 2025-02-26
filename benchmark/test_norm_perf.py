@@ -2,8 +2,8 @@ import pytest
 import torch
 
 from .attri_util import FLOAT_DTYPES, BenchLevel
-from .conftest import Config
 from .performance_utils import (
+    Config,
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     unary_input_fn,
