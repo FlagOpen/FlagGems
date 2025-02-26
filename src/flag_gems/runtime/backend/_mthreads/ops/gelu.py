@@ -86,5 +86,4 @@ class Gelu(torch.autograd.Function):
 
 
 def gelu(A, *, approximate="none"):
-    print("\n.......test for mutibackend specific gelu........\n")
     return Gelu.apply(A, approximate)

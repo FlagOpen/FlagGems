@@ -50,9 +50,9 @@ class UnaryReductionBenchmark(Benchmark):
 
 
 forward_operations = [
-    # ("all", torch.all, FLOAT_DTYPES),  # mt not support, disable
+    ("all", torch.all, FLOAT_DTYPES) if flag_gems.device_name != "musa" else (),
     ("amax", torch.amax, FLOAT_DTYPES),
-    # ("any", torch.any, FLOAT_DTYPES),  # mt not support, disable
+    ("any", torch.any, FLOAT_DTYPES) if flag_gems.device_name != "musa" else (),
     ("argmax", torch.argmax, FLOAT_DTYPES),
     ("argmin", torch.argmin, FLOAT_DTYPES),
     ("max", torch.max, FLOAT_DTYPES),

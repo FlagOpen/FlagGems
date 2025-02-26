@@ -1,8 +1,6 @@
 # This custom op requires musa device capability >= 31.
 # We determine whether to enable this op by distinguish the op registration for different arch.
 
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -28,7 +26,6 @@ def tanh_backward(y, dy):
 class Tanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS TANH FORWARD")
         if A.requires_grad is True:
             out = tanh_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -39,7 +36,6 @@ class Tanh(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS TANH BACKWARD")
         (out,) = ctx.saved_tensors
         in_grad = tanh_backward(out, out_grad)
         return in_grad

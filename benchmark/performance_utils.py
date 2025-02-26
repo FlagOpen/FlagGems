@@ -29,7 +29,7 @@ torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
 if device == "musa":
-    torch.backends.mudnn.allow_tf32 = False
+    torch_backend_device.allow_tf32 = False
 else:
     torch_backend_device.matmul.allow_tf32 = False
 

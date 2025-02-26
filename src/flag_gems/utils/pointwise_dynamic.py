@@ -1071,8 +1071,7 @@ class PointwiseDynamicFunction:
 
         assert isinstance(scalar_fn, JITFunction)
         self._scalar_fn = scalar_fn
-        # FIXME: cache_key is too long and make open file failed.
-        self._scalar_fn_cache_key = scalar_fn.cache_key[:33]
+        self._scalar_fn_cache_key = scalar_fn.cache_key
         self.pid = os.getpid()
 
         self.config: CodeGenConfig = config or get_codegen_config()

@@ -13,8 +13,7 @@ device = flag_gems.device
     "prompt",
     ["How are you today?", "What is your name?", "Who are you?", "Where are you from?"],
 )
-# @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
 def test_accuracy_bert(prompt, dtype):
     config = BertConfig()
     model = BertModel(config)

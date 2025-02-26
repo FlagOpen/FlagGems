@@ -529,7 +529,7 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+# @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize(
@@ -1010,9 +1010,13 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
                 x = x[:hiddensize]
                 break
     else:
-        x = torch.arange(hiddensize, dtype=torch.int32, device=flag_gems.device).to(
-            dtype
-        )
+        if flag_gems.device == "musa" and dtype == torch.int16:
+            # arange short type on torch of mthreads not supported yet.
+            x = torch.arange(hiddensize, dtype=torch.int32, device=flag_gems.device).to(
+                dtype
+            )
+        else:
+            x = torch.arange(hiddensize, dtype=dtype, device=flag_gems.device)
     y = torch.empty((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
 
     # Each row use different shuffled index.

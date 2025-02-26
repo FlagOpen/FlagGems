@@ -83,7 +83,6 @@ HEURISTICS_CONFIG = {
     vendors.NVIDIA: default_heuristics_for_num_warps,
     vendors.METAX: metax_heuristics_for_num_warps,
     vendors.CAMBRICON: cambricon_heuristics_for_num_warps,
-    vendors.MTHREADS: default_heuristics_for_num_warps,
 }
 
 
