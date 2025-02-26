@@ -118,10 +118,20 @@ def max(inp):
     if M == 1:
         return inp.reshape([])
     with torch_device_fn.device(inp.device):
-        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size,
+                         isCloseCoreTiling=True,
+                         isCloseUnrollControl=True,
+                         isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+                         isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+                         )
         if mid_size == 1:
             return mid.reshape([])
-        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid,
+                         isCloseCoreTiling=True,
+                         isCloseUnrollControl=True,
+                         isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+                         isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+                         )
     return out
 
 
@@ -149,7 +159,12 @@ def max_dim(inp, dim=None, keepdim=False):
         K,
     )
     with torch_device_fn.device(inp.device):
-        max_kernel[grid](inp, out_value, out_index, M, N, K)
+        max_kernel[grid](inp, out_value, out_index, M, N, K,
+                         isCloseCoreTiling=True,
+                         isCloseUnrollControl=True,
+                         isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+                         isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+                         )
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)
     return out

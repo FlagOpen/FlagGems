@@ -20,7 +20,7 @@ from .accuracy_utils import (
     to_reference,
 )
 from .conftest import TO_CPU
-
+import os
 
 def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
@@ -1076,6 +1076,8 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 @pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4], ids=lambda x: f"gen_nan-{x}")
 def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
+    if gen_nan == -1 and not equal_nan:
+        os.environ['XPU_cmp_nan'] = 1
     rtol = (
         torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * 0.0001
         if not zero_tol
@@ -1175,6 +1177,8 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
 @pytest.mark.parametrize("gen_nan", [0, 1, 2, 3, 4], ids=lambda x: f"gen_nan-{x}")
 def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
+    if gen_nan == -1 and not equal_nan:
+        os.environ['XPU_cmp_nan'] = 1
     rtol = torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * (
         0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01
     )

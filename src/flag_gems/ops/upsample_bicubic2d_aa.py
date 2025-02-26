@@ -566,5 +566,7 @@ def _upsample_bicubic2d_aa(
             IW,
             reciprocal_scale_h,
             reciprocal_scale_w,
+            isOPEN_TTXPU_F_OHTER_VALUE_SIM = True,
+            isOPEN_TTXPU_F_STORE_MASK_SIM = True,
         )
     return output

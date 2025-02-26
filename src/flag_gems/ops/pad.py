@@ -203,6 +203,9 @@ def generate_destination_passing_padding_wrapper(
                     code.writeline("IS_CIRCULAR, ")
                     code.writeline("BLOCK_SIZE, ")
                     code.writeline("buffer_size_limit=512, ")
+                    code.writeline("buffer_size_limit=512, ")
+                    code.writeline("isOPEN_TTXPU_F_OHTER_VALUE_SIM=True, ")
+                    code.writeline("isOPEN_TTXPU_F_STORE_MASK_SIM=True, ")
             code.writeline(")")
 
         code.writeline("return out0")

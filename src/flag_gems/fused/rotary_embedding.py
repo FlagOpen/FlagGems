@@ -195,6 +195,7 @@ def apply_rotary_pos_emb(
             padded_head_dim,
             rotary_interleaved,
             MAX_POSITION_EMBEDDINGS=cos.shape[0],
+            isCloseUnrollControl=True,
         )
     q_embed = q_embed.view(q_shape)
     k_embed = k_embed.view(k_shape)

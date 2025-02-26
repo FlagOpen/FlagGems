@@ -145,6 +145,8 @@ class LogSoftmax(torch.autograd.Function):
                 M,
                 N,
                 K,
+                isCloseCoreTiling=True,
+                isCloseUnrollControl=True,
             )
         ctx.save_for_backward(out)
         ctx.dim = dim
@@ -180,6 +182,8 @@ class LogSoftmax(torch.autograd.Function):
                 M,
                 N,
                 K,
+                isCloseCoreTiling=True,
+                isCloseUnrollControl=True,
             )
         return in_grad, None, None
 

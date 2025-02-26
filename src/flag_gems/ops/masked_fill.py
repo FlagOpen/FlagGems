@@ -85,7 +85,10 @@ def masked_fill(inp, mask, value):
     if N == 0:
         return out
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    masked_fill_kernel[grid](inp, expand_mask.to(torch.int), value, out, N)
+    masked_fill_kernel[grid](inp, expand_mask.to(torch.int), value, out, N,
+                             isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+                             isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+                             isCloseUnrollControl=True)
     return out
 
 
@@ -117,5 +120,9 @@ def masked_fill_(inp, mask, value):
     if N == 0:
         return inp
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    masked_fill_kernel_self[grid](inp, expand_mask.to(torch.int), value, N)
+    masked_fill_kernel_self[grid](inp, expand_mask.to(torch.int), value, N,
+                                  isOPEN_TTXPU_F_OHTER_VALUE_SIM=True,
+                                  isOPEN_TTXPU_F_STORE_MASK_SIM=True,
+                                  isCloseUnrollControl=True
+                                 )
     return inp

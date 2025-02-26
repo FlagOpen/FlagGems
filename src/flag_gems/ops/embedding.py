@@ -128,7 +128,8 @@ class Embedding(torch.autograd.Function):
         )
 
         with torch_device_fn.device(weight.device):
-            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE,
+                                 isOPEN_TTXPU_O_ATOMIC_SIM=True)
 
         ctx.M = M
         ctx.N = N
@@ -167,7 +168,8 @@ class Embedding(torch.autograd.Function):
 
             with torch_device_fn.device(grad_outputs.device):
                 indice_freq_kernel[indice_grid](
-                    indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE
+                    indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE,
+                    isOPEN_TTXPU_O_ATOMIC_SIM=True
                 )
         else:
             indice_freq = None
@@ -185,12 +187,15 @@ class Embedding(torch.autograd.Function):
                 HAS_PADDING_IDX,
                 ctx.N,
                 BLOCK_SIZE,
-            )
+                isOPEN_TTXPU_O_ATOMIC_SIM=True
+                )
+            
 
         if ctx.scale_grad_by_freq:
             with torch_device_fn.device(grad_outputs.device):
                 embedding_grad_scale_kernel[ctx.M,](
-                    grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
+                    grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE,
+                    isOPEN_TTXPU_O_ATOMIC_SIM=True
                 )
         return (
             (

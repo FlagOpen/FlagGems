@@ -350,7 +350,7 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             elif ord == 0:
                 l0_norm_kernel[grid](x, out, M, N)
             else:
-                v_norm_kernel[grid](x, out, M, N, ord)
+                v_norm_kernel[grid](x, out, M, N, ord, isCloseUnrollControl=True)
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

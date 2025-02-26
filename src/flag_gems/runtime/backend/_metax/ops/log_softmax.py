@@ -133,7 +133,10 @@ class LogSoftmax(torch.autograd.Function):
             K,
         )
         with torch_device_fn.device(inp.device):
-            log_softmax_kernel[grid](out, inp, M, N, K, USE_K=USE_K)
+            log_softmax_kernel[grid](out, inp, M, N, K, USE_K=USE_K,
+                                     isCloseCoreTiling=True,
+                                     isCloseUnrollControl=True,
+)
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out
@@ -162,7 +165,9 @@ class LogSoftmax(torch.autograd.Function):
         )
         with torch_device_fn.device(in_grad.device):
             log_softmax_backward_kernel[grid](
-                out, out_grad, in_grad, M, N, K, BLOCK_N_SPLIT=1024
+                out, out_grad, in_grad, M, N, K, BLOCK_N_SPLIT=1024,
+                isCloseCoreTiling=True,
+                isCloseUnrollControl=True,
             )
         return in_grad, None, None
 

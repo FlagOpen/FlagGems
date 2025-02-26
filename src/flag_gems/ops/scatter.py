@@ -379,6 +379,7 @@ def scatter_(inp, dim, index, src, reduce=None):
         N,
         reduce,
         int32_offset=use_int32_offset,
+        isCloseUnrollControl=True
     )
 
     return inp

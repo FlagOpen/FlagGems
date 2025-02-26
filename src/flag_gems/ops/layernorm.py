@@ -19,10 +19,10 @@ def prev_multiple_of(a, b):
 
 
 @libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("layer_norm_persistent"),
-    key=["M", "N"],
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("layer_norm_persistent"),
+#     key=["M", "N"],
+# )
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_persistent_kernel(
     in_ptr,
@@ -40,7 +40,7 @@ def layer_norm_persistent_kernel(
     # Map the program id to the row of X and Y it should compute.
     pid = tle.program_id(0)
 
-    n_offsets = tl.arange(0, TILE_N)
+    n_offsets = tl.arange(0, TILE_N) (tile,N)
     mask = n_offsets < N
 
     x = tl.load(in_ptr + pid * N + n_offsets, mask, other=0.0).to(tl.float32)
@@ -64,7 +64,7 @@ def layer_norm_persistent_kernel(
         b = tl.load(bias_ptr + n_offsets, mask=mask)
     out = (x - m) * rstd * w + b
 
-    tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
+    tl.store(out_ptr + pid * N + n_offsets, x, mask=mask)
 
 
 @libentry()
@@ -121,11 +121,11 @@ def layer_norm_persistent_kernel_multiline(
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
 
 
-@libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("layer_norm_loop"),
-    key=["M", "N"],
-)
+# @libentry()
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("layer_norm_loop"),
+#     key=["M", "N"],
+# )
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_loop_kernel(
     in_ptr,
@@ -386,7 +386,7 @@ class LayerNorm(torch.autograd.Function):
 
         with torch_device_fn.device(x.device):
             if N <= 128:
-                TILE_N = triton.next_power_of_2(N)
+                TILE_N = 16#triton.next_power_of_2(N)
                 TILE_M = triton.cdiv(1024, TILE_N)
                 grid = (triton.cdiv(M, TILE_M), 1, 1)
                 layer_norm_persistent_kernel_multiline[grid](
@@ -403,7 +403,7 @@ class LayerNorm(torch.autograd.Function):
                     TILE_N,
                 )
             elif N <= 4096:
-                TILE_N = triton.next_power_of_2(N)
+                TILE_N = 32#triton.next_power_of_2(N)
                 grid = (M, 1, 1)
                 layer_norm_persistent_kernel[grid](
                     x,
@@ -418,6 +418,7 @@ class LayerNorm(torch.autograd.Function):
                     TILE_N,
                 )
             else:
+                TILE_N = 32#triton.next_power_of_2(N)
                 grid = (M, 1, 1)
                 layer_norm_loop_kernel[grid](
                     x,
@@ -429,6 +430,7 @@ class LayerNorm(torch.autograd.Function):
                     M,
                     N,
                     eps,
+                    TILE_N,
                 )
         if x.requires_grad:
             ctx.save_for_backward(x, weight, bias, mean, rstd)
