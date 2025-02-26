@@ -169,11 +169,17 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         count = torch.empty([BLOCK_NUM], dtype=x.dtype, device=x.device)
 
         with torch_device_fn.device(x.device):
-            var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N,
-                                           isCloseUnrollControl=True)
+            var_mean_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
             var_mean_kernel_2[(1,)](
-                acc, average, count, var, mean, N, correction, BLOCK_NUM,
-                isCloseUnrollControl=True
+                acc,
+                average,
+                count,
+                var,
+                mean,
+                N,
+                correction,
+                BLOCK_NUM,
+                isCloseUnrollControl=True,
             )
     else:
         shape = list(x.shape)
@@ -189,7 +195,9 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
 
         grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
         with torch_device_fn.device(x.device):
-            var_mean_welford_kernel[grid](x, var, mean, M, N, correction, isCloseUnrollControl=True)
+            var_mean_welford_kernel[grid](
+                x, var, mean, M, N, correction, isCloseUnrollControl=True
+            )
 
     if not keepdim:
         var = var.squeeze(dim=dim)
