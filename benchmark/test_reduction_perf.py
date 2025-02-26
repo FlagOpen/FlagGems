@@ -4,7 +4,6 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
@@ -15,6 +14,7 @@ from .performance_utils import (
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -73,7 +73,7 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if flag_gems.vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin":
         if op_name == "var_mean":
             pytest.skip(
                 "[TritonXPU][TODO FIX] error: op requires the same type for all operands and results"
@@ -99,7 +99,7 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
-    if flag_gems.vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin":
         if op_name == "softmax":
             pytest.skip("[TritonXPU] softmax_backward tl.reduce(axis=0) Unsupported")
     bench = UnaryReductionBenchmark(
@@ -207,7 +207,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
-    if flag_gems.vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin":
         if op_name == "CrossEntropyLoss":
             pytest.skip("[TritonXPU] CrossEntropyLoss tl.reduce(axis=0) Unsupported")
         elif op_name in ["cumsum", "cummin", "nonzero"]:
@@ -224,7 +224,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):

@@ -1,14 +1,13 @@
 import pytest
 import torch
 
-import flag_gems
-
 from .attri_util import FLOAT_DTYPES, BenchLevel
 from .conftest import Config
 from .performance_utils import (
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -124,7 +123,7 @@ def batchnorm_input_fn(shape, dtype, device):
     ],
 )
 def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
-    if flag_gems.vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin":
         if op_name == "layer_norm":
             pytest.skip("[TritonXPU][TODO-FIX] 'scf.for'.")
         elif op_name == "instance_norm":

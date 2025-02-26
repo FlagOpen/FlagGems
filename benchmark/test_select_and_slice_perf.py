@@ -3,11 +3,14 @@ import random
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
+from .performance_utils import (
+    GenericBenchmark2DOnly,
+    generate_tensor_input,
+    vendor_name,
+)
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):
@@ -79,7 +82,7 @@ def index_select_gbps(bench_fn_args, latency):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
-    if flag_gems.vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin":
         if op_name == "masked_select":
             pytest.skip("[TritonXPU] tl.cumsum Unsupported")
         elif op_name == "index_select":
@@ -173,7 +176,7 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -265,7 +268,7 @@ def test_select_scatter_perf():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):

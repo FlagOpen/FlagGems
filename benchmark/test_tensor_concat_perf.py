@@ -3,14 +3,13 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
-
 from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
     generate_tensor_input,
+    vendor_name,
 )
 
 
@@ -196,7 +195,7 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     ],
 )
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
-    if flag_gems.vendor_name == "kunlunxin":
+    if vendor_name == "kunlunxin":
         if op_name == "repeat_interleave_self_tensor":
             pytest.skip(
                 "[TritonXPU] repeat_interleave_self_tensor tl.cumsum Unsupported"
