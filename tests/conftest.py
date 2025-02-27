@@ -121,10 +121,10 @@ def pytest_runtest_protocol(item, nextitem):
     test_results[item.nodeid]["params"] = param_values
 
 
-# @pytest.hookimpl(tryfirst=True)
-# def pytest_runtest_logreport(report):
-#     if report.when == "call":
-#         test_results[report.nodeid]["result"] = report.outcome
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    if report.when == "call":
+        test_results[report.nodeid]["result"] = report.outcome
 
 
 def pytest_terminal_summary(terminalreporter):
