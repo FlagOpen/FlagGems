@@ -36,6 +36,7 @@ from typing import Any, Dict, List
 
 from attri_util import BenchmarkMetrics, BenchmarkResult
 
+# to enable log files crossing speedup calculation
 ENABLE_COMPARE = False
 
 
@@ -49,6 +50,8 @@ class SummaryResultOverDtype:
     int32_speedup: float = 0.0
     bool_speedup: float = 0.0
     cfloat_speedup: float = 0.0
+
+    # to calculate the speedup across log files.
     compared_float16_speedup: float = 0.0
     compared_float32_speedup: float = 0.0
     compared_bfloat16_speedup: float = 0.0
@@ -306,7 +309,7 @@ if __name__ == "__main__":
         "-c",
         type=str,
         default="",
-        help="Path to a log file with baseline data",
+        help="Path to a log file with baseline data to get speedup statistics across 2 log files",
     )
     args = parser.parse_args()
 
