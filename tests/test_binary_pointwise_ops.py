@@ -1089,7 +1089,7 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
     if gen_nan == 1 and not equal_nan:
-        os.environ["XPU_cmp_nan"] = 1
+        os.environ["XPU_cmp_nan"] = "1"
     rtol = (
         torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * 0.0001
         if not zero_tol
@@ -1180,7 +1180,7 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             res_flat[1], ref_flat[1], res_flat[2], ref_flat[2]
         )
     gems_assert_equal(res_out, ref_out)
-
+    del os.environ["XPU_cmp_nan"]
 
 @pytest.mark.allclose
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1190,7 +1190,7 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
 def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     # [gen_nan] 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
     if gen_nan == 1 and not equal_nan:
-        os.environ["XPU_cmp_nan"] = 1
+        os.environ["XPU_cmp_nan"] = "1"
     rtol = torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * (
         0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01
     )
@@ -1229,7 +1229,7 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
     assert res_out == ref_out
-
+    del os.environ["XPU_cmp_nan"]
 
 @pytest.mark.logical_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)

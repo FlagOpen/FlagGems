@@ -64,7 +64,7 @@ def layer_norm_persistent_kernel(
         b = tl.load(bias_ptr + n_offsets, mask=mask)
     out = (x - m) * rstd * w + b
 
-    tl.store(out_ptr + pid * N + n_offsets, x, mask=mask)
+    tl.store(out_ptr + pid * N + n_offsets, out, mask=mask)
 
 
 @libentry()
