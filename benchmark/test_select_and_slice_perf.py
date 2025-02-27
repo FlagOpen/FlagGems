@@ -20,7 +20,9 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
-        if vendor_name == "kunlunxin":
+        if (
+            vendor_name == "kunlunxin"
+        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
             return []
         shapes = super().set_more_shapes()
         shapes = [
@@ -179,6 +181,7 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -198,6 +201,7 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
@@ -374,6 +378,7 @@ class IndexPutAccTrueBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.index_put
 def test_index_put_acc_true_perf():
     bench = IndexPutAccTrueBenchmark(

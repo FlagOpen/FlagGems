@@ -139,9 +139,7 @@ def batchnorm_input_fn(shape, dtype, device):
         ),
     ],
 )
-def test_group_and_layer_and_instance_and_instance_norm_benchmark(
-    op_name, torch_op, input_fn
-):
+def test_group_and_layer_and_instance_norm_benchmark(op_name, torch_op, input_fn):
     if vendor_name == "kunlunxin":
         if op_name == "layer_norm":
             pytest.skip("[TritonXPU][TODO-FIX] 'scf.for'.")

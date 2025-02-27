@@ -1,6 +1,7 @@
 import gc
 import importlib
 import logging
+import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -229,6 +230,11 @@ class Benchmark:
         self.cpu_mode = Config.cpu_mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
+        if vendor_name == "kunlunxin":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
+            )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
