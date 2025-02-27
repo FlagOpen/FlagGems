@@ -1180,7 +1180,8 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             res_flat[1], ref_flat[1], res_flat[2], ref_flat[2]
         )
     gems_assert_equal(res_out, ref_out)
-    del os.environ["XPU_cmp_nan"]
+    if os.getenv("XPU_cmp_nan") == "1":
+        del os.environ["XPU_cmp_nan"]
 
 @pytest.mark.allclose
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1229,7 +1230,8 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     ref_out = torch.allclose(ref_inp1, ref_inp2, rtol, atol, equal_nan=equal_nan)
 
     assert res_out == ref_out
-    del os.environ["XPU_cmp_nan"]
+    if os.getenv("XPU_cmp_nan") == "1":
+        del os.environ["XPU_cmp_nan"]
 
 @pytest.mark.logical_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
