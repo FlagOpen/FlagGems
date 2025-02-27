@@ -12,6 +12,7 @@ from .code_cache import config_cache_dir
 
 DEVICE_COUNT = runtime.device.device_count
 ATTRS = {
+    (2, 1): 2,
     (2, 2): 5,
     (2, 3): 5,
     (3, 0): 4,
@@ -90,11 +91,13 @@ class LibTuner(triton.runtime.Autotuner):
             kwargs = {}
             numargs = {}
             attrs = ATTRS[(major_version, minor_version)]
+
             for k, v in cfg_ls[:-attrs]:
                 kwargs[k] = eval(v)
             for k, v in cfg_ls[-attrs:]:
                 numargs[k] = eval(v)
             config = triton.Config(kwargs, **numargs)
+            
             self.cache[tuple(key)] = config
 
         connect.close()
