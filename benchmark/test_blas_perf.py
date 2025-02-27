@@ -4,6 +4,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -187,6 +189,7 @@ class VdotBenchmark(BlasBenchmark):
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):

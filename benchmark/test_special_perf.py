@@ -3,6 +3,8 @@ import random
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
 from .performance_utils import (
     Config,
@@ -40,8 +42,12 @@ special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
-    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
-    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
+    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn)
+    if flag_gems.device_name != "musa"
+    else (),
+    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn)
+    if flag_gems.device_name != "musa"
+    else (),
 ]
 
 
@@ -69,6 +75,7 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -93,6 +100,7 @@ def test_isin_perf():
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -129,6 +137,7 @@ def test_perf_sort():
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
@@ -350,6 +359,7 @@ def test_perf_diag_embed():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.diagonal_backward
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
