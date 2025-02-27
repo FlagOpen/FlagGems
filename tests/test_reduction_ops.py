@@ -747,7 +747,6 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
 
 
 # TODO: failed at (200, 40999, 3)
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Result Error")
 @pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
