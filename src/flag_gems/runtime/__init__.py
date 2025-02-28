@@ -5,6 +5,7 @@ from .configloader import ConfigLoader
 config_loader = ConfigLoader()
 device = DeviceDetector()
 
+device
 """
 The dependency order of the sub-directory is strict, and changing the order arbitrarily may cause errors.
 """
