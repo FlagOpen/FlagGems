@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -50,6 +51,11 @@ def isclose(
     equal_nan: bool = False,
 ) -> torch.Tensor:
     logging.debug("GEMS ISCLOSE")
+    if not equal_nan:
+        os.environ["XPU_cmp_nan"] = "1"
+    else:
+        if "XPU_cmp_nan" in os.environ:
+            del os.environ["XPU_cmp_nan"]
     # note: Int8 is not supported in isclose_func, because the result of int8 == int8 is wrong
     # in triton jit function, and needs to be fixed in triton. The same is true for bool.
     if A.dtype == torch.bool:

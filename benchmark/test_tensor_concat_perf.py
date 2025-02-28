@@ -195,13 +195,11 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
     ],
 )
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
-    if vendor_name == "kunlunxin":
-        if op_name == "repeat_interleave_self_tensor":
-            pytest.skip(
-                "[TritonXPU] repeat_interleave_self_tensor tl.cumsum Unsupported"
-            )
-        elif op_name == "repeat_interleave_tensor":
-            pytest.skip("[TritonXPU] repeat_interleave_tensor tl.cumsum Unsupported")
+    if vendor_name == "kunlunxin" and op_name in [
+        "repeat_interleave_self_tensor",
+        "repeat_interleave_tensor",
+    ]:
+        pytest.skip("RUNTIME TODOFIX")
     bench = TensorRepeatBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )

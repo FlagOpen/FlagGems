@@ -74,13 +74,8 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin":
-        if op_name == "var_mean":
-            pytest.skip(
-                "[TritonXPU][TODO FIX] error: op requires the same type for all operands and results"
-            )
-        elif op_name == "softmax":
-            pytest.skip("[TritonXPU][TODO FIX] Fatal Python error: Segmentation fault.")
+    if vendor_name == "kunlunxin" and op_name in ["var_mean", "softmax"]:
+        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -100,9 +95,8 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin":
-        if op_name == "softmax":
-            pytest.skip("[TritonXPU] softmax_backward tl.reduce(axis=0) Unsupported")
+    if vendor_name == "kunlunxin" and op_name == "softmax":
+        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(
         op_name=op_name,
         torch_op=torch_op,
@@ -227,23 +221,17 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name == "CrossEntropyLoss":
-            pytest.skip("[TritonXPU] CrossEntropyLoss tl.reduce(axis=0) Unsupported")
+        if op_name in ["CrossEntropyLoss", "nll_loss", "log_softmax"]:
+            pytest.skip("RUNTIME TODOFIX")
         elif op_name in ["cumsum", "cummin", "nonzero"]:
-            pytest.skip("[TritonXPU] tl.cumsum Unsupported")
-        elif op_name == "nll_loss":
-            pytest.skip("[TritonXPU] atomic cal error.")
-        elif op_name == "log_softmax":
-            pytest.skip(
-                "[TritonXPU][TODOFIX] error:  size mismatch when packing elements for LLVM struct ."
-            )
+            pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():

@@ -90,7 +90,7 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.randperm
 def test_perf_randperm():

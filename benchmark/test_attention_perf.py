@@ -17,7 +17,7 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Result Error")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.attention
 def test_perf_scaled_dot_product_attention():
