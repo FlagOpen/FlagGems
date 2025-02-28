@@ -76,4 +76,9 @@ def allclose(
     equal_nan: bool = False,
 ) -> bool:
     logging.debug("GEMS ALLCLOSE")
+    if not equal_nan:
+        os.environ["XPU_cmp_nan"] = "1"
+    else:
+        if "XPU_cmp_nan" in os.environ:
+            del os.environ["XPU_cmp_nan"]
     return all(isclose(A, B, rtol, atol, equal_nan)).item()

@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .all import all
-
+import os
 _isfinited = tl_extra_shim.isfinited
 _finitef = tl_extra_shim.finitef
 
@@ -50,6 +50,11 @@ def isclose(
     equal_nan: bool = False,
 ) -> torch.Tensor:
     logging.debug("GEMS ISCLOSE")
+    if not equal_nan:
+        os.environ["XPU_cmp_nan"] = "1"
+    else:
+        if "XPU_cmp_nan" in os.environ:
+            del os.environ["XPU_cmp_nan"]
     # note: Int8 is not supported in isclose_func, because the result of int8 == int8 is wrong
     # in triton jit function, and needs to be fixed in triton. The same is true for bool.
     if A.dtype == torch.bool:

@@ -949,6 +949,8 @@ class WrapperGenerator:
                 code.writeline("buffer_size_limit=2048,")
                 if self.config.is_scatter_slice:
                     code.writeline("isCloseOffsetAnalysis=True,")
+                if os.getenv("XPU_cmp_nan") == "1":
+                    code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -998,6 +1000,8 @@ class WrapperGenerator:
                 code.writeline("buffer_size_limit=2048,")
                 if self.config.is_scatter_slice:
                     code.writeline("isCloseOffsetAnalysis=True,")
+                if os.getenv("XPU_cmp_nan") == "1":
+                    code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):

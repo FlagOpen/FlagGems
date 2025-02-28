@@ -946,6 +946,8 @@ class WrapperGenerator:
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
                 code.writeline("buffer_size_limit=2048,")
+                if os.getenv("XPU_cmp_nan") == "1":
+                    code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
 
     def gen_kernel_launch_1d(
@@ -993,6 +995,8 @@ class WrapperGenerator:
                     code.writeline("one_tile_per_cta=one_tile_per_cta,")
                 code.writeline("num_warps=num_warps,")
                 code.writeline("buffer_size_limit=2048,")
+                if os.getenv("XPU_cmp_nan") == "1":
+                    code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
 
     def gen_return(self, code: IndentedBuffer):
