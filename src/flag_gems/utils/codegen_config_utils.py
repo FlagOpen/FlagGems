@@ -70,7 +70,6 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
-<<<<<<< HEAD
     vendors.HYGON: CodeGenConfig(
         512,
         (65536, 65536, 65536),
