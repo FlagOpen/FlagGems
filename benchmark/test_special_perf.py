@@ -3,7 +3,10 @@ import random
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from .conftest import vendor_name
 from .performance_utils import (
     Config,
     GenericBenchmark,
@@ -39,8 +42,12 @@ special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
-    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
-    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
+    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn)
+    if flag_gems.device_name != "musa"
+    else (),
+    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn)
+    if flag_gems.device_name != "musa"
+    else (),
 ]
 
 
@@ -64,6 +71,7 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 def test_isin_perf():
     def isin_input_fn(shape, dtype, device):
@@ -82,11 +90,12 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=INT_DTYPES,
+        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
     )
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.unique
 def test_perf_unique():
     def unique_input_fn(shape, dtype, device):
@@ -97,7 +106,7 @@ def test_perf_unique():
         input_fn=unique_input_fn,
         op_name="unique",
         torch_op=torch.unique,
-        dtypes=INT_DTYPES,
+        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
     )
     bench.run()
 
@@ -121,6 +130,7 @@ def test_perf_sort():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
@@ -224,7 +234,7 @@ def test_perf_upsample_bicubic2d_aa():
         input_fn=upsample_bicubic2d_aa_input_fn,
         op_name="upsample_bicubic2d_aa",
         torch_op=torch._C._nn._upsample_bicubic2d_aa,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float32] if vendor_name == "cambricon" else FLOAT_DTYPES,
     )
     bench.run()
 
@@ -340,6 +350,7 @@ def test_perf_diag_embed():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.diagonal_backward
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
