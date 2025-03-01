@@ -86,7 +86,7 @@
 - nll_loss
 - nll_loss_forward
 - nll_loss_nd
-- scaled_dot_product_attention
+- _flash_attention_forward
 - upsample_nearest2d
 - _fft_c2r
 - _fft_r2c
