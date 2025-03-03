@@ -84,12 +84,20 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=True,
     ),
+    vendors.HYGON: CodeGenConfig(
+        512,
+        (65536, 65536, 65536),
+        16,
+        True,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
 }
 
 HEURISTICS_CONFIG = {
     vendors.NVIDIA: default_heuristics_for_num_warps,
     vendors.METAX: metax_heuristics_for_num_warps,
     vendors.CAMBRICON: cambricon_heuristics_for_num_warps,
+    vendors.HYGON: default_heuristics_for_num_warps,
 }
 
 
