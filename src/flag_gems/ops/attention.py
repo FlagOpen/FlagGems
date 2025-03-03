@@ -444,7 +444,7 @@ def philox_(seed, subsequence, offset):
 
 
 @triton.jit
-def apply_mask(
+def apply_dropout_mask(
     P,
     mask,
     encode_dropout_in_sign_bit: tl.constexpr,
@@ -522,9 +522,42 @@ def apply_dropout(
     m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
 
     m = tl.join(m0, m1).trans(2, 0, 1).reshape(16 * M, N)
-    P = apply_mask(P, m)
+    P = apply_dropout_mask(P, m)
     return P
 
+
+@triton.jit
+def apply_mask(
+    P,
+    col_idx,
+    row_idx,
+    warp_row_stride,
+    max_seqlen_q,
+    max_seqlen_k,
+    ws_left,
+    ws_right,
+    alibi_slope,
+    is_causal: tl.constexpr,
+    is_local: tl.constexpr,
+    has_alibi: tl.constexpr,
+):
+    if has_alibi or is_causal or is_local:
+        col_lb = max(0, row_idx + max_seqlen_k - max_seqlen_q - ws_left)
+        col_rb = min(max_seqlen_k, row_idx + 1 + max_seqlen_k - max_seqlen_q + ws_right)
+
+        if not has_alibi:
+            alibi_slope = .0
+            
+        P -= alibi_slope * tl.abs(col_idx - row_idx)
+        
+        if is_causal:
+            P = tl.where(col_idx >= col_rb, float('-inf'), P)
+        
+        if is_local:
+            P = tl.where(col_idx >= col_rb | col_idx < col_lb, float('-inf'), P)
+
+    return P
+    
 
 @triton.jit(do_not_specialize=[])
 def flash_fwd_kernel(
@@ -533,21 +566,46 @@ def flash_fwd_kernel(
     pV,
     pP,
     pO,
+    seqlen_q,
+    seqlen_k,
     pSlopes,
     philox_seed,
     philox_offset,
     pdrop_int8,
+    slopes_batch_stride,
     is_dropout: tl.constexpr,
     is_causal: tl.constexpr,
+    is_local: tl.constexpr,
+    has_alibi: tl.constexpr,
     scale: tl.constexp,
     ws_left: tl.constexpr,
     ws_right: tl.constexpr,
     return_P: tl.constexpr,
-    is_local: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     num_warps: tl.constexpr,
 ):
+    m_block = tl.program_id(0)
+    bid = tl.program_id(1)
+    hid = tl.program_id(2)
+
+    if is_local:
+        n_block_min: tl.constexpr = max(0, (m_block * BLOCK_M + seqlen_k - seqlen_q - ws_left) / BLOCK_N)
+    else:
+        n_block_min: tl.constexpr = 0 
+
+    n_block_max = tl.cdiv(seqlen_k, BLOCK_N)
+    
+    if is_causal or is_local:
+        n_block_max = min(n_block_max,
+                          tl.cdiv((m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + window_size_right, BLOCK_N))
+
+    if has_alibi:
+        alibi_offset = bid * slopes_batch_stride + hid
+        alibi_slope = tl.load(pSlopes + alibi_offset)
+        alibi_slope /= scale
+
+    
 
 
 def mha_fwd(
@@ -631,7 +689,11 @@ def mha_fwd(
             assert alibi_slopes.stride(-1) == 1
             assert alibi_slopes.shape == (num_heads,) or alibi_slopes.shape == (batch_size, num_heads)
             alibi_slopes_batch_stride = alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
-        
+            has_alibi = True
+        else:
+            alibi_slopes_batch_stride = 0
+            has_alibi = False
+
         # Set SWA params
         is_local = (window_size_left >= 0 or window_size_right >= 0) and not is_causal
 
@@ -650,17 +712,21 @@ def mha_fwd(
             v,
             p,
             out,
+            seqlen_q,
+            seqlen_k,
             alibi_slopes,
             philox_seed,
             philox_offset,
             pdrop_u8,
-            is_dropout,
-            is_causal,
-            softmax_scale,
-            window_size_left,
-            window_size_right,
-            return_softmax,
-            is_local,
+            alibi_slopes_batch_stride,
+            is_dropout=is_dropout,
+            is_causal=is_causal,
+            is_local=is_local,
+            has_alibi=has_alibi,
+            scale=softmax_scale,
+            ws_left=window_size_left,
+            ws_right=window_size_right,
+            return_P=return_softmax,
             BLOCK_M,
             BLOCK_N,
             num_warps
