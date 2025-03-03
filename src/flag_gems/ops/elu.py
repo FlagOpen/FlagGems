@@ -14,7 +14,7 @@ def elu_forward_kernel(x, alpha, scale, input_scale):
     return tl.where(
         x > 0,
         scale * input_scale * x,
-        scale * alpha * (tl.exp(x.to(tl.float32)) * input_scale - 1),
+        scale * alpha * (tl.exp(x.to(tl.float32) * input_scale) - 1),
     )
 
 

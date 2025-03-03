@@ -164,11 +164,13 @@ def test_accuracy_reciprocal(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_elu(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    alpha = torch.rand(1).item()
+
     ref_inp = to_reference(inp, True)
-    ref_out = torch.nn.functional.elu(ref_inp)
+    ref_out = torch.nn.functional.elu(ref_inp, alpha)
 
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.elu(inp)
+        res_out = torch.nn.functional.elu(inp, alpha)
 
     gems_assert_close(res_out, ref_out, dtype)
 
