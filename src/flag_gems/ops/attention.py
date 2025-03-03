@@ -306,285 +306,6 @@ def _attn_fwd(
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
-@triton.jit
-def philox_offset_one_warp(b, h, nh: tl.constexpr):
-    # To align with TriDao's implementation, philox_offset linearly determined by
-    # a 3d dense tensor (batch_id, head_id, thread_id) with shape (batch_size, num_heads, 32)
-    # and stride ( num_heads * 32, 32, 1 )
-    return (b * nh + h) * 32 + tl.arange(0, 32)
-
-
-@triton.jit
-def to_lohi(x):
-    return (x >> 32).to(tl.uint32), (x & 0xFFFFFFFF).to(tl.uint32)
-
-
-@triton.jit
-def from_lohi(lo, hi):
-    return hi.to(tl.uint64) << 32 + lo.to(tl.uint64)
-
-
-@triton.jit
-def philox_(seed, subsequence, offset):
-    kPhilox10A: tl.constexpr = 0x9E3779B9
-    kPhilox10B: tl.constexpr = 0xBB67AE85
-    k0, k1 = to_lohi(seed.to(tl.uint64))
-    c0, c1 = to_lohi(offset.to(tl.uint64))
-    c2, c3 = to_lohi(subsequence(tl.uint64))
-
-    # pragma unroll
-    kPhiloxSA: tl.constexpr = 0xD2511F53
-    kPhiloxSB: tl.constexpr = 0xCD9E8D57
-    for _ in range(6):
-        res0 = kPhiloxSA.to(tl.uint64) * c0.to(tl.uint64)
-        res1 = kPhiloxSB.to(tl.uint64) * c2.to(tl.uint64)
-        res0_x, res0_y = to_lohi(res0)
-        res1_x, res1_y = to_lohi(res1)
-        c0, c1, c2, c3 = res1_y ^ c1 ^ k0, res1_x, res0_y ^ c3 ^ k1, res0_x
-        k0 += kPhilox10A
-        k1 += kPhilox10B
-
-    res0 = kPhiloxSA.to(tl.uint64) * c0.to(tl.uint64)
-    res1 = kPhiloxSB.to(tl.uint64) * c2.to(tl.uint64)
-    res0_x.res0_y = to_lohi(res0)
-    res1_x.res1_y = to_lohi(res1)
-    c0, c1, c2, c3 = res1_y ^ c1 ^ k0, res1_x, res0_y ^ c3 ^ k1, res0_x
-
-    return c0, c1, c2, c3
-
-
-@triton.jit
-def apply_mask(
-    P,
-    mask,
-    encode_dropout_in_sign_bit: tl.constexpr,
-):
-    if encode_dropout_in_sign_bit:
-        P = tl.where(mask, -P, P)
-    else:
-        P = tl.where(mask, 0, P)
-    return P
-
-
-@triton.jit
-def make_4x_dropout_mask(uint32_r, uint8_p, M: tl.constexpr, N: tl.constexpr):
-    r = uint32_r
-    p = uint8_p
-    m0 = tl.where(r & 0xFF < p, 0, 1)
-    r >>= 8
-    m1 = tl.where(r & 0xFF < p, 0, 1)
-    m0 = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
-
-    r >>= 8
-    m0 = tl.where(r & 0xFF < p, 0, 1)
-    r >>= 8
-    m1 = tl.where(r & 0xFF < p, 0, 1)
-    m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
-
-    m = tl.join(m0, m1).trans(2, 0, 1).reshape(4 * M, N)
-    return m
-
-
-@triton.jit(
-    do_not_specialize=[
-        "b",
-        "h",
-        "row_start",
-        "col_start",
-        "philox_seed",
-        "philox_offset",
-    ]
-)
-def apply_dropout(
-    P,
-    row_start,
-    col_start,
-    philox_seed,
-    philox_offset,
-    p_dropout_uint8: tl.constexpr,
-    encode_dropout_in_sign_bit: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    # P is of size (BLOCK_M, BLOCK_N) and its scalar bitsize is 32
-    # BLOCK_M is ensured to be a multiple of 16, BLOCK_N a multiple of 32
-    M: tl.constexpr = BLOCK_M // 16
-    N: tl.constexpr = BLOCK_N // 32
-    row = row_start + tl.arange(0, M)[:, None]
-    col = col_start + tl.arange(0, BLOCK_N)[None, :] // 32
-
-    philox_offset = philox_offset + tl.arange(0, BLOCK_N)[None, :] % 32
-
-    subsequence = from_lohi(row * 32, col)
-    r0, r1, r2, r3 = philox_(philox_seed, subsequence, philox_offset)
-
-    # Fully unrolled due to triton's inability to concat 2d tensor
-    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, N)
-    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, N)
-    m0 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
-
-    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, N)
-    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, N)
-    m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
-
-    m = tl.join(m0, m1).trans(2, 0, 1).reshape(16 * M, N)
-    P = apply_mask(P, m)
-    return P
-
-
-@triton.jit
-def flash_fwd_kernel(
-    pQ,
-    pK,
-    pV,
-    pP,
-    pO,
-    pSlopes,
-    philox_seed,
-    philox_offset,
-    pdrop_int8,
-    drop: tl.constexpr,
-    causal: tl.constexpr,
-    scale: tl.constexp,
-    wl: tl.constexpr,
-    wr: tl.constexpr,
-    return_P: tl.constexpr,
-):
-    pass
-
-
-def flash_attention_forward(
-    query,
-    key,
-    value,
-    cum_seq_q,
-    cum_seq_k,
-    max_q,
-    max_k,
-    dropout_p,
-    is_causal,
-    return_debug_mask,
-    *,
-    scale=None,
-    window_size_left=None,
-    window_size_right=None,
-    seqused_k=None,
-    alibi_slopes=None
-):
-    logging.debug("GEMS FLASH_ATTENTION")
-    assert cum_seq_q is None and cum_seq_k is None, "varlen is not supported yet."
-
-    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
-    HEAD_DIM_V = value.shape[-1]
-    assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
-
-    softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
-    non_null_window_left = window_size_left or -1
-    non_null_window_right = window_size_right or -1
-    out = torch.empty_like(query, dtype=value.dtype)
-
-    mha_out = mha_fwd(
-        query,
-        key,
-        value,
-        out,
-        alibi_slopes,
-        dropout_p,
-        softmax_scale,
-        is_causal,
-        non_null_window_left,
-        non_null_window_right,
-        return_debug_mask,
-    )
-    (
-        output,
-        q_padded,
-        k_padded,
-        v_padded,
-        logsumexp,
-        philox_seed,
-        philox_offset,
-        debug_attn_mask,
-    ) = mha_out
-
-
-def mha_fwd(
-    q,
-    k,
-    v,
-    out,
-    alibi_slopes,
-    p_dropout,
-    softmax_scale,
-    is_causal,
-    window_size_left,
-    window_size_right,
-    return_softmax,
-):
-    q_dtype = q.dtype
-    q_device = q.device
-    assert q_dtype in (
-        torch.float16,
-        torch.bfloat16,
-    ), "FlashAttention only support fp16 and bf16 data type"
-    assert q_dtype == k.dtype
-    assert q_dtype == v.dtype
-    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
-    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
-    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
-    batch_size, seqlen_q, num_heads, head_size = q.size()
-    _, seqlen_k, num_heads_k, _ = k.size()
-    assert (
-        head_size % 8 == 0
-    ), "head_size must be a multiple of 8, this is ensured by padding!"
-    assert (
-        num_heads % num_heads_k == 0
-    ), "Number of heads in key/value must divide number of heads in query"
-    if window_size_left >= seqlen_k:
-        window_size_left = -1
-    if window_size_right >= seqlen_k:
-        window_size_right = -1
-    if seqlen_q == 1 and alibi_slopes is None:
-        is_causal = False
-    if is_causal:
-        window_size_right = 0
-
-    if out:
-        assert out.stride(-1) == 1
-        assert out.dtype == q.dtype
-        assert out.size() == (batch_size, seqlen_q, num_heads, head_size)
-    else:
-        out = torch.empty_like(q)
-
-    round_multiple = lambda x, m: (x + m - 1) // m * m
-    head_size_rounded = round_multiple(head_size, 32)
-    seqlen_q_rounded = round_multiple(seqlen_q, 128)
-    seqlen_k_rounded = round_multiple(seqlen_k, 128)
-
-    lse = torch.empty(
-        (batch_size, num_heads, seqlen_q), dtype=torch.float, device=q_device
-    )
-    if return_softmax:
-        assert p_dropout > 0, "return_softmax is only supported when p_dropout > 0.0"
-        p = torch.empty(
-            (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
-            dtype=q_dtype,
-            device=q_device,
-        )
-
-    if p_dropout > 0:
-        increment = triton.cdiv(batch_size * num_heads * 32)
-        philox_seed, philox_offset = update_philox_state(increment)
-
-    with torch_device_fn.device(q.device):
-        grid = lambda args: (
-            triton.cdiv(seqlen_q, args["BLOCK_M"]),
-            batch_size * num_heads,
-            1,
-        )
-
-
 def scaled_dot_product_attention(
     query,
     key,
@@ -672,3 +393,335 @@ def scaled_dot_product_attention(
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
         )
         return o
+
+
+
+@triton.jit
+def philox_offset_one_warp(b, h, nh: tl.constexpr):
+    # To align with TriDao's implementation, philox_offset linearly determined by
+    # a 3d dense tensor (batch_id, head_id, thread_id) with shape (batch_size, num_heads, 32)
+    # and stride ( num_heads * 32, 32, 1 )
+    return (b * nh + h) * 32 + tl.arange(0, 32)
+
+
+@triton.jit
+def u64_to_lohi(x):
+    return (x >> 32).to(tl.uint32), (x & 0xFFFFFFFF).to(tl.uint32)
+
+
+@triton.jit
+def u64_from_lohi(lo, hi):
+    return hi.to(tl.uint64) << 32 + lo.to(tl.uint64)
+
+
+@triton.jit
+def philox_(seed, subsequence, offset):
+    kPhilox10A: tl.constexpr = 0x9E3779B9
+    kPhilox10B: tl.constexpr = 0xBB67AE85
+    k0, k1 = u64_to_lohi(seed.to(tl.uint64))
+    c0, c1 = u64_to_lohi(offset.to(tl.uint64))
+    c2, c3 = u64_to_lohi(subsequence(tl.uint64))
+
+    # pragma unroll
+    kPhiloxSA: tl.constexpr = 0xD2511F53
+    kPhiloxSB: tl.constexpr = 0xCD9E8D57
+    for _ in range(6):
+        res0 = kPhiloxSA.to(tl.uint64) * c0.to(tl.uint64)
+        res1 = kPhiloxSB.to(tl.uint64) * c2.to(tl.uint64)
+        res0_x, res0_y = u64_to_lohi(res0)
+        res1_x, res1_y = u64_to_lohi(res1)
+        c0, c1, c2, c3 = res1_y ^ c1 ^ k0, res1_x, res0_y ^ c3 ^ k1, res0_x
+        k0 += kPhilox10A
+        k1 += kPhilox10B
+
+    res0 = kPhiloxSA.to(tl.uint64) * c0.to(tl.uint64)
+    res1 = kPhiloxSB.to(tl.uint64) * c2.to(tl.uint64)
+    res0_x.res0_y = u64_to_lohi(res0)
+    res1_x.res1_y = u64_to_lohi(res1)
+    c0, c1, c2, c3 = res1_y ^ c1 ^ k0, res1_x, res0_y ^ c3 ^ k1, res0_x
+
+    return c0, c1, c2, c3
+
+
+@triton.jit
+def apply_mask(
+    P,
+    mask,
+    encode_dropout_in_sign_bit: tl.constexpr,
+):
+    if encode_dropout_in_sign_bit:
+        P = tl.where(mask, -P, P)
+    else:
+        P = tl.where(mask, 0, P)
+    return P
+
+
+@triton.jit
+def make_4x_dropout_mask(r_u32, p_u8, M: tl.constexpr, N: tl.constexpr):
+    r = r_u32
+    p = p_u8
+    m0 = tl.where(r & 0xFF < p, 0, 1)
+    r >>= 8
+    m1 = tl.where(r & 0xFF < p, 0, 1)
+    m0 = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
+
+    r >>= 8
+    m0 = tl.where(r & 0xFF < p, 0, 1)
+    r >>= 8
+    m1 = tl.where(r & 0xFF < p, 0, 1)
+    m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
+
+    m = tl.join(m0, m1).trans(2, 0, 1).reshape(4 * M, N)
+    return m
+
+
+@triton.jit(
+    do_not_specialize=[
+        "b",
+        "h",
+        "row_start",
+        "col_start",
+        "philox_seed",
+        "philox_offset",
+    ]
+)
+def apply_dropout(
+    P,
+    sor,
+    soc,
+    philox_seed,
+    philox_offset,
+    p_dropout_uint8: tl.constexpr,
+    encode_dropout_in_sign_bit: tl.constexpr,
+    bid: tl.constexpr,
+    hid: tl.constexpr,
+    nheads: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # P is of size (BLOCK_M, BLOCK_N) and its scalar bitsize is 32
+    # BLOCK_M is ensured to be a multiple of 16, BLOCK_N a multiple of 32
+    M: tl.constexpr = BLOCK_M // 16
+    N: tl.constexpr = BLOCK_N // 32
+    row = sor + tl.arange(0, M)[:, None]
+    col = soc + tl.arange(0, BLOCK_N)[None, :] // 32
+
+    tid = tl.arange(0, BLOCK_N)[None, :] % 32
+    philox_offset += (bid * nheads + hid) * 32 + tid
+
+    subsequence = u64_from_lohi(row * 32, col)
+    r0, r1, r2, r3 = philox_(philox_seed, subsequence, philox_offset)
+
+    # Fully unrolled due to triton's inability to concat 2d tensor
+    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, N)
+    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, N)
+    m0 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
+
+    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, N)
+    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, N)
+    m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
+
+    m = tl.join(m0, m1).trans(2, 0, 1).reshape(16 * M, N)
+    P = apply_mask(P, m)
+    return P
+
+
+@triton.jit(do_not_specialize=[])
+def flash_fwd_kernel(
+    pQ,
+    pK,
+    pV,
+    pP,
+    pO,
+    pSlopes,
+    philox_seed,
+    philox_offset,
+    pdrop_int8,
+    is_dropout: tl.constexpr,
+    is_causal: tl.constexpr,
+    scale: tl.constexp,
+    ws_left: tl.constexpr,
+    ws_right: tl.constexpr,
+    return_P: tl.constexpr,
+    is_local: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    num_warps: tl.constexpr,
+):
+
+
+def mha_fwd(
+    q,
+    k,
+    v,
+    out,
+    alibi_slopes,
+    p_dropout,
+    softmax_scale,
+    is_causal,
+    window_size_left,
+    window_size_right,
+    return_softmax,
+):
+    q_dtype = q.dtype
+    q_device = q.device
+    assert q_dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ), "FlashAttention only support fp16 and bf16 data type"
+    assert q_dtype == k.dtype
+    assert q_dtype == v.dtype
+    assert q.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
+    batch_size, seqlen_q, num_heads, head_size = q.size()
+    _, seqlen_k, num_heads_k, _ = k.size()
+    assert (
+        head_size % 8 == 0
+    ), "head_size must be a multiple of 8, this is ensured by padding!"
+    assert (
+        num_heads % num_heads_k == 0
+    ), "Number of heads in key/value must divide number of heads in query"
+    if window_size_left >= seqlen_k:
+        window_size_left = -1
+    if window_size_right >= seqlen_k:
+        window_size_right = -1
+    if seqlen_q == 1 and alibi_slopes is None:
+        is_causal = False
+    if is_causal:
+        window_size_right = 0
+
+    if out:
+        assert out.stride(-1) == 1
+        assert out.dtype == q.dtype
+        assert out.size() == (batch_size, seqlen_q, num_heads, head_size)
+    else:
+        out = torch.empty_like(q)
+
+    round_multiple = lambda x, m: (x + m - 1) // m * m
+    head_size_rounded = round_multiple(head_size, 32)
+    seqlen_q_rounded = round_multiple(seqlen_q, 128)
+    seqlen_k_rounded = round_multiple(seqlen_k, 128)
+
+    with torch_device_fn.device(q_device):
+        # Set softmax params
+        lse = torch.empty((batch_size, num_heads, seqlen_q), dtype=torch.float)
+        if return_softmax:
+            assert p_dropout > 0, "return_softmax is only supported when p_dropout > 0.0"
+            p = torch.empty(
+                (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
+                dtype=q_dtype,
+            )
+
+        # Set dropout params
+        if p_dropout > 0:
+            increment = triton.cdiv(batch_size * num_heads * 32)
+            philox_seed, philox_offset = update_philox_state(increment)
+            is_dropout = True
+        else:
+            is_dropout = False
+
+        p_dropout = 1 - p_dropout
+        pdrop_u8 = math.floor(p_dropout * 255.0)
+
+        # Set alibi params
+        if alibi_slopes is not None:
+            assert alibi_slopes.device == q_device
+            assert alibi_slopes.dtype in (torch.float, )
+            assert alibi_slopes.stride(-1) == 1
+            assert alibi_slopes.shape == (num_heads,) or alibi_slopes.shape == (batch_size, num_heads)
+            alibi_slopes_batch_stride = alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
+        
+        # Set SWA params
+        is_local = (window_size_left >= 0 or window_size_right >= 0) and not is_causal
+
+        # ONLY EVEN_K IS SUPPORTED
+        assert head_size == head_size_rounded
+        
+        grid = lambda args: (
+            triton.cdiv(seqlen_q, args["BLOCK_M"]), # num_m_blocks
+            batch_size,
+            num_heads,
+        )
+
+        flash_fwd_kernel[grid](
+            q,
+            k,
+            v,
+            p,
+            out,
+            alibi_slopes,
+            philox_seed,
+            philox_offset,
+            pdrop_u8,
+            is_dropout,
+            is_causal,
+            softmax_scale,
+            window_size_left,
+            window_size_right,
+            return_softmax,
+            is_local,
+            BLOCK_M,
+            BLOCK_N,
+            num_warps
+        )
+        
+
+
+def flash_attention_forward(
+    query,
+    key,
+    value,
+    cum_seq_q,
+    cum_seq_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    return_debug_mask,
+    *,
+    scale=None,
+    window_size_left=None,
+    window_size_right=None,
+    seqused_k=None,
+    alibi_slopes=None
+):
+    logging.debug("GEMS FLASH_ATTENTION")
+    assert cum_seq_q is None and cum_seq_k is None, "varlen is not supported yet."
+
+    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
+    HEAD_DIM_V = value.shape[-1]
+    assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
+    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+
+    softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
+    non_null_window_left = window_size_left or -1
+    non_null_window_right = window_size_right or -1
+    out = torch.empty_like(query, dtype=value.dtype)
+
+    mha_out = mha_fwd(
+        query,
+        key,
+        value,
+        out,
+        alibi_slopes,
+        dropout_p,
+        softmax_scale,
+        is_causal,
+        non_null_window_left,
+        non_null_window_right,
+        return_debug_mask,
+    )
+    (
+        output,
+        q_padded,
+        k_padded,
+        v_padded,
+        logsumexp,
+        philox_seed,
+        philox_offset,
+        debug_attn_mask,
+    ) = mha_out
+
+
+
