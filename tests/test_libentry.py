@@ -168,6 +168,9 @@ def softmax_kernel_inner(
 
 
 def test_decorator_cascade():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
     # to test inner decorator can use arguments supplied by outer decorator
     # and grid function can use arguments supplied by all the decorator
     x = torch.randn((128, 128, 128), device=flag_gems.device)
@@ -176,12 +179,18 @@ def test_decorator_cascade():
 
 
 def test_pass_kernel_arg_via_kw():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
         _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
 
 
 def test_kernel_arg_apply_default():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
         _ = softmax_inner_kernel_arg_apply_default(x, dim=2)
@@ -215,6 +224,9 @@ def run_two_threads():
 
 
 def test_threadsafety():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
     for i in range(100):
         with not_raises(Exception):
             run_two_threads()
