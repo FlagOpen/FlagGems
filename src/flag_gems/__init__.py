@@ -9,6 +9,7 @@ from .runtime.register import Register
 
 __version__ = "2.2"
 device = runtime.device.name
+vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
@@ -131,7 +132,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("sub.Tensor", sub, Autograd.disable),
             ("tanh", tanh, Autograd.enable),
             ("triu", triu, Autograd.disable),
-            ("topk", topk, Autograd.disable),
+            # ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
             ("linalg_vector_norm", vector_norm, Autograd.disable),
             ("where.self_out", where_self_out, Autograd.disable),
@@ -217,6 +218,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
             ("elu", elu, Autograd.disable),
+            ("index_put", index_put, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
