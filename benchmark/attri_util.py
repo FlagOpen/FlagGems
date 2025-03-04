@@ -173,7 +173,8 @@ class BenchmarkResult:
 
     def __str__(self) -> str:
         header_title = (
-            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
+            f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, "
+            f"mode={'mlu' if self.mode=='cuda' else self.mode}, "
             f"level={self.level})\n"
         )
         col_names = [
