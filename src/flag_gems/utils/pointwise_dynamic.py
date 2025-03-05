@@ -9,7 +9,6 @@ from triton.runtime.jit import JITFunction
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
-    MemOverlap,
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
@@ -1128,7 +1127,7 @@ class PointwiseDynamicFunction:
 
         # input arguments must be dense and no overlapping
         for out in out_tensors:
-            if has_internal_overlapping(out) == MemOverlap.Yes:
+            if has_internal_overlapping(out):
                 raise ValueError("Input arguments must be dense and no overlapping.")
 
         # output dtype promotions
