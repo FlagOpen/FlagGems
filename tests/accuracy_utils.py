@@ -144,7 +144,7 @@ KRON_SHAPES = [
     [(3, 3), (3, 3)],
     [(1, 1, 1), (2, 2, 2)],
 ]
-#Add some test cases with zeor-dimensional tensor and zero-sized tensors.
+# Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64]
 INT_DTYPES = [torch.int16, torch.int32]
