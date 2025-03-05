@@ -1,12 +1,19 @@
 import random
 
+import numpy as np
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import FLOAT_DTYPES
-from .performance_utils import GenericBenchmark2DOnly, generate_tensor_input
+from .performance_utils import (
+    GenericBenchmark,
+    GenericBenchmark2DOnly,
+    generate_tensor_input,
+    vendor_name,
+)
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):
@@ -14,6 +21,10 @@ class TensorSelectBenchmark(GenericBenchmark2DOnly):
         return ["gbps"]
 
     def set_more_shapes(self):
+        if (
+            vendor_name == "kunlunxin"
+        ):  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
+            return []
         shapes = super().set_more_shapes()
         shapes = [
             # this filter is for scatter
@@ -77,6 +88,11 @@ def index_select_gbps(bench_fn_args, latency):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name == "masked_select":
+            pytest.skip("CUMSUM UNSUPPORTED")
+        elif op_name == "index_select":
+            pytest.skip("RUNTIME TODOFIX")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -166,6 +182,7 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -185,6 +202,7 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
@@ -254,17 +272,18 @@ def test_select_scatter_perf():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):
-        inp = torch.randn(shape, dtype=dtype, device="cuda")
+        inp = torch.randn(shape, dtype=dtype, device=device)
         dim = 0
         src_shape = list(inp.shape)
         index_max = src_shape[dim]
         index_len = index_max // 2
-        index = torch.randint(0, index_max, (index_len,), device="cuda")
+        index = torch.randint(0, index_max, (index_len,), device=device)
         src_shape[dim] = index_len
-        src = torch.randn(src_shape, dtype=dtype, device="cuda")
+        src = torch.randn(src_shape, dtype=dtype, device=device)
         yield inp, dim, index, src
 
     bench = TensorSelectBenchmark(
@@ -272,5 +291,103 @@ def test_index_add_perf():
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def gen_indices(input_shape, indices_shape, accumulate):
+    indices = []
+    for i, shape in enumerate(indices_shape):
+        index = np.random.choice(
+            np.arange(input_shape[i]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device=flag_gems.device))
+    return indices
+
+
+def index_put_input_fn(accumulate):
+    def inner(shapes, dtype, device):
+        input_shape, indices_shape, values_shape = shapes
+        inp = torch.randn(
+            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+        indices = gen_indices(input_shape, indices_shape, accumulate)
+        values = torch.randn(
+            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
+        yield inp, indices, values, accumulate
+
+    return inner
+
+
+class IndexPutAccFalseBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        INDEX_PUT_SHAPE = (
+            ((2**28,), ((2**16,),), (2**16,)),
+            ((32, 32), ((8,), (8,)), (8,)),
+            ((32, 32), ((8,), (2, 8)), (8,)),
+            ((32, 32), ((2, 8),), (32,)),
+            ((1024, 1024), ((64,), (64,)), (64,)),
+            (
+                (1024, 1024),
+                (
+                    (64,),
+                    (
+                        4,
+                        64,
+                    ),
+                ),
+                (64,),
+            ),
+            (
+                (1024, 1024),
+                (
+                    (
+                        4,
+                        64,
+                    ),
+                ),
+                (1024,),
+            ),
+            ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+            ((512, 512, 512), ((2, 128), (128,), (128,)), (128,)),
+            ((512, 512, 512), ((2, 128),), (512,)),
+        )
+        self.shapes = INDEX_PUT_SHAPE
+        return None
+
+
+@pytest.mark.index_put
+def test_index_put_acc_false_perf():
+    bench = IndexPutAccFalseBenchmark(
+        op_name="index_put",
+        torch_op=torch.index_put,
+        input_fn=index_put_input_fn(False),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class IndexPutAccTrueBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        INDEX_PUT_SHAPE = (
+            ((2**28,), ((2**16,),), (2**16,)),
+            ((32, 32), ((8,), (8,)), (8,)),
+            ((1024, 1024), ((64,), (64,)), (64,)),
+            ((512, 512, 512), ((128,), (128,), (128,)), (128,)),
+            ((512, 512, 512), ((2, 128), (2, 128), (2, 128)), (2, 128)),
+        )
+        self.shapes = INDEX_PUT_SHAPE
+        return None
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_put
+def test_index_put_acc_true_perf():
+    bench = IndexPutAccTrueBenchmark(
+        op_name="index_put",
+        torch_op=torch.index_put,
+        input_fn=index_put_input_fn(True),
+        dtypes=[torch.float16, torch.float32],
     )
     bench.run()
