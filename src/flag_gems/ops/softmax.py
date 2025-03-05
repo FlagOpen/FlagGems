@@ -7,9 +7,10 @@ import triton.language as tl
 from ..utils import libentry
 
 MAX_TILE_K = 8192
-NUM_SMS = torch.cuda.get_device_properties(
-    torch.cuda.current_device()
-).multi_processor_count
+NUM_SMS = 24
+#NUM_SMS = torch.cuda.get_device_properties(
+#    torch.cuda.current_device()
+#).multi_processor_count
 
 
 def heur_tile_k(args):

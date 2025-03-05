@@ -3,29 +3,34 @@ import logging
 import torch
 import triton
 
-from ..utils import pointwise_dynamic
+from ..utils import unwrap
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def mul_func(x, y):
-    return x * y
+    out =  x * y
+    return out.to(x.type.element_ty)
 
 
-@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def mul_func_scalar(x, y):
-    return x * y
+    out = x * y
+    return out.to(x.type.element_ty)
+
+@triton.jit
+def mul_func_scalar_tensor(x, y):
+    out = x * y
+    return out.to(y.type.element_ty)
 
 
 def mul(A, B):
     logging.debug("GEMS MUL")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return mul_func(A, B)
+        return unwrap(mul_func[(1,)](A, B))
     elif isinstance(A, torch.Tensor):
-        return mul_func_scalar(A, B)
+        return unwrap(mul_func_scalar[(1,)](A, B))
     elif isinstance(B, torch.Tensor):
-        return mul_func_scalar(B, A)
+        return unwrap(mul_func_scalar_tensor[(1,)](A, B))
     else:
         # Both scalar
         return A * B

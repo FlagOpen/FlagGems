@@ -17,7 +17,7 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout(shape, p, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp)
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
@@ -45,7 +45,7 @@ def test_accuracy_dropout(shape, p, dtype):
     ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {inp.numel()}"
 
 
-def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device="cuda"):
+def get_rope_cos_sin(max_seq_len, dim, dtype, base=10000, device=flag_gems.device):
     inv_freq = 1.0 / (base ** (torch.arange(0, dim, 2).float().to(device) / dim))
     t = torch.arange(max_seq_len, device=device, dtype=inv_freq.dtype)
     freqs = torch.outer(t, inv_freq)
@@ -122,14 +122,14 @@ def test_apply_rotary_pos_emb(
 ):
     seq_len = torch.randint(1, max_seq_len, (1,)).item()
     q = torch.randn(
-        (batch_size, seq_len, q_heads, head_dim), dtype=dtype, device="cuda"
+        (batch_size, seq_len, q_heads, head_dim), dtype=dtype, device=flag_gems.device
     )
     k = torch.randn(
-        (batch_size, seq_len, k_heads, head_dim), dtype=dtype, device="cuda"
+        (batch_size, seq_len, k_heads, head_dim), dtype=dtype, device=flag_gems.device
     )
 
-    position_ids = torch.randint(0, max_seq_len, (batch_size, seq_len), device="cuda")
-    cos, sin = get_rope_cos_sin(max_seq_len, head_dim, dtype, device="cuda")
+    position_ids = torch.randint(0, max_seq_len, (batch_size, seq_len), device=flag_gems.device)
+    cos, sin = get_rope_cos_sin(max_seq_len, head_dim, dtype, device=flag_gems.device)
 
     ref_q = to_reference(q, True)
     ref_k = to_reference(k, True)
@@ -170,10 +170,10 @@ def test_apply_rotary_pos_emb(
 )  # triton.atomic_add still not support bf16
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
     indices = torch.randint(
-        0, EmbeddingSize, (Batch, M), device="cuda", requires_grad=False
+        0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
     )
     embedding = torch.randn(
-        (EmbeddingSize, N), device="cuda", dtype=dtype, requires_grad=True
+        (EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True
     )
     ref_embedding = to_reference(embedding)
 
@@ -197,7 +197,7 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_neg(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     y = x.conj()
     z = y.imag
     assert z.is_neg()
@@ -209,7 +209,7 @@ def test_accuracy_resolve_neg(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_conj(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device="cuda")
+    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     y = x.conj()
     assert y.is_conj()
     with flag_gems.use_gems():

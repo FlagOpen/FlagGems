@@ -11,7 +11,11 @@ from .bitwise_and import (
     bitwise_and_tensor,
 )
 from .bitwise_not import bitwise_not
-from .bitwise_or import bitwise_or_scalar, bitwise_or_scalar_tensor, bitwise_or_tensor
+from .bitwise_or import (
+    bitwise_or_scalar_tensor,
+    bitwise_or_scalar,
+    bitwise_or_tensor,
+)
 from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
@@ -53,14 +57,14 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
-from .ones import ones
-from .ones_like import ones_like
+#from .ones import ones
+# from .ones_like import ones_like
 from .outer import outer
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
 from .rand import rand
 from .rand_like import rand_like
-from .randn import randn
+# from .randn import randn
 from .reciprocal import reciprocal
 from .relu import relu
 from .resolve_conj import resolve_conj
@@ -70,17 +74,20 @@ from .rsqrt import rsqrt
 from .sigmoid import sigmoid
 from .silu import silu
 from .sin import sin
+# from .slice_scatter import slice_scatter
 from .softmax import softmax
+# from .sort import sort
+# from .stack import stack
 from .sub import sub
 from .sum import sum, sum_dim
 from .tanh import tanh
 from .triu import triu
-from .uniform import uniform_
+#from .uniform import uniform_
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .where import where_scalar_other, where_scalar_self, where_self
-from .zeros import zeros
-from .zeros_like import zeros_like
+#from .zeros import zeros
+# from .zeros_like import zeros_like
 
 __all__ = [
     "all",
@@ -106,8 +113,8 @@ __all__ = [
     "cos",
     "cumsum",
     "div",
-    "zeros",
-    "ones",
+    #"zeros",
+    #"ones",
     "full",
     "native_dropout",
     "erf",
@@ -117,9 +124,9 @@ __all__ = [
     "exp",
     "exponential_",
     "flip",
-    "ones_like",
+    # "ones_like",
     "full_like",
-    "zeros_like",
+    # "zeros_like",
     "ge",
     "ge_scalar",
     "gelu",
@@ -141,14 +148,14 @@ __all__ = [
     "mm",
     "mul",
     "rand",
-    "randn",
+    # "randn",
     "resolve_neg",
     "resolve_conj",
     "normal_tensor_float",
     "normal_float_tensor",
     "normal_tensor_tensor",
     "normal_float_float",
-    "uniform_",
+    #"uniform_",
     "rand_like",
     "mv",
     "ne",

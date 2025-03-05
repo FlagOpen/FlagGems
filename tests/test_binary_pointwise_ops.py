@@ -14,7 +14,7 @@ from .accuracy_utils import (
     SCALARS,
     gems_assert_close,
     gems_assert_equal,
-    to_reference,
+    to_reference
 )
 
 
@@ -22,8 +22,8 @@ from .accuracy_utils import (
 @pytest.mark.parametrize("alpha", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_add(shape, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -39,7 +39,7 @@ def test_accuracy_add(shape, alpha, dtype):
 @pytest.mark.parametrize("alpha", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
@@ -56,7 +56,7 @@ def test_accuracy_add_tensor_scalar(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.add(inp1, ref_inp2, alpha=alpha)
@@ -70,10 +70,10 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseand(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
@@ -89,7 +89,7 @@ def test_accuracy_bitwiseand(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseand_scalar(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     inp2 = 0x00FF
     ref_inp1 = to_reference(inp1)
@@ -106,7 +106,7 @@ def test_accuracy_bitwiseand_scalar(shape, dtype):
 def test_accuracy_bitwiseand_scalar_tensor(shape, dtype):
     inp1 = 0x00FF
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     ref_inp2 = to_reference(inp2)
 
@@ -121,10 +121,10 @@ def test_accuracy_bitwiseand_scalar_tensor(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseor(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
@@ -140,7 +140,7 @@ def test_accuracy_bitwiseor(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwiseor_scalar(shape, dtype):
     inp1 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     inp2 = 0x00FF
     ref_inp1 = to_reference(inp1)
@@ -157,7 +157,7 @@ def test_accuracy_bitwiseor_scalar(shape, dtype):
 def test_accuracy_bitwiseor_scalar_tensor(shape, dtype):
     inp1 = 0x00FF
     inp2 = torch.randint(
-        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device="cuda"
+        low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
     )
     ref_inp2 = to_reference(inp2)
 
@@ -174,7 +174,7 @@ def test_accuracy_bitwiseor_scalar_tensor(shape, dtype):
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_clamp(shape, maxi, mini, isnone, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if isnone == "min":
         mini = None
     elif isnone == "max":
@@ -192,9 +192,9 @@ def test_accuracy_clamp(shape, maxi, mini, isnone, dtype):
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_clamp_tensor(shape, isnone, dtype):
-    inp = torch.randn(shape, dtype=dtype, device="cuda")
-    maxi = torch.randn(shape, dtype=dtype, device="cuda")
-    mini = torch.randn(shape, dtype=dtype, device="cuda")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    maxi = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mini = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if isnone == "min":
         mini = None
     elif isnone == "max":
@@ -213,8 +213,8 @@ def test_accuracy_clamp_tensor(shape, isnone, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_div(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -229,7 +229,7 @@ def test_accuracy_div(shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
@@ -245,7 +245,7 @@ def test_accuracy_div_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.div(inp1, ref_inp2)
@@ -258,8 +258,8 @@ def test_accuracy_div_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_eq(shape, dtype):
-    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
-    inp2 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -273,7 +273,7 @@ def test_accuracy_eq(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_eq_scalar(shape, dtype):
-    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
     inp2 = 0
     ref_inp1 = to_reference(inp1)
 
@@ -287,8 +287,8 @@ def test_accuracy_eq_scalar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ge(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -302,7 +302,7 @@ def test_accuracy_ge(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ge_scalar(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = 0
     ref_inp1 = to_reference(inp1)
 
@@ -317,8 +317,8 @@ def test_accuracy_ge_scalar(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_accuracy_gelu_and_mul(shape, approximate, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -334,8 +334,8 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gt(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -349,7 +349,7 @@ def test_accuracy_gt(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gt_scalar(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     inp2 = 0
 
@@ -363,8 +363,8 @@ def test_accuracy_gt_scalar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_le(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -378,7 +378,7 @@ def test_accuracy_le(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_le_scalar(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = 0
     ref_inp1 = to_reference(inp1)
 
@@ -392,8 +392,8 @@ def test_accuracy_le_scalar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lt(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -407,7 +407,7 @@ def test_accuracy_lt(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_lt_scalar(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = 0
     ref_inp1 = to_reference(inp1)
 
@@ -421,8 +421,8 @@ def test_accuracy_lt_scalar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mul(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -437,7 +437,7 @@ def test_accuracy_mul(shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
@@ -453,7 +453,7 @@ def test_accuracy_mul_tensor_scalar(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.mul(inp1, ref_inp2)
@@ -466,8 +466,8 @@ def test_accuracy_mul_scalar_tensor(shape, scalar, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ne(shape, dtype):
-    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
-    inp2 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -481,7 +481,7 @@ def test_accuracy_ne(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ne_scalar(shape, dtype):
-    inp1 = torch.randint(0, 10, shape, dtype=dtype, device="cuda")
+    inp1 = torch.randint(0, 10, shape, dtype=dtype, device=flag_gems.device)
     inp2 = 0
     ref_inp1 = to_reference(inp1)
 
@@ -495,8 +495,8 @@ def test_accuracy_ne_scalar(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -512,7 +512,7 @@ def test_accuracy_pow(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.pow(inp1, ref_inp2)
@@ -526,7 +526,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
@@ -541,8 +541,8 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("alpha", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rsub(shape, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -556,8 +556,8 @@ def test_accuracy_rsub(shape, alpha, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu_and_mul(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -572,8 +572,8 @@ def test_accuracy_silu_and_mul(shape, dtype):
 @pytest.mark.parametrize("alpha", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sub(shape, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -589,7 +589,7 @@ def test_accuracy_sub(shape, alpha, dtype):
 @pytest.mark.parametrize("alpha", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
     ref_inp1 = to_reference(inp1, True)
 
@@ -606,7 +606,7 @@ def test_accuracy_sub_tensor_scalar(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.sub(inp1, ref_inp2, alpha=alpha)
@@ -619,8 +619,8 @@ def test_accuracy_sub_scalar_tensor(shape, scalar, alpha, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_where_self(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1)
     ref_inp2 = to_reference(inp2)
 
@@ -636,7 +636,7 @@ def test_accuracy_where_self(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_where_scalar_self(shape, scalar, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2)
 
     ref_out = torch.where(inp2 > 0, inp1, ref_inp2)
@@ -651,7 +651,7 @@ def test_accuracy_where_scalar_self(shape, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_where_scalar_other(shape, scalar, dtype):
     inp1 = scalar
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = to_reference(inp2)
 
     ref_out = torch.where(inp2 > 0, ref_inp2, inp1)
@@ -671,30 +671,30 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     rtol = (
-        torch.rand(1, dtype=torch.float32, device="cuda").item() * 0.0001
+        torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * 0.0001
         if not zero_tol
         else 0
     )
     if dtype in ALL_FLOAT_DTYPES:
-        inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-        inp2 = torch.randn(shape, dtype=dtype, device="cuda")
+        inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         if gen_nan:
             nan_num = torch.full(
                 (1,),
                 float("nan" if gen_nan == 1 else "inf"),
                 dtype=dtype,
-                device="cuda",
+                device=flag_gems.device,
             )
             inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
         atol = (
-            torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device="cuda").item()
+            torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device=flag_gems.device).item()
             if not zero_tol
             else 0
         )
     else:
-        inp1 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
-        inp2 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+        inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
+        inp2 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
         if dtype in [torch.int64]:
             inp1.view(-1)[0] = 2**63 - 1
             inp2.view(-1)[0] = -(2**63)
@@ -719,7 +719,7 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
             atol = (
                 (
                     torch.finfo(torch.float16).eps
-                    * torch.randint(0, 10, (1,), device="cuda").item()
+                    * torch.randint(0, 10, (1,), device=flag_gems.device).item()
                 )
                 if not zero_tol
                 else 0
@@ -766,29 +766,29 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     "gen_nan", [0, 1, 2, 3, 4]
 )  # 1: nan, 2: inf, 3: -inf, 4: inf vs -inf
 def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
-    rtol = torch.rand(1, dtype=torch.float32, device="cuda").item() * (
+    rtol = torch.rand(1, dtype=torch.float32, device=flag_gems.device).item() * (
         0.0001 if dtype in [torch.bfloat16, torch.float16] else 0.01
     )
     if dtype in ALL_FLOAT_DTYPES:
-        atol = torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device="cuda").item()
-        inp1 = torch.full(shape, 1.234, dtype=dtype, device="cuda")
-        inp2 = torch.full(shape, 1.234, dtype=dtype, device="cuda")
+        atol = torch.finfo(dtype).tiny * torch.randint(0, 4, (1,), device=flag_gems.device).item()
+        inp1 = torch.full(shape, 1.234, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.full(shape, 1.234, dtype=dtype, device=flag_gems.device)
         if gen_nan:
             nan_num = torch.full(
                 (1,),
                 float("nan" if gen_nan == 1 else "inf"),
                 dtype=dtype,
-                device="cuda",
+                device=flag_gems.device,
             )
             inp1.view(-1)[0] = -nan_num if gen_nan == 3 else nan_num
             inp2.view(-1)[0] = -nan_num if gen_nan >= 3 else nan_num
     else:
         atol = (
             torch.finfo(torch.float16).eps
-            * torch.randint(0, 10, (1,), device="cuda").item()
+            * torch.randint(0, 10, (1,), device=flag_gems.device).item()
         )
-        inp1 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
-        inp2 = torch.randint(-1000, 1000, shape, device="cuda").to(dtype)
+        inp1 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
+        inp2 = torch.randint(-1000, 1000, shape, device=flag_gems.device).to(dtype)
 
     ref_inp1 = to_reference(inp1, False)
     ref_inp2 = to_reference(inp2, False)

@@ -2,15 +2,14 @@ import logging
 
 import triton
 
-from ..utils import pointwise_dynamic
+from ..utils import unwrap
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def neg_func(x):
-    return -x
+    return (0 - x)
 
 
 def neg(A):
     logging.debug("GEMS NEG")
-    return neg_func(A)
+    return unwrap(neg_func[(1,)](A))
