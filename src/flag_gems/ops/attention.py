@@ -395,6 +395,7 @@ def scaled_dot_product_attention(
         return o
 
 
+# The following implementation is a fundamentally a triton rewrite of TriDao's Flash Attention in Cuda.
 
 @triton.jit
 def philox_offset_one_warp(b, h, nh: tl.constexpr):
@@ -489,13 +490,13 @@ def apply_dropout(
     P,
     sor,
     soc,
+    bid,
+    hid,
     philox_seed,
     philox_offset,
     p_dropout_uint8: tl.constexpr,
     encode_dropout_in_sign_bit: tl.constexpr,
-    bid: tl.constexpr,
-    hid: tl.constexpr,
-    nheads: tl.constexpr,
+    NUM_HEADS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -507,7 +508,7 @@ def apply_dropout(
     col = soc + tl.arange(0, BLOCK_N)[None, :] // 32
 
     tid = tl.arange(0, BLOCK_N)[None, :] % 32
-    philox_offset += (bid * nheads + hid) * 32 + tid
+    philox_offset += (bid * NUM_HEADS + hid) * 32 + tid
 
     subsequence = u64_from_lohi(row * 32, col)
     r0, r1, r2, r3 = philox_(philox_seed, subsequence, philox_offset)
@@ -526,12 +527,11 @@ def apply_dropout(
     return P
 
 
-@triton.jit
+@triton.jit(do_not_specialize=['max_seqlen_q', 'max_seqlen_k'])
 def apply_mask(
-    P,
+    S,
     col_idx,
     row_idx,
-    warp_row_stride,
     max_seqlen_q,
     max_seqlen_k,
     ws_left,
@@ -547,17 +547,36 @@ def apply_mask(
 
         if not has_alibi:
             alibi_slope = .0
-            
-        P -= alibi_slope * tl.abs(col_idx - row_idx)
-        
-        if is_causal:
-            P = tl.where(col_idx >= col_rb, float('-inf'), P)
-        
-        if is_local:
-            P = tl.where(col_idx >= col_rb | col_idx < col_lb, float('-inf'), P)
 
-    return P
-    
+        S -= alibi_slope * tl.abs(col_idx - row_idx)
+
+        if is_causal:
+            S = tl.where(col_idx >= col_rb, float('-inf'), S)
+
+        if is_local:
+            S = tl.where(col_idx >= col_rb | col_idx < col_lb, float('-inf'), S)
+
+    return S
+
+
+@triton.jit
+def softmax_rescale(
+    O_acc,
+    S,
+    row_max,
+    row_sum,
+    softmax_scale_log2: tl.constexpr
+):
+    prev_row_max = row_max
+    row_max = tl.maximum(row_max, tl.max(S, 1))
+    row_sum_scale = tl.math.exp2(row_max - prev_row_max) * softmax_scale_log2
+    row_sum *= row_sum_scale
+    O_acc *= row_sum_scale[:, None]
+    max_scaled = tl.where(rowmax == float('-inf'), 0, rowmax * softmax_scale_log2)
+    P = tl.math.exp2(S * softmax_scale_log2 - max_scaled[:, None])
+    row_sum = row_sum + tl.sum(exp_S, 1)
+    return O_acc, P, row_max, row_sum
+
 
 @triton.jit(do_not_specialize=[])
 def flash_fwd_kernel(
@@ -568,19 +587,35 @@ def flash_fwd_kernel(
     pO,
     seqlen_q,
     seqlen_k,
+    seqlen_q_rounded,
+    seqlen_k_rounded,
+    q_b_stride,
+    q_s_stride,
+    q_h_stride,
+    k_b_stride,
+    k_s_stride,
+    k_h_stride,
+    o_b_stride,
+    o_s_stride,
+    o_h_stride,
     pSlopes,
     philox_seed,
     philox_offset,
-    pdrop_int8,
+    pdrop_u8,
     slopes_batch_stride,
     is_dropout: tl.constexpr,
     is_causal: tl.constexpr,
     is_local: tl.constexpr,
     has_alibi: tl.constexpr,
-    scale: tl.constexp,
+    softmax_scale: tl.constexp,
+    softmax_scale_log2: tl.constexpr,
     ws_left: tl.constexpr,
     ws_right: tl.constexpr,
     return_P: tl.constexpr,
+    BATCH_SIZE: tl.constexpr,
+    NUM_HEADS: tl.constexpr,
+    NUM_HEADS_K: tl.constexpr,
+    HEADSIZE: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     num_warps: tl.constexpr,
@@ -605,7 +640,107 @@ def flash_fwd_kernel(
         alibi_slope = tl.load(pSlopes + alibi_offset)
         alibi_slope /= scale
 
-    
+    if (not is_causal) and (not is_local):
+        n_masking_steps = 1 
+    elif is_causal:
+        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N)
+    else:
+        # local and not causal, 
+        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
+
+
+    Q_ptr += bid * q_b_stride
+    Q_ptr += hid * q_h_stride
+    row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+    Q_off = row_idx[:, None] * q_s_stride + tl.arange(0, HEADSIZE)[None, :]
+    qmask = row_idx < seqlen_q
+    Q = tl.load(pQ + Q_off, mask=qmask)
+
+    # Start from the right most block
+    n_block = n_block_max - 1
+
+    h_hk_ratio = h // hk
+    K_ptr += bid * k_b_stride
+    K_ptr += (hid // h_hk_ratio) * k_h_stride
+    V_ptr += bid * k_b_stride
+    V_ptr += (hid // h_hk_ratio) * k_h_stride
+    col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
+    KV_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEADSIZE)[:, None]
+
+    P_ptr += ((bid * NUM_HEADS + hid) * seqlen_q_rounded + m_block * BLOCK_M) * seqlen_k_rounded
+    P_ptr += n_block * BLOCK_N
+    P_offset = tl.arange(0, BLOCK_M)[:, None] * seqlen_k_rounded + tl.arange(0, BLOCK_N)
+
+    O_ = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
+    rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
+    for _ in range(n_masking_steps):
+        kvmask = col_idx < seqlen_k
+        K = tl.load(pK + KV_offset, mask=kvmask, cache_modifier="cg")        
+        V = tl.load(pV + KV_offset, mask=kvmask, cache_modifier="cg")
+        S = tl.dot(Q_block, K_block)
+        KV_offset += BLOCK_N * k_s_stride
+        S = apply_mask(
+            S,
+            col_idx,
+            row_idx,
+            seqlen_q,
+            seqlen_k,
+            ws_left,
+            ws_right,
+            alibi_slope,
+            is_causal,
+            is_local,
+            has_alibi
+        )
+
+        O_acc, P, rowmax_, rowsum_ = softmax_rescale(O_, S, rowmax_, rowsum_, softmax_scale_log2)
+        P = P.to(pO.type.element_ty)
+
+        row_start = m_block * (BLOCK_M // 16)
+        col_start = n_block * (BLOCK_N // 32)
+        if return_P:
+            P_drop = P
+            P_drop = apply_dropout(
+                P_drop,
+                row_start,
+                col_start,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                pdrop_u8,
+                encode_dropout_in_sign_bit=True,
+                NUM_HEADS=NUM_HEADS,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+            tl.store(P_ptr + P_offset, P_drop, mask=qmask[:, None] & kvmask[None, :])
+            P_offset += BLOCK_N
+
+        if is_dropout:
+            P = apply_dropout(
+                P,
+                row_start,
+                col_start,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                pdrop_u8,
+                encode_dropout_in_sign_bit=False,
+                NUM_HEADS=NUM_HEADS,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+
+        tl.dot(P, V, acc=O_)
+
+        if n_masking_steps > 1 and n_block <= n_block_min:
+            n_block -= 1
+            break
+
+
 
 
 def mha_fwd(
@@ -700,6 +835,9 @@ def mha_fwd(
         # ONLY EVEN_K IS SUPPORTED
         assert head_size == head_size_rounded
         
+        M_LOG2E	= 1.4426950408889634074
+        scale_softmax_log2 = softmax_scale * M_LOG2E
+
         grid = lambda args: (
             triton.cdiv(seqlen_q, args["BLOCK_M"]), # num_m_blocks
             batch_size,
@@ -714,6 +852,17 @@ def mha_fwd(
             out,
             seqlen_q,
             seqlen_k,
+            seqlen_q_rounded,
+            seqlen_k_rounded,
+            q.stride(0),
+            q.stride(-3),
+            q.stride(-2),
+            k.stride(0),
+            k.stride(-3),
+            k.stride(-2),
+            out.stride(0),
+            out.stride(-3),
+            out.stride(-2),
             alibi_slopes,
             philox_seed,
             philox_offset,
@@ -723,10 +872,15 @@ def mha_fwd(
             is_causal=is_causal,
             is_local=is_local,
             has_alibi=has_alibi,
-            scale=softmax_scale,
+            softmax_scale=softmax_scale,
+            softmax_scale_log2=scale_softmax_log2
             ws_left=window_size_left,
             ws_right=window_size_right,
             return_P=return_softmax,
+            BATCH_SIZE=batch_size,
+            NUM_HEADS=num_heads,
+            NUM_HEADS_K=num_heads_k,
+            HEADSIZE=head_size_rounded,
             BLOCK_M,
             BLOCK_N,
             num_warps
