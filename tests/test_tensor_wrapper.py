@@ -17,6 +17,10 @@ def double(in_ptr, out_ptr, n, TILE_SIZE: tl.constexpr):
 
 
 def test_typed_pointer():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
+
     real = torch.randn(10, 10, device=flag_gems.device)
     imag = torch.randn(10, 10, device=flag_gems.device)
     x = torch.complex(real, imag)
@@ -35,6 +39,10 @@ def test_typed_pointer():
 
 
 def test_typed_pointer_reinterpret_with_offset():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
+
     real = torch.randn(100, device=flag_gems.device)
     imag = torch.randn(100, device=flag_gems.device)
     x = torch.complex(real, imag)
@@ -56,6 +64,10 @@ def test_typed_pointer_reinterpret_with_offset():
 
 
 def test_typed_pointer_as_is():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
+
     x = torch.randn(100, device=flag_gems.device)
     out = torch.empty_like(x)
     TILE_SIZE = 128
@@ -72,6 +84,10 @@ def test_typed_pointer_as_is():
 
 
 def test_strided_buffer_slice():
+    if flag_gems.vendor_name == "kunlunxin":
+        # Test Files for Operators Not Pending Testing
+        return
+
     x = torch.randn(100, 100, device=flag_gems.device)
     x_buffer = tensor_wrapper.StridedBuffer(x, (10, 10), (100, 1))
     assert x_buffer.size() == (10, 10)

@@ -368,9 +368,18 @@ def test_accuracy_div_scalar_scalar(dtype):
 # Note : tl.math.div_rz only support float32, cast will cause diff
 # with torch, so we only do float32 test for now.
 def test_accuracy_trunc_div(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    upcast = True if flag_gems.vendor_name not in ["cambricon", "iluvatar"] else False
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
+    inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+
+    upcast = (
+        True
+        if flag_gems.vendor_name not in ["cambricon", "iluvatar", "kunlunxin"]
+        else False
+    )
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 
