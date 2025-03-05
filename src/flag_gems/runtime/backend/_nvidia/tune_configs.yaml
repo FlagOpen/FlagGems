@@ -1126,7 +1126,6 @@ conv2d_backward_weight:
     BLOCK_NO: 32
   num_stages: 3
   num_warps: 4
-
 batch_norm:
 - gen: true
   param_map:
