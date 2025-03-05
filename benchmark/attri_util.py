@@ -8,6 +8,7 @@ import torch
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
+COMPLEX_DTYPES = [torch.complex64]
 
 DEFAULT_WARMUP_COUNT = 1000
 DEFAULT_ITER_COUNT = 100
@@ -71,6 +72,8 @@ class BenchmarkMetrics:
     tflops: Optional[float] = None
     # Utilization (not implemented yet)
     utilization: Optional[float] = None
+    # Speedup compared to base data
+    compared_speedup: Optional[float] = None
     # Error message
     error_msg: Optional[str] = None
 

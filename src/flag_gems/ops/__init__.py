@@ -49,6 +49,8 @@ from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
 from .index_select import index_select, index_select_backward
+from .index_put import index_put
+from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -57,6 +59,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .layernorm import layer_norm
 from .le import le, le_scalar
+from .log_sigmoid import log_sigmoid
 from .log_softmax import log_softmax
 from .logical_and import logical_and
 from .logical_not import logical_not
@@ -71,6 +74,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
 from .mm import mm
+from .mse_loss import mse_loss
 from .mul import mul
 from .multinomial import multinomial
 from .mv import mv
@@ -90,6 +94,7 @@ from .outer import outer
 from .pad import constant_pad_nd, pad
 from .pow import pow_scalar, pow_tensor_scalar, pow_tensor_tensor
 from .prod import prod, prod_dim
+from .quantile import quantile
 from .rand import rand
 from .rand_like import rand_like
 from .randn import randn
@@ -127,6 +132,7 @@ from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
+from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .weightnorm import weight_norm, weight_norm_interface
@@ -135,6 +141,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "log_sigmoid",
     "all",
     "all_dim",
     "all_dims",
@@ -261,6 +268,7 @@ __all__ = [
     "argmin",
     "prod",
     "prod_dim",
+    "quantile",
     "var_mean",
     "vector_norm",
     "log_softmax",
@@ -301,4 +309,7 @@ __all__ = [
     "nll_loss_backward",
     "nll_loss2d_forward",
     "nll_loss2d_backward",
+    "index_put",
+    "vdot",
+    "mse_loss",
 ]
