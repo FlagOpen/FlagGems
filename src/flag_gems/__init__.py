@@ -181,6 +181,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
             ("index_select", index_select, Autograd.disable),
+            ("index_select_backward", index_select_backward, Autograd.disable),
             ("tile", tile, Autograd.disable),
             ("masked_fill.Tensor", masked_fill, Autograd.disable),
             ("masked_fill.Scalar", masked_fill, Autograd.disable),

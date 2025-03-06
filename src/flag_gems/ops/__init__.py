@@ -50,7 +50,7 @@ from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
 from .index_put import index_put
-from .index_select import index_select
+from .index_select import index_select, index_select_backward
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
@@ -205,6 +205,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
+    "index_select_backward",
     "instance_norm",
     "isclose",
     "isfinite",
