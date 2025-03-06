@@ -1125,13 +1125,6 @@ class PointwiseDynamicFunction:
                 )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
-        # input arguments must be dense and no overlapping for pointwise operation
-        for out in out_tensors:
-            if has_internal_overlapping(out) and any(out is t for t in in_tensors):
-                raise ValueError(
-                    "Pointwise Input arguments must be dense and no overlapping."
-                )
-
         # output dtype promotions
         outputs_dtypes_for_allocation = []
         for i in outputs_that_need_allocation:
@@ -1179,6 +1172,14 @@ class PointwiseDynamicFunction:
                         raise ValueError(
                             f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
                         )
+                    # output arguments must be dense and no overlapping for pointwise operation
+                    if has_internal_overlapping(item) and any(
+                        item is t for t in in_tensors
+                    ):
+                        raise ValueError(
+                            "Pointwise Input arguments must be dense and no overlapping."
+                        )
+
             ndim = len(task_shape)
             for item in tensors:
                 if item.shape == task_shape:

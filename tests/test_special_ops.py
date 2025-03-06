@@ -12,6 +12,7 @@ from .accuracy_utils import (
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
+    KRON_SHAPES,
     SPECIAL_SHAPES,
     STACK_DIM_LIST,
     STACK_SHAPES,
@@ -33,6 +34,10 @@ device = flag_gems.device
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout(shape, p, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     if TO_CPU or shape == (1,):
         shape = (32768,)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -206,6 +211,10 @@ def test_apply_rotary_pos_emb(
 @pytest.mark.parametrize("scale_grad_by_freq", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     indices = torch.randint(
         0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
     )
@@ -424,6 +433,10 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
 @pytest.mark.parametrize("contiguous", [True, False])
 def test_pad(shape, dtype, pad_mode, contiguous):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     if not contiguous:
         x = x[::2, ::2]
@@ -1038,3 +1051,31 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 
     gems_assert_close(res_value, ref_value, dtype)
     gems_assert_equal(res_index, ref_index)
+
+
+@pytest.mark.kron
+@pytest.mark.parametrize("shape", KRON_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
+def test_accuracy_kron(shape, dtype):
+    if dtype in INT_DTYPES:
+        inp1 = torch.randint(
+            low=-10, high=10, size=shape[0], dtype=dtype, device=flag_gems.device
+        )
+        inp2 = torch.randint(
+            low=-10, high=10, size=shape[1], dtype=dtype, device=flag_gems.device
+        )
+    elif dtype in FLOAT_DTYPES:
+        inp1 = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)
+    else:
+        inp1 = torch.randint(0, 2, size=shape[0], dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randint(0, 2, size=shape[1], dtype=dtype, device=flag_gems.device)
+
+    ref_inp1 = to_reference(inp1)
+    ref_inp2 = to_reference(inp2)
+
+    ref_out = torch.kron(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.kron(inp1, inp2)
+
+    gems_assert_equal(res_out, ref_out)

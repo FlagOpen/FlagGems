@@ -49,6 +49,7 @@ from .div import (
     true_divide_,
 )
 from .dropout import native_dropout
+from .elu import elu
 from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf, erf_
@@ -73,6 +74,7 @@ from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
+from .kron import kron
 from .layernorm import layer_norm
 from .le import le, le_scalar
 from .log_sigmoid import log_sigmoid
@@ -202,6 +204,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "elu",
     "pad",
     "constant_pad_nd",
     "cummin",
@@ -355,6 +358,7 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "kron",
     "nll_loss_forward",
     "nll_loss_backward",
     "nll_loss2d_forward",
