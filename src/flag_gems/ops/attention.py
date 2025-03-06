@@ -583,6 +583,19 @@ def softmax_rescale(
     return O_acc, P, row_max, row_sum
 
 
+@triton.jit
+def 
+
+
+@triton.autotune(
+    configs=runtime.get_tuned_config("attention"),
+    key=["HEAD_DIM"],
+    prune_configs_by={
+        "early_config_prune": early_config_prune,
+        "perf_model": None,
+        "top_k": 1.0,
+    },
+)
 @triton.heuristics(
     values={
         'IS_EVEN_MN': lambda args: (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0)
@@ -590,11 +603,12 @@ def softmax_rescale(
 )
 @triton.jit(do_not_specialize=[])
 def flash_fwd_kernel(
-    pQ,
-    pK,
-    pV,
-    pP,
-    pO,
+    Q_ptr,
+    K_ptr,
+    V_ptr,
+    P_ptr,
+    O_ptr,
+    lse_ptr,
     seqlen_q,
     seqlen_k,
     seqlen_q_rounded,
@@ -612,6 +626,7 @@ def flash_fwd_kernel(
     philox_seed,
     philox_offset,
     pdrop_u8,
+    rpdrop,
     slopes_batch_stride,
     is_dropout: tl.constexpr,
     is_causal: tl.constexpr,
@@ -622,10 +637,11 @@ def flash_fwd_kernel(
     ws_left: tl.constexpr,
     ws_right: tl.constexpr,
     return_P: tl.constexpr,
+    PRE_LOAD_V: tl.constexpr,
     BATCH_SIZE: tl.constexpr,
     NUM_HEADS: tl.constexpr,
     NUM_HEADS_K: tl.constexpr,
-    HEADSIZE: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
     IS_EVEN_MN: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -690,14 +706,16 @@ def flash_fwd_kernel(
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
     
     for _ in range(n_masking_steps):
-        KV_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEADSIZE)[:, None]
+        KV_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
         if IS_EVEN_MN:
             K = tl.load(pK + KV_offset, cache_modifier="cg")
-            V = tl.load(pV + KV_offset, cache_modifier="cg")
+            if PRE_LOAD_V:
+                V = tl.load(pV + KV_offset, cache_modifier="cg")
         else:
             kvmask = col_idx < seqlen_k
             K = tl.load(pK + KV_offset, mask=kvmask, cache_modifier="cg")
-            V = tl.load(pV + KV_offset, mask=kvmask, cache_modifier="cg")
+            if PRE_LOAD_V:
+                V = tl.load(pV + KV_offset, mask=kvmask, cache_modifier="cg")
         S = tl.dot(Q_block, K_block)
         S = apply_mask(
             S,
@@ -762,14 +780,19 @@ def flash_fwd_kernel(
                 BLOCK_N=BLOCK_N,
             )
 
+        if not PRE_LOAD_V:
+            if IS_EVEN_MN:
+                V = tl.load(pV + KV_offset, cache_modifier="cg")
+            else:
+                V = tl.load(pV + KV_offset, mask=kvmask, cache_modifier="cg")
         tl.dot(P, V, acc=O_)
 
         n_block -= 1
         if n_masking_steps > 1 and n_block <= n_block_min:
             break
 
-    for _ in range(n_block_min, n_block + 1):
-        KV_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEADSIZE)[:, None]
+    for n_block in tl.range(n_block, n_block_min - 1, num_stages=num_stages):
+        KV_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
         K = tl.load(pK + KV_offset, cache_modifier="cg")        
         V = tl.load(pV + KV_offset, cache_modifier="cg")
         S = tl.dot(Q_block, K_block)
@@ -837,8 +860,34 @@ def flash_fwd_kernel(
             )
 
         tl.dot(P, V, acc=O_)
-        
-        n_block -=1
+
+    # Final LSE
+    lse = tl.where(rowsum_ == 0 | rowsum_ != rowsum_, float('inf'), rowmax_ * softmax_scale +tl.log(rowsum_))
+    inv_sum = tl.where(rowsum_ == 0 | rowsum_ != rowsum_, 1.0, 1.0 / rowsum_)
+    
+    # Rescale output
+    if is_dropout
+        O_ *= inv_sum * rpdrop
+    else:
+        O_ *= inv_sum
+    
+    O = O_.to(pO.type.element_ty)
+
+    # Write back output
+    O_ptr += bid * o_b_stride
+    O_ptr += hid * o_h_stride
+    O_offset = row_idx[:, None] * o_s_stride + tl.arange(0, HEAD_DIM)
+    if IS_EVEN_MN:
+        tl.store(O_ptr + O_offset, O)
+    else:
+        tl.store(O_ptr + O_offset, O, mask=qmask)
+    
+    # Write back lse
+    lse_ptr += bid * hid * seqlen_q
+    if IS_EVEN_MN:
+        tl.store(lse_ptr + row_idx, lse)
+    else:
+        tl.store(lse_ptr + row_idx, lse, mask=qmask)
 
 
 def mha_fwd(
@@ -882,6 +931,17 @@ def mha_fwd(
     if is_causal:
         window_size_right = 0
 
+    if seqlen_q == 1 and num_heads > num_heads_k and window_size_left < 0 and window_size_right < 0 and p_dropout == 0 and not alibi_slopes
+        swap_seq_and_group = True
+    else:
+        swap_seq_and_group = False
+
+    ngroups = num_heads // num_heads_k
+    if swap_seq_and_group:
+        q = q.reshape((batch_size, num_heads_k, ngroups, head_size)).transpose(1, 2)
+        seqlen_q = ngroups
+        num_heads = num_heads_k
+
     if out:
         assert out.stride(-1) == 1
         assert out.dtype == q.dtype
@@ -903,6 +963,8 @@ def mha_fwd(
                 (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
                 dtype=q_dtype,
             )
+        else:
+            p = torch.empty(())
 
         # Set dropout params
         if p_dropout > 0:
@@ -914,6 +976,11 @@ def mha_fwd(
 
         p_dropout = 1 - p_dropout
         pdrop_u8 = math.floor(p_dropout * 255.0)
+        rpdrop = 1. / p_dropout
+
+        M_LOG2E	= 1.4426950408889634074
+        scale_softmax_log2 = softmax_scale * M_LOG2E
+        scale_softmax_rp_dropout = rpdrop * softmax_scale
 
         # Set alibi params
         if alibi_slopes is not None:
@@ -932,9 +999,7 @@ def mha_fwd(
 
         # ONLY EVEN_K IS SUPPORTED
         assert head_size == head_size_rounded
-        
-        M_LOG2E	= 1.4426950408889634074
-        scale_softmax_log2 = softmax_scale * M_LOG2E
+
 
         grid = lambda args: (
             triton.cdiv(seqlen_q, args["BLOCK_M"]), # num_m_blocks
@@ -948,6 +1013,7 @@ def mha_fwd(
             v,
             p,
             out,
+            lse,
             seqlen_q,
             seqlen_k,
             seqlen_q_rounded,
@@ -965,26 +1031,30 @@ def mha_fwd(
             philox_seed,
             philox_offset,
             pdrop_u8,
+            rpdrop,
             alibi_slopes_batch_stride,
             is_dropout=is_dropout,
             is_causal=is_causal,
             is_local=is_local,
             has_alibi=has_alibi,
             softmax_scale=softmax_scale,
-            softmax_scale_log2=scale_softmax_log2
+            softmax_scale_log2=scale_softmax_log2,
             ws_left=window_size_left,
             ws_right=window_size_right,
             return_P=return_softmax,
             BATCH_SIZE=batch_size,
             NUM_HEADS=num_heads,
             NUM_HEADS_K=num_heads_k,
-            HEADSIZE=head_size_rounded,
+            HEAD_DIM=head_size_rounded,
             IS_EVEN_MN=is_even_mn,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            num_warps
         )
-        
+    
+    if swap_seq_and_group:
+        out = out.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
+        q = q.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
+        lse = lse.reshape((batch_size, num_heads_k * seqlen_q, 1))
+
+    return out, q, k, v, lse, philox_seed, philox_offset, p
 
 
 def flash_attention_forward(
@@ -1016,13 +1086,12 @@ def flash_attention_forward(
     softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
     non_null_window_left = window_size_left or -1
     non_null_window_right = window_size_right or -1
-    out = torch.empty_like(query, dtype=value.dtype)
 
-    mha_out = mha_fwd(
+    out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
         query,
         key,
         value,
-        out,
+        None,
         alibi_slopes,
         dropout_p,
         softmax_scale,
@@ -1031,16 +1100,5 @@ def flash_attention_forward(
         non_null_window_right,
         return_debug_mask,
     )
-    (
-        output,
-        q_padded,
-        k_padded,
-        v_padded,
-        logsumexp,
-        philox_seed,
-        philox_offset,
-        debug_attn_mask,
-    ) = mha_out
-
-
-
+    
+    return (out, lse, philox_seed, philox_offset, p)
