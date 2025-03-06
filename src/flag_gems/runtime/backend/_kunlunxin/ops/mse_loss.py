@@ -1,5 +1,4 @@
 import logging
-import math
 from enum import Enum
 
 import torch
@@ -15,7 +14,9 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 @libentry()
 @triton.jit
-def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr):
+def kernel_1(
+    inp, target, mid, M: tl.constexpr, BLOCK_SIZE: tl.constexpr, reduction: tl.constexpr
+):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
@@ -37,7 +38,7 @@ def kernel_1(inp, target, mid, M, BLOCK_SIZE: tl.constexpr, reduction: tl.conste
 
 @libentry()
 @triton.jit
-def kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def kernel_2(mid, out, mid_size: tl.constexpr, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
@@ -59,31 +60,49 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
+    # import pudb; pudb.set_trace()
     logging.debug("GEMS MSE LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 
     inp = inp.contiguous()
     target = target.contiguous()
-    M = inp.numel()
+    M = inp.numel()  # 119400
     dtype = inp.dtype
 
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # mid_size = triton.cdiv(M, block_size)
+    # block_mid = triton.next_power_of_2(mid_size)
+    # print(f'M = {M}')
+    # block_size = 8192
+    # mid_size = triton.cdiv(M, block_size) # 15
+    # block_mid = triton.next_power_of_2(mid_size) # 16
+    mid_size = 12
+    block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))  # 16384
+    block_mid = mid_size  # 16
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    mid = torch.zeros((mid_size,), dtype=dtype, device=inp.device)  # 12
+    out = torch.zeros([], dtype=dtype, device=inp.device)  # 1
 
-    import os
+    # import os
 
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    # os.environ["TRITONXPU_OTHER_SIM"] = "1"
 
     with torch_device_fn.device(inp.device):
+        # print(f'old mid = {mid.cpu()}')
+        # print(f'block_size = {block_size}')
         kernel_1[(mid_size, 1, 1)](inp, target, mid, M, block_size, reduction)
+        # print(f'new mid = {mid.cpu()}')
+        # print(f'mid_size = {mid_size}')
+        # print(f'sum mid = {mid.cpu().sum()}')
+        # assert(0)
+        # print(f'old out = {out.cpu()}')
+        # print(f'mid_size = {mid_size}')
+        # print(f'block_mid = {block_mid}')
         kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        # print(f'new out = {out.cpu()}')
 
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
+    # if "TRITONXPU_OTHER_SIM" in os.environ:
+    #     del os.environ["TRITONXPU_OTHER_SIM"]
 
     return out
