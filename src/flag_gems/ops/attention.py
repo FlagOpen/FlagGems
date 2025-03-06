@@ -583,10 +583,6 @@ def softmax_rescale(
     return O_acc, P, row_max, row_sum
 
 
-@triton.jit
-def 
-
-
 @triton.autotune(
     configs=runtime.get_tuned_config("attention"),
     key=["HEAD_DIM"],
@@ -632,7 +628,7 @@ def flash_fwd_kernel(
     is_causal: tl.constexpr,
     is_local: tl.constexpr,
     has_alibi: tl.constexpr,
-    softmax_scale: tl.constexp,
+    softmax_scale: tl.constexpr,
     softmax_scale_log2: tl.constexpr,
     ws_left: tl.constexpr,
     ws_right: tl.constexpr,
@@ -866,7 +862,7 @@ def flash_fwd_kernel(
     inv_sum = tl.where(rowsum_ == 0 | rowsum_ != rowsum_, 1.0, 1.0 / rowsum_)
     
     # Rescale output
-    if is_dropout
+    if is_dropout:
         O_ *= inv_sum * rpdrop
     else:
         O_ *= inv_sum
@@ -931,7 +927,7 @@ def mha_fwd(
     if is_causal:
         window_size_right = 0
 
-    if seqlen_q == 1 and num_heads > num_heads_k and window_size_left < 0 and window_size_right < 0 and p_dropout == 0 and not alibi_slopes
+    if seqlen_q == 1 and num_heads > num_heads_k and window_size_left < 0 and window_size_right < 0 and p_dropout == 0 and not alibi_slopes:
         swap_seq_and_group = True
     else:
         swap_seq_and_group = False
