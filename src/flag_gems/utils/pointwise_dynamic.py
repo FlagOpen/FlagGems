@@ -1125,10 +1125,12 @@ class PointwiseDynamicFunction:
                 )
         in_tensors = [item for i, item in enumerate(args) if schema.is_tensor(i)]
 
-        # input arguments must be dense and no overlapping
+        # input arguments must be dense and no overlapping for pointwise operation
         for out in out_tensors:
-            if has_internal_overlapping(out):
-                raise ValueError("Input arguments must be dense and no overlapping.")
+            if has_internal_overlapping(out) and any(out is t for t in in_tensors):
+                raise ValueError(
+                    "Pointwise Input arguments must be dense and no overlapping."
+                )
 
         # output dtype promotions
         outputs_dtypes_for_allocation = []
