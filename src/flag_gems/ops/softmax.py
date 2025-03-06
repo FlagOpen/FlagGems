@@ -73,7 +73,7 @@ def softmax_kernel_non_inner(
 @triton.jit
 def next_multiple_of(a, b):
     # the smallest x>=a that x%b ==0
-    return tl.cidv(a, b) * b
+    return tl.cdiv(a, b) * b
 
 
 @triton.jit
