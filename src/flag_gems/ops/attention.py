@@ -562,8 +562,7 @@ def apply_mask(
         if is_local:
             S = tl.where(col_idx[None, :] >= col_rb[:, None] | col_idx[None, :] < col_lb[:, None], float('-inf'), S)
         
-        
-        if (not local) & (not is_causal) & (not is_even_mn):
+        if (not is_local) & (not is_causal) & (not is_even_mn):
             S = tl.where(col_idx[None, :] >= max_seqlen_k, float('-inf'), S)
 
     return S
@@ -576,32 +575,44 @@ def softmax_rescale(
     row_max,
     row_sum,
     softmax_scale_log2: tl.constexpr,
-    is_border: tl.constexpr
+    is_border: tl.constexpr,
+    is_init: tl.constexpr
 ):
-    prev_row_max = row_max
+    prev_max = row_max
     row_max = tl.maximum(row_max, tl.max(S, 1))
-    row_sum_scale = tl.math.exp2(row_max - prev_row_max) * softmax_scale_log2
-    tl.device_print('row_sum_scale', row_max - prev_row_max)
-    row_sum *= row_sum_scale
-    O_acc *= row_sum_scale[:, None]
+
+    if not is_init:
+        if is_border:
+            cur_max = tl.where(row_max == float('-inf'), 0, row_max)
+        else:
+            cur_max = row_max
+        p_scale = tl.math.exp2((prev_max - cur_max) * softmax_scale_log2)
+        row_sum *= p_scale
+        O_acc *= p_scale[:, None]
+
     max_scaled = tl.where(row_max == float('-inf'), 0, row_max * softmax_scale_log2)
     P = tl.math.exp2(S * softmax_scale_log2 - max_scaled[:, None])
-    row_sum = row_sum + tl.sum(S, 1)
+    row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
 
 
-@triton.autotune(
-    configs=runtime.get_tuned_config("attention"),
-    key=["HEAD_DIM"],
-    prune_configs_by={
-        "early_config_prune": early_config_prune,
-        "perf_model": None,
-        "top_k": 1.0,
-    },
-)
+# @triton.autotune(
+#     configs=runtime.get_tuned_config("attention"),
+#     key=["HEAD_DIM"],
+#     prune_configs_by={
+#         "early_config_prune": early_config_prune,
+#         "perf_model": None,
+#         "top_k": 1.0,
+#     },
+# )
 @triton.heuristics(
     values={
-        'IS_EVEN_MN': lambda args: (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0)
+        'BLOCK_M': lambda args: 64,
+        'BLOCK_N': lambda args: 64,
+        'num_warps': lambda args: 4,
+        'num_stages': lambda args: 2,
+        'PRE_LOAD_V': lambda args: False,
+        'IS_EVEN_MN': lambda args: (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "q_b_stride", "q_s_stride", "q_h_stride", "k_b_stride", "k_s_stride", "k_h_stride", "o_b_stride", "o_h_stride", "o_s_stride", "philox_seed", "philox_offset", "pdrop_u8", "slopes_batch_stride"])
@@ -686,7 +697,6 @@ def flash_fwd_kernel(
         # local and not causal, 
         n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
 
-
     Q_ptr += bid * q_b_stride
     Q_ptr += hid * q_h_stride
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -705,8 +715,7 @@ def flash_fwd_kernel(
     K_ptr += (hid // h_hk_ratio) * k_h_stride
     V_ptr += bid * k_b_stride
     V_ptr += (hid // h_hk_ratio) * k_h_stride
-    col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-
+    
     P_ptr += ((bid * NUM_HEADS + hid) * seqlen_q_rounded + m_block * BLOCK_M) * seqlen_k_rounded
     P_ptr += n_block * BLOCK_N
     P_offset = tl.arange(0, BLOCK_M)[:, None] * seqlen_k_rounded + tl.arange(0, BLOCK_N)
@@ -715,96 +724,98 @@ def flash_fwd_kernel(
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
     
-    # for _ in range(n_masking_steps):
-    #     K_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
-    #     V_offset = col_idx[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
-    #     if IS_EVEN_MN:
-    #         K = tl.load(K_ptr + K_offset, cache_modifier=".cg")
-    #         if PRE_LOAD_V:
-    #             V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
-    #     else:
-    #         kvmask = col_idx[None, :] < seqlen_k
-    #         K = tl.load(K_ptr + K_offset, mask=kvmask, cache_modifier=".cg")
-    #         if PRE_LOAD_V:
-    #             V = tl.load(V_ptr + V_offset, mask=kvmask, cache_modifier=".cg")
-    #     S = tl.dot(Q, K, allow_tf32=False)
-    #     S = apply_mask(
-    #         S,
-    #         col_idx,
-    #         row_idx,
-    #         seqlen_q,
-    #         seqlen_k,
-    #         ws_left,
-    #         ws_right,
-    #         alibi_slope,
-    #         is_even_mn=IS_EVEN_MN,
-    #         is_causal=is_causal,
-    #         is_local=is_local,
-    #         has_alibi=has_alibi
-    #     )
-    #     col_idx -= BLOCK_N
+    for n_block in tl.range(n_block_max - 1, n_block_max - n_masking_steps - 1, step=-1):
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
+        K_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
+        V_offset = col_idx[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
+        if IS_EVEN_MN:
+            K = tl.load(K_ptr + K_offset, cache_modifier=".cg")
+            if PRE_LOAD_V:
+                V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
+        else:
+            kvmask = col_idx < seqlen_k
+            K = tl.load(K_ptr + K_offset, mask=kvmask[None, :], cache_modifier=".cg")
+            if PRE_LOAD_V:
+                V = tl.load(V_ptr + V_offset, mask=kvmask[:, None], cache_modifier=".cg")
+        S = tl.dot(Q, K, allow_tf32=False)
+        S = apply_mask(
+            S,
+            col_idx,
+            row_idx,
+            seqlen_q,
+            seqlen_k,
+            ws_left,
+            ws_right,
+            alibi_slope,
+            is_even_mn=IS_EVEN_MN,
+            is_causal=is_causal,
+            is_local=is_local,
+            has_alibi=has_alibi
+        )
+        # col_idx -= BLOCK_N
 
-    #     O_acc, P, rowmax_, rowsum_ = softmax_rescale(
-    #         O_,
-    #         S,
-    #         rowmax_,
-    #         rowsum_,
-    #         softmax_scale_log2=softmax_scale_log2,
-    #         is_border=(is_causal or is_local)
-    #     )
-    #     P = P.to(O_ptr.type.element_ty)
+        is_init = (n_block == n_block_max - 1).to(tl.int1)
+        O_, P, rowmax_, rowsum_ = softmax_rescale(
+            O_,
+            S,
+            rowmax_,
+            rowsum_,
+            softmax_scale_log2=softmax_scale_log2,
+            is_border=(is_causal or is_local),
+            is_init=is_init
+        )
+        P = P.to(O_ptr.type.element_ty)
 
-    #     row_start = m_block * (BLOCK_M // 16)
-    #     col_start = n_block * (BLOCK_N // 32)
-    #     if return_P:
-    #         P_drop = P
-    #         P_drop = apply_dropout(
-    #             P_drop,
-    #             row_start,
-    #             col_start,
-    #             bid,
-    #             hid,
-    #             philox_seed,
-    #             philox_offset,
-    #             pdrop_u8,
-    #             encode_dropout_in_sign_bit=True,
-    #             NUM_HEADS=NUM_HEADS,
-    #             BLOCK_M=BLOCK_M,
-    #             BLOCK_N=BLOCK_N,
-    #         )
-    #         tl.store(P_ptr + P_offset, P_drop, mask=qmask & kvmask)
-    #         P_offset += BLOCK_N
+        row_start = m_block * (BLOCK_M // 16)
+        col_start = n_block * (BLOCK_N // 32)
+        if return_P:
+            P_drop = P
+            P_drop = apply_dropout(
+                P_drop,
+                row_start,
+                col_start,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                pdrop_u8,
+                encode_dropout_in_sign_bit=True,
+                NUM_HEADS=NUM_HEADS,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+            tl.store(P_ptr + P_offset, P_drop, mask=qmask & kvmask[None, :])
+            P_offset += BLOCK_N
 
-    #     if is_dropout:
-    #         P = apply_dropout(
-    #             P,
-    #             row_start,
-    #             col_start,
-    #             bid,
-    #             hid,
-    #             philox_seed,
-    #             philox_offset,
-    #             pdrop_u8,
-    #             encode_dropout_in_sign_bit=False,
-    #             NUM_HEADS=NUM_HEADS,
-    #             BLOCK_M=BLOCK_M,
-    #             BLOCK_N=BLOCK_N,
-    #         )
+        if is_dropout:
+            P = apply_dropout(
+                P,
+                row_start,
+                col_start,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                pdrop_u8,
+                encode_dropout_in_sign_bit=False,
+                NUM_HEADS=NUM_HEADS,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
 
-    #     if not PRE_LOAD_V:
-    #         if IS_EVEN_MN:
-    #             V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
-    #         else:
-    #             V = tl.load(V_ptr + V_offset, mask=kvmask, cache_modifier=".cg")
-    #     tl.dot(P, V, acc=O_, allow_tf32=False)
+        if not PRE_LOAD_V:
+            if IS_EVEN_MN:
+                V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
+            else:
+                V = tl.load(V_ptr + V_offset, mask=kvmask[:, None], cache_modifier=".cg")
+        O_ = tl.dot(P, V, O_, allow_tf32=False)
 
-    #     n_block -= 1
-    #     # if n_masking_steps > 1 and n_block <= n_block_min:
-    #     #     break
+        # if n_masking_steps > 1 and n_block <= n_block_min:
+        #     break
 
 
-    # for n_block in tl.range(n_block, n_block_min - 1, num_stages=num_stages):
-    if True:
+    for n_block in tl.range(n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1, num_stages=num_stages):
+        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         K_offset = col_idx[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
         K = tl.load(K_ptr + K_offset, cache_modifier=".cg")
         if PRE_LOAD_V:
@@ -825,15 +836,17 @@ def flash_fwd_kernel(
             is_local=is_local,
             has_alibi=has_alibi
         )
-        col_idx -= BLOCK_N
+        # col_idx -= BLOCK_N
 
+        is_init = (n_block == n_block_max - 1).to(tl.int1)
         O_, P, rowmax_, rowsum_ = softmax_rescale(
             O_,
             S,
             rowmax_,
             rowsum_,
             softmax_scale_log2=softmax_scale_log2,
-            is_border=is_local
+            is_border=is_local,
+            is_init=is_init
         )
 
         P = P.to(O_ptr.type.element_ty)
@@ -879,17 +892,17 @@ def flash_fwd_kernel(
             V_offset = col_idx[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
             V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
 
-        tl.dot(P, V, acc=O_)
+        O_ = tl.dot(P, V, O_)
 
     # Final LSE
     lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
     
-    # # Rescale output
-    # if is_dropout:
-    #     O_ *= inv_sum[:, None] * rpdrop
-    # else:
-    #     O_ *= inv_sum[:, None]
+    # Rescale output
+    if is_dropout:
+        O_ *= inv_sum[:, None] * rpdrop
+    else:
+        O_ *= inv_sum[:, None]
     
     O = O_.to(O_ptr.type.element_ty)
 
@@ -908,7 +921,7 @@ def flash_fwd_kernel(
     if IS_EVEN_MN:
         tl.store(lse_ptr + row_idx, lse)
     else:
-        tl.store(lse_ptr + row_idx, lse, mask=qmask)
+        tl.store(lse_ptr + row_idx, lse, mask=row_idx < seqlen_q)
 
 
 def mha_fwd(
