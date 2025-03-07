@@ -102,10 +102,7 @@ def _attn_fwd_inner(
         # update acc
         if not PRE_LOAD_V:
             v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
-        if fp8_v:
-            p = p.to(tl.float8e5)
-        else:
-            p = p.to(q.dtype)
+
         p = p.to(v.dtype)
         acc = tl.dot(p, v, acc, allow_tf32=False)
         # update m_i and l_i
