@@ -12,8 +12,8 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 @triton.jit
 def elu_forward_kernel(x, alpha, scale, input_scale):
     return tl.where(
-        x > 0,
-        scale * input_scale * x,
+        x.to(tl.float32) > 0,
+        scale * input_scale * x.to(tl.float32),
         scale * alpha * (tl.exp(x.to(tl.float32) * input_scale) - 1),
     )
 
