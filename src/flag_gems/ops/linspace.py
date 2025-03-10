@@ -45,7 +45,7 @@ def linspace(
     logging.debug("GEMS LINSPACE")
     assert steps >= 1, "steps must be >= 1"
 
-    mid = steps / 2
+    mid = steps // 2
     if steps == 1:
         step_size = 0.0
     else:
