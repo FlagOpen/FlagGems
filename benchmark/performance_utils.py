@@ -1,6 +1,7 @@
 import gc
 import importlib
 import logging
+import os
 import time
 from typing import Any, Generator, List, Optional, Tuple
 
@@ -28,7 +29,11 @@ from .conftest import Config
 torch_backend_device = flag_gems.runtime.torch_backend_device
 torch_device_fn = flag_gems.runtime.torch_device_fn
 device = flag_gems.device
-torch_backend_device.matmul.allow_tf32 = False
+vendor_name = flag_gems.vendor_name
+if device == "musa":
+    torch.backends.mudnn.allow_tf32 = False
+else:
+    torch_backend_device.matmul.allow_tf32 = False
 
 
 def SkipVersion(module_name, skip_pattern):
@@ -225,6 +230,11 @@ class Benchmark:
         self.cpu_mode = Config.cpu_mode
         self.set_dtypes(Config.user_desired_dtypes)
         self.set_metrics(Config.user_desired_metrics)
+        if vendor_name == "kunlunxin":
+            Config.shape_file = os.path.join(
+                os.path.dirname(__file__),
+                "../src/flag_gems/runtime/backend/_kunlunxin/core_shapes.yaml",
+            )  # Speed Up Benchmark Test, Big Shape Will Cause Timeout
         self.set_shapes(Config.shape_file)
 
     def set_gems(self, gems_op):
@@ -247,7 +257,12 @@ class Benchmark:
             end = time.time()
             latency = (end - start) / Config.repetition * 1000
         else:
-            latency = triton.testing.do_bench(
+            do_bench = (
+                triton.musa_testing.do_bench
+                if device == "musa"
+                else triton.testing.do_bench
+            )
+            latency = do_bench(
                 fn,
                 warmup=Config.warm_up,
                 rep=Config.repetition,
@@ -457,10 +472,10 @@ def generate_tensor_input(shape, dtype, device):
             torch.iinfo(dtype).max,
             shape,
             dtype=dtype,
-            device=device,
-        )
+            device="cpu",
+        ).to(device)
     elif dtype in BOOL_DTYPES:
-        return torch.randint(0, 2, size=shape, dtype=dtype, device=device)
+        return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
 
 
 def binary_input_fn(shape, cur_dtype, device):

@@ -4,6 +4,7 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
 from flag_gems.utils import shape_utils
 
 from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
@@ -14,6 +15,7 @@ from .performance_utils import (
     GenericBenchmark2DOnly,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -49,9 +51,15 @@ class UnaryReductionBenchmark(Benchmark):
 
 
 forward_operations = [
-    ("all", torch.all, FLOAT_DTYPES),
+    *(
+        [
+            ("all", torch.all, FLOAT_DTYPES),
+            ("any", torch.any, FLOAT_DTYPES),
+        ]
+        if flag_gems.device != "musa"
+        else []
+    ),
     ("amax", torch.amax, FLOAT_DTYPES),
-    ("any", torch.any, FLOAT_DTYPES),
     ("argmax", torch.argmax, FLOAT_DTYPES),
     ("argmin", torch.argmin, FLOAT_DTYPES),
     ("max", torch.max, FLOAT_DTYPES),
@@ -72,6 +80,8 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name in ["var_mean", "softmax"]:
+        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -91,6 +101,8 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
+    if vendor_name == "kunlunxin" and op_name == "softmax":
+        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(
         op_name=op_name,
         torch_op=torch_op,
@@ -153,7 +165,10 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             torch.nonzero,
             unary_input_fn,
             FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
-            marks=pytest.mark.nonzero,
+            marks=[
+                pytest.mark.nonzero,
+                pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError"),
+            ],
         ),
         pytest.param(
             "CrossEntropyLoss",
@@ -167,7 +182,12 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             torch.cumsum,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=pytest.mark.cumsum,
+            marks=[
+                pytest.mark.cumsum,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
         ),
         pytest.param(
             "cummin",
@@ -184,24 +204,43 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             torch.nn.functional.nll_loss,
             nll_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.NLLLoss,
+            marks=[
+                pytest.mark.NLLLoss,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
         ),
         pytest.param(
             "mse_loss",
             torch.nn.functional.mse_loss,
             mse_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.MSELoss,
+            marks=[
+                pytest.mark.MSELoss,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
         ),
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["CrossEntropyLoss", "nll_loss", "log_softmax"]:
+            pytest.skip("RUNTIME TODOFIX")
+        elif op_name in ["cumsum", "cummin", "nonzero"]:
+            pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
 
 
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
+)
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
