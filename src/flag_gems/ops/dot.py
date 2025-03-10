@@ -78,7 +78,7 @@ def dot(x, y):
             dot_kernel_2[grid_2](mid, out, mid_size, block_mid)
 
     else:
-        block_size = triton.next_power_of_2(math.ceil(N))
+        block_size = triton.next_power_of_2(N)
         
         grid = (1, 1, 1)
 
