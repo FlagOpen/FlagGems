@@ -21,7 +21,7 @@ def tanh_forward(x):
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tanh_backward(y, dy):
-    return dy * (1.0 - pow(y.to(tl.float32), 2))
+    return dy * (1.0 - pow(y.to(tl.float32), 2.0))
 
 
 class Tanh(torch.autograd.Function):
