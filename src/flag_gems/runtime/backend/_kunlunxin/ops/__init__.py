@@ -136,6 +136,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
+from .rsub import rsub
 from .scatter import scatter
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_
@@ -295,6 +296,7 @@ __all__ = [
     "relu_",
     "rsqrt",
     "rsqrt_",
+    "rsub",
     "scatter",
     "sigmoid",
     "sigmoid_",

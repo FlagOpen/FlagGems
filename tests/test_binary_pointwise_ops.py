@@ -618,10 +618,11 @@ def test_accuracy_trunc_div_(shape, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    inp1 = torch.randn(shape, dtype=dtype, device="cuda")
-    inp2 = torch.randn(shape, dtype=dtype, device="cuda")
-    ref_inp1 = to_reference(inp1.clone(), True)
-    ref_inp2 = to_reference(inp2, True)
+    inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    upcast = True if flag_gems.vendor_name not in ["kunlunxin"] else False
+    ref_inp1 = to_reference(inp1, upcast)
+    ref_inp2 = to_reference(inp2, upcast)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
     with flag_gems.use_gems():
