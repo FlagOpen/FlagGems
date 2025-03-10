@@ -58,6 +58,10 @@ def linspace(
     if steps == 1:
         return torch.fill(out, start)
     else:
+        if isinstance(start, torch.Tensor):
+            start = start.item()
+        if isinstance(end, torch.Tensor):
+            end = end.item()
         mid = steps // 2
         step_size = (float(end) - float(start)) / (steps - 1)
         BLOCK_SIZE = 128
