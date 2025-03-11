@@ -180,7 +180,7 @@ def _attn_fwd(
     stride_o_headsize,
     Z,
     q_numhead,
-    kv_numhead,
+    kv_head_num,
     Q_CTX,
     KV_CTX,
     HEAD_DIM: tl.constexpr,
@@ -195,7 +195,7 @@ def _attn_fwd(
     off_hz = tl.program_id(1)
     batch_id = off_hz // q_numhead
     head_id = off_hz % q_numhead
-    kv_head_id = off_hz % kv_numhead
+    kv_head_id = off_hz % kv_head_num
 
     q_offset = (
         batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
@@ -381,20 +381,13 @@ def _attn_bwd_dkdv(dk, dv,  #
 
         # Load m before computing qk to reduce pipeline stall.
         offs_m = curr_m + tl.arange(0, BLOCK_M1)
-        # m = tl.load(M + offs_m)
-        # m = tl.load(M + offs_m, mask=offs_m_mask, other=-float("inf"))
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
 
 
         qkT = tl.dot(key, qT)
         pT = tl.math.exp2(qkT - m[None, :])
-
-        # pT = tl.where(tl.math.isnan(pT), 0.0, pT)
-
         # Autoregressive masking.
         if MASK:
-            # mask = (offs_m[None, :] >= offs_n[:, None])
-            # thats true
             mask = (offs_m[None, :] >= offs_n[:, None]) & (offs_m < N_CTX)[None, :] & (offs_n < N_CTX)[:, None]
             pT = tl.where(mask, pT, 0.0)
 
@@ -487,7 +480,9 @@ def _attn_bwd(Q, K, V, sm_scale,  #
               M, D,
               # shared by Q/K/V/DO.
               stride_z, stride_h, stride_tok, stride_d,  #
+              kv_stride_z, kv_stride_h,  #
               H, N_CTX,  #
+              kv_head_num, # 
               BLOCK_M1: tl.constexpr,  #
               BLOCK_N1: tl.constexpr,  #
               BLOCK_M2: tl.constexpr,  #
@@ -498,13 +493,16 @@ def _attn_bwd(Q, K, V, sm_scale,  #
 
     bhid = tl.program_id(2)
     off_chz = (bhid * N_CTX).to(tl.int64)
-    adj = (stride_h * (bhid % H) + stride_z * (bhid // H)).to(tl.int64)
+    batch_id = (bhid // H)
+    adj = (stride_h * (bhid % H) + stride_z * batch_id).to(tl.int64)
+    kv_adj = (kv_stride_h * (bhid % kv_head_num) + kv_stride_z * batch_id).to(tl.int64)
+
     pid = tl.program_id(0)
 
     # offset pointers for batch/head
     Q += adj
-    K += adj
-    V += adj
+    K += kv_adj
+    V += kv_adj
     DO += adj
     DQ += adj
     DK += adj
@@ -710,23 +708,34 @@ class ScaleDotProductAttention(torch.autograd.Function):
         ctx.sm_scale = sm_scale
         ctx.BLOCK_DMODEL = HEAD_DIM_K
         ctx.causal = causal
+        ctx.kv_head_num = kv_head_num
         return o
 
     @staticmethod
     def backward(ctx, do):
         query, key, value, o, M = ctx.saved_tensors
+        batch, num_head, seq_len, head_size = query.shape 
+        group_head = num_head // ctx.kv_head_num
+
         assert do.is_contiguous()
-        assert query.stride() == key.stride() == value.stride() == o.stride() == do.stride()
+        # assert query.stride() == key.stride() == value.stride() == o.stride() == do.stride()
+
+        assert key.stride() == value.stride()
+
         # logger.info(f"{do.shape=}")
         # tmp_do = do 
         # do = torch.zeros((1, 1, 256, 128), device="cuda", dtype=torch.float16)
         # do[:, :, :192, :] = tmp_do 
 
-        dq = torch.empty_like(query)
+        # dq = torch.empty_like(query)
         # dk = torch.empty_like(key)
-        dk = torch.zeros_like(key)
+        # dv = torch.empty_like(value)
 
-        dv = torch.empty_like(value)
+        dq = torch.empty_like(query)
+        dk = torch.empty_like(query)
+        dv = torch.empty_like(query)
+
+
         BATCH, N_HEAD, N_CTX = query.shape[:3]
 
         NUM_WARPS, NUM_STAGES = 4, 5
@@ -766,7 +775,9 @@ class ScaleDotProductAttention(torch.autograd.Function):
             query, arg_k, value, ctx.sm_scale, do, dq, dk, dv,  #
             M, delta,  #
             query.stride(0), query.stride(1), query.stride(2), query.stride(3),  #
+            key.stride(0), key.stride(1),  #
             N_HEAD, N_CTX,  #
+            ctx.kv_head_num, # 
             BLOCK_M1=BLOCK_M1, BLOCK_N1=BLOCK_N1,  #
             BLOCK_M2=BLOCK_M2, BLOCK_N2=BLOCK_N2,  #
             BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
@@ -775,6 +786,13 @@ class ScaleDotProductAttention(torch.autograd.Function):
             num_stages=NUM_STAGES  #
         )
 
+        print("group_head is: ", group_head)
+        if group_head > 1: 
+            dk = dk.reshape(batch, num_head // group_head, group_head, seq_len, head_size)
+            dv = dv.reshape(batch, num_head // group_head, group_head, seq_len, head_size)
+            dk = dk.sum(dim=2)
+            dv = dv.sum(dim=2)
+
         return dq, dk, dv, None, None, None
 
 
@@ -782,18 +800,22 @@ from copy import deepcopy
 
 if __name__ == "__main__": 
     batch = 1
-    num_head = 1
+    q_num_head = 8
+    kv_num_head = 1
     # seq_len = 192
-    seq_len = 278
+    # seq_len = 278
+
+    seq_len = 128
+
 
     head_size = 128
 
     torch.manual_seed(0)
     import numpy as np 
     np.random.seed(0)
-    np_query = np.random.uniform(-0.1, 0.1, (batch, num_head, seq_len, head_size))
-    np_key = np.random.uniform(-0.1, 0.1, (batch, num_head, seq_len, head_size))
-    np_value = np.random.uniform(-0.1, 0.1, (batch, num_head, seq_len, head_size))
+    np_query = np.random.uniform(-0.2, 0.2, (batch, q_num_head, seq_len, head_size))
+    np_key = np.random.uniform(-0.2, 0.2, (batch, kv_num_head, seq_len, head_size))
+    np_value = np.random.uniform(-0.2, 0.2, (batch, kv_num_head, seq_len, head_size))
 
     # query = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
     # key = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
@@ -850,8 +872,8 @@ if __name__ == "__main__":
     print("triton query grad is: ", triton_q_grad)
     torch.testing.assert_close(torch_q_grad, triton_q_grad, atol=2e-3, rtol=2e-3)
 
-    print("torch key grad is: ", torch_k_grad[:, :, 128:128+32, :])
-    print("triton key grad is: ", triton_k_grad[:, :, 128:128+32, :])
+    print("torch key grad is: ", torch_k_grad)
+    print("triton key grad is: ", triton_k_grad)
     # torch.testing.assert_close(torch_k_grad, triton_k_grad, atol=2e-3, rtol=2e-3)
 
     torch.testing.assert_close(torch_k_grad, triton_k_grad, atol=2e-3, rtol=2e-3)
