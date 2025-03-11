@@ -149,6 +149,11 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             # ("prod.dim_int", prod_dim, Autograd.disable),
             # ("sum", sum, Autograd.disable),
             # ("sum.dim_IntList", sum_dim, Autograd.disable),
+            # (
+            #     "scaled_dot_product_attention",
+            #     scaled_dot_product_attention,
+            #     Autograd.disable,
+            # ),
             (
                 "_flash_attention_forward",
                 flash_attention_forward,
