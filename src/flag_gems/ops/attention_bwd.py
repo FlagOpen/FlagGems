@@ -334,14 +334,16 @@ def _attn_bwd_preprocess(O, DO,  #
                          BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr  #
                          ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    mask = off_m < N_CTX
+
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
     # load
-    o = tl.load(O + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :])
-    do = tl.load(DO + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :]).to(tl.float32)
+    o = tl.load(O + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :], mask=mask[:, None], other=0.0)
+    do = tl.load(DO + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :], mask=mask[:, None], other=0.0).to(tl.float32)
     delta = tl.sum(o * do, axis=1)
     # write-back
-    tl.store(Delta + off_hz * N_CTX + off_m, delta)
+    tl.store(Delta + off_hz * N_CTX + off_m, delta, mask=off_m < N_CTX)
 
 
 # The main inner-loop logic for computing dK and dV.
