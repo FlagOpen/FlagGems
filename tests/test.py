@@ -382,7 +382,9 @@ def _attn_bwd_dkdv(dk, dv,  #
         # Load m before computing qk to reduce pipeline stall.
         offs_m = curr_m + tl.arange(0, BLOCK_M1)
         # m = tl.load(M + offs_m)
-        m = tl.load(M + offs_m, mask=offs_m_mask, other=-float("inf"))
+        # m = tl.load(M + offs_m, mask=offs_m_mask, other=-float("inf"))
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
+
 
         qkT = tl.dot(key, qT)
         pT = tl.math.exp2(qkT - m[None, :])
