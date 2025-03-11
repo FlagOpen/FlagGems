@@ -435,7 +435,11 @@ def _attn_bwd_dq(dq, query, K, V,  #
                  start_m, start_n, num_steps,  #
                  MASK: tl.constexpr):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
+    offs_m_mask = offs_m < N_CTX
+
     offs_n = start_n + tl.arange(0, BLOCK_N2)
+    offs_n_mask = offs_n < N_CTX
+
     offs_k = tl.arange(0, BLOCK_DMODEL)
     kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
     vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
@@ -446,14 +450,19 @@ def _attn_bwd_dq(dq, query, K, V,  #
     curr_n = start_n
     step_n = BLOCK_N2
     for blk_idx in range(num_steps):
-        kT = tl.load(kT_ptrs)
-        vT = tl.load(vT_ptrs)
+        # kT = tl.load(kT_ptrs)
+        # vT = tl.load(vT_ptrs)
+
+        kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
+        vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         qk = tl.dot(query, kT)
         p = tl.math.exp2(qk - m)
         # Autoregressive masking.
         if MASK:
             offs_n = curr_n + tl.arange(0, BLOCK_N2)
-            mask = (offs_m[:, None] >= offs_n[None, :])
+            # mask = (offs_m[:, None] >= offs_n[None, :])
+            mask = (offs_m[:, None] >= offs_n[None, :]) & (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
+
             p = tl.where(mask, p, 0.0)
         # Compute dP and dS.
         dp = tl.dot(do, vT).to(tl.float32)
@@ -601,7 +610,10 @@ def _attn_bwd(Q, K, V, sm_scale,  #
     # Write back dQ.
     dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
     dq *= LN2
-    tl.store(dq_ptrs, dq)
+    # tl.store(dq_ptrs, dq)
+
+    offs_m_mask = offs_m < N_CTX
+    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
 
 
 class ScaleDotProductAttention(torch.autograd.Function):
@@ -769,13 +781,25 @@ from copy import deepcopy
 if __name__ == "__main__": 
     batch = 1
     num_head = 1
-    seq_len = 192
+    # seq_len = 192
+    seq_len = 278
+
     head_size = 128
 
     torch.manual_seed(0)
-    query = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
-    key = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
-    value = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
+    import numpy as np 
+    np.random.seed(0)
+    np_query = np.random.uniform(-0.1, 0.1, (batch, num_head, seq_len, head_size))
+    np_key = np.random.uniform(-0.1, 0.1, (batch, num_head, seq_len, head_size))
+    np_value = np.random.uniform(-0.1, 0.1, (batch, num_head, seq_len, head_size))
+
+    # query = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
+    # key = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
+    # value = torch.randn((batch, num_head, seq_len, head_size), device="cuda", dtype=torch.float16, requires_grad=True)
+
+    query = torch.tensor(np_query, device="cuda", dtype=torch.float16, requires_grad=True)
+    key = torch.tensor(np_key, device="cuda", dtype=torch.float16, requires_grad=True)
+    value = torch.tensor(np_value, device="cuda", dtype=torch.float16, requires_grad=True)
     
     # ref_query = query.clone()
     # ref_query.requires_grad = True
@@ -820,11 +844,22 @@ if __name__ == "__main__":
     triton_v_grad, value.grad = value.grad.clone(), None 
 
 
-    # print("torch query grad is: ", torch_q_grad)
-    # print("triton query grad is: ", triton_q_grad)
+    print("torch query grad is: ", torch_q_grad)
+    print("triton query grad is: ", triton_q_grad)
+    torch.testing.assert_close(torch_q_grad, triton_q_grad, atol=2e-3, rtol=2e-3)
 
-    print("torch value grad is: ", torch_v_grad)
-    print("triton value grad is: ", triton_v_grad)
+    print("torch key grad is: ", torch_k_grad[:, :, 128:128+32, :])
+    print("triton key grad is: ", triton_k_grad[:, :, 128:128+32, :])
+    # torch.testing.assert_close(torch_k_grad, triton_k_grad, atol=2e-3, rtol=2e-3)
 
-    # print("torch key grad is: ", torch_k_grad[:, :, 32:64, :])
-    # print("triton key grad is: ", triton_k_grad[:, :, 32:64, :])
+    torch.testing.assert_close(torch_k_grad, triton_k_grad, atol=2e-3, rtol=2e-3)
+
+
+    # print("torch value grad is: ", torch_v_grad)
+    # print("triton value grad is: ", triton_v_grad)
+    torch.testing.assert_close(torch_v_grad, triton_v_grad, atol=2e-3, rtol=2e-3)
+
+    
+
+    # print("torch key grad is: ", torch_k_grad)
+    # print("triton key grad is: ", triton_k_grad)
