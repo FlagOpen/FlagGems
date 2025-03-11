@@ -382,17 +382,22 @@ def _attn_bwd_dkdv(dk, dv,  #
         # Load m before computing qk to reduce pipeline stall.
         offs_m = curr_m + tl.arange(0, BLOCK_M1)
         # m = tl.load(M + offs_m)
-        m = tl.load(M + offs_m, mask=offs_m_mask, other=-10000.0)
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=-float("inf"))
 
         qkT = tl.dot(key, qT)
         pT = tl.math.exp2(qkT - m[None, :])
+
+        # pT = tl.where(tl.math.isnan(pT), 0.0, pT)
+
         # Autoregressive masking.
         if MASK:
             # mask = (offs_m[None, :] >= offs_n[:, None])
-
-            mask = (offs_m[None, :] >= offs_n[:, None]) & offs_m_mask[None, :] & offs_n_mask[:, None]
+            # thats true
+            mask = (offs_m[None, :] >= offs_n[:, None]) & (offs_m < N_CTX)[None, :] & (offs_n < N_CTX)[:, None]
             pT = tl.where(mask, pT, 0.0)
 
+
+        # tl.device_print("pT: ", pT)
         # do = tl.load(do_ptrs)
         do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0)
 
@@ -543,6 +548,8 @@ def _attn_bwd(Q, K, V, sm_scale,  #
         start_n, start_m, num_steps,  #
         MASK=False  #
     )
+    # tl.device_print("dv: ", dv)
+
 
     dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
     tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
@@ -696,6 +703,11 @@ class ScaleDotProductAttention(torch.autograd.Function):
         query, key, value, o, M = ctx.saved_tensors
         assert do.is_contiguous()
         assert query.stride() == key.stride() == value.stride() == o.stride() == do.stride()
+        # logger.info(f"{do.shape=}")
+        # tmp_do = do 
+        # do = torch.zeros((1, 1, 256, 128), device="cuda", dtype=torch.float16)
+        # do[:, :, :192, :] = tmp_do 
+
         dq = torch.empty_like(query)
         # dk = torch.empty_like(key)
         dk = torch.zeros_like(key)
@@ -734,6 +746,7 @@ class ScaleDotProductAttention(torch.autograd.Function):
 
         grid = (triton.cdiv(N_CTX, BLOCK_N1), 1, BATCH * N_HEAD)
         logger.info(f"{triton.cdiv(N_CTX, BLOCK_N1)=}")
+        logger.info(f"{M.shape=}")
 
         _attn_bwd[grid](
             query, arg_k, value, ctx.sm_scale, do, dq, dk, dv,  #
