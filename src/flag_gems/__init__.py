@@ -148,6 +148,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("mean.dim", mean_dim, Autograd.disable),
             ("mm", mm, Autograd.disable),
             ("mul.Tensor", mul, Autograd.disable),
+            ("mul_.Tensor", mul, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
             ("mv", mv, Autograd.disable),
             ("ne.Tensor", ne, Autograd.disable),
