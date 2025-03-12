@@ -77,7 +77,6 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
         and mid_size > 1024
         and reduction == Reduction.MEAN.value
     ):
-        print("hit here")
         mid_size = 12
         block_size = triton.next_power_of_2(triton.cdiv(M, mid_size))
         block_mid = triton.next_power_of_2(mid_size)
