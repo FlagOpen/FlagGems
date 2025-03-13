@@ -121,7 +121,7 @@ def layer_norm_persistent_kernel_multiline(
     tl.store(out_ptr + m_offsets[:, None] * N + n_offsets, out, mask=mask)
 
 
-# @libentry()
+@libentry()
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("layer_norm_loop"),
 #     key=["M", "N"],
@@ -219,10 +219,13 @@ def layer_norm_loop_kernel(
 
 
 def layer_norm_backward_kernel_heur_block_row_size(args):
+    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
     return 1
 
 
 def layer_norm_backward_kernel_heur_block_col_size(args):
+    return args["N"]
+
     import builtins
 
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
@@ -247,8 +250,8 @@ def layer_norm_backward_kernel(
     Mean,
     Rstd,
     dX,
-    M,
-    N,
+    M: tl.constexpr,
+    N: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -331,8 +334,8 @@ def weight_bias_backward_kernel(
     Rstd,
     dW,
     dB,
-    M,
-    N,
+    M: tl.constexpr,
+    N: tl.constexpr,
     BLOCK_ROW_SIZE: tl.constexpr,
     BLOCK_COL_SIZE: tl.constexpr,
 ):
@@ -385,53 +388,31 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
         with torch_device_fn.device(x.device):
-            if N <= 128:
-                TILE_N = 16  # triton.next_power_of_2(N)
-                TILE_M = triton.cdiv(1024, TILE_N)
-                grid = (triton.cdiv(M, TILE_M), 1, 1)
-                layer_norm_persistent_kernel_multiline[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_M,
-                    TILE_N,
-                )
-            elif N <= 4096:
-                TILE_N = 32  # triton.next_power_of_2(N)
-                grid = (M, 1, 1)
-                layer_norm_persistent_kernel[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_N,
-                )
-            else:
-                TILE_N = 32  # triton.next_power_of_2(N)
-                grid = (M, 1, 1)
-                layer_norm_loop_kernel[grid](
-                    x,
-                    y,
-                    weight,
-                    bias,
-                    mean,
-                    rstd,
-                    M,
-                    N,
-                    eps,
-                    TILE_N,
-                )
+            TILE_N = 8192  # triton.next_power_of_2(N)
+            grid = (M, 1, 1)
+
+            # import os
+
+            # os.environ["TRITONXPU_OTHER_SIM"] = "1"
+            # os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+            layer_norm_loop_kernel[grid](
+                x,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                TILE_N,
+                isCloseUnrollControl=True,
+            )
+            # if "TRITONXPU_OTHER_SIM" in os.environ:
+            #     del os.environ["TRITONXPU_OTHER_SIM"]
+            # if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            #     del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
         if x.requires_grad:
             ctx.save_for_backward(x, weight, bias, mean, rstd)
             ctx.M = M
@@ -449,9 +430,20 @@ class LayerNorm(torch.autograd.Function):
         with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
+
+            import os
+
+            os.environ["TRITONXPU_OTHER_SIM"] = "1"
+            os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+
             layer_norm_backward_kernel[grid](
                 out_grad, x, weight, mean, rstd, in_grad, M, N
             )
+
+            if "TRITONXPU_OTHER_SIM" in os.environ:
+                del os.environ["TRITONXPU_OTHER_SIM"]
+            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+                del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
         if weight is None and bias is None:
             return in_grad, None, None, None, None, None
@@ -461,7 +453,16 @@ class LayerNorm(torch.autograd.Function):
             weight_grad = None if weight is None else torch.empty_like(weight)
             bias_grad = None if bias is None else torch.empty_like(bias)
             weight_bias_backward_kernel[grid](
-                out_grad, x, mean, rstd, weight_grad, bias_grad, M, N
+                out_grad,
+                x,
+                mean,
+                rstd,
+                weight_grad,
+                bias_grad,
+                M,
+                N,
+                isCloseCoreTiling=True,
+                isCloseUnrollControl=True,
             )
         return in_grad, None, weight_grad, bias_grad, None, None
 
