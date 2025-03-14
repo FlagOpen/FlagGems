@@ -11,11 +11,7 @@ from .bitwise_and import (
     bitwise_and_tensor,
 )
 from .bitwise_not import bitwise_not
-from .bitwise_or import (
-    bitwise_or_scalar_tensor,
-    bitwise_or_scalar,
-    bitwise_or_tensor,
-)
+from .bitwise_or import bitwise_or
 from .bmm import bmm
 from .clamp import clamp, clamp_tensor
 from .cos import cos
@@ -104,9 +100,7 @@ __all__ = [
     "bitwise_and_scalar",
     "bitwise_and_scalar_tensor",
     "bitwise_not",
-    "bitwise_or_tensor",
-    "bitwise_or_scalar",
-    "bitwise_or_scalar_tensor",
+    "bitwise_or",
     "bmm",
     "clamp",
     "clamp_tensor",

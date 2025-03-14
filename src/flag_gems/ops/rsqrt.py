@@ -3,15 +3,14 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from ..utils import unwrap
 
 
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def rsqrt_func(x):
-    return 1.0 / tl.sqrt(x.to(tl.float32))
+    return tl.rsqrt(x)
 
 
 def rsqrt(A):
     logging.debug("GEMS RSQRT")
-    return rsqrt_func(A)
+    return unwrap(rsqrt_func[(1,)](A))

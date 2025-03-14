@@ -4,153 +4,64 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from ..utils import unwrap
 
 
-def heur_block_n(args):
-    return triton.next_power_of_2(args["N"])
-
-
-def heur_num_warps(args):
-    if args["N"] <= 1024:
-        return 4
-    elif args["N"] <= 2048:
-        return 8
-    else:
-        return 16
-
-
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
-)
 @triton.jit
-def log_softmax_kernel(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
-    offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    input_ptrs = input_ptr + offset
-    inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-    row_minus_max = inp - tl.max(inp, axis=1)[:, None]
-    numerator = tl.exp(row_minus_max)
-    denominator = tl.sum(numerator, axis=1)[:, None]
-    softmax_output = tl.log(numerator / denominator)
-    output_ptrs = output_ptr + offset
-    tl.store(output_ptrs, softmax_output, mask=mask)
+def log_softmax_forward(x, dim : tl.constexpr):
+    # y = (x - max) - log(sum(exp(x - max)))
+
+    # (M, N) => (M)
+    (values, ) = tl.max_(x, axis=dim)
+    # (M, 1)
+    values = tl.expand_dims(values, -1)
+    # (M, N)
+    values = tl.broadcast_to(values, x.shape)
+    # (M, N)
+    x_tmp = x - values
+    # (M, N)
+    exp_tmp = tl.exp(x_tmp)
+    # (M)
+    exp_tmp = tl.sum_(exp_tmp, axis=dim)
+    # (M)
+    log_tmp = tl.log(exp_tmp)
+    # (M, 1)
+    log_tmp = tl.expand_dims(log_tmp, -1)
+    # (M, N)
+    log_tmp = tl.broadcast_to(log_tmp, x.shape)
+
+    # (M, N)
+    out = x_tmp - log_tmp
+
+    return out
 
 
-@libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK_M": 1}, num_stages=4),
-        triton.Config({"BLOCK_M": 1}, num_stages=5),
-        triton.Config({"BLOCK_M": 2}, num_stages=4),
-        triton.Config({"BLOCK_M": 2}, num_stages=5),
-        triton.Config({"BLOCK_M": 4}, num_stages=4),
-        triton.Config({"BLOCK_M": 4}, num_stages=5),
-        triton.Config({"BLOCK_M": 8}, num_stages=4),
-        triton.Config({"BLOCK_M": 8}, num_stages=5),
-    ],
-    key=[
-        "M",
-        "N",
-    ],
-)
-@triton.heuristics(
-    {
-        "BLOCK_N": heur_block_n,
-        "num_warps": heur_num_warps,
-    }
-)
 @triton.jit
-def log_softmax_backward_kernel(
-    out_ptr,
-    out_grad_ptr,
-    in_grad_ptr,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_offset = tl.arange(0, BLOCK_N)
+def log_softmax_backward(x, out_grad, dim : tl.constexpr):
+    # dx = dy - softmax(x) * sum(dy)
 
-    offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
-    out_ptrs = out_ptr + offsets
-    out = tl.load(out_ptrs, mask=mask).to(tl.float32)
-    out_grad_ptrs = out_grad_ptr + offsets
-    out_grad = tl.load(out_grad_ptrs, mask=mask).to(tl.float32)
+    # (M, N)
+    softmax_tmp = tl.exp(x)
+    # (M, N) => (M)
+    tmp = tl.sum_(out_grad, axis=dim)
+    # (M, 1)
+    tmp = tl.expand_dims(tmp, -1)
+    # (M, N)
+    tmp = tl.broadcast_to(tmp, x.shape)
 
-    scale = tl.sum(out_grad, 1)
-    in_grad = out_grad - tl.exp(out.to(tl.float32)) * scale[:, None]
+    x_grad = out_grad - softmax_tmp * tmp
 
-    in_grad_ptrs = in_grad_ptr + offsets
-    tl.store(in_grad_ptrs, in_grad, mask=mask)
+    return x_grad
 
 
 class LogSoftmax(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, x, dim, dtype):
-        logging.debug("GEMS LOG_SOFTMAX")
+    def forward(ctx, x, dim):
+        logging.debug("GEMS LOG_SOFTMAX FORWARD")
 
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
-        dim = dim % x.ndim
-        M = 1
-        N = x.shape[dim]
-        for i in range(dim):
-            M *= x.shape[i]
         inp = x.contiguous()
-        if dtype is None:
-            dtype = x.dtype
-        out = torch.empty_like(inp, dtype=dtype)
-        K = inp.numel() // M // N
-
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
-        with torch.cuda.device(inp.device):
-            log_softmax_kernel[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-            )
+        out = unwrap(log_softmax_forward[(1,)](inp, dim))
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out
@@ -158,36 +69,19 @@ class LogSoftmax(torch.autograd.Function):
     @staticmethod
     def backward(ctx, out_grad):
         logging.debug("GEMS LOG_SOFTMAX VJP")
-
-        dim = ctx.dim
         (out,) = ctx.saved_tensors
 
+        dim = ctx.dim
         assert dim >= -out.ndim and dim < out.ndim, "Invalid dim"
-        dim = dim % out.ndim
-        M = 1
-        N = out.shape[dim]
-        for i in range(dim):
-            M *= out.shape[i]
 
         out_grad = out_grad.contiguous()
-        in_grad = torch.empty_like(out)
-        K = out.numel() // M // N
-
-        grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            K,
-        )
-        with torch.cuda.device(in_grad.device):
-            log_softmax_backward_kernel[grid](
-                out,
-                out_grad,
-                in_grad,
-                M,
-                N,
-                K,
-            )
-        return in_grad, None, None
+        in_grad = unwrap(log_softmax_backward[(1,)](out, out_grad, dim))
+        return in_grad, None
 
 
 def log_softmax(x, dim=-1, dtype=None):
-    return LogSoftmax.apply(x, dim, dtype)
+    if dim < 0:
+        dim = x.ndim + dim
+    if dim >= x.ndim or dim < 0:
+        raise ValueError(f"dim {dim} is out of bounds for tensor of dimension {x.ndim}")
+    return LogSoftmax.apply(x, dim)
