@@ -12,7 +12,7 @@ REPETITION = 1000
 
 if os.getenv("TRITON_TX8BE_E2E_BACKEND"):
     device = "cpu"
-    os.environ["TRITON_TX8BE_E2E_LOG"] = 0
+    os.environ["TRITON_TX8BE_E2E_LOG"] = "0"
 else:
     torch.backends.cuda.matmul.allow_tf32 = False
     device = "cuda"
