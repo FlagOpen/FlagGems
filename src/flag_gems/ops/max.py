@@ -27,7 +27,6 @@ def max_kernel_1(
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=DTYPE_MIN)
     max_val = tl.max(inp_val)
-    # tl.device_print("max_val: ", max_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, max_val)
 
