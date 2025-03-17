@@ -38,26 +38,7 @@ def sigmoid_backward(grad_output, output):
     return grad_input
 
 
-class InplaceSigmoid(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, A):
-        logging.debug("GEMS SIGMOID_ FORWARD")
-        if A.requires_grad is True:
-            out = sigmoid_forward(A.to(torch.float32))
-            ctx.save_for_backward(out)
-            A.copy_(out.to(A.dtype))
-        else:
-            sigmoid_forward(A, out0=A)
-        ctx.mark_dirty(A)
-        return A
-
-    @staticmethod
-    def backward(ctx, out_grad):
-        logging.debug("GEMS SIGMOID_ BACKWARD")
-        (out,) = ctx.saved_tensors
-        in_grad = sigmoid_backward_kernel(out, out_grad)
-        return in_grad
-
-
 def sigmoid_(A):
-    return InplaceSigmoid.apply(A)
+    logging.debug("GEMS SIGMOID_ FORWARD")
+    out = sigmoid_forward(A, out0=A)
+    return out
