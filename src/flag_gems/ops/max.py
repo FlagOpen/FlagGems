@@ -70,7 +70,7 @@ def max_kernel(
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    result_value = tl.full([BLOCK_M], value=DTYPE_MIN, dtype=tl.float32)
+    result_value = tl.full([BLOCK_M], value=-float("inf"), dtype=tl.float32)
     result_index = tl.zeros([BLOCK_M], dtype=tl.int64)
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
