@@ -144,6 +144,14 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         bias=ref_bias,
         eps=eps,
     )
+    # ref_mean = torch.mean(ref_inp, dim=1)
+    # ref_var = torch.var(ref_inp, dim=1, correction=0)
+    # ref_rstd = torch.rsqrt(ref_var + eps)
+
+    # print(f'ref_mean = {ref_mean.cpu()}')
+    # print(f'ref_var = {ref_var.cpu()}')
+    # print(f'ref_rstd = {ref_rstd.cpu()}')
+
     with flag_gems.use_gems():
         res_out = torch.layer_norm(
             inp,
@@ -155,7 +163,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    if shape in [(1, 40999), (100, 40499)]:
+    if shape in [(100, 40499)]:
         pytest.skip("wait for backward support")
 
     out_grad = torch.randn_like(inp)

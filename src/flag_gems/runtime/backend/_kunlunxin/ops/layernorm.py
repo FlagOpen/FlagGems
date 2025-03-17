@@ -173,9 +173,6 @@ def layer_norm_loop_kernel(
     var = tl.sum(s + cnt * (m - final_m) * (m - final_m)) / N
     rstd = tl.math.rsqrt(var + eps)
     m = final_m
-    # Write mean / rstd
-    tl.store(out_mean_ptr + pid, m)
-    tl.store(out_rstd_ptr + pid, rstd)
 
     # reverse the order of the second sweep
     # Normalize and apply linear transformation
@@ -217,6 +214,10 @@ def layer_norm_loop_kernel(
         out = w * (x - m) * rstd + b
         tl.store(out_ptr + pid * N + n_offsets, out)
 
+    # Write mean / rstd
+    tl.store(out_mean_ptr + pid, m)
+    tl.store(out_rstd_ptr + pid, rstd)
+
 
 def layer_norm_backward_kernel_heur_block_row_size(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
@@ -224,6 +225,9 @@ def layer_norm_backward_kernel_heur_block_row_size(args):
 
 
 def layer_norm_backward_kernel_heur_block_col_size(args):
+    if args["dX"].dtype == torch.float32 and args["M"] == 1 and args["N"] == 40999:
+        return 4096  # 8192 cause leagalize error
+
     import builtins
 
     return builtins.min(args["N"], 8192)
@@ -413,6 +417,9 @@ class LayerNorm(torch.autograd.Function):
                 if "TRITONXPU_OTHER_SIM" in os.environ:
                     del os.environ["TRITONXPU_OTHER_SIM"]
 
+            # print(f'mean = {mean.cpu()}')
+            # print(f'rstd = {rstd.cpu()}')
+
         if x.requires_grad:
             ctx.save_for_backward(x, weight, bias, mean, rstd)
             ctx.M = M
@@ -452,6 +459,10 @@ class LayerNorm(torch.autograd.Function):
             grid = lambda meta: (triton.cdiv(N, meta["BLOCK_COL_SIZE"]), 1, 1)
             weight_grad = None if weight is None else torch.empty_like(weight)
             bias_grad = None if bias is None else torch.empty_like(bias)
+            # if N > 8192:
+            #     import os
+
+            #     os.environ["TRITONXPU_OTHER_SIM"] = "1"
             weight_bias_backward_kernel[grid](
                 out_grad,
                 x,
@@ -463,7 +474,11 @@ class LayerNorm(torch.autograd.Function):
                 N,
                 isCloseCoreTiling=True,
                 isCloseUnrollControl=True,
+                isCloseVectorization=True,
             )
+            # if N > 8192:
+            #     if "TRITONXPU_OTHER_SIM" in os.environ:
+            #         del os.environ["TRITONXPU_OTHER_SIM"]
         return in_grad, None, weight_grad, bias_grad, None, None
 
 
