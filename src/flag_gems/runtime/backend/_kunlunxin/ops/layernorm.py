@@ -134,8 +134,8 @@ def layer_norm_loop_kernel(
     bias_ptr,
     out_mean_ptr,  # pointer to the mean
     out_rstd_ptr,  # pointer to the 1/std
-    M,
-    N,
+    M: tl.constexpr,
+    N: tl.constexpr,
     eps,
     TILE_N: tl.constexpr,
 ):
@@ -224,11 +224,9 @@ def layer_norm_backward_kernel_heur_block_row_size(args):
 
 
 def layer_norm_backward_kernel_heur_block_col_size(args):
-    return args["N"]
-
     import builtins
 
-    return builtins.min(triton.next_power_of_2(args["N"]), 8192)
+    return builtins.min(args["N"], 8192)
 
 
 @libentry()
@@ -388,13 +386,16 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
         with torch_device_fn.device(x.device):
-            TILE_N = 8192  # triton.next_power_of_2(N)
+            if N > 8192:
+                TILE_N = 4096  # register pressure
+            else:
+                TILE_N = 8192  # triton.next_power_of_2(N)
             grid = (M, 1, 1)
 
-            # import os
+            if N > 8192:
+                import os
 
-            # os.environ["TRITONXPU_OTHER_SIM"] = "1"
-            # os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+                os.environ["TRITONXPU_OTHER_SIM"] = "1"
             layer_norm_loop_kernel[grid](
                 x,
                 y,
@@ -408,10 +409,9 @@ class LayerNorm(torch.autograd.Function):
                 TILE_N,
                 isCloseUnrollControl=True,
             )
-            # if "TRITONXPU_OTHER_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_OTHER_SIM"]
-            # if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_STORE_MASK_SIM"]
+            if N > 8192:
+                if "TRITONXPU_OTHER_SIM" in os.environ:
+                    del os.environ["TRITONXPU_OTHER_SIM"]
 
         if x.requires_grad:
             ctx.save_for_backward(x, weight, bias, mean, rstd)

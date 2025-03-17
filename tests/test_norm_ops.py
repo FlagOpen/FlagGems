@@ -110,7 +110,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-        if shape in [(1, 40999), (100, 40499)]:
+        if shape in [(100, 40499)]:
             pytest.skip("cal error")
 
     M = shape[0]
@@ -154,6 +154,9 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         )
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    if shape in [(1, 40999), (100, 40499)]:
+        pytest.skip("wait for backward support")
 
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
