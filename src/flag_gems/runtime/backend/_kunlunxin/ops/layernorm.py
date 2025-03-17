@@ -390,8 +390,10 @@ class LayerNorm(torch.autograd.Function):
         rstd = torch.empty(M, dtype=acc_type, device=x.device)
 
         with torch_device_fn.device(x.device):
-            if N > 8192:
+            if N == 40999:  # [1, 40999]
                 TILE_N = 4096  # register pressure
+            elif M == 100 and N == 40499:  # [100, 40499]
+                TILE_N = 2048  # register pressure
             else:
                 TILE_N = 8192  # triton.next_power_of_2(N)
             grid = (M, 1, 1)
@@ -400,6 +402,9 @@ class LayerNorm(torch.autograd.Function):
                 import os
 
                 os.environ["TRITONXPU_OTHER_SIM"] = "1"
+                if M == 100 and N == 40499:
+                    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+
             layer_norm_loop_kernel[grid](
                 x,
                 y,
@@ -416,6 +421,10 @@ class LayerNorm(torch.autograd.Function):
             if N > 8192:
                 if "TRITONXPU_OTHER_SIM" in os.environ:
                     del os.environ["TRITONXPU_OTHER_SIM"]
+
+                if M == 100 and N == 40499:
+                    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+                        del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
             # print(f'mean = {mean.cpu()}')
             # print(f'rstd = {rstd.cpu()}')

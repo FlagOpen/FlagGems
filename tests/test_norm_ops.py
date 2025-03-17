@@ -110,8 +110,8 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-        if shape in [(100, 40499)]:
-            pytest.skip("cal error")
+        # if shape in [(100, 40499)]:
+        #     pytest.skip("cal error")
 
     M = shape[0]
     N = shape[1]
