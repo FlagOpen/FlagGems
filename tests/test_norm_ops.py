@@ -110,9 +110,6 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-        # if shape in [(100, 40499)]:
-        #     pytest.skip("cal error")
-
     M = shape[0]
     N = shape[1]
     layer_shape = [
@@ -144,6 +141,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         bias=ref_bias,
         eps=eps,
     )
+
     # ref_mean = torch.mean(ref_inp, dim=1)
     # ref_var = torch.var(ref_inp, dim=1, correction=0)
     # ref_rstd = torch.rsqrt(ref_var + eps)

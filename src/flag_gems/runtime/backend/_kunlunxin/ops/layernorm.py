@@ -401,7 +401,7 @@ class LayerNorm(torch.autograd.Function):
         with torch_device_fn.device(x.device):
             if N == 40999:  # [1, 40999]
                 TILE_N = 4096  # register pressure
-            elif M == 100 and N == 40499:  # [100, 40499]
+            elif M > 1 and N == 40499:  # [100, 40499]
                 TILE_N = 2048  # register pressure
             else:
                 TILE_N = 8192  # triton.next_power_of_2(N)
@@ -451,6 +451,9 @@ class LayerNorm(torch.autograd.Function):
         (x, weight, bias, mean, rstd) = ctx.saved_tensors
         M = ctx.M
         N = ctx.N
+
+        # print(f'mean = {mean.cpu()}')
+        # print(f'rstd = {rstd.cpu()}')
 
         with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
