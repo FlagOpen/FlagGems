@@ -127,6 +127,22 @@ def test_accuracy_max_without_dim(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.max
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_without_dim_all_neg_inf(shape, dtype):
+    inp = torch.full(
+        shape, fill_value=float("-inf"), dtype=dtype, device=flag_gems.device
+    )
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.max(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.max(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
 # cambricon add
 @pytest.mark.max
 @pytest.mark.skipif(flag_gems.vendor_name != "cambricon", reason="cambricon test only")
@@ -240,6 +256,23 @@ def test_accuracy_min_without_dim(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
         inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.min(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.min(inp)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.min
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_min_without_dim_all_inf(shape, dtype):
+    # ensure that padding value used in min is inf, not max value
+    inp = torch.full(
+        shape, fill_value=float("inf"), dtype=dtype, device=flag_gems.device
+    )
     ref_inp = to_reference(inp)
 
     ref_out = torch.min(ref_inp)
