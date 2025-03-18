@@ -234,9 +234,12 @@ def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
 
 @pytest.mark.min
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_min_without_dim(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out = torch.min(ref_inp)
@@ -250,9 +253,12 @@ def test_accuracy_min_without_dim(shape, dtype):
 @pytest.mark.min
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIM)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_min_dim(shape, dim, keepdim, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(-10000, 10000, shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
 
     ref_out_value, ref_out_index = torch.min(ref_inp, dim=dim, keepdim=keepdim)

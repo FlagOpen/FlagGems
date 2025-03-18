@@ -18,13 +18,14 @@ def min_kernel_1(
     inp,
     mid,
     M,
+    DTYPE_MAX,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+    inp_val = tl.load(inp_ptrs, mask=mask, other=DTYPE_MAX)
     min_val = tl.min(inp_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, min_val)
@@ -32,11 +33,11 @@ def min_kernel_1(
 
 @libentry()
 @triton.jit
-def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+def min_kernel_2(mid, out, mid_size, DTYPE_MAX, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=float("inf"))
+    mid_val = tl.load(mid_ptrs, mask=mask, other=DTYPE_MAX)
     min_val = tl.min(mid_val)
     tl.store(out, min_val)
 
@@ -61,6 +62,7 @@ def min_kernel(
     M,
     N,
     K,
+    DTYPE_MAX,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -76,7 +78,7 @@ def min_kernel(
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=DTYPE_MAX)
         local_min, local_argmin = tl.min(inp_vals, 1, return_indices=True)
         # if return indices is not supported, call a tl.argmax in addition
         # local_argmin = tl.argmin(inp_vals, 1)
@@ -103,9 +105,13 @@ def min(inp):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
+    if torch.is_floating_point(inp):
+        dtype_max = torch.finfo(inp.dtype).max
+    else:
+        dtype_max = torch.iinfo(inp.dtype).max
     with torch_device_fn.device(inp.device):
-        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        min_kernel_1[(mid_size, 1, 1)](inp, mid, M, dtype_max, block_size)
+        min_kernel_2[(1, 1, 1)](mid, out, mid_size, dtype_max, block_mid)
     return out
 
 
@@ -133,8 +139,12 @@ def min_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
+    if torch.is_floating_point(inp):
+        dtype_max = torch.finfo(inp.dtype).max
+    else:
+        dtype_max = torch.iinfo(inp.dtype).max
     with torch_device_fn.device(inp.device):
-        min_kernel[grid](inp, out_value, out_index, M, N, K)
+        min_kernel[grid](inp, out_value, out_index, M, N, K, dtype_max)
     Min_out = namedtuple("min", ["values", "indices"])
     out = Min_out(values=out_value, indices=out_index)
     return out
