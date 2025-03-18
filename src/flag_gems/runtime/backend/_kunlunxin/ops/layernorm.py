@@ -220,8 +220,10 @@ def layer_norm_loop_kernel(
 
 
 def layer_norm_backward_kernel_heur_block_row_size(args):
+    if args["dX"].dtype == torch.bfloat16 and args["M"] == 100 and args["N"] == 40499:
+        return args["M"]
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-    return 1
+    # return 1
 
 
 def layer_norm_backward_kernel_heur_block_col_size(args):
@@ -386,6 +388,7 @@ class LayerNorm(torch.autograd.Function):
         M = x.numel() // N
 
         x = x.contiguous()
+        # print(f'fwd x = {x.cpu()}')
         if weight is not None:
             weight = weight.contiguous()
         if bias is not None:
@@ -452,17 +455,23 @@ class LayerNorm(torch.autograd.Function):
         M = ctx.M
         N = ctx.N
 
+        # print(f'bwd x = {x.cpu()}')
         # print(f'mean = {mean.cpu()}')
         # print(f'rstd = {rstd.cpu()}')
 
         with torch_device_fn.device(x.device):
             in_grad = torch.empty_like(x)
+            # in_grad = out_grad
+            # print(f'in_grad.shape = {in_grad.shape}')
+            # print(f'in_grad = {in_grad.cpu()}')
             grid = lambda meta: (triton.cdiv(M, meta["BLOCK_ROW_SIZE"]), 1, 1)
 
             import os
 
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+            if x.dtype == torch.bfloat16 and M == 100 and N == 40499:
+                os.environ["TRITONXPU_CLOSE_OPTIMIZE"] = "1"
 
             if M == 100 and N == 40499:
                 isCloseUnrollControl = True
@@ -483,11 +492,14 @@ class LayerNorm(torch.autograd.Function):
                 isCloseUnrollControl=isCloseUnrollControl,
                 isCloseCoreTiling=isCloseCoreTiling,
             )
+            # print(f'out_grad = {out_grad.cpu()}')
 
             if "TRITONXPU_OTHER_SIM" in os.environ:
                 del os.environ["TRITONXPU_OTHER_SIM"]
             if "TRITONXPU_STORE_MASK_SIM" in os.environ:
                 del os.environ["TRITONXPU_STORE_MASK_SIM"]
+            if "TRITONXPU_CLOSE_OPTIMIZE" in os.environ:
+                del os.environ["TRITONXPU_CLOSE_OPTIMIZE"]
 
         if weight is None and bias is None:
             return in_grad, None, None, None, None, None

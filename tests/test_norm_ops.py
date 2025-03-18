@@ -118,6 +118,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
     inp = torch.randn(
         shape[:2], dtype=dtype, device=flag_gems.device, requires_grad=True
     )
+    # print(f'inp(X) = {inp.cpu()}')
     if wb_none:
         weight = None
         bias = None
@@ -177,8 +178,8 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
-    if shape in [(100, 40499)] and dtype == torch.bfloat16:
-        pytest.skip("wait for backward support")
+    # if shape in [(100, 40499)] and dtype == torch.bfloat16:
+    #     pytest.skip("wait for backward support")
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
 
