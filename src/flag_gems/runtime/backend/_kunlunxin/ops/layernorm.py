@@ -228,6 +228,9 @@ def layer_norm_backward_kernel_heur_block_col_size(args):
     if args["dX"].dtype == torch.float32 and args["M"] == 1 and args["N"] == 40999:
         return 4096  # 8192 cause leagalize error
 
+    if args["dX"].dtype == torch.float32 and args["M"] == 100 and args["N"] == 40499:
+        return 4096  # 8192 cause leagalize error
+
     import builtins
 
     return builtins.min(args["N"], 8192)
@@ -452,8 +455,24 @@ class LayerNorm(torch.autograd.Function):
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
 
+            if out_grad.dtype == torch.float32 and M == 100 and N == 40499:
+                isCloseUnrollControl = True
+                isCloseCoreTiling = True
+            else:
+                isCloseUnrollControl = False
+                isCloseCoreTiling = False
+
             layer_norm_backward_kernel[grid](
-                out_grad, x, weight, mean, rstd, in_grad, M, N
+                out_grad,
+                x,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                M,
+                N,
+                isCloseUnrollControl=isCloseUnrollControl,
+                isCloseCoreTiling=isCloseCoreTiling,
             )
 
             if "TRITONXPU_OTHER_SIM" in os.environ:

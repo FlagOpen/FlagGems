@@ -163,8 +163,8 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-    if shape in [(100, 40499)]:
-        pytest.skip("wait for backward support")
+    # if shape in [(100, 40499)]:
+    #     pytest.skip("wait for backward support")
 
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
