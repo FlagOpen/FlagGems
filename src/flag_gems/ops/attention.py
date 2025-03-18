@@ -744,7 +744,7 @@ def flash_fwd_kernel(
         Q = tl.load(Q_ptr + Q_off, cache_modifier='.cg')
     else:
         Q = tl.load(Q_ptr + Q_off, mask=qmask, cache_modifier='.cg')
-    
+
     if return_P:
         P_ptr += ((bid * NUM_HEADS + hid) * seqlen_q_rounded + m_block * BLOCK_M) * seqlen_k_rounded
         P_ptr += (n_block_max - 1) * BLOCK_N
@@ -753,9 +753,6 @@ def flash_fwd_kernel(
     O_ = tl.zeros((BLOCK_M, HEAD_DIM), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
-
-    # Start from the right most block
-    n_block = n_block_max - 1
 
     h_hk_ratio = h // hk
     K_ptr += bid * k_b_stride
@@ -857,7 +854,7 @@ def flash_fwd_kernel(
                 V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
         O_ = tl.dot(P, V, O_, allow_tf32=False)
 
-    for col_start in tl.range(min_col, max_col - masking_cols, step=BLOCK_N, num_stages=num_stages):
+    for col_start in tl.range(col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages):
     # for r_blk_idx in tl.range(n_block_max - n_masking_blocks - 1, n_block_min - 1, step=-1, num_stages=num_stages):
         off = col_start * k_s_stride
         K = tl.load(p_bk0 + off, cache_modifier=".cg")
