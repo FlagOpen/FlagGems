@@ -602,12 +602,10 @@ def softmax_rescale(
 
 
 def block_m_heuristic(headdim, is_dropout):
-    # return 128 if headdim <= 128 else 64
-    return 64
+    return 128 if headdim <= 128 else 64
 
 def block_n_heuristic(headdim, is_dropout):
-    # return 128 if headdim <= 128 else 64
-    return 64
+    return 64 if headdim <= 64 else 32 
 
 def block_m_splitkv_heuristic(headdim):
     return 128 if headdim <= 128 else 64
@@ -634,12 +632,12 @@ def block_n_splitkv_heuristic(headdim):
         'BLOCK_M': lambda args: block_m_heuristic(args["HEAD_DIM"], args["is_dropout"]),
         'BLOCK_N': lambda args: block_n_heuristic(args["HEAD_DIM"], args["is_dropout"]),
         'num_warps': lambda args: 4,
-        'num_stages': lambda args: 3,
+        'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
         'PRE_LOAD_V': lambda args: True,
         'IS_EVEN_MN': lambda args: (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0),
     }
 )
-@triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "q_b_stride", "k_b_stride", "o_b_stride", "philox_seed", "philox_offset", "pdrop_u8", "slopes_batch_stride"])
+@triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
 def flash_fwd_kernel(
     Q_ptr,
     K_ptr,
@@ -660,8 +658,8 @@ def flash_fwd_kernel(
     o_b_stride,
     o_s_stride,
     o_h_stride,
-    h,
-    hk,
+    h: tl.constexpr,
+    hk: tl.constexpr,
     pSlopes,
     philox_seed,
     philox_offset,
@@ -703,37 +701,16 @@ def flash_fwd_kernel(
     if is_causal or is_local:
         col_max = min(col_max, (m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + ws_right)
 
-    # if is_local:
-    #     n_block_min = max(0, (m_block * BLOCK_M + seqlen_k - seqlen_q - ws_left) / BLOCK_N)
-    # else:
-    #     n_block_min = 0 
-
-    # n_block_max = tl.cdiv(seqlen_k, BLOCK_N)
-    
-    # if is_causal or is_local:
-    #     n_block_max = min(n_block_max,
-    #                       tl.cdiv((m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + ws_right, BLOCK_N))
-
     if has_alibi:
         alibi_offset = bid * slopes_batch_stride + hid
         alibi_slope = tl.load(pSlopes + alibi_offset)
         alibi_slope /= scale
     else:
         alibi_slope = 0.0
-
-    if (not is_causal) and (not is_local):
-        if IS_EVEN_MN:
-            n_masking_blocks: tl.constexpr = 0
-        else:
-            n_masking_blocks: tl.constexpr = 1
-    elif is_causal and IS_EVEN_MN: # causal implies ws_right is zero
-        n_masking_blocks: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N)
-    else:
-        # local and not causal, 
-        n_masking_blocks: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) + 1
     
-    masking_cols = n_masking_blocks * BLOCK_N
+    # masking_cols: tl.constexpr = n_masking_blocks * BLOCK_N
 
+    q_b_stride = tl.multiple_of(q_b_stride, HEAD_DIM * h)
     Q_ptr += bid * q_b_stride
     Q_ptr += hid * q_h_stride
     row_start = m_block * BLOCK_M
@@ -754,6 +731,7 @@ def flash_fwd_kernel(
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
     rowsum_ = tl.zeros([BLOCK_M], dtype=tl.float32)
 
+    k_b_stride = tl.multiple_of(k_b_stride, HEAD_DIM * hk)
     h_hk_ratio = h // hk
     K_ptr += bid * k_b_stride
     K_ptr += (hid // h_hk_ratio) * k_h_stride
@@ -766,8 +744,24 @@ def flash_fwd_kernel(
     p_bk0 = K_ptr + K_offset
     p_bv0 = V_ptr + V_offset
 
-    for col_start in tl.range(max(col_min, col_max - masking_cols), col_max, step=BLOCK_N):
-    # for r_blk_idx in tl.range(0, min(n_masking_blocks, n_blocks_max - n_blocks_min)):
+    if (not is_causal) and (not is_local):
+        if IS_EVEN_MN:
+            # n_masking_blocks: tl.constexpr = 0
+            masking_cols: tl.constexpr = 0
+        else:
+            # n_masking_blocks: tl.constexpr = 1
+            masking_cols: tl.constexpr = BLOCK_N
+    elif is_causal and IS_EVEN_MN: # causal implies ws_right is zero
+        # n_masking_blocks: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N)
+        masking_cols: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) * BLOCK_N
+    else:
+        # local and not causal, 
+        # n_masking_blocks: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) + 1
+        masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
+
+    for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
+        col_start = col_max - col_shift - BLOCK_N
+        col_start = tl.multiple_of(col_start, BLOCK_N)
         off = col_start * k_s_stride
         if IS_EVEN_MN:
             K = tl.load(p_bk0 + off, cache_modifier=".cg")
@@ -796,7 +790,6 @@ def flash_fwd_kernel(
             has_alibi=has_alibi
         )
 
-        # is_init = (n_block == n_block_max - 1).to(tl.int1)
         O_, P, rowmax_, rowsum_ = softmax_rescale(
             O_,
             S,
@@ -804,7 +797,6 @@ def flash_fwd_kernel(
             rowsum_,
             softmax_scale_log2e=softmax_scale_log2e,
             is_border=(is_causal or is_local),
-            # is_init=is_init
         )
         P = P.to(O_ptr.type.element_ty)
 
@@ -856,6 +848,7 @@ def flash_fwd_kernel(
 
     for col_start in tl.range(col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages):
     # for r_blk_idx in tl.range(n_block_max - n_masking_blocks - 1, n_block_min - 1, step=-1, num_stages=num_stages):
+        # col_start = tl.multiple_of(col_start, BLOCK_N)
         off = col_start * k_s_stride
         K = tl.load(p_bk0 + off, cache_modifier=".cg")
         # if PRE_LOAD_V:
@@ -882,7 +875,6 @@ def flash_fwd_kernel(
             has_alibi=has_alibi
         )
 
-        # is_init = (n_block == n_block_max - 1).to(tl.int1)
         O_, P, rowmax_, rowsum_ = softmax_rescale(
             O_,
             S,
@@ -951,6 +943,7 @@ def flash_fwd_kernel(
     O = O_.to(O_ptr.type.element_ty)
 
     # Write back output
+    o_b_stride = tl.multiple_of(o_b_stride, HEAD_DIM * h)
     O_ptr += bid * o_b_stride
     O_ptr += hid * o_h_stride
     O_offset = row_idx[:, None] * o_s_stride + tl.arange(0, HEAD_DIM)
@@ -1492,6 +1485,8 @@ def mha_fwd(
             NUM_HEADS_K=num_heads_k,
         )
         print(f'{kernel.name} shared memory:', kernel.metadata.shared)
+        print(f'{kernel.name} num_warps:', kernel.metadata.num_warps)
+        print(f'{kernel.name} num_stages:', kernel.metadata.num_stages)
         # print(kernel.asm['ttgir'])
     
     if n_splits > 1:
