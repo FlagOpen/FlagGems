@@ -92,10 +92,19 @@ def dropout_backward_kernel(
 UNROLL = 4
 
 
-def dropout(input, p, train):
+def dropout(input, p, train=True):
     logging.debug("GEMS NATIVE DROPOUT FORWARD")
+    if not train or p == 0:
+        out = input.clone()
+        mask = torch.ones_like(input, dtype=torch.bool)
+        return out, mask
+    if p == 1:
+        out = torch.zeros_like(input)
+        mask = torch.zeros_like(input, dtype=torch.bool)
+        return out, mask
     assert p > 0.0 and p < 1.0, "p must be in (0, 1)"
     device = input.device
+    # TODO: remove contiguous enforcement
     input = input.contiguous()
     out = torch.empty_like(input)
     mask = torch.empty_like(input, dtype=torch.bool)

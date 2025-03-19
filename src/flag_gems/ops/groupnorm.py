@@ -183,7 +183,7 @@ def weight_bias_backward_kernel(
 def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     logging.debug("GEMS GROUPNORM FORWARD")
 
-    group_size = C // group
+    group_size = triton.cdiv(C, group)
     input = input.contiguous()
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
@@ -206,7 +206,7 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
             HxW,
             group,
             eps,
-            BLOCK_GROUP_SIZE=triton.next_power_of_2(C // group),
+            BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
             BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
         )
     return y, mean, rstd
@@ -222,7 +222,7 @@ def group_norm_backward(
     mean = mean.contiguous()
     rstd = rstd.contiguous()
     weight = None if weight is None else weight.contiguous()
-    group_size = C // group
+    group_size = triton.cdiv(C, group)
 
     if output_mask[0]:
         grad_inp = torch.empty_like(input)
@@ -239,7 +239,7 @@ def group_norm_backward(
                 grad_inp,
                 C,
                 HxW,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(C // group),
+                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
             )
     else:
         grad_inp = None
