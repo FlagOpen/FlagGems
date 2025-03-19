@@ -116,6 +116,7 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     N = weight.shape[-1]
 
     BLOCK_SIZE = triton.next_power_of_2(N)
+    # TODO: remove contiguous enforcement
     indices = indices.contiguous()
     weight = weight.contiguous()
     output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
