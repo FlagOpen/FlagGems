@@ -707,8 +707,6 @@ def flash_fwd_kernel(
         alibi_slope /= scale
     else:
         alibi_slope = 0.0
-    
-    # masking_cols: tl.constexpr = n_masking_blocks * BLOCK_N
 
     q_b_stride = tl.multiple_of(q_b_stride, HEAD_DIM * h)
     Q_ptr += bid * q_b_stride
@@ -746,17 +744,13 @@ def flash_fwd_kernel(
 
     if (not is_causal) and (not is_local):
         if IS_EVEN_MN:
-            # n_masking_blocks: tl.constexpr = 0
             masking_cols: tl.constexpr = 0
         else:
-            # n_masking_blocks: tl.constexpr = 1
             masking_cols: tl.constexpr = BLOCK_N
     elif is_causal and IS_EVEN_MN: # causal implies ws_right is zero
-        # n_masking_blocks: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N)
         masking_cols: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) * BLOCK_N
     else:
         # local and not causal, 
-        # n_masking_blocks: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) + 1
         masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
 
     for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
@@ -847,16 +841,12 @@ def flash_fwd_kernel(
         O_ = tl.dot(P, V, O_, allow_tf32=False)
 
     for col_start in tl.range(col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages):
-    # for r_blk_idx in tl.range(n_block_max - n_masking_blocks - 1, n_block_min - 1, step=-1, num_stages=num_stages):
         # col_start = tl.multiple_of(col_start, BLOCK_N)
         off = col_start * k_s_stride
         K = tl.load(p_bk0 + off, cache_modifier=".cg")
-        # if PRE_LOAD_V:
-        #     V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
-        S = tl.dot(Q, K)
-
         if PRE_LOAD_V:
-            V = tl.load(p_bv0 + off, cache_modifier=".cg")
+            V = tl.load(V_ptr + V_offset, cache_modifier=".cg")
+        S = tl.dot(Q, K)
 
         col_idx = col_start + tl.arange(0, BLOCK_N)
         row_idx = row_start + tl.arange(0, BLOCK_M)
@@ -1113,7 +1103,6 @@ def flash_fwd_splitkv_kernel(
         )
         # col_idx -= BLOCK_N
 
-        is_init = (n_block == n_block_max - 1).to(tl.int1)
         O_, P, rowmax_, rowsum_ = softmax_rescale(
             O_,
             S,
@@ -1121,7 +1110,6 @@ def flash_fwd_splitkv_kernel(
             rowsum_,
             softmax_scale_log2e=softmax_scale_log2e,
             is_border=(is_causal or is_local),
-            is_init=is_init
         )
         P = P.to(Q_ptr.type.element_ty)
 
@@ -1163,7 +1151,6 @@ def flash_fwd_splitkv_kernel(
         )
         # col_idx -= BLOCK_N
 
-        is_init = (n_block == n_block_max - 1).to(tl.int1)
         O_, P, rowmax_, rowsum_ = softmax_rescale(
             O_,
             S,
@@ -1171,7 +1158,6 @@ def flash_fwd_splitkv_kernel(
             rowsum_,
             softmax_scale_log2e=softmax_scale_log2e,
             is_border=is_local,
-            is_init=is_init
         )
 
         P = P.to(Q_ptr.type.element_ty)
