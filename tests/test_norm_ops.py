@@ -46,6 +46,8 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
     )
+    # print(f'inp = {inp.cpu()}')
+
     if wb_none:
         weight = None
         bias = None
@@ -53,6 +55,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
         weight = torch.randn(
             size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
         )
+        # print(f'weight = {weight.cpu()}')
         bias = torch.randn(
             size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
         )
@@ -68,7 +71,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     # ref_mean = torch.mean(ref_inp.reshape([N, num_groups, -1]), dim=2)
     # ref_var = torch.var(ref_inp.reshape([N, num_groups, -1]), dim=2, correction=0)
     # ref_rstd = torch.rsqrt(ref_var + eps)
-
     # print(f'ref_mean.shape = {ref_mean.shape}')
     # print(f'ref_mean = {ref_mean.cpu()}')
     # print(f'ref_var.shape = {ref_var.shape}')
@@ -83,6 +85,12 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(inp)
+    # with torch.no_grad():
+    #     out_grad[0][0][0][0] = 1
+    #     out_grad[0][1][0][0] = 2
+    #     out_grad[0][2][0][0] = 3
+
+    # out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
 
     if wb_none:
@@ -104,8 +112,8 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
         # print(f'ref_bias_grad = {ref_bias_grad.cpu()}')
         # print(f'res_bias_grad = {res_bias_grad.cpu()}')
 
-        if wb_none is False:
-            pytest.skip("wait for res_weight_grad fix")
+        # if wb_none is False:
+        #     pytest.skip("wait for res_weight_grad fix")
         gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N * HW)
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HW)
     group_size = C // num_groups
