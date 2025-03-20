@@ -6,16 +6,17 @@ on:
   pull_request:
     branches: [ "master" ]
 
+concurrency:
+  group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   op-test:
-    concurrency:
-      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
-      cancel-in-progress: true
     runs-on: metax
-  steps:
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: FlagGems examples
         shell: bash
         run: |
