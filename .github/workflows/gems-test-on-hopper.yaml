@@ -13,6 +13,9 @@ concurrency:
 jobs:
   op-test:
     runs-on: hopper
+    concurrency:
+      group: reduction-op-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
