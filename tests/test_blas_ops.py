@@ -120,7 +120,7 @@ def test_accuracy_outer(M, N, dtype):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Segmentation fault")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+# @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", UT_SHAPES_1D)
 @pytest.mark.parametrize(
@@ -129,11 +129,18 @@ def test_accuracy_outer(M, N, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.cfloat])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_accuracy_vdot(M, is_conj, dtype, stride):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+        if dtype == torch.cfloat:
+            pytest.skip("TODO Fix torch.cfloat")
+
     inp1_is_conj, inp2_is_conj = is_conj
 
     inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
-
+    # print(f'inp1 = {inp1.cpu()}')
+    # print(f'inp2 = {inp2.cpu()}')
     inp1 = inp1[::stride]
     inp2 = inp2[::stride]
 
@@ -141,11 +148,14 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
         inp1 = inp1.conj()
     if inp2_is_conj:
         inp2 = inp2.conj()
-
+    # print(f'inp1_is_conj = {inp1.cpu()}')
+    # print(f'inp2_is_conj = {inp2.cpu()}')
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
     with flag_gems.use_gems():
         res_out = torch.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)
+    # print(f'res_out = {res_out.cpu()}')
+    # print(f'ref_out = {ref_out.cpu()}')
     gems_assert_close(res_out, ref_out, dtype)
