@@ -1,0 +1,22 @@
+name: gems-test-on-metax
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  op-test:
+    concurrency:
+      group: op-utils-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: metax
+  steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: FlagGems examples
+        shell: bash
+        run: |
+          pytest -s tests/test_pointwise_dynamic.py
