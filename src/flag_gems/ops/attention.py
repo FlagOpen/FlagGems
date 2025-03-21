@@ -422,24 +422,24 @@ def philox_(seed, subsequence, offset):
     kPhilox10B: tl.constexpr = 0xBB67AE85
     k0, k1 = u64_to_lohi(seed.to(tl.uint64))
     c0, c1 = u64_to_lohi(offset.to(tl.uint64))
-    c2, c3 = u64_to_lohi(subsequence(tl.uint64))
+    c2, c3 = u64_to_lohi(subsequence.to(tl.uint64))
 
     # pragma unroll
     kPhiloxSA: tl.constexpr = 0xD2511F53
     kPhiloxSB: tl.constexpr = 0xCD9E8D57
     for _ in range(6):
-        res0 = kPhiloxSA.to(tl.uint64) * c0.to(tl.uint64)
-        res1 = kPhiloxSB.to(tl.uint64) * c2.to(tl.uint64)
+        res0 = kPhiloxSA * c0.to(tl.uint64)
+        res1 = kPhiloxSB * c2.to(tl.uint64)
         res0_x, res0_y = u64_to_lohi(res0)
         res1_x, res1_y = u64_to_lohi(res1)
         c0, c1, c2, c3 = res1_y ^ c1 ^ k0, res1_x, res0_y ^ c3 ^ k1, res0_x
         k0 += kPhilox10A
         k1 += kPhilox10B
 
-    res0 = kPhiloxSA.to(tl.uint64) * c0.to(tl.uint64)
-    res1 = kPhiloxSB.to(tl.uint64) * c2.to(tl.uint64)
-    res0_x.res0_y = u64_to_lohi(res0)
-    res1_x.res1_y = u64_to_lohi(res1)
+    res0 = kPhiloxSA * c0.to(tl.uint64)
+    res1 = kPhiloxSB * c2.to(tl.uint64)
+    res0_x, res0_y = u64_to_lohi(res0)
+    res1_x, res1_y = u64_to_lohi(res1)
     c0, c1, c2, c3 = res1_y ^ c1 ^ k0, res1_x, res0_y ^ c3 ^ k1, res0_x
 
     return c0, c1, c2, c3
@@ -462,35 +462,30 @@ def apply_dropout_mask(
 def make_4x_dropout_mask(r_u32, p_u8, M: tl.constexpr, N: tl.constexpr):
     r = r_u32
     p = p_u8
-    m0 = tl.where(r & 0xFF < p, 0, 1)
+    # m0 = tl.where(r & 0xFF < p, 0, 1)
+    m0 = ~(r & 0xFF < p)
     r >>= 8
-    m1 = tl.where(r & 0xFF < p, 0, 1)
-    m0 = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
+    # m1 = tl.where(r & 0xFF < p, 0, 1)
+    m1 = ~(r & 0xFF < p)
+    m = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
 
     r >>= 8
-    m0 = tl.where(r & 0xFF < p, 0, 1)
+    # n0 = tl.where(r & 0xFF < p, 0, 1)
+    n0 = ~(r & 0xFF < p)
     r >>= 8
-    m1 = tl.where(r & 0xFF < p, 0, 1)
-    m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(2 * M, N)
+    # n1 = tl.where(r & 0xFF < p, 0, 1)
+    n1 = ~(r & 0xFF < p)
+    n = tl.join(n0, n1).trans(2, 0, 1).reshape(2 * M, N)
 
-    m = tl.join(m0, m1).trans(2, 0, 1).reshape(4 * M, N)
-    return m
+    mn = tl.join(m, n).trans(2, 0, 1).reshape(4 * M, N)
+    return mn
 
 
-@triton.jit(
-    do_not_specialize=[
-        "b",
-        "h",
-        "row_start",
-        "col_start",
-        "philox_seed",
-        "philox_offset",
-    ]
-)
+@triton.jit
 def apply_dropout(
     P,
-    sor,
-    soc,
+    row_start,
+    col_start,
     bid,
     hid,
     philox_seed,
@@ -501,30 +496,31 @@ def apply_dropout(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # P is of size (BLOCK_M, BLOCK_N) and its scalar bitsize is 32
-    # BLOCK_M is ensured to be a multiple of 16, BLOCK_N a multiple of 32
+    # We only need one philox call for every 16 rows because a single philox call
+    # generates 4 random uints, which are casted for 16 random draws in uint8's.
     M: tl.constexpr = BLOCK_M // 16
     N: tl.constexpr = BLOCK_N // 32
-    row = sor + tl.arange(0, M)[:, None]
-    col = soc + tl.arange(0, BLOCK_N)[None, :] // 32
+    row = row_start // 16 + tl.arange(0, M)[:, None]
+    col = col_start + tl.arange(0, BLOCK_N)[None, :]
+
+    subsequence = u64_from_lohi(row, col // 32)
 
     tid = tl.arange(0, BLOCK_N)[None, :] % 32
     philox_offset += (bid * NUM_HEADS + hid) * 32 + tid
-
-    subsequence = u64_from_lohi(row * 32, col)
+    philox_offset += subsequence * 0 
     r0, r1, r2, r3 = philox_(philox_seed, subsequence, philox_offset)
 
     # Fully unrolled due to triton's inability to concat 2d tensor
-    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, N)
-    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, N)
-    m0 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
+    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, BLOCK_N)
+    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, BLOCK_N)
+    m = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, BLOCK_N)
 
-    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, N)
-    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, N)
-    m1 = tl.join(m0, m1).trans(2, 0, 1).reshape(8 * M, N)
+    n0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, BLOCK_N)
+    n1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, BLOCK_N)
+    n = tl.join(n0, n1).trans(2, 0, 1).reshape(8 * M, BLOCK_N)
 
-    m = tl.join(m0, m1).trans(2, 0, 1).reshape(16 * M, N)
-    P = apply_dropout_mask(P, m)
+    mn = tl.join(m, n).trans(2, 0, 1).reshape(16 * M, BLOCK_N)
+    P = apply_dropout_mask(P, mn, encode_dropout_in_sign_bit=encode_dropout_in_sign_bit)
     return P
 
 
@@ -796,11 +792,9 @@ def flash_fwd_kernel(
         P = P.to(O_ptr.type.element_ty)
 
         if is_dropout:
-            row_start = m_block * (BLOCK_M // 16)
-            col_start = n_block * (BLOCK_N // 32)
-
             if return_P:
                 P_drop = P
+
                 P_drop = apply_dropout(
                     P_drop,
                     row_start,
@@ -877,9 +871,6 @@ def flash_fwd_kernel(
         P = P.to(O_ptr.type.element_ty)
 
         if is_dropout:
-            row_start = m_block * (BLOCK_M // 16)
-            col_start = n_block * (BLOCK_N // 32)
-        
             if return_P:
                 P_drop = P
                 P_drop = apply_dropout(
@@ -1346,7 +1337,7 @@ def mha_fwd(
 
         # Set dropout params
         if p_dropout > 0:
-            increment = triton.cdiv(batch_size * num_heads * 32)
+            increment = batch_size * num_heads * 32
             philox_seed, philox_offset = update_philox_state(increment)
             is_dropout = True
         else:
