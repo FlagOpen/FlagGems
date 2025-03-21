@@ -52,7 +52,7 @@ def group_norm_kernel(
     x = tl.where(xy_mask, X_val - mean, 0.0)
 
     var = tl.sum(x * x) / num_elements
-    rstd = 1 / tl.sqrt(var + eps)
+    rstd = rsqrt(var + eps)
     x_hat = x * rstd
 
     if W is None:
