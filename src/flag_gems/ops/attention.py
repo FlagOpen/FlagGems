@@ -1358,7 +1358,7 @@ def mha_fwd(
             n_splits = splits_heuristics(n_tasks, num_sms, n_blocks)
             return n_splits
             
-        n_splits = try_split_kv() if is_dropout else 1
+        n_splits = try_split_kv() if not is_dropout else 1
         print('n_splits:', n_splits)
 
         if n_splits > 1:
