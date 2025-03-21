@@ -86,11 +86,14 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 
     out_grad = torch.randn_like(inp)
     # with torch.no_grad():
-    #     out_grad[0][0][0][0] = 1
-    #     out_grad[0][1][0][0] = 2
-    #     out_grad[0][2][0][0] = 3
+    #     out_grad[0][0][0][0] = 2
+    #     out_grad[0][1][0][0] = 3
+    #     out_grad[1][0][0][0] = 4
 
     # out_grad = torch.randn_like(inp)
+    # print(f'out_grad = {out_grad.cpu()}')
+    # tmp_grad_std = torch.sum(out_grad, dim=[0, 2, 3])
+    # print(f'tmp_grad_std = {tmp_grad_std.cpu()}')
     ref_grad = to_reference(out_grad, True)
 
     if wb_none:

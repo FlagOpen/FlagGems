@@ -175,6 +175,56 @@ def weight_bias_backward_kernel(
         tl.store(dB + pid, db.to(x.dtype))
 
 
+@libentry()
+@triton.jit
+def weight_bias_backward_kernel_loop(
+    dY,
+    X,
+    Mean,
+    Rstd,
+    dW,
+    dB,
+    num_groups,
+    group_size,
+    N,
+    C,
+    HW,
+    BLOCK_N: tl.constexpr,
+    BLOCK_HW: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    group = pid // group_size
+
+    grad_y_tile = tl.zeros((BLOCK_N, BLOCK_HW), dtype=tl.float32)  # grad_y_tile
+    dw_tile = tl.zeros((BLOCK_N, BLOCK_HW), dtype=tl.float32)
+    # import pudb; pudb.set_trace()
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+
+        mean_ptr = Mean + group + n_offset * num_groups
+        rstd_ptr = Rstd + group + n_offset * num_groups
+        mr_mask = n_offset < N
+        mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
+        rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
+
+        for start_hw in range(0, HW, BLOCK_HW):
+            hw_offset = start_hw + tl.arange(0, BLOCK_HW)
+            xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
+            dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+            grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+            grad_y_tile += grad_y
+
+            x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
+            x = tl.load(x_ptr, mask=xy_mask, other=0.0)
+            x_f32 = x.to(tl.float32)
+            dw_tile += (x_f32 - mean) * rstd * grad_y
+
+    dw = tl.sum(dw_tile)
+    db = tl.sum(grad_y_tile)
+    tl.store(dW + pid, dw)
+    tl.store(dB + pid, db)
+
+
 class GroupNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, N, C, HW, num_groups, weight=None, bias=None, eps=1e-05):
@@ -291,7 +341,7 @@ class GroupNorm(torch.autograd.Function):
             return x_grad, None, None, None, None, None, None, None
 
         weight_grad = None if weight is None else torch.empty_like(weight)
-        bias_grad = None if bias is None else torch.empty_like(bias)
+        bias_grad = None if bias is None else torch.zeros_like(bias)
         # import os
         # os.environ["TRITON_INTERPRET"] = 1
         # os.environ["TRITONXPU_OTHER_SIM"] = "1"
@@ -304,28 +354,41 @@ class GroupNorm(torch.autograd.Function):
             if weight is not None and bias is not None:
                 isCloseUnrollControl = True
 
-            # if N == 32 and C == 32 and HW == 1024 and num_groups == 8:
-            #     BLOCK_N = 1
-            # else:
-            #     BLOCK_N = triton.next_power_of_2(N)
-
-            weight_bias_backward_kernel[(C, 1, 1)](
-                y_grad,
-                x,
-                mean,
-                rstd,
-                weight_grad,
-                bias_grad,
-                num_groups,
-                group_size,
-                N,
-                C,
-                HW,
-                BLOCK_N=triton.next_power_of_2(N),
-                BLOCK_HW=triton.next_power_of_2(HW),
-                isCloseUnrollControl=isCloseUnrollControl,
-                # isCloseCoreTiling=True,
-            )
+            if N == 32 and C == 32 and HW == 1024 and num_groups == 8:
+                weight_bias_backward_kernel_loop[(C, 1, 1)](
+                    y_grad,
+                    x,
+                    mean,
+                    rstd,
+                    weight_grad,
+                    bias_grad,
+                    num_groups,
+                    group_size,
+                    N,
+                    C,
+                    HW,
+                    BLOCK_N=1,
+                    BLOCK_HW=triton.next_power_of_2(HW),
+                    isCloseUnrollControl=True,
+                    isCloseCoreTiling=True,
+                )
+            else:
+                weight_bias_backward_kernel[(C, 1, 1)](
+                    y_grad,
+                    x,
+                    mean,
+                    rstd,
+                    weight_grad,
+                    bias_grad,
+                    num_groups,
+                    group_size,
+                    N,
+                    C,
+                    HW,
+                    BLOCK_N=triton.next_power_of_2(N),
+                    BLOCK_HW=triton.next_power_of_2(HW),
+                    isCloseUnrollControl=isCloseUnrollControl,
+                )
 
             # if "TRITONXPU_OTHER_SIM" in os.environ:
             #     del os.environ["TRITONXPU_OTHER_SIM"]
