@@ -214,10 +214,10 @@ class GroupNorm(torch.autograd.Function):
                 BLOCK_HW_SIZE=triton.next_power_of_2(HW),  # 1024
             )
 
-            # if "TRITONXPU_OTHER_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_OTHER_SIM"]
-            # if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-            #     del os.environ["TRITONXPU_STORE_MASK_SIM"]
+            if "TRITONXPU_OTHER_SIM" in os.environ:
+                del os.environ["TRITONXPU_OTHER_SIM"]
+            if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+                del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
         if x.requires_grad:
             ctx.save_for_backward(x, weight, bias, mean, rstd)
@@ -227,7 +227,7 @@ class GroupNorm(torch.autograd.Function):
             ctx.C = C
             ctx.HW = HW
 
-        print(f"mean.shape = {mean.shape}")
+        # print(f"mean.shape = {mean.shape}")
         # print(f'mean = {mean.cpu()}')
         # print(f'rstd.shape = {rstd.shape}')
         # print(f'rstd = {rstd.cpu()}')
@@ -303,6 +303,12 @@ class GroupNorm(torch.autograd.Function):
             #     os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
             if weight is not None and bias is not None:
                 isCloseUnrollControl = True
+
+            # if N == 32 and C == 32 and HW == 1024 and num_groups == 8:
+            #     BLOCK_N = 1
+            # else:
+            #     BLOCK_N = triton.next_power_of_2(N)
+
             weight_bias_backward_kernel[(C, 1, 1)](
                 y_grad,
                 x,
@@ -318,6 +324,7 @@ class GroupNorm(torch.autograd.Function):
                 BLOCK_N=triton.next_power_of_2(N),
                 BLOCK_HW=triton.next_power_of_2(HW),
                 isCloseUnrollControl=isCloseUnrollControl,
+                # isCloseCoreTiling=True,
             )
 
             # if "TRITONXPU_OTHER_SIM" in os.environ:
