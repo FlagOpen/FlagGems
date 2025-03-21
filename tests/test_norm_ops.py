@@ -45,7 +45,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-
     if wb_none:
         weight = None
         bias = None
@@ -65,6 +64,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     ref_out = torch.nn.functional.group_norm(
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
     )
+
     with flag_gems.use_gems():
         res_out = torch.group_norm(inp, num_groups, weight=weight, bias=bias, eps=eps)
 
