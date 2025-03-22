@@ -15,7 +15,8 @@ tanh = tl_extra_shim.tanh
 @triton.jit
 def gelu_none_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
-    x_gelu = 0.5 * x_fp32 * (1 + erf(x_fp32 * 0.7071067811))
+    RCP_SQRT_2: tl.constexpr = 0.7071067811
+    x_gelu = 0.5 * x_fp32 * (1 + erf(x_fp32 * RCP_SQRT_2))
     return x_gelu * y
 
 
@@ -24,18 +25,23 @@ def gelu_none_and_mul_kernel(x, y):
 )
 @triton.jit
 def gelu_none_and_mul_grad_kernel(x, y, dgrad):
+    RCP_SQRT_2: tl.constexpr = 0.7071067811
+    COEFF: tl.constexpr = 0.7978845608028654
+
     x_fp32 = x.to(tl.float32)
-    x_gelu = 0.5 * x_fp32 * (1 + erf(x_fp32 * 0.7071067811))
+    x_gelu = 0.5 * x_fp32 * (1 + erf(x_fp32 * RCP_SQRT_2))
 
-    coeff = 0.7978845608028654
-
-    d_gelu = 0.5 * (
-        1.0
-        + erf(x_fp32 * 0.7071067811)
-        + x_fp32 * coeff * tl.exp(-0.5 * x_fp32 * x_fp32)
+    d_gelu = dgrad * y
+    dx = (
+        d_gelu
+        * 0.5
+        * (
+            1.0
+            + erf(x_fp32 * RCP_SQRT_2)
+            + x_fp32 * COEFF * tl.exp(-0.5 * x_fp32 * x_fp32)
+        )
     )
 
-    dx = dgrad * y * d_gelu
     dy = dgrad * x_gelu
 
     return dx, dy
