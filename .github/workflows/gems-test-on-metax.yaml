@@ -20,11 +20,11 @@ jobs:
         shell: bash
         run: |
           source tools/run_command.sh
-          FIXME(metax): error: invalid pointer element type: '!tt.ptr<i64>'
+          # FIXME(metax): error: invalid pointer element type: '!tt.ptr<i64>'
           # GEMS_VENDOR=metax run_command pytest -s tests/test_reduction_ops.py && \
-          FIXME(metax): triton.compiler.errors.CompilationError
+          # FIXME(metax): triton.compiler.errors.CompilationError
           # GEMS_VENDOR=metax run_command pytest -s tests/test_general_reduction_ops.py && \
-          FIXME(metax): Killed
+          # FIXME(metax): Killed
           # GEMS_VENDOR=metax run_command pytest -s tests/test_norm_ops.py
 
       - name: FlagGems pointwise ops on metax
