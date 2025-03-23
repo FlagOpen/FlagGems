@@ -1156,7 +1156,9 @@ def flash_fwd_splitkv_kernel(
         O_ = tl.dot(P, V, O_)
 
     # LSE
-    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
+    # if (split_block_max <= n_block_min) or (split_block_min >= n_block_max):
+
+    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('-inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
     
     # Rescale output
