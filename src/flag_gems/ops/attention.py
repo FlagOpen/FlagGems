@@ -674,7 +674,7 @@ def flash_fwd_kernel(
     IS_EVEN_MN: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    num_splits: tl.constexpr,
+    blocks_per_split: tl.constexpr,
     num_warps: tl.constexpr,
     num_stages: tl.constexpr
 ):
@@ -913,7 +913,7 @@ def flash_fwd_kernel(
 
     # LSE
     # Note, rowsum = exp(-rowmax) * lse, therefore rowmax + log(rowsum) cancels the effect of rowmax and outputs lse only.
-    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
+    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('-inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
 
     # Rescale output
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
@@ -1156,8 +1156,6 @@ def flash_fwd_splitkv_kernel(
         O_ = tl.dot(P, V, O_)
 
     # LSE
-    # if (split_block_max <= n_block_min) or (split_block_min >= n_block_max):
-
     lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('-inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
     
@@ -1312,7 +1310,7 @@ def mha_fwd(
         # splits when wave efficiency is low
         n_waves = triton.cdiv(num_tasks, num_sms)
         eff = (num_tasks / num_sms) / n_waves
-        if eff > 0.85:
+        if eff > 0.8 or n_waves > 1:
             return 1
 
         best_splits = 1
@@ -1326,9 +1324,6 @@ def mha_fwd(
             if eff > 0.85:
                 best_splits = n_splits
                 break
-            if eff > best_eff:
-                best_eff = eff
-                best_splits = n_splits
         return best_splits
 
     with torch_device_fn.device(q_device):
