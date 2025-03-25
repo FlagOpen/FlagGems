@@ -6,7 +6,7 @@ from ..ops.copy import copy
 
 
 def contiguous(inp, memory_format=torch.contiguous_format):
-    assert memory_format != torch.preserve_format
+    assert memory_format == torch.contiguous_format
     logging.debug("GEMS CONTIGUOUS")
     if inp.is_contiguous(memory_format=memory_format):
         return inp
