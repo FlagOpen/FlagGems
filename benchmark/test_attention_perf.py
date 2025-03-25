@@ -1,6 +1,7 @@
+import math
+
 import pytest
 import torch
-import math
 import triton
 
 import flag_gems
@@ -42,6 +43,7 @@ def test_perf_scaled_dot_product_attention():
     )
     bench.run()
 
+
 class FlashMLABenchmark(GenericBenchmark):
     """
     benchmark for flash_mla
@@ -52,13 +54,13 @@ class FlashMLABenchmark(GenericBenchmark):
         # (batch, num_heads, seq_len, head_size).
         return None
 
+
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
     flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
 )
 @pytest.mark.flash_mla
 def test_perf_flash_mla():
-
     def flash_mla_kwargs(shape, dtype, device):
         seqlen = shape[0]
         b = 128
@@ -69,13 +71,19 @@ def test_perf_flash_mla():
         dv = 512
         causal = True
         block_size = 64
-        cache_seqlens = torch.tensor([seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device)
+        cache_seqlens = torch.tensor(
+            [seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device
+        )
         max_seqlen = cache_seqlens.max().item()
         max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
 
         q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
-        block_table = torch.arange(b * max_seqlen_pad // block_size, dtype=torch.int32, device=device).view(b, max_seqlen_pad // block_size)
-        blocked_k = torch.randn([block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device)
+        block_table = torch.arange(
+            b * max_seqlen_pad // block_size, dtype=torch.int32, device=device
+        ).view(b, max_seqlen_pad // block_size)
+        blocked_k = torch.randn(
+            [block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device
+        )
         yield q, block_table, blocked_k, max_seqlen_pad, block_size, b, s_q, cache_seqlens, h_q, h_kv, d, dv, causal
 
     def scaled_dot_product_attention(query, key, value, h_q, h_kv, is_causal=False):
@@ -89,7 +97,9 @@ def test_perf_flash_mla():
             s_q = query.shape[-2]
             s_k = key.shape[-2]
             attn_bias = torch.zeros(s_q, s_k, dtype=query.dtype, device=query.device)
-            temp_mask = torch.ones(s_q, s_k, dtype=torch.bool, device=query.device).tril(diagonal=s_k - s_q)
+            temp_mask = torch.ones(
+                s_q, s_k, dtype=torch.bool, device=query.device
+            ).tril(diagonal=s_k - s_q)
             attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
             attn_bias.to(query.dtype)
             attn_weight += attn_bias
