@@ -1,4 +1,5 @@
 from .cross_entropy_loss import cross_entropy_loss
+from .flash_mla import flash_mla
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
 from .outer import outer
@@ -7,7 +8,6 @@ from .silu_and_mul import silu_and_mul
 from .skip_layernorm import skip_layer_norm
 from .skip_rms_norm import skip_rms_norm
 from .weight_norm import weight_norm
-from .flash_mla import flash_mla
 
 __all__ = [
     "apply_rotary_pos_emb",
