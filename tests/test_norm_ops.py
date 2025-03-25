@@ -383,13 +383,7 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
 
 @pytest.mark.rms_norm
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
-# @pytest.mark.parametrize("shape", [(200, 40999, 3)])
-# @pytest.mark.parametrize("shape", [(128, 40999, 3)])
-# @pytest.mark.parametrize("shape", [(128, 999, 3)])
-# @pytest.mark.parametrize("shape", [(128, 999, 3)])
-# @pytest.mark.parametrize("shape", [(4096, 256)])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-# @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_rmsnorm(shape, dtype):
     N = shape[1]
     layer_shape = [
