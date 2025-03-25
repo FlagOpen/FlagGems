@@ -112,15 +112,15 @@ def rms_norm_grad_dw_kernel(
     rows = tl.arange(0, ROW_BLOCK_SIZE)
     cols = tl.arange(0, COL_BLOCK_SIZE)
 
-    row_mask = rows < M
-    col_mask = cols < N
+    row_mask = (row_start + rows) < M
+    col_mask = (col_start + cols) < N
 
     x = tl.load(
         X + rows[:, None] * x_stride_r + cols[None, :] * x_stride_c,
         row_mask[:, None] & col_mask[None, :],
         other=0.0,
     ).to(tl.float32)
-    inv_rms = tl.load(INV_RMS + rows).to(tl.float32)
+    inv_rms = tl.load(INV_RMS + rows, row_mask, other=0.0).to(tl.float32)
     dy = tl.load(
         DY + rows[:, None] * x_stride_r + cols[None, :] * x_stride_c,
         row_mask[:, None] & col_mask[None, :],
@@ -131,7 +131,7 @@ def rms_norm_grad_dw_kernel(
     partial_dweight_sum = tl.sum(d_weight, axis=0)
 
     tl.store(
-        DW + row_pid * dx_stride_r + col_start + cols,
+        DW + row_pid * N + col_start + cols,
         partial_dweight_sum,
         mask=col_mask,
     )
@@ -185,7 +185,9 @@ class RmsNorm(torch.autograd.Function):
         row_block_num = triton.cdiv(M, ROW_BLOCK_SIZE)
         col_block_num = triton.cdiv(N, COL_BLOCK_SIZE)
 
-        partial_buffer = torch.empty((row_block_num, N), dtype=x.dtype, device=x.device)
+        partial_buffer = torch.empty(
+            (row_block_num, N), dtype=torch.float32, device=x.device
+        )
 
         with torch_device_fn.device(x.device):
             rms_norm_grad_dw_kernel[row_block_num, col_block_num](
@@ -202,7 +204,7 @@ class RmsNorm(torch.autograd.Function):
                 ROW_BLOCK_SIZE,
                 COL_BLOCK_SIZE,
             )
-            dw = torch.sum(partial_buffer, dim=0).reshape(-1)
+            dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
 
         return dx, None, dw, None
 
