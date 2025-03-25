@@ -86,4 +86,4 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
-          bash report_coverage.sh ${PR_ID}\
+          bash tools/code_coverage/report_coverage.sh ${PR_ID}
