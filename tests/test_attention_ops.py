@@ -1,10 +1,11 @@
 import random
 
+import math
+
 import numpy as np
 import pytest
 import torch
 import triton
-import math
 
 import flag_gems
 
@@ -85,6 +86,7 @@ def test_scaled_dot_product_attention(
                 query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
             )
     gems_assert_close(flaggem_result, torch_result, dtype, reduce_dim=head_size)
+
 
 
 def create_kv_caches_with_random(
@@ -201,10 +203,13 @@ def test_reshape_and_cache(
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_mla
 @pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
-@pytest.mark.parametrize("dtype", [torch.bfloat16,])
-def test_flash_mla(
-    seqlen, dtype
-):
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.bfloat16,
+    ],
+)
+def test_flash_mla(seqlen, dtype):
     b = 128
     s_q = 1
     h_q = 128
@@ -213,19 +218,24 @@ def test_flash_mla(
     dv = 512
     causal = True
     block_size = 64
-    cache_seqlens = torch.tensor([seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device)
+    cache_seqlens = torch.tensor(
+        [seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device
+    )
     max_seqlen = cache_seqlens.max().item()
     max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
 
     q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
-    block_table = torch.arange(b * max_seqlen_pad // block_size, dtype=torch.int32, device=device).view(b, max_seqlen_pad // block_size)
-    blocked_k = torch.randn([block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device)
+    block_table = torch.arange(
+        b * max_seqlen_pad // block_size, dtype=torch.int32, device=device
+    ).view(b, max_seqlen_pad // block_size)
+    blocked_k = torch.randn(
+        [block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device
+    )
 
     ref_q = to_reference(q)
     ref_block_table = to_reference(block_table)
     ref_blocked_k = to_reference(blocked_k)
     ref_cache_seqlens = to_reference(cache_seqlens)
-
 
     def scaled_dot_product_attention(query, key, value, h_q, h_kv, is_causal=False):
         query = query.float()
@@ -238,7 +248,9 @@ def test_flash_mla(
             s_q = query.shape[-2]
             s_k = key.shape[-2]
             attn_bias = torch.zeros(s_q, s_k, dtype=query.dtype, device=query.device)
-            temp_mask = torch.ones(s_q, s_k, dtype=torch.bool, device=query.device).tril(diagonal=s_k - s_q)
+            temp_mask = torch.ones(
+                s_q, s_k, dtype=torch.bool, device=query.device
+            ).tril(diagonal=s_k - s_q)
             attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
             attn_bias.to(query.dtype)
             attn_weight += attn_bias
@@ -279,7 +291,7 @@ def test_flash_mla(
             out[i] = O.transpose(0, 1)
             lse[i] = LSE
         return out, lse
-    
+
     ref_out, _ = ref_mla(
         ref_q,
         ref_block_table,
@@ -310,7 +322,6 @@ def test_flash_mla(
         dv,
         causal,
     )
-
 
     def cal_diff(x: torch.Tensor, y: torch.Tensor, name: str) -> None:
         x, y = x.double(), y.double()

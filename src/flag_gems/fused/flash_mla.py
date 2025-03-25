@@ -1,8 +1,10 @@
+import logging
+import math
+
 import torch
 import triton
 import triton.language as tl
-import math
-import logging
+
 
 @triton.heuristics(
     values={
@@ -69,9 +71,7 @@ def flash_mla_attn_kernel(
     remainder = cur_batch_seq_len % BLOCK_N
     offs_n = tl.arange(0, BLOCK_N)
     for i in range(0, loop_time):
-        kv_page_number = tl.load(
-            Req_to_tokens + offs_n // PAGE_SIZE
-        )
+        kv_page_number = tl.load(Req_to_tokens + offs_n // PAGE_SIZE)
         kv_loc = kv_page_number * PAGE_SIZE + offs_n % PAGE_SIZE
         offs_v_c = kv_loc[:, None] * stride_kv_bs + offs_d_ckv[None, :]
         v_c = tl.load(Kv_cache + offs_v_c)
@@ -98,8 +98,7 @@ def flash_mla_attn_kernel(
     if remainder:
         mask_kvsplit = offs_n < cur_batch_seq_len
         kv_page_number = tl.load(
-            Req_to_tokens
-            + offs_n // PAGE_SIZE,
+            Req_to_tokens + offs_n // PAGE_SIZE,
             mask=mask_kvsplit,
             other=0,
         )
@@ -199,4 +198,3 @@ def flash_mla(
     )
 
     return o.view([b, s_q, h_q, dv])
-
