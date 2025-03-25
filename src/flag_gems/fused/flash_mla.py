@@ -2,6 +2,7 @@ import torch
 import triton
 import triton.language as tl
 import math
+import logging
 
 @triton.heuristics(
     values={
@@ -151,10 +152,9 @@ def flash_mla(
     d,
     dv,
     causal,
-    dtype,
 ):
+    logging.debug("GEMS FLASH MLA")
     assert causal, "causal False not supported"
-    assert dtype == torch.bfloat16, "other dtype not supported"
     assert d > dv, "mla with rope dim should be larger than no rope dim"
 
     batch_size, s_q, head_num, d = list(q.shape)

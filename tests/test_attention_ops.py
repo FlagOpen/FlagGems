@@ -111,12 +111,10 @@ def test_flash_mla(
     q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
     block_table = torch.arange(b * max_seqlen_pad // block_size, dtype=torch.int32, device=device).view(b, max_seqlen_pad // block_size)
     blocked_k = torch.randn([block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device)
-    blocked_v = blocked_k[..., :dv]
 
     ref_q = to_reference(q)
     ref_block_table = to_reference(block_table)
     ref_blocked_k = to_reference(blocked_k)
-    ref_blocked_v = to_reference(blocked_v)
     ref_cache_seqlens = to_reference(cache_seqlens)
 
 
@@ -143,7 +141,6 @@ def test_flash_mla(
         q,
         block_table,
         blocked_k,
-        blocked_v,
         max_seqlen_pad,
         block_size,
         b,
@@ -154,9 +151,9 @@ def test_flash_mla(
         d,
         dv,
         causal,
-        dtype,
     ):
         device = q.device
+        blocked_v = blocked_k[..., :dv]
         out = torch.empty(b, s_q, h_q, dv, dtype=torch.float32, device=device)
         lse = torch.empty(b, h_q, s_q, dtype=torch.float32, device=device)
         for i in range(b):
@@ -178,7 +175,6 @@ def test_flash_mla(
         ref_q,
         ref_block_table,
         ref_blocked_k,
-        ref_blocked_v,
         max_seqlen_pad,
         block_size,
         b,
@@ -189,7 +185,6 @@ def test_flash_mla(
         d,
         dv,
         causal,
-        dtype,
     )
     res_out = flag_gems.flash_mla(
         q,
@@ -205,7 +200,6 @@ def test_flash_mla(
         d,
         dv,
         causal,
-        dtype,
     )
 
 
