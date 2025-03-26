@@ -34,5 +34,12 @@ jobs:
       - name: Code Scan Report
         shell: bash
         run: |
+          git config --global --add safe.directory ../FlagGems
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            PR_ID=${{ github.event.pull_request.number }}
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            PR_NUMBER=$(git log -1 --pretty=format:'%s' | grep -oE '#[0-9]+' | grep -oE '[0-9]+')
+            PR_ID=${PR_NUMBER}
+          fi
           echo "Repo Scan report:"
           echo "http://120.92.44.177/gems_scan_report/PR${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}.html"
