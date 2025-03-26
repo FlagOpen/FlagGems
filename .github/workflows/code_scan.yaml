@@ -16,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Scan repo
+      - name: Scan gems repo
         shell: bash
         env:
           SCA_USERNAME: baai
@@ -32,11 +32,12 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
-          bash tools/pointwise-op-test.sh ${PR_ID}
-          python /work/code_can/scan_code.py --pr ${PR_ID} --hash ${GITHUB_SHA}
+          echo $SCA_PASSWORD #################
+
+          python /work/flag_gems/code_can/scan_code.py --pr ${PR_ID} --hash ${GITHUB_SHA}
 
       - name: Code Scan Report
         shell: bash
         run: |
           echo "Repo Scan report:"
-          echo "url"
+          echo "url" #################
