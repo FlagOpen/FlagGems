@@ -35,4 +35,4 @@ jobs:
         shell: bash
         run: |
           echo "Repo Scan report:"
-          echo "http://120.92.44.177/gems_scan_report/PR${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}.html
+          echo "http://120.92.44.177/gems_scan_report/PR${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}.html"
