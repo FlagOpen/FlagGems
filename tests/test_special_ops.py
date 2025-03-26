@@ -1112,14 +1112,14 @@ def test_accuracy_contiguous(shape, dtype):
             low=-10000, high=10000, size=shape, dtype=dtype, device=flag_gems.device
         )
     inp = inp[::2]
-    gems_assert_equal(inp.is_contiguous(), False)
+    np.testing.assert_equal(inp.is_contiguous(), False)
 
     ref_inp = to_reference(inp)
     ref_out = ref_inp.contiguous()
     with flag_gems.use_gems():
         res_out = inp.contiguous()
 
-    gems_assert_equal(ref_out.is_contiguous(), True)
-    gems_assert_equal(res_out.is_contiguous(), True)
-    gems_assert_equal(res_out.stride(), ref_out.stride())
+    np.testing.assert_equal(ref_out.is_contiguous(), True)
+    np.testing.assert_equal(res_out.is_contiguous(), True)
+    np.testing.assert_equal(res_out.stride(), ref_out.stride())
     gems_assert_equal(res_out, ref_out)
