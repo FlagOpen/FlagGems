@@ -8,7 +8,7 @@ from ..utils import unwrap
 
 @triton.jit
 def le_func(x, y):
-    return x.to(tl.float32) <= y
+    return x <= y
 
 def le(A, B):
     logging.debug("GEMS LE")

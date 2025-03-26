@@ -8,7 +8,7 @@ from ..utils import unwrap
 
 @triton.jit
 def ne_func(x, y):
-    return x.to(tl.float32) != y.to(tl.float32)
+    return x != y
 
 def ne(A, B):
     logging.debug("GEMS NE")

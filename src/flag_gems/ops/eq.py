@@ -9,7 +9,7 @@ from ..utils import unwrap
 
 @triton.jit
 def eq_func(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    return x == y
 
 def promote_binary_type(x, y):
     x = torch.as_tensor(x)
@@ -27,7 +27,7 @@ def eq(A, B):
 
 @triton.jit
 def eq_func_scalar(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    return x == y
 
 def eq_scalar(A, B):
     logging.debug("GEMS EQ SCALAR")
