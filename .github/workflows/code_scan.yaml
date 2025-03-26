@@ -18,11 +18,7 @@ jobs:
 
       - name: Scan gems repo
         shell: bash
-        env:
-          SCA_USERNAME: baai
-          SCA_PASSWORD: ${{ secrets.SCA_PASSWORD }}
         run: |
-
           git config --global --add safe.directory ../FlagGems
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "This is a pull request event. PR number is ${{ github.event.pull_request.number }}"
@@ -32,12 +28,11 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
-          echo $SCA_PASSWORD #################
 
-          python /work/flag_gems/code_can/scan_code.py --pr ${PR_ID} --hash ${GITHUB_SHA}
+          python /work/flag_gems/code_can/scan_code.py --pr ${PR_ID} --hash ${GITHUB_SHA} --attempt ${GITHUB_RUN_ATTEMPT}
 
       - name: Code Scan Report
         shell: bash
         run: |
           echo "Repo Scan report:"
-          echo "url" #################
+          echo "http://120.92.44.177/gems_scan_report/PR${PR_ID}-${GITHUB_SHA}-${GITHUB_RUN_ATTEMPT}.html
