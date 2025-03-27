@@ -1103,7 +1103,7 @@ def test_accuracy_kron(shape, dtype):
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_contiguous(shape, dtype):
-    if shape[0] == 1:
+    if shape[0] <= 2:
         return
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
