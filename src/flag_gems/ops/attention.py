@@ -548,7 +548,7 @@ def apply_mask(
             S = tl.where(col_idx[None, :] > col_rb[:, None], float('-inf'), S)
 
         if is_local:
-            S = tl.where(col_idx[None, :] > col_rb[:, None] | col_idx[None, :] < col_lb[:, None], float('-inf'), S)
+            S = tl.where((col_idx[None, :] > col_rb[:, None]) | (col_idx[None, :] < col_lb[:, None]), float('-inf'), S)
         
         if (not is_local) & (not is_causal) & (not is_even_mn):
             S = tl.where(col_idx[None, :] >= max_seqlen_k, float('-inf'), S)
@@ -676,7 +676,20 @@ def flash_fwd_kernel(
     
     col_max = tl.cdiv(seqlen_k, BLOCK_N) * BLOCK_N
     if is_causal or is_local:
-        col_max = min(col_max, (m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + ws_right)
+        rounded_kv_end = max(0, tl.cdiv(seqlen_k - seqlen_q + ws_right, BLOCK_N) * BLOCK_N + (m_block + 1) * BLOCK_M)
+        col_max = min(col_max, rounded_kv_end)
+
+    if (not is_causal) and (not is_local):
+        if IS_EVEN_MN:
+            masking_cols: tl.constexpr = 0
+        else:
+            masking_cols: tl.constexpr = BLOCK_N
+    elif (is_causal | is_local) and IS_EVEN_MN: # causal implies ws_right is zero
+        masking_cols: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) * BLOCK_N
+    else:
+        # local  
+        masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
+
 
     if has_alibi:
         alibi_offset = bid * slopes_batch_stride + hid
@@ -719,65 +732,78 @@ def flash_fwd_kernel(
     p_bk0 = K_ptr + K_offset
     p_bv0 = V_ptr + V_offset
 
-    if (not is_causal) and (not is_local):
-        if IS_EVEN_MN:
-            masking_cols: tl.constexpr = 0
-        else:
-            masking_cols: tl.constexpr = BLOCK_N
-    elif is_causal and IS_EVEN_MN: # causal implies ws_right is zero
-        masking_cols: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) * BLOCK_N
-    else:
-        # local and not causal, 
-        masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
-
-    for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
-        col_start = col_max - col_shift - BLOCK_N
-        col_start = tl.multiple_of(col_start, BLOCK_N)
-        off = col_start * k_s_stride
-        if IS_EVEN_MN:
-            K = tl.load(p_bk0 + off, cache_modifier=".cg")
-            if PRE_LOAD_V:
-                V = tl.load(p_bv0 + off, cache_modifier=".cg")
-        else:
+    if is_causal | is_local | (not IS_EVEN_MN):
+        # Cut short masking cols if there's not enough cols out there
+        masking_cols = min(col_max, masking_cols)
+        for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
+            col_start = col_max - col_shift - BLOCK_N
+            col_start = tl.multiple_of(col_start, BLOCK_N)
+            off = col_start * k_s_stride
+            if IS_EVEN_MN:
+                K = tl.load(p_bk0 + off, cache_modifier=".cg")
+                if PRE_LOAD_V:
+                    V = tl.load(p_bv0 + off, cache_modifier=".cg")
+            else:
+                col_idx = col_start + tl.arange(0, BLOCK_N)
+                kvmask = col_idx < seqlen_k
+                K = tl.load(p_bk0 + off, mask=kvmask[None, :], cache_modifier=".cg")
+                if PRE_LOAD_V:
+                    V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
+            S = tl.dot(Q, K, allow_tf32=False)
             col_idx = col_start + tl.arange(0, BLOCK_N)
-            kvmask = col_idx < seqlen_k
-            K = tl.load(p_bk0 + off, mask=kvmask[None, :], cache_modifier=".cg")
-            if PRE_LOAD_V:
-                V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
-        S = tl.dot(Q, K, allow_tf32=False)
-        col_idx = col_start + tl.arange(0, BLOCK_N)
-        row_idx = row_start + tl.arange(0, BLOCK_M)
-        S = apply_mask(
-            S,
-            col_idx,
-            row_idx,
-            seqlen_q,
-            seqlen_k,
-            ws_left,
-            ws_right,
-            is_even_mn=IS_EVEN_MN,
-            is_causal=is_causal,
-            is_local=is_local,
-            has_alibi=has_alibi,
-            alibi_slope=alibi_slope,
-        )
+            row_idx = row_start + tl.arange(0, BLOCK_M)
 
-        O_, P, rowmax_, rowsum_ = softmax_rescale(
-            O_,
-            S,
-            rowmax_,
-            rowsum_,
-            softmax_scale_log2e=softmax_scale_log2e,
-            is_border=(is_causal or is_local),
-        )
-        P = P.to(V_ptr.type.element_ty)
+            # tl.store(p_bp0 + col_start, S)
+            S = apply_mask(
+                S,
+                col_idx,
+                row_idx,
+                seqlen_q,
+                seqlen_k,
+                ws_left,
+                ws_right,
+                is_even_mn=IS_EVEN_MN,
+                is_causal=is_causal,
+                is_local=is_local,
+                has_alibi=has_alibi,
+                alibi_slope=alibi_slope,
+            )
 
-        if is_dropout:
-            if return_P:
-                P_drop = P
+            O_, P, rowmax_, rowsum_ = softmax_rescale(
+                O_,
+                S,
+                rowmax_,
+                rowsum_,
+                softmax_scale_log2e=softmax_scale_log2e,
+                is_border=(is_causal or is_local),
+            )
+            P = P.to(V_ptr.type.element_ty)
 
-                P_drop = apply_dropout(
-                    P_drop,
+            if is_dropout:
+                if return_P:
+                    P_drop = P
+
+                    P_drop = apply_dropout(
+                        P_drop,
+                        row_start,
+                        col_start,
+                        bid,
+                        hid,
+                        philox_seed,
+                        philox_offset,
+                        pdrop_u8,
+                        encode_dropout_in_sign_bit=True,
+                        NUM_HEADS=NUM_HEADS,
+                        BLOCK_M=BLOCK_M,
+                        BLOCK_N=BLOCK_N,
+                    )
+                    if IS_EVEN_MN:
+                        tl.store(p_bp0 + col_start, P_drop)
+                    else:
+                        tl.store(p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :])
+
+                P = apply_dropout(
+                    P,
                     row_start,
                     col_start,
                     bid,
@@ -785,38 +811,19 @@ def flash_fwd_kernel(
                     philox_seed,
                     philox_offset,
                     pdrop_u8,
-                    encode_dropout_in_sign_bit=True,
+                    encode_dropout_in_sign_bit=False,
                     NUM_HEADS=NUM_HEADS,
                     BLOCK_M=BLOCK_M,
                     BLOCK_N=BLOCK_N,
                 )
+
+            if not PRE_LOAD_V:
+                off = col_start * k_s_stride
                 if IS_EVEN_MN:
-                    tl.store(p_bp0 + col_start, P_drop)
+                    V = tl.load(p_bv0 + off, cache_modifier=".cg")
                 else:
-                    tl.store(p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :])
-
-            P = apply_dropout(
-                P,
-                row_start,
-                col_start,
-                bid,
-                hid,
-                philox_seed,
-                philox_offset,
-                pdrop_u8,
-                encode_dropout_in_sign_bit=False,
-                NUM_HEADS=NUM_HEADS,
-                BLOCK_M=BLOCK_M,
-                BLOCK_N=BLOCK_N,
-            )
-
-        if not PRE_LOAD_V:
-            off = col_start * k_s_stride
-            if IS_EVEN_MN:
-                V = tl.load(p_bv0 + off, cache_modifier=".cg")
-            else:
-                V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
-        O_ = tl.dot(P, V, O_, allow_tf32=False)
+                    V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
+            O_ = tl.dot(P, V, O_, allow_tf32=False)
 
     for col_start in tl.range(col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages):
         col_start = tl.multiple_of(col_start, BLOCK_N)
@@ -899,7 +906,7 @@ def flash_fwd_kernel(
 
     # LSE
     # Note, rowsum = exp(-rowmax) * lse, therefore rowmax + log(rowsum) cancels the effect of rowmax and outputs lse only.
-    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('-inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
+    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
 
     # Rescale output
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
@@ -922,11 +929,13 @@ def flash_fwd_kernel(
         tl.store(O_ptr + O_offset, O, mask=qmask)
     
     # Write back lse
-    lse_ptr += bid * hid * seqlen_q
+    p_lse = lse_ptr + (bid * h + hid) * seqlen_q
+    row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+
     if IS_EVEN_MN:
-        tl.store(lse_ptr + row_idx, lse)
+        tl.store(p_lse + row_idx, lse)
     else:
-        tl.store(lse_ptr + row_idx, lse, mask=row_idx < seqlen_q)
+        tl.store(p_lse + row_idx, lse, mask=row_idx < seqlen_q)
 
 
 @triton.heuristics(
@@ -1288,6 +1297,7 @@ def mha_fwd(
     window_size_left,
     window_size_right,
     return_softmax,
+    disable_splitkv=False
 ):
     q_dtype = q.dtype
     q_device = q.device
@@ -1405,7 +1415,8 @@ def mha_fwd(
             has_alibi = False
 
         # Set SWA params
-        is_local = (window_size_left >= 0 or window_size_right >= 0) and not is_causal
+        is_causal = window_size_left < 0 and window_size_right == 0
+        is_local = (window_size_left >= 0 and window_size_right >= 0)
 
         # ONLY EVEN_K IS SUPPORTED
         assert head_size == head_size_rounded
@@ -1423,7 +1434,7 @@ def mha_fwd(
             #     return kernel, default_args, None, None
 
             # Try splitkv
-            if not is_dropout and not is_local:
+            if not is_dropout and not is_local and not disable_splitkv:
                 BM = block_m_splitkv_heuristic(D)
                 n_tasks = B * H * triton.cdiv(seqlen_q, BM)
                 BN = block_n_splitkv_heuristic(D)
@@ -1434,7 +1445,7 @@ def mha_fwd(
                     n_splits = 32
                     n_blocks = triton.cdiv(K, BN)
                     blocks_per_split = triton.cdiv(n_blocks, n_splits)
-                    print('block_n:', block_n)
+                    print('block_n:', BN)
                     print('n_splits:', n_splits)
                     print('blocks_per_split', blocks_per_split)
 
@@ -1486,6 +1497,14 @@ def mha_fwd(
             return kernel, default_args, None, None
 
         kernel1, kernel1_args, kernel2, kernel2_args = dispatch(batch_size, num_heads, seqlen_q, seqlen_k, head_size)
+
+        if _debug:
+            p = torch.empty(
+                (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
+                dtype=torch.float32,
+                device=q_device
+            )
+            return_softmax = True
 
         prefilled_args = {
             "Q_ptr": q,
@@ -1539,7 +1558,8 @@ def mha_fwd(
             print(f'{kernel.name} shared memory:', kernel.metadata.shared)
             print(f'{kernel.name} num_warps:', kernel.metadata.num_warps)
             print(f'{kernel.name} num_stages:', kernel.metadata.num_stages)
-            print(kernel.asm['ttgir'])
+            # print(kernel.asm['ttgir'])
+            print('p:', p)
 
         # Combine
         if kernel2 is not None:
@@ -1580,7 +1600,8 @@ def flash_attention_forward(
     window_size_left=None,
     window_size_right=None,
     seqused_k=None,
-    alibi_slopes=None
+    alibi_slopes=None,
+    disable_splitkv=False
 ):
     logging.debug("GEMS FLASH_ATTENTION_FORWARD")
     assert cum_seq_q is None and cum_seq_k is None, "varlen is not supported yet."
@@ -1591,8 +1612,14 @@ def flash_attention_forward(
     assert HEAD_DIM_K in {16, 32, 64, 128, 256}
 
     softmax_scale = scale or 1.0 / (HEAD_DIM_K**0.5)
-    non_null_window_left = window_size_left or -1
-    non_null_window_right = window_size_right or -1
+    if window_size_left is not None:
+        non_null_window_left = window_size_left
+    else:
+        non_null_window_left = -1
+    if window_size_right is not None:
+        non_null_window_right = window_size_right
+    else:
+        non_null_window_right = -1
 
     out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
         query,
@@ -1606,6 +1633,7 @@ def flash_attention_forward(
         non_null_window_left,
         non_null_window_right,
         return_debug_mask,
+        disable_splitkv=disable_splitkv
     )
     
     return (out, lse, philox_seed, philox_offset, p)
