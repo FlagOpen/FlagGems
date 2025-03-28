@@ -5,7 +5,22 @@ import torch
 import triton
 import triton.language as tl
 
+from ..runtime import device, error, torch_device_fn
+from ..utils import triton_lang_extension as tle
 
+device = device.name
+
+
+# @triton.autotune(
+#     configs=[
+#         triton.Config({"BLOCK_H": h, "BLOCK_N": n}, num_warps=w, num_stages=s)
+#         for h in [32, 64, 128]
+#         for n in [32, 64, 128]
+#         for w in [4, 8]
+#         for s in [1, 2]
+#     ],
+#     key=["head_num"]
+# )
 @triton.heuristics(
     values={
         "EVEN_H": lambda META: META["head_num"] % META["BLOCK_H"] == 0,
@@ -34,8 +49,8 @@ def flash_mla_attn_kernel(
     HEAD_DIM_V: tl.constexpr,
     HEAD_DIM: tl.constexpr,
 ):
-    cur_head_id = tl.program_id(0)
-    cur_batch_id = tl.program_id(1)
+    cur_head_id = tle.program_id(0)
+    cur_batch_id = tle.program_id(1)
     Req_to_tokens += stride_req_to_tokens_bs * cur_batch_id
 
     cur_head = cur_head_id * BLOCK_H + tl.arange(0, BLOCK_H)
@@ -164,37 +179,46 @@ def flash_mla(
 
     sm_scale = 1 / math.sqrt(d)
 
-    o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=q.device)
+    o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    BLOCK_H = 64
+    major, _ = torch.cuda.get_device_capability(device)
+    if major == 9:
+        BLOCK_H = 64
+        num_stages = 3
+    elif major == 8:
+        BLOCK_H = 32
+        num_stages = 2
+    else:
+        error.backend_not_support(device)
     BLOCK_N = 64
     grid = (
         triton.cdiv(head_num, BLOCK_H),
         batch_size,
     )
-    flash_mla_attn_kernel[grid](
-        q,
-        blocked_k,
-        block_table,
-        cache_seqlens,
-        o,
-        sm_scale,
-        head_num,
-        # stride
-        q.stride(0),
-        q.stride(1),
-        blocked_k.stride(-2),
-        block_table.stride(0),
-        o.stride(0),
-        o.stride(1),
-        o.stride(2),
-        BLOCK_H=BLOCK_H,
-        BLOCK_N=BLOCK_N,
-        PAGE_SIZE=block_size,
-        HEAD_DIM_V=dv,
-        HEAD_DIM=d,
-        num_warps=8,
-        num_stages=3,
-    )
+    with torch_device_fn.device(device):
+        flash_mla_attn_kernel[grid](
+            q,
+            blocked_k,
+            block_table,
+            cache_seqlens,
+            o,
+            sm_scale,
+            head_num,
+            # stride
+            q.stride(0),
+            q.stride(1),
+            blocked_k.stride(-2),
+            block_table.stride(0),
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            BLOCK_H=BLOCK_H,
+            BLOCK_N=BLOCK_N,
+            PAGE_SIZE=block_size,
+            HEAD_DIM_V=dv,
+            HEAD_DIM=d,
+            num_warps=8,
+            num_stages=num_stages,
+        )
 
     return o.view([b, s_q, h_q, dv])
