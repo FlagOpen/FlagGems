@@ -538,8 +538,9 @@ def apply_mask(
 ):
     need_mask: tl.constexpr = is_causal | has_alibi | is_local | (not is_even_mn)
     if need_mask:
+        # Extra care should be taken to void one-off errors: both col_lb and col_rb are inclusive!
         col_lb = max(0, row_idx + max_seqlen_k - max_seqlen_q - ws_left)
-        col_rb = min(max_seqlen_k, row_idx + max_seqlen_k - max_seqlen_q + ws_right)
+        col_rb = min(max_seqlen_k - 1, row_idx + max_seqlen_k - max_seqlen_q + ws_right)
 
         if has_alibi:
             S -= alibi_slope * tl.abs(col_idx[None, :] - row_idx[:, None])
@@ -579,8 +580,8 @@ def softmax_rescale(
     O_acc *= p_scale[:, None]
 
     max_scaled = tl.where(row_max == float('-inf'), 0, row_max * softmax_scale_log2e)
-
     P = tl.math.exp2(S * softmax_scale_log2e - max_scaled[:, None])
+    cur_rowsum = tl.sum(P, 1)
     row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
 
@@ -599,9 +600,12 @@ def block_m_splitkv_heuristic(headdim):
 def block_n_splitkv_heuristic(headdim):
     return 64 if headdim <= 64 else 32
 
-def is_even_mn(args):
-    even_mn = (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0)
-    return even_mn
+def is_even_mn(M, N, BM, BN, WL, WR):
+    if M % BM == 0 and N % BN == 0:
+        if M % N == 0 or N % M == 0:
+            if (WL == -1 or WL % BN == 0) and (WR == -1 or WR % BN == 0):
+                return True
+    return False
 
 
 @triton.heuristics(
@@ -611,7 +615,7 @@ def is_even_mn(args):
         'num_warps': lambda args: 4,
         'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
         'PRE_LOAD_V': lambda args: False,
-        'IS_EVEN_MN': lambda args: is_even_mn(args),
+        'IS_EVEN_MN': lambda args: is_even_mn(args["seqlen_q"], args["seqlen_k"], args["BLOCK_M"], args["BLOCK_N"], args["ws_left"], args["ws_right"]),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
@@ -667,17 +671,28 @@ def flash_fwd_kernel(
     m_block = tl.program_id(0)
     bid = tl.program_id(1)
     hid = tl.program_id(2)
+    num_m_blocks = tl.cdiv(seqlen_q, BLOCK_M)
 
+    # We draw a minimum covering frame on the attention map that this CTA is assigned to process.
+    # The frame edges are rounded to multiples of BLOCK_M and BLOCK_N for rows and columns respectively. 
+
+    col_min = 0
     if is_local:
-        col_min = m_block * BLOCK_M + seqlen_k - seqlen_q - ws_left
-        col_min = max(col_min, 0)
-    else:
-        col_min = 0
+        col_min = max(0, m_block * BLOCK_M + seqlen_k - seqlen_q - ws_left)
+        if not IS_EVEN_MN:
+            # round left
+            col_min = (col_min // BLOCK_N) * BLOCK_N
     
-    col_max = tl.cdiv(seqlen_k, BLOCK_N) * BLOCK_N
+    col_max = seqlen_k
     if is_causal or is_local:
-        rounded_kv_end = max(0, tl.cdiv(seqlen_k - seqlen_q + ws_right, BLOCK_N) * BLOCK_N + (m_block + 1) * BLOCK_M)
-        col_max = min(col_max, rounded_kv_end)
+        col_max += (m_block - num_m_blocks + 1) * BLOCK_M
+        if is_local:
+            col_max += ws_right
+        col_max = min(seqlen_k, col_max)
+
+    if not IS_EVEN_MN:
+        # round right
+        col_max =  tl.cdiv(col_max, BLOCK_N) * BLOCK_N
 
     if (not is_causal) and (not is_local):
         if IS_EVEN_MN:
@@ -689,7 +704,6 @@ def flash_fwd_kernel(
     else:
         # local  
         masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
-
 
     if has_alibi:
         alibi_offset = bid * slopes_batch_stride + hid
@@ -734,7 +748,7 @@ def flash_fwd_kernel(
 
     if is_causal | is_local | (not IS_EVEN_MN):
         # Cut short masking cols if there's not enough cols out there
-        masking_cols = min(col_max, masking_cols)
+        masking_cols = min(col_max - col_min, masking_cols)
         for col_shift in tl.range(0, masking_cols, step=BLOCK_N):
             col_start = col_max - col_shift - BLOCK_N
             col_start = tl.multiple_of(col_start, BLOCK_N)
@@ -907,9 +921,8 @@ def flash_fwd_kernel(
     # LSE
     # Note, rowsum = exp(-rowmax) * lse, therefore rowmax + log(rowsum) cancels the effect of rowmax and outputs lse only.
     lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
-
-    # Rescale output
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
+
     if is_dropout:
         O_ *= inv_sum[:, None] * rpdrop
     else:
@@ -945,7 +958,7 @@ def flash_fwd_kernel(
         'num_warps': lambda args: 4,
         'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
         'PRE_LOAD_V': lambda args: True,
-        'IS_EVEN_MN': lambda args: (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0),
+        'IS_EVEN_MN': lambda args: is_even_mn(args["seqlen_q"], args["seqlen_k"], args["BLOCK_M"], args["BLOCK_N"], args["ws_left"], args["ws_right"]),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
@@ -1009,7 +1022,7 @@ def flash_fwd_bh_parallel_kernel(
         'num_warps': lambda args: 4,
         'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
         'PRE_LOAD_V': lambda args: True,
-        'IS_EVEN_MN': lambda args: (args["seqlen_q"] % args["BLOCK_M"] == 0) and (args["seqlen_k"] % args["BLOCK_N"] == 0),
+        'IS_EVEN_MN': lambda args: is_even_mn(args["seqlen_q"], args["seqlen_k"], args["BLOCK_M"], args["BLOCK_N"], args["ws_left"], args["ws_right"]),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
@@ -1574,7 +1587,6 @@ def mha_fwd(
             args_copy = prefilled_args.copy()
             args_copy.update(kernel2_args)
             kernel2(**args_copy)
-
 
     if swap_seq_and_group:
         out = out.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
