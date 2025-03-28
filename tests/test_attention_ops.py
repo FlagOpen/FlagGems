@@ -6,6 +6,7 @@ import flag_gems
 
 from .accuracy_utils import gems_assert_close, to_reference
 
+device = flag_gems.device
 
 def make_input(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype):
     np.random.seed(0)
