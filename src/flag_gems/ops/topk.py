@@ -23,6 +23,8 @@ _MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
 _MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
 _MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
 _MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
+_MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
+_MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
 _MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
 _MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
 _MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
@@ -58,7 +60,12 @@ def _get_iinfo_val(
     dtype,
     return_max,
 ):
-    if dtype is tl.int16:
+    if dtype is tl.int8:
+        if return_max:
+            return _MAX_INT8_VAL
+        else:
+            return _MIN_INT8_VAL
+    elif dtype is tl.int16:
         if return_max:
             return _MAX_INT16_VAL
         else:
