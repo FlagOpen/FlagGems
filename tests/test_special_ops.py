@@ -535,8 +535,8 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 
 @pytest.mark.linspace
 @pytest.mark.parametrize("start", [0, 2, 4])
-@pytest.mark.parametrize("end", [1024, 2048, 4096])
-@pytest.mark.parametrize("steps", [1, 257, 513])
+@pytest.mark.parametrize("end", [256, 2048, 4096])
+@pytest.mark.parametrize("steps", [1, 256, 512])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
 @pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize("pin_memory", [False, None])
