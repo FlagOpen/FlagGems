@@ -1,7 +1,8 @@
 from typing import List, Optional, Sequence
 
 from pip._internal.metadata import get_default_environment
-from setuptools import find_packages, setup
+from setuptools import find_packages
+from skbuild import setup
 
 # ----------------------------- check triton -----------------------------
 # NOTE: this is used to check whether pytorch-triton or triton is installed. Since
@@ -104,5 +105,7 @@ setup(
     package_data={
         "flag_gems.runtime": ["*/**/*.yaml"],
     },
-    setup_requires=["setuptools"],
+    cmake_source_dir=".",
+    cmake_install_dir="src/flag_gems",
+    setup_requires=["setuptools", "scikit-build"],
 )
