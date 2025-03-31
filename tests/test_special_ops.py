@@ -547,11 +547,9 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
         start,
         end,
         steps,
-        out=None,
         dtype=dtype,
         layout=None,
         device=device,
-        requires_grad=False,
         pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
@@ -559,11 +557,9 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
             start,
             end,
             steps,
-            out=None,
             dtype=dtype,
             layout=None,
             device=device,
-            requires_grad=False,
             pin_memory=pin_memory,
         )
     if dtype in [torch.float16, torch.bfloat16]:

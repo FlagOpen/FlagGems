@@ -32,29 +32,18 @@ def linspace_kernel(
 
 
 def linspace(
-    start,
-    end,
-    steps,
-    *,
-    out=None,
-    dtype=None,
-    layout=torch.strided,
-    device=None,
-    requires_grad=False,
-    pin_memory=False
+    start, end, steps, *, dtype=None, layout=None, device=None, pin_memory=None
 ) -> torch.Tensor:
     logging.debug("GEMS LINSPACE")
     assert steps >= 1, "steps must be >= 1"
 
-    if out is None:
-        out = torch.empty(
-            steps,
-            dtype=dtype,
-            layout=layout,
-            device=device,
-            pin_memory=pin_memory,
-            requires_grad=requires_grad,
-        )
+    out = torch.empty(
+        steps,
+        dtype=dtype,
+        layout=layout,
+        device=device,
+        pin_memory=pin_memory,
+    )
     if steps == 1:
         return torch.fill(out, start)
     else:
