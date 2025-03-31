@@ -16,6 +16,7 @@ except ImportError:
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
+from ..utils.limits import get_dtype_max, get_dtype_min
 
 _MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
 _MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
@@ -60,26 +61,10 @@ def _get_iinfo_val(
     dtype,
     return_max,
 ):
-    if dtype is tl.int8:
-        if return_max:
-            return _MAX_INT8_VAL
-        else:
-            return _MIN_INT8_VAL
-    elif dtype is tl.int16:
-        if return_max:
-            return _MAX_INT16_VAL
-        else:
-            return _MIN_INT16_VAL
-    elif dtype is tl.int32:
-        if return_max:
-            return _MAX_INT32_VAL
-        else:
-            return _MIN_INT32_VAL
-    elif dtype is tl.int64:
-        if return_max:
-            return _MAX_INT64_VAL
-        else:
-            return _MIN_INT64_VAL
+    if return_max:
+        return get_dtype_max(dtype)
+    else:
+        return get_dtype_min(dtype)
 
 
 @libentry()
