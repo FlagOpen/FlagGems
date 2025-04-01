@@ -1053,12 +1053,7 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
 )
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        torch.float16,
-    ],
-)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     init_seed(1)
     accumulate = True
