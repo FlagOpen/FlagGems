@@ -1055,7 +1055,7 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
-    init_seed(1)
+    init_seed(0)
     accumulate = True
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
