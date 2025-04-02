@@ -620,7 +620,7 @@ def test_accuracy_trunc_div_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    upcast = True if flag_gems.vendor_name not in ["kunlunxin"] else False
+    upcast = True if flag_gems.vendor_name not in ["kunlunxin", "iluvatar"] else False
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 
@@ -948,8 +948,8 @@ def test_accuracy_ge_scalar(shape, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_accuracy_gelu_and_mul(shape, approximate, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -959,7 +959,20 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.gelu_and_mul(inp1, inp2, approximate)
 
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
+        ref_out, (ref_inp1, ref_inp2), ref_grad
+    )
+
+    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
+        res_out, (inp1, inp2), out_grad
+    )
+
     gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
+    gems_assert_close(res_inp2_grad, ref_inp2_grad, dtype)
 
 
 @pytest.mark.gt
@@ -1353,8 +1366,8 @@ def test_accuracy_rsub(shape, alpha, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu_and_mul(shape, dtype):
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -1362,7 +1375,20 @@ def test_accuracy_silu_and_mul(shape, dtype):
     with flag_gems.use_gems():
         res_out = flag_gems.silu_and_mul(inp1, inp2)
 
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_inp1_grad, ref_inp2_grad) = torch.autograd.grad(
+        ref_out, (ref_inp1, ref_inp2), ref_grad
+    )
+
+    (res_inp1_grad, res_inp2_grad) = torch.autograd.grad(
+        res_out, (inp1, inp2), out_grad
+    )
+
     gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_inp1_grad, ref_inp1_grad, dtype)
+    gems_assert_close(res_inp2_grad, ref_inp2_grad, dtype)
 
 
 @pytest.mark.sub
