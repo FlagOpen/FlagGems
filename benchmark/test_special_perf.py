@@ -417,7 +417,7 @@ def test_perf_contiguous():
         input_fn=contiguous_input_fn,
         op_name="torch.Tensor.contiguous",
         torch_op=torch.Tensor.contiguous,
-        dtypes=FLOAT_DTYPES,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
     )
 
     bench.run()
