@@ -53,13 +53,15 @@ def update_philox_state(increment, device=None):
     gen.set_state(state_copy)
     return seed, offset
 
+
 def set_philox_state(seed, offset, device=None):
     device = device or torch_device_fn.current_device()
     gen = torch_device_fn.default_generators[device]
     assert offset % 4 == 0
     new_state = torch.tensor((seed, offset), dtype=torch.int64)
-    gen = get.set_state(new_state.view(torch.uint8))
+    gen.set_state(new_state.view(torch.uint8))
     return
+
 
 def per_thread_offset(N, num_blocks, num_warps, warp_threads=32):
     block_threads = num_warps * warp_threads

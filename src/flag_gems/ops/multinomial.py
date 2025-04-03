@@ -5,7 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
-from flag_gems.utils.random_utils import update_philox_state, uniform
+from flag_gems.utils.random_utils import uniform, update_philox_state
 
 
 @libentry()

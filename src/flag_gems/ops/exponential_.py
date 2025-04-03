@@ -4,10 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import (
-    update_philox_state,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import uint_to_uniform_float, update_philox_state
 
 from .. import runtime
 from ..runtime import torch_device_fn

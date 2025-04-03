@@ -3,10 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import (
-    update_philox_state,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import uint_to_uniform_float, update_philox_state
 from flag_gems.utils.shape_utils import volume
 
 from .. import runtime

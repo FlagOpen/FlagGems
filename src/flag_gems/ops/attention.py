@@ -404,6 +404,7 @@ def scaled_dot_product_attention(
 
 # The following implementation is a fundamentally a triton rewrite of TriDao's Flash Attention in Cuda.
 
+
 @triton.jit
 def philox_offset_one_warp(b, h, nh: tl.constexpr):
     # To align with TriDao's implementation, philox_offset linearly determined by
@@ -500,7 +501,6 @@ def apply_dropout(
     # We only need one philox call for every 16 rows because a single philox call
     # generates 4 random uints, which are casted for 16 random draws in uint8's.
     M: tl.constexpr = BLOCK_M // 16
-    N: tl.constexpr = BLOCK_N // 32
     row_start = tl.multiple_of(row_start, BLOCK_M)
     col_start = tl.multiple_of(col_start, BLOCK_N)
     row = row_start // 16 + tl.arange(0, M)[:, None]
@@ -540,7 +540,7 @@ def apply_mask(
     is_causal: tl.constexpr,
     is_local: tl.constexpr,
     has_alibi: tl.constexpr,
-    alibi_slope: tl.constexpr=None,
+    alibi_slope: tl.constexpr = None,
 ):
     need_mask: tl.constexpr = is_causal | has_alibi | is_local | (not is_even_mn)
     if need_mask:
@@ -552,13 +552,18 @@ def apply_mask(
             S -= alibi_slope * tl.abs(col_idx[None, :] - row_idx[:, None])
 
         if is_causal:
-            S = tl.where(col_idx[None, :] > col_rb[:, None], float('-inf'), S)
+            S = tl.where(col_idx[None, :] > col_rb[:, None], float("-inf"), S)
 
         if is_local:
-            S = tl.where((col_idx[None, :] > col_rb[:, None]) | (col_idx[None, :] < col_lb[:, None]), float('-inf'), S)
-        
+            S = tl.where(
+                (col_idx[None, :] > col_rb[:, None])
+                | (col_idx[None, :] < col_lb[:, None]),
+                float("-inf"),
+                S,
+            )
+
         if (not is_local) & (not is_causal) & (not is_even_mn):
-            S = tl.where(col_idx[None, :] >= max_seqlen_k, float('-inf'), S)
+            S = tl.where(col_idx[None, :] >= max_seqlen_k, float("-inf"), S)
 
     return S
 
@@ -577,7 +582,7 @@ def softmax_rescale(
     row_max = tl.maximum(row_max, tl.max(S, 1))
 
     if is_border:
-        cur_max = tl.where(row_max == float('-inf'), 0, row_max)
+        cur_max = tl.where(row_max == float("-inf"), 0, row_max)
     else:
         cur_max = row_max
 
@@ -585,9 +590,8 @@ def softmax_rescale(
     row_sum *= p_scale
     O_acc *= p_scale[:, None]
 
-    max_scaled = tl.where(row_max == float('-inf'), 0, row_max * softmax_scale_log2e)
+    max_scaled = tl.where(row_max == float("-inf"), 0, row_max * softmax_scale_log2e)
     P = tl.math.exp2(S * softmax_scale_log2e - max_scaled[:, None])
-    cur_rowsum = tl.sum(P, 1)
     row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
 
@@ -596,15 +600,19 @@ def block_m_heuristic(headdim, is_dropout):
     block_m = 128 if headdim <= 128 else 64
     return block_m
 
+
 def block_n_heuristic(headdim, is_dropout):
     block_n = 64 if headdim <= 64 else 32
     return block_n
 
+
 def block_m_splitkv_heuristic(headdim):
     return 128 if headdim <= 128 else 64
 
+
 def block_n_splitkv_heuristic(headdim):
     return 64 if headdim <= 64 else 32
+
 
 def is_even_mn(M, N, BM, BN, WL, WR):
     if M % BM == 0 and N % BN == 0:
@@ -616,12 +624,19 @@ def is_even_mn(M, N, BM, BN, WL, WR):
 
 @triton.heuristics(
     values={
-        'BLOCK_M': lambda args: block_m_heuristic(args["HEAD_DIM"], args["is_dropout"]),
-        'BLOCK_N': lambda args: block_n_heuristic(args["HEAD_DIM"], args["is_dropout"]),
-        'num_warps': lambda args: 4,
-        'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
-        'PRE_LOAD_V': lambda args: False,
-        'IS_EVEN_MN': lambda args: is_even_mn(args["seqlen_q"], args["seqlen_k"], args["BLOCK_M"], args["BLOCK_N"], args["ws_left"], args["ws_right"]),
+        "BLOCK_M": lambda args: block_m_heuristic(args["HEAD_DIM"], args["is_dropout"]),
+        "BLOCK_N": lambda args: block_n_heuristic(args["HEAD_DIM"], args["is_dropout"]),
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
+        "PRE_LOAD_V": lambda args: False,
+        "IS_EVEN_MN": lambda args: is_even_mn(
+            args["seqlen_q"],
+            args["seqlen_k"],
+            args["BLOCK_M"],
+            args["BLOCK_N"],
+            args["ws_left"],
+            args["ws_right"],
+        ),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
@@ -672,7 +687,7 @@ def flash_fwd_kernel(
     BLOCK_N: tl.constexpr,
     blocks_per_split: tl.constexpr,
     num_warps: tl.constexpr,
-    num_stages: tl.constexpr
+    num_stages: tl.constexpr,
 ):
     m_block = tl.program_id(0)
     bid = tl.program_id(1)
@@ -680,7 +695,7 @@ def flash_fwd_kernel(
     num_m_blocks = tl.cdiv(seqlen_q, BLOCK_M)
 
     # We draw a minimum covering frame on the attention map that this CTA is assigned to process.
-    # The frame edges are rounded to multiples of BLOCK_M and BLOCK_N for rows and columns respectively. 
+    # The frame edges are rounded to multiples of BLOCK_M and BLOCK_N for rows and columns respectively.
 
     col_min = 0
     if is_local:
@@ -688,7 +703,7 @@ def flash_fwd_kernel(
         if not IS_EVEN_MN:
             # round left
             col_min = (col_min // BLOCK_N) * BLOCK_N
-    
+
     col_max = seqlen_k
     if is_causal or is_local:
         col_max += (m_block - num_m_blocks + 1) * BLOCK_M
@@ -698,23 +713,23 @@ def flash_fwd_kernel(
 
     if not IS_EVEN_MN:
         # round right
-        col_max =  tl.cdiv(col_max, BLOCK_N) * BLOCK_N
+        col_max = tl.cdiv(col_max, BLOCK_N) * BLOCK_N
 
     if (not is_causal) and (not is_local):
         if IS_EVEN_MN:
             masking_cols: tl.constexpr = 0
         else:
             masking_cols: tl.constexpr = BLOCK_N
-    elif (is_causal | is_local) and IS_EVEN_MN: # causal implies ws_right is zero
+    elif (is_causal | is_local) and IS_EVEN_MN:  # causal implies ws_right is zero
         masking_cols: tl.constexpr = tl.cdiv(BLOCK_M, BLOCK_N) * BLOCK_N
     else:
-        # local  
+        # local
         masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
 
     if has_alibi:
         alibi_offset = bid * slopes_batch_stride + hid
         alibi_slope = tl.load(pSlopes + alibi_offset)
-        alibi_slope /= scale
+        alibi_slope /= softmax_scale
     else:
         alibi_slope = 0.0
 
@@ -726,13 +741,17 @@ def flash_fwd_kernel(
     Q_off = row_idx[:, None] * q_s_stride + tl.arange(0, HEAD_DIM)[None, :]
     qmask = row_idx[:, None] < seqlen_q
     if IS_EVEN_MN:
-        Q = tl.load(Q_ptr + Q_off, cache_modifier='.cg')
+        Q = tl.load(Q_ptr + Q_off, cache_modifier=".cg")
     else:
-        Q = tl.load(Q_ptr + Q_off, mask=qmask, cache_modifier='.cg')
+        Q = tl.load(Q_ptr + Q_off, mask=qmask, cache_modifier=".cg")
 
     if return_P:
-        P_ptr += ((bid * NUM_HEADS + hid) * seqlen_q_rounded + m_block * BLOCK_M) * seqlen_k_rounded
-        P_offset = tl.arange(0, BLOCK_M)[:, None] * seqlen_k_rounded + tl.arange(0, BLOCK_N)
+        P_ptr += (
+            (bid * NUM_HEADS + hid) * seqlen_q_rounded + m_block * BLOCK_M
+        ) * seqlen_k_rounded
+        P_offset = tl.arange(0, BLOCK_M)[:, None] * seqlen_k_rounded + tl.arange(
+            0, BLOCK_N
+        )
         p_bp0 = P_ptr + P_offset
 
     O_ = tl.zeros((BLOCK_M, HEAD_DIM), dtype=tl.float32)
@@ -746,8 +765,12 @@ def flash_fwd_kernel(
     V_ptr += bid * k_b_stride
     V_ptr += (hid // h_hk_ratio) * k_h_stride
 
-    K_offset = tl.arange(0, BLOCK_N)[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
-    V_offset = tl.arange(0, BLOCK_N)[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
+    K_offset = (
+        tl.arange(0, BLOCK_N)[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
+    )
+    V_offset = (
+        tl.arange(0, BLOCK_N)[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
+    )
 
     p_bk0 = K_ptr + K_offset
     p_bv0 = V_ptr + V_offset
@@ -820,7 +843,9 @@ def flash_fwd_kernel(
                     if IS_EVEN_MN:
                         tl.store(p_bp0 + col_start, P_drop)
                     else:
-                        tl.store(p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :])
+                        tl.store(
+                            p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :]
+                        )
 
                 P = apply_dropout(
                     P,
@@ -845,7 +870,9 @@ def flash_fwd_kernel(
                     V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
             O_ = tl.dot(P, V, O_, allow_tf32=False)
 
-    for col_start in tl.range(col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages):
+    for col_start in tl.range(
+        col_min, col_max - masking_cols, step=BLOCK_N, num_stages=num_stages
+    ):
         col_start = tl.multiple_of(col_start, BLOCK_N)
         off = col_start * k_s_stride
         K = tl.load(p_bk0 + off, cache_modifier=".cg")
@@ -923,18 +950,22 @@ def flash_fwd_kernel(
 
         O_ = tl.dot(P, V, O_)
 
-
     # LSE
-    # Note, rowsum = exp(-rowmax) * lse, therefore rowmax + log(rowsum) cancels the effect of rowmax and outputs lse only.
-    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
+    # Note, rowsum = exp(-rowmax) * lse, therefore rowmax + log(rowsum) cancels
+    # the effect of rowmax and outputs lse only.
+    lse = tl.where(
+        rowsum_ == 0 | (rowsum_ != rowsum_),
+        float("inf"),
+        rowmax_ * softmax_scale + tl.log(rowsum_),
+    )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
 
     if is_dropout:
         O_ *= inv_sum[:, None] * rpdrop
     else:
         O_ *= inv_sum[:, None]
-    
-    O = O_.to(O_ptr.type.element_ty)
+
+    O = O_.to(O_ptr.type.element_ty)  # noqa
 
     # Write back output
     o_b_stride = tl.multiple_of(o_b_stride, HEAD_DIM * h)
@@ -946,7 +977,7 @@ def flash_fwd_kernel(
         tl.store(O_ptr + O_offset, O)
     else:
         tl.store(O_ptr + O_offset, O, mask=qmask)
-    
+
     # Write back lse
     p_lse = lse_ptr + (bid * h + hid) * seqlen_q
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -959,12 +990,19 @@ def flash_fwd_kernel(
 
 @triton.heuristics(
     values={
-        'BLOCK_M': lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
-        'BLOCK_N': lambda args: block_n_splitkv_heuristic(args["HEAD_DIM"]),
-        'num_warps': lambda args: 4,
-        'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
-        'PRE_LOAD_V': lambda args: True,
-        'IS_EVEN_MN': lambda args: is_even_mn(args["seqlen_q"], args["seqlen_k"], args["BLOCK_M"], args["BLOCK_N"], args["ws_left"], args["ws_right"]),
+        "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
+        "BLOCK_N": lambda args: block_n_splitkv_heuristic(args["HEAD_DIM"]),
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
+        "PRE_LOAD_V": lambda args: True,
+        "IS_EVEN_MN": lambda args: is_even_mn(
+            args["seqlen_q"],
+            args["seqlen_k"],
+            args["BLOCK_M"],
+            args["BLOCK_N"],
+            args["ws_left"],
+            args["ws_right"],
+        ),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
@@ -1015,20 +1053,27 @@ def flash_fwd_bh_parallel_kernel(
     BLOCK_N: tl.constexpr,
     blocks_per_split: tl.constexpr,
     num_warps: tl.constexpr,
-    num_stages: tl.constexpr
+    num_stages: tl.constexpr,
 ):
     # (TODO)
     pass
-    
+
 
 @triton.heuristics(
     values={
-        'BLOCK_M': lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
-        'BLOCK_N': lambda args: block_n_splitkv_heuristic(args["HEAD_DIM"]),
-        'num_warps': lambda args: 4,
-        'num_stages': lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
-        'PRE_LOAD_V': lambda args: True,
-        'IS_EVEN_MN': lambda args: is_even_mn(args["seqlen_q"], args["seqlen_k"], args["BLOCK_M"], args["BLOCK_N"], args["ws_left"], args["ws_right"]),
+        "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
+        "BLOCK_N": lambda args: block_n_splitkv_heuristic(args["HEAD_DIM"]),
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
+        "PRE_LOAD_V": lambda args: True,
+        "IS_EVEN_MN": lambda args: is_even_mn(
+            args["seqlen_q"],
+            args["seqlen_k"],
+            args["BLOCK_M"],
+            args["BLOCK_N"],
+            args["ws_left"],
+            args["ws_right"],
+        ),
     }
 )
 @triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
@@ -1079,7 +1124,7 @@ def flash_fwd_splitkv_kernel(
     BLOCK_N: tl.constexpr,
     blocks_per_split: tl.constexpr,
     num_warps: tl.constexpr,
-    num_stages: tl.constexpr
+    num_stages: tl.constexpr,
 ):
     m_block = tl.program_id(0)
     split_id = tl.program_id(1)
@@ -1091,13 +1136,15 @@ def flash_fwd_splitkv_kernel(
 
     n_block_max = tl.cdiv(seqlen_k, BLOCK_N)
     if is_causal:
-        n_block_max = min(n_block_max,
-                          tl.cdiv((m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + ws_right, BLOCK_N))
+        n_block_max = min(
+            n_block_max,
+            tl.cdiv((m_block + 1) * BLOCK_M + seqlen_k - seqlen_q + ws_right, BLOCK_N),
+        )
 
     if has_alibi:
         alibi_offset = bid * slopes_batch_stride + hid
         alibi_slope = tl.load(pSlopes + alibi_offset)
-        alibi_slope /= scale
+        alibi_slope /= softmax_scale
     else:
         alibi_slope = 0
 
@@ -1106,9 +1153,9 @@ def flash_fwd_splitkv_kernel(
             masking_block_min = n_block_max
         else:
             masking_block_min = n_block_max - 1
-    elif is_causal and IS_EVEN_MN: # causal implies ws_right is zero
+    elif is_causal and IS_EVEN_MN:  # causal implies ws_right is zero
         masking_block_min = n_block_max - tl.cdiv(BLOCK_M, BLOCK_N)
-    else: 
+    else:
         masking_block_min = n_block_max - tl.cdiv(BLOCK_M, BLOCK_N) - 1
 
     Q_ptr += bid * q_b_stride
@@ -1128,10 +1175,14 @@ def flash_fwd_splitkv_kernel(
     V_ptr += bid * k_b_stride
     V_ptr += (hid // h_hk_ratio) * k_h_stride
 
-    K_offset = tl.arange(0, BLOCK_N)[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
+    K_offset = (
+        tl.arange(0, BLOCK_N)[None, :] * k_s_stride + tl.arange(0, HEAD_DIM)[:, None]
+    )
     p_k0 = K_ptr + K_offset
-    
-    V_offset = tl.arange(0, BLOCK_N)[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
+
+    V_offset = (
+        tl.arange(0, BLOCK_N)[:, None] * k_s_stride + tl.arange(0, HEAD_DIM)[None, :]
+    )
     p_v0 = V_ptr + V_offset
 
     O_ = tl.zeros((BLOCK_M, HEAD_DIM), dtype=tl.float32)
@@ -1140,7 +1191,9 @@ def flash_fwd_splitkv_kernel(
 
     if split_block_max <= masking_block_min:
         # no masking needed
-        for n_block in tl.range(split_block_min, split_block_max, num_stages=num_stages):
+        for n_block in tl.range(
+            split_block_min, split_block_max, num_stages=num_stages
+        ):
             kv_off = n_block * BLOCK_N * k_s_stride
             K = tl.load(p_k0 + kv_off, cache_modifier=".cg")
             if PRE_LOAD_V:
@@ -1164,7 +1217,7 @@ def flash_fwd_splitkv_kernel(
             if not PRE_LOAD_V:
                 V = tl.load(p_v0 + kv_off, cache_modifier=".cg")
             P = P.to(Q_ptr.type.element_ty)
-            O_ = tl.dot(P, V, O_)        
+            O_ = tl.dot(P, V, O_)
     else:
         for n_block in tl.range(split_block_min, min(split_block_max, n_block_max)):
             kv_off = n_block * BLOCK_N * k_s_stride
@@ -1178,7 +1231,9 @@ def flash_fwd_splitkv_kernel(
                 kvmask = col_idx < seqlen_k
                 K = tl.load(p_k0 + kv_off, mask=kvmask[None, :], cache_modifier=".cg")
                 if PRE_LOAD_V:
-                    V = tl.load(p_v0 + kv_off, mask=kvmask[:, None], cache_modifier=".cg")
+                    V = tl.load(
+                        p_v0 + kv_off, mask=kvmask[:, None], cache_modifier=".cg"
+                    )
 
             S = tl.dot(Q, K)
 
@@ -1210,14 +1265,20 @@ def flash_fwd_splitkv_kernel(
                 if IS_EVEN_MN:
                     V = tl.load(p_v0 + kv_off, cache_modifier=".cg")
                 else:
-                    V = tl.load(p_v0 + kv_off, mask=kvmask[:, None], cache_modifier=".cg")
+                    V = tl.load(
+                        p_v0 + kv_off, mask=kvmask[:, None], cache_modifier=".cg"
+                    )
             P = P.to(Q_ptr.type.element_ty)
             O_ = tl.dot(P, V, O_)
 
     # LSE
-    lse = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), float('-inf'), rowmax_ * softmax_scale + tl.log(rowsum_))
+    lse = tl.where(
+        rowsum_ == 0 | (rowsum_ != rowsum_),
+        float("-inf"),
+        rowmax_ * softmax_scale + tl.log(rowsum_),
+    )
     inv_sum = tl.where(rowsum_ == 0 | (rowsum_ != rowsum_), 1.0, 1.0 / rowsum_)
-    
+
     # Rescale output
     O_ *= inv_sum[:, None]
 
@@ -1226,7 +1287,9 @@ def flash_fwd_splitkv_kernel(
     # grid = (seq_block, split, batch * head)
     O_split_ptr = O_ptr
     # + split, batch, head offsets, seq_block offsets are already added in row_idx
-    O_split_ptr += (split_id * tl.num_programs(2) + tl.program_id(2)) * seqlen_q * HEAD_DIM
+    O_split_ptr += (
+        (split_id * tl.num_programs(2) + tl.program_id(2)) * seqlen_q * HEAD_DIM
+    )
     O_split_offset = row_idx[:, None] * HEAD_DIM + tl.arange(0, HEAD_DIM)
     O_split_ptr = tl.multiple_of(O_split_ptr, HEAD_DIM)
     p_om = O_split_ptr + O_split_offset
@@ -1235,17 +1298,24 @@ def flash_fwd_splitkv_kernel(
         tl.store(p_om, O_, cache_modifier=".cg")
     else:
         tl.store(p_om, O_, mask=qmask, cache_modifier=".cg")
-    
+
     # Write back lse
     # lse_splits layout = (n_splits, batch_size, num_heads, seqlen_q)
     lse_split_ptr = lse_ptr
     # + split, batch, head, seq_block offsets
-    lse_split_ptr += (split_id * tl.num_programs(2) + tl.program_id(2)) * seqlen_q + m_block * BLOCK_M
+    lse_split_ptr += (
+        split_id * tl.num_programs(2) + tl.program_id(2)
+    ) * seqlen_q + m_block * BLOCK_M
 
     if IS_EVEN_MN:
         tl.store(lse_split_ptr + tl.arange(0, BLOCK_M), lse, cache_modifier=".cg")
     else:
-        tl.store(lse_split_ptr + tl.arange(0, BLOCK_M), lse, mask=row_idx < seqlen_q, cache_modifier=".cg")
+        tl.store(
+            lse_split_ptr + tl.arange(0, BLOCK_M),
+            lse,
+            mask=row_idx < seqlen_q,
+            cache_modifier=".cg",
+        )
 
 
 @triton.jit
@@ -1272,11 +1342,18 @@ def flash_fwd_splitkv_combine_kernel(
     out_split_stride = tl.num_programs(0) * BLOCK_M * head_size
 
     # Subtracting maximum from each of the split lse's for better numerical stability
-    lse_split_offset = tl.arange(0, BLOCK_M)[:, None] + tl.arange(0, MAX_N_SPLITS)[None, :] * lse_split_stride
-    lse_split_mask = (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None] < q_total) & (tl.arange(0, MAX_N_SPLITS)[None, :] < n_splits)
-    lse_splits = tl.load(lse_splits_ptr + lse_split_offset, mask=lse_split_mask, other=float('-inf'))
+    lse_split_offset = (
+        tl.arange(0, BLOCK_M)[:, None]
+        + tl.arange(0, MAX_N_SPLITS)[None, :] * lse_split_stride
+    )
+    lse_split_mask = (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None] < q_total) & (
+        tl.arange(0, MAX_N_SPLITS)[None, :] < n_splits
+    )
+    lse_splits = tl.load(
+        lse_splits_ptr + lse_split_offset, mask=lse_split_mask, other=float("-inf")
+    )
     max_lse = tl.max(lse_splits, 1)
-    
+
     # Sum exp(lse(i) - max_lse) over all split i to obtain Z=sumexp(QK) up to a scaled factor exp(-max_lse)
     Zi_scaled = tl.exp(lse_splits - max_lse[:, None])
     Z_scaled = tl.sum(Zi_scaled, 1)
@@ -1292,8 +1369,12 @@ def flash_fwd_splitkv_combine_kernel(
         + tl.arange(0, MAX_N_SPLITS)[None, :, None] * out_split_stride
         + tl.arange(0, head_size)[None, None, :]
     )
-    out_split_mask = (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None, None] < q_total) & (tl.arange(0, MAX_N_SPLITS)[None, :, None] < n_splits)
-    out_splits = tl.load(out_splits_ptr + out_split_offset, mask=out_split_mask, other=0)
+    out_split_mask = (
+        pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None, None] < q_total
+    ) & (tl.arange(0, MAX_N_SPLITS)[None, :, None] < n_splits)
+    out_splits = tl.load(
+        out_splits_ptr + out_split_offset, mask=out_split_mask, other=0
+    )
     out = tl.sum(Zi_Z[:, :, None] * out_splits, 1)
     out = out.to(out_ptr.type.element_ty)
 
@@ -1303,6 +1384,7 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 _debug = False
+
 
 def mha_fwd(
     q,
@@ -1316,7 +1398,7 @@ def mha_fwd(
     window_size_left,
     window_size_right,
     return_softmax,
-    disable_splitkv=False
+    disable_splitkv=False,
 ):
     q_dtype = q.dtype
     q_device = q.device
@@ -1346,7 +1428,14 @@ def mha_fwd(
     if is_causal:
         window_size_right = 0
 
-    if seqlen_q == 1 and num_heads > num_heads_k and window_size_left < 0 and window_size_right < 0 and p_dropout == 0 and not alibi_slopes:
+    if (
+        seqlen_q == 1
+        and num_heads > num_heads_k
+        and window_size_left < 0
+        and window_size_right < 0
+        and p_dropout == 0
+        and not alibi_slopes
+    ):
         swap_seq_and_group = True
     else:
         swap_seq_and_group = False
@@ -1377,7 +1466,11 @@ def mha_fwd(
             return 1
 
         min_blocks_per_split = 2
-        best_splits = min(triton.cdiv(n_blocks, min_blocks_per_split), int(math.floor(1. / eff)), num_sms)
+        best_splits = min(
+            triton.cdiv(n_blocks, min_blocks_per_split),
+            int(math.floor(1.0 / eff)),
+            num_sms,
+        )
 
         # best_splits = 1
         # best_eff = eff
@@ -1394,13 +1487,17 @@ def mha_fwd(
 
     with torch_device_fn.device(q_device):
         # Set softmax params
-        lse = torch.empty((batch_size, num_heads, seqlen_q), dtype=torch.float, device=q_device)
+        lse = torch.empty(
+            (batch_size, num_heads, seqlen_q), dtype=torch.float, device=q_device
+        )
         if return_softmax:
-            assert p_dropout > 0, "return_softmax is only supported when p_dropout > 0.0"
+            assert (
+                p_dropout > 0
+            ), "return_softmax is only supported when p_dropout > 0.0"
             p = torch.empty(
                 (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
                 dtype=q_dtype,
-                device=q_device
+                device=q_device,
             )
         else:
             p = torch.empty((), device=q_device)
@@ -1416,18 +1513,23 @@ def mha_fwd(
 
         p_dropout = 1 - p_dropout
         pdrop_u8 = math.floor(p_dropout * 255.0)
-        rpdrop = 1. / p_dropout
+        rpdrop = 1.0 / p_dropout
 
-        M_LOG2E	= 1.4426950408889634074
+        M_LOG2E = 1.4426950408889634074
         softmax_scale_log2e = softmax_scale * M_LOG2E
 
         # Set alibi params
         if alibi_slopes is not None:
             assert alibi_slopes.device == q_device
-            assert alibi_slopes.dtype in (torch.float, )
+            assert alibi_slopes.dtype in (torch.float,)
             assert alibi_slopes.stride(-1) == 1
-            assert alibi_slopes.shape == (num_heads,) or alibi_slopes.shape == (batch_size, num_heads)
-            alibi_slopes_batch_stride = alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
+            assert alibi_slopes.shape == (num_heads,) or alibi_slopes.shape == (
+                batch_size,
+                num_heads,
+            )
+            alibi_slopes_batch_stride = (
+                alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
+            )
             has_alibi = True
         else:
             alibi_slopes_batch_stride = 0
@@ -1435,14 +1537,16 @@ def mha_fwd(
 
         # Set SWA params
         is_causal = window_size_left < 0 and window_size_right == 0
-        is_local = (window_size_left >= 0 and window_size_right >= 0)
+        is_local = window_size_left >= 0 and window_size_right >= 0
 
         # ONLY EVEN_K IS SUPPORTED
         assert head_size == head_size_rounded
 
         # Do kernel dispatching
         def dispatch(B, H, Q, K, D):
-            num_sms = torch_device_fn.get_device_properties("cuda").multi_processor_count
+            num_sms = torch_device_fn.get_device_properties(
+                "cuda"
+            ).multi_processor_count
 
             default_args = {}
 
@@ -1459,69 +1563,71 @@ def mha_fwd(
                 BN = block_n_splitkv_heuristic(D)
                 n_blocks = triton.cdiv(seqlen_k, BN)
                 n_splits = splits_heuristics(n_tasks, num_sms, n_blocks)
-                
+
                 if _debug:
                     n_splits = 32
                     n_blocks = triton.cdiv(K, BN)
                     blocks_per_split = triton.cdiv(n_blocks, n_splits)
-                    print('block_n:', BN)
-                    print('n_splits:', n_splits)
-                    print('blocks_per_split', blocks_per_split)
+                    print("block_n:", BN)
+                    print("n_splits:", n_splits)
+                    print("blocks_per_split", blocks_per_split)
 
                 if n_splits > 1:
                     lse_splits = torch.empty(
-                        (n_splits, B, H, Q),
-                        dtype=torch.float,
-                        device=q_device
+                        (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
                     out_splits = torch.empty(
-                        (n_splits, B, H, Q, D),
-                        dtype=torch.float,
-                        device=q_device
+                        (n_splits, B, H, Q, D), dtype=torch.float, device=q_device
                     )
                     grid = lambda args: (
                         triton.cdiv(Q, args["BLOCK_M"]),
                         n_splits,
-                        B * H
+                        B * H,
                     )
                     splitkv_kernel = flash_fwd_splitkv_kernel[grid]
                     blocks_per_split = triton.cdiv(n_blocks, n_splits)
                     splitkv_args = default_args.copy()
-                    splitkv_args['blocks_per_split'] = blocks_per_split
-                    splitkv_args['O_ptr'] = out_splits
-                    splitkv_args['lse_ptr'] = lse_splits
+                    splitkv_args["blocks_per_split"] = blocks_per_split
+                    splitkv_args["O_ptr"] = out_splits
+                    splitkv_args["lse_ptr"] = lse_splits
                     # kernel = yield kernel, args
-                
+
                     if D % 128 == 0:
                         BLOCK_M = 4
                     elif D % 64 == 0:
                         BLOCK_M = 8
                     else:
                         BLOCK_M = 16
-                    grid = lambda args: (triton.cdiv(B * H * Q, BLOCK_M), )
+                    grid = lambda args: (triton.cdiv(B * H * Q, BLOCK_M),)
                     combine_kernel = flash_fwd_splitkv_combine_kernel[grid]
                     combine_args = {
-                        'out_splits_ptr': out_splits,
-                        'lse_splits_ptr': lse_splits,
-                        'n_splits': n_splits,
-                        'BLOCK_M': BLOCK_M,
-                        'q_total': B * H * Q,
-                        'MAX_N_SPLITS': triton.next_power_of_2(n_splits)
+                        "out_splits_ptr": out_splits,
+                        "lse_splits_ptr": lse_splits,
+                        "n_splits": n_splits,
+                        "BLOCK_M": BLOCK_M,
+                        "q_total": B * H * Q,
+                        "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
                     }
                     return splitkv_kernel, splitkv_args, combine_kernel, combine_args
-            
+
             # Last option: flash_fwd
-            grid = lambda args: (triton.cdiv(Q, args["BLOCK_M"]), B, H, )
+            grid = lambda args: (
+                triton.cdiv(Q, args["BLOCK_M"]),
+                B,
+                H,
+            )
             kernel = flash_fwd_kernel[grid]
             return kernel, default_args, None, None
 
-        kernel1, kernel1_args, kernel2, kernel2_args = dispatch(batch_size, num_heads, seqlen_q, seqlen_k, head_size)
+        kernel1, kernel1_args, kernel2, kernel2_args = dispatch(
+            batch_size, num_heads, seqlen_q, seqlen_k, head_size
+        )
 
         if _debug:
             p = torch.empty(
                 (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
                 dtype=torch.float32,
-                device=q_device
+                device=q_device,
             )
             return_softmax = True
 
@@ -1568,17 +1674,17 @@ def mha_fwd(
             "NUM_HEADS": num_heads,
             "NUM_HEADS_K": num_heads_k,
         }
-        
+
         args_copy = prefilled_args.copy()
         args_copy.update(kernel1_args)
 
         kernel = kernel1(**args_copy)
         if _debug:
-            print(f'{kernel.name} shared memory:', kernel.metadata.shared)
-            print(f'{kernel.name} num_warps:', kernel.metadata.num_warps)
-            print(f'{kernel.name} num_stages:', kernel.metadata.num_stages)
+            print(f"{kernel.name} shared memory:", kernel.metadata.shared)
+            print(f"{kernel.name} num_warps:", kernel.metadata.num_warps)
+            print(f"{kernel.name} num_stages:", kernel.metadata.num_stages)
             # print(kernel.asm['ttgir'])
-            print('p:', p)
+            print("p:", p)
 
         # Combine
         if kernel2 is not None:
@@ -1595,8 +1701,12 @@ def mha_fwd(
             kernel2(**args_copy)
 
     if swap_seq_and_group:
-        out = out.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
-        q = q.transpose(1, 2).reshape((batch_size, 1, num_heads_k * seqlen_q, head_size))
+        out = out.transpose(1, 2).reshape(
+            (batch_size, 1, num_heads_k * seqlen_q, head_size)
+        )
+        q = q.transpose(1, 2).reshape(
+            (batch_size, 1, num_heads_k * seqlen_q, head_size)
+        )
         lse = lse.reshape((batch_size, num_heads_k * seqlen_q, 1))
 
     return out, q, k, v, lse, philox_seed, philox_offset, p
@@ -1619,7 +1729,7 @@ def flash_attention_forward(
     window_size_right=None,
     seqused_k=None,
     alibi_slopes=None,
-    disable_splitkv=False
+    disable_splitkv=False,
 ):
     logging.debug("GEMS FLASH_ATTENTION_FORWARD")
     assert cum_seq_q is None and cum_seq_k is None, "varlen is not supported yet."
@@ -1651,7 +1761,7 @@ def flash_attention_forward(
         non_null_window_left,
         non_null_window_right,
         return_debug_mask,
-        disable_splitkv=disable_splitkv
+        disable_splitkv=disable_splitkv,
     )
-    
+
     return (out, lse, philox_seed, philox_offset, p)
