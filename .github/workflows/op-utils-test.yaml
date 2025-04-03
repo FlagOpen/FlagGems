@@ -8,6 +8,7 @@ on:
 
 jobs:
   container-unit-test:
+    if: ${{ github.repository_owner == 'FlagOpen' }}
     runs-on: jiuding
     steps:
       - name: Checkout code
