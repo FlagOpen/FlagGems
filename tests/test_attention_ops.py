@@ -148,8 +148,6 @@ def test_sdpa_nonsquare_qk_causal(
         scale=scale,
         window_size_left=None,
         window_size_right=None,
-        seqused_k=None,
-        alibi_slopes=None,
     )
     torch_result = out.transpose(1, 2)
 
@@ -171,8 +169,6 @@ def test_sdpa_nonsquare_qk_causal(
             scale=scale,
             window_size_left=None,
             window_size_right=None,
-            seqused_k=None,
-            alibi_slopes=None,
         )
         flaggem_result = out.transpose(1, 2)
 
@@ -233,8 +229,6 @@ def test_flash_fwd_swa(
         scale=scale,
         window_size_left=window_size_left,
         window_size_right=window_size_right,
-        seqused_k=None,
-        alibi_slopes=None,
     )
     torch_result = out.transpose(1, 2)
     torch_lse = lse.transpose(1, 2)
@@ -257,8 +251,6 @@ def test_flash_fwd_swa(
             scale=scale,
             window_size_left=window_size_left,
             window_size_right=window_size_right,
-            seqused_k=None,
-            alibi_slopes=None,
         )
         flaggem_result = out.transpose(1, 2)
         flaggem_lse = lse.transpose(1, 2)
