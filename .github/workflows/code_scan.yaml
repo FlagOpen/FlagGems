@@ -8,6 +8,7 @@ on:
 
 jobs:
   scan-code-and-report:
+    if: ${{ github.repository_owner == 'FlagOpen' }}
     runs-on: scan
     concurrency:
       group: scan-code-and-report-${{ github.event.pull_request.number || github.ref }}

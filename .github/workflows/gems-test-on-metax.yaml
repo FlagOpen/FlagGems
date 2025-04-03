@@ -8,6 +8,7 @@ on:
 
 jobs:
   op-test-on-metax:
+    if: ${{ github.repository_owner == 'FlagOpen' }}
     runs-on: metax
     concurrency:
       group: op-test-on-metax-${{ github.event.pull_request.number || github.ref }}
