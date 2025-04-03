@@ -47,19 +47,21 @@ def dropout_heur_num_warps(args):
 
 
 def exponential_heur_block(args):
-    if args["N"] <= 512:
-        return 512
-    else:
-        return 1024
+    # if args["N"] <= 512:
+    #     return 512
+    # else:
+    #     return 1024
+    return 8
 
 
 def exponential_heur_num_warps(args):
-    if args["N"] <= 512:
-        return 4
-    elif args["N"] <= 1024:
-        return 8
-    else:
-        return 16
+    # if args["N"] <= 512:
+    #     return 4
+    # elif args["N"] <= 1024:
+    #     return 8
+    # else:
+    #     return 16
+    return 4
 
 
 def gather_heur_block_m(args):
@@ -116,24 +118,25 @@ def randn_heur_num_warps(args):
 
 
 def softmax_heur_tile_k(args):
-    MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
-    tile_k = 1
-    upper_bound = min(args["K"], MAX_TILE_K)
-    while tile_k <= upper_bound:
-        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
-        num_waves = num_blocks / NUM_SMS
-        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
-            tile_k *= 2
-        else:
-            break
-    return tile_k
+    # MAX_TILE_K = 8192
+    # NUM_SMS = torch.cuda.get_device_properties(
+    #     torch.cuda.current_device()
+    # ).multi_processor_count
+    # tile_k = 1
+    # upper_bound = min(args["K"], MAX_TILE_K)
+    # while tile_k <= upper_bound:
+    #     num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
+    #     num_waves = num_blocks / NUM_SMS
+    #     if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+    #         tile_k *= 2
+    #     else:
+    #         break
+    return 16
 
 
 def softmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(8192, args["TILE_K"])
+    # return triton.cdiv(8192, args["TILE_K"])
+    return 16
 
 
 def softmax_heur_one_tile_per_cta(args):
@@ -151,10 +154,11 @@ def softmax_heur_num_warps_non_inner(args):
 
 
 def softmax_heur_tile_n_inner(args):
-    if args["N"] <= (32 * 1024):
-        return triton.next_power_of_2(args["N"])
-    else:
-        return 4096
+    # if args["N"] <= (32 * 1024):
+    #     return triton.next_power_of_2(args["N"])
+    # else:
+    #     return 4096
+    return 16
 
 
 def softmax_heur_num_warps_inner(args):

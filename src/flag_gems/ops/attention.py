@@ -161,12 +161,12 @@ def _attn_fwd(
     stride_o_head,
     stride_o_seqlen,
     stride_o_headsize,
-    Z,
-    q_numhead,
-    kv_numhead,
-    Q_CTX,
-    KV_CTX,
-    HEAD_DIM: tl.constexpr,
+    Z, # query.shape[0] = 3
+    q_numhead, # query.shape[1] = 28
+    kv_numhead, # kv_head_num = 28
+    Q_CTX, # query.shape[2] = 5 or 1
+    KV_CTX, # key.shape[2] = 28
+    HEAD_DIM: tl.constexpr, # 128
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
@@ -174,16 +174,16 @@ def _attn_fwd(
     PRE_LOAD_V: tl.constexpr,
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
-    batch_id = off_hz // q_numhead
-    head_id = off_hz % q_numhead
-    kv_head_id = off_hz % kv_numhead
+    start_m = tl.program_id(0) # 线程块的ID，类似于blockIdx.x
+    off_hz = tl.program_id(1) # 线程块的ID，类似于blockIdx.y
+    batch_id = off_hz // q_numhead # query_shape = [3, 28, 1, 128]
+    head_id = off_hz % q_numhead # key_shape = [3, 28, 6, 128]
+    kv_head_id = off_hz % kv_numhead # value_shape = [3, 28, 6, 128]
 
     q_offset = (
         batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
     )
-    o_offset = (
+    o_offset = ( # output_shape = [3, 28, 1, 128]
         batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
     )
     kv_offset = (
@@ -321,14 +321,14 @@ def scaled_dot_product_attention(
 ):
     logging.debug("GEMS SCALED DOT PRODUCT ATTENTION")
     # shape constraints
-    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
+    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1] # 128
     # when v is in float8_e5m2 it is transposed.
-    HEAD_DIM_V = value.shape[-1]
+    HEAD_DIM_V = value.shape[-1] # 128
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
     assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
-    o = torch.empty_like(query, dtype=value.dtype)
+    o = torch.empty_like(query, dtype=value.dtype) # 输出，与query的维度相同
 
     stage = 3 if is_causal else 1
 
@@ -337,15 +337,15 @@ def scaled_dot_product_attention(
     else:
         sm_scale = scale
 
-    kv_head_num = key.shape[1]
+    kv_head_num = key.shape[1] # 28
 
     grid = lambda args: (
-        triton.cdiv(query.shape[2], args["BLOCK_M"]),
-        query.shape[0] * query.shape[1],
+        triton.cdiv(query.shape[2], args["BLOCK_M"]), # 5 or 1 /
+        query.shape[0] * query.shape[1], # 3 * 28 = 56
         1,
     )
 
-    if attn_mask is not None:
+    if attn_mask is not None: # 交叉注意力
         HAS_ATTN_MASK = True
         if attn_mask.dtype == torch.bool:
             attn_mask = attn_mask.to(query.dtype) * -1.0e6
@@ -353,48 +353,48 @@ def scaled_dot_product_attention(
         stride_attn_mask_head = attn_mask.stride(1)
         stride_attn_mask_q_seqlen = attn_mask.stride(2)
         stride_attn_mask_kv_seqlen = attn_mask.stride(3)
-    else:
+    else: # 自注意力
         HAS_ATTN_MASK = False
         stride_attn_mask_batch = 1
         stride_attn_mask_head = 1
         stride_attn_mask_q_seqlen = 1
         stride_attn_mask_kv_seqlen = 1
-
-    with torch_device_fn.device(query.device):
-        _attn_fwd[grid](
-            query,
-            key,
-            value,
-            attn_mask,
-            sm_scale,
-            o,  #
-            query.stride(0),
-            query.stride(1),
-            query.stride(2),
-            query.stride(3),  #
-            key.stride(0),
-            key.stride(1),
-            key.stride(2),
-            key.stride(3),  #
-            value.stride(0),
-            value.stride(1),
-            value.stride(2),
-            value.stride(3),  #
-            stride_attn_mask_batch,
-            stride_attn_mask_head,
-            stride_attn_mask_q_seqlen,
-            stride_attn_mask_kv_seqlen,  #
-            o.stride(0),
-            o.stride(1),
-            o.stride(2),
-            o.stride(3),  #
-            query.shape[0],
-            query.shape[1],
-            kv_head_num,  #
-            query.shape[2],  #
-            key.shape[2],  #
-            HEAD_DIM_K,  #
-            STAGE=stage,  #
-            HAS_ATTN_MASK=HAS_ATTN_MASK,  #
-        )
-        return o
+    # import pdb; pdb.set_trace()
+    # with torch_device_fn.device(query.device):
+    _attn_fwd[grid](
+        query,
+        key,
+        value,
+        attn_mask,
+        sm_scale,
+        o,  #
+        query.stride(0), # 3
+        query.stride(1), # 28
+        query.stride(2), # 5 or 1
+        query.stride(3), # 128
+        key.stride(0), # 3
+        key.stride(1), # 28
+        key.stride(2), # 5, 6-260
+        key.stride(3), # 128
+        value.stride(0), # 3
+        value.stride(1), # 28
+        value.stride(2), # 5, 6-260
+        value.stride(3), # 128
+        stride_attn_mask_batch, # 1
+        stride_attn_mask_head, # 1
+        stride_attn_mask_q_seqlen, # 1
+        stride_attn_mask_kv_seqlen, # 1
+        o.stride(0), # 3
+        o.stride(1), # 28
+        o.stride(2), # 5 or 1
+        o.stride(3), # 128
+        query.shape[0], # 3
+        query.shape[1], # 28
+        kv_head_num, # 28
+        query.shape[2], # 5 or 1
+        key.shape[2], # 5, 6-260
+        HEAD_DIM_K, # 128
+        STAGE=stage, # 3
+        HAS_ATTN_MASK=HAS_ATTN_MASK, # False
+    )
+    return o

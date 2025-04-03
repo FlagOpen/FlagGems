@@ -10,7 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("addmm"),
     key=["M", "N", "K"],
@@ -86,22 +86,22 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch_device_fn.device(mat1.device):
-        addmm_kernel[grid](
-            mat1,
-            mat2,
-            bias,
-            out,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            out.stride(0),
-            out.stride(1),
-        )
+    # with torch_device_fn.device(mat1.device):
+    addmm_kernel[grid](
+        mat1,
+        mat2,
+        bias,
+        out,
+        alpha,
+        beta,
+        M,
+        N,
+        K,
+        mat1.stride(0),
+        mat1.stride(1),
+        mat2.stride(0),
+        mat2.stride(1),
+        out.stride(0),
+        out.stride(1),
+    )
     return out

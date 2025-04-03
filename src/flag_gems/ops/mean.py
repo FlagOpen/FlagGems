@@ -11,7 +11,7 @@ from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def mean_kernel_1(
     inp,
@@ -29,7 +29,7 @@ def mean_kernel_1(
     tl.store(mid_ptr, sum_val)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -52,9 +52,9 @@ def mean(inp, *, dtype=None):
     mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
+    # with torch_device_fn.device(inp.device):
+    mean_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+    mean_kernel_2[(1, 1, 1)](mid, out, M, mid_size, block_mid)
     return out
 
 

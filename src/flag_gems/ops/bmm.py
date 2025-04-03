@@ -10,7 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K"],
@@ -128,6 +128,6 @@ def bmm(A, B):
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-    with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](A, B, out, M, N, K)
+    # with torch_device_fn.device(A.device):
+    bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out

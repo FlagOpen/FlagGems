@@ -68,12 +68,12 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(device):
-        full_kernel[grid_fn](
-            out,
-            N,
-            fill_value,
-            FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
-            BLOCK_SIZE=1024,
-        )
+    # with torch_device_fn.device(device):
+    full_kernel[grid_fn](
+        out,
+        N,
+        fill_value,
+        FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
+        BLOCK_SIZE=8,
+    )
     return out

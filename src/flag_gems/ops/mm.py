@@ -10,12 +10,18 @@ from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("mm"),
+# @libentry()
+# @libtuner(
+#     configs=runtime.get_tuned_config("mm"),
+#     key=["M", "N", "K"],
+# )
+# @triton.heuristics(runtime.get_heuristic_config("mm"))
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_M": 16, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1, "EVEN_K": 0}, num_threads=1)
+    ],
     key=["M", "N", "K"],
 )
-@triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit
 def mm_kernel(
     A,
@@ -125,21 +131,21 @@ def mm(a, b):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META["SPLIT_K"],
     )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            dot_out_dtype=dot_out_dtype,
-            GROUP_M=8,
-        )
+    # with torch_device_fn.device(a.device):
+    mm_kernel[grid](
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        dot_out_dtype=dot_out_dtype,
+        GROUP_M=8,
+    )
     return c

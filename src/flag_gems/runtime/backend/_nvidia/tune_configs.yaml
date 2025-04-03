@@ -2,113 +2,22 @@ attention:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
+      BLOCK_M: 8
+      BLOCK_N: 8
       PRE_LOAD_V: pre_load_v
-    num_warps: warps
-    num_stages: stages
-  block_m:
-  - 64
-  - 128
-  block_n:
-  - 32
-  - 64
-  - 128
+    num_warps: 4
+    num_stages: 4
   pre_load_v:
   - true
   - false
-  warps:
-  - 4
-  - 8
-  stages:
-  - 1
-  - 2
-  - 3
 bmm:
 - META:
-    TILE_M: 32
-    TILE_N: 32
-    TILE_K: 32
+    TILE_M: 4
+    TILE_N: 4
+    TILE_K: 4
     GROUP_M: 1
   num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 64
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 64
-    TILE_N: 64
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 128
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 128
-    TILE_N: 64
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 128
-    TILE_N: 128
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 2
-- META:
-    TILE_M: 32
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 1
-  num_warps: 4
-  num_stages: 3
-- META:
-    TILE_M: 64
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 3
-- META:
-    TILE_M: 64
-    TILE_N: 64
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 3
-- META:
-    TILE_M: 128
-    TILE_N: 32
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 3
-- META:
-    TILE_M: 128
-    TILE_N: 64
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 3
-- META:
-    TILE_M: 128
-    TILE_N: 128
-    TILE_K: 32
-    GROUP_M: 2
-  num_warps: 4
-  num_stages: 3
+  num_stages: 4
 argmax:
 - META:
     BLOCK_M: 8
@@ -132,136 +41,16 @@ argmin:
 log_softmax:
 - META:
     BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
+    BLOCK_N: 8
+  num_warps: 4
 mm:
 - META:
-    BLOCK_M: 128
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 64
-    BLOCK_K: 32
+    BLOCK_M: 4
+    BLOCK_N: 4
+    BLOCK_K: 1
     SPLIT_K: 1
   num_stages: 4
   num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 32
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 5
-  num_warps: 2
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 256
-    BLOCK_K: 32
-    SPLIT_K: 1
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_M: 256
-    BLOCK_N: 64
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 256
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 128
-    BLOCK_K: 128
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 64
-    BLOCK_K: 64
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 128
-    BLOCK_K: 64
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 128
-    BLOCK_N: 32
-    BLOCK_K: 64
-    SPLIT_K: 1
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_M: 64
-    BLOCK_N: 32
-    BLOCK_K: 64
-    SPLIT_K: 1
-  num_stages: 5
-  num_warps: 2
 softmax_non_inner:
 - META:
     TILE_K: 32
@@ -300,16 +89,8 @@ test_libentry:
 min:
 - META:
     BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
+    BLOCK_N: 8
+  num_warps: 4
 prod:
 - META:
     BLOCK_M: 8
@@ -326,65 +107,15 @@ prod:
 max:
 - META:
     BLOCK_M: 8
-    BLOCK_N: 256
-  num_warps: 8
-- META:
-    BLOCK_M: 16
-    BLOCK_N: 512
-  num_warps: 8
-- META:
-    BLOCK_M: 32
-    BLOCK_N: 512
-  num_warps: 8
+    BLOCK_N: 8
+  num_warps: 4
 addmm:
 - META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 64
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
+    BLOCK_SIZE_M: 8
+    BLOCK_SIZE_N: 8
+    BLOCK_SIZE_K: 8
   num_stages: 4
   num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 2
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 2
 cross_entropy_loss:
 - META:
     BLOCK_C: 256
@@ -426,30 +157,15 @@ masked_fill:
 - gen: true
   param_map:
     META:
-      BLOCK_SIZE: block_n
-    num_warps: warps
-  block_n:
-  - 1024
-  - 2048
-  - 4096
-  warps:
-  - 4
-  - 8
-  - 16
+      BLOCK_SIZE: 8
+    num_warps: 4
 all:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
 amax:
 - gen: true
   param_map:
@@ -468,31 +184,16 @@ any:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
 index_select:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  block_n:
-  - 1024
-  - 2048
-  - 4096
 layer_norm_persistent:
 - gen: true
   param_map:
@@ -570,14 +271,9 @@ mean:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: 1024
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
 
 instancenorm:
 - gen: true
@@ -795,48 +491,23 @@ gather:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 256
-  - 512
-  - 1024
-  - 2048
 scatter:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 256
-  - 512
-  - 1024
-  - 2048
 sum:
 - gen: true
   param_map:
     META:
-      BLOCK_M: block_m
-      BLOCK_N: 1024
+      BLOCK_M: 8
+      BLOCK_N: 8
     num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
 triu:
 - gen: true
   param_map:

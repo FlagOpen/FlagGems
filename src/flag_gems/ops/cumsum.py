@@ -13,7 +13,7 @@ from ..utils import triton_lang_extension as tle
 device = device.name
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
 def scan_part_sum_kernel(
     inp,
@@ -49,7 +49,7 @@ def scan_part_sum_kernel(
     tl.store(partial_sum_ptrs, part_sum_via_sum)
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
 def add_base_sum_kernel(
     out,
@@ -73,7 +73,7 @@ def add_base_sum_kernel(
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["part_num"])
 def scan_part_sum_abc_kernel(
     inp,
@@ -119,7 +119,7 @@ def scan_part_sum_abc_kernel(
     tl.store(partial_sum_ptrs, part_sum_via_sum)
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["part_num"])
 def add_base_sum_abc_kernel(
     out,
@@ -156,40 +156,40 @@ def add_base_sum_abc_kernel(
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if n_ele <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(n_ele)
+    BLOCK_SIZE = 16
+    # if n_ele <= 1024 * 4:
+    #     BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     partial_sum = torch.empty(part_num, dtype=dtype, device=inp.device)
 
     grid = (part_num,)
-    with torch_device_fn.device(inp.device):
-        scan_part_sum_kernel[grid](inp, out, partial_sum, n_ele, part_num, BLOCK_SIZE)
+    # with torch_device_fn.device(inp.device):
+    scan_part_sum_kernel[grid](inp, out, partial_sum, n_ele, part_num, BLOCK_SIZE)
 
     if part_num >= 2:
         scan_then_fan_col(partial_sum, partial_sum, part_num, dtype)
-        with torch_device_fn.device(inp.device):
-            add_base_sum_kernel[grid](out, partial_sum, n_ele, part_num, BLOCK_SIZE)
+        # with torch_device_fn.device(inp.device):
+        add_base_sum_kernel[grid](out, partial_sum, n_ele, part_num, BLOCK_SIZE)
 
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     # TODO(all): tune on target board
-    BLOCK_SIZE = 1024
-    if B <= 1024 * 4:
-        BLOCK_SIZE = triton.next_power_of_2(B)
+    BLOCK_SIZE = 16
+    # if B <= 1024 * 4:
+    #     BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
     grid = (A, part_num, C)
-    with torch_device_fn.device(inp.device):
-        scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
-        )
+    # with torch_device_fn.device(inp.device):
+    scan_part_sum_abc_kernel[grid](
+        inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
+    )
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
-        with torch_device_fn.device(inp.device):
-            add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
+        # with torch_device_fn.device(inp.device):
+        add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
 
 def cumsum(inp, dim=1, *, dtype=None):
@@ -378,44 +378,44 @@ def normed_cumsum(inp, dim=-1):
         inp = inp.transpose(dim, -1).contiguous()
         dim = -1
     out = torch.empty_like(inp)
-    with torch_device_fn.device(inp.device.index):
-        # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
-        TILE = 2048
-        # Each row is split into n_chunks of chunks where each chunk is compised of
-        # n_tiles of tiles. Different chunks are assigned to different ctas.
-        n_rows = N // K
-        n_chunks = min(triton.cdiv(num_sms, n_rows), triton.cdiv(K, TILE))
-        n_tiles = triton.cdiv(triton.cdiv(K, TILE), n_chunks)
-        k_stride = inp.stride(dim)
-        r_stride = inp.size(dim) if k_stride == 1 else 1
-        if n_rows > GRID_Y_LIMIT:
-            batch = triton.cdiv(n_rows, GRID_Y_LIMIT)
-            n_batch = triton.cdiv(n_rows, batch)
-        else:
-            batch = 1
-            n_batch = n_rows
+    # with torch_device_fn.device(inp.device.index):
+    # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
+    num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
+    TILE = 2048
+    # Each row is split into n_chunks of chunks where each chunk is compised of
+    # n_tiles of tiles. Different chunks are assigned to different ctas.
+    n_rows = N // K
+    n_chunks = min(triton.cdiv(num_sms, n_rows), triton.cdiv(K, TILE))
+    n_tiles = triton.cdiv(triton.cdiv(K, TILE), n_chunks)
+    k_stride = inp.stride(dim)
+    r_stride = inp.size(dim) if k_stride == 1 else 1
+    if n_rows > GRID_Y_LIMIT:
+        batch = triton.cdiv(n_rows, GRID_Y_LIMIT)
+        n_batch = triton.cdiv(n_rows, batch)
+    else:
+        batch = 1
+        n_batch = n_rows
 
-        grid = (n_chunks, n_batch)
-        if n_chunks == 1:
-            block_cumsum_kernel[grid](
-                inp,
-                out,
-                0,
-                batch,
-                n_tiles,
-                n_rows,
-                K,
-                r_stride,
-                k_stride,
-                r_stride,
-                k_stride,
-                OUTPUT_SUMS=False,
-                NORMALIZE=True,
-                HAS_OUT_LAYOUT=False,
-                TILE=TILE,
-            )
-            return out
+    grid = (n_chunks, n_batch)
+    if n_chunks == 1:
+        block_cumsum_kernel[grid](
+            inp,
+            out,
+            0,
+            batch,
+            n_tiles,
+            n_rows,
+            K,
+            r_stride,
+            k_stride,
+            r_stride,
+            k_stride,
+            OUTPUT_SUMS=False,
+            NORMALIZE=True,
+            HAS_OUT_LAYOUT=False,
+            TILE=TILE,
+        )
+        return out
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32

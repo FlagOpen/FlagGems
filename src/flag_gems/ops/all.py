@@ -20,7 +20,7 @@ def reduce_all(a, b):
     return a and b
 
 
-@libentry()
+# @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("all"), key=["M", "N"])
 @triton.jit
 def all_kernel_dim(
@@ -50,7 +50,7 @@ def all_kernel_dim(
     tl.store(out, all[:, None], row_mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def all_kernel_1(
     inp,
@@ -69,7 +69,7 @@ def all_kernel_1(
     tl.store(mid_ptr, all_val)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -90,9 +90,9 @@ def all(inp):
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-        all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+    # with torch_device_fn.device(inp.device):
+    all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+    all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
     return out
 
@@ -115,8 +115,8 @@ def all_dim(inp, dim=None, keepdim=False):
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
-            all_kernel_dim[grid](inp, out, M, N)
+        # with torch_device_fn.device(inp.device):
+        all_kernel_dim[grid](inp, out, M, N)
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out

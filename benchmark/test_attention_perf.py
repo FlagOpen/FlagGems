@@ -2,6 +2,7 @@ import pytest
 import torch
 
 import flag_gems
+flag_gems.device = 'cpu'
 
 from .performance_utils import GenericBenchmark, vendor_name
 
@@ -19,7 +20,8 @@ class AttentionBenchmark(GenericBenchmark):
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
-    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
+    # flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
+    flag_gems.device != "cpu", reason="Just support CPU!"
 )
 @pytest.mark.attention
 def test_perf_scaled_dot_product_attention():

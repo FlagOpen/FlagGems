@@ -10,7 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def embedding_kernel(
     out_ptr,  # pointer to the output
@@ -23,16 +23,24 @@ def embedding_kernel(
     out_ptr += pid * N
     in_ptr += pid
 
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
+    # mask = tl.arange(0, BLOCK_SIZE) < N
+    # cols = tl.arange(0, BLOCK_SIZE)
+
+    # row_idx = tl.load(in_ptr)
+    # weight_ptr += row_idx * N
+    # embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
+    # tl.store(out_ptr + cols, embedding_weight, mask)
 
     row_idx = tl.load(in_ptr)
     weight_ptr += row_idx * N
-    embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
-    tl.store(out_ptr + cols, embedding_weight, mask)
+    for index in range(0, N, BLOCK_SIZE):
+        cols = index  + tl.arange(0,  BLOCK_SIZE)
+        mask = cols < N
+        embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
+        tl.store(out_ptr + cols, embedding_weight, mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def indice_freq_kernel(
     indices_freq,
@@ -50,7 +58,7 @@ def indice_freq_kernel(
     tl.atomic_add(indices_freq + index_element, 1, mask=mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["padding_idx"])
 def embedding_backward_kernel(
     grad_in,  # pointer to the gradient input
@@ -120,15 +128,15 @@ class Embedding(torch.autograd.Function):
         M = math.prod(indices.shape)
         N = weight.shape[-1]
 
-        BLOCK_SIZE = triton.next_power_of_2(N)
+        BLOCK_SIZE = 16 #triton.next_power_of_2(N)
         indices = indices.contiguous()
         weight = weight.contiguous()
         output = torch.empty(
             (*indices.shape, N), device=indices.device, dtype=weight.dtype
         )
 
-        with torch_device_fn.device(weight.device):
-            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+        # with torch_device_fn.device(weight.device):
+        embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
         ctx.M = M
         ctx.N = N
@@ -165,10 +173,10 @@ class Embedding(torch.autograd.Function):
             INDICE_BLOCK_SIZE = 256
             indice_grid = lambda meta: (triton.cdiv(ctx.M, INDICE_BLOCK_SIZE),)
 
-            with torch_device_fn.device(grad_outputs.device):
-                indice_freq_kernel[indice_grid](
-                    indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE
-                )
+            #with torch_device_fn.device(grad_outputs.device):
+            indice_freq_kernel[indice_grid](
+                indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE
+            )
         else:
             indice_freq = None
 
@@ -176,22 +184,22 @@ class Embedding(torch.autograd.Function):
 
         HAS_PADDING_IDX = ctx.padding_idx is not None
 
-        with torch_device_fn.device(grad_outputs.device):
-            embedding_backward_kernel[ctx.M,](
-                grad_inputs,
-                grad_outputs,
-                ctx.indices,
-                ctx.padding_idx,
-                HAS_PADDING_IDX,
-                ctx.N,
-                BLOCK_SIZE,
-            )
+        #with torch_device_fn.device(grad_outputs.device):
+        embedding_backward_kernel[ctx.M,](
+            grad_inputs,
+            grad_outputs,
+            ctx.indices,
+            ctx.padding_idx,
+            HAS_PADDING_IDX,
+            ctx.N,
+            BLOCK_SIZE,
+        )
 
         if ctx.scale_grad_by_freq:
-            with torch_device_fn.device(grad_outputs.device):
-                embedding_grad_scale_kernel[ctx.M,](
-                    grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
-                )
+            #with torch_device_fn.device(grad_outputs.device):
+            embedding_grad_scale_kernel[ctx.M,](
+                grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
+            )
         return (
             (
                 grad_inputs.to(torch.bfloat16)

@@ -50,7 +50,7 @@ def generate_scatter_kernel(
     code.newline()
 
     # the decorators
-    code.writeline("@libentry()")
+    # code.writeline("@libentry()")
     code.writeline("@triton.heuristics(")
     with code.indent():
         code.writeline("{")

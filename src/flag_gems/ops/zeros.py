@@ -34,6 +34,6 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+    # with torch_device_fn.device(device):
+    zeros_kernel[grid_fn](out, N, BLOCK_SIZE=8)
     return out

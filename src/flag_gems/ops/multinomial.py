@@ -8,7 +8,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
 def multinomial_with_replacement(
     cdf_ptr, out_ptr, K, N, philox_seed, philox_offset, NBLOCK: tl.constexpr = 128

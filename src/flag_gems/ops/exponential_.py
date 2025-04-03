@@ -97,10 +97,10 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
-    with torch_device_fn.device(device):
-        fused_exponential_kernel[grid_fn](
-            x_, N, is_double, lambd, eps, philox_seed, philox_offset
-        )
+    # with torch_device_fn.device(device):
+    fused_exponential_kernel[grid_fn](
+        x_, N, is_double, lambd, eps, philox_seed, philox_offset
+    )
     if not inplace:
         x.copy_(x_)
     return x

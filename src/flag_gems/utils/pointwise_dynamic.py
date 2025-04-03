@@ -244,7 +244,7 @@ class KernelGenerator:
         code.newline()
 
     def gen_decorators(self, code):
-        code.writeline("@libentry()")
+        # code.writeline("@libentry()")
         num_non_tensor_args = self.fx.num_non_tensor_args()
         if num_non_tensor_args > 0:
             # we do not specialize non tensor args since they are passed into the inlined function
@@ -890,52 +890,52 @@ class WrapperGenerator:
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
+        # code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
+        # with code.indent():
+        code.writeline(f"{self.jit_fn_name}[grid](")
         with code.indent():
-            code.writeline(f"{self.jit_fn_name}[grid](")
-            with code.indent():
-                params = []
-                # NOTE: WRAP
-                for i in range(schema.num_inputs()):
-                    if schema.is_tensor(i):
-                        params.append(f"{self.input_name(i)}")
-                    else:
-                        params.append(self.input_name(i))
+            params = []
+            # NOTE: WRAP
+            for i in range(schema.num_inputs()):
+                if schema.is_tensor(i):
+                    params.append(f"{self.input_name(i)}")
+                else:
+                    params.append(self.input_name(i))
+            for i in range(schema.num_output_tensors()):
+                params.append(f"{self.output_name(i)}")
+
+            code.writeline(f"{_cs(params)},")
+
+            if ndim > 0:
+                for i in range(schema.num_input_tensors()):
+                    s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
+                    code.writeline(f"{s}, # stride for in{i}")
+                    if not with_block_pointer:
+                        continue
+                    order = ", ".join(
+                        f"in{i}_stride_order[{j}]" for j in range(ndim)
+                    )
+                    code.writeline(f"{order}, # stride order for in{i}")
+
                 for i in range(schema.num_output_tensors()):
-                    params.append(f"{self.output_name(i)}")
+                    s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
+                    code.writeline(f"{s}, # stride for out{i}")
+                    if not with_block_pointer:
+                        continue
+                    order = ", ".join(
+                        f"out{i}_stride_order[{j}]" for j in range(ndim)
+                    )
+                    code.writeline(f"{order}, # stride orderfor out{i}")
 
-                code.writeline(f"{_cs(params)},")
-
-                if ndim > 0:
-                    for i in range(schema.num_input_tensors()):
-                        s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
-                        code.writeline(f"{s}, # stride for in{i}")
-                        if not with_block_pointer:
-                            continue
-                        order = ", ".join(
-                            f"in{i}_stride_order[{j}]" for j in range(ndim)
-                        )
-                        code.writeline(f"{order}, # stride order for in{i}")
-
-                    for i in range(schema.num_output_tensors()):
-                        s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
-                        code.writeline(f"{s}, # stride for out{i}")
-                        if not with_block_pointer:
-                            continue
-                        order = ", ".join(
-                            f"out{i}_stride_order[{j}]" for j in range(ndim)
-                        )
-                        code.writeline(f"{order}, # stride orderfor out{i}")
-
-                    shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
-                    code.writeline(f"{shape_args}, # task indexing space")
-                    code.writeline("num_tasks, # num tasks")
-                    code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                    for i in range(ndim):
-                        code.writeline(f"tile_size{i}=tile_sizes[{i}],")
-                    code.writeline("one_tile_per_cta=one_tile_per_cta,")
-                code.writeline("num_warps=num_warps,")
-            code.writeline(")")
+                shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
+                code.writeline(f"{shape_args}, # task indexing space")
+                code.writeline("num_tasks, # num tasks")
+                code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
+                for i in range(ndim):
+                    code.writeline(f"tile_size{i}=tile_sizes[{i}],")
+                code.writeline("one_tile_per_cta=one_tile_per_cta,")
+            code.writeline("num_warps=num_warps,")
+        code.writeline(")")
 
     def gen_kernel_launch_1d(
         self,

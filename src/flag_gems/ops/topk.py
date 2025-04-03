@@ -75,7 +75,7 @@ def _get_iinfo_val(
             return _MIN_INT64_VAL
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def topk_stage1_kernel(
     y_ptr,
@@ -236,7 +236,7 @@ def argsort(x, ids, dim: tl.constexpr, descending: core.constexpr):
     return x, ids
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def topk_stage2_kernel(
     y_ptr,
@@ -310,33 +310,33 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     stage2_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
     stage2_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
-    with torch_device_fn.device(x.device):
-        topk_stage1_kernel[
-            batch_size,
-            chunk_num,
-        ](
-            stage1_out,  # pointer to the output
-            stage1_out_idx,  # pointer to the output
-            x,  # pointer to the input
-            k,
-            topk_elem_cnt,
-            chunk_size,
-            descending,
-        )
+    # with torch_device_fn.device(x.device):
+    topk_stage1_kernel[
+        batch_size,
+        chunk_num,
+    ](
+        stage1_out,  # pointer to the output
+        stage1_out_idx,  # pointer to the output
+        x,  # pointer to the input
+        k,
+        topk_elem_cnt,
+        chunk_size,
+        descending,
+    )
     stage2_elem_cnt = chunk_num * k
     BLOCK_SIZE = triton.next_power_of_2(stage2_elem_cnt)
 
-    with torch_device_fn.device(x.device):
-        topk_stage2_kernel[batch_size,](
-            stage2_out,
-            stage2_out_idx,
-            stage1_out,
-            stage1_out_idx,
-            dim,
-            k,
-            stage2_elem_cnt,
-            BLOCK_SIZE,
-            descending,
-        )
+    # with torch_device_fn.device(x.device):
+    topk_stage2_kernel[batch_size,](
+        stage2_out,
+        stage2_out_idx,
+        stage1_out,
+        stage1_out_idx,
+        dim,
+        k,
+        stage2_elem_cnt,
+        BLOCK_SIZE,
+        descending,
+    )
 
     return (stage2_out, stage2_out_idx)

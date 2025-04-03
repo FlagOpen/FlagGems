@@ -10,7 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def log_softmax_kernel(
     output_ptr,
@@ -18,8 +18,8 @@ def log_softmax_kernel(
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr = 8,
-    BLOCK_N: tl.constexpr = 256,
+    BLOCK_M: tl.constexpr = 4,
+    BLOCK_N: tl.constexpr = 8,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
@@ -114,15 +114,15 @@ class LogSoftmax(torch.autograd.Function):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch_device_fn.device(inp.device):
-            log_softmax_kernel[grid](
-                out,
-                inp,
-                M,
-                N,
-                K,
-                num_warps=8,
-            )
+        # with torch_device_fn.device(inp.device):
+        log_softmax_kernel[grid](
+            out,
+            inp,
+            M,
+            N,
+            K,
+            num_warps=8,
+        )
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out

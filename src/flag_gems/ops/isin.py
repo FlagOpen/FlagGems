@@ -52,7 +52,7 @@ def isin_by_comparation_impl(
     tl.store(out_ptr, out[:, None], row_mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def isin_by_comparation_kernel(
     in0_ravel_ptr: tl.tensor,
@@ -106,19 +106,19 @@ def isin_by_comparation(
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
-    with torch_device_fn.device(in0_ravel.device.index):
-        isin_by_comparation_kernel[grid](
-            in0_ravel,
-            in1_ravel,  # in
-            out,  # out
-            M,
-            N,
-            BLOCK_M,
-            BLOCK_N,
-            tiles_per_cta=tiles_per_cta,
-            invert=invert,
-            num_warps=num_warps,
-        )
+    # with torch_device_fn.device(in0_ravel.device.index):
+    isin_by_comparation_kernel[grid](
+        in0_ravel,
+        in1_ravel,  # in
+        out,  # out
+        M,
+        N,
+        BLOCK_M,
+        BLOCK_N,
+        tiles_per_cta=tiles_per_cta,
+        invert=invert,
+        num_warps=num_warps,
+    )
     return out.view_as(in0)
 
 

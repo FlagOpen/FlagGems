@@ -10,7 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
 @triton.jit
 def softmax_kernel_non_inner(
@@ -82,7 +82,7 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
-@libentry()
+# @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
 @triton.jit
 def softmax_kernel_inner(
@@ -295,24 +295,24 @@ class Softmax(torch.autograd.Function):
         out = torch.empty_like(inp, dtype=dtype)
         K = inp.numel() // M // N  # post_dim
 
-        with torch_device_fn.device(inp.device):
-            if K > 1:
-                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-                softmax_kernel_non_inner[grid](
-                    out,
-                    inp,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                grid = (M, 1, 1)
-                softmax_kernel_inner[grid](
-                    out,
-                    inp,
-                    M,
-                    N,
-                )
+        # with torch_device_fn.device(inp.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            softmax_kernel_non_inner[grid](
+                out,
+                inp,
+                M,
+                N,
+                K,
+            )
+        else:
+            grid = (M, 1, 1)
+            softmax_kernel_inner[grid](
+                out,
+                inp,
+                M,
+                N,
+            )
         ctx.save_for_backward(out)
         ctx.dim = dim
         return out
@@ -334,26 +334,26 @@ class Softmax(torch.autograd.Function):
         in_grad = torch.empty_like(out)
         K = out.numel() // M // N
 
-        with torch_device_fn.device(in_grad.device):
-            if K > 1:
-                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-                softmax_backward_kernel_non_inner[grid](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                    K,
-                )
-            else:
-                grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
-                softmax_backward_kernel_inner[grid](
-                    out,
-                    out_grad,
-                    in_grad,
-                    M,
-                    N,
-                )
+        # with torch_device_fn.device(in_grad.device):
+        if K > 1:
+            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+            softmax_backward_kernel_non_inner[grid](
+                out,
+                out_grad,
+                in_grad,
+                M,
+                N,
+                K,
+            )
+        else:
+            grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
+            softmax_backward_kernel_inner[grid](
+                out,
+                out_grad,
+                in_grad,
+                M,
+                N,
+            )
         return in_grad, None, None
 
 

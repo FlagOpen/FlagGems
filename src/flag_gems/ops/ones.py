@@ -12,7 +12,7 @@ from ..utils.shape_utils import volume
 device_ = device
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def ones_kernel(
     output_ptr,
@@ -35,8 +35,8 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 8
     grid = (triton.cdiv(N, BLOCK_SIZE),)
-    with torch_device_fn.device(device):
-        ones_kernel[grid](out, N, BLOCK_SIZE)
+    # with torch_device_fn.device(device):
+    ones_kernel[grid](out, N, BLOCK_SIZE)
     return out

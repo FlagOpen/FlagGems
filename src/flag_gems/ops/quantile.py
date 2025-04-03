@@ -29,7 +29,7 @@ def heur_block_n(args):
         return 1
 
 
-@libentry()
+# @libentry()
 @triton.heuristics(values={"BLOCK_Q": heur_block_q, "BLOCK_N": heur_block_n})
 @triton.jit
 def quantile_kernel(
@@ -126,8 +126,8 @@ def quantile(
         triton.cdiv(N, meta["BLOCK_N"]),
     )
 
-    with torch_device_fn.device(inp.device):
-        quantile_kernel[grid](inp, q, output, N, M, Q, interpolation=interpolation)
+    # with torch_device_fn.device(inp.device):
+    quantile_kernel[grid](inp, q, output, N, M, Q, interpolation=interpolation)
 
     output = output.permute(
         (-1,) + tuple(range(0, inp.ndim - 1))

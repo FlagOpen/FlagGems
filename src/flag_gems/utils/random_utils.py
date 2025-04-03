@@ -37,20 +37,23 @@ except AttributeError:
 # It returns the current state of the default Philox RNG in seed and offset and
 # updates the next offset by adding `increment`.
 def philox_backend_seed_offset(increment, device=None):
-    device = device or torch_device_fn.current_device()
-    gen = torch_device_fn.default_generators[device]
+    # device = device or torch_device_fn.current_device()
+    device = device or torch.device("cpu")
+    # gen = torch_device_fn.default_generators[device]
+    gen = torch.Generator(device=device)
     state_copy = gen.get_state()
     # TODO[kunlunxin]: we will upgrade torch version in 2025.04
     if flag_gems.vendor_name == "kunlunxin":
         c0, c1 = state_copy.view(torch.int64)[-2], state_copy.view(torch.int64)[-1]
     else:
-        c0, c1 = state_copy.view(torch.int64)
+        # c0, c1 = state_copy.view(torch.int64)
+        c0, c1 = state_copy.view(torch.int64)[0], state_copy.view(torch.int64)[1]
 
     seed, offset = int(c0), int(c1)
     increment = (increment + 3) // 4 * 4
     c1 += increment
     # get_state returns a new tensor, so it needs set_state to update the actual generator state.
-    gen.set_state(state_copy)
+    # gen.set_state(state_copy)
     return seed, offset
 
 

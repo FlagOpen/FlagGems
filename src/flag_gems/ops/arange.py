@@ -10,7 +10,7 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(0)
@@ -33,7 +33,7 @@ def arange_start(
     else:
         size = math.ceil((end - start) / step)
 
-    BLOCK_SIZE = 128
+    BLOCK_SIZE = 16
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if dtype is None:

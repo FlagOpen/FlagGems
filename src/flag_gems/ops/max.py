@@ -12,25 +12,25 @@ from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def max_kernel_1(
-    inp,
-    mid,
-    M,
-    BLOCK_SIZE: tl.constexpr,
+    inp, # 输入
+    mid, # 每块的规约输出
+    M, # 元素数
+    BLOCK_SIZE: tl.constexpr, # 块大小
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
-    mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    mask = offset < M # 掩码
+    inp_val = tl.load(inp_ptrs, mask=mask, other=-float("inf")) # 加载数据
     max_val = tl.max(inp_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, max_val)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -45,7 +45,7 @@ def heur_block_n(args):
     return triton.next_power_of_2(args["N"])
 
 
-@libentry()
+# @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("max"),
     key=[
@@ -93,18 +93,28 @@ def max_kernel(
 def max(inp):
     logging.debug("GEMS MAX")
     inp = inp.contiguous()
-    M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    M = inp.numel() # 456192
+    block_size_1 = min(64, triton.next_power_of_2(math.ceil(math.sqrt(M)))) # 64
+    mid_size_1 = triton.cdiv(M, block_size_1) # 7128
+    #block_mid_1 = triton.next_power_of_2(mid_size_1) # 8192
 
     dtype = inp.dtype
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    mid_1 = torch.empty((mid_size_1,), dtype=dtype, device=inp.device)
+    
+    # import pdb; pdb.set_trace()
+    # with torch_device_fn.device(inp.device):
+    max_kernel_1[(mid_size_1, 1, 1)](inp, mid_1, M, block_size_1) # 分组规约，每组大小block_size，共block_mid组，每组的最大值保存到mid_1里面
+    
+    block_size_2 = triton.next_power_of_2(math.ceil(math.sqrt(mid_size_1))) # 128
+    mid_size_2 = triton.cdiv(mid_size_1, block_size_2) # 56
+    block_mid_2 = triton.next_power_of_2(mid_size_2) # 64
+    
+    mid_2 = torch.empty((mid_size_2,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    max_kernel_1[(mid_size_2, 1, 1)](mid_1, mid_2, mid_size_1, block_size_2)
+
+    max_kernel_2[(1, 1, 1)](mid_2, out, mid_size_2, block_mid_2) # 再从mid_2中规约一次，求出最大值
     return out
 
 
@@ -132,8 +142,8 @@ def max_dim(inp, dim=None, keepdim=False):
         triton.cdiv(M, meta["BLOCK_M"]),
         K,
     )
-    with torch_device_fn.device(inp.device):
-        max_kernel[grid](inp, out_value, out_index, M, N, K)
+    # with torch_device_fn.device(inp.device):
+    max_kernel[grid](inp, out_value, out_index, M, N, K)
     Max_out = namedtuple("max", ["values", "indices"])
     out = Max_out(values=out_value, indices=out_index)
     return out

@@ -9,7 +9,7 @@ from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.heuristics(runtime.get_heuristic_config("index_select"))
 @triton.jit
 def index_select_kernel(

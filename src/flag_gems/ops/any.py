@@ -50,7 +50,7 @@ def any_kernel_dim(
     tl.store(out, any[:, None], row_mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def any_kernel_1(
     inp,
@@ -69,7 +69,7 @@ def any_kernel_1(
     tl.store(mid_ptr, any_val)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -90,9 +90,9 @@ def any(inp):
     mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
     out = torch.empty([], dtype=torch.bool, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-        any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+    # with torch_device_fn.device(inp.device):
+    any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+    any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
 
     return out
 

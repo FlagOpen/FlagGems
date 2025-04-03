@@ -10,7 +10,7 @@ from ..utils import libentry
 from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
 
-@libentry()
+# @libentry()
 @triton.jit()
 def sort_kernel(
     in_ptr,
@@ -64,17 +64,17 @@ def sort(inp, dim=-1, descending=False):
     out = torch.empty_like(inp)
     out_index = torch.empty_like(inp, dtype=torch.int64)
 
-    with torch_device_fn.device(inp.device):
-        sort_kernel[batch_size,](
-            inp,
-            out,
-            out_index,
-            N=sort_elem_cnt,
-            BLOCK_SIZE=block_size,
-            DESCENDING=descending,
-            IS_FLOAT=inp.is_floating_point(),
-            num_warps=4,
-        )
+    # with torch_device_fn.device(inp.device):
+    sort_kernel[batch_size,](
+        inp,
+        out,
+        out_index,
+        N=sort_elem_cnt,
+        BLOCK_SIZE=block_size,
+        DESCENDING=descending,
+        IS_FLOAT=inp.is_floating_point(),
+        num_warps=4,
+    )
 
     if dim != inp.ndim - 1:
         out = torch.movedim(out, -1, dim)

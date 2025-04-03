@@ -34,8 +34,8 @@ def generate_gather_kernel(
     # make the inlined function visible in the context
     code.newline()
 
-    code.writeline("@libentry()")
-    code.writeline("@triton.heuristics({'BLOCK_SIZE_N': lambda args: 512})")
+    # code.writeline("@libentry()")
+    code.writeline("@triton.heuristics({'BLOCK_SIZE_N': lambda args: 32})")
     code.writeline("@triton.jit")
     code.writeline(f"def {kernel_name}(")
     with code.indent():

@@ -9,7 +9,7 @@ from ..utils import broadcastable_to, libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
@@ -23,7 +23,7 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
     tl.store(out + offsets, value, fill_mask and mask)
 
 
-@libentry()
+# @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
