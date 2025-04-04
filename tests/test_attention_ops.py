@@ -146,8 +146,6 @@ def test_sdpa_nonsquare_qk_causal(
         is_causal,
         False,
         scale=scale,
-        window_size_left=None,
-        window_size_right=None,
     )
     torch_result = out.transpose(1, 2)
 
@@ -167,14 +165,13 @@ def test_sdpa_nonsquare_qk_causal(
             is_causal,
             False,
             scale=scale,
-            window_size_left=None,
-            window_size_right=None,
         )
         flaggem_result = out.transpose(1, 2)
 
     gems_assert_close(flaggem_result, torch_result, dtype)
 
 
+@pytest.mark.spipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
