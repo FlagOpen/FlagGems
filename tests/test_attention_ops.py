@@ -171,7 +171,7 @@ def test_sdpa_nonsquare_qk_causal(
     gems_assert_close(flaggem_result, torch_result, dtype)
 
 
-@pytest.mark.spipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
+@pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
