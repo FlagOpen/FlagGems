@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_backend_seed_offset
+from flag_gems.utils.random_utils import update_philox_state
 
 from .. import runtime
 from ..runtime import device, torch_device_fn
@@ -384,7 +384,7 @@ def sort_by_key(key, value, valid_bits):
         # last step, shuffle inner-block data
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
-        philox_seed, philox_offset = philox_backend_seed_offset(n_elements)
+        philox_seed, philox_offset = update_philox_state(n_elements)
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
