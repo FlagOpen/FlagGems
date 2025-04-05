@@ -5,6 +5,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import gems_assert_close, to_reference
+from .conftest import TO_CPU
 
 device = flag_gems.device
 
@@ -108,6 +109,7 @@ def test_sdpa_nonsquare_qk(
     gems_assert_close(flaggem_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
@@ -171,6 +173,7 @@ def test_sdpa_nonsquare_qk_causal(
     gems_assert_close(flaggem_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
