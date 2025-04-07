@@ -777,3 +777,17 @@ def test_accuracy_logical_not(shape, dtype):
         res_out = torch.logical_not(inp)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.log
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_log(shape, dtype):
+    inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    ref_out = torch.log(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.log(inp)
+
+    gems_assert_equal(res_out, ref_out)
