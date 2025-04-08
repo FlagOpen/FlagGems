@@ -402,15 +402,10 @@ def scaled_dot_product_attention(
         return o
 
 
-# The following implementation is a fundamentally a triton rewrite of TriDao's Flash Attention in Cuda.
-
-
-@triton.jit
-def philox_offset_one_warp(b, h, nh: tl.constexpr):
-    # To align with TriDao's implementation, philox_offset linearly determined by
-    # a 3d dense tensor (batch_id, head_id, thread_id) with shape (batch_size, num_heads, 32)
-    # and stride ( num_heads * 32, 32, 1 )
-    return (b * nh + h) * 32 + tl.arange(0, 32)
+# Following implementation is largely a porting of TriDao's Flash Attention to Triton.
+# Major difference can be found in dropout where the input to RNG is determined only
+# by the element index in the attention score matrix. In contrast, the CUDA flash-attn
+# employs a dropout that assumes an implementation specific threadblock data layout.
 
 
 @triton.jit
@@ -466,28 +461,11 @@ def apply_dropout_mask(
 
 
 @triton.jit
-def make_4x_dropout_mask(r_u32, p_u8, M: tl.constexpr, N: tl.constexpr):
-    r = r_u32
-    p = p_u8
-    m0 = ~(r & 0xFF < p)
-    r >>= 8
-    m1 = ~(r & 0xFF < p)
-    m = tl.join(m0, m1)
-
-    r >>= 8
-    n0 = ~(r & 0xFF < p)
-    r >>= 8
-    n1 = ~(r & 0xFF < p)
-    n = tl.join(n0, n1)
-    mn = tl.join(m, n)
-    return mn
-
-
-@triton.jit
 def apply_dropout(
     P,
     row_start,
     col_start,
+    n_cols,
     bid,
     hid,
     philox_seed,
@@ -498,32 +476,25 @@ def apply_dropout(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    # We only need one philox call for every 16 rows because a single philox call
-    # generates 4 random uints, which are casted for 16 random draws in uint8's.
-    M: tl.constexpr = BLOCK_M // 16
     row_start = tl.multiple_of(row_start, BLOCK_M)
     col_start = tl.multiple_of(col_start, BLOCK_N)
-    row = row_start // 16 + tl.arange(0, M)[:, None]
-    col = col_start + tl.arange(0, BLOCK_N)[None, :]
+    row = row_start + tl.arange(0, BLOCK_M)[:, None]
+    # Down scale col_idx by 4
+    col = col_start // 4 + tl.arange(0, BLOCK_N // 4)[None, :]
 
-    subsequence = u64_from_lohi(row, col // 32)
+    subsequence = row.to(tl.uint64) * n_cols + col.to(tl.uint64)
 
-    tid = tl.arange(0, BLOCK_N)[None, :] % 32
-    offset = philox_offset + (bid * NUM_HEADS + hid) * 32 + tid
+    offset = philox_offset + bid * NUM_HEADS + hid
     offset += subsequence * 0
     r0, r1, r2, r3 = philox_(philox_seed, subsequence, offset)
 
-    # Fully unrolled due to triton's inability to concat 2d tensor
-    m0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, BLOCK_N)
-    m1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, BLOCK_N)
-    m = tl.join(m0, m1)
+    r = tl.join(tl.join(r0, r1), tl.join(r2, r3)).reshape(BLOCK_M, BLOCK_N)
 
-    n0 = make_4x_dropout_mask(r0, p_dropout_uint8, M, BLOCK_N)
-    n1 = make_4x_dropout_mask(r1, p_dropout_uint8, M, BLOCK_N)
-    n = tl.join(n0, n1)
+    mask = (r & 0xFF) >= p_dropout_uint8
 
-    mn = tl.join(m, n).reshape(16 * M, BLOCK_N)
-    P = apply_dropout_mask(P, mn, encode_dropout_in_sign_bit=encode_dropout_in_sign_bit)
+    P = apply_dropout_mask(
+        P, mask, encode_dropout_in_sign_bit=encode_dropout_in_sign_bit
+    )
     return P
 
 
@@ -726,6 +697,10 @@ def flash_fwd_kernel(
         # local
         masking_cols: tl.constexpr = (tl.cdiv(BLOCK_M, BLOCK_N) + 1) * BLOCK_N
 
+    if is_dropout:
+        philox_seed = tl.load(philox_seed).to(tl.uint64)
+        philox_offset = tl.load(philox_offset).to(tl.uint64)
+
     if has_alibi:
         alibi_offset = bid * slopes_batch_stride + hid
         alibi_slope = tl.load(pSlopes + alibi_offset)
@@ -830,6 +805,7 @@ def flash_fwd_kernel(
                         P_drop,
                         row_start,
                         col_start,
+                        seqlen_k,
                         bid,
                         hid,
                         philox_seed,
@@ -843,6 +819,7 @@ def flash_fwd_kernel(
                     if IS_EVEN_MN:
                         tl.store(p_bp0 + col_start, P_drop)
                     else:
+                        kvmask = col_idx < seqlen_k
                         tl.store(
                             p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :]
                         )
@@ -851,6 +828,7 @@ def flash_fwd_kernel(
                     P,
                     row_start,
                     col_start,
+                    seqlen_k,
                     bid,
                     hid,
                     philox_seed,
@@ -867,6 +845,7 @@ def flash_fwd_kernel(
                 if IS_EVEN_MN:
                     V = tl.load(p_bv0 + off, cache_modifier=".cg")
                 else:
+                    kvmask = col_idx < seqlen_k
                     V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
             O_ = tl.dot(P, V, O_, allow_tf32=False)
 
@@ -914,6 +893,7 @@ def flash_fwd_kernel(
                     P_drop,
                     row_start,
                     col_start,
+                    seqlen_k,
                     bid,
                     hid,
                     philox_seed,
@@ -927,12 +907,14 @@ def flash_fwd_kernel(
                 if IS_EVEN_MN:
                     tl.store(p_bp0 + col_start, P_drop)
                 else:
+                    kvmask = col_idx < seqlen_k
                     tl.store(p_bp0 + col_start, P_drop, mask=qmask & kvmask[None, :])
 
             P = apply_dropout(
                 P,
                 row_start,
                 col_start,
+                seqlen_k,
                 bid,
                 hid,
                 philox_seed,
@@ -951,7 +933,7 @@ def flash_fwd_kernel(
         O_ = tl.dot(P, V, O_)
 
     # LSE
-    # Note, rowsum = exp(-rowmax) * lse, therefore rowmax + log(rowsum) cancels
+    # Note, rowsum = exp(-rowmax) * exp(lse), therefore rowmax + log(rowsum) cancels
     # the effect of rowmax and outputs lse only.
     lse = tl.where(
         rowsum_ == 0 | (rowsum_ != rowsum_),
@@ -1456,7 +1438,7 @@ def mha_fwd(
     round_multiple = lambda x, m: (x + m - 1) // m * m
     head_size_rounded = round_multiple(head_size, 32)
     seqlen_q_rounded = round_multiple(seqlen_q, 128)
-    seqlen_k_rounded = round_multiple(seqlen_k, 128)
+    seqlen_k_rounded = round_multiple(seqlen_k, 32)
 
     def splits_heuristics(num_tasks, num_sms, n_blocks):
         # splits when wave efficiency is low
@@ -1494,7 +1476,7 @@ def mha_fwd(
             assert (
                 p_dropout > 0
             ), "return_softmax is only supported when p_dropout > 0.0"
-            p = torch.empty(
+            p = torch.zeros(
                 (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
                 dtype=q_dtype,
                 device=q_device,
@@ -1506,6 +1488,10 @@ def mha_fwd(
         if p_dropout > 0:
             increment = batch_size * num_heads * 32
             philox_seed, philox_offset = update_philox_state(increment)
+            philox_seed = torch.tensor(philox_seed, dtype=torch.int64, device=q_device)
+            philox_offset = torch.tensor(
+                philox_offset, dtype=torch.int64, device=q_device
+            )
             is_dropout = True
         else:
             philox_seed, philox_offset = None, None
