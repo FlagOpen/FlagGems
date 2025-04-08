@@ -212,6 +212,7 @@ def test_flash_fwd_nonsquare_qk_causal(
     gems_assert_close(flaggem_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
