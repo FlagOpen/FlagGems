@@ -83,6 +83,7 @@ at::Tensor sum_dim(const at::Tensor &self,
   const int num_stages = 2;
   const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
 
+  c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   f(stream,
