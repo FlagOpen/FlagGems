@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Callable, List, Mapping
 
+import filelock
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
@@ -408,15 +409,19 @@ class RepeatFunction:
                 code,
             )
 
-            file_name = f"repeat_rank_{key}_pid_{self.pid}.py"
-
-            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
+            file_name = f"repeat_rank_{key}.py"
+            lock_name = f"{file_name}.lock"
+            lock_path = code_cache_dir() / lock_name
+            file_path = code_cache_dir() / file_name
+            with filelock.FileLock(lock_path):
+                if not os.path.exists(file_path):
+                    with open(file_path, "wt", encoding="utf-8") as f:
+                        f.write(code.getvalue())
 
             # load
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_rank_{key}_pid_{self.pid}",
-                f.name,
+                f"_gen_module_rank_{key}",
+                file_path,
             )
 
             m = importlib.util.module_from_spec(spec)
