@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Any, Callable, Mapping, Tuple
 
+import filelock
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
@@ -157,15 +158,20 @@ class GatherFunction:
                 code,
             )
 
-            file_name = f"gather_rank_{key}_pid_{self.pid}.py"
+            file_name = f"gather_rank_{key}.py"
+            lock_name = f"{file_name}.lock"
+            file_path = code_cache_dir() / file_name
+            lock_path = code_cache_dir() / lock_name
 
-            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
+            with filelock.FileLock(lock_path):
+                if not os.path.exists(file_path):
+                    with open(file_path, "wt", encoding="utf-8") as f:
+                        f.write(code.getvalue())
 
             # load
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_rank_{key}_pid_{self.pid}",
-                f.name,
+                f"_gen_module_rank_{key}",
+                file_path,
             )
 
             m = importlib.util.module_from_spec(spec)
