@@ -1844,3 +1844,34 @@ def test_accuracy_logical_xor(shape, dtype):
         res_out = torch.logical_xor(inp1, inp2)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.lerp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_lerp(shape, dtype):
+    torch.manual_seed(0)
+
+    input = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    end = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    weight = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_input = to_reference(input)
+    ref_end = to_reference(end)
+    ref_weight = to_reference(weight)
+
+    ref_out = torch.lerp(ref_input, ref_end, weight=0.6)
+    with flag_gems.use_gems():
+        res_out = torch.lerp(input, end, weight=0.6)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+    ref_out = torch.lerp(ref_input, ref_end, weight=torch.full_like(ref_weight, 0.6))
+    with flag_gems.use_gems():
+        res_out = torch.lerp(input, end, weight=torch.full_like(ref_weight, 0.6))
+
+    gems_assert_close(res_out, ref_out, dtype)
