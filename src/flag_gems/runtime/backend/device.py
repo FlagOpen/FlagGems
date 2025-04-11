@@ -33,7 +33,6 @@ class DeviceDetector(object):
 
             # A dataclass instance, get the vendor information based on the provided or default vendor name.
             self.info = self.get_vendor(vendor_name)
-
             # vendor_name is like 'nvidia', device_name is like 'cuda'.
             self.vendor_name = self.info.vendor_name
             self.name = self.info.device_name
