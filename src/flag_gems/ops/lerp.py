@@ -1,6 +1,7 @@
 import logging
 
 import triton
+import triton.language as tl
 
 from ..utils import pointwise_dynamic
 
@@ -8,13 +9,27 @@ from ..utils import pointwise_dynamic
 @pointwise_dynamic(is_tensor=[True, True, True], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def lerp_tensor_kernel(input, end, weight):
-    return input + weight * (end - input)
+    return tl.where(
+        tl.abs(weight) < 0.5,
+        input + weight * (end - input),
+        end - (end - input) * (1 - weight),
+    )
 
 
-@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(
+    is_tensor=[True, True, False],
+    dtypes=[None, None, float],
+    promotion_methods=[(0, 1, "DEFAULT")],
+)
 @triton.jit
 def lerp_scalar_kernel(input, end, weight):
-    return input + weight * (end - input)
+    if tl.abs(weight) < 0.5:
+        return input + weight * (end - input)
+    else:
+        return end - (end - input) * (1 - weight)
+    # return end - (end - input) * (1 - weight)
+    # weight = weight.to(input.element_ty.dtype)
+    # return input + weight * (end - input)
 
 
 def lerp_tensor(input, end, weight):
