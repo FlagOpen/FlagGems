@@ -18,7 +18,7 @@ from ..utils import triton_lang_extension as tle
 # @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 16, "BLOCK_N": 64, "BLOCK_K": 64, "SPLIT_K": 1, "EVEN_K": 0}, num_threads=1)
+        triton.Config({"BLOCK_M": 8, "BLOCK_N": 8, "BLOCK_K": 8, "SPLIT_K": 1, "EVEN_K": 0}, num_threads=1)
     ],
     key=["M", "N", "K"],
 )
