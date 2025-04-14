@@ -22,3 +22,5 @@ set(CMAKE_INSTALL_RPATH "${_rpath_portable_origin}")
 # Automatically add all linked folders that are NOT in the build directory to
 # the rpath (per library?)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+# set(CMAKE_LINK_WHAT_YOU_USE TRUE)

@@ -11,7 +11,9 @@ if (FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
   find_package(TritonJIT VERSION 0.1.0 CONFIG REQUIRED)
 else()
     FetchContent_Declare(TritonJIT
-      GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git)
+      GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git
+      # SOURCE_DIR /home/clement/projects/libtorch_example # use local source dir in development
+    )
     FetchContent_MakeAvailable(TritonJIT)
 endif()
 
