@@ -2,7 +2,7 @@ import threading
 
 import torch
 
-import flag_gems.c_operators  # noqa: F401
+import flag_gems  # noqa: F401
 
 x = torch.randn(10, device="cuda:0")
 out = torch.ops.flag_gems.add_tensor(x, x)
