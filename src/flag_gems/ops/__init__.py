@@ -39,6 +39,7 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .div import div_mode, floor_divide, remainder, true_divide
 from .div import (
     div_mode,
     div_mode_,
@@ -49,6 +50,7 @@ from .div import (
     true_divide,
     true_divide_,
 )
+from .dot import dot
 from .dropout import native_dropout
 from .elu import elu
 from .embedding import embedding
@@ -365,6 +367,7 @@ __all__ = [
     "logical_xor",
     "logical_not",
     "sort",
+    "dot",
     "kron",
     "nll_loss_forward",
     "nll_loss_backward",
