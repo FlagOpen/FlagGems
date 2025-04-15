@@ -7,6 +7,7 @@ import flag_gems
 
 from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from .performance_utils import Benchmark, generate_tensor_input
+from flag_gems.ops.polar import polar
 
 
 class BinaryPointwiseBenchmark(Benchmark):
@@ -49,6 +50,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("mul", torch.mul, FLOAT_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
+            ("polar", torch.polar, [torch.float32]),
             *(
                 [
                     ("floor_divide", torch.floor_divide, INT_DTYPES),

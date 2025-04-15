@@ -277,6 +277,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
+            ("polar", polar, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
