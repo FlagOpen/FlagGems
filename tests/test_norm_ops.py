@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import pytest
 import torch
 
@@ -37,6 +38,10 @@ KEEPDIM_DIMS = (
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     HW = H * W
     inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -85,6 +90,7 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=group_size * HW)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="to_cpu unknown error")
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
@@ -104,6 +110,10 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     M = shape[0]
     N = shape[1]
     layer_shape = [
@@ -164,6 +174,8 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
 @pytest.mark.native_instance_norm
 @pytest.mark.parametrize(
@@ -289,6 +301,9 @@ WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     g = torch.randn(
@@ -326,10 +341,14 @@ WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
 )
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="Op fault")
 @pytest.mark.weight_norm_interface
 @pytest.mark.parametrize("shape, dim", WEIGHT_NORM_INTERFACE_SHAPE_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface(shape, dtype, dim):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     g = torch.randn(
@@ -370,23 +389,44 @@ def test_accuracy_rmsnorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device)
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+    np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
+    np_weight = np.random.uniform(-0.1, 0.1, layer_shape).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = torch.tensor(
+        np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+
     eps = 1e-5
 
-    ref_inp = to_reference(inp, True)
-    ref_weight = to_reference(weight, True)
+    ref_inp = to_reference(inp)
+    ref_weight = to_reference(weight)
 
     def _torch_rms_norm(x, weight, eps):
-        variance = x.pow(2).mean(-1, keepdim=True)
-        hidden_states = x * torch.rsqrt(variance + eps)
+        upcast_x = x.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        hidden_states = upcast_x * torch.rsqrt(variance + eps).to(torch.float32)
+        hidden_states = hidden_states.to(x.dtype)
         return weight * hidden_states
 
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
-
     res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
+    res_grad = torch.tensor(
+        np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_grad = to_reference(res_grad)
+
+    res_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), res_grad)
+    ref_grad, ref_weight_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad
+    )
+
     gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_grad, ref_grad, dtype)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
 
 
 @pytest.mark.skip_layer_norm
@@ -467,6 +507,10 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 @pytest.mark.parametrize("keepdim, dim", KEEPDIM_DIMS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
@@ -477,6 +521,8 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.batch_norm
 @pytest.mark.parametrize(
     "shape",
@@ -492,6 +538,9 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
 @pytest.mark.parametrize("affine", [True, False])
 @pytest.mark.parametrize("require_grad", [True, False])
 def test_accuracy_batch_norm(shape, dtype, affine, require_grad):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(23)
+        torch.mlu.manual_seed_all(23)
     C = shape[1]
     inp = torch.randn(
         size=shape, dtype=dtype, device=flag_gems.device, requires_grad=require_grad

@@ -47,20 +47,24 @@ def _attn_fwd_inner(
 
     K_block_ptr += lo * stride_k_seqlen
     V_block_ptr += lo * stride_v_seqlen
-    kv_load_mask = lo + offs_n < KV_CTX
     if HAS_ATTN_MASK:
         mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
+    LOG2E: tl.constexpr = 1.44269504
+
     # loop over k, v and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
+        kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
         k = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
-
         if PRE_LOAD_V:
             v = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
         qk = tl.dot(q, k, allow_tf32=False)
+        # incase not divisible.
+        qk = tl.where(kv_load_mask[None, :], qk, -float("inf"))
+        # qk = qk.to(tl.float32)
 
         if HAS_ATTN_MASK:
             attn_mask = tl.load(
@@ -74,23 +78,20 @@ def _attn_fwd_inner(
 
             if HAS_ATTN_MASK:
                 qk = qk * qk_scale + attn_mask
-                qk *= 1.44269504
+                qk *= LOG2E
                 qk = qk + tl.where(mask, 0, -1.0e6)
             else:
-                qk_scale *= 1.44269504
-                qk = qk * qk_scale + tl.where(mask, 0, -1.0e6)
+                qk = qk * qk_scale * LOG2E + tl.where(mask, 0, -1.0e6)
 
             m_ij = tl.maximum(m_i, tl.max(qk, 1))
             qk -= m_ij[:, None]
         else:
-            m_ij = tl.maximum(m_i, tl.max(qk, 1) * qk_scale)
+            qk *= qk_scale * LOG2E
             if HAS_ATTN_MASK:
-                qk = qk * qk_scale + attn_mask
-                qk *= 1.44269504
-                qk = qk - m_ij[:, None]
-            else:
-                qk_scale *= 1.44269504
-                qk = qk * qk_scale - m_ij[:, None]
+                qk = qk + attn_mask
+            m_ij = tl.maximum(m_i, tl.max(qk, 1))
+            qk = qk - m_ij[:, None]
+
         p = tl.math.exp2(qk)
         l_ij = tl.sum(p, 1)
         # -- update m_i and l_i
@@ -105,6 +106,7 @@ def _attn_fwd_inner(
             p = p.to(tl.float8e5)
         else:
             p = p.to(q.dtype)
+        p = p.to(v.dtype)
         acc = tl.dot(p, v, acc, allow_tf32=False)
         # update m_i and l_i
         m_i = m_ij
@@ -181,6 +183,9 @@ def _attn_fwd(
     q_offset = (
         batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
     )
+    o_offset = (
+        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
+    )
     kv_offset = (
         batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
     )
@@ -227,7 +232,7 @@ def _attn_fwd(
 
     O_block_ptr = (
         Out
-        + q_offset
+        + o_offset
         + offs_m[:, None] * stride_o_seqlen
         + offs_headsize[None, :] * stride_o_headsize
     )
@@ -323,7 +328,7 @@ def scaled_dot_product_attention(
     assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
-    o = torch.empty_like(query)
+    o = torch.empty_like(query, dtype=value.dtype)
 
     stage = 3 if is_causal else 1
 
@@ -342,6 +347,8 @@ def scaled_dot_product_attention(
 
     if attn_mask is not None:
         HAS_ATTN_MASK = True
+        if attn_mask.dtype == torch.bool:
+            attn_mask = attn_mask.to(query.dtype) * -1.0e6
         stride_attn_mask_batch = attn_mask.stride(0)
         stride_attn_mask_head = attn_mask.stride(1)
         stride_attn_mask_q_seqlen = attn_mask.stride(2)

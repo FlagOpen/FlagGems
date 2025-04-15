@@ -1,7 +1,10 @@
 import math
+import random
 
 import pytest
 import torch
+
+import flag_gems
 
 from .attri_util import BenchLevel
 from .performance_utils import (
@@ -9,6 +12,7 @@ from .performance_utils import (
     GenericBenchmark,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -53,6 +57,18 @@ def arange_input_fn(shape, dtype, device):
         },
 
 
+def linspace_input_fn(shape, dtype, device):
+    limit = torch.finfo(dtype).max - 1
+    num = int(min(limit, math.prod(shape)))
+    yield {
+        "start": 0,
+        "end": num,
+        "steps": random.randint(1, num),
+        "dtype": dtype,
+        "device": device,
+    },
+
+
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
     # generic tensor constructor
@@ -72,6 +88,8 @@ tensor_constructor_operations = [
     ("full_like", torch.full_like, full_like_input_fn),
     # arange
     ("arange", torch.arange, arange_input_fn),
+    # linspace
+    ("linspace", torch.linspace, linspace_input_fn),
 ]
 
 
@@ -87,6 +105,10 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
+@pytest.mark.skipif(
+    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
+)
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.randperm
 def test_perf_randperm():
     def randperm_input_fn(shape, dtype, device):

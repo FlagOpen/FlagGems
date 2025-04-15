@@ -1,6 +1,8 @@
 import importlib
 import itertools
+import random
 
+import numpy as np
 import torch
 
 import flag_gems
@@ -114,6 +116,39 @@ UPSAMPLE_SHAPES = [
 ]
 
 
+KRON_SHAPES = [
+    [(), (2, 3)],
+    [(2, 3), ()],
+    [(0, 3), (2, 3)],
+    [(2, 3), (0,)],
+    [(0,), (0,)],
+    [(), ()],
+    [(1,), (2,)],
+    [(2,), (3,)],
+    [(2, 2), (3, 3)],
+    [(1, 2, 3), (2, 3, 4)],
+    [(1,), (2, 2)],
+    [(1, 2), (3, 4, 5)],
+    [(2,), (3, 4, 5, 6)],
+    [(2, 3, 4), (1,)],
+    [(5, 5), (4, 4)],
+    [(3, 3, 3), (2, 2, 2)],
+    [(4, 4, 4, 4), (2, 2, 2, 2)],
+    [(2, 3, 4), (3, 4, 5)],
+    [(1, 3, 5), (2, 4, 6)],
+    [(2, 4, 6, 8), (1, 3, 5, 7)],
+    [(1, 3), (1, 4)],
+    [(1, 1, 3), (1, 1, 2)],
+    [(2, 1, 4), (3, 1, 5)],
+    [(2, 2, 2, 2, 2), (1, 1, 1, 1, 1)],
+    [(1, 2, 3, 4, 5), (2, 3, 4, 5, 6)],
+    [(1,), (1,)],
+    [(10,), (10,)],
+    [(2, 3), (3, 2)],
+    [(3, 3), (3, 3)],
+    [(1, 1, 1), (2, 2, 2)],
+]
+# Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
@@ -131,7 +166,10 @@ def to_reference(inp, upcast=False):
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
     if upcast:
-        ref_inp = ref_inp.to(torch.float64)
+        if ref_inp.is_complex():
+            ref_inp = ref_inp.to(torch.complex128)
+        else:
+            ref_inp = ref_inp.to(torch.float64)
     return ref_inp
 
 
@@ -164,3 +202,11 @@ def unsqueeze_tensor(inp, max_ndim):
     for _ in range(inp.ndim, max_ndim):
         inp = inp.unsqueeze(-1)
     return inp
+
+
+def init_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)

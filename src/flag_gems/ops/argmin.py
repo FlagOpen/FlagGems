@@ -9,14 +9,7 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
-
-torch_dtype_to_tl_dtype_and_max_value = {
-    torch.int16: (tl.int16, torch.iinfo(torch.int16).max),
-    torch.int32: (tl.int32, torch.iinfo(torch.int32).max),
-    torch.float16: (tl.float16, torch.finfo(torch.float16).max),
-    torch.float32: (tl.float32, torch.finfo(torch.float32).max),
-    torch.bfloat16: (tl.float32, torch.finfo(torch.float32).max),
-}
+from ..utils.limits import get_dtype_max
 
 
 @libentry()
@@ -32,7 +25,9 @@ def argmin_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    inp_val = tl.load(inp_ptrs, mask=mask, other=float("inf"))
+
+    max_value = get_dtype_max(inp.type.element_ty)
+    inp_val = tl.load(inp_ptrs, mask=mask, other=max_value)
     min_val, min_index = tl.min(inp_val, axis=0, return_indices=True)
     min_index = min_index + pid * BLOCK_SIZE
     mid_value_ptr = mid_value + pid
@@ -43,11 +38,18 @@ def argmin_kernel_1(
 
 @libentry()
 @triton.jit
-def argmin_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
+def argmin_kernel_2(
+    mid_value,
+    mid_index,
+    out,
+    mid_size,
+    BLOCK_MID: tl.constexpr,
+):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=float("inf"))
+    max_value = get_dtype_max(mid_value.type.element_ty)
+    mid_val = tl.load(mid_ptrs, mask=mask, other=max_value)
     index_val = tl.argmin(mid_val, axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
@@ -67,8 +69,6 @@ def argmin_kernel(
     M,
     N,
     K,
-    tl_dtype: tl.constexpr,
-    dtype_max_value: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -77,16 +77,18 @@ def argmin_kernel(
     pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-    # min_values = tl.full([BLOCK_M], dtype=tl.float32, value=float("inf"))
-    min_values = tl.full([BLOCK_M], dtype=tl_dtype, value=dtype_max_value)
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    max_value = get_dtype_max(dtype)
+    min_values = tl.full([BLOCK_M], dtype=acc_type, value=max_value)
     argmin_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
-        # inp_vals = tl.load(inp_ptrs, mask=mask, other=float("inf"))
-        inp_vals = tl.load(inp_ptrs, mask=mask, other=dtype_max_value)
+        inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+        # tl.bfloat is promoted to tl.float32 by tl.min
         local_min, local_argmin = tl.min(
             inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
         )
@@ -130,7 +132,13 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 block_size,
             )
-            argmin_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+            argmin_kernel_2[(1, 1, 1)](
+                mid_value,
+                mid_index,
+                out,
+                mid_size,
+                block_mid,
+            )
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -148,8 +156,6 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 
-        tl_dtype, dtype_max_value = torch_dtype_to_tl_dtype_and_max_value[inp.dtype]
-
         grid = lambda meta: (
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
@@ -161,8 +167,6 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 K,
-                tl_dtype,
-                dtype_max_value,
             )
 
         return out_index
