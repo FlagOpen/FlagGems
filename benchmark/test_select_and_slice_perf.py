@@ -318,21 +318,6 @@ def index_put_input_fn(accumulate):
     return inner
 
 
-def index_put__input_fn(accumulate):
-    def inner(shapes, dtype, device):
-        input_shape, indices_shape, values_shape = shapes
-        inp = torch.randn(
-            input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
-        indices = gen_indices(input_shape, indices_shape, accumulate)
-        values = torch.randn(
-            values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
-        )
-        yield inp, indices, values, accumulate
-
-    return inner
-
-
 class IndexPutAccFalseBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         INDEX_PUT_SHAPE = (
@@ -386,7 +371,7 @@ def test_index_put__acc_false_perf():
     bench = IndexPutAccFalseBenchmark(
         op_name="index_put_",
         torch_op=torch.index_put_,
-        input_fn=index_put__input_fn(False),
+        input_fn=index_put_input_fn(False),
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
@@ -423,7 +408,7 @@ def test_index_put__acc_true_perf():
     bench = IndexPutAccTrueBenchmark(
         op_name="index_put_",
         torch_op=torch.index_put_,
-        input_fn=index_put__input_fn(True),
+        input_fn=index_put_input_fn(True),
         dtypes=[torch.float16, torch.float32],
     )
     bench.run()
