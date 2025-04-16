@@ -1,7 +1,7 @@
 import torch
 
 # C extensions
-from flag_gems import c_operators  # noqa: F401
+from flag_gems import ext_ops  # noqa: F401
 
 from . import testing  # noqa: F401
 from . import runtime
