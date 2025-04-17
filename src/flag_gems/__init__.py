@@ -1,7 +1,12 @@
 import torch
 
 # C extensions
-from flag_gems import ext_ops  # noqa: F401
+try:
+    from flag_gems import ext_ops  # noqa: F401
+
+    has_c_extension = True
+except ImportError:
+    has_c_extension = False
 
 from . import testing  # noqa: F401
 from . import runtime
