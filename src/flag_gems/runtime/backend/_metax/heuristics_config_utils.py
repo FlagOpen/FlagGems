@@ -224,6 +224,18 @@ def vdot_heur_block_size(args):
         return 1024
 
 
+def baddbmm_heur_divisible_m(args):
+    return args["M"] % args["TILE_M"] == 0
+
+
+def baddbmm_heur_divisible_n(args):
+    return args["N"] % args["TILE_N"] == 0
+
+
+def baddbmm_heur_divisible_k(args):
+    return args["K"] % args["TILE_K"] == 0
+
+
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -301,5 +313,10 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "baddbmm": {
+        "DIVISIBLE_M": baddbmm_heur_divisible_m,
+        "DIVISIBLE_N": baddbmm_heur_divisible_n,
+        "DIVISIBLE_K": baddbmm_heur_divisible_k,
     },
 }
