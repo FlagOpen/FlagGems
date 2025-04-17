@@ -8,6 +8,7 @@ on:
 
 jobs:
   op-test-on-hopper:
+    if: ${{ github.repository_owner == 'FlagOpen' }}
     runs-on: hopper
     concurrency:
       group: op-test-on-hopper-${{ github.event.pull_request.number || github.ref }}
