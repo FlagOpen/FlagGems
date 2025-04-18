@@ -9,7 +9,7 @@ The flag_gems python package leverages the `scikit-build-core` backend to stream
 
 To enable C extension building in FlagGems, a CMake options has to be passed to CMake during configuration stage. This can be done by passing arguments to CMake via the `SKBUILD_CMAKE_ARGS` or `CMAKE_ARGS` environment variable.
 
-`SKBUILD_CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON" pip install --no-build-isolation -e .`
+`SKBUILD_CMAKE_ARGS="-DBUILD_C_EXTENSIONS=ON;-DBUILD_CTESTS=ON" pip install --no-build-isolation -e .`
 
 To make a debug build, add environment `SKBUILD_CMAKE_BUILD_TYPE=Debug`.
 
