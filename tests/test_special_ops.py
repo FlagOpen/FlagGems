@@ -1180,10 +1180,12 @@ def test_accuracy_scatter_add_(shape, dim, dtype):
     if dtype != torch.int32 and dtype != torch.int64:
         ref_src = to_reference(src, True)
         ref_out = to_reference(out, True)
+        ref_index = to_reference(index, False)
     else:
         ref_src = src
         ref_out = out
-    ref = ref_out.scatter_add(dim=dim, index=index, src=ref_src)
+        ref_index = index
+    ref = ref_out.scatter_add(dim=dim, index=ref_index, src=ref_src)
     out = torch.zeros(shape[0], dtype=dtype, device=flag_gems.device)
     res = flag_gems.scatter_add_(out, dim, index, src)
     if dtype == torch.int32 or dtype == torch.int64:
@@ -1204,10 +1206,12 @@ def test_accuracy_scatter_add_(shape, dim, dtype):
     if dtype != torch.int32 and dtype != torch.int64:
         ref_src = to_reference(src, True)
         ref_out = to_reference(out, True)
+        ref_index = to_reference(index, False)
     else:
         ref_src = src
         ref_out = out
-    ref = ref_out.scatter_add(dim=dim, index=index, src=ref_src)
+        ref_index = index
+    ref = ref_out.scatter_add(dim=dim, index=ref_index, src=ref_src)
     out = torch.zeros(shape0, dtype=dtype, device=flag_gems.device)
     res = flag_gems.scatter_add_(out, dim, index, src)
 
