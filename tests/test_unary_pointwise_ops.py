@@ -707,6 +707,8 @@ def test_accuracy_masked_fill(shape, dtype, threshold, value):
     ],
 )
 def test_accuracy_masked_fill_(shape, dtype, threshold, value):
+    if flag_gems.vendor_name == "kunlunxin": 
+        print(f"seed = {torch.initial_seed()}")
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.randn(shape, dtype=dtype, device=flag_gems.device) < threshold
 
