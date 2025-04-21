@@ -34,7 +34,6 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
-from .cross_entropy_loss import cross_entropy_loss
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
@@ -71,7 +70,6 @@ from .hstack import hstack
 from .index_add import index_add
 from .index_put import index_put, index_put_
 from .index_select import index_select
-from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -114,7 +112,6 @@ from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
 from .ones_like import ones_like
-from .outer import outer
 from .pad import constant_pad_nd, pad
 from .polar import polar
 from .pow import (
@@ -167,11 +164,7 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
-from .weightnorm import (
-    weight_norm,
-    weight_norm_interface,
-    weight_norm_interface_backward,
-)
+from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -269,7 +262,6 @@ __all__ = [
     "gt",
     "gt_scalar",
     "index_select",
-    "instance_norm",
     "isclose",
     "isfinite",
     "isin",
@@ -279,7 +271,6 @@ __all__ = [
     "layer_norm_backward",
     "weight_norm_interface",
     "weight_norm_interface_backward",
-    "weight_norm",
     "le",
     "le_scalar",
     "lt",
@@ -358,8 +349,6 @@ __all__ = [
     "vector_norm",
     "log_softmax",
     "log_softmax_backward",
-    "outer",
-    "cross_entropy_loss",
     "where_self_out",
     "where_self",
     "where_scalar_self",

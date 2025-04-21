@@ -147,22 +147,22 @@ def test_accuracy_cross_entropy_loss_indices(
     else:
         wgt = None
         ref_wgt = None
-    ref_criterion = torch.nn.CrossEntropyLoss(
+    ref_out = torch.nn.functional.cross_entropy(
+        ref_inp,
+        ref_target,
         weight=ref_wgt,
         ignore_index=ignore_index,
         reduction=reduction,
         label_smoothing=label_smoothing,
     )
-    res_criterion = torch.nn.CrossEntropyLoss(
+    res_out = flag_gems.cross_entropy_loss(
+        inp,
+        target,
         weight=wgt,
         ignore_index=ignore_index,
         reduction=reduction,
         label_smoothing=label_smoothing,
     )
-
-    ref_out = ref_criterion(ref_inp, ref_target)
-    with flag_gems.use_gems():
-        res_out = res_criterion(inp, target)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
     out_grad = torch.randn_like(res_out)
@@ -188,20 +188,16 @@ def test_accuracy_cross_entropy_loss_probabilities(
     ref_inp = to_reference(inp, True)
     ref_target = to_reference(target, True)
     ref_weight = to_reference(weight, True)
-    ref_criterion = torch.nn.CrossEntropyLoss(
+    ref_out = torch.nn.functional.cross_entropy(
+        ref_inp,
+        ref_target,
         weight=ref_weight,
         reduction=reduction,
         label_smoothing=label_smoothing,
     )
-    res_criterion = torch.nn.CrossEntropyLoss(
-        weight=weight,
-        reduction=reduction,
-        label_smoothing=label_smoothing,
+    res_out = flag_gems.cross_entropy_loss(
+        inp, target, weight=weight, reduction=reduction, label_smoothing=label_smoothing
     )
-
-    ref_out = ref_criterion(ref_inp, ref_target)
-    with flag_gems.use_gems():
-        res_out = res_criterion(inp, target)
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
     out_grad = torch.randn_like(res_out)

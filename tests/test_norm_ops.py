@@ -356,19 +356,17 @@ def test_accuracy_instancenorm(
         momentum=momentum,
         eps=eps,
     )
-    with flag_gems.use_gems():
-        res_out = torch.instance_norm(
-            inp,
-            running_mean=running_mean,
-            running_var=running_var,
-            weight=weight,
-            bias=bias,
-            use_input_stats=use_input_stats,
-            momentum=momentum,
-            eps=eps,
-            cudnn_enabled=True,
-        )
 
+    res_out = flag_gems.instance_norm(
+        inp,
+        weight=weight,
+        bias=bias,
+        running_mean=running_mean,
+        running_var=running_var,
+        use_input_stats=use_input_stats,
+        momentum=momentum,
+        eps=eps,
+    )
     gems_assert_close(res_out, ref_out, dtype)
     if has_running_stats:
         gems_assert_close(running_mean, ref_running_mean, running_mean.dtype)
@@ -419,8 +417,7 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     ref_v = to_reference(v, True)
     ref_g = to_reference(g, True)
     ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
-    with flag_gems.use_gems():
-        res_w_out = torch._weight_norm(v, g, dim)
+    res_w_out = flag_gems.weight_norm(v, g, dim)
     gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
     res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)

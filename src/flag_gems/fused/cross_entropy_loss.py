@@ -9,6 +9,12 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+REDUCTION = {
+    "none": 0,
+    "mean": 1,
+    "sum": 2,
+}
+
 
 @libentry()
 @triton.autotune(
@@ -645,8 +651,8 @@ class CrossEntropyLoss(torch.autograd.Function):
 
 
 def cross_entropy_loss(
-    inp, target, weight=None, reduction=1, ignore_index=-100, label_smoothing=0.0
+    inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
 ):
     return CrossEntropyLoss.apply(
-        inp, target, weight, reduction, ignore_index, label_smoothing
+        inp, target, weight, REDUCTION[reduction], ignore_index, label_smoothing
     )
