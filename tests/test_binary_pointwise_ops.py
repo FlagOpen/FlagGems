@@ -1855,7 +1855,9 @@ def test_accuracy_polar(shape, dtype):
     angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
         8 * math.pi
     )
-    ref_out = torch.polar(abs, angle)
+    ref_abs = to_reference(abs)
+    ref_angle = to_reference(angle)
+    ref_out = torch.polar(ref_abs, ref_angle)
     with flag_gems.use_gems():
         res_out = torch.polar(abs, angle)
 
