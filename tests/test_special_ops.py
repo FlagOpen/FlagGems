@@ -1168,54 +1168,51 @@ def test_accuracy_contiguous(shape, dtype):
     "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32, torch.int64]
 )
 def test_accuracy_scatter_add_(shape, dim, dtype):
-    # #src.shape <= out.shape
-    if dtype == torch.int32 or dtype == torch.int64:
-        src = torch.randint(0, 10, shape[1], dtype=dtype, device=flag_gems.device)
-    else:
-        src = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)
+    # src.shape <= out.shape
     index = torch.randint(
         low=0, high=min(shape[1]), size=shape[1], device=flag_gems.device
     )
-    out = torch.zeros(shape[0], dtype=dtype, device=flag_gems.device)
-    if dtype != torch.int32 and dtype != torch.int64:
-        ref_src = to_reference(src, True)
-        ref_out = to_reference(out, True)
-        ref_index = to_reference(index, False)
-    else:
-        ref_src = src
-        ref_out = out
-        ref_index = index
-    ref = ref_out.scatter_add(dim=dim, index=ref_index, src=ref_src)
-    out = torch.zeros(shape[0], dtype=dtype, device=flag_gems.device)
-    res = flag_gems.scatter_add_(out, dim, index, src)
+    inp = torch.zeros(shape[0], dtype=dtype, device=flag_gems.device)
     if dtype == torch.int32 or dtype == torch.int64:
-        gems_assert_equal(res, ref)
+        src = torch.randint(0, 10, shape[1], dtype=dtype, device=flag_gems.device)
+        ref_src = to_reference(src)
+        ref_inp = to_reference(inp)
+        ref_index = to_reference(index)
     else:
-        gems_assert_close(res, ref, dtype)
+        src = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)
+        ref_src = to_reference(src, True)
+        ref_inp = to_reference(inp, True)
+        ref_index = to_reference(index)
+
+    ref_out = torch.scatter_add(ref_inp, dim=dim, index=ref_index, src=ref_src)
+    res_out = flag_gems.scatter_add_(inp, dim, index, src)
+
+    if dtype == torch.int32 or dtype == torch.int64:
+        gems_assert_equal(res_out, ref_out)
+    else:
+        gems_assert_close(res_out, ref_out, dtype)
 
     # src.shape[dim] > out.shape[dim]
     shape0 = shape[0]
     shape1 = shape[0]
     list(shape1)[dim] += 10
+    index = torch.randint(low=0, high=min(shape0), size=shape1, device=flag_gems.device)
+    inp = torch.zeros(shape0, dtype=dtype, device=flag_gems.device)
     if dtype == torch.int32 or dtype == torch.int64:
         src = torch.randint(0, 10, shape1, dtype=dtype, device=flag_gems.device)
+        ref_src = to_reference(src)
+        ref_inp = to_reference(inp)
+        ref_index = to_reference(index)
     else:
         src = torch.randn(shape1, dtype=dtype, device=flag_gems.device)
-    index = torch.randint(low=0, high=min(shape0), size=shape1, device=flag_gems.device)
-    out = torch.zeros(shape0, dtype=dtype, device=flag_gems.device)
-    if dtype != torch.int32 and dtype != torch.int64:
         ref_src = to_reference(src, True)
-        ref_out = to_reference(out, True)
-        ref_index = to_reference(index, False)
-    else:
-        ref_src = src
-        ref_out = out
-        ref_index = index
-    ref = ref_out.scatter_add(dim=dim, index=ref_index, src=ref_src)
-    out = torch.zeros(shape0, dtype=dtype, device=flag_gems.device)
-    res = flag_gems.scatter_add_(out, dim, index, src)
+        ref_inp = to_reference(inp, True)
+        ref_index = to_reference(index)
+
+    ref_out = torch.scatter_add(ref_inp, dim=dim, index=ref_index, src=ref_src)
+    res_out = flag_gems.scatter_add_(inp, dim, index, src)
 
     if dtype == torch.int32 or dtype == torch.int64:
-        gems_assert_equal(res, ref)
+        gems_assert_equal(res_out, ref_out)
     else:
-        gems_assert_close(res, ref, dtype)
+        gems_assert_close(res_out, ref_out, dtype)
