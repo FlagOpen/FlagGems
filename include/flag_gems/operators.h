@@ -8,4 +8,4 @@ at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim = false,
                    ::std::optional<at::ScalarType> dtype = ::std::nullopt);
-}  // namespace flaggems
+}  // namespace flag_gems

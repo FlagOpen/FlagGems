@@ -1,6 +1,6 @@
+#include <gtest/gtest.h>
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
-#include <gtest/gtest.h>
 
 TEST(pointwise_op_test, add) {
   const torch::Device device(torch::kCUDA, 0);

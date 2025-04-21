@@ -9,7 +9,6 @@ namespace flag_gems {
 using namespace triton_jit;
 
 at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_) {
-
   auto res = torch::broadcast_tensors({a_, b_});
   res[0] = res[0].contiguous();
   res[1] = res[1].contiguous();
