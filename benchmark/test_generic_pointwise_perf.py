@@ -26,6 +26,15 @@ def where_input_fn(shape, cur_dtype, device):
     yield condition, inp1, inp2
 
 
+def nan_to_num_input_fn(shape, cur_dtype, device):
+    inp = generate_tensor_input(shape, cur_dtype, device)
+    inp.view(-1)[0] = float('nan')
+    if inp.numel() > 1:
+        inp.view(-1)[1] = float('inf')
+    if inp.numel() > 2:
+        inp.view(-1)[2] = float('-inf')
+    yield inp,
+
 def clamp_input_fn(shape, cur_dtype, device):
     inp1 = generate_tensor_input(shape, cur_dtype, device)
     inp2 = generate_tensor_input(shape, cur_dtype, device)
@@ -41,12 +50,19 @@ def clamp_input_fn(shape, cur_dtype, device):
     "op_name, torch_op, input_fn, dtypes",
     [
         pytest.param(
+            "nan_to_num",
+            torch.nan_to_num,
+            nan_to_num_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.nan_to_num,
+        ),
+        pytest.param(
             "clamp",
             torch.clamp,
             clamp_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.clamp,
-        ),
+        ),        
         pytest.param(
             "flip",
             torch.flip,
