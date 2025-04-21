@@ -113,6 +113,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .pad import constant_pad_nd, pad
+from .polar import polar
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -166,7 +167,6 @@ from .weightnorm import weight_norm, weight_norm_interface
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-from .polar import polar
 
 __all__ = [
     "log_sigmoid",
@@ -205,6 +205,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "polar",
     "contiguous",
     "diag",
     "diag_embed",
@@ -375,5 +376,4 @@ __all__ = [
     "vdot",
     "mse_loss",
     "log",
-    "polar",
 ]
