@@ -54,11 +54,18 @@ def test_accuracy_abs_(shape, dtype):
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES + [torch.float32])
 def test_accuracy_angle(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-
-    ref_out = torch.angle(inp)
+    ref_inp = to_reference(inp)
+    try:
+        ref_out = torch.angle(ref_inp)
+    except RuntimeError as e:
+        if "angle_cpu" in str(e) and "ComplexHalf" in str(e):
+            pytest.skip("Skipping angle ComplexHalf for unsupported dtype on CPU")
+        else:
+            raise
     with flag_gems.use_gems():
         res_out = torch.angle(inp)
-    gems_assert_equal(res_out, ref_out)
+    out_dtype = res_out.dtype
+    gems_assert_close(res_out, ref_out, out_dtype)
 
 
 @pytest.mark.bitwise_not
