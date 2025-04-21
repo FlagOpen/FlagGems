@@ -28,7 +28,7 @@ FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 def test_accuracy_addmm(M, N, K, scalar, dtype):
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
     ref_bias = to_reference(bias, True)
