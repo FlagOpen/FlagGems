@@ -73,7 +73,12 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
 
     from _kunlunxin.ops import normed_cumsum
 
-    cum_prob = normed_cumsum(prob, dim=-1)
+    if len(prob.shape) == 2 and prob.shape[1] > 8192:
+        cum_prob_mid = torch.cumsum(prob, dim=-1)
+        row_sums = prob.sum(dim=-1, keepdim=True)
+        cum_prob = cum_prob_mid / row_sums
+    else:
+        cum_prob = normed_cumsum(prob, dim=-1)
 
     if cum_prob.dim() == 1:
         n_dist = 1
