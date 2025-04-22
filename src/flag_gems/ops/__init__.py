@@ -39,7 +39,6 @@ from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
-from .div import div_mode, floor_divide, remainder, true_divide
 from .div import (
     div_mode,
     div_mode_,
