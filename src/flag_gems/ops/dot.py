@@ -61,7 +61,8 @@ def dot(x, y):
 
     N = x.shape[0]
 
-    # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel, and performance is better when N < 4096
+    # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel, 
+    # and performance is better when N < 4096
     if N >= 4096:
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(N)))
 
