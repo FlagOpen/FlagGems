@@ -15,6 +15,9 @@ UNSUPPORT_FP64 = [
     vendors.MTHREADS,
     vendors.AIPU,
 ]
+UNSUPPORT_BF16 = [
+    vendors.AIPU,
+]
 UNSUPPORT_INT64 = [
     vendors.AIPU,
 ]
@@ -46,6 +49,7 @@ class DeviceDetector(object):
                 self.vendor_name
             ).device_count()
             self.support_fp64 = self.vendor not in UNSUPPORT_FP64
+            self.support_bf16 = self.vendor not in UNSUPPORT_BF16
             self.support_int64 = self.vendor not in UNSUPPORT_INT64
 
     def get_vendor(self, vendor_name=None) -> tuple:
