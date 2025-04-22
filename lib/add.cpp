@@ -17,7 +17,6 @@ at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_) {
 
   at::ScalarType out_dtype = at::promote_types(a.scalar_type(), b.scalar_type());
   at::Tensor out = at::empty(a.sizes(), at::TensorOptions().dtype(out_dtype).device(a.device()));
-  int64_t rank = out.ndimension();
 
   const TritonJITFunction &f =
       TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "binary_add.py"),
