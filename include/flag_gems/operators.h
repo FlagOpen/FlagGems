@@ -10,6 +10,12 @@ at::Tensor sum_dim(const at::Tensor &self,
                    bool keepdim = false,
                    ::std::optional<at::ScalarType> dtype = ::std::nullopt);
 
+<<<<<<< HEAD
 at::Tensor rms_norm(const at::Tensor &input, const at::Tensor &weight, double epsilon = 1e-5);
 
 }  // namespace flag_gems
+=======
+at::Tensor rms_norm(const at::Tensor &input, const at::Tensor& weight, double epsilon = 1e-5);
+
+}  // namespace flaggems
+>>>>>>> 112e3cd ([C++ wrapper] rms_norm operator)
