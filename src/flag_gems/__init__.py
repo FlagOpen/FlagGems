@@ -1,5 +1,13 @@
 import torch
 
+# C extensions
+try:
+    from flag_gems import ext_ops  # noqa: F401
+
+    has_c_extension = True
+except ImportError:
+    has_c_extension = False
+
 from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
@@ -30,7 +38,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("arange", arange, Autograd.disable),
             ("batch_norm", batch_norm, Autograd.enable),
             ("bitwise_and.Tensor", bitwise_and_tensor, Autograd.disable),
-            ("bitwise_and_.Tensor_", bitwise_and_tensor_, Autograd.disable),
+            ("bitwise_and_.Tensor", bitwise_and_tensor_, Autograd.disable),
             ("bitwise_and.Scalar", bitwise_and_scalar, Autograd.disable),
             ("bitwise_and_.Scalar", bitwise_and_scalar_, Autograd.disable),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor, Autograd.disable),
@@ -89,7 +97,9 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("true_divide.Scalar", true_divide, Autograd.disable),
             ("true_divide_.Scalar", true_divide_, Autograd.disable),
             ("floor_divide", floor_divide, Autograd.disable),
+            ("floor_divide_.Tensor", floor_divide_, Autograd.disable),
             ("floor_divide.Scalar", floor_divide, Autograd.disable),
+            ("floor_divide_.Scalar", floor_divide_, Autograd.disable),
             ("remainder.Tensor", remainder, Autograd.disable),
             ("remainder_.Tensor", remainder_, Autograd.disable),
             ("remainder.Scalar", remainder, Autograd.disable),
@@ -127,6 +137,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("le.Scalar", le_scalar, Autograd.disable),
             ("lt.Tensor", lt, Autograd.disable),
             ("lt.Scalar", lt_scalar, Autograd.disable),
+            ("log", log, Autograd.disable),
             ("rms_norm", rms_norm, Autograd.disable),
             ("rand", rand, Autograd.disable),
             ("randn", randn, Autograd.disable),
@@ -138,6 +149,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("zeros_like", zeros_like, Autograd.disable),
             ("ones_like", ones_like, Autograd.disable),
             ("full_like", full_like, Autograd.disable),
+            ("linspace", linspace, Autograd.disable),
             ("resolve_neg", resolve_neg, Autograd.disable),
             ("resolve_conj", resolve_conj, Autograd.disable),
             ("normal.Tensor_float", normal_tensor_float, Autograd.disable),
@@ -148,6 +160,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("mean.dim", mean_dim, Autograd.disable),
             ("mm", mm, Autograd.disable),
             ("mul.Tensor", mul, Autograd.disable),
+            ("mul_.Tensor", mul_, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
             ("mv", mv, Autograd.disable),
             ("ne.Tensor", ne, Autograd.disable),
@@ -223,6 +236,8 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("allclose", allclose, Autograd.disable),
             ("fill.Scalar", fill_scalar, Autograd.disable),
             ("fill.Tensor", fill_tensor, Autograd.disable),
+            ("fill_.Scalar", fill_scalar_, Autograd.disable),
+            ("fill_.Tensor", fill_tensor_, Autograd.disable),
             ("flip", flip, Autograd.disable),
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
@@ -267,6 +282,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("kron", kron, Autograd.disable),
             ("elu", elu, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
+            ("contiguous", contiguous, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),

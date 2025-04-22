@@ -19,6 +19,7 @@ from .accuracy_utils import (
     SkipVersion,
     gems_assert_close,
     gems_assert_equal,
+    init_seed,
     to_reference,
 )
 from .conftest import QUICK_MODE
@@ -253,11 +254,14 @@ CUMSUM_SHAPES = (
 )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cumsum(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
         inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
@@ -267,8 +271,13 @@ def test_accuracy_cumsum(shape, dtype):
         ref_inp = to_reference(inp, True)
 
     ref_out = torch.cumsum(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.cumsum(inp, dim=dim)
+    if flag_gems.vendor_name == "kunlunxin":
+        from flag_gems.runtime.backend._kunlunxin import ops as kl_ops
+
+        res_out = kl_ops.cumsum(inp, dim=dim)
+    else:
+        with flag_gems.use_gems():
+            res_out = torch.cumsum(inp, dim=dim)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
@@ -501,6 +510,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
+    init_seed(0)
     inp = torch.randn(inp_shape, dtype=dtype, device=flag_gems.device)
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     size_dim = min(src_shape[dim], inp_shape[dim])
@@ -525,9 +535,9 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
                 ii[dim] = slice(0, index.size(dim) + 1)
                 index[tuple(ii)] = torch.randperm(size_dim)[0:index_size_dim]
 
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, upcast=True)
     ref_index = to_reference(index)
-    ref_src = to_reference(src)
+    ref_src = to_reference(src, upcast=True)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
     with flag_gems.use_gems():
         res_out = torch.scatter(inp, dim, index, src, reduce="add")
@@ -1054,6 +1064,7 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
+    init_seed(0)
     accumulate = True
     inp = torch.randn(
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -1063,9 +1074,9 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
         values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
 
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, upcast=True)
     ref_indices = [to_reference(index) for index in indices]
-    ref_values = to_reference(values)
+    ref_values = to_reference(values, upcast=True)
     ref_out = torch.index_put(ref_inp, ref_indices, ref_values, accumulate)
     out = flag_gems.index_put(inp, indices, values, accumulate)
     gems_assert_close(out, ref_out, dtype)

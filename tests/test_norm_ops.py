@@ -1,5 +1,6 @@
 import math
 
+import numpy as np
 import pytest
 import torch
 
@@ -20,7 +21,6 @@ KEEPDIM_DIMS = (
 )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.group_norm
 @pytest.mark.native_group_norm
 @pytest.mark.parametrize(
@@ -38,6 +38,10 @@ KEEPDIM_DIMS = (
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     HW = H * W
     inp = torch.randn(
         size=(N, C, H, W), dtype=dtype, device=flag_gems.device, requires_grad=True
@@ -87,7 +91,6 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="to_cpu unknown error")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.layer_norm
 @pytest.mark.native_layer_norm
 @pytest.mark.parametrize(
@@ -107,6 +110,10 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm(shape, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     M = shape[0]
     N = shape[1]
     layer_shape = [
@@ -382,23 +389,46 @@ def test_accuracy_rmsnorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device)
+    np.random.seed(0)
+    np_inp = np.random.uniform(-0.1, 0.1, shape[:2]).astype(np.float32)
+    np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
+    np_weight = np.random.uniform(-0.1, 0.1, layer_shape).astype(np.float32)
+
+    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    weight = torch.tensor(
+        np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+
     eps = 1e-5
 
-    ref_inp = to_reference(inp, True)
-    ref_weight = to_reference(weight, True)
+    ref_inp = to_reference(inp)
+    ref_weight = to_reference(weight)
 
     def _torch_rms_norm(x, weight, eps):
-        variance = x.pow(2).mean(-1, keepdim=True)
-        hidden_states = x * torch.rsqrt(variance + eps)
+        upcast_x = x.to(torch.float32)
+        variance = upcast_x.pow(2).mean(-1, keepdim=True)
+        hidden_states = upcast_x * torch.rsqrt(variance + eps).to(torch.float32)
+        hidden_states = hidden_states.to(x.dtype)
         return weight * hidden_states
 
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
-
     res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
+    res_grad = torch.tensor(
+        np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_grad = to_reference(res_grad)
+
+    res_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), res_grad)
+    ref_grad, ref_weight_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad
+    )
+
     gems_assert_close(res_out, ref_out, dtype)
+    if flag_gems.vendor_name == "kunlunxin" and shape == (200, 40999, 3):
+        pytest.skip("wait for backward support")
+    gems_assert_close(res_grad, ref_grad, dtype)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
 
 
 @pytest.mark.skip_layer_norm

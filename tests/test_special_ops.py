@@ -254,7 +254,6 @@ def test_accuracy_resolve_neg(shape, dtype):
     assert not out.is_neg()
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.topk
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
@@ -276,7 +275,16 @@ def test_topk(
         col_indices = torch.randperm(x.size(1))
         x[bsz, :] = x[bsz, col_indices]
     ref_x = to_reference(x)
+
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
+        ref_x = ref_x.cuda()
+
     ref_value, ref_index = torch.topk(ref_x, topk, largest=largest)
+
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
+        if TO_CPU:
+            ref_value = ref_value.cpu()
+            ref_index = ref_index.cpu()
 
     with flag_gems.use_gems():
         res_value, res_index = torch.topk(x, topk, largest=largest)
@@ -544,6 +552,41 @@ def test_arange(start, step, end, dtype, device, pin_memory):
         )
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.linspace
+@pytest.mark.parametrize("start", [0, 2, 4])
+@pytest.mark.parametrize("end", [256, 2048, 4096])
+@pytest.mark.parametrize("steps", [1, 256, 512])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
+@pytest.mark.parametrize("device", [device, None])
+@pytest.mark.parametrize("pin_memory", [False, None])
+def test_linspace(start, end, steps, dtype, device, pin_memory):
+    if TO_CPU:
+        return
+    ref_out = torch.linspace(
+        start,
+        end,
+        steps,
+        dtype=dtype,
+        layout=None,
+        device=device,
+        pin_memory=pin_memory,
+    )
+    with flag_gems.use_gems():
+        res_out = torch.linspace(
+            start,
+            end,
+            steps,
+            dtype=dtype,
+            layout=None,
+            device=device,
+            pin_memory=pin_memory,
+        )
+    if dtype in [torch.float16, torch.bfloat16]:
+        gems_assert_close(res_out, ref_out, dtype=dtype)
+    else:
+        gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
@@ -1057,6 +1100,7 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
     gems_assert_equal(res_index, ref_index)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
@@ -1087,4 +1131,30 @@ def test_accuracy_kron(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.kron(inp1, inp2)
 
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.contiguous
+@pytest.mark.parametrize("shape", SPECIAL_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_contiguous(shape, dtype):
+    if shape[0] <= 2:
+        return
+    if dtype in FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    else:
+        inp = torch.randint(
+            low=-10000, high=10000, size=shape, dtype=dtype, device=flag_gems.device
+        )
+    inp = inp[::2]
+    assert inp.is_contiguous() is False
+
+    ref_inp = to_reference(inp)
+    ref_out = ref_inp.contiguous()
+    with flag_gems.use_gems():
+        res_out = inp.contiguous()
+
+    assert res_out.is_contiguous() is True
+    assert res_out.is_contiguous() is True
+    assert res_out.stride() == ref_out.stride()
     gems_assert_equal(res_out, ref_out)

@@ -112,7 +112,16 @@ Examples：
 ```shell
 git clone https://github.com/FlagOpen/FlagGems.git
 cd FlagGems
-pip install .
+pip install --no-build-isolation .
+pip install --no-build-isolation -e . # or editble install
+```
+
+Or build a wheel
+```shell
+pip install -U build
+git clone https://github.com/FlagOpen/FlagGems.git
+cd FlagGems
+python -m build --no-isolation --wheel .
 ```
 
 ## Usage
@@ -196,7 +205,7 @@ Operators will be implemented according to [OperatorList.md](./OperatorList.md).
 
 | Platform | float16 | float32 | bfloat16 |
 | :---: | :---: | :---: | :---: |
-| Nvidia A100 | ✓ | ✓ | ✓ |
+| Nvidia GPU | ✓ | ✓ | ✓ |
 
 ## Performance
 
