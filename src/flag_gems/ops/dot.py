@@ -9,6 +9,7 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
+
 @libentry()
 @triton.jit
 def dot_kernel(x_ptr, y_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr):
@@ -59,7 +60,7 @@ def dot(x, y):
     assert x.dim() == 1, "Input must be 1D tensors"
 
     N = x.shape[0]
-    
+
     # Only when N is less than TRITON_MAX_TENSOR_NUMEL can it be processed with a single kernel, and performance is better when N < 4096
     if N >= 4096:
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(N)))
@@ -79,7 +80,7 @@ def dot(x, y):
 
     else:
         block_size = triton.next_power_of_2(N)
-        
+
         grid = (1, 1, 1)
 
         out = torch.empty([], dtype=torch.float32, device=x.device)
