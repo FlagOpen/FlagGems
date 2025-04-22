@@ -19,7 +19,7 @@ from ..utils import triton_lang_extension as tle
 def addmm_kernel(
     a_ptr,
     b_ptr,
-    bias_ptr,
+    i_ptr,
     c_ptr,
     alpha,
     beta,
@@ -30,6 +30,8 @@ def addmm_kernel(
     stride_ak,
     stride_bk,
     stride_bn,
+    stride_im,
+    stride_in,
     stride_cm,
     stride_cn,
     BLOCK_SIZE_M: tl.constexpr,
@@ -65,8 +67,8 @@ def addmm_kernel(
     offs_cn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
     c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    bias_ptrs = bias_ptr + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
-    bias = tl.load(bias_ptrs, mask=c_mask, other=0.0)
+    i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
+    bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
 
     accumulator = accumulator * alpha + bias * beta
     c = accumulator.to(bias.dtype)
@@ -106,6 +108,8 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
             mat1.stride(1),
             mat2.stride(0),
             mat2.stride(1),
+            bias.stride(0),
+            bias.stride(1),
             out.stride(0),
             out.stride(1),
         )
