@@ -234,6 +234,10 @@ class LibEntry(triton.KernelInterface):
                 if major_version == 3 and minor_version == 3:
                     k_args.append(arg)
             elif p.do_not_specialize:
+                dns_args.append(val)
+                k_args.append(val)
+            else:
+                spec_args.append(val)
                 k_args.append(val)
 
         entry_key = self.key(spec_args, dns_args, const_args)
