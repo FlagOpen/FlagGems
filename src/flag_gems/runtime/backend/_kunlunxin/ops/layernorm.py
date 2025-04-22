@@ -494,6 +494,7 @@ class LayerNorm(torch.autograd.Function):
                 N,
                 isCloseUnrollControl=isCloseUnrollControl,
                 isCloseCoreTiling=isCloseCoreTiling,
+                isCloseVectorization=True,
             )
             # print(f'out_grad = {out_grad.cpu()}')
 
