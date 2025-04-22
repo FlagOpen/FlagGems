@@ -1,9 +1,4 @@
-add_library(operators
-            SHARED
-            utils.cpp
-            add.cpp
-            sum.cpp
-            mm.cpp)
+add_library(operators SHARED utils.cpp add.cpp sum.cpp rms_norm.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
