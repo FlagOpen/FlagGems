@@ -51,21 +51,35 @@ def test_accuracy_abs_(shape, dtype):
 
 @pytest.mark.angle
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", COMPLEX_DTYPES + [torch.float32])
+@pytest.mark.parametrize(
+    "dtype", COMPLEX_DTYPES + FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES
+)
 def test_accuracy_angle(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if dtype in BOOL_TYPES:
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
+    elif dtype in ALL_INT_DTYPES:
+        inp = torch.randint(
+            low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
+        )
+    elif dtype in COMPLEX_DTYPES + FLOAT_DTYPES:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
     try:
         ref_out = torch.angle(ref_inp)
     except RuntimeError as e:
         if "angle_cpu" in str(e) and "ComplexHalf" in str(e):
             pytest.skip("Skipping angle ComplexHalf for unsupported dtype on CPU")
+        elif "angle_cuda" in str(e) and "Half" in str(e):
+            pytest.skip("Skipping angle Half for unsupported dtype on GPU")
+        elif "angle_cuda" in str(e) and "BFloat16" in str(e):
+            pytest.skip("Skipping angle BFloat16 for unsupported dtype on GPU")
         else:
             raise
+    ref_out = torch.angle(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.angle(inp)
-    out_dtype = res_out.dtype
-    gems_assert_close(res_out, ref_out, out_dtype)
+    dtype_out = res_out.dtype
+    gems_assert_close(res_out, ref_out, dtype_out)
 
 
 @pytest.mark.bitwise_not

@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import ( 
+from .attri_util import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -37,7 +37,11 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
-    ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32]),
+    (
+        "angle",
+        torch.angle,
+        COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+    ),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
