@@ -4,17 +4,10 @@ import triton.language as tl
 
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_kernel(
-<<<<<<< HEAD
     out_ptr,  # pointer to the output
     INV_RMS,  # pointer to inverse rms
     in_ptr,  # pointer to the input
     w_ptr,  # pointer to the weights
-=======
-    Y,  # pointer to the output
-    INV_RMS,  # pointer to inverse rms
-    X,  # pointer to the input
-    W,  # pointer to the weights
->>>>>>> 112e3cd ([C++ wrapper] rms_norm operator)
     y_stride_r,
     y_stride_c,
     x_stride_r,  # how much to increase the pointer when moving by 1 row
@@ -23,7 +16,6 @@ def rms_norm_kernel(
     eps,  # epsilon to avoid division by zero
     BLOCK_SIZE: tl.constexpr,
 ):
-<<<<<<< HEAD
     if tl.constexpr(in_ptr.dtype.element_ty == tl.float16) or tl.constexpr(
         in_ptr.dtype.element_ty == tl.bfloat16
     ):
@@ -38,28 +30,20 @@ def rms_norm_kernel(
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(in_ptr + cols * x_stride_c, mask, other=0.0).to(cdtype)
-=======
     pid = tl.program_id(0)
-    Y += pid * y_stride_r
-    X += pid * x_stride_r
+    out_ptr += pid * y_stride_r
+    in_ptr += pid * x_stride_r
 
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(X + cols * x_stride_c, mask, other=0.0).to(tl.float32)
->>>>>>> 112e3cd ([C++ wrapper] rms_norm operator)
+    x = tl.load(in_ptr + cols * x_stride_c, mask, other=0.0).to(cdtype)
 
     var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
 
-<<<<<<< HEAD
     w = tl.load(w_ptr + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
     y = (x * rrms * w).to(cdtype)
     tl.store(out_ptr + cols * y_stride_c, y, mask=mask)
-=======
-    w = tl.load(W + tl.arange(0, BLOCK_SIZE), mask=mask, other=0.0)
-    y = (x * rrms).to(Y.dtype.element_ty) * w
-    tl.store(Y + cols * y_stride_c, y, mask=mask)
->>>>>>> 112e3cd ([C++ wrapper] rms_norm operator)
     tl.store(INV_RMS + pid, rrms)
 
 
