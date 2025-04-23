@@ -150,7 +150,7 @@ def test_perf_scatter_add():
 def test_perf_scatter_add_():
     def scatter_add_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
-        dim = 1
+        dim = 0
         out = torch.zeros(inp.shape, dtype=dtype, device=device)
         index = torch.randint(low=0, high=min(inp.shape), size=inp.shape, device=device)
         yield out, dim, index, inp
