@@ -35,6 +35,6 @@ def full_like(
             fill_value,
             FILL_VALUE_IS_PTR=isinstance(fill_value, torch.Tensor),
             BLOCK_SIZE=block_size,
-            buffer_size_limit=2048
+            buffer_size_limit=2048,
         )
     return out
