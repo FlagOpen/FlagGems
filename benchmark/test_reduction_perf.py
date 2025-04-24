@@ -229,7 +229,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["CrossEntropyLoss", "nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cumsum", "cummin", "nonzero"]:
+        elif op_name in ["cummin", "nonzero"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
@@ -255,6 +255,24 @@ def test_perf_count_nonzero():
         torch_op=torch.count_nonzero,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.dot
+def test_perf_dot():
+    def dot_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        if inp.dim() > 1:
+            inp = inp.flatten()
+        yield inp, inp
+
+    bench = GenericBenchmark(
+        input_fn=dot_input_fn,
+        op_name="dot",
+        torch_op=torch.dot,
+        dtypes=FLOAT_DTYPES,
+    )
+
     bench.run()
 
 

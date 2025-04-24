@@ -119,6 +119,7 @@ def get_vendor_module(vendor_name, query=False):
 def get_vendor_info(vendor_name=None, query=False):
     if query:
         return get_vendor_module(vendor_name, query).vendor_info
+    global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return vendor_module.vendor_info
 
@@ -138,7 +139,7 @@ def get_vendor_infos():
 
 def get_current_device_extend_op(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
-    global customized_ops
+    global ops_module, fused_module, customized_ops  # noqa: F824
     if customized_ops is not None:
         return customized_ops
     customized_ops = []
@@ -152,6 +153,7 @@ def get_current_device_extend_op(vendor_name=None):
 
 
 def get_curent_device_unused_op(vendor_name=None):
+    global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return list(vendor_module.CUSTOMIZED_UNUSED_OPS)
 
@@ -168,6 +170,7 @@ def get_heuristic_config(vendor_name=None):
 
 
 def get_tune_config(vendor_name=None):
+    global vendor_module  # noqa: F824
     get_vendor_module(vendor_name)
     return backend_utils.get_tune_config(vendor_name)
 
