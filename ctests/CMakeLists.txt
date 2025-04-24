@@ -27,7 +27,8 @@ set_target_properties(test_triton_blas PROPERTIES
 add_test(NAME test_triton_blas COMMAND test_triton_blas)
 
 add_executable(test_triton_norm test_triton_norm.cpp)
-target_link_libraries(test_triton_norm PRIVATE Torch::Torch operators gtest gtest_main)
+target_link_libraries(test_triton_norm
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_mainn)
 set_target_properties(test_triton_norm PROPERTIES
   INSTALL_RPATH "${_rpath_portable_origin}/../lib"
   BUILD_WITH_INSTALL_RPATH FALSE
