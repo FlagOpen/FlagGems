@@ -69,7 +69,7 @@ from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
 from .index_add import index_add
-from .index_put import index_put
+from .index_put import index_put, index_put_
 from .index_select import index_select
 from .instancenorm import instance_norm
 from .isclose import allclose, isclose
@@ -101,6 +101,7 @@ from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
 from .mv import mv
+from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .nllloss import (
@@ -290,6 +291,7 @@ __all__ = [
     "normal_tensor_tensor",
     "uniform_",
     "mv",
+    "nan_to_num",
     "ne",
     "ne_scalar",
     "neg",
@@ -374,6 +376,7 @@ __all__ = [
     "nll_loss_backward",
     "nll_loss2d_forward",
     "nll_loss2d_backward",
+    "index_put_",
     "index_put",
     "vdot",
     "mse_loss",
