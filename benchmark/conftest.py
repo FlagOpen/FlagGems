@@ -131,7 +131,6 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    global Config
     mode_value = config.getoption("--mode")
     Config.cpu_mode = mode_value == "cpu"
 
