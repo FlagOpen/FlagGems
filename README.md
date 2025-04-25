@@ -55,7 +55,7 @@ For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_ex
 
 ## Get Start
 
-For a quick start with installing and using flag_gems, please refer to the documentation [GetStart](get_start_with_flaggems.md).
+For a quick start with installing and using flag_gems, please refer to the documentation [GetStart](docs/get_start_with_flaggems.md).
 
 ## Supported Operators
 

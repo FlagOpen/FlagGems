@@ -86,4 +86,4 @@ We also created WeChat group for FlagGems. Scan the QR code to join the group ch
 </p>
 ## License
 
-The FlagGems project is based on [Apache 2.0](./LICENSE).
+The FlagGems project is based on [Apache 2.0](https://github.com/FlagOpen/FlagGems/blob/master/LICENSE).
