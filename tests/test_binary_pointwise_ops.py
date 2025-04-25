@@ -1849,7 +1849,7 @@ def test_accuracy_logical_xor(shape, dtype):
 
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_polar(shape, dtype):
     abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
     angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (

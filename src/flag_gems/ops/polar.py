@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -7,15 +5,23 @@ import triton.language as tl
 from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT"), (1, "DEFAULT")])
+@pointwise_dynamic(
+    promotion_methods=[
+        ((0, 1), "DEFAULT"),
+        ((0, 1), "DEFAULT"),
+    ],
+    num_outputs=2,
+)
 @triton.jit
 def polar_kernel(abs, angle):
-    real_part = abs * tl.cos(angle)
-    imag_part = abs * tl.sin(angle)
-    return real_part, imag_part
+    real = abs * tl.cos(angle)
+    imag = abs * tl.sin(angle)
+    return real, imag
 
 
 def polar(abs, angle):
-    logging.debug("GEMS POLAR")
-    real, imag = polar_kernel(abs, angle)
-    return torch.complex(real, imag)
+    output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
+
+    polar_kernel(abs, angle, out0=output[..., 0], out1=output[..., 1])
+
+    return torch.view_as_complex(output)
