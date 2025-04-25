@@ -1,3 +1,6 @@
+import logging
+import os
+
 import torch
 
 # C extensions
@@ -24,7 +27,22 @@ current_work_registrar = None
 runtime.replace_customized_ops(globals())
 
 
-def enable(lib=aten_lib, unused=None, registrar=registrar):
+class LogOncePerLocationFilter(logging.Filter):
+    def __init__(self):
+        super().__init__()
+        self.logged_locations = set()
+
+    def filter(self, record):
+        key = (record.pathname, record.lineno)
+        if key in self.logged_locations:
+            return False
+        self.logged_locations.add(key)
+        return True
+
+
+def enable(
+    lib=aten_lib, unused=None, registrar=registrar, record=False, once=False, path=None
+):
     global current_work_registrar
     current_work_registrar = registrar(
         (
@@ -163,6 +181,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("mul_.Tensor", mul_, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
             ("mv", mv, Autograd.disable),
+            ("nan_to_num", nan_to_num, Autograd.disable),
             ("ne.Tensor", ne, Autograd.disable),
             ("ne.Scalar", ne_scalar, Autograd.disable),
             ("neg", neg, Autograd.disable),
@@ -278,8 +297,10 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("logical_and", logical_and, Autograd.disable),
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
+            ("dot", dot, Autograd.disable),
             ("kron", kron, Autograd.disable),
             ("elu", elu, Autograd.disable),
+            ("index_put_", index_put_, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
             ("contiguous", contiguous, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
@@ -289,16 +310,39 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
     )
+    if record:
+        filename = (
+            os.environ.get("HOME") + "/.flaggems/oplist.log" if path is None else path
+        )
+        handler = logging.FileHandler(filename, mode="w")
+        if once:
+            handler.addFilter(LogOncePerLocationFilter())
+        logging.basicConfig(
+            level=logging.DEBUG,
+            handlers=[
+                handler,
+            ],
+        )
 
 
 class use_gems:
-    def __init__(self, unused=None):
+    def __init__(self, unused=None, record=False, once=False, path=None):
         self.lib = torch.library.Library("aten", "IMPL")
         self.unused = [] if unused is None else unused
         self.registrar = Register
+        self.record = record
+        self.once = once
+        self.path = path
 
     def __enter__(self):
-        enable(lib=self.lib, unused=self.unused, registrar=self.registrar)
+        enable(
+            lib=self.lib,
+            unused=self.unused,
+            registrar=self.registrar,
+            record=self.record,
+            once=self.once,
+            path=self.path,
+        )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
@@ -306,6 +350,10 @@ class use_gems:
         del self.unused
         del self.registrar
         del current_work_registrar
+        if self.record:
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
+            logging.basicConfig(level=logging.INFO)
 
 
 def all_ops():

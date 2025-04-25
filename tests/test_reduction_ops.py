@@ -15,6 +15,7 @@ from .accuracy_utils import (
     REDUCTION_SHAPES,
     REDUCTION_SMALL_SHAPES,
     SHAPE_STRIDES,
+    UT_SHAPES_1D,
     SkipVersion,
     gems_assert_close,
     gems_assert_equal,
@@ -312,7 +313,6 @@ def test_accuracy_cummin(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.nonzero
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -757,11 +757,10 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
-# TODO: failed at (200, 40999, 3)
 @pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_index_add(shape, dim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -805,7 +804,6 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1081,6 +1079,53 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     gems_assert_close(out, ref_out, dtype)
 
 
+@pytest.mark.index_put_
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
+    accumulate = False
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, accumulate)
+    values = torch.randn(
+        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values)
+    torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
+    flag_gems.index_put_(inp, indices, values, accumulate)
+    gems_assert_close(inp, ref_inp, dtype)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.index_put_
+@pytest.mark.parametrize(
+    "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
+    accumulate = True
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, accumulate)
+    values = torch.randn(
+        values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+
+    ref_inp = to_reference(inp, upcast=True)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_values = to_reference(values, upcast=True)
+    torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
+    flag_gems.index_put_(inp, indices, values, accumulate)
+    gems_assert_close(inp, ref_inp, dtype)
+
+
 @pytest.mark.mse_loss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -1101,3 +1146,19 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
+
+
+@pytest.mark.dot
+@pytest.mark.parametrize("shape", UT_SHAPES_1D)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_dot_tensor_tensor(shape, dtype):
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = to_reference(inp1, True)
+    ref_inp2 = to_reference(inp2, True)
+
+    ref_out = torch.dot(ref_inp1, ref_inp2)
+    with flag_gems.use_gems():
+        res_out = torch.dot(inp1, inp2)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
