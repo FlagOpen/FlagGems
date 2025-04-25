@@ -30,13 +30,6 @@ def rms_norm_kernel(
     mask = tl.arange(0, BLOCK_SIZE) < N
     cols = tl.arange(0, BLOCK_SIZE)
     x = tl.load(in_ptr + cols * x_stride_c, mask, other=0.0).to(cdtype)
-    pid = tl.program_id(0)
-    out_ptr += pid * y_stride_r
-    in_ptr += pid * x_stride_r
-
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-    x = tl.load(in_ptr + cols * x_stride_c, mask, other=0.0).to(cdtype)
 
     var = tl.sum(x * x, axis=0) / N
     rrms = 1 / tl.sqrt(var + eps)
