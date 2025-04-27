@@ -21,7 +21,7 @@ class VendorInfoBase:
     device_name: str
     device_query_cmd: str
     dispatch_key: str = None
-    libdevice: str = ""
+    triton_extra_name: str = None
     forward_only: bool = False
 
 
