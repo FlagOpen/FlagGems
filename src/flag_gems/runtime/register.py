@@ -3,20 +3,14 @@ from .backend.device import DeviceDetector
 
 
 class Register:
-    def __init__(
-        self,
-        config,
-        user_unused_ops_list=None,
-        lib=None,
-    ):
+    def __init__(self, config, user_unused_ops_list=None, lib=None, forward_only=False):
         # lib is a instance of torch.library.Library
         self.device = DeviceDetector()
+        self.register_forward_only = forward_only or self.device.forward_only
         self.lib = lib
         # reg_key like 'CUDA', reg_bac_key like AutogradCUDA
-        self.reg_key = self.device.name.upper()
+        self.reg_key = self.device.dispatch_key
         # Cambricon device has a different reg_key.
-        if self.device.vendor_name == "cambricon":
-            self.reg_key = "PrivateUse1"
         self.reg_bac_key = "Autograd" + self.reg_key
         self.all_ops = []
         self.vendor_unused_ops_list = self.get_vendor_unused_op()
@@ -36,7 +30,9 @@ class Register:
         return []
 
     def register_impl(self, key, fn, has_backward):
-        if has_backward is commom_utils.Autograd.enable:
+        if (not self.register_forward_only) and (
+            has_backward is commom_utils.Autograd.enable
+        ):
             device_key = self.reg_bac_key
         else:
             device_key = self.reg_key

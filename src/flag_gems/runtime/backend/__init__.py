@@ -139,7 +139,7 @@ def get_vendor_infos():
 
 def get_current_device_extend_op(vendor_name=None):
     import_vendor_extra_lib(vendor_name)
-    global ops_module, fused_module, customized_ops  # noqa: F824
+    global customized_ops
     if customized_ops is not None:
         return customized_ops
     customized_ops = []
@@ -159,11 +159,15 @@ def get_curent_device_unused_op(vendor_name=None):
 
 
 def get_heuristic_config(vendor_name=None):
-    # import_vendor_extra_lib(vendor_name)
     global heuristic_config_module
-    heuristic_config_module = importlib.import_module(
-        f"_{vendor_name}.heuristics_config_utils"
-    )
+    try:
+        heuristic_config_module = importlib.import_module(
+            f"_{vendor_name}.heuristics_config_utils"
+        )
+    except:  # noqa E722
+        heuristic_config_module = importlib.import_module(
+            "_nvidia.heuristics_config_utils"
+        )
     if hasattr(heuristic_config_module, "HEURISTICS_CONFIGS"):
         return heuristic_config_module.HEURISTICS_CONFIGS
     return None

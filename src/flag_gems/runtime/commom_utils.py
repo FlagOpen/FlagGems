@@ -28,5 +28,5 @@ vendors_map = {
     "mthreads": vendors.MTHREADS,
     "hygon": vendors.HYGON,
     "metax": vendors.METAX,
-    "AMD": vendors.AMD,
+    "amd": vendors.AMD,
 }

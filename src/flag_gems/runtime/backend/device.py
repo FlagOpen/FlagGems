@@ -38,6 +38,12 @@ class DeviceDetector(object):
             self.vendor_name = self.info.vendor_name
             self.name = self.info.device_name
             self.vendor = vendors_map[self.vendor_name]
+            self.forward_only = self.info.forward_only
+            self.dispatch_key = (
+                self.name.upper()
+                if self.info.dispatch_key is None
+                else self.info.dispatch_key
+            )
             self.device_count = backend.gen_torch_device_object(
                 self.vendor_name
             ).device_count()
