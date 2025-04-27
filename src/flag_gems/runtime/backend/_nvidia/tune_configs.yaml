@@ -436,7 +436,7 @@ masked_fill:
   - 4
   - 8
   - 16
-all:
+naive_reduction:
 - gen: true
   param_map:
     META:
@@ -450,34 +450,7 @@ all:
   - 8
   block_n:
   - 1024
-amax:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
-any:
-- gen: true
-  param_map:
-    META:
-      BLOCK_M: block_m
-      BLOCK_N: block_n
-    num_warps: 4
-  block_m:
-  - 1
-  - 2
-  - 4
-  - 8
-  block_n:
-  - 1024
+
 index_select:
 - gen: true
   param_map:
