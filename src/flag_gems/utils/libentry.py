@@ -159,6 +159,7 @@ class LibTuner(triton.runtime.Autotuner):
                 use_cuda_graph,
             )
         self.__name__ = self.base_fn.__name__
+        self.keys = key
         self.strategy = strategy
         self.share = share
         self.cache = libcache[share] if share else libcache[self.__name__]
@@ -166,17 +167,11 @@ class LibTuner(triton.runtime.Autotuner):
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
 
     def get_key(self, args):
-        if hasattr(self, "keys"):
-            keys = self.keys
-        elif hasattr(self, "key_idx"):
-            keys = [args[i] for i in self.key_idx]
-        else:
-            raise RuntimeError("Keys not found")
         if self.strategy is None:
             key = [args[k] for k in self.keys if k in args]
             return key
         key = []
-        for i, k in enumerate(keys):
+        for i, k in enumerate(self.keys):
             s = STRATEGY[self.strategy[i]]
             v = s(args[k])
             key.append(v)
