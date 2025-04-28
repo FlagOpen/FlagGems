@@ -64,7 +64,7 @@ def set_tl_extra_backend_module(vendor_name=None):
     if vendor_name == "kunlunxin":  # runtime device_name != libdevice device_name
         device_name = "xpu"
     if vendor_name == "arm":
-        device_name = "cuda"
+        device_name = "cpu"
     module_str = f"triton.language.extra.{device_name}.libdevice"
     tl_extra_backend_module = importlib.import_module(module_str)
 

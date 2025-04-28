@@ -6,8 +6,10 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
+
+# from ..utils import dim_compress, libentry
+# from ..runtime import torch_device_fn
+from ..utils import dim_compress
 from ..utils import triton_lang_extension as tle
 
 
@@ -58,7 +60,7 @@ def mean(inp, *, dtype=None):
     return out
 
 
-@libentry()
+# @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
@@ -107,8 +109,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     out = torch.empty(shape, dtype=dtype, device=x.device)
     grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
 
-    with torch_device_fn.device(x.device):
-        mean_dim_kernel[grid](x, out, M, N)
+    # with torch_device_fn.device(x.device):
+    mean_dim_kernel[grid](x, out, M, N)
     if not keepdim:
         out = out.squeeze(dim)
     return out

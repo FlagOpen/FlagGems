@@ -245,6 +245,40 @@ def isin_by_search(
     return out.view_as(in0)
 
 
+@triton.autotune(
+    configs=[
+        triton.Config({"BLOCK_SIZE": 1}, num_warps=4),
+        triton.Config({"BLOCK_SIZE": 2}, num_warps=4),
+        triton.Config({"BLOCK_SIZE": 4}, num_warps=4),
+    ],
+    key=["n_elements"],
+)
+@triton.jit()
+def isin_by_native_block(
+    input_ptr, in1: tl.constexpr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
+):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+
+    mask = offsets < n_elements
+    input_val = tl.load(input_ptr + offsets, mask=mask)
+    output_val = input_val == in1
+
+    tl.store(out_ptr + offsets, output_val, mask=mask)
+
+
+def isin_by_native(in0, in1):
+    out = torch.empty_like(in0, dtype=torch.bool)
+
+    input_ = in0.contiguous()
+    n_elements = input_.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    isin_by_native_block[grid](input_, in1.item(), out, n_elements)
+
+    return out
+
+
 def isin(
     in0,
     in1,
@@ -260,6 +294,8 @@ def isin(
         in1 = torch.tensor(in1, device=in0.device)
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
+    if in0.numel() < 10 and in1.numel() == 1:
+        return isin_by_native(in0, in1)
     elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096

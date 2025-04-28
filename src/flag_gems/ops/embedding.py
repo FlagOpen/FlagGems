@@ -5,8 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import torch_device_fn
-from ..utils import libentry
+# from ..runtime import torch_device_fn
+# from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
@@ -34,7 +34,7 @@ def embedding_kernel(
     row_idx = tl.load(in_ptr)
     weight_ptr += row_idx * N
     for index in range(0, N, BLOCK_SIZE):
-        cols = index  + tl.arange(0,  BLOCK_SIZE)
+        cols = index + tl.arange(0, BLOCK_SIZE)
         mask = cols < N
         embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
         tl.store(out_ptr + cols, embedding_weight, mask)
@@ -92,7 +92,7 @@ def embedding_backward_kernel(
             tl.atomic_add(grad_in + cols, embedding_grad, mask=mask)
 
 
-@libentry()
+# @libentry()
 @triton.jit(do_not_specialize=["n_rows"])
 def embedding_grad_scale_kernel(
     grad_out,
@@ -128,7 +128,7 @@ class Embedding(torch.autograd.Function):
         M = math.prod(indices.shape)
         N = weight.shape[-1]
 
-        BLOCK_SIZE = 16 #triton.next_power_of_2(N)
+        BLOCK_SIZE = 16  # triton.next_power_of_2(N)
         indices = indices.contiguous()
         weight = weight.contiguous()
         output = torch.empty(
@@ -173,7 +173,7 @@ class Embedding(torch.autograd.Function):
             INDICE_BLOCK_SIZE = 256
             indice_grid = lambda meta: (triton.cdiv(ctx.M, INDICE_BLOCK_SIZE),)
 
-            #with torch_device_fn.device(grad_outputs.device):
+            # with torch_device_fn.device(grad_outputs.device):
             indice_freq_kernel[indice_grid](
                 indice_freq, ctx.indices, ctx.M, INDICE_BLOCK_SIZE
             )
@@ -184,7 +184,7 @@ class Embedding(torch.autograd.Function):
 
         HAS_PADDING_IDX = ctx.padding_idx is not None
 
-        #with torch_device_fn.device(grad_outputs.device):
+        # with torch_device_fn.device(grad_outputs.device):
         embedding_backward_kernel[ctx.M,](
             grad_inputs,
             grad_outputs,
@@ -196,7 +196,7 @@ class Embedding(torch.autograd.Function):
         )
 
         if ctx.scale_grad_by_freq:
-            #with torch_device_fn.device(grad_outputs.device):
+            # with torch_device_fn.device(grad_outputs.device):
             embedding_grad_scale_kernel[ctx.M,](
                 grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
             )

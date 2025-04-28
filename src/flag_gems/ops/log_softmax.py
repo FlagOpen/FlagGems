@@ -18,8 +18,8 @@ def log_softmax_kernel(
     M,
     N,
     K,
-    BLOCK_M: tl.constexpr = 4,
-    BLOCK_N: tl.constexpr = 8,
+    BLOCK_M: tl.constexpr = 1,
+    BLOCK_N: tl.constexpr = 1,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)

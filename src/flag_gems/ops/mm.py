@@ -4,9 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry, libtuner
+# from .. import runtime
+# from ..runtime import torch_device_fn
+# from ..utils import libentry, libtuner
 from ..utils import triton_lang_extension as tle
 
 
@@ -18,7 +18,9 @@ from ..utils import triton_lang_extension as tle
 # @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_M": 8, "BLOCK_N": 8, "BLOCK_K": 8, "SPLIT_K": 1, "EVEN_K": 0}, num_threads=1)
+        triton.Config(
+            {"BLOCK_M": 8, "BLOCK_N": 4, "BLOCK_K": 4, "SPLIT_K": 1, "EVEN_K": 0}
+        )
     ],
     key=["M", "N", "K"],
 )

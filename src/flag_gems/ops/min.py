@@ -7,8 +7,9 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry
+
+# from ..runtime import torch_device_fn
+# from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
@@ -50,15 +51,16 @@ def min_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     ],
     key=["M"],  # 当张量大小变化时触发调优
 )
+# @libentry()
 @triton.jit
-def min_kernel_3(inp, out, M, BLOCK_SIZE:tl.constexpr):
+def min_kernel_3(inp, out, M, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     start = pid * BLOCK_SIZE
-    offsets = start + tl.arange(0,BLOCK_SIZE)
+    offsets = start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < M
-    x = tl.load(inp+offsets, mask=mask)
-    min_val = tl.min(x,axis=None) 
-    tl.atomic_min(out,min_val)
+    x = tl.load(inp + offsets, mask=mask)
+    min_val = tl.min(x, axis=None)
+    tl.atomic_min(out, min_val)
 
 
 def heur_block_n(args):
@@ -115,20 +117,23 @@ def min_kernel(
 def min(inp):
     logging.debug("GEMS MIN")
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # mid_size = triton.cdiv(M, block_size)
+    # block_mid = triton.next_power_of_2(mid_size)
 
     dtype = inp.dtype
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    # mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
-
-    # with torch_device_fn.device(inp.device):
-    # min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-    # min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    # import pdb
+    # pdb.set_trace()
+    # if inp.device == 'cpu':
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_SIZE"]),)
     min_kernel_3[grid](inp, out, M)
     return out
+    # with torch_device_fn.device(inp.device):
+    # min_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+    # min_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+    # return out
 
 
 def min_dim(inp, dim=None, keepdim=False):
