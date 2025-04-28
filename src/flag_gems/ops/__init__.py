@@ -116,6 +116,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .pad import constant_pad_nd, pad
+from .polar import polar
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -208,6 +209,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "polar",
     "contiguous",
     "diag",
     "diag_embed",
