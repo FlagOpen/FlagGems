@@ -12,10 +12,12 @@ atan2 = tl_extra_shim.atan2
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def angle_func(real, imag):
-    real_last = tl.where(real.dtype == torch.float16, real.to(tl.float32), real)
-    imag_last = tl.where(imag.dtype == torch.float16, imag.to(tl.float32), imag)
-    atan_x = atan2(imag_last, real_last)
-    result = tl.where(real.dtype == torch.float16, atan_x.to(tl.float16), atan_x)
+    real_last, imag_last = (
+        (real.to(tl.float32), imag.to(tl.float32))
+        if real.dtype == tl.float16
+        else (real, imag)
+    )
+    result = atan2(imag_last, real_last)
     return result
 
 
