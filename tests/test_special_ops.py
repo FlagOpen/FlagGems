@@ -318,11 +318,13 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    if dtype == torch.int16:
-        pytest.skip("(kint16, kint64) combined is unsupported in xdnn_pytorch_wrapper")
+        if dtype == torch.int16:
+            pytest.skip(
+                "(kint16, kint64) combined is unsupported in xdnn_pytorch_wrapper"
+            )
 
-    if shape in [(16, 128, 64, 1280)]:
-        pytest.skip("Buffer Size Limit Tunning")
+        # if shape in [(16, 128, 64, 1280)]:
+        #     pytest.skip("Buffer Size Limit Tunning")
 
     print(
         f"shape = {shape}, return_inverse = {return_inverse}, return_counts = {return_counts}"
@@ -607,16 +609,14 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
-    if dtype in [torch.int16] and shape not in [(1,)]:
-        if assume_unique is False:
-            pytest.skip(
-                "(kint16, kint64) combined is unsupported in xdnn_pytorch_wrapper !"
-            )
-
-    if shape in [(16, 128, 64, 1280)]:
-        pytest.skip("Buffer Size Limit Tunning")
-
+    if flag_gems.vendor_name == "kunlunxin":
+        if dtype in [torch.int16] and shape not in [(1,)]:
+            if assume_unique is False:
+                pytest.skip(
+                    "(kint16, kint64) combined is unsupported in xdnn_pytorch_wrapper !"
+                )
     print(f"shape = {shape}, assume_unique = {assume_unique}, invert = {invert}")
+
     inp1 = torch.randint(-100, 100, shape, device=flag_gems.device).to(dtype)
     test_numel = inp1.numel() // 2 if inp1.numel() > 1 else 1
     test_shape = (test_numel,)
