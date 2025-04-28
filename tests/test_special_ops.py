@@ -1163,7 +1163,7 @@ def test_accuracy_contiguous(shape, dtype):
 @pytest.mark.parametrize("shape", SCATTER_ADD_SHAPES)
 @pytest.mark.parametrize("dim", [0, 1, 2])
 @pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32, torch.int64]
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64, torch.int32, torch.int64]
 )
 def test_accuracy_scatter_add_(shape, dim, dtype):
     # src.shape <= out.shape

@@ -3,7 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
+from ..utils import dim_compress
 
 @triton.jit
 def scatter_add_kernel_0(
@@ -64,17 +64,6 @@ def scatter_add_kernel_1(
         out_offsets = src_index_offsets // dim_n * dim_n + index_tensor
         tl.atomic_add(out_ptr + out_offsets, src_tensor, mask=mask, sem="relaxed")
         block_start += BLOCK_SIZE
-
-
-def dim_compress(x, dims):
-    if isinstance(dims, int):
-        dims = [dims]
-    dim = x.ndim
-    stride = x.stride()
-    batch_dim = [i for i in range(dim) if i not in dims]
-    sorted_reduction_dim = sorted(dims, key=lambda x: stride[x], reverse=True)
-    order = batch_dim + sorted_reduction_dim
-    return x.permute(order).contiguous()
 
 
 def get_partial_tensor_with_zeros(tensor, src):

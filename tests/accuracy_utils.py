@@ -158,6 +158,8 @@ SCATTER_ADD_SHAPES = [
     [(4, 512, 512), (1, 512, 512)],
     [(128, 128, 128), (128, 128, 128)],
     [(128, 128, 128), (64, 64, 64)],
+    [(512, 512, 512),(512, 512, 512)],
+    [(512, 512, 512),(512, 256, 256)],
 ]
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
