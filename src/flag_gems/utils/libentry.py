@@ -170,8 +170,7 @@ class LibTuner(triton.runtime.Autotuner):
             key = [args[k] for k in self.keys if k in args]
             return key
         key = []
-        for i in len(self.keys):
-            k = self.keys[i]
+        for i, k in enumerate(self.keys):
             s = STRATEGY[self.strategy[i]]
             v = s(args[k])
             key.append(v)
