@@ -63,6 +63,8 @@ def set_tl_extra_backend_module(vendor_name=None):
     device_name = device_name or get_vendor_info(vendor_name).device_name
     if vendor_name == "kunlunxin":  # runtime device_name != libdevice device_name
         device_name = "xpu"
+    if vendor_name == "hygon":
+        device_name = "hip"
     module_str = f"triton.language.extra.{device_name}.libdevice"
     tl_extra_backend_module = importlib.import_module(module_str)
 
@@ -75,7 +77,7 @@ def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
     module_str = f"torch.backends.{device_name}"
-    if device_name == "musa":
+    if device_name in ("musa", "aipu"):
         torch_device_fn_device = None
     else:
         torch_device_fn_device = importlib.import_module(module_str)
