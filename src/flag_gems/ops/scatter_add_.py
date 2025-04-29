@@ -3,7 +3,9 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from ..utils import dim_compress
+
 
 @triton.jit
 def scatter_add_kernel_0(
