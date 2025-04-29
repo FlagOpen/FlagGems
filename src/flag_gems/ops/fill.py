@@ -2,28 +2,22 @@ import logging
 
 import torch
 import triton
-import triton.language as tl
 
-from ..utils import pointwise_dynamic
 from ..runtime import torch_device_fn
+from ..utils import pointwise_dynamic
 
 
-@pointwise_dynamic(
-    is_tensor=[True,False],
-    promotion_methods=[(0, "DEFAULT")]
-)
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def fill_scalar_kernel(
     out,
     value_scalar,
 ):
-   out = value_scalar
-   return out
+    out = value_scalar
+    return out
 
-@pointwise_dynamic(
-    is_tensor=[True, True],
-    promotion_methods=[(0, "DEFAULT")]
-)
+
+@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def fill_tensor_kernel(
     out,
@@ -31,7 +25,6 @@ def fill_tensor_kernel(
 ):
     out = value
     return out
-
 
 
 def fill_tensor(input, value):
@@ -45,11 +38,12 @@ def fill_tensor(input, value):
         result = fill_tensor_kernel(out, value)
     return result
 
+
 def fill_scalar(input, value):
     logging.debug("GEMS FILL")
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
-       result= fill_scalar_kernel(out, value)
+        result = fill_scalar_kernel(out, value)
     return result
 
 
@@ -60,13 +54,12 @@ def fill_tensor_(self, value):
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
     with torch_device_fn.device(self.device):
-       fill_tensor_kernel(self, value, out0=self)
+        fill_tensor_kernel(self, value, out0=self)
     return self
 
 
 def fill_scalar_(self, value):
     logging.debug("GEMS FILL_SCALAR_")
     with torch_device_fn.device(self.device):
-       fill_scalar_kernel(self, value, out0=self)
+        fill_scalar_kernel(self, value, out0=self)
     return self
-
