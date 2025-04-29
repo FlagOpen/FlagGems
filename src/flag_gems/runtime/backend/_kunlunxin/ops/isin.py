@@ -281,11 +281,11 @@ def isin(
     if in0.numel() == 0 or in1.numel() == 0:
         return torch.zeros_like(in0, dtype=torch.bool)
     elif in0.numel() <= 12288 and in1.numel() <= 12288:  # 1024 * 12
-        print("hit isin_by_comparation!")
+        # print("hit isin_by_comparation!")
         return isin_by_comparation(in0, in1, invert)
     elif assume_unique or in1.numel() <= 4194304:  # 1024 * 4096
-        print("hit isin_by_search unique_in1=False!")
+        # print("hit isin_by_search unique_in1=False!")
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=False)
     else:
-        print("hit isin_by_search unique_in1=True!")
+        # print("hit isin_by_search unique_in1=True!")
         return isin_by_search(in0, in1, invert, unique_in0=False, unique_in1=True)
