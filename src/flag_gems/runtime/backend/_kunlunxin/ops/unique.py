@@ -598,10 +598,10 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
     num_warps = 8 if tiles_per_cta == 1 else 32
     grid = (ctas_num, 1, 1)
-    print(f"ctas_num = {ctas_num}")
-    print(f"tile_size = {tile_size}")
-    print(f"global_ctas_num = {global_ctas_num}")
-    print(f"tiles_per_cta = {tiles_per_cta}")
+    # print(f"ctas_num = {ctas_num}")
+    # print(f"tile_size = {tile_size}")
+    # print(f"global_ctas_num = {global_ctas_num}")
+    # print(f"tiles_per_cta = {tiles_per_cta}")
 
     # allocate tensor
     if return_counts:
@@ -743,6 +743,9 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
                 tiles_per_cta,
                 tile_size,
                 num_warps=num_warps,
+                isCloseUnrollControl=True
+                if sorted_data.dtype == torch.int16
+                else False,
             )
 
     if return_counts:
@@ -1241,10 +1244,10 @@ def sorted_indices_unique_flat(
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
     num_warps = 8 if tiles_per_cta == 1 else 32
     grid = (ctas_num, 1, 1)
-    print(f"ctas_num = {ctas_num}")
-    print(f"tile_size = {tile_size}")
-    print(f"tiles_per_cta = {tiles_per_cta}")
-    print(f"global_ctas_num = {global_ctas_num}")
+    # print(f"ctas_num = {ctas_num}")
+    # print(f"tile_size = {tile_size}")
+    # print(f"tiles_per_cta = {tiles_per_cta}")
+    # print(f"global_ctas_num = {global_ctas_num}")
 
     # allocate tensor
     ne_result = torch.empty_like(sorted_data, dtype=torch.bool)
@@ -1283,8 +1286,8 @@ def sorted_indices_unique_flat(
             del os.environ["TRITONXPU_INTERLEAVE"]
 
         if num_tasks < 2**27:
-            print(f"ne_result.shape = {ne_result.shape}")
-            print(f"tile_sum.shape = {tile_sum.shape}")
+            # print(f"ne_result.shape = {ne_result.shape}")
+            # print(f"tile_sum.shape = {tile_sum.shape}")
             # print(f'tile_sum.cpu() = {tile_sum.cpu()}')
             next_multiple = ((num_tasks // 2048) + 1) * 2048
             cumsum_out = torch.zeros(next_multiple)
@@ -1323,11 +1326,11 @@ def sorted_indices_unique_flat(
             total_in = torch.cumsum(tile_sum, dim=0)
             total_in = torch.roll(total_in, shifts=1)
             total_in[0] = 0
-            print(f"total_in.shape = {total_in.shape}")
-            print(f"total_in.cpu() = {total_in.cpu()}")
+            # print(f"total_in.shape = {total_in.shape}")
+            # print(f"total_in.cpu() = {total_in.cpu()}")
 
             # ne_result = torch.cumsum(ne_result, dim=0)
-            print(f"ne_result.shape = {ne_result.shape}")
+            # print(f"ne_result.shape = {ne_result.shape}")
             next_multiple = ((num_tasks // 2048) + 1) * 2048
             padding_size = next_multiple - num_tasks  # 96256 - 96000 = 256
             padded_ne_result = torch.nn.functional.pad(
@@ -1338,8 +1341,7 @@ def sorted_indices_unique_flat(
             cumsum_blocks = torch.cumsum(reshaped, dim=1)
             cumsum_result = cumsum_blocks.view(-1)
 
-            # # print(f'ne_result.cpu() = {ne_result.cpu()}')
-            # print(f'ne_result.cpu() = {ne_result.cpu()[0:2048]}')
+            # print(f'ne_result.cpu() = {ne_result.cpu()}')
 
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
@@ -1478,7 +1480,7 @@ def simple_unique_flat(
         if "TRITONXPU_INTERLEAVE" in os.environ:
             del os.environ["TRITONXPU_INTERLEAVE"]
     out_size = unique_size.item() + 1
-    print(f"unique_size.item() = {unique_size.item()}")
+    # print(f"unique_size.item() = {unique_size.item()}")
     counts = None
     if return_counts:
         idx = idx[:out_size]

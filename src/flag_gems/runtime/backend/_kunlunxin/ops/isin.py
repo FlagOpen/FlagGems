@@ -230,10 +230,10 @@ def isin_by_search(
     log_n = int(math.log2(N)) + 1
     ctas_num = min(65536, triton.cdiv(M, BLOCK_M))
     tiles_per_cta = triton.cdiv(M, BLOCK_M * ctas_num)
-    print(f"M = {M}")
-    print(f"BLOCK_M = {BLOCK_M}")
-    print(f"ctas_num = {ctas_num}")
-    print(f"tiles_per_cta = {tiles_per_cta}")
+    # print(f"M = {M}")
+    # print(f"BLOCK_M = {BLOCK_M}")
+    # print(f"ctas_num = {ctas_num}")
+    # print(f"tiles_per_cta = {tiles_per_cta}")
     grid = (ctas_num,)
     out = torch.empty_like(in0_ravel, dtype=torch.bool)
     with torch_device_fn.device(in0_ravel.device.index):
