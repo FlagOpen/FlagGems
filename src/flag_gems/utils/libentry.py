@@ -43,7 +43,9 @@ class LibCache:
     def __init__(self):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
-        self.cache_path = config_cache_dir() / "TunedConfig.db"
+        self.cache_path = (
+            config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
+        )
         self.preload()
         weakref.finalize(self, self.store)
 
