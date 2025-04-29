@@ -14,6 +14,10 @@ bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 
 
+def TestForwardOnly():
+    return flag_gems.vendor_name in []
+
+
 def SkipVersion(module_name, skip_pattern):
     cmp = skip_pattern[0]
     assert cmp in ("=", "<", ">"), f"Invalid comparison operator: {cmp}"
@@ -161,6 +165,7 @@ ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOA
 INT_DTYPES = [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
+COMPLEX_DTYPES = [torch.complex32, torch.complex64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-2, -1, 0, 1]
