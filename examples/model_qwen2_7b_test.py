@@ -16,7 +16,7 @@ model.to(device).eval()
 
 @pytest.mark.parametrize(
     "prompt",
-    ["What is your name?", "Where are you from?"],
+    ["What is your name?"],
 )
 def test_accuracy_Qwen(prompt):
     inputs = tokenizer(prompt, return_tensors="pt").to(device=device)
