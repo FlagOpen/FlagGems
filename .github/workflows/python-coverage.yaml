@@ -50,6 +50,7 @@ jobs:
     uses: ./.github/workflows/special-op-test.yaml
 
   coverage-test:
+    if: ${{ github.repository_owner == 'FlagOpen' }}
     concurrency:
       group: coverage-test-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
