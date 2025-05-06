@@ -14,6 +14,7 @@ import flag_gems
 
 from .attri_util import (
     BOOL_DTYPES,
+    COMPLEX_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
     FLOAT_DTYPES,
@@ -183,6 +184,15 @@ class Benchmark:
                         self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
+            if vendor_name == "kunlunxin":
+                if self.op_name in ["isin", "nonzero"]:
+                    # isin oom  # nonzero oot
+                    import math
+
+                    self.shapes = [
+                        shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
+                    ]
+
             # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")
@@ -476,6 +486,8 @@ def generate_tensor_input(shape, dtype, device):
         ).to(device)
     elif dtype in BOOL_DTYPES:
         return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
+    elif dtype in COMPLEX_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
 
 
 def binary_input_fn(shape, cur_dtype, device):
