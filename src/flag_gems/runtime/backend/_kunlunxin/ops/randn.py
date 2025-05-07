@@ -194,7 +194,7 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     # grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     cluster_num = 12
     UNROLL = choose_unroll(N)
-    BLOCK_SIZE = min(triton.next_power_of_2(triton.cdiv(N, cluster_num * UNROLL)), 512)
+    BLOCK_SIZE = min(triton.next_power_of_2(triton.cdiv(N, cluster_num * UNROLL)), 1024)
     grid_fn = triton.cdiv(N, BLOCK_SIZE * UNROLL)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
