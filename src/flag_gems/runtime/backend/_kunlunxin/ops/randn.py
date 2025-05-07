@@ -27,6 +27,7 @@ except AttributeError:
 
 device_ = device
 
+
 @triton.heuristics(runtime.get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
@@ -59,11 +60,13 @@ def randn_kernel(
     tl.store(out_ptr + off_2, n2, mask=off_2 < N, eviction_policy="evict_first")
     tl.store(out_ptr + off_3, n3, mask=off_3 < N, eviction_policy="evict_first")
 
+
 def choose_unroll(N, core=64, clusters=12):
     for u in (8, 4):
         if triton.cdiv(N, clusters * u) >= core:
             return u
     return 4
+
 
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel_1(
@@ -97,6 +100,7 @@ def randn_kernel_1(
     tl.store(out_ptr + off_2, n2, mask=off_2 < N, eviction_policy="evict_first")
     tl.store(out_ptr + off_3, n3, mask=off_3 < N, eviction_policy="evict_first")
 
+
 # @triton.heuristics(runtime.get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel_2(
@@ -111,7 +115,7 @@ def randn_kernel_2(
     # block_start = pid * BLOCK
     # offsets = block_start * 4 + tl.arange(0, BLOCK)
     # mask = offsets < N
-    
+
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -120,7 +124,7 @@ def randn_kernel_2(
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r4, r5, r6, r7 = tl.philox(philox_seed, c0, c1, _O, _O)
+    r4, r5, r6, r7 = tl.philox(philox_seed, c0 + 1, c1, _O, _O)
     # r8, r9, r10, r11 = tl.philox(philox_seed, c0, c1, _O, _O)
     # r12, r13, r14, r15 = tl.philox(philox_seed, c0, c1, _O, _O)
     # r4, r5, r6, r7 = tl.philox(philox_seed, c0 + 100 * BLOCK, c1, _O, _O)
@@ -202,7 +206,11 @@ def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         if UNROLL <= 4:
-            randn_kernel_1[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
+            randn_kernel_1[(grid_fn,)](
+                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
+            )
         else:
-            randn_kernel_2[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
+            randn_kernel_2[(grid_fn,)](
+                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
+            )
     return out

@@ -3,10 +3,11 @@ import logging
 import torch
 import triton
 
-from flag_gems.ops.rand import rand_kernel
-from .rand import rand_kernel_1, rand_kernel_2, choose_unroll
+# from flag_gems.ops.rand import rand_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
+
+from .rand import choose_unroll, rand_kernel_1, rand_kernel_2
 
 # UNROLL = 4
 
@@ -32,7 +33,11 @@ def rand_like(
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(x.device):
         if UNROLL <= 4:
-            rand_kernel_1[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
+            rand_kernel_1[(grid_fn,)](
+                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
+            )
         else:
-            rand_kernel_2[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
+            rand_kernel_2[(grid_fn,)](
+                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
+            )
     return out

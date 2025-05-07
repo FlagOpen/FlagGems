@@ -14,6 +14,7 @@ from flag_gems.utils.shape_utils import volume
 
 device_ = device
 
+
 @triton.heuristics(runtime.get_heuristic_config("rand"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def rand_kernel(
@@ -51,6 +52,7 @@ def choose_unroll(N, core=64, clusters=12):
             return u
     return 1
 
+
 # @triton.heuristics(runtime.get_heuristic_config("rand"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def rand_kernel_1(
@@ -72,6 +74,7 @@ def rand_kernel_1(
     r0 = uint_to_uniform_float(r0)
     off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
     tl.store(out_ptr + off_0, r0, mask=off_0 < N, eviction_policy="evict_first")
+
 
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def rand_kernel_2(
@@ -163,7 +166,11 @@ def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
         if UNROLL <= 4:
-            rand_kernel_1[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
+            rand_kernel_1[(grid_fn,)](
+                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
+            )
         else:
-            rand_kernel_2[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL)
+            rand_kernel_2[(grid_fn,)](
+                out, N, philox_seed, philox_offset, BLOCK_SIZE, UNROLL
+            )
     return out
