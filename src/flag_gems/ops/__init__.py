@@ -3,6 +3,7 @@ from .add import add, add_
 from .addmm import addmm
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
@@ -115,6 +116,7 @@ from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
 from .pad import constant_pad_nd, pad
+from .polar import polar
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -175,6 +177,7 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "angle",
     "any",
     "any_dim",
     "any_dims",
@@ -206,6 +209,7 @@ __all__ = [
     "cos",
     "cos_",
     "count_nonzero",
+    "polar",
     "contiguous",
     "diag",
     "diag_embed",
