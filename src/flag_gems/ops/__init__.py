@@ -49,8 +49,8 @@ from .div import (
     true_divide,
     true_divide_,
 )
-from .dropout import dropout, dropout_backward
 from .dot import dot
+from .dropout import dropout, dropout_backward
 from .elu import elu
 from .embedding import embedding, embedding_backward
 from .eq import eq, eq_scalar

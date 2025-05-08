@@ -1903,7 +1903,7 @@ def test_accuracy_threshold_backward(shape, dtype):
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
-    
+
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
