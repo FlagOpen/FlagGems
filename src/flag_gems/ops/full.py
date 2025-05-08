@@ -32,8 +32,7 @@ def check_dtype(fill_value, dtype, device):
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def full_func(out, fill_value):
-    out = fill_value
-    return out
+    return fill_value
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")])
@@ -59,6 +58,6 @@ def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=N
     out = torch.empty(size, device=device, dtype=dtype)
 
     if isinstance(fill_value, torch.Tensor):
-        return full_func(out, fill_value)
+        return full_func(out, fill_value, out0=out)
     else:
-        return full_func_scalar(out, fill_value)
+        return full_func_scalar(out, fill_value, out0=out)
