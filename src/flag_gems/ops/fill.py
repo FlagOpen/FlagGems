@@ -2,6 +2,7 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
 from ..runtime import torch_device_fn
 from ..utils import pointwise_dynamic
@@ -12,7 +13,7 @@ from ..utils import pointwise_dynamic
 )
 @triton.jit
 def fill_scalar_func(inp, value_scalar):
-    return value_scalar
+    return tl.full(inp.shape, value_scalar, dtype=inp.dtype)
 
 
 @pointwise_dynamic(
