@@ -12,6 +12,7 @@ from .attri_util import (
 )
 from .performance_utils import Benchmark, generate_tensor_input, vendor_name
 
+import flag_gems
 
 class UnaryPointwiseBenchmark(Benchmark):
     """
@@ -37,39 +38,45 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
-    (
-        "angle",
-        torch.angle,
-        COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+    *(
+        [
+            (
+                "angle",
+                torch.angle,
+                COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+            ),
+            ("erf", torch.erf, FLOAT_DTYPES),
+            ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
+            ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
+            ("log", torch.log, FLOAT_DTYPES),
+            # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
+            # Dropout
+            ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
+            ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
+            ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
+            ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
+            ("tanh", torch.tanh, FLOAT_DTYPES),
+            # Numerical Checks
+            ("isinf", torch.isinf, FLOAT_DTYPES),
+            ("isnan", torch.isnan, FLOAT_DTYPES),
+            ("isfinite", torch.isfinite, FLOAT_DTYPES),
+        ]
+        if flag_gems.device != "npu"
+        else []
     ),
-    ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
-    ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
-    ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
-    ("log", torch.log, FLOAT_DTYPES),
-    # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
-    # Dropout
-    ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
-    ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
-    ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
-    ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
     ("cos", torch.cos, FLOAT_DTYPES),
     ("sin", torch.sin, FLOAT_DTYPES),
-    ("tanh", torch.tanh, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
-    # Numerical Checks
-    ("isinf", torch.isinf, FLOAT_DTYPES),
-    ("isnan", torch.isnan, FLOAT_DTYPES),
-    ("isfinite", torch.isfinite, FLOAT_DTYPES),
 ]
 
 
