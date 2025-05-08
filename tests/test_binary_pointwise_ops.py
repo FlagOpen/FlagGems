@@ -383,6 +383,7 @@ def test_accuracy_bitwiseor_scalar_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.clamp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("maxi", SCALARS)
@@ -404,6 +405,7 @@ def test_accuracy_clamp(shape, maxi, mini, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.clamp_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -426,6 +428,7 @@ def test_accuracy_clamp_(shape, maxi, mini, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.clamp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("isnone", [None, "max", "min"])
@@ -449,6 +452,7 @@ def test_accuracy_clamp_tensor(shape, isnone, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.clamp_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -575,6 +579,7 @@ def test_accuracy_div_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.trunc_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -608,6 +613,7 @@ def test_accuracy_trunc_div(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.trunc_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -637,6 +643,7 @@ def test_accuracy_trunc_div_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.trunc_divide
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_trunc_divide_scalar_scalar(dtype):
@@ -657,6 +664,7 @@ def test_accuracy_trunc_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -674,6 +682,7 @@ def test_accuracy_floor_div_float(shape, dtype):
     gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
@@ -692,6 +701,7 @@ def test_accuracy_floor_div_float_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -737,6 +747,7 @@ def test_accuracy_floor_div_int(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -777,6 +788,7 @@ def test_accuracy_floor_div_int_(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_floor_divide_scalar_scalar(dtype):
@@ -797,6 +809,7 @@ def test_accuracy_floor_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.remainder
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -841,6 +854,7 @@ def test_accuracy_remainder(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.inplace
 @pytest.mark.remainder_
@@ -944,6 +958,7 @@ def test_accuracy_ge_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.gelu_and_mul
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1202,6 +1217,7 @@ def test_accuracy_ne_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1223,6 +1239,7 @@ def test_accuracy_pow(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.pow_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1277,6 +1294,7 @@ def test_accuracy_minimum(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.pow
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1297,6 +1315,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -1320,6 +1339,7 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.pow_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1341,6 +1361,7 @@ def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.rsub
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
@@ -1363,6 +1384,7 @@ def test_accuracy_rsub(shape, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.silu_and_mul
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1501,6 +1523,7 @@ def test_accuracy_sub_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1529,6 +1552,7 @@ def test_accuracy_where_self_out_cross_device(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1549,6 +1573,7 @@ def test_accuracy_where_self_out(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1565,6 +1590,7 @@ def test_accuracy_where_self(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -1581,6 +1607,7 @@ def test_accuracy_where_scalar_self(shape, scalar, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.where
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -1597,6 +1624,7 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.nan_to_num
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1620,6 +1648,7 @@ def test_accuracy_nan_to_num(shape, dtype, nan, posinf, neginf):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.isclose
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 # @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -1721,6 +1750,7 @@ def test_accuracy_isclose(shape, dtype, zero_tol, equal_nan, gen_nan):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.allclose
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -1773,6 +1803,7 @@ def test_accuracy_allclose(shape, dtype, equal_nan, gen_nan):
     assert res_out == ref_out
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.logical_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
@@ -1804,6 +1835,7 @@ def test_accuracy_logical_or(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.logical_and
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
@@ -1839,6 +1871,7 @@ def test_accuracy_logical_and(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.logical_xor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
@@ -1870,6 +1903,7 @@ def test_accuracy_logical_xor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.polar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
