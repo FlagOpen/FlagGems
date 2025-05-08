@@ -345,7 +345,6 @@ def test_accuracy_resolve_conj(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -353,6 +352,10 @@ def test_accuracy_resolve_conj(shape, dtype):
 @pytest.mark.parametrize("return_inverse", [True, False])
 @pytest.mark.parametrize("return_counts", [False, True])
 def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     if dtype in FLOAT_DTYPES:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
@@ -427,7 +430,6 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.multinomial
 @pytest.mark.parametrize("shape", UT_SHAPES_1D + UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
@@ -453,7 +455,6 @@ def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.multinomial
 @pytest.mark.parametrize("pool", UT_SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -485,7 +486,10 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     if not contiguous:
-        x = x[::2, ::2]
+        if flag_gems.vendor_name == "kunlunxin":
+            x = x.cpu()[::2, ::2].to(flag_gems.device)
+        else:
+            x = x[::2, ::2]
 
     ref_x = to_reference(x)
     if ref_x.dtype == torch.float16:
@@ -628,13 +632,16 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 @pytest.mark.parametrize("assume_unique", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 def test_accuracy_isin(shape, dtype, assume_unique, invert):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     inp1 = torch.randint(-100, 100, shape, device=flag_gems.device).to(dtype)
     test_numel = inp1.numel() // 2 if inp1.numel() > 1 else 1
     test_shape = (test_numel,)
