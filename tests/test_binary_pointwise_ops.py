@@ -1939,3 +1939,21 @@ def test_accuracy_threshold_backward(shape, dtype):
         res_in_grad = torch.ops.aten.threshold_backward(res_grad, res_inp, threshold)
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.polar
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_polar(shape, dtype):
+    abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
+    angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
+        8 * math.pi
+    )
+    ref_abs = to_reference(abs)
+    ref_angle = to_reference(angle)
+    ref_out = torch.polar(ref_abs, ref_angle)
+    with flag_gems.use_gems():
+        res_out = torch.polar(abs, angle)
+
+    gems_assert_close(res_out.real, ref_out.real, dtype)
+    gems_assert_close(res_out.imag, ref_out.imag, dtype)
