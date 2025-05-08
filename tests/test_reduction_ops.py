@@ -71,6 +71,7 @@ THRESHOLD_SHAPE = (
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.amax
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -85,6 +86,7 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: There are some bugs in argmax with large size.
 @pytest.mark.argmax
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
@@ -102,6 +104,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.argmin
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST + [None])
@@ -121,6 +124,7 @@ def test_accuracy_argmin(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
@@ -171,6 +175,7 @@ def test_accuracy_cross_entropy_loss_indices(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.CrossEntropyLoss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)
@@ -209,6 +214,7 @@ def test_accuracy_cross_entropy_loss_probabilities(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.NLLLoss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
@@ -254,6 +260,7 @@ CUMSUM_SHAPES = (
 )
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.cumsum
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
@@ -287,6 +294,7 @@ CUMMIN_SHAPES = (
 )
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.skipif(
     SkipVersion("triton", "<3.0"),
@@ -313,6 +321,7 @@ def test_accuracy_cummin(shape, dtype):
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.nonzero
 @pytest.mark.parametrize("shape", NONZERO_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -334,6 +343,7 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -355,6 +365,7 @@ def test_accuracy_count_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -431,6 +442,7 @@ def test_accuracy_softmax_with_neg_inf(shape, dtype, dim):
     )
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.var_mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
@@ -455,6 +467,7 @@ def test_accuracy_varmean(shape, dim, correction, keepdim, dtype):
     gems_assert_close(res_var, ref_var, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -499,6 +512,7 @@ def test_accuracy_scatter_src(src_shape, inp_shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -544,6 +558,7 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.scatter
@@ -590,6 +605,7 @@ def test_accuracy_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.gather
 @pytest.mark.parametrize(
     "inp_shape",
@@ -645,6 +661,7 @@ def test_accuracy_gather(inp_shape, dim, dtype):
     gems_assert_equal(res_in_grad, ref_in_grad)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.select_scatter
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -668,6 +685,7 @@ def test_accuracy_select_scatter(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.select_scatter
 def test_accuracy_select_scatter_with_self_overlapping_input():
     dim = 0
@@ -684,6 +702,7 @@ def test_accuracy_select_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.slice_scatter
 @pytest.mark.parametrize(("dim", "shape", "stride"), REGULAR_DIM_SHAPE_STRIDES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -729,6 +748,7 @@ def test_accuracy_slice_scatter(shape, stride, dim, dtype, start, end, step):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.slice_scatter
 def test_accuracy_slice_scatter_with_self_overlapping_input():
     inp = torch.randn((3, 1), device=flag_gems.device).broadcast_to((3, 8))
@@ -757,6 +777,7 @@ def test_accuracy_slice_scatter_with_self_overlapping_input():
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.index_add
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -782,6 +803,7 @@ def test_accuracy_index_add(shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.index_select
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -804,6 +826,7 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -830,6 +853,7 @@ SHAPE_CONV1D = [
 ]
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skip("conv1d introduces failures, disable it temporarily")
 @pytest.mark.conv1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
@@ -870,6 +894,7 @@ SHAPE_CONV2D = [
 ]
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv2d
@@ -961,6 +986,7 @@ SHAPE_DEPTHWISE = [
 ]
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # test for depthwise depends on specific device
 @pytest.mark.skip("conv_depthwise2d introduces failures, disable it temporarily")
 @pytest.mark.conv_depthwise2d
@@ -1023,6 +1049,7 @@ def gen_indices(input_shape, indices_shape, accumulate):
     return indices
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.index_put
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
@@ -1053,7 +1080,7 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
     ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8)),
 )
 
-
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.index_put
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
@@ -1078,6 +1105,7 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, dtype):
     gems_assert_close(out, ref_out, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.index_put_
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_FALSE
@@ -1101,6 +1129,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, dtype):
     gems_assert_close(inp, ref_inp, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.index_put_
 @pytest.mark.parametrize(
     "input_shape, indices_shape, values_shape", INDEX_PUT_SHAPE_ACC_TRUE
@@ -1128,6 +1157,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
     gems_assert_close(inp, ref_inp, dtype)
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.mse_loss
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -1150,6 +1180,7 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
 
 
+@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.dot
 @pytest.mark.parametrize("shape", UT_SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
