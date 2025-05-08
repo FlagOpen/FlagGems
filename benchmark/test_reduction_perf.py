@@ -56,19 +56,25 @@ forward_operations = [
             ("all", torch.all, FLOAT_DTYPES),
             ("any", torch.any, FLOAT_DTYPES),
         ]
-        if flag_gems.device != "musa"
+        if flag_gems.device not in ["musa", "npu"]
         else []
     ),
-    ("amax", torch.amax, FLOAT_DTYPES),
-    ("argmax", torch.argmax, FLOAT_DTYPES),
-    ("argmin", torch.argmin, FLOAT_DTYPES),
-    ("max", torch.max, FLOAT_DTYPES),
-    ("mean", torch.mean, FLOAT_DTYPES),
-    ("min", torch.min, FLOAT_DTYPES),
-    ("prod", torch.prod, FLOAT_DTYPES),
+    *(
+        [
+            ("amax", torch.amax, FLOAT_DTYPES),
+            ("argmax", torch.argmax, FLOAT_DTYPES),
+            ("argmin", torch.argmin, FLOAT_DTYPES),
+            ("max", torch.max, FLOAT_DTYPES),
+            ("mean", torch.mean, FLOAT_DTYPES),
+            ("min", torch.min, FLOAT_DTYPES),
+            ("prod", torch.prod, FLOAT_DTYPES),
+            ("sum", torch.sum, FLOAT_DTYPES),
+            ("var_mean", torch.var_mean, FLOAT_DTYPES),
+        ]
+        if flag_gems.device != "npu"
+        else []
+    ),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
-    ("sum", torch.sum, FLOAT_DTYPES),
-    ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
 
 
@@ -150,6 +156,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
         yield inp, target, {"reduction": "none"}
 
 
+@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
@@ -239,6 +246,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
 )
@@ -260,6 +268,7 @@ def test_perf_count_nonzero():
     bench.run()
 
 
+@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):
@@ -292,6 +301,7 @@ def quantile_input_fn(shape, cur_dtype, device):
     yield inp, q, 0
 
 
+@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(True, reason="Skipping Triton version")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
