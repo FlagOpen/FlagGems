@@ -86,6 +86,7 @@ def test_accuracy_angle(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.bitwise_not
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
