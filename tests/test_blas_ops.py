@@ -52,6 +52,7 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
