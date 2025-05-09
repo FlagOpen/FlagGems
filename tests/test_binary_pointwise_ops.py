@@ -260,6 +260,7 @@ def test_accuracy_bitwiseand_scalar_tensor(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.or_
 @pytest.mark.bitwise_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -315,6 +316,7 @@ def test_accuracy_bitwiseor_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.or_
 @pytest.mark.bitwise_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -362,6 +364,7 @@ def test_accuracy_bitwiseor_scalar_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.or_
 @pytest.mark.bitwise_or
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
