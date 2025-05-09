@@ -29,6 +29,7 @@ device = flag_gems.device
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.dropout
 @pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
