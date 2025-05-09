@@ -150,7 +150,6 @@ def mse_loss_input_fn(shape, cur_dtype, device):
         yield inp, target, {"reduction": "none"}
 
 
-@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
@@ -240,7 +239,6 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
 )
@@ -262,7 +260,6 @@ def test_perf_count_nonzero():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):
@@ -295,7 +292,6 @@ def quantile_input_fn(shape, cur_dtype, device):
     yield inp, q, 0
 
 
-@pytest.mark.skipif(vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(True, reason="Skipping Triton version")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
