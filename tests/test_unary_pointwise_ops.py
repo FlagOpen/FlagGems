@@ -86,7 +86,6 @@ def test_accuracy_angle(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.bitwise_not
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
@@ -232,7 +231,6 @@ def test_accuracy_gelu_(shape, dtype, approximate):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.isinf
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -248,7 +246,6 @@ def test_accuracy_isinf(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.isnan
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -293,7 +290,6 @@ def test_accuracy_neg_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.reciprocal
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -308,7 +304,6 @@ def test_accuracy_reciprocal(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.reciprocal_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -548,7 +543,6 @@ def test_accuracy_sin_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.tanh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -570,7 +564,6 @@ def test_accuracy_tanh(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.tanh_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -596,7 +589,6 @@ def test_accuracy_tanh_(shape, dtype):
 SHAPE_DIAGONAL = list(zip(POINTWISE_SHAPES, [-2, -2, -1, 0, 1, 3]))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.triu
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -841,7 +833,6 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.fill_
 @pytest.mark.parametrize("value", [0, 1, 9])
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
