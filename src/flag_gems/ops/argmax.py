@@ -6,12 +6,12 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..runtime import torch_device_fn
-from ..utils import libentry
+# from ..runtime import torch_device_fn
+# from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def argmax_kernel_1(
     inp,
@@ -33,7 +33,7 @@ def argmax_kernel_1(
     tl.store(max_index_ptr, max_index)
 
 
-@libentry()
+# @libentry()
 @triton.jit
 def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -46,7 +46,7 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
-@libentry()
+# @libentry()
 @triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.jit
 def argmax_kernel(
@@ -106,15 +106,15 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         else:
             out = torch.empty([], dtype=torch.int64, device=inp.device)
 
-        with torch_device_fn.device(inp.device):
-            argmax_kernel_1[(mid_size, 1, 1)](
-                inp,
-                mid_value,
-                mid_index,
-                M,
-                block_size,
-            )
-            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+        # with torch_device_fn.device(inp.device):
+        argmax_kernel_1[(mid_size, 1, 1)](
+            inp,
+            mid_value,
+            mid_index,
+            M,
+            block_size,
+        )
+        argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
@@ -136,13 +136,13 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch_device_fn.device(inp.device):
-            argmax_kernel[grid](
-                inp,
-                out_index,
-                M,
-                N,
-                K,
-            )
+        # with torch_device_fn.device(inp.device):
+        argmax_kernel[grid](
+            inp,
+            out_index,
+            M,
+            N,
+            K,
+        )
 
         return out_index
