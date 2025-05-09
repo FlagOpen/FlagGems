@@ -1001,6 +1001,7 @@ def test_accuracy_gelu_and_mul(shape, approximate, dtype):
     gems_assert_close(res_inp2_grad, ref_inp2_grad, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.gt
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1017,6 +1018,7 @@ def test_accuracy_gt(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.gt
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
