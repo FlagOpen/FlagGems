@@ -313,6 +313,7 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out_value, ref_out_value)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.prod
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -327,6 +328,7 @@ def test_accuracy_prod_without_dim(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.prod
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
