@@ -324,7 +324,6 @@ def test_accuracy_reciprocal_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.elu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -459,7 +458,6 @@ def test_accuracy_sigmoid_(shape, dtype):
 SPECIAL_VALUES = [float("-inf"), float("inf"), -300]
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.log_sigmoid
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -550,7 +548,7 @@ def test_accuracy_sin_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.tanh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -572,7 +570,7 @@ def test_accuracy_tanh(shape, dtype):
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.tanh_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -598,7 +596,7 @@ def test_accuracy_tanh_(shape, dtype):
 SHAPE_DIAGONAL = list(zip(POINTWISE_SHAPES, [-2, -2, -1, 0, 1, 3]))
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.triu
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -614,7 +612,6 @@ def test_accuracy_triu(shape, diagonal, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.erf
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -629,7 +626,6 @@ def test_accuracy_erf(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.erf_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -646,7 +642,6 @@ def test_accuracy_erf_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.isfinite
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
@@ -675,7 +670,6 @@ def get_max_ndim(shape, dims):
 FLIP_DIMS = [(0,), (-2,), (2,), (0, 2), (2, 1), (0, -1, 1)]
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.flip
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -696,7 +690,6 @@ def test_accuracy_flip_general(shape, dtype, dims):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.flip
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -720,7 +713,6 @@ def test_accuracy_flip_with_non_dense_input(shape, dtype, dims):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.masked_fill
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -749,7 +741,6 @@ def test_accuracy_masked_fill(shape, dtype, threshold, value):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.masked_fill
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -781,7 +772,6 @@ def test_accuracy_masked_fill_(shape, dtype, threshold, value):
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.tile
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dims", TILE_DIMS)
@@ -800,7 +790,6 @@ def test_accuracy_tile(shape, dims, dtype):
 REPEAT_SIZES = [(2, 3, 4, 5), (5, 0, 4)]
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.repeat
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("sizes", REPEAT_SIZES)
@@ -817,7 +806,6 @@ def test_accuracy_repeat(shape, sizes, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.logical_not
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES + BOOL_TYPES)
@@ -839,7 +827,6 @@ def test_accuracy_logical_not(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.log
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
