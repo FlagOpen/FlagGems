@@ -48,6 +48,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("div", torch.div, FLOAT_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
+            ("polar", torch.polar, [torch.float32]),
             *(
                 [
                     ("floor_divide", torch.floor_divide, INT_DTYPES),
@@ -59,18 +60,14 @@ class BinaryPointwiseBenchmark(Benchmark):
             *(
                 [
                     ("pow", torch.pow, FLOAT_DTYPES),
-                    ("polar", torch.polar, [torch.float32]),
                     ("rsub", torch.rsub, FLOAT_DTYPES),
-                    ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
-                    ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
-                    ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
-                    # Numerical Checks
-                    ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
-                    ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
                 ]
                 if flag_gems.device != "npu"
                 else []
             ),
+            ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
+            ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
+            ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
             # Comparison operations
             ("eq", torch.eq, FLOAT_DTYPES),
             ("ge", torch.ge, FLOAT_DTYPES),
@@ -85,6 +82,9 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
+            # Numerical Checks
+            ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
+            ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
         ]
     ],
 )
