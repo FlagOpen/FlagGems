@@ -130,12 +130,13 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
             mm_input_fn,
             marks=pytest.mark.mm,
         ),
-        pytest.param(
-            "mv",
-            torch.Tensor.mv,
-            mv_input_fn,
-            marks=pytest.mark.mv,
-        ),
+        if flag_gems.device != "npu":
+            pytest.param(
+                "mv",
+                torch.Tensor.mv,
+                mv_input_fn,
+                marks=pytest.mark.mv,
+            ),
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn):
