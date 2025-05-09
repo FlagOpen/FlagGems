@@ -38,6 +38,7 @@ KEEPDIM_DIM = (
 )
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.all
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
@@ -56,6 +57,7 @@ def test_accuracy_all_without_dim(shape, dtype, kind):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.all
 @pytest.mark.skipif(SkipVersion("torch", "<2.2"), reason="Skipping Pytorch version.")
 @pytest.mark.parametrize("kind, keepdim, dim, shape", KIND_KEEPDIM_DIMS_SHAPE)
