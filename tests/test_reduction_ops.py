@@ -71,7 +71,6 @@ THRESHOLD_SHAPE = (
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.amax
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -86,7 +85,6 @@ def test_accuracy_amax(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: There are some bugs in argmax with large size.
 @pytest.mark.argmax
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
@@ -359,7 +357,6 @@ def test_accuracy_count_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -384,7 +381,6 @@ def test_accuracy_log_softmax(shape, dtype, dim):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at (1, 2) (200, 40999, 3)
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Unsupported")
 @pytest.mark.softmax
@@ -410,7 +406,6 @@ def test_accuracy_softmax(shape, dtype, dim):
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
