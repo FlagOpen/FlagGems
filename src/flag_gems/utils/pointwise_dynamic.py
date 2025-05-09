@@ -890,7 +890,7 @@ class WrapperGenerator:
             else:
                 code.writeline(f"out{i}_stride_order = (0,)")
 
-        code.writeline("with torch_device_fn._DeviceGuard(in0.device.index):")
+        code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
             with code.indent():
