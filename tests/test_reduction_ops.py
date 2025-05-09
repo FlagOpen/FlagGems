@@ -71,7 +71,7 @@ THRESHOLD_SHAPE = (
 CROSS_ENTROPY_LOSS_REDUCTION = ["mean"] if QUICK_MODE else ["mean", "none", "sum"]
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.amax
 @pytest.mark.parametrize("keepdim, dim, shape", KEEPDIM_DIMS_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
