@@ -169,6 +169,7 @@ def all(inp):
     )
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
+
     if n_elements >= vector_size * thread_num:
         # according to api, op == all, use min to calculate
         inpf = inp.to(torch.float)
