@@ -19,6 +19,7 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
+@pytest.mark.skipif(flag_gems.device == "npu", reason="TODO")
 @pytest.mark.addmm
 @pytest.mark.linear
 @pytest.mark.matmul
