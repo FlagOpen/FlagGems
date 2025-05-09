@@ -61,6 +61,7 @@ def enable(
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),
             ("arange", arange, Autograd.disable),
+            ("baddbmm", baddbmm, Autograd.disable),
             ("batch_norm", batch_norm, Autograd.enable),
             ("bitwise_and.Tensor", bitwise_and_tensor, Autograd.disable),
             ("bitwise_and_.Tensor", bitwise_and_tensor_, Autograd.disable),
