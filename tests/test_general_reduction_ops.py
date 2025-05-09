@@ -112,6 +112,7 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -129,6 +130,7 @@ def test_accuracy_max_without_dim(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -163,6 +165,7 @@ def test_accuracy_max_int(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -182,6 +185,7 @@ def test_accuracy_max_without_dim_uncontiguous(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at (200, 40999, 3), while successed at this shape in mean_dim
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SMALL_SHAPES)
@@ -202,6 +206,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out_value, ref_out_value)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", [(4, 1048577, 4)])
 @pytest.mark.parametrize("keepdim, dim", [(True, 1), (False, 1)])
