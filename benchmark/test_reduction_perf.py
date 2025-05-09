@@ -56,25 +56,19 @@ forward_operations = [
             ("all", torch.all, FLOAT_DTYPES),
             ("any", torch.any, FLOAT_DTYPES),
         ]
-        if flag_gems.device not in ["musa", "npu"]
+        if flag_gems.device != "musa"
         else []
     ),
-    *(
-        [
-            ("amax", torch.amax, FLOAT_DTYPES),
-            ("argmax", torch.argmax, FLOAT_DTYPES),
-            ("argmin", torch.argmin, FLOAT_DTYPES),
-            ("max", torch.max, FLOAT_DTYPES),
-            ("mean", torch.mean, FLOAT_DTYPES),
-            ("min", torch.min, FLOAT_DTYPES),
-            ("prod", torch.prod, FLOAT_DTYPES),
-            ("sum", torch.sum, FLOAT_DTYPES),
-            ("var_mean", torch.var_mean, FLOAT_DTYPES),
-        ]
-        if flag_gems.device != "npu"
-        else []
-    ),
+    ("amax", torch.amax, FLOAT_DTYPES),
+    ("argmax", torch.argmax, FLOAT_DTYPES),
+    ("argmin", torch.argmin, FLOAT_DTYPES),
+    ("max", torch.max, FLOAT_DTYPES),
+    ("mean", torch.mean, FLOAT_DTYPES),
+    ("min", torch.min, FLOAT_DTYPES),
+    ("prod", torch.prod, FLOAT_DTYPES),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+    ("sum", torch.sum, FLOAT_DTYPES),
+    ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
 
 
