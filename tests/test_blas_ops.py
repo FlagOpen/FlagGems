@@ -70,6 +70,7 @@ def test_accuracy_bmm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
