@@ -365,7 +365,7 @@ def test_accuracy_count_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.log_softmax
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
