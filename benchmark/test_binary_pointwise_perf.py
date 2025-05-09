@@ -54,7 +54,7 @@ class BinaryPointwiseBenchmark(Benchmark):
                     ("floor_divide", torch.floor_divide, INT_DTYPES),
                     ("remainder", torch.remainder, INT_DTYPES),
                 ]
-                if flag_gems.device not in ["musa", "npu"]
+                if flag_gems.device != "musa"
                 else []
             ),
             *(
