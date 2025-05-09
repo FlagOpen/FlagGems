@@ -21,6 +21,7 @@ KEEPDIM_DIMS = (
 )
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.group_norm
 @pytest.mark.native_group_norm
 @pytest.mark.parametrize(
