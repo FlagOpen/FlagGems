@@ -112,7 +112,6 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
@@ -130,7 +129,6 @@ def test_accuracy_max_without_dim(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -165,7 +163,6 @@ def test_accuracy_max_int(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.max
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES)
