@@ -701,7 +701,7 @@ def test_accuracy_floor_div_float_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.maek.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
