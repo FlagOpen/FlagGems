@@ -27,9 +27,6 @@ def lerp_scalar_kernel(input, end, weight):
         return input + weight * (end - input)
     else:
         return end - (end - input) * (1 - weight)
-    # return end - (end - input) * (1 - weight)
-    # weight = weight.to(input.element_ty.dtype)
-    # return input + weight * (end - input)
 
 
 def lerp_tensor(input, end, weight):
