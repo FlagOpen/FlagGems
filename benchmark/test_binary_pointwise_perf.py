@@ -48,9 +48,9 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("div", torch.div, FLOAT_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
-            ("polar", torch.polar, [torch.float32]),
             *(
                 [
+                    ("polar", torch.polar, [torch.float32]),
                     ("floor_divide", torch.floor_divide, INT_DTYPES),
                     ("remainder", torch.remainder, INT_DTYPES),
                 ]
