@@ -7,7 +7,7 @@ vendor_info = VendorInfoBase(
     dispatch_key="PrivateUse2",
 )
 
-CUSTOMIZED_UNUSED_OPS = ("cumsum")
+CUSTOMIZED_UNUSED_OPS = "cumsum"
 
 
 __all__ = ["*"]

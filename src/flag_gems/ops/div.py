@@ -8,8 +8,8 @@ from ..utils import pointwise_dynamic, tl_extra_shim
 
 div_rn = tl_extra_shim.div_rn
 try:
-    import torch_npu
-except:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
     div_rz = tl_extra_shim.div_rz
     fmod = tl_extra_shim.fmod
     trunc = tl_extra_shim.trunc

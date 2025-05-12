@@ -79,17 +79,18 @@ class DeviceDetector(object):
             "cambricon": "mlu",
             "mthreads": "musa",
             "iluvatar": "corex",
-            "ascend": "npu"
+            "ascend": "npu",
         }
         for vendor_name, flag in cmd.items():
             if hasattr(torch, flag):
                 return vendor_name
         try:
             import torch_npu
+
             for vendor_name, flag in cmd.items():
                 if hasattr(torch_npu, flag):
                     return vendor_name
-        except:
+        except:  # noqa: E722
             pass
         return None
 

@@ -11,8 +11,8 @@ from ..utils import dim_compress, libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
 
 try:
-    import torch_npu
-except:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
     pow = tl_extra_shim.pow
 
 

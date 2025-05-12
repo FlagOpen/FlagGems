@@ -7,8 +7,8 @@ import triton.language as tl
 from ..utils import pointwise_dynamic, tl_extra_shim
 
 try:
-    import torch_npu
-except:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
     pow = tl_extra_shim.pow
 _tanh = tl_extra_shim.tanh
 
