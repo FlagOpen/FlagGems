@@ -1,4 +1,15 @@
+import logging
+import os
+
 import torch
+
+# C extensions
+try:
+    from flag_gems import ext_ops  # noqa: F401
+
+    has_c_extension = True
+except ImportError:
+    has_c_extension = False
 
 from . import testing  # noqa: F401
 from . import runtime
@@ -16,7 +27,28 @@ current_work_registrar = None
 runtime.replace_customized_ops(globals())
 
 
-def enable(lib=aten_lib, unused=None, registrar=registrar):
+class LogOncePerLocationFilter(logging.Filter):
+    def __init__(self):
+        super().__init__()
+        self.logged_locations = set()
+
+    def filter(self, record):
+        key = (record.pathname, record.lineno)
+        if key in self.logged_locations:
+            return False
+        self.logged_locations.add(key)
+        return True
+
+
+def enable(
+    lib=aten_lib,
+    unused=None,
+    registrar=registrar,
+    record=False,
+    once=False,
+    path=None,
+    forward_only=False,
+):
     global current_work_registrar
     current_work_registrar = registrar(
         (
@@ -25,6 +57,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("add.Tensor", add, Autograd.disable),
             ("add_.Tensor", add_, Autograd.disable),
             ("addmm", addmm, Autograd.disable),
+            ("angle", angle, Autograd.disable),
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),
             ("arange", arange, Autograd.disable),
@@ -159,6 +192,7 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("mul_.Tensor", mul_, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
             ("mv", mv, Autograd.disable),
+            ("nan_to_num", nan_to_num, Autograd.disable),
             ("ne.Tensor", ne, Autograd.disable),
             ("ne.Scalar", ne_scalar, Autograd.disable),
             ("neg", neg, Autograd.disable),
@@ -272,10 +306,13 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
             ("count_nonzero", count_nonzero, Autograd.disable),
             ("logical_or", logical_or, Autograd.disable),
             ("logical_and", logical_and, Autograd.disable),
+            ("polar", polar, Autograd.disable),
             ("logical_xor", logical_xor, Autograd.disable),
             ("logical_not", logical_not, Autograd.disable),
+            ("dot", dot, Autograd.disable),
             ("kron", kron, Autograd.disable),
             ("elu", elu, Autograd.disable),
+            ("index_put_", index_put_, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
             ("contiguous", contiguous, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
@@ -284,17 +321,45 @@ def enable(lib=aten_lib, unused=None, registrar=registrar):
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
+        forward_only=forward_only,
     )
+    if record:
+        filename = (
+            os.environ.get("HOME") + "/.flaggems/oplist.log" if path is None else path
+        )
+        handler = logging.FileHandler(filename, mode="w")
+        if once:
+            handler.addFilter(LogOncePerLocationFilter())
+        logging.basicConfig(
+            level=logging.DEBUG,
+            handlers=[
+                handler,
+            ],
+        )
 
 
 class use_gems:
-    def __init__(self, unused=None):
+    def __init__(
+        self, unused=None, record=False, once=False, path=None, forward_only=False
+    ):
         self.lib = torch.library.Library("aten", "IMPL")
         self.unused = [] if unused is None else unused
         self.registrar = Register
+        self.record = record
+        self.once = once
+        self.path = path
+        self.forward_only = forward_only
 
     def __enter__(self):
-        enable(lib=self.lib, unused=self.unused, registrar=self.registrar)
+        enable(
+            lib=self.lib,
+            unused=self.unused,
+            registrar=self.registrar,
+            record=self.record,
+            once=self.once,
+            path=self.path,
+            forward_only=self.forward_only,
+        )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
@@ -302,6 +367,11 @@ class use_gems:
         del self.unused
         del self.registrar
         del current_work_registrar
+        del self.forward_only
+        if self.record:
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
+            logging.basicConfig(level=logging.INFO)
 
 
 def all_ops():

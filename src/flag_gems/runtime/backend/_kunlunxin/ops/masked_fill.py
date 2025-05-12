@@ -14,11 +14,11 @@ def masked_fill_kernel_heur_block_size(args):
 
 @libentry()
 # @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
-@triton.heuristics(
-    values={
-        "BLOCK_SIZE": masked_fill_kernel_heur_block_size,
-    },
-)
+# @triton.heuristics(
+#     values={
+#         "BLOCK_SIZE": masked_fill_kernel_heur_block_size,
+#     },
+# )
 @triton.jit
 def masked_fill_kernel(
     inp, expand_mask, value, out, N: tl.constexpr, BLOCK_SIZE: tl.constexpr
@@ -29,8 +29,10 @@ def masked_fill_kernel(
 
     fill_mask = tl.load(expand_mask + offsets, mask=mask, other=0).to(tl.int1)
     cur_inp = tl.load(inp + offsets, mask=(not fill_mask) and mask, other=0)
-    tl.store(out + offsets, cur_inp, (not fill_mask) and mask)
-    tl.store(out + offsets, value, fill_mask and mask)
+    out_offset_1 = tl.where((not fill_mask) and mask, offsets, -1)
+    tl.store(out + out_offset_1, cur_inp, (not fill_mask) and mask)
+    out_offset_2 = tl.where(fill_mask and mask, offsets, -1)
+    tl.store(out + out_offset_2, value, fill_mask and mask)
 
 
 def masked_fill_kernel_self_heur_block_size(args):
@@ -39,11 +41,11 @@ def masked_fill_kernel_self_heur_block_size(args):
 
 @libentry()
 # @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
-@triton.heuristics(
-    values={
-        "BLOCK_SIZE": masked_fill_kernel_self_heur_block_size,
-    },
-)
+# @triton.heuristics(
+#     values={
+#         "BLOCK_SIZE": masked_fill_kernel_self_heur_block_size,
+#     },
+# )
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     pid = tle.program_id(axis=0)
@@ -84,20 +86,22 @@ def masked_fill(inp, mask, value):
     N = inp.numel()
     if N == 0:
         return out
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    grid = 12
+    BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(N, grid))
 
     import os
 
     os.environ["TRITONXPU_OTHER_SIM"] = "1"
     os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
-
-    masked_fill_kernel[grid](
+    masked_fill_kernel[grid,](
         inp,
         expand_mask.to(torch.int),
         value,
         out,
         N,
+        BLOCK_SIZE,
         isCloseUnrollControl=True,
+        buffer_size_limit=2048,
     )
 
     if "TRITONXPU_OTHER_SIM" in os.environ:
@@ -140,12 +144,10 @@ def masked_fill_(inp, mask, value):
     os.environ["TRITONXPU_OTHER_SIM"] = "1"
     os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
 
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    masked_fill_kernel_self[grid](
-        inp,
-        expand_mask.to(torch.int),
-        value,
-        N,
+    grid = 12
+    BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(N, grid))
+    masked_fill_kernel_self[grid,](
+        inp, expand_mask.to(torch.int), value, N, BLOCK_SIZE, buffer_size_limit=2048
     )
     if "TRITONXPU_OTHER_SIM" in os.environ:
         del os.environ["TRITONXPU_OTHER_SIM"]
