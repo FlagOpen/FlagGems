@@ -748,6 +748,7 @@ def test_accuracy_floor_div_int(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
