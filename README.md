@@ -88,8 +88,7 @@ If you are interested in contributing to the FlagGems project, please refer to [
 If you find our work useful, please consider citing our project:
 
 ```bibtex
-@misc{
-    BAAI FlagOpen team_2024,
+@misc{flaggems2024,
     title={FlagOpen/FlagGems: FlagGems is an operator library for large language models implemented in the Triton language.},
     url={https://github.com/FlagOpen/FlagGems},
     journal={GitHub},

@@ -83,8 +83,7 @@ FlagGems相比Torch Eager模式下ATen算子库的加速比如下图所示。其
 欢迎引用我们的项目：
 
 ```bibtex
-@misc{
-    BAAI FlagOpen team_2024,
+@misc{flaggems2024,
     title={FlagOpen/FlagGems: FlagGems is an operator library for large language models implemented in the Triton language.},
     url={https://github.com/FlagOpen/FlagGems},
     journal={GitHub},
