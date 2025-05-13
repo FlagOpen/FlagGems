@@ -141,6 +141,8 @@ def enable(lib=aten_lib):
     lib.impl("isclose", isclose, device_key)
     lib.impl("allclose", allclose, device_key)
     lib.impl("flip", flip, device_key)
+    lib.impl("fill.Scalar", fill_scalar, device_key)
+    lib.impl("fill.Tensor", fill_tensor, device_key)
 
 
 class use_gems:

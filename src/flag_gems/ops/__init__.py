@@ -25,6 +25,7 @@ from .erf import erf
 from .exp import exp
 from .exponential_ import exponential_
 from .flip import flip
+from .fill import fill_scalar, fill_tensor
 from .full import full
 from .full_like import full_like
 from .ge import ge, ge_scalar
@@ -121,6 +122,8 @@ __all__ = [
     # "ones_like",
     "full_like",
     # "zeros_like",
+    "fill_scalar",
+    "fill_tensor",
     "ge",
     "ge_scalar",
     "gelu",
