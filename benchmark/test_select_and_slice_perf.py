@@ -196,7 +196,6 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -216,7 +215,6 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
@@ -413,7 +411,6 @@ class IndexPutAccTrueBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_put
 def test_index_put_acc_true_perf():
     bench = IndexPutAccTrueBenchmark(
@@ -425,7 +422,6 @@ def test_index_put_acc_true_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_put_
 def test_index_put__acc_true_perf():
     bench = IndexPutAccTrueBenchmark(

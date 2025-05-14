@@ -33,6 +33,9 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 if device == "musa":
     torch.backends.mudnn.allow_tf32 = False
+elif device == "npu":
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
 else:
     torch_backend_device.matmul.allow_tf32 = False
 
@@ -185,7 +188,8 @@ class Benchmark:
 
             self.shapes = [tuple(shape) for shape in self.shapes]
             if vendor_name == "kunlunxin":
-                if self.op_name == "isin":  # isin oom
+                if self.op_name in ["isin", "nonzero"]:
+                    # isin oom  # nonzero oot
                     import math
 
                     self.shapes = [

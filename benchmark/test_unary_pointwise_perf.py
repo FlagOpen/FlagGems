@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from .attri_util import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
@@ -37,10 +39,16 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
-    (
-        "angle",
-        torch.angle,
-        COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+    *(
+        [
+            (
+                "angle",
+                torch.angle,
+                COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
+            )
+        ]
+        if flag_gems.device == "musa"  # angle is not supported on musa
+        else []
     ),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
