@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from torch.nn import _reduction as _Reduction
 
 from .. import runtime
 from ..runtime import torch_device_fn
@@ -654,5 +655,10 @@ def cross_entropy_loss(
     inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
 ):
     return CrossEntropyLoss.apply(
-        inp, target, weight, REDUCTION[reduction], ignore_index, label_smoothing
+        inp,
+        target,
+        weight,
+        _Reduction.get_ennum(reduction),
+        ignore_index,
+        label_smoothing,
     )

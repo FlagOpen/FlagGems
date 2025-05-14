@@ -18,7 +18,7 @@ from ..runtime import torch_device_fn
 def dropout_forward_kernel(
     X,
     Y,
-    M,
+    dropout_mask,
     N,
     p,
     philox_seed,
@@ -60,10 +60,10 @@ def dropout_forward_kernel(
     y2 = x2 * p * mask2  # tl.where(mask2, x2 * p, 0.0)
     y3 = x3 * p * mask3  # tl.where(mask3, x3 * p, 0.0)
 
-    tl.store(M + off_0, mask0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(M + off_1, mask1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(M + off_2, mask2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(M + off_3, mask3, mask=off_3 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_0, mask0, mask=off_0 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_1, mask1, mask=off_1 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_2, mask2, mask=off_2 < N, eviction_policy="evict_first")
+    tl.store(dropout_mask + off_3, mask3, mask=off_3 < N, eviction_policy="evict_first")
 
     tl.store(Y + off_0, y0, mask=off_0 < N, eviction_policy="evict_first")
     tl.store(Y + off_1, y1, mask=off_1 < N, eviction_policy="evict_first")
@@ -76,14 +76,16 @@ def dropout_forward_kernel(
 def dropout_backward_kernel(
     DY,
     DX,
-    M,
+    dropout_mask,
     N,
     scale,
     BLOCK: tl.constexpr,
 ):
     offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offset < N
-    m = tl.load(M + offset, mask=mask, other=0, eviction_policy="evict_first")
+    m = tl.load(
+        dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first"
+    )
     dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
     dx = dy * m * scale
     tl.store(DX + offset, dx, mask=mask, eviction_policy="evict_first")
