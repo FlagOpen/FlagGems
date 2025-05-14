@@ -4,7 +4,7 @@ include(FetchContent)
 find_package(CUDAToolkit REQUIRED)
 
 # dependencies: python
-find_package(Python REQUIRED COMPONENTS Interpreter Development)
+find_package(Python REQUIRED COMPONENTS Interpreter Development Embed)
 
 # torch
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}")
