@@ -30,11 +30,16 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
-
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
     grid_fn = (12, 1, 1)
     block_size = triton.next_power_of_2(triton.cdiv(N, 12))
     with torch_device_fn.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=block_size)
+        zeros_kernel[grid_fn](
+            out,
+            N,
+            BLOCK_SIZE=block_size,
+            buffer_size_limit=2048,
+            isCloseDtypeConvert=True,
+        )
     return out
