@@ -652,7 +652,7 @@ def cross_entropy_loss(
         inp,
         target,
         weight,
-        _Reduction.get_ennum(reduction),
+        _Reduction.get_enum(reduction),
         ignore_index,
         label_smoothing,
     )
