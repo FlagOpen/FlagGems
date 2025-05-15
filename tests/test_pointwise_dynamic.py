@@ -927,16 +927,16 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
     shape = [128]
     alpha = 2.0
     ctx = multiprocessing.get_context("spawn")
-    executor = concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=ctx)
-    inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
-    expected_outs = [item * alpha for item in inputs]
-    outs = []
-    for item in inputs:
-        out_future = executor.submit(
-            f_for_concurrency_test, item, alpha, use_block_pointer
-        )
-        outs.append(out_future)
-    outs = [item.result() for item in outs]
+    with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=ctx) as executor:
+        inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
+        expected_outs = [item * alpha for item in inputs]
+        outs = []
+        for item in inputs:
+            out_future = executor.submit(
+                f_for_concurrency_test, item, alpha, use_block_pointer
+            )
+            outs.append(out_future)
+        outs = [item.result() for item in outs]
 
-    for out, expected_out in zip(outs, expected_outs):
-        torch.testing.assert_close(out, expected_out)
+        for out, expected_out in zip(outs, expected_outs):
+            torch.testing.assert_close(out, expected_out)
