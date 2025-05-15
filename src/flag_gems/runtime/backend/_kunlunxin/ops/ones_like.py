@@ -24,6 +24,7 @@ def ones_like(
         ones_kernel[grid_fn](
             out,
             N,
+            1.0,
             BLOCK_SIZE=block_size,
             buffer_size_limit=2048,
             isCloseDtypeConvert=True,

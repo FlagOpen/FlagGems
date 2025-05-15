@@ -26,6 +26,7 @@ def zeros_like(
         zeros_kernel[grid_fn](
             out,
             N,
+            0.0,
             BLOCK_SIZE=block_size,
             buffer_size_limit=2048,
             isCloseDtypeConvert=True,
