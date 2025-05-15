@@ -3,11 +3,10 @@ import logging
 import os
 from typing import Callable, List, Mapping
 
-import filelock
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 
 # --------------------------- repeat wrapper genration -----------------------------------
@@ -410,13 +409,8 @@ class RepeatFunction:
             )
 
             file_name = f"repeat_rank_{key}.py"
-            lock_name = f"{file_name}.lock"
-            lock_path = code_cache_dir() / lock_name
             file_path = code_cache_dir() / file_name
-            with filelock.FileLock(lock_path):
-                if not os.path.exists(file_path):
-                    with open(file_path, "wt", encoding="utf-8") as f:
-                        f.write(code.getvalue())
+            write_atomic(file_path, code.getvalue())
 
             # load
             spec = importlib.util.spec_from_file_location(

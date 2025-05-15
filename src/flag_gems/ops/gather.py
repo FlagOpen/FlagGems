@@ -3,11 +3,10 @@ import logging
 import os
 from typing import Any, Callable, Mapping, Tuple
 
-import filelock
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter_
@@ -159,14 +158,8 @@ class GatherFunction:
             )
 
             file_name = f"gather_rank_{key}.py"
-            lock_name = f"{file_name}.lock"
             file_path = code_cache_dir() / file_name
-            lock_path = code_cache_dir() / lock_name
-
-            with filelock.FileLock(lock_path):
-                if not os.path.exists(file_path):
-                    with open(file_path, "wt", encoding="utf-8") as f:
-                        f.write(code.getvalue())
+            write_atomic(file_path, code.getvalue())
 
             # load
             spec = importlib.util.spec_from_file_location(

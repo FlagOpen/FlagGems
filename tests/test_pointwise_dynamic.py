@@ -927,7 +927,9 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
     shape = [128]
     alpha = 2.0
     ctx = multiprocessing.get_context("spawn")
-    with concurrent.futures.ProcessPoolExecutor(max_workers=8, mp_context=ctx) as executor:
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=8, mp_context=ctx
+    ) as executor:
         inputs = [torch.randn(shape, device=flag_gems.device) for _ in range(32)]
         expected_outs = [item * alpha for item in inputs]
         outs = []
