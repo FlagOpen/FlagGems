@@ -10,12 +10,6 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-REDUCTION = {
-    "none": 0,
-    "mean": 1,
-    "sum": 2,
-}
-
 
 @libentry()
 @triton.autotune(
