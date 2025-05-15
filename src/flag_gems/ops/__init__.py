@@ -144,6 +144,7 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter
+from .scatter_add_ import scatter_add_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_
 from .silu import silu, silu_
@@ -310,6 +311,7 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scatter",
+    "scatter_add_",
     "sigmoid",
     "sigmoid_",
     "silu",
