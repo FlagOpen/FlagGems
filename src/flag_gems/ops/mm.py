@@ -14,6 +14,7 @@ from ..utils import triton_lang_extension as tle
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
+    strategy=["log", "log", "log"],
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit
