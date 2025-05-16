@@ -8,11 +8,14 @@ from ..utils import unwrap
 
 @triton.jit(do_not_specialize=["alpha", "beta"])
 def addmm_func(input, mat1, mat2, beta:tl.constexpr, alpha:tl.constexpr, out_dtype:tl.constexpr):
-    tmp = tl.dot(mat1, mat2, out_dtype=out_dtype)
+    mat1 = mat1.to(tl.float32)
+    mat2 = mat2.to(tl.float32)
+    input = input.to(tl.float32)
+    tmp = tl.dot(mat1, mat2)
     tmp *= alpha
     tmp1 = beta * input
     tmp += tmp1
-    return tmp.to(input.type.element_ty)
+    return tmp.to(out_dtype)
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
