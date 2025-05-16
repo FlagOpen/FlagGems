@@ -4,7 +4,6 @@ import math
 import torch
 import triton
 import triton.language as tl
-
 from .. import runtime
 from ..ops import weight_norm_interface, weight_norm_interface_backward
 from ..runtime import torch_device_fn
