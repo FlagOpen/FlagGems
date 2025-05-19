@@ -10,6 +10,14 @@ def argmax_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
 
 
+def argmin_heur_block_m(args):
+    return 4 if args["M"] < 4096 else 8
+
+
+def argmin_heur_block_n(args):
+    return min(4096, triton.next_power_of_2(args["N"]))
+
+
 def bmm_heur_divisible_m(args):
     return args["M"] % args["TILE_M"] == 0
 
@@ -20,14 +28,6 @@ def bmm_heur_divisible_n(args):
 
 def bmm_heur_divisible_k(args):
     return args["K"] % args["TILE_K"] == 0
-
-
-def argmin_heur_block_m(args):
-    return 4 if args["M"] < 4096 else 8
-
-
-def argmin_heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
 
 
 def dropout_heur_block(args):
@@ -81,25 +81,6 @@ def index_select_heur_block_n(args):
 
 def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
-
-
-def ones_heur_block_size(args):
-    if args["N"] <= 1024:
-        return 1024
-    elif args["N"] <= 2048:
-        return 2048
-    else:
-        return 4096
-
-
-def ones_heur_num_warps(args):
-    if (
-        args["output_ptr"].dtype == torch.float16
-        or args["output_ptr"].dtype == torch.bfloat16
-    ):
-        return 2
-    else:
-        return 4
 
 
 def rand_heur_block(args):
@@ -243,25 +224,6 @@ def vdot_heur_block_size(args):
         return 1024
 
 
-def zeros_heur_block_size(args):
-    if args["N"] <= 1024:
-        return 1024
-    elif args["N"] <= 2048:
-        return 2048
-    else:
-        return 4096
-
-
-def zeros_heur_num_warps(args):
-    if (
-        args["output_ptr"].dtype == torch.float16
-        or args["output_ptr"].dtype == torch.bfloat16
-    ):
-        return 2
-    else:
-        return 4
-
-
 HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
@@ -294,10 +256,6 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
-    },
-    "ones": {
-        "BLOCK_SIZE": ones_heur_block_size,
-        "num_warps": ones_heur_num_warps,
     },
     "rand": {
         "BLOCK": rand_heur_block,
@@ -343,9 +301,5 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
-    },
-    "zeros": {
-        "BLOCK_SIZE": zeros_heur_block_size,
-        "num_warps": zeros_heur_num_warps,
     },
 }

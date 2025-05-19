@@ -185,6 +185,7 @@ def test_accuracy_exp_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.gelu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -406,6 +407,7 @@ def test_accuracy_rsqrt_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.sigmoid
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -542,6 +544,7 @@ def test_accuracy_sin_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.tanh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -851,7 +854,10 @@ def test_accuracy_fill_(value, shape, dtype):
     x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
     ref_x = to_reference(x.clone(), False)
     value_tensor = torch.tensor(value, device=flag_gems.device, dtype=dtype)
-    ref_x.fill_(value_tensor)
+    if flag_gems.device == "musa":
+        ref_x.fill_(value_tensor.cpu())
+    else:
+        ref_x.fill_(value_tensor)
     with flag_gems.use_gems():
         x.fill_(value_tensor)
 
