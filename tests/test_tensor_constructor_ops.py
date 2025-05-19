@@ -179,3 +179,34 @@ def test_accuracy_randperm(n, dtype):
     sorted_ref, _ = torch.sort(ref_out)
     sorted_res, _ = torch.sort(res_out)
     gems_assert_equal(sorted_res, sorted_ref)
+
+
+@pytest.mark.eye
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (256, 1024),
+        (128, 256),
+        8192,
+        (0, 0),
+    ],
+)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
+def test_accuracy_eye(shape, dtype):
+    if isinstance(shape, int):
+        n = shape
+        m = shape
+    elif isinstance(shape, tuple) and len(shape) == 2:
+        n, m = shape
+    print(f"test_accuracy_eye: {n}, {m}, {dtype}")
+
+    # without dtype
+    res_out = torch.eye(n, m, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(n, m, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(n, m, dtype=dtype, device="cpu" if TO_CPU else device),
+    )
