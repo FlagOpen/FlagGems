@@ -9,6 +9,7 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .attention import scaled_dot_product_attention
+from .baddbmm import baddbmm
 from .batch_norm import batch_norm, batch_norm_backward
 from .bitwise_and import (
     bitwise_and_scalar,
@@ -201,6 +202,7 @@ __all__ = [
     "bitwise_or_scalar_",
     "bitwise_or_scalar_tensor",
     "bmm",
+    "baddbmm",
     "clamp",
     "clamp_",
     "clamp_tensor",

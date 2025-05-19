@@ -52,6 +52,30 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
 
+@pytest.mark.baddbmm
+@pytest.mark.linear
+@pytest.mark.matmul
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_baddbmm(M, N, K, scalar, dtype):
+    batch = 4
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1, True)
+    ref_mat2 = to_reference(mat2, True)
+    ref_bias = to_reference(bias, True)
+
+    alpha = beta = scalar
+
+    ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out = torch.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
