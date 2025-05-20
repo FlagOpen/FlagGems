@@ -55,7 +55,9 @@ def normal_distribution(shape, device, *, generator=None):
     grid_fn = triton.cdiv(N, BLOCK_SIZE * UNROLL)
 
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     with torch_device_fn.device(device):
         if UNROLL <= 4:
             randn_kernel_1[(grid_fn,)](
