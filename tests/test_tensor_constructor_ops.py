@@ -182,22 +182,37 @@ def test_accuracy_randperm(n, dtype):
 
 
 @pytest.mark.eye
+@pytest.mark.parametrize("shape", [2**d for d in range(7, 15)])
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
+def test_accuracy_eye(shape: int, dtype):
+    print(f"test_accuracy_eye: {shape}, {dtype}")
+
+    # without dtype
+    res_out = torch.eye(shape, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(shape, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    res_out = torch.eye(shape, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(shape, dtype=dtype, device="cpu" if TO_CPU else device),
+    )
+
+
+@pytest.mark.eye_m
 @pytest.mark.parametrize(
     "shape",
     [
         (256, 1024),
-        (128, 256),
-        8192,
-        (0, 0),
+        (1024, 256),
+        (8192, 4096),
+        (4096, 8192),
+        (4096, 4096),
     ],
 )
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
-def test_accuracy_eye(shape, dtype):
-    if isinstance(shape, int):
-        n = shape
-        m = shape
-    elif isinstance(shape, tuple) and len(shape) == 2:
-        n, m = shape
+def test_accuracy_eye_m(shape, dtype):
+    n, m = shape
     print(f"test_accuracy_eye: {n}, {m}, {dtype}")
 
     # without dtype

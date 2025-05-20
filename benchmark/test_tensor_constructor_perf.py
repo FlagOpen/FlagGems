@@ -69,9 +69,9 @@ def linspace_input_fn(shape, dtype, device):
     },
 
 
-def eye_input_fn(shape, dtype, device):
+def _2D_input_fn(shape, dtype, device):
     """
-    Generate input for the eye operation, only use 2d or 1d shape.
+    Generate input for 2D input
     """
     if shape[0] >= 819200:
         # Skip large shapes for performance testing
@@ -96,6 +96,26 @@ def eye_input_fn(shape, dtype, device):
         )
 
 
+def _1D_input_fn(shape, dtype, device):
+    """
+    Generate input for the 1D input
+    """
+    if shape[0] >= 819200:
+        # Skip large shapes for performance testing
+        return
+    elif isinstance(shape, int):
+        yield {"n": shape, "dtype": dtype, "device": device},
+
+    elif isinstance(shape, tuple):
+        n = shape[0]
+        yield {"n": n, "dtype": dtype, "device": device},
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # Add a 1D case for comprehensive benchmark
+        for i in range(8, 15):
+            n = 2**i
+            yield {"n": n, "dtype": dtype, "device": device},
+
+
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
     # generic tensor constructor
@@ -118,7 +138,8 @@ tensor_constructor_operations = [
     # linspace
     ("linspace", torch.linspace, linspace_input_fn),
     # eye
-    ("eye", torch.eye, eye_input_fn),
+    ("eye_m", torch.eye, _2D_input_fn),
+    ("eye", torch.eye, _1D_input_fn),
 ]
 
 

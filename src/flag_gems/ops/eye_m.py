@@ -6,7 +6,6 @@ import triton.language as tl
 
 from ..runtime import device, torch_device_fn
 from ..utils import libentry
-from ..utils import triton_lang_extension as tle
 
 device_ = device
 
@@ -20,11 +19,11 @@ def eye_kernel(
     BLOCK_i: tl.constexpr,
     BLOCK_j: tl.constexpr,
 ):
-    pid_i = tle.program_id(0)  # block id
+    pid_i = tl.program_id(0)  # block id
     off_i = pid_i * BLOCK_i + tl.arange(0, BLOCK_i)
     mask_i = off_i < N
 
-    pid_j = tle.program_id(1)  # block id
+    pid_j = tl.program_id(1)  # block id
     off_j = pid_j * BLOCK_j + tl.arange(0, BLOCK_j)
     mask_j = off_j < M
 
@@ -35,28 +34,25 @@ def eye_kernel(
     tl.store(out_ptr + off_ij, val, mask=mask)
 
 
-def eye(size, *, dtype=None, layout=torch.strided, device=None, pin_memory=None):
+def eye_m(n, m, *, dtype=None, device=None, pin_memory=None):
     """
-    Triton-based implementation of torch.eye(n, m), using 2D tiles to split the matrix into blocks.
+    Triton-based implementation of torch.eye_m(n, m), using 2D tiles to split the matrix into blocks.
     """
-    logging.debug("GEMS EYE")
-
+    logging.debug("GEMS EYE_M")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device)
 
-    out = torch.empty(
-        (size, size), dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
-    )
+    out = torch.empty((n, m), dtype=dtype, device=device)
     BLOCK_SIZE = 32
-    grid = (triton.cdiv(size, BLOCK_SIZE), triton.cdiv(size, BLOCK_SIZE))
+    grid = (triton.cdiv(n, BLOCK_SIZE), triton.cdiv(m, BLOCK_SIZE))
 
     with torch_device_fn.device(device):
         eye_kernel[grid](
             out,
-            size,
-            size,
+            n,
+            m,
             BLOCK_SIZE,
             BLOCK_SIZE,
         )
