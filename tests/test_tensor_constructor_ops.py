@@ -1,5 +1,6 @@
 import pytest
 import torch
+from packaging import version
 
 import flag_gems
 
@@ -185,8 +186,12 @@ def test_accuracy_randperm(n, dtype):
 @pytest.mark.parametrize("shape", [2**d for d in range(7, 15)])
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
 def test_accuracy_eye(shape: int, dtype):
-    print(f"test_accuracy_eye: {shape}, {dtype}")
-
+    if (
+        TO_CPU
+        and dtype == torch.bfloat16
+        and version.parse(torch.__version__) < version.parse("2.5.0")
+    ):
+        pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
     # without dtype
     res_out = torch.eye(shape, device=flag_gems.device)
     gems_assert_equal(res_out, torch.eye(shape, device="cpu" if TO_CPU else device))
@@ -212,6 +217,12 @@ def test_accuracy_eye(shape: int, dtype):
 )
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
 def test_accuracy_eye_m(shape, dtype):
+    if (
+        TO_CPU
+        and dtype == torch.bfloat16
+        and version.parse(torch.__version__) < version.parse("2.5.0")
+    ):
+        pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
     n, m = shape
     print(f"test_accuracy_eye: {n}, {m}, {dtype}")
 
