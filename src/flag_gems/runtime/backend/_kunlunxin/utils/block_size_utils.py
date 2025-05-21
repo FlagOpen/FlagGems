@@ -8,10 +8,18 @@ buf_len_per_core = 2048
 
 
 def get_block_size_1d(n: int, element_size: int) -> int:
-    return min(
+    block_size = min(
         triton.next_power_of_2(triton.cdiv(n, cluster_num)),
         triton.cdiv(buf_len_per_core * core_num, element_size),
     )
+    if triton.cdiv(n, block_size) > 256:
+        return triton.next_power_of_2(triton.cdiv(n, 256))
+    else:
+        return block_size
+    # return min(
+    #     triton.next_power_of_2(triton.cdiv(n, cluster_num)),
+    #     triton.cdiv(buf_len_per_core * core_num, element_size),
+    # )
 
 
 def heur_m_block_size(args):
