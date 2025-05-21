@@ -1,6 +1,6 @@
 import pytest
 import torch
-
+import logging
 import flag_gems
 
 from .accuracy_utils import (
@@ -200,6 +200,21 @@ def test_accuracy_gelu(shape, dtype, approximate):
 
     gems_assert_close(res_out, ref_out, dtype)
 
+@pytest.mark.glu
+@pytest.mark.parametrize("shape", [(32,32,32,32,32)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_glu(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    for dim in range(1, len(shape)):
+        if shape[dim] % 2 != 0:
+            continue
+        ref_out = torch.nn.functional.glu(ref_inp,dim)
+        with flag_gems.use_gems():
+            res_out = torch.nn.functional.glu(res_inp,dim)
+        gems_assert_close(res_out, ref_out, dtype)
+    
 
 @pytest.mark.gelu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
