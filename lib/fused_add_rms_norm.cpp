@@ -8,6 +8,9 @@
 namespace flag_gems {
 using namespace triton_jit;
 
+// TODO(flaggems): Only supports 2D inputs and 1D weight (last-dim norm).
+// Extend to support higher-rank inputs and generalized weight shapes
+
 at::Tensor fused_add_rms_norm(const at::Tensor& input,     // [..., hidden_size]
                               const at::Tensor& residual,  // [..., hidden_size]
                               const at::Tensor& weight,    // [hidden_size]

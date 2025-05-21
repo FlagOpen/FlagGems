@@ -55,3 +55,4 @@ class GemsRMSNorm(RMSNorm):
             )
         else:
             return torch.ops.flag_gems.rms_norm(x, self.weight, self.eps)
+            # return torch.ops.flag_gems.rms_norm(x, self.normalized_shape, self.weight, self.eps)
