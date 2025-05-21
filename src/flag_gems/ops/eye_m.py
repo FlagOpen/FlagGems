@@ -34,7 +34,7 @@ def eye_kernel(
     tl.store(out_ptr + off_ij, val, mask=mask)
 
 
-def eye_m(n, m, *, dtype=None, device=None, pin_memory=None):
+def eye_m(n, m, *, dtype=None, layout=torch.strided, device=None, pin_memory=None):
     """
     Triton-based implementation of torch.eye_m(n, m), using 2D tiles to split the matrix into blocks.
     """
@@ -42,9 +42,13 @@ def eye_m(n, m, *, dtype=None, device=None, pin_memory=None):
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device(device)
+        device = torch.device(device_.name)
+    if layout != torch.strided:
+        raise ValueError("Currently only strided layout is supported for eye_m.")
 
-    out = torch.empty((n, m), dtype=dtype, device=device)
+    out = torch.empty(
+        (n, m), dtype=dtype, device=device, layout=layout, pin_memory=pin_memory
+    )
     BLOCK_SIZE = 32
     grid = (triton.cdiv(n, BLOCK_SIZE), triton.cdiv(m, BLOCK_SIZE))
 
