@@ -201,7 +201,7 @@ def test_accuracy_gelu(shape, dtype, approximate):
     gems_assert_close(res_out, ref_out, dtype)
 
 @pytest.mark.glu
-@pytest.mark.parametrize("shape", [(32,32,32,32,32)])
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_glu(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
