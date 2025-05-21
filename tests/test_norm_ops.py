@@ -519,24 +519,23 @@ def test_accuracy_rmsnorm(shape, dtype):
         return weight * hidden_states
 
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
-    #res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
-    res_out = torch.ops.flag_gems.rms_norm(inp, weight, eps)
+    res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
-    # res_grad = torch.tensor(
-    #     np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
-    # )
-    # ref_grad = to_reference(res_grad)
+    res_grad = torch.tensor(
+        np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_grad = to_reference(res_grad)
 
-    # res_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), res_grad)
-    # ref_grad, ref_weight_grad = torch.autograd.grad(
-    #     ref_out, (ref_inp, ref_weight), ref_grad
-    # )
+    res_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), res_grad)
+    ref_grad, ref_weight_grad = torch.autograd.grad(
+        ref_out, (ref_inp, ref_weight), ref_grad
+    )
 
     gems_assert_close(res_out, ref_out, dtype)
-    # if flag_gems.vendor_name == "kunlunxin" and shape == (200, 40999, 3):
-    #     pytest.skip("wait for backward support")
-    # gems_assert_close(res_grad, ref_grad, dtype)
-    # gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
+    if flag_gems.vendor_name == "kunlunxin" and shape == (200, 40999, 3):
+        pytest.skip("wait for backward support")
+    gems_assert_close(res_grad, ref_grad, dtype)
+    gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
 
 
 @pytest.mark.skip_layer_norm
