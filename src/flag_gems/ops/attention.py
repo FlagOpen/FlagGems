@@ -122,18 +122,17 @@ def _attn_fwd_inner(
     return acc, l_i, m_i
 
 
-def early_config_prune(configs, nargs, **kwargs):
-    return list(filter(lambda cfg: cfg.kwargs["BLOCK_N"] <= nargs["HEAD_DIM"], configs))
+def keep(cfg):
+    BM = cfg.kwargs["BLOCK_M"]
+    BN = cfg.kwargs["BLOCK_N"]
+    w = cfg.num_warps
+
+    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8))
 
 
 @triton.autotune(
-    configs=runtime.get_tuned_config("attention"),
+    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
     key=["KV_CTX", "HEAD_DIM"],
-    prune_configs_by={
-        "early_config_prune": early_config_prune,
-        "perf_model": None,
-        "top_k": 1.0,
-    },
 )
 @triton.jit
 def _attn_fwd(
@@ -567,16 +566,6 @@ def softmax_rescale(
     return O_acc, P, row_max, row_sum
 
 
-def block_m_heuristic(headdim, is_dropout):
-    block_m = 128 if headdim <= 128 else 64
-    return block_m
-
-
-def block_n_heuristic(headdim, is_dropout):
-    block_n = 64 if headdim <= 64 else 32
-    return block_n
-
-
 def block_m_splitkv_heuristic(headdim):
     return 128 if headdim <= 128 else 64
 
@@ -593,12 +582,12 @@ def is_even_mn(M, N, BM, BN, WL, WR):
     return False
 
 
+@triton.autotune(
+    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+    key=["HEAD_DIM"],
+)
 @triton.heuristics(
     values={
-        "BLOCK_M": lambda args: block_m_heuristic(args["HEAD_DIM"], args["is_dropout"]),
-        "BLOCK_N": lambda args: block_n_heuristic(args["HEAD_DIM"], args["is_dropout"]),
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
         "PRE_LOAD_V": lambda args: False,
         "IS_EVEN_MN": lambda args: is_even_mn(
             args["seqlen_q"],
@@ -661,8 +650,9 @@ def flash_fwd_kernel(
     num_stages: tl.constexpr,
 ):
     m_block = tl.program_id(0)
-    bid = tl.program_id(1)
-    hid = tl.program_id(2)
+    bh = tl.program_id(1)
+    hid = bh % h
+    bid = bh // h
     num_m_blocks = tl.cdiv(seqlen_q, BLOCK_M)
 
     # We draw a minimum covering frame on the attention map that this CTA is assigned to process.
@@ -929,7 +919,6 @@ def flash_fwd_kernel(
         if not PRE_LOAD_V:
             off = col_start * k_s_stride
             V = tl.load(p_bv0 + off, cache_modifier=".cg")
-
         O_ = tl.dot(P, V, O_)
 
     # LSE
@@ -970,12 +959,12 @@ def flash_fwd_kernel(
         tl.store(p_lse + row_idx, lse, mask=row_idx < seqlen_q)
 
 
+@triton.autotune(
+    configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+    key=["HEAD_DIM"],
+)
 @triton.heuristics(
     values={
-        "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
-        "BLOCK_N": lambda args: block_n_splitkv_heuristic(args["HEAD_DIM"]),
-        "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
         "PRE_LOAD_V": lambda args: True,
         "IS_EVEN_MN": lambda args: is_even_mn(
             args["seqlen_q"],
@@ -1041,12 +1030,16 @@ def flash_fwd_bh_parallel_kernel(
     pass
 
 
+# @triton.autotune(
+#     configs=list(filter(keep, runtime.get_tuned_config("attention"))),
+#     key=["HEAD_DIM"],
+# )
 @triton.heuristics(
     values={
         "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
         "BLOCK_N": lambda args: block_n_splitkv_heuristic(args["HEAD_DIM"]),
         "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3 if args["HEAD_DIM"] <= 128 else 2,
+        "num_stages": lambda args: 3,
         "PRE_LOAD_V": lambda args: True,
         "IS_EVEN_MN": lambda args: is_even_mn(
             args["seqlen_q"],
@@ -1440,7 +1433,7 @@ def mha_fwd(
     seqlen_q_rounded = round_multiple(seqlen_q, 128)
     seqlen_k_rounded = round_multiple(seqlen_k, 32)
 
-    def splits_heuristics(num_tasks, num_sms, n_blocks):
+    def splits_heuristic(num_tasks, num_sms, n_blocks):
         # splits when wave efficiency is low
         n_waves = triton.cdiv(num_tasks, num_sms)
         eff = (num_tasks / num_sms) / n_waves
@@ -1548,7 +1541,7 @@ def mha_fwd(
                 n_tasks = B * H * triton.cdiv(seqlen_q, BM)
                 BN = block_n_splitkv_heuristic(D)
                 n_blocks = triton.cdiv(seqlen_k, BN)
-                n_splits = splits_heuristics(n_tasks, num_sms, n_blocks)
+                n_splits = splits_heuristic(n_tasks, num_sms, n_blocks)
 
                 if _debug:
                     n_splits = 32
@@ -1599,8 +1592,7 @@ def mha_fwd(
             # Last option: flash_fwd
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
-                B,
-                H,
+                H * B,
             )
             kernel = flash_fwd_kernel[grid]
             return kernel, default_args, None, None

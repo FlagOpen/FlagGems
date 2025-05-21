@@ -4,6 +4,7 @@ import torch
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.random_utils import set_philox_state
 
 from .accuracy_utils import gems_assert_close, to_reference
 from .conftest import TO_CPU
@@ -11,23 +12,88 @@ from .conftest import TO_CPU
 device = flag_gems.device
 
 
-def make_input(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype):
-    np.random.seed(0)
-    np_query = np.random.uniform(
-        -0.05, 0.05, (batch, num_head, q_seq_len, head_size)
-    ).astype(np.float32)
-    np_key = np.random.uniform(
-        -0.05, 0.05, (batch, num_head, kv_seq_len, head_size)
-    ).astype(np.float32)
-    np_value = np.random.uniform(
-        -0.05, 0.05, (batch, num_head, kv_seq_len, head_size)
-    ).astype(np.float32)
+def make_input(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
+    set_philox_state(1234567890, 0, device)
+    q_shape = (batch, num_head, q_seq_len, head_size)
+    kv_shape = (batch, num_head, kv_seq_len, head_size)
+    q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    k = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    v = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    return q, k, v
 
-    query = torch.tensor(np_query, device="cuda", dtype=dtype)
-    key = torch.tensor(np_key, device="cuda", dtype=dtype)
-    value = torch.tensor(np_value, device="cuda", dtype=dtype)
 
-    return query, key, value
+def torch_sdpa(q, k, v, scale, is_causal):
+    torch_result = torch.nn.functional.scaled_dot_product_attention(
+        q,
+        k,
+        v,
+        attn_mask=None,
+        scale=scale,
+        is_causal=is_causal,
+    )
+    return torch_result
+
+
+def torch_flash_fwd(
+    q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs
+):
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
+
+    (
+        out,
+        lse,
+        seed,
+        offset,
+        debug_softmax,
+    ) = torch.ops.aten._flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        q.shape[-3],
+        k.shape[-3],
+        dropout_p,
+        is_causal,
+        return_debug_mask,
+        scale=scale,
+        **extra_kwargs
+    )
+
+    return out, lse, seed, offset, debug_softmax
+
+
+def gems_flash_fwd(
+    q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs
+):
+    with flag_gems.use_gems():
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        (
+            out,
+            lse,
+            seed,
+            offset,
+            debug_softmax,
+        ) = torch.ops.aten._flash_attention_forward(
+            q,
+            k,
+            v,
+            None,
+            None,
+            q.shape[-3],
+            k.shape[-3],
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            scale=scale,
+            **extra_kwargs
+        )
+
+    return out, lse, seed, offset, debug_softmax
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
@@ -44,28 +110,21 @@ def make_input(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype):
 def test_sdpa_legacy(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    query, key, value = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
-    ref_query = to_reference(query, False)
-    ref_key = to_reference(key, False)
-    ref_value = to_reference(value, False)
-
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
-    torch_result = torch.nn.functional.scaled_dot_product_attention(
-        ref_query,
-        ref_key,
-        ref_value,
-        attn_mask=None,
-        scale=scale,
-        is_causal=is_causal,
+    torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
+
+    gems_result = flag_gems.ops.scaled_dot_product_attention(
+        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal
     )
 
-    flaggem_result = flag_gems.ops.scaled_dot_product_attention(
-        query, key, value, attn_mask=None, scale=scale, is_causal=is_causal
-    )
-
-    gems_assert_close(flaggem_result, torch_result, dtype)
+    gems_assert_close(gems_result, torch_result, dtype)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
@@ -84,29 +143,18 @@ def test_sdpa_legacy(
 def test_sdpa_square_qk_even_mn(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    query, key, value = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
-    ref_query = to_reference(query, False)
-    ref_key = to_reference(key, False)
-    ref_value = to_reference(value, False)
-
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
-    torch_result = torch.nn.functional.scaled_dot_product_attention(
-        ref_query,
-        ref_key,
-        ref_value,
-        attn_mask=None,
-        scale=scale,
-        is_causal=is_causal,
-    )
-
+    torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
     with flag_gems.use_gems():
-        flaggem_result = torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, attn_mask=None, scale=scale, is_causal=is_causal
-        )
-
-    gems_assert_close(flaggem_result, torch_result, dtype)
+        gems_result = torch_sdpa(q, k, v, scale, is_causal)
+    gems_assert_close(gems_result, torch_result, dtype)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
@@ -123,29 +171,18 @@ def test_sdpa_square_qk_even_mn(
 def test_sdpa_nonsquare_qk(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    query, key, value = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
-    ref_query = to_reference(query, False)
-    ref_key = to_reference(key, False)
-    ref_value = to_reference(value, False)
-
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
-    torch_result = torch.nn.functional.scaled_dot_product_attention(
-        ref_query,
-        ref_key,
-        ref_value,
-        attn_mask=None,
-        scale=scale,
-        is_causal=is_causal,
-    )
-
+    torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
     with flag_gems.use_gems():
-        flaggem_result = torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, attn_mask=None, scale=scale, is_causal=is_causal
-        )
-
-    gems_assert_close(flaggem_result, torch_result, dtype)
+        gems_result = torch_sdpa(q, k, v, scale, is_causal)
+    gems_assert_close(gems_result, torch_result, dtype)
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -163,53 +200,22 @@ def test_sdpa_nonsquare_qk(
 def test_flash_fwd_nonsquare_qk_causal(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    query, key, value = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
-    ref_query = to_reference(query, False)
-    ref_key = to_reference(key, False)
-    ref_value = to_reference(value, False)
-
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
 
-    q = ref_query.transpose(1, 2)
-    k = ref_key.transpose(1, 2)
-    v = ref_value.transpose(1, 2)
-    out, *_ = torch.ops.aten._flash_attention_forward(
-        q,
-        k,
-        v,
-        None,
-        None,
-        q.shape[-3],
-        k.shape[-3],
-        0,
-        is_causal,
-        False,
-        scale=scale,
+    torch_out, torch_lse, _, _, _ = torch_flash_fwd(
+        ref_q, ref_k, ref_v, scale, is_causal
     )
-    torch_result = out.transpose(1, 2)
+    gems_out, gems_lse, _, _, _ = gems_flash_fwd(q, k, v, scale, is_causal)
 
-    with flag_gems.use_gems():
-        q = query.transpose(1, 2)
-        k = key.transpose(1, 2)
-        v = value.transpose(1, 2)
-        out, *_ = torch.ops.aten._flash_attention_forward(
-            q,
-            k,
-            v,
-            None,
-            None,
-            q.shape[-3],
-            k.shape[-3],
-            0,
-            is_causal,
-            False,
-            scale=scale,
-        )
-        flaggem_result = out.transpose(1, 2)
-
-    gems_assert_close(flaggem_result, torch_result, dtype)
+    gems_assert_close(gems_out, torch_out, dtype)
+    gems_assert_close(gems_lse, torch_lse, torch.float)
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -229,65 +235,19 @@ def test_flash_fwd_nonsquare_qk_causal(
 def test_flash_fwd_dropout(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    query, key, value = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     scale = float(1.0 / np.sqrt(head_size))
+    dropout_p = 0.2
 
-    with flag_gems.use_gems():
-        q = query.transpose(1, 2)
-        k = key.transpose(1, 2)
-        v = value.transpose(1, 2)
-        return_debug_mask = True
-        dropout_p = 0.2
-        device = torch_device_fn.current_device()
-        gen = torch_device_fn.default_generators[device]
-        old_state = gen.get_state()
-        new_state = torch.tensor((12345, 0), dtype=torch.int64)
-        gen.set_state(new_state.view(torch.uint8))
-        (
-            out,
-            lse,
-            seed_0,
-            offset_0,
-            debug_softmax_0,
-        ) = torch.ops.aten._flash_attention_forward(
-            q,
-            k,
-            v,
-            None,
-            None,
-            q.shape[-3],
-            k.shape[-3],
-            dropout_p,
-            is_causal,
-            return_debug_mask,
-            scale=scale,
-        )
-        gen.set_state(new_state.view(torch.uint8))
-        (
-            out,
-            lse,
-            seed_1,
-            offset_1,
-            debug_softmax_1,
-        ) = torch.ops.aten._flash_attention_forward(
-            q,
-            k,
-            v,
-            None,
-            None,
-            q.shape[-3],
-            k.shape[-3],
-            dropout_p,
-            is_causal,
-            return_debug_mask,
-            scale=scale,
-        )
-        gen.set_state(old_state)
-        gems_assert_close(debug_softmax_0, debug_softmax_1, dtype)
-        dropout_ratio = torch.sum(debug_softmax_0 < 0) / torch.sum(debug_softmax_0 != 0)
-        np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
+    gems_out, gems_lse, _, _, debug_softmax = gems_flash_fwd(
+        q, k, v, scale, is_causal, dropout_p=dropout_p, return_debug_mask=True
+    )
+
+    dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
+    np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -317,60 +277,37 @@ def test_flash_fwd_swa(
     window_size_right,
     dtype,
 ):
-    query, key, value = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
-
-    ref_query = to_reference(query, False)
-    ref_key = to_reference(key, False)
-    ref_value = to_reference(value, False)
-
+    ref_q = to_reference(q, False)
+    ref_k = to_reference(k, False)
+    ref_v = to_reference(v, False)
     scale = float(1.0 / np.sqrt(head_size))
-    dropout_p = 0
-    return_debug_mask = False
 
-    q = ref_query.transpose(1, 2)
-    k = ref_key.transpose(1, 2)
-    v = ref_value.transpose(1, 2)
-    out, lse, _, _, _ = torch.ops.aten._flash_attention_forward(
-        q,
-        k,
-        v,
-        None,
-        None,
-        q.shape[-3],
-        k.shape[-3],
-        dropout_p,
+    torch_out, torch_lse, _, _, _ = torch_flash_fwd(
+        ref_q,
+        ref_k,
+        ref_v,
+        scale,
         is_causal,
-        return_debug_mask,
-        scale=scale,
+        dropout_p=0,
+        return_debug_mask=False,
         window_size_left=window_size_left,
         window_size_right=window_size_right,
     )
-    torch_result = out.transpose(1, 2)
-    torch_lse = lse.transpose(1, 2)
+    gems_out, gems_lse, _, _, _ = gems_flash_fwd(
+        q,
+        k,
+        v,
+        scale,
+        is_causal,
+        dropout_p=0,
+        return_debug_mask=False,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+    )
 
-    with flag_gems.use_gems():
-        q = query.transpose(1, 2)
-        k = key.transpose(1, 2)
-        v = value.transpose(1, 2)
-        out, lse, _, _, _ = torch.ops.aten._flash_attention_forward(
-            q,
-            k,
-            v,
-            None,
-            None,
-            q.shape[-3],
-            k.shape[-3],
-            dropout_p,
-            is_causal,
-            return_debug_mask,
-            scale=scale,
-            window_size_left=window_size_left,
-            window_size_right=window_size_right,
-        )
-        flaggem_result = out.transpose(1, 2)
-        flaggem_lse = lse.transpose(1, 2)
-
-    gems_assert_close(flaggem_result, torch_result, dtype)
-    gems_assert_close(flaggem_lse, torch_lse, torch.float)
+    gems_assert_close(gems_out, torch_out, dtype)
+    gems_assert_close(gems_lse, torch_lse, torch.float)
