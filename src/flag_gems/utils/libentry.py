@@ -232,7 +232,7 @@ class LibEntry(triton.KernelInterface):
             if p.is_constexpr:
                 const_args.append(val)
                 if major_version == 3 and minor_version == 3:
-                    k_args.append(arg)
+                    k_args.append(val)
             elif p.do_not_specialize:
                 dns_args.append(val)
                 k_args.append(val)
