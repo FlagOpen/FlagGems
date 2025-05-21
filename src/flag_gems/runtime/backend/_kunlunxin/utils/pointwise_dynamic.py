@@ -865,21 +865,21 @@ class WrapperGenerator:
             # max_grid_size0 = self.config.max_grid_size[0]
             # code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
 
-            # code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
-            # code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
-            # code.writeline(
-            #     "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
-            # )
-
-            code.writeline("element_size = get_element_size(in0.dtype)")
+            code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
+            code.writeline("num_tiles = 12 # XPU BLOCK_NUM")
             code.writeline(
-                "tile_size = min("
-                "triton.next_power_of_2(triton.cdiv(num_tasks, 12)), "
-                "triton.cdiv(2048 * 64, element_size)"
-                ")"
+                "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_tiles)) # XPU BLOCK_NUM"
             )
-            code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
-            code.writeline("num_ctas = num_tiles")
+
+            # code.writeline("element_size = get_element_size(in0.dtype)")
+            # code.writeline(
+            #     "tile_size = min("
+            #     "triton.next_power_of_2(triton.cdiv(num_tasks, 12)), "
+            #     "triton.cdiv(2048 * 64, element_size)"
+            #     ")"
+            # )
+            # code.writeline("num_tiles = triton.cdiv(num_tasks, tile_size)")
+            # code.writeline("num_ctas = num_tiles")
 
             code.writeline("tiles_per_cta = triton.cdiv(num_tiles, num_ctas)")
             code.writeline("num_warps = heuristics_for_num_warps(tile_size)")
