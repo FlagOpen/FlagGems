@@ -7,6 +7,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import uint_to_uniform_float, update_philox_state
 
+logger = logging.getLogger(__name__)
 eps: tl.constexpr = [
     2.220446049250313e-16,
     1.1920928955078125e-07,
@@ -222,7 +223,7 @@ def transform_exponential_bfloat16(u):
 
 
 def exponential_(x, lambd: float = 1.0, *, gen=None):
-    logging.debug("GEMS EXPONENTIAL_")
+    logger.debug("METAX GEMS EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

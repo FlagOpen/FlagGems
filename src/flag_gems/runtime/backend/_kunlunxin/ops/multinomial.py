@@ -7,6 +7,8 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
@@ -35,7 +37,7 @@ def multinomial_with_replacement(
     cdf_ptr += tl.program_id(1) * K
     start = tl.zeros((NBLOCK,), dtype=tl.int32)
     end = tl.zeros((NBLOCK,), dtype=tl.int32) + K - 1
-    steps = tl.math.log2(K.to(tl.float32)).to(tl.int32) + 1
+    steps = tl.extra.xpu.libdevice.log2(K.to(tl.float32)).to(tl.int32) + 1
     for _ in range(steps):
         mid = start + (end - start) // 2
         x = tl.load(cdf_ptr + mid, mask=n < N)
@@ -49,7 +51,7 @@ def multinomial_with_replacement(
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
-    logging.debug("GEMS MULTINOMIAL")
+    logger.debug("GEMS MULTINOMIAL")
     assert prob.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
     n_categories = prob.size(-1)
@@ -71,9 +73,14 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
             vals, indices = torch.topk(s, n_samples, dim=-1)
             return indices.to(torch.int64)
 
-    from flag_gems.ops import normed_cumsum
+    from _kunlunxin.ops import normed_cumsum
 
-    cum_prob = normed_cumsum(prob, dim=-1)
+    if len(prob.shape) == 2 and prob.shape[1] > 8192:
+        cum_prob_mid = torch.cumsum(prob, dim=-1)
+        row_sums = prob.sum(dim=-1, keepdim=True)
+        cum_prob = cum_prob_mid / row_sums
+    else:
+        cum_prob = normed_cumsum(prob, dim=-1)
 
     if cum_prob.dim() == 1:
         n_dist = 1

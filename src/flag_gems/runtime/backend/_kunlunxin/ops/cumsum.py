@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -9,6 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -118,6 +120,116 @@ def scan_part_sum_abc_kernel(
     tl.store(partial_sum_ptrs, part_sum_via_sum)
 
 
+@triton.jit(do_not_specialize=["part_num"])
+def scan_part_sum_abc_kernel_out(
+    inp,
+    out,
+    # partial_sum,
+    B: tl.constexpr,
+    C: tl.constexpr,
+    part_num,
+    BLOCK_SIZE: tl.constexpr,
+    pid_a,
+    pid_b,
+    pid_c,
+):
+    # pid_a = tl.program_id(0)
+    # pid_b = tl.program_id(1)
+    # pid_c = tl.program_id(2)
+    # tl.device_print("pid_a", pid_a)
+    # tl.device_print("pid_b", pid_b)
+    # tl.device_print("pid_c", pid_c)
+
+    # pid_a = 0
+    # pid_b = 11
+    # pid_c = 0
+
+    a_idx = pid_a
+    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    c_idx = pid_c
+
+    offset = a_idx * B * C + b_idx * C + c_idx
+    # tl.device_print("offset", offset)
+
+    # base_part_offset = a_idx * part_num * C + c_idx
+    # part_offset = base_part_offset + pid_b * C
+
+    mask = b_idx < B
+    # tl.device_print("mask", mask)
+    inp_ptrs = inp + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask)
+    if (
+        tl.constexpr(inp_vals.dtype.is_int64())
+        or tl.constexpr(inp_vals.dtype.is_uint64())
+    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        inp_vals = inp_vals
+    elif tl.constexpr(inp_vals.dtype.is_int()):
+        inp_vals = inp_vals.to(tl.int32)
+    else:
+        inp_vals = inp_vals.to(tl.float32)
+    # inp_vals = tl.where(mask, inp_vals, 0)
+    # tl.device_print("inp_vals", inp_vals)
+    result = tl.cumsum(inp_vals, axis=0)
+    # result = inp_vals
+    # tl.device_print("result", result)
+    # part_sum_via_sum = tl.sum(inp_vals)
+
+    out_ptrs = out + offset
+    tl.store(out_ptrs, result, mask=mask)
+
+    # partial_sum_ptrs = partial_sum + part_offset
+    # tl.store(partial_sum_ptrs, part_sum_via_sum)
+
+
+@triton.jit(do_not_specialize=["part_num"])
+def scan_part_sum_abc_kernel_partial_sum(
+    inp,
+    # out,
+    partial_sum,
+    B,
+    C,
+    part_num,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # pid_a = 0
+    # pid_b = 0
+    # pid_c = 0
+
+    pid_a = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    pid_c = tl.program_id(2)
+
+    a_idx = pid_a
+    b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    c_idx = pid_c
+
+    offset = a_idx * B * C + b_idx * C + c_idx
+    base_part_offset = a_idx * part_num * C + c_idx
+    part_offset = base_part_offset + pid_b * C
+
+    mask = b_idx < B
+    inp_ptrs = inp + offset
+    inp_vals = tl.load(inp_ptrs, mask=mask)
+    if (
+        tl.constexpr(inp_vals.dtype.is_int64())
+        or tl.constexpr(inp_vals.dtype.is_uint64())
+    ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+        inp_vals = inp_vals
+    elif tl.constexpr(inp_vals.dtype.is_int()):
+        inp_vals = inp_vals.to(tl.int32)
+    else:
+        inp_vals = inp_vals.to(tl.float32)
+    # result = tl.cumsum(inp_vals, axis=0)
+
+    part_sum_via_sum = tl.sum(inp_vals)
+
+    # out_ptrs = out + offset
+    # tl.store(out_ptrs, result, mask=mask)
+
+    partial_sum_ptrs = partial_sum + part_offset
+    tl.store(partial_sum_ptrs, part_sum_via_sum)
+
+
 @libentry()
 @triton.jit(do_not_specialize=["part_num"])
 def add_base_sum_abc_kernel(
@@ -180,10 +292,46 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
     grid = (A, part_num, C)
-    with torch_device_fn.device(inp.device):
-        scan_part_sum_abc_kernel[grid](
-            inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
+
+    if inp.shape[1] > 8192:
+        os.environ["TRITONXPU_OTHER_SIM"] = "1"
+        os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+        spec_grid = (1, 1, 1)
+        for pid_a in range(0, A):
+            for pid_b in range(0, part_num):
+                for pid_c in range(0, C):
+                    scan_part_sum_abc_kernel_out[spec_grid](
+                        inp,
+                        out,
+                        B,
+                        C,
+                        part_num,
+                        BLOCK_SIZE,
+                        pid_a,
+                        pid_b,
+                        pid_c,
+                    )
+
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
+        os.environ["TRITONXPU_OTHER_SIM"] = "1"
+        scan_part_sum_abc_kernel_partial_sum[grid](
+            inp, partial_sum, B, C, part_num, BLOCK_SIZE
         )
+
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
+    else:
+        with torch_device_fn.device(inp.device):
+            scan_part_sum_abc_kernel[grid](
+                inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
+            )
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
@@ -192,7 +340,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS CUMSUM")
+    logger.debug("GEMS CUMSUM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -213,6 +361,7 @@ def cumsum(inp, dim=1, *, dtype=None):
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
+    # import pudb; pudb.set_trace()
     if M == 1 and K == 1:
         scan_then_fan_col(inp, out, N, compute_dtype)
     else:
@@ -249,14 +398,14 @@ def block_cumsum_kernel(
     inp,
     out,
     sums,
-    r,
-    t,
-    R,
-    K,
-    r_stride,
-    k_stride,
-    out_r_stride,
-    out_k_stride,
+    r: tl.constexpr,
+    t: tl.constexpr,
+    R: tl.constexpr,
+    K: tl.constexpr,
+    r_stride: tl.constexpr,
+    k_stride: tl.constexpr,
+    out_r_stride: tl.constexpr,
+    out_k_stride: tl.constexpr,
     OUTPUT_SUMS: tl.constexpr,
     NORMALIZE: tl.constexpr,
     HAS_OUT_LAYOUT: tl.constexpr,
@@ -364,7 +513,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logging.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()
@@ -380,7 +529,7 @@ def normed_cumsum(inp, dim=-1):
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
-        TILE = 2048
+        TILE = 8192
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
         n_rows = N // K
@@ -413,6 +562,7 @@ def normed_cumsum(inp, dim=-1):
                 NORMALIZE=True,
                 HAS_OUT_LAYOUT=False,
                 TILE=TILE,
+                isCloseUnrollControl=True,
             )
             return out
 
@@ -436,6 +586,7 @@ def normed_cumsum(inp, dim=-1):
             NORMALIZE=False,
             HAS_OUT_LAYOUT=False,
             TILE=TILE,
+            isCloseUnrollControl=True,
         )
         # Pass two, scan partial cumsums
         block_cumsum_kernel[(1, n_batch)](
@@ -454,6 +605,7 @@ def normed_cumsum(inp, dim=-1):
             NORMALIZE=False,
             HAS_OUT_LAYOUT=True,
             TILE=TILE,
+            isCloseUnrollControl=True,
         )
         # print(sums)
         rscale = cumsums[..., -1]

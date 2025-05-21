@@ -6,7 +6,9 @@ from typing import Any, Callable, List, Mapping, Tuple
 import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
+
+logger = logging.getLogger(__name__)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -119,7 +121,7 @@ def generate_index_put_kernel(
         code.writeline(f"input_offset = {' + '.join(comp)}")
         comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
         comp += [
-            f"input_idx{indices_len+i} * values_stride{index_rank+i}"
+            f"input_idx{indices_len + i} * values_stride{index_rank + i}"
             for i in range(inp_rank - indices_len)
         ]
         code.writeline(f"values_offset = {' + '.join(comp)}")
@@ -223,14 +225,13 @@ class IndexPutFunction:
                 "_index_put_jit_function",
                 code,
             )
-            file_name = f"index_put_{key}_pid_{self.pid}.py"
-
-            with open(code_cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
+            file_name = f"index_put_{key}.py"
+            file_path = code_cache_dir() / file_name
+            write_atomic(file_path, code.getvalue())
 
             spec = importlib.util.spec_from_file_location(
-                f"_gen_module_rank_{key}_pid_{self.pid}",
-                f.name,
+                f"_gen_module_rank_{key}",
+                file_path,
             )
 
             m = importlib.util.module_from_spec(spec)
@@ -251,7 +252,7 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logging.debug("GEMS INDEX PUT")
+    logger.debug("GEMS INDEX PUT")
 
     indices = list(indices)
     target_shape = get_max_rank_shape(indices)
@@ -262,3 +263,16 @@ def index_put(inp, indices, values, accumulate=False):
     out = inp.clone()
     _index_put_func(out, indices, values, accumulate)
     return out
+
+
+def index_put_(inp, indices, values, accumulate=False):
+    logger.debug("GEMS INDEX PUT")
+
+    indices = list(indices)
+    target_shape = get_max_rank_shape(indices)
+    broadcast_indices(indices, target_shape)
+    target_shape += inp.shape[len(indices) :]
+    values = torch.broadcast_to(values, target_shape)
+
+    _index_put_func(inp, indices, values, accumulate)
+    return inp

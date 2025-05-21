@@ -10,6 +10,8 @@ from flag_gems.utils.random_utils import update_philox_state
 
 from .. import runtime
 
+logger = logging.getLogger(__name__)
+
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
 @triton.jit
@@ -320,7 +322,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
-    logging.debug("GEMS SCALED DOT PRODUCT ATTENTION")
+    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.

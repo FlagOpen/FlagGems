@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def heur_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["n_elements"], 12))  # cluster_num
@@ -35,13 +37,15 @@ def masked_select_kernel(
 
     inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
     select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(tl.int1)
-    out_offset = tl.load(prefix_sum_ptr + offsets, mask=mask, other=0.0) - 1
+    out_offset = (
+        tl.load(prefix_sum_ptr + offsets, mask=select_mask and mask, other=0.0) - 1
+    )
 
     tl.store(out_ptr + out_offset, inp, mask=(select_mask and mask))
 
 
 def masked_select(inp, mask):
-    logging.debug("GEMS MASKED SELECT")
+    logger.debug("GEMS MASKED SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)
@@ -61,6 +65,17 @@ def masked_select(inp, mask):
 
     n_elements = inp.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    import os
+
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
     with torch_device_fn.device(inp.device):
         masked_select_kernel[grid](inp, mask_flattened, prefix_sum, out, n_elements)
+
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+        del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
     return out

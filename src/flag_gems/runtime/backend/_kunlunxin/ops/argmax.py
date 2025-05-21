@@ -10,6 +10,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit
@@ -97,7 +99,7 @@ def argmax_kernel(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS ARGMAX")
+    logger.debug("GEMS ARGMAX")
     if dim is None:
         M = inp.numel()
         if dtype is None:
@@ -145,6 +147,9 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
+        isCloseCoreTiling = False
+        if inp.shape == (1024, 1):
+            isCloseCoreTiling = True
         with torch_device_fn.device(inp.device):
             argmax_kernel[grid](
                 inp,
@@ -152,6 +157,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 N,
                 K,
+                isCloseCoreTiling=isCloseCoreTiling,
             )
 
         return out_index

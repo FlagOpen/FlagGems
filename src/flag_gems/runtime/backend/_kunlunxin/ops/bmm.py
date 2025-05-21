@@ -9,12 +9,14 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def heur_group_m(args):
-    if args["BLOCK_M"] > args["BLOCK_N"]:
+    if args["TILE_M"] > args["TILE_N"]:
         return 1
     else:
-        return (args["M"] + args["BLOCK_M"] - 1) // args["BLOCK_M"]
+        return (args["M"] + args["TILE_M"] - 1) // args["TILE_M"]
 
 
 def heur_divisible_m(args):
@@ -143,7 +145,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logging.debug("GEMS BMM")
+    logger.debug("GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

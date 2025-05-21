@@ -1,6 +1,8 @@
 import importlib
 import itertools
+import random
 
+import numpy as np
 import torch
 
 import flag_gems
@@ -8,6 +10,12 @@ import flag_gems
 from .conftest import QUICK_MODE, TO_CPU
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
+bf16_is_supported = flag_gems.runtime.device.support_bf16
+int64_is_supported = flag_gems.runtime.device.support_int64
+
+
+def TestForwardOnly():
+    return flag_gems.vendor_name in []
 
 
 def SkipVersion(module_name, skip_pattern):
@@ -147,11 +155,17 @@ KRON_SHAPES = [
     [(1, 1, 1), (2, 2, 2)],
 ]
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
-FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
+FLOAT_DTYPES = (
+    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+    if bf16_is_supported
+    else PRIMARY_FLOAT_DTYPES
+)
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
-ALL_INT_DTYPES = INT_DTYPES + [torch.int64]
+ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
+COMPLEX_DTYPES = [torch.complex32, torch.complex64]
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-2, -1, 0, 1]
@@ -200,3 +214,11 @@ def unsqueeze_tensor(inp, max_ndim):
     for _ in range(inp.ndim, max_ndim):
         inp = inp.unsqueeze(-1)
     return inp
+
+
+def init_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
