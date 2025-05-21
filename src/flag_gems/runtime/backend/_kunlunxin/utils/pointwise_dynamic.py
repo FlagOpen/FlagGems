@@ -1088,7 +1088,7 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
-        code.writeline("from _kunlunxin.utils.block_size_utils import get_element_size")
+        # code.writeline("from _kunlunxin.utils.block_size_utils import get_element_size")
         code.newline()
         code.newline()
         return code
