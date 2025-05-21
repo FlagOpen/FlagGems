@@ -7,9 +7,7 @@ import triton.language as tl
 from ..utils import broadcastable_to, pointwise_dynamic
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, 1, 2, "NO_OPMATH")]
-)
+@pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, "NO_OPMATH")])
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value):
     inp = tl.where(expand_mask == 1, value, inp)
@@ -38,10 +36,8 @@ def masked_fill(inp, mask, value):
             else inp.clone()
         )
 
-    inp = inp.contiguous()
-    mask = mask.contiguous()
     expand_mask = mask.expand(inp.shape)
-    return masked_fill_kernel(inp, expand_mask.to(torch.int), value)
+    return masked_fill_kernel(inp, expand_mask, value)
 
 
 def masked_fill_(inp, mask, value):
@@ -64,7 +60,5 @@ def masked_fill_(inp, mask, value):
             inp[()] = value
         return inp
 
-    inp = inp.contiguous()
-    mask = mask.contiguous()
     expand_mask = mask.expand(inp.shape)
-    return masked_fill_kernel(inp, expand_mask.to(torch.int), value, out0=inp)
+    return masked_fill_kernel(inp, expand_mask, value, out0=inp)
