@@ -146,6 +146,25 @@ def test_perf_scatter_add():
     bench.run()
 
 
+@pytest.mark.scatter_add_
+def test_perf_scatter_add_():
+    def scatter_add_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype, device)
+        dim = 0
+        out = torch.zeros(inp.shape, dtype=dtype, device=device)
+        index = torch.randint(low=0, high=min(inp.shape), size=inp.shape, device=device)
+        yield out, dim, index, inp
+
+    bench = TensorSelectBenchmark(
+        input_fn=scatter_add_input_fn,
+        op_name="scatter_add_",
+        torch_op=torch.Tensor.scatter_add_,
+        get_gbps=gather_scatter_gbps,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 @pytest.mark.scatter_multiply
 def test_perf_scatter_multiply():
     def scatter_input_fn(shape, dtype, device):

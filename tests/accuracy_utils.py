@@ -154,6 +154,17 @@ KRON_SHAPES = [
     [(3, 3), (3, 3)],
     [(1, 1, 1), (2, 2, 2)],
 ]
+
+SCATTER_ADD_SHAPES = [
+    [(8, 64, 64), (8, 64, 64)],
+    [(8, 64, 64), (4, 64, 64)],
+    [(4, 512, 512), (4, 512, 512)],
+    [(4, 512, 512), (1, 512, 512)],
+    [(128, 128, 128), (128, 128, 128)],
+    [(128, 128, 128), (64, 64, 64)],
+    [(512, 512, 512), (512, 512, 512)],
+    [(512, 512, 512), (512, 256, 256)],
+]
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
