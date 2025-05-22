@@ -284,7 +284,12 @@ class LibEntry(triton.KernelInterface):
                         and (p.default is not inspect._empty)
                     ):
                         constexprs[p.name] = p.default
-                cache[entry_key] = (kernel, constexprs, tune_constexprs, heur_constexprs)
+                cache[entry_key] = (
+                    kernel,
+                    constexprs,
+                    tune_constexprs,
+                    heur_constexprs,
+                )
             return kernel, constexprs
 
         kernel, constexprs, tune_constexprs, heur_constexprs = cache[entry_key]
