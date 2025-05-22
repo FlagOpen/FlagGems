@@ -88,9 +88,6 @@ def index_select_gbps(bench_fn_args, latency):
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
-    if vendor_name == "kunlunxin":
-        if op_name == "masked_select":
-            pytest.skip("CUMSUM UNSUPPORTED")
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -180,7 +177,6 @@ def gather_input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather
 def test_perf_gather():
     bench = TensorSelectBenchmark(
@@ -200,7 +196,6 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
@@ -270,16 +265,22 @@ def test_select_scatter_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+def index_add_gbps(bench_fn_args, latency):
+    index = bench_fn_args[2]
+    src = bench_fn_args[3]
+    io_amount = sum([shape_utils.size_in_bytes(item) for item in [index, src, src]])
+    return io_amount * 1e-9 / (latency * 1e-3)
+
+
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):
         inp = torch.randn(shape, dtype=dtype, device=device)
-        dim = 0
+        dim = 0 if len(shape) == 1 else 1
         src_shape = list(inp.shape)
         index_max = src_shape[dim]
-        index_len = index_max // 2
-        index = torch.randint(0, index_max, (index_len,), device=device)
+        index_len = index_max // 2 if index_max >= 2 else 1
+        index = torch.randperm(index_len, device=device)
         src_shape[dim] = index_len
         src = torch.randn(src_shape, dtype=dtype, device=device)
         yield inp, dim, index, src
@@ -288,7 +289,8 @@ def test_index_add_perf():
         op_name="index_add",
         torch_op=torch.index_add,
         input_fn=index_add_input_fn,
-        dtypes=FLOAT_DTYPES,
+        dtypes=[torch.float16, torch.float32],
+        get_gbps=index_add_gbps,
     )
     bench.run()
 
@@ -366,6 +368,17 @@ def test_index_put_acc_false_perf():
     bench.run()
 
 
+@pytest.mark.index_put_
+def test_index_put__acc_false_perf():
+    bench = IndexPutAccFalseBenchmark(
+        op_name="index_put_",
+        torch_op=torch.index_put_,
+        input_fn=index_put_input_fn(False),
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
 class IndexPutAccTrueBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         INDEX_PUT_SHAPE = (
@@ -379,12 +392,22 @@ class IndexPutAccTrueBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_put
 def test_index_put_acc_true_perf():
     bench = IndexPutAccTrueBenchmark(
         op_name="index_put",
         torch_op=torch.index_put,
+        input_fn=index_put_input_fn(True),
+        dtypes=[torch.float16, torch.float32],
+    )
+    bench.run()
+
+
+@pytest.mark.index_put_
+def test_index_put__acc_true_perf():
+    bench = IndexPutAccTrueBenchmark(
+        op_name="index_put_",
+        torch_op=torch.index_put_,
         input_fn=index_put_input_fn(True),
         dtypes=[torch.float16, torch.float32],
     )
