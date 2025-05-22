@@ -62,7 +62,7 @@ def enable(
             ("bitwise_or.Scalar", bitwise_or_scalar, Autograd.disable),
             ("bitwise_or_.Scalar", bitwise_or_scalar_, Autograd.disable),
             ("bitwise_or.Scalar_Tensor", bitwise_or_scalar_tensor, Autograd.disable),
-            # ("bmm", bmm, Autograd.disable),
+            ("bmm", bmm, Autograd.disable),
             ("clamp", clamp, Autograd.disable),
             ("clamp_", clamp_, Autograd.disable),
             ("clamp.Tensor", clamp_tensor, Autograd.disable),
