@@ -329,7 +329,7 @@ def enable(
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
             ("eye", eye, Autograd.disable),
-            ("eye_m", eye_m, Autograd.disable),
+            ("eye.m", eye_m, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,

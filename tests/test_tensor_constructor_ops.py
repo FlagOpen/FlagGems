@@ -183,28 +183,6 @@ def test_accuracy_randperm(n, dtype):
 
 
 @pytest.mark.eye
-@pytest.mark.parametrize("shape", [2**d for d in range(7, 15)])
-@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
-def test_accuracy_eye(shape: int, dtype):
-    if (
-        TO_CPU
-        and dtype == torch.bfloat16
-        and version.parse(torch.__version__) < version.parse("2.5.0")
-    ):
-        pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
-    # without dtype
-    res_out = torch.eye(shape, device=flag_gems.device)
-    gems_assert_equal(res_out, torch.eye(shape, device="cpu" if TO_CPU else device))
-
-    # with dtype
-    res_out = torch.eye(shape, dtype=dtype, device=flag_gems.device)
-    gems_assert_equal(
-        res_out,
-        torch.eye(shape, dtype=dtype, device="cpu" if TO_CPU else device),
-    )
-
-
-@pytest.mark.eye_m
 @pytest.mark.parametrize(
     "shape",
     [
@@ -212,11 +190,11 @@ def test_accuracy_eye(shape: int, dtype):
         (1024, 256),
         (8192, 4096),
         (4096, 8192),
-        (4096, 4096),
-    ],
+    ]
+    + [(2**d, 2**d) for d in range(7, 13)],
 )
 @pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
-def test_accuracy_eye_m(shape, dtype):
+def test_accuracy_eye(shape, dtype):
     if (
         TO_CPU
         and dtype == torch.bfloat16
@@ -224,15 +202,29 @@ def test_accuracy_eye_m(shape, dtype):
     ):
         pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
     n, m = shape
-    print(f"test_accuracy_eye: {n}, {m}, {dtype}")
 
-    # without dtype
-    res_out = torch.eye(n, m, device=flag_gems.device)
+    # test eye(n, m) without dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, m, device=flag_gems.device)
     gems_assert_equal(res_out, torch.eye(n, m, device="cpu" if TO_CPU else device))
 
     # with dtype
-    res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
     gems_assert_equal(
         res_out,
         torch.eye(n, m, dtype=dtype, device="cpu" if TO_CPU else device),
+    )
+
+    # test eye(n)
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(n, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(n, dtype=dtype, device="cpu" if TO_CPU else device),
     )
