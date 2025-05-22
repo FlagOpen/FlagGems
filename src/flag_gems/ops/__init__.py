@@ -57,6 +57,8 @@ from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .exponential_ import exponential_
+from .eye import eye
+from .eye_m import eye_m
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
@@ -391,4 +393,6 @@ __all__ = [
     "vdot",
     "mse_loss",
     "log",
+    "eye",
+    "eye_m",
 ]
