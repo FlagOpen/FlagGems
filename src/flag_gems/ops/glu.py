@@ -1,22 +1,24 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
-import logging 
+
 from ..utils import pointwise_dynamic, tl_extra_shim
 
 exp = tl_extra_shim.exp
 
+
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def glu_kernel(a, b):
-    b_float = b.to(tl.float32)
-    sigmoid_b = 1 / (1 + exp(-b_float))
+    sigmoid_b = 1 / (1 + exp(-b.to(tl.float32)))
     result = a * sigmoid_b
 
     return result
 
 
-def glu(self, dim = -1):
+def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
     logging.debug("GLU FORWARD")
     # Split into a and b
