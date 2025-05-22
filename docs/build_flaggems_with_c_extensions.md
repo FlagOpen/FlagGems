@@ -1,5 +1,11 @@
 # Build FlagGems with C extensions
 
+## Install dependencies
+
+```sh
+pip install -U scikit-build-core ninja cmake pybind11 packaging
+```
+
 ## Build System
 FlagGems can be installed either as a pure python package or a package with C-extensions. By default, it does not build the C extensions, which is still an experimental feature.
 
@@ -39,6 +45,8 @@ Here is the compilation options table
 | BUILD_CTESTS            | Whether build CPP unit tests                | OFF     |
 
 To show verbose log, pass `-v` to `pip install`.
+
+If you want a custom buil dir , export environment variable `SKBUILD_BUILD_DIR`.
 
 ## Editbale Installation
 

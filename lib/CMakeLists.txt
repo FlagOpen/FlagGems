@@ -16,15 +16,18 @@ target_link_libraries(operators
   PRIVATE TritonJIT::triton_jit)
 add_library(FlagGems::operators ALIAS operators)
 
-include(GNUInstallDirs)
-install(
-  DIRECTORY "${PROJECT_SOURCE_DIR}/include/flag_gems"
-  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(TARGETS operators
-  EXPORT FlagGemsTargets
-  DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(EXPORT FlagGemsTargets
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FlagGems
-  NAMESPACE FlagGems::
-  FILE FlagGemsTargets.cmake)
-export(EXPORT FlagGemsTargets FILE "${PROJECT_BINARY_DIR}/FlagGemsTargets.cmake")
+
+if (FLAGGEMS_INSTALL)
+  include(GNUInstallDirs)
+  install(
+    DIRECTORY "${PROJECT_SOURCE_DIR}/include/flag_gems"
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(TARGETS operators
+    EXPORT FlagGemsTargets
+    DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  install(EXPORT FlagGemsTargets
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FlagGems
+    NAMESPACE FlagGems::
+    FILE FlagGemsTargets.cmake)
+  export(EXPORT FlagGemsTargets FILE "${PROJECT_BINARY_DIR}/FlagGemsTargets.cmake")
+endif()
