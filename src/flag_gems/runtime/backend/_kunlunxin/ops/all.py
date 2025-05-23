@@ -9,6 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 # import math
 
 
@@ -130,7 +131,6 @@ def all_kernel_1(
     inp,
     mid,
     n_elements,
-    mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -160,9 +160,8 @@ def all_kernel_2(
 
 
 def all(inp):
-    logging.debug("GEMS ALL")
+    logger.debug("GEMS ALL")
     n_elements = inp.numel()
-    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     block_size = min(
         triton.cdiv(get_block(n_elements), cluster_num),
         triton.cdiv(buf_len_per_core * core_num, 4),
@@ -173,7 +172,7 @@ def all(inp):
     if n_elements >= vector_size * thread_num:
         # according to api, op == all, use min to calculate
         inpf = inp.to(torch.float)
-        midf = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
+        midf = torch.empty((mid_size,), dtype=torch.float, device=inp.device)
         outf = torch.empty([], dtype=torch.float, device=inp.device)
 
         with torch_device_fn.device(inp.device):
@@ -192,7 +191,7 @@ def all(inp):
 
         with torch_device_fn.device(inp.device):
             all_kernel_1[(mid_size, 1)](
-                inp, mid, n_elements, mid_size, block_size, buffer_size_limit=2048
+                inp, mid, n_elements, block_size, buffer_size_limit=2048
             )
             if mid_size == 1:
                 return mid.reshape([])
@@ -202,7 +201,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ALL DIM")
+    logger.debug("GEMS ALL DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -237,7 +236,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ALL DIMS")
+    logger.debug("GEMS ALL DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

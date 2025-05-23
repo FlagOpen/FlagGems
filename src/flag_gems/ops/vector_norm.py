@@ -10,7 +10,11 @@ from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
 
-pow = tl_extra_shim.pow
+try:
+    import torch_npu  # noqa: F401
+except:  # noqa: E722
+    pow = tl_extra_shim.pow
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -253,7 +257,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logging.debug("GEMS VECTOR NORM")
+    logger.debug("GEMS VECTOR NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:
