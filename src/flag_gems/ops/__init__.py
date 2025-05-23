@@ -34,6 +34,7 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
+from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .diag import diag
@@ -217,6 +218,7 @@ __all__ = [
     "pad",
     "constant_pad_nd",
     "cummin",
+    "cummax",
     "cumsum",
     "normed_cumsum",
     "true_divide",
