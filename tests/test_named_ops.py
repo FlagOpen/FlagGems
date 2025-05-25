@@ -73,6 +73,7 @@ unary_pointwise_ops_ut_map = {
     "cos": ("test_accuracy_cos",),
     "exp": ("test_accuracy_exp",),
     "gelu": ("test_accuracy_gelu",),
+    "glu": ("test_accuracy_glu",),
     "isinf": ("test_accuracy_isinf",),
     "isnan": ("test_accuracy_isnan",),
     "neg": ("test_accuracy_neg",),
@@ -175,6 +176,7 @@ special_ops_ut_map = {
     "embedding": ("test_embedding",),
     "resolve_neg": ("test_accuracy_resolve_neg",),
     "resolve_conj": ("test_accuracy_resolve_conj",),
+    "upsample_bilinear2d": ("test_upsample_bilinear2d",),
 }
 
 op_name_to_unit_test_maps = {

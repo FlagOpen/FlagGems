@@ -276,6 +276,7 @@ def enable(
             ("masked_fill_.Scalar", masked_fill_, Autograd.disable),
             ("_unique2", _unique2, Autograd.disable),
             ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa, Autograd.disable),
+            ("upsample_bilinear2d", upsample_bilinear2d, Autograd.disable),
             ("upsample_nearest2d", upsample_nearest2d, Autograd.disable),
             ("nonzero", nonzero, Autograd.disable),
             ("repeat", repeat, Autograd.disable),

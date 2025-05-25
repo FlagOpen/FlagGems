@@ -558,6 +558,28 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
+import pytest
+@pytest.mark.upsample_bilinear2d
+@pytest.mark.parametrize("input_shape", [
+    (32, 16, 128, 128),
+    (15, 37, 104, 99),
+    (22, 52, 127, 127),
+    (34, 12, 112, 56),
+])
+@pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("align_corners", [True, False])
+@pytest.mark.parametrize("scale_factors", [(2, 2), (2.1, 3.7), (1.5, 2.2), (0.5, 1.4)])
+def test_upsample_bilinear2d(input_shape, input_dtype, align_corners, scale_factors):
+    input = torch.rand(input_shape, dtype=input_dtype, device='cuda')
+    ref_input = to_reference(input)
+    output_size = [int(input.shape[i + 2] * scale_factors[i]) for i in range(2)]
+    ref_output = torch._C._nn.upsample_bilinear2d(input=ref_input, output_size=output_size, align_corners=align_corners).to(input_dtype)
+    with flag_gems.use_gems():
+        output = torch._C._nn.upsample_bilinear2d(input=input, output_size=output_size, align_corners=align_corners).to(input_dtype)
+    gems_assert_close(output, ref_output, input_dtype)
+
+
+
 @pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
