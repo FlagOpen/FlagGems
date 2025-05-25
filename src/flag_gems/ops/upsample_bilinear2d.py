@@ -58,7 +58,7 @@ def upsample_bilinear2d_kernel(
     offset_w = block_w_idx * BLOCK_SIZE_W + tl.arange(0, BLOCK_SIZE_W)[None, :]
     mask = (offset_h < H_out) & (offset_w < W_out)
     # Coordinate Mapping
-    if align_corners is True:
+    if align_corners:
         x = offset_w.to(tl.float32) * (W_in - 1) / (W_out - 1)
         y = offset_h.to(tl.float32) * (H_in - 1) / (H_out - 1)
     else:
