@@ -274,7 +274,7 @@ def test_pref_upsample_bilinear2d():
         batch, channel, height, weight = shape
         input = torch.randn(size=shape, device=device, dtype=dtype)
         scale_factors = (2, 2)
-        align_corners = True
+        align_corners = False
         output_size = [
             int(height * scale_factors[0]),
             int(weight * scale_factors[1]),
@@ -285,6 +285,7 @@ def test_pref_upsample_bilinear2d():
             "align_corners": align_corners,
             "scale_factors": None,
         },
+
     bench = UpsampleBenchmark(
         input_fn=upsample_bilinear2d_inpput_fn,
         op_name="upsample_bilinear2d",
