@@ -213,7 +213,7 @@ class IndexFunction:
                 code,
             )
 
-            file_name = f"index_put_{key}.py"
+            file_name = f"index_{key}.py"
             file_path = code_cache_dir() / file_name
             write_atomic(file_path, code.getvalue())
 
