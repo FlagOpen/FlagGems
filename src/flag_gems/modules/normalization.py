@@ -27,7 +27,6 @@ try:
     from flag_gems import ext_ops  # noqa: F401
 
     has_c_extension = True
-    print("FLAGGEMS C++ extensions loaded successfully.")
 except ImportError:
     has_c_extension = False
 
