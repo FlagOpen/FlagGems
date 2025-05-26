@@ -8,15 +8,39 @@
 # Our design:
 # - Aligns with PyTorch's interface for compatibility and ease of integration.
 
+import logging
 from typing import List, Optional, Union
 
 import torch
 from torch import Size
 from torch.nn import RMSNorm
 
+logger = logging.getLogger(__name__)
+
+# try:
+#     from flag_gems import ext_ops  # noqa: F401
+#     has_c_extension = True
+# except ImportError:
+#     has_c_extension = False
+has_c_extension = True
+
 __all__ = [
+    "gems_rms_forward",
     "GemsRMSNorm",
 ]
+
+
+def gems_rms_forward(
+    x: torch.Tensor, residual: Optional[torch.Tensor], weight: torch.Tensor, eps: float
+) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+    add_residual = residual is not None
+    if add_residual:
+        logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
+        torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
+        return x, residual
+    else:
+        logger.debug("GEMS CUSTOM RMS_NORM")
+        return torch.ops.flag_gems.rms_norm(x, weight, eps)
 
 
 class GemsRMSNorm(RMSNorm):
@@ -48,11 +72,4 @@ class GemsRMSNorm(RMSNorm):
         """
         Runs forward pass.
         """
-        add_residual = residual is not None
-        if add_residual:
-            return torch.ops.flag_gems.fused_add_rms_norm(
-                x, residual, self.weight, self.eps
-            )
-        else:
-            return torch.ops.flag_gems.rms_norm(x, self.weight, self.eps)
-            # return torch.ops.flag_gems.rms_norm(x, self.normalized_shape, self.weight, self.eps)
+        return gems_rms_forward(x, residual, self.weight, self.eps)

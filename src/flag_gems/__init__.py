@@ -15,6 +15,7 @@ from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
 from .ops import *  # noqa: F403
+from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
@@ -277,7 +278,7 @@ def enable(
             ("fill.Scalar", fill_scalar, Autograd.disable),
             ("fill.Tensor", fill_tensor, Autograd.disable),
             ("fill_.Scalar", fill_scalar_, Autograd.disable),
-            #("fill_.Tensor", fill_tensor_, Autograd.disable),
+            # ("fill_.Tensor", fill_tensor_, Autograd.disable),
             ("flip", flip, Autograd.disable),
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
