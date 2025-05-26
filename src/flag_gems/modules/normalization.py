@@ -63,22 +63,13 @@ def gems_rms_forward(
 
 class GemsRMSNorm(nn.Module):
     """
-    Applies Root Mean Square Layer Normalization over a mini-batch of inputs.
+    GemsRMSNorm implementation compatible with both PyTorch and vLLM behavior.
 
-    A custom implementation of RMSNorm that is compatible with both
-    PyTorch RMSNorm and vLLM RMSNorm behavior.
+    This module directly inherits from `nn.Module` instead of `torch.nn.RMSNorm`
+    (introduced in PyTorch 2.4.0) to avoid version compatibility issues.
 
-    Unlike PyTorch's `torch.nn.RMSNorm`, which was introduced in v2.4.0,
-    this implementation avoids version compatibility issues by directly
-    inheriting from `torch.nn.Module`.
-
-    The design mimics the interface and functionality of the official
-    PyTorch and vLLM implementations, while providing additional flexibility
-    to plug in custom fused CUDA/C++ kernels (via `flag_gems` extensions)
-    when available.
-
-    This module supports both standard RMS normalization and
-    fused residual addition + RMS normalization.
+    It also supports fused residual addition (`fused_add_rms_norm` behavior),
+    which PyTorch's RMSNorm does not provide.
     """
 
     __constants__ = ["normalized_shape", "eps", "elementwise_affine"]
@@ -123,7 +114,8 @@ class GemsRMSNorm(nn.Module):
         residual: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
-        Runs forward pass.
+        Applies RMSNorm to input. If residual is provided, applies
+        fused residual addition and normalization.
         """
         return gems_rms_forward(x, residual, self.weight, self.eps)
 
