@@ -11,7 +11,7 @@ flag_gems.apply_gems_patches_to_vllm(verbose=True)
 
 
 # enable torch profiler, can also be set on cmd line
-os.environ["VLLM_TORCH_PROFILER_DIR"] = "./vllm_profile"
+# os.environ["VLLM_TORCH_PROFILER_DIR"] = "./vllm_profile"
 
 # Sample prompts.
 prompts = [
