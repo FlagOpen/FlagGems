@@ -8,7 +8,7 @@
 # Design notes:
 # - Aligns with PyTorch’s RMSNorm interface for compatibility.
 # - Works with or without flag_gems C++ wrappers.
-# - Avoids relying on torch.nn.RMSNorm (introduced in v2.3.0) for broader compatibility.
+# - Avoids relying on torch.nn.RMSNorm (introduced in v2.4.0) for broader compatibility.
 
 import logging
 import numbers
@@ -27,6 +27,7 @@ try:
     from flag_gems import ext_ops  # noqa: F401
 
     has_c_extension = True
+    print("FLAGGEMS C++ extensions loaded successfully.")
 except ImportError:
     has_c_extension = False
 
@@ -67,7 +68,7 @@ class GemsRMSNorm(nn.Module):
     A custom implementation of RMSNorm that is compatible with both
     PyTorch RMSNorm and vLLM RMSNorm behavior.
 
-    Unlike PyTorch's `torch.nn.RMSNorm`, which was introduced in v2.3.0,
+    Unlike PyTorch's `torch.nn.RMSNorm`, which was introduced in v2.4.0,
     this implementation avoids version compatibility issues by directly
     inheriting from `torch.nn.Module`.
 
