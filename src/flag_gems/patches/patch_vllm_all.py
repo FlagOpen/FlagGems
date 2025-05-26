@@ -1,5 +1,3 @@
-from vllm.model_executor.layers.layernorm import RMSNorm
-
 from flag_gems.modules.normalization import gems_rms_forward
 from flag_gems.patches.patch_util import patch_module_method
 
@@ -9,4 +7,6 @@ def custom_forward_cuda(self, x, residual=None):
 
 
 def apply_gems_patches_to_vllm(verbose=True):
+    from vllm.model_executor.layers.layernorm import RMSNorm
+
     patch_module_method(RMSNorm, "forward_cuda", custom_forward_cuda, verbose)

@@ -14,12 +14,14 @@ from typing import List, Optional, Union
 import torch
 from torch import Size
 from torch.nn import RMSNorm
+
 import flag_gems
 
 logger = logging.getLogger(__name__)
 
 try:
     from flag_gems import ext_ops  # noqa: F401
+
     has_c_extension = True
 except ImportError:
     has_c_extension = False
@@ -42,7 +44,10 @@ def gems_rms_forward(
             return x, residual
         else:
             residual = x + residual
-            return flag_gems.rms_norm(residual, list(weight.size()), weight, eps), residual
+            return (
+                flag_gems.rms_norm(residual, list(weight.size()), weight, eps),
+                residual,
+            )
     else:
         logger.debug("GEMS CUSTOM RMS_NORM")
         if has_c_extension:
