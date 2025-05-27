@@ -261,6 +261,10 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
 def test_embedding_backward(
     EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype
 ):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     res_grad = torch.randn((Batch, M, N), device=flag_gems.device, dtype=dtype)
     res_indices = torch.randint(0, EmbeddingSize, (Batch, M), device=flag_gems.device)
     num_weights = EmbeddingSize
