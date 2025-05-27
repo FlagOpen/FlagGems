@@ -429,8 +429,12 @@ def test_accuracy_weightnorm(shape, dtype, dim):
     res_v_grad, res_g_grad = torch.autograd.grad(
         res_w_out, (v, g), grad_outputs=res_w_grad
     )
-    gems_assert_close(res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True)
-    gems_assert_close(res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True)
+    gems_assert_close(
+        res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True
+    )
+    gems_assert_close(
+        res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True
+    )
 
 
 WEIGHT_NORM_INTERFACE_SHAPE_DIM = list(
