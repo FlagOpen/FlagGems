@@ -13,7 +13,8 @@ from .accuracy_utils import (
     to_reference,
 )
 
-
+@pytest.mark.dropout
+@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
