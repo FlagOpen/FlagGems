@@ -9,6 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.
@@ -57,7 +58,6 @@ def any_kernel_dim(
     N,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
@@ -118,9 +118,7 @@ def any_kernel_1(
     inp,
     mid,
     n_elements,
-    mid_size,
     BLOCK_SIZE: tl.constexpr,
-    buffer_size_limit: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -134,9 +132,7 @@ def any_kernel_1(
 
 @libentry()
 @triton.jit
-def any_kernel_2(
-    mid, out, MID_SIZE, BLOCK_MID: tl.constexpr, buffer_size_limit: tl.constexpr
-):
+def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < MID_SIZE
@@ -146,17 +142,19 @@ def any_kernel_2(
 
 
 def any(inp):
-    logging.debug("GEMS ANY")
+    logger.debug("GEMS ANY")
     n_elements = inp.numel()
-
-    block_size = triton.cdiv(get_block(n_elements), cluster_num)
+    block_size = min(
+        triton.cdiv(get_block(n_elements), cluster_num),
+        triton.cdiv(buf_len_per_core * core_num, 4),
+    )
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
     if n_elements >= vector_size * thread_num:
         # according to api, op == any, use max to calculate
         inpf = inp.to(torch.float)
-        midf = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
+        midf = torch.empty((mid_size,), dtype=torch.float, device=inp.device)
         outf = torch.empty([], dtype=torch.float, device=inp.device)
 
         with torch_device_fn.device(inp.device):
@@ -174,16 +172,18 @@ def any(inp):
         out = torch.empty([], dtype=torch.bool, device=inp.device)
 
         with torch_device_fn.device(inp.device):
-            any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
+            any_kernel_1[(mid_size, 1)](
+                inp, mid, n_elements, block_size, buffer_size_limit=2048
+            )
             if mid_size == 1:
                 return mid.reshape([])
-            any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+            any_kernel_2[(1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
     return out
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY DIM")
+    logger.debug("GEMS ANY DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -218,7 +218,7 @@ def any_dim(inp, dim=None, keepdim=False):
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY DIMS")
+    logger.debug("GEMS ANY DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)

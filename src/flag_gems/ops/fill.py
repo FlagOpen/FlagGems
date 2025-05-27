@@ -7,6 +7,8 @@ import triton.language as tl
 from ..runtime import torch_device_fn
 from ..utils import pointwise_dynamic
 
+logger = logging.getLogger(__name__)
+
 
 @pointwise_dynamic(
     is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")], num_outputs=1
@@ -43,7 +45,9 @@ def fill_tensor(input, value):
 
 
 def fill_tensor_(self, value):
-    logging.debug("GEMS FILL_TENSOR_")
+    if not value.is_cuda:
+        return fill_scalar_(self, value.item())
+    logger.debug("GEMS FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."

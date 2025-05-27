@@ -1,5 +1,4 @@
 import logging
-import os
 
 import torch
 
@@ -14,6 +13,7 @@ except ImportError:
 from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
+from .logging_utils import setup_flaggems_logging
 from .ops import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
@@ -25,19 +25,6 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
-
-
-class LogOncePerLocationFilter(logging.Filter):
-    def __init__(self):
-        super().__init__()
-        self.logged_locations = set()
-
-    def filter(self, record):
-        key = (record.pathname, record.lineno)
-        if key in self.logged_locations:
-            return False
-        self.logged_locations.add(key)
-        return True
 
 
 def enable(
@@ -61,7 +48,8 @@ def enable(
             ("arange.start_step", arange_start, Autograd.disable),
             ("arange.start", arange_start, Autograd.disable),
             ("arange", arange, Autograd.disable),
-            ("batch_norm", batch_norm, Autograd.enable),
+            ("native_batch_norm", batch_norm, Autograd.disable),
+            ("native_batch_norm_backward", batch_norm_backward, Autograd.disable),
             ("bitwise_and.Tensor", bitwise_and_tensor, Autograd.disable),
             ("bitwise_and_.Tensor", bitwise_and_tensor_, Autograd.disable),
             ("bitwise_and.Scalar", bitwise_and_scalar, Autograd.disable),
@@ -84,6 +72,7 @@ def enable(
             ("pad", pad, Autograd.disable),
             ("constant_pad_nd", constant_pad_nd, Autograd.disable),
             ("cumsum", cumsum, Autograd.disable),
+            ("cumsum.out", cumsum_out, Autograd.disable),
             ("cummin", cummin, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div_.Tensor", true_divide_, Autograd.disable),
@@ -130,10 +119,12 @@ def enable(
             ("remainder.Scalar", remainder, Autograd.disable),
             ("remainder_.Scalar", remainder_, Autograd.disable),
             ("remainder.Scalar_Tensor", remainder, Autograd.disable),
-            ("native_dropout", native_dropout, Autograd.enable),
+            ("native_dropout", dropout, Autograd.disable),
+            ("native_dropout_backward", dropout_backward, Autograd.disable),
             ("erf", erf, Autograd.disable),
             ("erf_", erf_, Autograd.disable),
-            ("embedding", embedding, Autograd.enable),
+            ("embedding", embedding, Autograd.disable),
+            ("embedding_backward", embedding_backward, Autograd.disable),
             ("eq.Tensor", eq, Autograd.disable),
             ("eq.Scalar", eq_scalar, Autograd.disable),
             ("exp", exp, Autograd.disable),
@@ -141,14 +132,19 @@ def enable(
             ("exponential_", exponential_, Autograd.disable),
             ("ge.Tensor", ge, Autograd.disable),
             ("ge.Scalar", ge_scalar, Autograd.disable),
-            ("gelu", gelu, Autograd.enable),
-            ("gelu_", gelu_, Autograd.enable),
-            ("native_group_norm", group_norm, Autograd.enable),
-            ("_weight_norm_interface", weight_norm_interface, Autograd.enable),
-            ("_weight_norm", weight_norm, Autograd.enable),
+            ("gelu", gelu, Autograd.disable),
+            ("gelu_", gelu_, Autograd.disable),
+            ("gelu_backward", gelu_backward, Autograd.disable),
+            ("native_group_norm", group_norm, Autograd.disable),
+            ("native_group_norm_backward", group_norm_backward, Autograd.disable),
+            ("_weight_norm_interface", weight_norm_interface, Autograd.disable),
+            (
+                "_weight_norm_interface_backward",
+                weight_norm_interface_backward,
+                Autograd.disable,
+            ),
             ("gt.Tensor", gt, Autograd.disable),
             ("gt.Scalar", gt_scalar, Autograd.disable),
-            ("instance_norm", instance_norm, Autograd.enable),
             ("isfinite", isfinite, Autograd.disable),
             ("isin.Tensor_Tensor", isin, Autograd.disable),
             ("isin.Scalar_Tensor", isin, Autograd.disable),
@@ -157,7 +153,8 @@ def enable(
             ("isnan", isnan, Autograd.disable),
             ("minimum", minimum, Autograd.disable),
             ("maximum", maximum, Autograd.disable),
-            ("native_layer_norm", layer_norm, Autograd.enable),
+            ("native_layer_norm", layer_norm, Autograd.disable),
+            ("native_layer_norm_backward", layer_norm_backward, Autograd.disable),
             ("le.Tensor", le, Autograd.disable),
             ("le.Scalar", le_scalar, Autograd.disable),
             ("lt.Tensor", lt, Autograd.disable),
@@ -200,22 +197,28 @@ def enable(
             ("pow_.Tensor", pow_tensor_tensor_, Autograd.disable),
             ("reciprocal", reciprocal, Autograd.disable),
             ("reciprocal_", reciprocal_, Autograd.disable),
-            ("relu", relu, Autograd.enable),
-            ("relu_", relu_, Autograd.enable),
+            ("relu", relu, Autograd.disable),
+            ("relu_", relu_, Autograd.disable),
             ("rsqrt", rsqrt, Autograd.disable),
             ("rsqrt_", rsqrt_, Autograd.disable),
-            ("sigmoid", sigmoid, Autograd.enable),
-            ("sigmoid_", sigmoid_, Autograd.enable),
-            ("silu", silu, Autograd.enable),
-            ("silu_", silu_, Autograd.enable),
+            ("sigmoid", sigmoid, Autograd.disable),
+            ("sigmoid_", sigmoid_, Autograd.disable),
+            ("sigmoid_backward", sigmoid_backward, Autograd.disable),
+            ("silu", silu, Autograd.disable),
+            ("silu_", silu_, Autograd.disable),
+            ("silu_backward", silu_backward, Autograd.disable),
             ("sin", sin, Autograd.disable),
             ("sin_", sin_, Autograd.disable),
-            ("softmax.int", softmax, Autograd.enable),
+            ("_softmax", softmax, Autograd.disable),
+            ("_softmax_backward_data", softmax_backward, Autograd.disable),
             ("sort", sort, Autograd.disable),
             ("sub.Tensor", sub, Autograd.disable),
             ("sub_.Tensor", sub_, Autograd.disable),
-            ("tanh", tanh, Autograd.enable),
-            ("tanh_", tanh_, Autograd.enable),
+            ("tanh", tanh, Autograd.disable),
+            ("tanh_", tanh_, Autograd.disable),
+            ("tanh_backward", tanh_backward, Autograd.disable),
+            ("threshold", threshold, Autograd.disable),
+            ("threshold_backward", threshold_backward, Autograd.disable),
             ("triu", triu, Autograd.disable),
             # ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
@@ -247,9 +250,8 @@ def enable(
             ("any.dim", any_dim, Autograd.disable),
             ("any.dims", any_dims, Autograd.disable),
             ("quantile", quantile, Autograd.disable),
-            ("log_softmax.int", log_softmax, Autograd.enable),
-            ("outer", outer, Autograd.enable),
-            ("cross_entropy_loss", cross_entropy_loss, Autograd.enable),
+            ("_log_softmax", log_softmax, Autograd.disable),
+            ("_log_softmax_backward_data", log_softmax_backward, Autograd.disable),
             ("nll_loss_forward", nll_loss_forward, Autograd.disable),
             ("nll_loss_backward", nll_loss_backward, Autograd.disable),
             ("nll_loss2d_forward", nll_loss2d_forward, Autograd.disable),
@@ -314,24 +316,13 @@ def enable(
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
+            ("to.dtype", to_dtype, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
         forward_only=forward_only,
     )
-    if record:
-        filename = (
-            os.environ.get("HOME") + "/.flaggems/oplist.log" if path is None else path
-        )
-        handler = logging.FileHandler(filename, mode="w")
-        if once:
-            handler.addFilter(LogOncePerLocationFilter())
-        logging.basicConfig(
-            level=logging.DEBUG,
-            handlers=[
-                handler,
-            ],
-        )
+    setup_flaggems_logging(path=path, record=record, once=once)
 
 
 class use_gems:

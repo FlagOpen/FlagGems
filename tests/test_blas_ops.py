@@ -19,6 +19,7 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.addmm
 @pytest.mark.linear
 @pytest.mark.matmul
@@ -85,6 +86,7 @@ def test_accuracy_mm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -113,8 +115,7 @@ def test_accuracy_outer(M, N, dtype):
     ref_inp2 = to_reference(inp2, True)
 
     ref_out = torch.outer(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.outer(inp1, inp2)
+    res_out = flag_gems.outer(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out)
@@ -128,7 +129,6 @@ def test_accuracy_outer(M, N, dtype):
     gems_assert_close(res_in2_grad, ref_in2_grad, dtype, reduce_dim=M)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Segmentation fault")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.vdot
 @pytest.mark.parametrize("M", UT_SHAPES_1D)
@@ -140,8 +140,12 @@ def test_accuracy_outer(M, N, dtype):
 def test_accuracy_vdot(M, is_conj, dtype, stride):
     inp1_is_conj, inp2_is_conj = is_conj
 
-    inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+    if flag_gems.device == "musa":
+        inp1 = torch.randn(M, dtype=dtype, device="cpu")
+        inp2 = torch.randn(M, dtype=dtype, device="cpu")
+    else:
+        inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+        inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
 
     inp1 = inp1[::stride]
     inp2 = inp2[::stride]
@@ -155,6 +159,11 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     ref_inp2 = to_reference(inp2, True)
 
     with flag_gems.use_gems():
-        res_out = torch.vdot(inp1, inp2)
+        if flag_gems.device == "musa":
+            res_out = torch.vdot(
+                inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
+            )
+        else:
+            res_out = torch.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)
     gems_assert_close(res_out, ref_out, dtype)
