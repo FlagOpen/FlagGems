@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -6,18 +7,26 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
+@triton.heuristics(
+    {
+        "UPGRADE": lambda args: math.ceil(
+            (args["M"] * args["N"] * args["batch"]) / (args["TILE_M"] * args["TILE_M"])
+        ).bit_length()
+        > 32,
+    }
+)
 @triton.jit
 def bmm_kernel(
     A,
@@ -26,6 +35,7 @@ def bmm_kernel(
     M,
     N,
     K,
+    batch,
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
@@ -33,22 +43,31 @@ def bmm_kernel(
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
+    UPGRADE: tl.constexpr,
 ):
     # batch offsets
-    pid_b = tl.program_id(2)
+    pid_b = tle.program_id(2)
     A += pid_b * M * K
     B += pid_b * K * N
     O += pid_b * M * N
 
-    pidx = tl.program_id(0)
-    pidy = tl.program_id(1)
+    if UPGRADE:
+        pidx = tle.program_id(0)
+        pidy = tle.program_id(1)
+    else:
+        pidx = tl.program_id(0)
+        pidy = tl.program_id(1)
 
     if GROUP_M == 1:
         pid_m, pid_n = pidx, pidy
     else:
         # reorder CTAs
-        gridx = tl.num_programs(0)
-        gridy = tl.num_programs(1)
+        if UPGRADE:
+            gridx = tle.num_programs(0)
+            gridy = tle.num_programs(1)
+        else:
+            gridx = tl.num_programs(0)
+            gridy = tl.num_programs(1)
         pid = pidx + pidy * gridx
 
         num_CTA_per_group = gridy * GROUP_M
@@ -76,7 +95,7 @@ def bmm_kernel(
 
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for k in range(num_iters):
+    for _ in range(num_iters):
         if DIVISIBLE_K:
             if DIVISIBLE_M:
                 mask_a = None
@@ -87,7 +106,7 @@ def bmm_kernel(
             else:
                 mask_b = mask_n[None, :]
         else:
-            mask_k = offs_k < K - k * TILE_K
+            mask_k = offs_k < K
             if DIVISIBLE_M:
                 mask_a = mask_k[None, :]
             else:
@@ -100,6 +119,7 @@ def bmm_kernel(
         a = tl.load(a_ptrs, mask_a)
         b = tl.load(b_ptrs, mask_b)
 
+        offs_k += TILE_K
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
 
@@ -117,7 +137,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logger.debug("GEMS_CAMBRICON BMM")
+    logger.debug("METAX GEMS BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
@@ -130,5 +150,5 @@ def bmm(A, B):
         batch,
     )
     with torch_device_fn.device(A.device):
-        bmm_kernel[grid_fn](A, B, out, M, N, K)
+        bmm_kernel[grid_fn](A, B, out, M, N, K, batch)
     return out

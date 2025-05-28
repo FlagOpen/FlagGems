@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -6,18 +7,26 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
+@triton.heuristics(
+    {
+        "UPGRADE": lambda args: math.ceil(
+            (args["M"] * args["N"]) / (args["BLOCK_M"] * args["BLOCK_N"])
+        ).bit_length()
+        > 32,
+    }
+)
 @triton.jit
 def mm_kernel(
     A,
@@ -39,10 +48,15 @@ def mm_kernel(
     GROUP_M: tl.constexpr,
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
+    UPGRADE: tl.constexpr,
 ):
     # matrix multiplication
-    pid = tl.program_id(0)
-    pid_z = tl.program_id(1)
+    if UPGRADE:
+        pid = tle.program_id(0)
+        pid_z = tle.program_id(1)
+    else:
+        pid = tl.program_id(0)
+        pid_z = tl.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
@@ -54,24 +68,22 @@ def mm_kernel(
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
     rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
     # pointers
-    A = A + (rm[:, None] * stride_am + rk[None, :] * stride_ak)
-    B = B + (rk[:, None] * stride_bk + rn[None, :] * stride_bn)
+    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
     for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
         if EVEN_K:
-            a = tl.load(A, mask=(rm < M)[:, None], other=0.0)
-            b = tl.load(B, mask=(rn < N)[None, :], other=0.0)
+            a = tl.load(A)
+            b = tl.load(B)
         else:
             k_remaining = K - k * (BLOCK_K * SPLIT_K)
-            a = tl.load(
-                A, mask=(rk[None, :] < k_remaining) & (rm < M)[:, None], other=0.0
-            )
-            b = tl.load(
-                B, mask=(rk[:, None] < k_remaining) & (rn < N)[None, :], other=0.0
-            )
-
+            _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
+            a = tl.load(A, mask=rk[None, :] < k_remaining, other=_0)
+            b = tl.load(B, mask=rk[:, None] < k_remaining, other=_0)
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
@@ -109,7 +121,7 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
-    logger.debug("GEMS_CAMBRICON MM")
+    logger.debug("METAX GEMS MM")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
