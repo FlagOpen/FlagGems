@@ -83,6 +83,10 @@ def test_accuracy_dropout(shape, p, dtype):
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dropout_backward(shape, p, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_mask = torch.randint(0, 2, shape, dtype=torch.bool, device=flag_gems.device)
     ref_grad = to_reference(res_grad)

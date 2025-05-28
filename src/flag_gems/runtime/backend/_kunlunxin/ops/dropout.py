@@ -90,7 +90,6 @@ def dropout_backward_kernel(
     )
     dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
     dx = dy * m * scale
-    # tl.device_print("dx", dx)
     store_offset = tl.where(mask, offset, -1)
     tl.store(DX + store_offset, dx, mask=mask, eviction_policy="evict_first")
 
@@ -140,7 +139,7 @@ def dropout_backward(grad_output, mask, scale):
 
     with torch_device_fn.device(grad_output.device):
         dropout_backward_kernel[grid_fn](
-            grad_output, grad_input, mask, N, scale, BLOCK=8192
+            grad_output, grad_input, mask, N, scale, BLOCK=N
         )
 
     if "TRITONXPU_OTHER_SIM" in os.environ:
