@@ -23,6 +23,8 @@ class UnaryPointwiseBenchmark(Benchmark):
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
+        if self.op_name == "glu":
+            return
         special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
         sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + sp_shapes_3d
@@ -64,6 +66,7 @@ forward_operations = [
     # Activation operations
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
+    ("glu", torch.nn.functional.glu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),

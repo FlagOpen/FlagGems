@@ -64,6 +64,7 @@ from .full_like import full_like
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
@@ -259,6 +260,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "glu",
     "group_norm",
     "group_norm_backward",
     "gt",
