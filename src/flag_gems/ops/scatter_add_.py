@@ -13,6 +13,8 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from ..utils import dim_compress
 
+logger = logging.getLogger(__name__)
+
 
 @triton.jit
 def scatter_add_kernel_1(
@@ -291,7 +293,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter_add_0(inp, dim, index, src):
-    logging.debug("GEMS SCATTER_ADD_0")
+    logger.debug("GEMS SCATTER_ADD_0")
     dtype_convert = False
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         out = inp.to(torch.float32)
@@ -329,7 +331,7 @@ def clip_tensor_to_shape(b, a):
 
 
 def scatter_add_1(x, dim, index, src):
-    logging.debug("GEMS SCATTER_ADD_1")
+    logger.debug("GEMS SCATTER_ADD_1")
     index_dim_n = index.size(dim)
     inp_dim_n = x.size(dim)
     origin = x
