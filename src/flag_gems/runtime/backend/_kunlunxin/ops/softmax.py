@@ -206,6 +206,12 @@ class Softmax(torch.autograd.Function):
                 inp_view = inp.view(M, N, K).transpose(1, 2).contiguous()
                 # 合并 M 和 K 维为 M' = M * K
                 inp_reshaped = inp_view.view(M * K, N)
+                if out.ndim == 3:
+                    m,n,k = out.shape
+                elif out.ndim == 2:
+                    m,n = out.shape
+                origin_dim = out.ndim
+
                 # 分配输出的视图
                 out_view = out.view(M, N, K).transpose(1, 2).contiguous()
                 out_reshaped = out_view.view(M * K, N)
@@ -216,7 +222,13 @@ class Softmax(torch.autograd.Function):
                 softmax_kernel_inner[grid](out_reshaped, inp_reshaped, M * K, N)
 
                 # 将输出恢复到原始布局
-                out_view.copy_(out_reshaped.view(M, K, N).transpose(1, 2))
+                # out_view.copy_(out_reshaped.view(M, K, N).transpose(1, 2))
+                if  M == 1 and origin_dim == 2:
+                    out = out_reshaped.view(K, N).transpose(0, 1)
+                elif M == 1 and origin_dim == 3:
+                    out = out_reshaped.transpose(0, 1).view(m, n, k )
+                else:
+                    out = out_reshaped.view(m, k, n).transpose(1,2)
             else:
                 grid = (M, 1, 1)
                 softmax_kernel_inner[grid](
@@ -267,7 +279,18 @@ class Softmax(torch.autograd.Function):
                 )
 
                 # 将输入梯度恢复到原始布局
-                in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
+                # in_grad_view.copy_(in_grad_reshaped.view(M, K, N).transpose(1, 2))
+                origin_dim = out.ndim
+                if out.ndim == 3:
+                    m,n,k = out.shape
+                elif out.ndim == 2:
+                    m,n = out.shape
+                if  M == 1 and origin_dim == 2:
+                    in_grad = in_grad_reshaped.view(K, N).transpose(0, 1)
+                elif M == 1 and origin_dim == 3:
+                    in_grad = in_grad_reshaped.transpose(0, 1).view(m, n, k )
+                else:
+                    in_grad = in_grad_reshaped.view(m, k, n).transpose(1,2)
             else:
                 grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
                 softmax_backward_kernel_inner[grid](
