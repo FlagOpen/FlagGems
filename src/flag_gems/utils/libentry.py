@@ -204,7 +204,14 @@ class LibTuner(triton.runtime.Autotuner):
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 self.cache[key] = builtins.min(timings, key=timings.get)
-                full_nargs = {**self.nargs, **kwargs, **self.cache[key].all_kwargs()}
+                if major_version == 3:
+                    full_nargs = {
+                        **self.nargs,
+                        **kwargs,
+                        **self.cache[key].all_kwargs(),
+                    }
+                else:
+                    full_nargs = {**self.nargs, **kwargs, **self.cache[key].kwargs}
                 self.pre_hook(full_nargs, reset_only=True)
                 self.configs_timings = timings
             config = self.cache[key]
@@ -217,13 +224,23 @@ class LibTuner(triton.runtime.Autotuner):
                 f"{self.bench_time:.2f}s; best config selected: {self.best_config};"
             )
         if config.pre_hook is not None:
-            full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+            if major_version == 3:
+                full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+            else:
+                full_nargs = {**self.nargs, **kwargs, **config.kwargs}
             config.pre_hook(full_nargs)
-        ret = self.fn.run(
-            *args,
-            **kwargs,
-            **config.all_kwargs(),
-        )
+        if major_version == 3:
+            ret = self.fn.run(
+                *args,
+                **kwargs,
+                **config.all_kwargs(),
+            )
+        else:
+            ret = self.fn.run(
+                *args,
+                **kwargs,
+                **config.kwargs,
+            )
         self.nargs = None
         return ret
 
