@@ -416,8 +416,7 @@ def test_index_put__acc_true_perf():
 
 class IndexAccBenchmark(GenericBenchmark):
     def set_more_shapes(self):
-        INDEX_PUT_SHAPE = (
-            ((2**28,), ((2**12,),)),
+        INDEX_SHAPE = (
             ((2**28,), ((2**16,),)),
             ((32, 32), ((8,), (8,))),
             ((32, 32), ((8,), (2, 8))),
@@ -435,7 +434,7 @@ class IndexAccBenchmark(GenericBenchmark):
                 ),
             ),
         )
-        self.shapes = INDEX_PUT_SHAPE
+        self.shapes = INDEX_SHAPE
         return None
 
 
@@ -455,7 +454,7 @@ def test_index_acc_perf():
         op_name="index",
         torch_op=torch.ops.aten.index,
         input_fn=index_input_fn,
-        dtypes=[torch.float16, torch.float32],
+        dtypes=[torch.float16, torch.float32, torch.bfloat16],
     )
     bench.set_gems(gems_op)
     bench.run()

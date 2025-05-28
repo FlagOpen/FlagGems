@@ -8,6 +8,10 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
+from .gather import gather
+
+logger = logging.getLogger(__name__)
+
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
     max_rank = max([len(index.shape) for index in indices])
@@ -137,7 +141,7 @@ def generate_index_wrapper(
     kernel_name: str,
     code: IndentedBuffer,
 ):
-    code.writeline(f"def {wrapper_name}(input, indices , out):")
+    code.writeline(f"def {wrapper_name}(input, indices, out):")
     with code.indent():
         code.writeline("input_shape = input.shape")
         code.writeline("input_stride = input.stride()")
@@ -240,12 +244,14 @@ _index_func = IndexFunction()
 
 
 def index(inp, indices):
-    logging.debug("GEMS INDEX")
+    logger.debug("GEMS INDEX")
     indices = list(indices)
+    if inp.ndim == 1 and len(indices) == 1:
+        return gather(inp, 0, indices[0])
     target_shape = get_max_rank_shape(indices)
     broadcast_indices(indices, target_shape)
     target_shape += inp.shape[len(indices) :]
-    out = torch.empty(target_shape, dtype=inp.dtype, device="cuda")
+    out = torch.empty(target_shape, dtype=inp.dtype, device=inp.device)
 
     _index_func(inp, indices, out)
     return out
