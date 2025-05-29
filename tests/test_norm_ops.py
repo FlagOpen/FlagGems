@@ -84,18 +84,14 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
-    print(f"N = {N}")
-    print(f"num_groups = {num_groups}")
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_inp = torch.ones(size=(N, C, H, W), dtype=dtype, device=flag_gems.device)
-    res_grad = torch.ones_like(res_inp)
+    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
     res_mean = torch.randn([N, num_groups], dtype=dtype, device=flag_gems.device)
     res_rstd = torch.randn([N, num_groups], dtype=dtype, device=flag_gems.device)
-    print(f"res_mean = {res_mean.cpu()}")
-    print(f"res_rstd = {res_rstd.cpu()}")
 
     if wb_none:
         res_weight = None
@@ -227,6 +223,10 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_layernorm_backward(shape, dtype, wb_none):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(0)
+        torch.cuda.manual_seed_all(0)
+
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad = torch.randn_like(res_inp)
     res_mean = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
