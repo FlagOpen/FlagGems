@@ -1,4 +1,5 @@
 from .cross_entropy_loss import cross_entropy_loss
+from .flash_mla import flash_mla
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
 from .outer import outer
@@ -18,4 +19,5 @@ __all__ = [
     "outer",
     "instance_norm",
     "weight_norm",
+    "flash_mla",
 ]
