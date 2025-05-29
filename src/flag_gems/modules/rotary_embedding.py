@@ -1,7 +1,8 @@
 # Copyright (c) 2025 FlagGems. All rights reserved.
 #
-# This file implements a generic Rotary Position Embedding (RoPE) module,
-# supporting both standard and Yarn-style positional embeddings.
+# This module is designed to provide a unified interface for various Rotary Position Embedding (RoPE) implementations.
+# Currently, it includes only the Yarn-style RoPE used by DeepSeek,
+# but support for other variants will be added progressively.
 #
 # The following components are adapted from DeepSeek-R1:
 # - yarn_find_correction_dim
