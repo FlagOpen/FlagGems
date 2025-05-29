@@ -34,7 +34,8 @@ def reshape_and_cache_kernel(
 
     block_idx = slot_idx // block_size
     block_offset = slot_idx % block_size
-    i = tl.arange(0, n)
+    i = tl.arange(0, triton.next_power_of_2(n))
+    mask = i < n
 
     src_key_idx = token_idx * key_stride + i
     src_value_idx = token_idx * value_stride + i
@@ -57,12 +58,12 @@ def reshape_and_cache_kernel(
         + block_offset
     )
 
-    tgt_key = tl.load(key + src_key_idx)
-    tgt_value = tl.load(value + src_value_idx)
+    tgt_key = tl.load(key + src_key_idx, mask=mask)
+    tgt_value = tl.load(value + src_value_idx, mask=mask)
 
     # TODO: support fp8 dtype
-    tl.store(key_cache + tgt_key_idx, tgt_key)
-    tl.store(value_cache + tgt_value_idx, tgt_value)
+    tl.store(key_cache + tgt_key_idx, tgt_key, mask=mask)
+    tl.store(value_cache + tgt_value_idx, tgt_value, mask=mask)
 
 
 def reshape_and_cache(
