@@ -23,8 +23,6 @@ class UnaryPointwiseBenchmark(Benchmark):
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]
 
     def set_more_shapes(self):
-        if self.op_name == "glu":
-            return
         special_shapes_2d = [(1024, 2**i) for i in range(0, 20, 4)]
         sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + sp_shapes_3d
@@ -66,7 +64,6 @@ forward_operations = [
     # Activation operations
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
-    ("glu", torch.nn.functional.glu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("sigmoid", torch.sigmoid, FLOAT_DTYPES),
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
@@ -143,5 +140,20 @@ def test_to_dtype_perf():
         op_name="to_dtype",
         torch_op=torch.Tensor.to,
         dtypes=[torch.float16, torch.bfloat16, torch.float64],
+    )
+    bench.run()
+
+
+class GluBenchmark(UnaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        return
+
+
+@pytest.mark.to_dtype
+def test_glu_perf():
+    bench = GluBenchmark(
+        op_name="glu",
+        torch_op=torch.nn.functional.glu,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
