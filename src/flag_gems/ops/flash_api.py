@@ -2,9 +2,10 @@ import math
 
 import torch
 import triton
+import flag_gems
 
-from ..runtime import torch_device_fn
-from ..utils.random_utils import update_philox_state
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.random_utils import update_philox_state
 from .flash_kernel import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
@@ -15,6 +16,10 @@ from .flash_kernel import (
 )
 
 _debug = False
+
+
+def CHECK_DEVICE(x):
+    assert x.device.type == flag_gems.device
 
 
 class params_varlen_fwd:
@@ -46,6 +51,7 @@ class params_varlen_fwd:
         "seqused_k_ptr",
         # sizes
         "b",
+        "bk",
         "h",
         "hk",
         "h_hk_ratio",
@@ -103,6 +109,7 @@ class params_varlen_fwd:
         seqused_k_ptr,
         # sizes
         b,
+        bk,
         h,
         hk,
         h_hk_ratio,
@@ -157,6 +164,7 @@ class params_varlen_fwd:
         self.seqused_k_ptr = seqused_k_ptr
         # sizes
         self.b = b
+        self.bk = bk
         self.h = h
         self.hk = hk
         self.h_hk_ratio = h_hk_ratio
@@ -209,8 +217,9 @@ def mha_varlan_fwd(
     return_softmax,
     gen,
 ):
-    q_dtype = q.dtype
+    CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v) 
     q_device = q.device
+    q_dtype = q.dtype
     assert q_dtype in (
         torch.float16,
         torch.bfloat16,
@@ -221,10 +230,10 @@ def mha_varlan_fwd(
     assert k.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
 
-    assert cu_seqlens_q.dtype == torch.float32
+    assert cu_seqlens_q.dtype == torch.int32
     assert cu_seqlens_q.is_contiguous()
 
-    assert cu_seqlens_k.dtype == torch.float32
+    assert cu_seqlens_k.dtype == torch.int32
     assert cu_seqlens_k.is_contiguous()
 
     assert page_table is not None
@@ -238,6 +247,7 @@ def mha_varlan_fwd(
     batch_size = cu_seqlens_q.numel() - 1
     num_rows_per_page = k.size(1)
     num_pages = k.size(0)
+    k_batch_size = num_pages
     # max_num_pages_per_seq = page_table.size(1)
     page_table_batch_stride = page_table.stride(0)
     k_batch_stride = k.stride(0)
@@ -318,37 +328,10 @@ def mha_varlan_fwd(
     if softcap > 0:
         assert p_dropout == 0, "dropout is not supported if softcap is used."
 
-    if out is not None:
-        assert out.stride(-1) == 1
-        assert out.dtype == q.dtype
-        assert out.size() == (total_q, num_heads, head_size)
-        out_ = out
-        if seqlenq_ngroups_swapped:
-            out = torch.empty_like(q, dtype=v.dtype)
-    else:
-        out_ = None
-        out = torch.empty_like(q, dtype=v.dtype)
-
     round_multiple = lambda x, m: (x + m - 1) // m * m
     head_size_rounded = round_multiple(head_size, 32) if head_size < 192 else 256
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
-
-    lse = torch.empty(
-        (num_heads, total_q), dtype=torch.float, device=q_device, dtype=torch.float
-    )
-
-    assert return_softmax is False, "not supported."
-
-    p = torch.empty((), device=q_device)
-
-    assert p_dropout == 0, "dropout is not supported."
-
-    if zero_tensors:
-        out.zero_()
-        lse.fill_(float("-inf"))
-
-    # Prepare params to kernel
 
     M_LOG2E = 1.4426950408889634074
     softmax_scale_log2e = softmax_scale * M_LOG2E
@@ -370,64 +353,90 @@ def mha_varlan_fwd(
         alibi_slopes_batch_stride = 0
         is_alibi = False
 
-    params = params_varlen_fwd(
-        q,  # q_ptr,
-        k,  # k_ptr,
-        v,  # v_ptr,
-        out,  # o_ptr,
-        p,  # p_ptr,
-        lse,  # softmax_lse_ptr,
-        q.stride(-3),  # q_row_stride,
-        k.stride(-3),  # k_row_stride,
-        v.stride(-3),  # v_row_stride,
-        q.stride(-2),  # q_head_stride,
-        k.stride(-2),  # k_head_stride,
-        v.stride(-2),  # v_head_stride,
-        out.stride(-3),  # o_row_stride,
-        out.stride(-2),  # o_head_stride,
-        q_batch_stride,  # q_batch_stride,
-        k_batch_stride,  # k_batch_stride,
-        v_batch_stride,  # v_batch_stride,
-        o_batch_stride,  # o_batch_stride,
-        cu_seqlens_q is not None,  # is_cu_seqlens_q,
-        cu_seqlens_q,  # cu_seqlens_q_ptr,
-        cu_seqlens_k is not None,  # is_cu_seqlens_k,
-        cu_seqlens_k,  # cu_seqlens_k_ptr,
-        seqused_k is not None,  # is_seqused_k,
-        seqused_k,  # seqused_k_ptr,
-        # sizes
-        batch_size,  # b,
-        num_heads,  # h,
-        num_heads_k,  # hk,
-        num_heads / num_heads_k,  # h_hk_ratio,
-        max_seqlen_q,  # seqlen_q,
-        max_seqlen_k,  # seqlen_k,
-        seqlen_q_rounded,  # seqlen_q_rounded,
-        seqlen_k_rounded,  # seqlen_v_rounded,
-        head_size,  # d,
-        head_size_rounded,  # d_rounded,
-        # scaling factors
-        softcap,  # softcap,
-        softmax_scale,  # scale_softmax,
-        softmax_scale_log2e,  # scale_softmax_log2,
-        # causal and swa
-        is_causal,  # is_causal,
-        is_local,  # is_local,
-        window_size_left,  # window_size_left,
-        window_size_right,  # window_size_right,
-        seqlenq_ngroups_swapped,  # seqlenq_ngroups_swapped,
-        # alibi
-        is_alibi,  #
-        alibi_slopes,  # alibi_slopes_ptr,
-        alibi_slopes_batch_stride,  # alibi_slopes_batch_stride,
-        # block table params
-        total_q,  # total_q,
-        page_table,  # page_table_ptr,
-        page_table_batch_stride,  # page_table_batch_stride,
-        num_rows_per_page,  # num_rows_per_page,
-    )
-
+    # Prepare params to kernel
     with torch_device_fn.device(q_device):
+        if out is not None:
+            assert out.stride(-1) == 1
+            assert out.dtype == q.dtype
+            assert out.size() == (total_q, num_heads, head_size)
+            out_ = out
+            if seqlenq_ngroups_swapped:
+                out = torch.empty_like(q, dtype=v.dtype)
+        else:
+            out_ = None
+            out = torch.empty_like(q, dtype=v.dtype)
+        lse = torch.empty(
+            (num_heads, total_q), dtype=torch.float, device=q_device
+        )
+
+        assert return_softmax is False, "not supported."
+
+        p = torch.empty((), device=q_device)
+
+        assert p_dropout == 0, "dropout is not supported."
+
+        if zero_tensors:
+            out.zero_()
+            lse.fill_(float("-inf"))
+
+        params = params_varlen_fwd(
+            q,  # q_ptr,
+            k,  # k_ptr,
+            v,  # v_ptr,
+            out,  # o_ptr,
+            p,  # p_ptr,
+            lse,  # softmax_lse_ptr,
+            q.stride(-3),  # q_row_stride,
+            k.stride(-3),  # k_row_stride,
+            v.stride(-3),  # v_row_stride,
+            q.stride(-2),  # q_head_stride,
+            k.stride(-2),  # k_head_stride,
+            v.stride(-2),  # v_head_stride,
+            out.stride(-3),  # o_row_stride,
+            out.stride(-2),  # o_head_stride,
+            q_batch_stride,  # q_batch_stride,
+            k_batch_stride,  # k_batch_stride,
+            v_batch_stride,  # v_batch_stride,
+            o_batch_stride,  # o_batch_stride,
+            cu_seqlens_q is not None,  # is_cu_seqlens_q,
+            cu_seqlens_q,  # cu_seqlens_q_ptr,
+            seqused_k is None,  # is_cu_seqlens_k,
+            cu_seqlens_k,  # cu_seqlens_k_ptr,
+            seqused_k is not None,  # is_seqused_k,
+            seqused_k,  # seqused_k_ptr,
+            # sizes
+            batch_size,  # b,
+            k_batch_size, # bk,
+            num_heads,  # h,
+            num_heads_k,  # hk,
+            num_heads // num_heads_k,  # h_hk_ratio,
+            max_seqlen_q,  # seqlen_q,
+            max_seqlen_k,  # seqlen_k,
+            seqlen_q_rounded,  # seqlen_q_rounded,
+            seqlen_k_rounded,  # seqlen_v_rounded,
+            head_size,  # d,
+            head_size_rounded,  # d_rounded,
+            # scaling factors
+            softcap,  # softcap,
+            softmax_scale,  # scale_softmax,
+            softmax_scale_log2e,  # scale_softmax_log2,
+            # causal and swa
+            is_causal,  # is_causal,
+            is_local,  # is_local,
+            window_size_left,  # window_size_left,
+            window_size_right,  # window_size_right,
+            seqlenq_ngroups_swapped,  # seqlenq_ngroups_swapped,
+            # alibi
+            is_alibi,  #
+            alibi_slopes,  # alibi_slopes_ptr,
+            alibi_slopes_batch_stride,  # alibi_slopes_batch_stride,
+            # block table params
+            total_q,  # total_q,
+            page_table,  # page_table_ptr,
+            page_table_batch_stride,  # page_table_batch_stride,
+            num_rows_per_page,  # num_rows_per_page,
+        )
+
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -437,17 +446,17 @@ def mha_varlan_fwd(
         args = tuple(getattr(params, k) for k in params.__slots__)
         kernel(*args)
 
-    if seqlenq_ngroups_swapped:
-        out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
-            1, 2
-        )
-        if out_:
-            out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
-            out = out_
-        else:
-            out = out.reshape(batch_size, num_heads_k * max_seqlen_q, head_size)
-        lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
-        lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
+        if seqlenq_ngroups_swapped:
+            out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
+                1, 2
+            )
+            if out_:
+                out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
+                out = out_
+            else:
+                out = out.reshape(batch_size, num_heads_k * max_seqlen_q, head_size)
+            lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
+            lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
 
     return out, lse
 
