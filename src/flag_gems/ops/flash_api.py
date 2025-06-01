@@ -2,10 +2,11 @@ import math
 
 import torch
 import triton
-import flag_gems
 
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import update_philox_state
+
 from .flash_kernel import (
     block_m_splitkv_heuristic,
     block_n_splitkv_heuristic,
@@ -78,7 +79,7 @@ class params_varlen_fwd:
         "total_q",
         "page_table_ptr",
         "page_table_batch_stride",
-        "num_rows_per_page",
+        "block_size",
     )
 
     def __init__(
@@ -136,7 +137,7 @@ class params_varlen_fwd:
         total_q,
         page_table_ptr,
         page_table_batch_stride,
-        num_rows_per_page,
+        block_size,
     ):
         self.q_ptr = q_ptr
         self.k_ptr = k_ptr
@@ -191,7 +192,7 @@ class params_varlen_fwd:
         self.total_q = total_q
         self.page_table_ptr = page_table_ptr
         self.page_table_batch_stride = page_table_batch_stride
-        self.num_rows_per_page = num_rows_per_page
+        self.block_size = block_size
 
 
 def mha_varlan_fwd(
@@ -217,7 +218,7 @@ def mha_varlan_fwd(
     return_softmax,
     gen,
 ):
-    CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v) 
+    CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_device = q.device
     q_dtype = q.dtype
     assert q_dtype in (
@@ -240,12 +241,12 @@ def mha_varlan_fwd(
 
     # q shape: [total_q_tokens, num_heads, head_size]
     # k shape:
-    #   paged_kv: [num_pages, num_rows_per_page, num_heads_k, head_size]
+    #   paged_kv: [num_pages, block_size, num_heads_k, head_size]
     # batch_size, number of sentences
     total_q, num_heads, head_size = q.size()
     num_heads_k = k.size(2)
     batch_size = cu_seqlens_q.numel() - 1
-    num_rows_per_page = k.size(1)
+    block_size = k.size(1)
     num_pages = k.size(0)
     k_batch_size = num_pages
     # max_num_pages_per_seq = page_table.size(1)
@@ -308,9 +309,6 @@ def mha_varlan_fwd(
 
     assert leftpad_k is None, "leftpad_k is not supported."
     assert (
-        num_rows_per_page % 16 == 0
-    ), "Paged KV cache block size must be divisible by 16"
-    assert (
         head_size <= 256
     ), "FlashAttention forward only supports head dimension at most 256"
     assert (
@@ -321,8 +319,8 @@ def mha_varlan_fwd(
     ), "Number of heads in key/value must divide number of heads in query"
 
     assert q.shape == (total_q, num_heads, head_size)
-    assert k.shape == (num_pages, num_rows_per_page, num_heads_k, head_size)
-    assert v.shape == (num_pages, num_rows_per_page, num_heads_k, head_size)
+    assert k.shape == (num_pages, block_size, num_heads_k, head_size)
+    assert v.shape == (num_pages, block_size, num_heads_k, head_size)
     assert k.stride() == v.stride()
 
     if softcap > 0:
@@ -365,9 +363,7 @@ def mha_varlan_fwd(
         else:
             out_ = None
             out = torch.empty_like(q, dtype=v.dtype)
-        lse = torch.empty(
-            (num_heads, total_q), dtype=torch.float, device=q_device
-        )
+        lse = torch.empty((num_heads, total_q), dtype=torch.float, device=q_device)
 
         assert return_softmax is False, "not supported."
 
@@ -406,7 +402,7 @@ def mha_varlan_fwd(
             seqused_k,  # seqused_k_ptr,
             # sizes
             batch_size,  # b,
-            k_batch_size, # bk,
+            k_batch_size,  # bk,
             num_heads,  # h,
             num_heads_k,  # hk,
             num_heads // num_heads_k,  # h_hk_ratio,
@@ -434,7 +430,7 @@ def mha_varlan_fwd(
             total_q,  # total_q,
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
-            num_rows_per_page,  # num_rows_per_page,
+            block_size,  # block_size,
         )
 
         grid = lambda args: (
@@ -442,14 +438,22 @@ def mha_varlan_fwd(
             batch_size,
             num_heads,
         )
+        print("max_seqlen_q", max_seqlen_q)
+        print("batch_size", batch_size)
+        print("num_heads", num_heads)
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
-        kernel(*args)
+
+        # We have to forego parameter autotuning and particularly fix BLOCK_N
+        # to avoid breaking a kv block onto multiple cache pages.
+        BLOCK_M, BLOCK_N = 128, 32
+        assert block_size % BLOCK_N == 0, f"block_size must be divisible by {BLOCK_N}."
+        kernel(*args, BLOCK_M=BLOCK_M, BLOCK_N=BLOCK_N, num_warps=4, num_stages=3)
 
         if seqlenq_ngroups_swapped:
-            out = out.reshape(batch_size, max_seqlen_q, num_heads_k, head_size).transpose(
-                1, 2
-            )
+            out = out.reshape(
+                batch_size, max_seqlen_q, num_heads_k, head_size
+            ).transpose(1, 2)
             if out_:
                 out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
                 out = out_
