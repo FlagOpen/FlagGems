@@ -438,9 +438,6 @@ def mha_varlan_fwd(
             batch_size,
             num_heads,
         )
-        print("max_seqlen_q", max_seqlen_q)
-        print("batch_size", batch_size)
-        print("num_heads", num_heads)
         kernel = flash_varlen_fwd_kernel[grid]
         args = tuple(getattr(params, k) for k in params.__slots__)
 

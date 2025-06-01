@@ -974,41 +974,6 @@ def block_to_cache_index(
     # page_table_ptr is already pointed at the start of the current batch element
     cache_page_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
     return cache_page_index * block_size + page_offset
-    # cache_offset = cache_page_index * page_stride + page_offset * row_stride
-    # return cache_offset
-
-
-# class block_desc:
-#     def __init__(self, base, shape, strides, block_shape, order=None):
-#         self.block_ptr = tl.make_block_ptr(
-#             base=base,
-#             shape=shape,
-#             strides=strides,
-#             offsets=(0, 0),
-#             block_shape=block_shape,
-#             order=order
-#         )
-
-#     def load(self, offsets):
-#         return tl.load(self.block_ptr.advance(offsets), self.block_ptr)
-
-#     def store(self, offsets, v):
-#         return tl.store(self.block_ptr.advance(offsets), v)
-
-
-# @triton.jit
-# def make_tensor_desc(
-#     base: tl.tensor,
-#     shape,
-#     strides,
-#     block_shape,
-#     order
-# ):
-#     return block_desc(base, shape, strides, block_shape, order)
-
-
-# if hasattr(tl, "make_tensor_descriptor"):
-#     make_tensor_desc = tl.make_tensor_descriptor
 
 
 @triton.jit
@@ -1166,16 +1131,7 @@ def flash_varlen_fwd_kernel(
 
     bQ = tl.load(gQ.advance([m_block * BLOCK_M, 0]))
 
-    # Traverse kv blocks in reverse order
     # final_block_size = k_len - max(0, (n_block_max - 1) * BLOCK_N)
-    cache_row_index = block_to_cache_index(
-        n_block_max - 1,
-        page_table_ptr,
-        block_size,
-        page_table_batch_stride,
-        k_row_stride,
-        BLOCK_N,
-    )
 
     acc_ = tl.zeros((BLOCK_M, d), dtype=tl.float32)
     rowmax_ = tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
@@ -1199,10 +1155,17 @@ def flash_varlen_fwd_kernel(
     for step in tl.range(0, n_masking_steps):
         # for step in tl.range(1):
         n_block = n_block_max - 1 - step
+        cache_row_index = block_to_cache_index(
+            n_block,
+            page_table_ptr,
+            block_size,
+            page_table_batch_stride,
+            k_row_stride,
+            BLOCK_N,
+        )
         bK = tl.load(gK.advance([0, cache_row_index]))
         # preload V
         bV = tl.load(gV.advance([cache_row_index, 0]))
-        # tl.device_print('V', bV)
         S = tl.dot(bQ, bK)
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -1221,18 +1184,6 @@ def flash_varlen_fwd_kernel(
             alibi_slope=alibi_slope,
         )
 
-        # Advance kv
-        if n_block > n_block_min:
-            cache_row_index = block_to_cache_index(
-                n_block - 1,
-                page_table_ptr,
-                block_size,
-                page_table_batch_stride,
-                k_row_stride,
-                BLOCK_N,
-            )
-            # tl.device_print('cache_row_index', cache_row_index)
-
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
             acc_,
             S,
@@ -1244,12 +1195,18 @@ def flash_varlen_fwd_kernel(
 
         P = P.to(v_ptr.type.element_ty)
         acc_ = tl.dot(P, bV, acc_)
-    # tl.device_print('rowsum', rowsum_)
-    # tl.device_print('acc', acc_)
 
     for n_block in tl.range(
         n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
     ):
+        cache_row_index = block_to_cache_index(
+            n_block,
+            page_table_ptr,
+            block_size,
+            page_table_batch_stride,
+            k_row_stride,
+            BLOCK_N,
+        )
         bK = tl.load(gK.advance([0, cache_row_index]))
         # preload V
         bV = tl.load(gV.advance([cache_row_index, 0]))
@@ -1270,16 +1227,6 @@ def flash_varlen_fwd_kernel(
             has_alibi=is_alibi,
             alibi_slope=alibi_slope,
         )
-        # Advance kv
-        if n_block > n_block_min:
-            cache_row_index = block_to_cache_index(
-                n_block - 1,
-                page_table_ptr,
-                block_size,
-                page_table_batch_stride,
-                k_row_stride,
-                BLOCK_N,
-            )
 
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
             acc_,
@@ -1289,7 +1236,6 @@ def flash_varlen_fwd_kernel(
             softmax_scale_log2e=scale_softmax_log2,
             is_border=is_local,
         )
-        # tl.device_print('P', P)
         P = P.to(v_ptr.type.element_ty)
         acc_ = tl.dot(P, bV, acc_)
 
