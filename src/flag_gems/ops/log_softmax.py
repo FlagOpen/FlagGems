@@ -42,7 +42,7 @@ def log_softmax_backward(x, out_grad, dim : tl.constexpr):
 
     # (M, N)
     tmp_x = x.to(tl.float32)
-    softmax_tmp = tl.exp(x)
+    softmax_tmp = tl.exp(tmp_x)
     tmp_out_grad = out_grad.to(tl.float32)
     # (M, N) => (M)
     tmp = tl.sum_(tmp_out_grad, axis=dim)
