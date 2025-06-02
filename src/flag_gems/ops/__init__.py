@@ -35,7 +35,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
 from .cummin import cummin
-from .cumsum import cumsum, normed_cumsum
+from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -57,6 +57,8 @@ from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .exponential_ import exponential_
+from .eye import eye
+from .eye_m import eye_m
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
@@ -64,9 +66,11 @@ from .full_like import full_like
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index import index
 from .index_add import index_add
 from .index_put import index_put, index_put_
 from .index_select import index_select
@@ -154,6 +158,7 @@ from .sum import sum, sum_dim
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
+from .to import to_dtype
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
@@ -218,6 +223,7 @@ __all__ = [
     "constant_pad_nd",
     "cummin",
     "cumsum",
+    "cumsum_out",
     "normed_cumsum",
     "true_divide",
     "true_divide_",
@@ -257,6 +263,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "glu",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -388,7 +395,11 @@ __all__ = [
     "nll_loss2d_backward",
     "index_put_",
     "index_put",
+    "index",
     "vdot",
     "mse_loss",
     "log",
+    "eye",
+    "eye_m",
+    "to_dtype",
 ]

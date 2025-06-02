@@ -256,7 +256,6 @@ def softmax_backward(grad_output, output, dim, input_dtype):
     grad_output = grad_output.contiguous()
     output = output.contiguous()
     in_grad = torch.empty_like(output, dtype=torch.float64)
-
     K = output.numel() // M // N
 
     with torch_device_fn.device(in_grad.device):
@@ -293,6 +292,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 in_grad = in_grad_reshaped.view(m, k, n).transpose(1, 2)
         else:
             grid = lambda meta: (12, 1, 1)
+
             softmax_backward_kernel_inner[grid](
                 output,
                 grad_output,
