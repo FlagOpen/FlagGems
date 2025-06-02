@@ -332,7 +332,10 @@ class BatchNorm(torch.autograd.Function):
     ):
         logger.debug("GEMS BATCHNORM FORWARD")
 
-        input_3d = make_3d_for_bn(input)
+        input_3d_i = make_3d_for_bn(input)
+        m, n, k = input_3d_i.shape
+        input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+        input_3d = make_3d_for_bn(input_3d_f)
 
         affine = weight is not None and bias is not None
         requires_grad = (
@@ -376,12 +379,13 @@ class BatchNorm(torch.autograd.Function):
                 save_stats=requires_grad,
                 is_train=training,
             )
+        output_reshaped = output.reshape(m, k, n).permute(0, 2, 1)
 
         ctx.affine = affine
         if requires_grad:
             ctx.save_for_backward(input, mean, inv_std, weight)
 
-        return output.view_as(input)
+        return output_reshaped.view_as(input)
 
     @staticmethod
     def backward(ctx, output_grad):
