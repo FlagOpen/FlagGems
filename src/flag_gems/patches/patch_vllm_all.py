@@ -2,7 +2,6 @@ from typing import Optional, Tuple
 
 import torch
 
-from flag_gems.fused import flash_mla
 from flag_gems.patches.patch_util import patch_module_method
 
 
@@ -90,6 +89,8 @@ def custom_gems_flash_mla_forward(
     kv_c_and_k_pe_cache,
     attn_metadata,
 ) -> torch.Tensor:
+    from flag_gems.fused import flash_mla
+
     assert kv_c_and_k_pe_cache.numel() > 0
     assert attn_metadata.decode is not None
 
@@ -132,6 +133,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
+    from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
     patch_module_method(
@@ -143,9 +145,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         custom_gems_write_to_paged_cache,
         verbose,
     )
-
-    from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
-
     patch_module_method(
         TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward, verbose
     )
