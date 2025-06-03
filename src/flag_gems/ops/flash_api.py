@@ -763,7 +763,6 @@ def mha_fwd(
             "return_P": return_softmax,
             "BATCH_SIZE": batch_size,
             "blocks_per_split": None,
-            "append_kv": False,
             "NUM_HEADS": num_heads,
             "NUM_HEADS_K": num_heads_k,
         }
