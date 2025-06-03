@@ -382,7 +382,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-@pytest.mark.parametrize("soft_cap", [None])
+@pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("num_blocks", [32768, 2048])
 @torch.inference_mode()
 def test_varlen_with_paged_kv(

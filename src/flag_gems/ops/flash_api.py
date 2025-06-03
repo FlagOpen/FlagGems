@@ -63,6 +63,7 @@ class params_varlen_fwd:
         "d",
         "d_rounded",
         # scaling factors
+        "is_softcap",
         "softcap",
         "scale_softmax",
         "scale_softmax_log2",
@@ -121,6 +122,7 @@ class params_varlen_fwd:
         d,
         d_rounded,
         # scaling factors
+        is_softcap,
         softcap,
         scale_softmax,
         scale_softmax_log2,
@@ -176,6 +178,7 @@ class params_varlen_fwd:
         self.d = d
         self.d_rounded = d_rounded
         # scaling factors
+        self.is_softcap = is_softcap
         self.softcap = softcap
         self.scale_softmax = scale_softmax
         self.scale_softmax_log2 = scale_softmax_log2
@@ -323,7 +326,7 @@ def mha_varlan_fwd(
     assert v.shape == (num_pages, block_size, num_heads_k, head_size)
     assert k.stride() == v.stride()
 
-    if softcap > 0:
+    if softcap > 0.0:
         assert p_dropout == 0, "dropout is not supported if softcap is used."
 
     round_multiple = lambda x, m: (x + m - 1) // m * m
@@ -332,7 +335,16 @@ def mha_varlan_fwd(
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
     M_LOG2E = 1.4426950408889634074
-    softmax_scale_log2e = softmax_scale * M_LOG2E
+    if softcap > 0.0:
+        is_softcap = True
+        adjusted_scale_softmax = softcap
+        adjusted_softcap = softmax_scale / softcap
+        adjusted_scale_softmax_log2e = softcap * M_LOG2E
+    else:
+        is_softcap = False
+        adjusted_softcap = 0.0
+        adjusted_scale_softmax = softmax_scale
+        adjusted_scale_softmax_log2e = softmax_scale * M_LOG2E
 
     # Set alibi params
     if alibi_slopes is not None:
@@ -413,9 +425,10 @@ def mha_varlan_fwd(
             head_size,  # d,
             head_size_rounded,  # d_rounded,
             # scaling factors
-            softcap,  # softcap,
-            softmax_scale,  # scale_softmax,
-            softmax_scale_log2e,  # scale_softmax_log2,
+            is_softcap,
+            adjusted_softcap,  # softcap,
+            adjusted_scale_softmax,  # scale_softmax,
+            adjusted_scale_softmax_log2e,  # scale_softmax_log2,
             # causal and swa
             is_causal,  # is_causal,
             is_local,  # is_local,

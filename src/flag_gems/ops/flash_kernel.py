@@ -2,6 +2,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
+from ..utils import tl_extra_shim
 
 
 @triton.jit
@@ -162,6 +163,14 @@ def softmax_rescale(
     P = tl.math.exp2(S * softmax_scale_log2e - max_scaled[:, None])
     row_sum = row_sum + tl.sum(P, 1)
     return O_acc, P, row_max, row_sum
+
+
+@triton.jit
+def apply_softcap(S, softcap, is_softcap: tl.constexpr):
+    if is_softcap:
+        S = tl_extra_shim.tanh(S * softcap)
+
+    return S
 
 
 def block_m_splitkv_heuristic(headdim):
@@ -636,10 +645,6 @@ def flash_fwd_bh_parallel_kernel(
     pass
 
 
-# @triton.autotune(
-#     configs=list(filter(keep, runtime.get_tuned_config("attention"))),
-#     key=["HEAD_DIM"],
-# )
 @triton.heuristics(
     values={
         "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["HEAD_DIM"]),
@@ -1008,13 +1013,14 @@ def flash_varlen_fwd_kernel(
     h: tl.constexpr,
     hk: tl.constexpr,
     h_hk_ratio: tl.constexpr,
-    seqlen_q,
-    seqlen_k,
-    seqlen_q_rounded,
-    seqlen_v_rounded,
+    seqlen_q: tl.constexpr,
+    seqlen_k: tl.constexpr,
+    seqlen_q_rounded: tl.constexpr,
+    seqlen_v_rounded: tl.constexpr,
     d: tl.constexpr,
     d_rounded: tl.constexpr,
     # scaling factors
+    is_softcap: tl.constexpr,
     softcap: tl.constexpr,
     scale_softmax: tl.constexpr,
     scale_softmax_log2: tl.constexpr,
@@ -1026,9 +1032,9 @@ def flash_varlen_fwd_kernel(
     # alibi
     is_alibi: tl.constexpr,
     alibi_slopes_ptr,
-    alibi_slopes_batch_stride,
+    alibi_slopes_batch_stride: tl.constexpr,
     # block table
-    total_q,
+    total_q: tl.constexpr,
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
@@ -1167,6 +1173,7 @@ def flash_varlen_fwd_kernel(
         # preload V
         bV = tl.load(gV.advance([cache_row_index, 0]))
         S = tl.dot(bQ, bK)
+        S = apply_softcap(S, softcap, is_softcap)
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
         S = apply_mask(
@@ -1211,6 +1218,7 @@ def flash_varlen_fwd_kernel(
         # preload V
         bV = tl.load(gV.advance([cache_row_index, 0]))
         S = tl.dot(bQ, bK)
+        S = apply_softcap(S, softcap, is_softcap)
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
         S = apply_mask(
