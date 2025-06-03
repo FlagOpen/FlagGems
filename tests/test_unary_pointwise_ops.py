@@ -201,6 +201,22 @@ def test_accuracy_gelu(shape, dtype, approximate):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.glu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_glu(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+
+    for dim in range(len(shape)):
+        if shape[dim] % 2 != 0:
+            continue
+        ref_out = torch.nn.functional.glu(ref_inp, dim=dim)
+        with flag_gems.use_gems():
+            res_out = torch.nn.functional.glu(res_inp, dim=dim)
+        gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.gelu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -864,3 +880,15 @@ def test_accuracy_fill_(value, shape, dtype):
         x.fill_(value_tensor)
 
     gems_assert_equal(x, ref_x)
+
+
+@pytest.mark.to_dtype
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
+def test_accuracy_to_dtype(shape, dtype):
+    x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_x = to_reference(x)
+    ref_out = ref_x.to(dtype)
+    with flag_gems.use_gems():
+        out = x.to(dtype)
+    gems_assert_equal(out, ref_out)
