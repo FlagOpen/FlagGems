@@ -322,6 +322,7 @@ def enable(
             ("eye", eye, Autograd.disable),
             ("eye.m", eye_m, Autograd.disable),
             ("to.dtype", to_dtype, Autograd.disable),
+            ("scatter_add_", scatter_add_, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
