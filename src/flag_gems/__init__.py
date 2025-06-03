@@ -315,7 +315,7 @@ def enable(
             ("index_put_", index_put_, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
             ("index.Tensor", index, Autograd.disable),
-            ("contiguous", contiguous, Autograd.disable),
+            ("contiguous", contiguous, Autograd.enable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
