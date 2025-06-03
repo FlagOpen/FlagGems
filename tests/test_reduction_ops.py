@@ -394,7 +394,6 @@ def test_accuracy_log_softmax_backward(shape, dtype, dim):
 
 
 # TODO: failed at (1, 2) (200, 40999, 3)
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Unsupported")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
@@ -414,7 +413,6 @@ def test_accuracy_softmax(shape, dtype, dim, neg_inf):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.softmax
 @pytest.mark.parametrize(
     "shape", [(1, 256)] if QUICK_MODE else [(1, 256), (4096, 256), (200, 2560, 3)]
@@ -1024,6 +1022,23 @@ INDEX_PUT_SHAPE_ACC_FALSE = (
     ),
 )
 
+INDEX_ACC_SHAPE = (
+    ((2**28,), ((2**16,),)),
+    ((32, 32), ((8,), (8,))),
+    ((32, 32), ((8,), (2, 8))),
+    ((32, 32), ((2, 8),)),
+    ((512, 512, 512), ((128,), (128,), (128,))),
+    ((512, 512, 512), ((2, 128), (128,), (128,))),
+    ((512, 512, 512), ((2, 128),)),
+    (
+        (64, 64, 64),
+        (
+            (2, 8),
+            (2, 8),
+        ),
+    ),
+)
+
 
 def gen_indices(input_shape, indices_shape, accumulate):
     indices = []
@@ -1138,6 +1153,22 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, dtype):
     torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
     flag_gems.index_put_(inp, indices, values, accumulate)
     gems_assert_close(inp, ref_inp, dtype)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("input_shape, indices_shape", INDEX_ACC_SHAPE)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_index(input_shape, indices_shape, dtype):
+    inp = torch.randn(
+        input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
+    )
+    indices = gen_indices(input_shape, indices_shape, True)
+
+    ref_inp = to_reference(inp)
+    ref_indices = [to_reference(index) for index in indices]
+    ref_out = torch.ops.aten.index(ref_inp, ref_indices)
+    out = flag_gems.index(inp, indices)
+    gems_assert_close(out, ref_out, dtype)
 
 
 @pytest.mark.mse_loss
