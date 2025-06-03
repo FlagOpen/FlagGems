@@ -285,6 +285,12 @@ def mha_varlan_fwd(
     assert cu_seqlens_q.size() == (batch_size + 1,)
     assert cu_seqlens_k.size() == (batch_size + 1,)
 
+    # Check output shape
+    if out is not None:
+        assert out.stride(-1) == 1
+        assert out.dtype == q.dtype
+        assert out.size() == (total_q, num_heads, head_size)
+
     if seqused_k is not None:
         assert seqused_k.is_contiguous()
         assert seqused_k.size() == (batch_size,)
@@ -312,7 +318,7 @@ def mha_varlan_fwd(
         and window_size_right < 0
         and p_dropout == 0
     )
-    q_groups = num_heads / num_heads_k
+    q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
         q = (
             q.reshape((batch_size, num_heads_k, q_groups, head_size))
@@ -390,9 +396,6 @@ def mha_varlan_fwd(
     # Prepare params to kernel
     with torch_device_fn.device(q_device):
         if out is not None:
-            assert out.stride(-1) == 1
-            assert out.dtype == q.dtype
-            assert out.size() == (total_q, num_heads, head_size)
             out_ = out
             if seqlenq_ngroups_swapped:
                 out = torch.empty_like(q, dtype=v.dtype)
