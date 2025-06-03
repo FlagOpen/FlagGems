@@ -1,6 +1,5 @@
 import torch
 
-from flag_gems.fused import flash_mla
 from typing import Optional, Tuple
 
 from flag_gems.patches.patch_util import patch_module_method
@@ -99,6 +98,8 @@ def custom_gems_flash_mla_forward(
     kv_c_and_k_pe_cache,
     attn_metadata,
 ) -> torch.Tensor:
+    from flag_gems.fused import flash_mla
+
     assert kv_c_and_k_pe_cache.numel() > 0
     assert attn_metadata.decode is not None
 
