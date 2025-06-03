@@ -23,7 +23,7 @@ def CHECK_DEVICE(x):
     assert x.device.type == flag_gems.device
 
 
-class params_varlen_fwd:
+class fwd_params:
     __slots__ = (
         # pointers and strides
         "q_ptr",
@@ -67,6 +67,14 @@ class params_varlen_fwd:
         "softcap",
         "scale_softmax",
         "scale_softmax_log2",
+        # dropout
+        "is_dropout",
+        "p_dropout",
+        "rp_dropout",
+        "p_dropout_in_uint8_t",
+        "philox_args",
+        "return_softmax",
+        # masking
         "is_causal",
         "is_local",
         "window_size_left",
@@ -126,6 +134,14 @@ class params_varlen_fwd:
         softcap,
         scale_softmax,
         scale_softmax_log2,
+        # dropout
+        is_dropout,
+        p_dropout,
+        rp_dropout,
+        p_dropout_in_uint8_t,
+        philox_args,
+        return_softmax,
+        # masking
         is_causal,
         is_local,
         window_size_left,
@@ -182,6 +198,14 @@ class params_varlen_fwd:
         self.softcap = softcap
         self.scale_softmax = scale_softmax
         self.scale_softmax_log2 = scale_softmax_log2
+        # dropout
+        self.is_dropout = is_dropout
+        self.p_dropout = p_dropout
+        self.rp_dropout = rp_dropout
+        self.p_dropout_in_uint8_t = p_dropout_in_uint8_t
+        self.philox_args = philox_args
+        self.return_softmax = return_softmax
+        # masking
         self.is_causal = is_causal
         self.is_local = is_local
         self.window_size_left = window_size_left
@@ -377,17 +401,35 @@ def mha_varlan_fwd(
             out = torch.empty_like(q, dtype=v.dtype)
         lse = torch.empty((num_heads, total_q), dtype=torch.float, device=q_device)
 
-        assert return_softmax is False, "not supported."
+        if p_dropout > 0:
+            is_dropout = True
+            increment = batch_size * num_heads * 32
+            philox_seed, philox_offset = update_philox_state(increment)
+            philox_args = torch.tensor(
+                [philox_seed, philox_offset], dtype=torch.int64, device=q_device
+            )
+        else:
+            is_dropout = False
+            philox_args = None
 
-        p = torch.empty((), device=q_device)
+        p_dropout = 1 - p_dropout
+        p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
+        rp_dropout = 1.0 / p_dropout
 
-        assert p_dropout == 0, "dropout is not supported."
+        if is_dropout:
+            p = torch.empty(
+                (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
+                device=q_device,
+            )
+        else:
+            assert return_softmax is False, "Only supported with non-zero dropout."
+            p = torch.empty((), device=q_device)
 
         if zero_tensors:
             out.zero_()
             lse.fill_(float("-inf"))
 
-        params = params_varlen_fwd(
+        params = fwd_params(
             q,  # q_ptr,
             k,  # k_ptr,
             v,  # v_ptr,
@@ -429,6 +471,13 @@ def mha_varlan_fwd(
             adjusted_softcap,  # softcap,
             adjusted_scale_softmax,  # scale_softmax,
             adjusted_scale_softmax_log2e,  # scale_softmax_log2,
+            # dropout
+            is_dropout,
+            p_dropout,
+            rp_dropout,
+            p_dropout_in_uint8_t,
+            philox_args,
+            return_softmax,
             # causal and swa
             is_causal,  # is_causal,
             is_local,  # is_local,

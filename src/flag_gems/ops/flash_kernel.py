@@ -68,30 +68,32 @@ def apply_dropout(
     philox_seed,
     philox_offset,
     p_dropout_uint8: tl.constexpr,
+    is_dropout: tl.constexpr,
     encode_dropout_in_sign_bit: tl.constexpr,
     NUM_HEADS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    row_start = tl.multiple_of(row_start, BLOCK_M)
-    col_start = tl.multiple_of(col_start, BLOCK_N)
-    row = row_start + tl.arange(0, BLOCK_M)[:, None]
-    # Down scale col_idx by 4
-    col = col_start // 4 + tl.arange(0, BLOCK_N // 4)[None, :]
+    if is_dropout:
+        row_start = tl.multiple_of(row_start, BLOCK_M)
+        col_start = tl.multiple_of(col_start, BLOCK_N)
+        row = row_start + tl.arange(0, BLOCK_M)[:, None]
+        # Down scale col_idx by 4
+        col = col_start // 4 + tl.arange(0, BLOCK_N // 4)[None, :]
 
-    subsequence = row.to(tl.uint64) * n_cols + col.to(tl.uint64)
+        subsequence = row.to(tl.uint64) * n_cols + col.to(tl.uint64)
 
-    offset = philox_offset + bid * NUM_HEADS + hid
-    offset += subsequence * 0
-    r0, r1, r2, r3 = philox_(philox_seed, subsequence, offset)
+        offset = philox_offset + bid * NUM_HEADS + hid
+        offset += subsequence * 0
+        r0, r1, r2, r3 = philox_(philox_seed, subsequence, offset)
 
-    r = tl.join(tl.join(r0, r1), tl.join(r2, r3)).reshape(BLOCK_M, BLOCK_N)
+        r = tl.join(tl.join(r0, r1), tl.join(r2, r3)).reshape(BLOCK_M, BLOCK_N)
 
-    mask = (r & 0xFF) >= p_dropout_uint8
+        mask = (r & 0xFF) >= p_dropout_uint8
 
-    P = apply_dropout_mask(
-        P, mask, encode_dropout_in_sign_bit=encode_dropout_in_sign_bit
-    )
+        P = apply_dropout_mask(
+            P, mask, encode_dropout_in_sign_bit=encode_dropout_in_sign_bit
+        )
     return P
 
 
@@ -416,6 +418,7 @@ def flash_fwd_kernel(
                         philox_seed,
                         philox_offset,
                         pdrop_u8,
+                        is_dropout,
                         encode_dropout_in_sign_bit=True,
                         NUM_HEADS=NUM_HEADS,
                         BLOCK_M=BLOCK_M,
@@ -439,6 +442,7 @@ def flash_fwd_kernel(
                     philox_seed,
                     philox_offset,
                     pdrop_u8,
+                    is_dropout,
                     encode_dropout_in_sign_bit=False,
                     NUM_HEADS=NUM_HEADS,
                     BLOCK_M=BLOCK_M,
@@ -504,6 +508,7 @@ def flash_fwd_kernel(
                     philox_seed,
                     philox_offset,
                     pdrop_u8,
+                    is_dropout,
                     encode_dropout_in_sign_bit=True,
                     NUM_HEADS=NUM_HEADS,
                     BLOCK_M=BLOCK_M,
@@ -525,6 +530,7 @@ def flash_fwd_kernel(
                 philox_seed,
                 philox_offset,
                 pdrop_u8,
+                is_dropout,
                 encode_dropout_in_sign_bit=False,
                 NUM_HEADS=NUM_HEADS,
                 BLOCK_M=BLOCK_M,
@@ -1024,6 +1030,14 @@ def flash_varlen_fwd_kernel(
     softcap: tl.constexpr,
     scale_softmax: tl.constexpr,
     scale_softmax_log2: tl.constexpr,
+    # dropout
+    is_dropout: tl.constexpr,
+    p_dropout: tl.constexpr,
+    rp_dropout: tl.constexpr,
+    p_dropout_in_uint8_t: tl.constexpr,
+    philox_args,
+    return_softmax: tl.constexpr,
+    # causal and swa
     is_causal: tl.constexpr,
     is_local: tl.constexpr,
     window_size_left: tl.constexpr,
@@ -1100,6 +1114,10 @@ def flash_varlen_fwd_kernel(
                 (m_block + 1) * BLOCK_M + k_len - q_len + window_size_right, BLOCK_N
             ),
         )
+
+    if is_dropout:
+        philox_seed = tl.load(philox_args).to(tl.uint64)
+        philox_offset = tl.load(philox_args + 1).to(tl.uint64)
 
     # start processing kv blocks
     # h_hk_ratio = h // hk
@@ -1199,8 +1217,26 @@ def flash_varlen_fwd_kernel(
             softmax_scale_log2e=scale_softmax_log2,
             is_border=True,
         )
-
         P = P.to(v_ptr.type.element_ty)
+
+        if is_dropout:
+            P = apply_dropout(
+                P,
+                n_block * BLOCK_N,
+                m_block * BLOCK_M,
+                k_len,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                p_dropout_in_uint8_t,
+                is_dropout,
+                encode_dropout_in_sign_bit=False,
+                NUM_HEADS=h,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
+
         acc_ = tl.dot(P, bV, acc_)
 
     for n_block in tl.range(
@@ -1245,6 +1281,24 @@ def flash_varlen_fwd_kernel(
             is_border=is_local,
         )
         P = P.to(v_ptr.type.element_ty)
+
+        if is_dropout:
+            P = apply_dropout(
+                P,
+                m_block * BLOCK_M,
+                n_block * BLOCK_N,
+                k_len,
+                bid,
+                hid,
+                philox_seed,
+                philox_offset,
+                p_dropout_in_uint8_t,
+                is_dropout,
+                encode_dropout_in_sign_bit=False,
+                NUM_HEADS=h,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+            )
         acc_ = tl.dot(P, bV, acc_)
 
     # LSE
