@@ -15,6 +15,7 @@ from . import runtime
 from .fused import *  # noqa: F403
 from .logging_utils import setup_flaggems_logging
 from .ops import *  # noqa: F403
+from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
@@ -72,6 +73,7 @@ def enable(
             ("pad", pad, Autograd.disable),
             ("constant_pad_nd", constant_pad_nd, Autograd.disable),
             ("cumsum", cumsum, Autograd.disable),
+            ("cumsum.out", cumsum_out, Autograd.disable),
             ("cummin", cummin, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div_.Tensor", true_divide_, Autograd.disable),
@@ -134,6 +136,7 @@ def enable(
             ("gelu", gelu, Autograd.disable),
             ("gelu_", gelu_, Autograd.disable),
             ("gelu_backward", gelu_backward, Autograd.disable),
+            ("glu", glu, Autograd.disable),
             ("native_group_norm", group_norm, Autograd.disable),
             ("native_group_norm_backward", group_norm_backward, Autograd.disable),
             ("_weight_norm_interface", weight_norm_interface, Autograd.disable),
@@ -219,7 +222,7 @@ def enable(
             ("threshold", threshold, Autograd.disable),
             ("threshold_backward", threshold_backward, Autograd.disable),
             ("triu", triu, Autograd.disable),
-            # ("topk", topk, Autograd.disable),
+            ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
             ("linalg_vector_norm", vector_norm, Autograd.disable),
             ("where.self_out", where_self_out, Autograd.disable),
@@ -264,7 +267,7 @@ def enable(
             ("fill.Scalar", fill_scalar, Autograd.disable),
             ("fill.Tensor", fill_tensor, Autograd.disable),
             ("fill_.Scalar", fill_scalar_, Autograd.disable),
-            # ("fill_.Tensor", fill_tensor_, Autograd.disable),
+            ("fill_.Tensor", fill_tensor_, Autograd.disable),
             ("flip", flip, Autograd.disable),
             ("slice_scatter", slice_scatter, Autograd.disable),
             ("select_scatter", select_scatter, Autograd.disable),
@@ -311,10 +314,14 @@ def enable(
             ("elu", elu, Autograd.disable),
             ("index_put_", index_put_, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
+            ("index.Tensor", index, Autograd.disable),
             ("contiguous", contiguous, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
+            ("eye", eye, Autograd.disable),
+            ("eye.m", eye_m, Autograd.disable),
+            ("to.dtype", to_dtype, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
