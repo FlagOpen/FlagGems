@@ -223,7 +223,7 @@ if __name__ == "__main__":
             for op, uts in collection.items():
                 for ut in uts:
                     cmd = f"{file_name}::{ut}"
-                    result = pytest.main(["-s", cmd, "--device", device])
+                    result = pytest.main(["-s", cmd, "--ref", device])
         print("final_result: ", final_result)
         exit(final_result)
 
