@@ -519,7 +519,7 @@ def mha_varlan_fwd(
             out = out.reshape(
                 batch_size, max_seqlen_q, num_heads_k, head_size
             ).transpose(1, 2)
-            if out_:
+            if out_ is not None:
                 out_.view(batch_size, num_heads_k, max_seqlen_q, head_size).copy_(out)
                 out = out_
             else:

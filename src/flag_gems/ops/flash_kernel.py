@@ -1009,7 +1009,7 @@ def flash_varlen_fwd_kernel(
     k_batch_stride,
     v_batch_stride,
     o_batch_stride,
-    is_cu_seqlens_q,
+    is_cu_seqlens_q: tl.constexpr,
     cu_seqlens_q_ptr,
     is_cu_seqlens_k: tl.constexpr,
     cu_seqlens_k_ptr,
