@@ -443,6 +443,7 @@ def flash_attention_forward(
         is_causal,
         non_null_window_left,
         non_null_window_right,
+        0,
         return_debug_mask,
         disable_splitkv=disable_splitkv,
     )
@@ -454,6 +455,7 @@ def flash_attention_forward(
 def maybe_contiguous(x):
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x
 
+
 def flash_attn_varlen_func(
     q,
     k,
@@ -461,21 +463,21 @@ def flash_attn_varlen_func(
     max_seqlen_q,
     cu_seqlens_q,
     max_seqlen_k,
-    cu_seqlens_k=None, # only used for non-paged prefill
+    cu_seqlens_k=None,  # only used for non-paged prefill
     seqused_k=None,
     q_v=None,
     dropout_p=0.0,
     softmax_scale=None,
     causal=False,
     window_size=None,
-    softcap=0.0, # 0.0 means deactivated
+    softcap=0.0,  # 0.0 means deactivated
     alibi_slopes=None,
     deterministic=False,
     return_attn_probs=False,
     block_table=None,
     return_softmax_lse=False,
     out=None,
-    fa_version: int = 2
+    fa_version: int = 2,
 ):
     """dropout_p should be set to 0.0 during evaluation
     Supports multi-query and grouped-query attention (MQA/GQA) by passing in K, V with fewer heads
@@ -529,33 +531,37 @@ def flash_attn_varlen_func(
             logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
             normalization factor).
     """
-    assert cu_seqlens_k is not None or seqused_k is not None, \
-        "cu_seqlens_k or seqused_k must be provided"
-    assert cu_seqlens_k is None or seqused_k is None, \
-        "cu_seqlens_k and seqused_k cannot be provided at the same time"
-    assert block_table is None or seqused_k is not None, \
-        "seqused_k must be provided if block_table is provided"
-    
+    assert (
+        cu_seqlens_k is not None or seqused_k is not None
+    ), "cu_seqlens_k or seqused_k must be provided"
+    assert (
+        cu_seqlens_k is None or seqused_k is None
+    ), "cu_seqlens_k and seqused_k cannot be provided at the same time"
+    assert (
+        block_table is None or seqused_k is not None
+    ), "seqused_k must be provided if block_table is provided"
+
     if softmax_scale is None:
         softmax_scale = q.shape[-1] ** (-0.5)
     # custom op does not support non-tuple input
-    real_window_size: Tuple[int, int]
     if window_size is None:
         real_window_size = (-1, -1)
     else:
         assert len(window_size) == 2
         real_window_size = (window_size[0], window_size[1])
     q, k, v = [maybe_contiguous(x) for x in (q, k, v)]
-    
+
     dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
-    
+
     assert fa_version == 2, "Only FA2 is implemented."
 
     out, softmax_lse = mha_varlan_fwd(
-        q, k, v,
+        q,
+        k,
+        v,
         out,
         cu_seqlens_q,
-        # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp 
+        # cu_seqlens_k not used since we use seqused_k, but flash_api.cpp
         # still wants it so we pass all zeros
         dummy_cu_seqlens_k if cu_seqlens_k is None else cu_seqlens_k,
         seqused_k,

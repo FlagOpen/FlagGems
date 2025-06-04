@@ -59,7 +59,7 @@ class fwd_params:
         "seqlen_q",
         "seqlen_k",
         "seqlen_q_rounded",
-        "seqlen_v_rounded",
+        "seqlen_k_rounded",
         "d",
         "d_rounded",
         # scaling factors
@@ -126,7 +126,7 @@ class fwd_params:
         seqlen_q,
         seqlen_k,
         seqlen_q_rounded,
-        seqlen_v_rounded,
+        seqlen_k_rounded,
         d,
         d_rounded,
         # scaling factors
@@ -190,7 +190,7 @@ class fwd_params:
         self.seqlen_q = seqlen_q
         self.seqlen_k = seqlen_k
         self.seqlen_q_rounded = seqlen_q_rounded
-        self.seqlen_v_rounded = seqlen_v_rounded
+        self.seqlen_k_rounded = seqlen_k_rounded
         self.d = d
         self.d_rounded = d_rounded
         # scaling factors
@@ -220,6 +220,9 @@ class fwd_params:
         self.page_table_ptr = page_table_ptr
         self.page_table_batch_stride = page_table_batch_stride
         self.block_size = block_size
+
+    def args(self):
+        return tuple(getattr(self, k) for k in self.__slots__)
 
 
 def mha_varlan_fwd(
@@ -419,13 +422,13 @@ def mha_varlan_fwd(
         p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
         rp_dropout = 1.0 / p_dropout
 
-        if is_dropout:
+        if return_softmax:
+            assert is_dropout, "Only supported with non-zero dropout."
             p = torch.empty(
                 (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
                 device=q_device,
             )
         else:
-            assert return_softmax is False, "Only supported with non-zero dropout."
             p = torch.empty((), device=q_device)
 
         if zero_tensors:
@@ -466,7 +469,7 @@ def mha_varlan_fwd(
             max_seqlen_q,  # seqlen_q,
             max_seqlen_k,  # seqlen_k,
             seqlen_q_rounded,  # seqlen_q_rounded,
-            seqlen_k_rounded,  # seqlen_v_rounded,
+            seqlen_k_rounded,  # seqlen_k_rounded,
             head_size,  # d,
             head_size_rounded,  # d_rounded,
             # scaling factors
@@ -538,9 +541,11 @@ def mha_fwd(
     is_causal,
     window_size_left,
     window_size_right,
+    softcap,
     return_softmax,
     disable_splitkv=False,
 ):
+    CHECK_DEVICE(q), CHECK_DEVICE(k), CHECK_DEVICE(v)
     q_dtype = q.dtype
     q_device = q.device
     assert q_dtype in (
@@ -554,6 +559,14 @@ def mha_fwd(
     assert v.stride(-1) == 1, "Input tensor must have contiguous last dimension"
     batch_size, seqlen_q, num_heads, head_size = q.size()
     _, seqlen_k, num_heads_k, _ = k.size()
+
+    # Check output shape
+    if out is not None:
+        assert out.stride(-1) == 1
+        assert out.dtype == q.dtype
+        assert out.size() == (batch_size, seqlen_q, num_heads, head_size)
+        CHECK_DEVICE(out)
+
     assert (
         head_size % 8 == 0
     ), "head_size must be a multiple of 8, this is ensured by padding!"
@@ -569,30 +582,23 @@ def mha_fwd(
     if is_causal:
         window_size_right = 0
 
-    if (
+    is_causal = window_size_left < 0 and window_size_right == 0
+    is_local = window_size_left >= 0 and window_size_right >= 0
+
+    seqlenq_ngroups_swapped = (
         seqlen_q == 1
+        and alibi_slopes is None
         and num_heads > num_heads_k
         and window_size_left < 0
         and window_size_right < 0
         and p_dropout == 0
-        and not alibi_slopes
-    ):
-        swap_seq_and_group = True
-    else:
-        swap_seq_and_group = False
+    )
+    q_groups = num_heads // num_heads_k
 
-    ngroups = num_heads // num_heads_k
-    if swap_seq_and_group:
-        q = q.reshape((batch_size, num_heads_k, ngroups, head_size)).transpose(1, 2)
-        seqlen_q = ngroups
+    if seqlenq_ngroups_swapped:
+        q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
+        seqlen_q = q_groups
         num_heads = num_heads_k
-
-    if out:
-        assert out.stride(-1) == 1
-        assert out.dtype == q.dtype
-        assert out.size() == (batch_size, seqlen_q, num_heads, head_size)
-    else:
-        out = torch.empty_like(q, dtype=v.dtype)
 
     round_multiple = lambda x, m: (x + m - 1) // m * m
     head_size_rounded = round_multiple(head_size, 32)
@@ -613,17 +619,6 @@ def mha_fwd(
             num_sms,
         )
 
-        # best_splits = 1
-        # best_eff = eff
-        # min_blocks_per_split = 1
-        # max_blocks_per_split = triton.cdiv(n_blocks, 2)
-        # for blocks_per_split in range(min_blocks_per_split, max_blocks_per_split + 1)[::-1]:
-        #     n_splits = triton.cdiv(n_blocks, blocks_per_split)
-        #     n_waves = triton.cdiv(n_splits * num_tasks, num_sms)
-        #     eff = (n_splits * num_tasks / num_sms) / n_waves
-        #     if eff > 0.85:
-        #         best_splits = n_splits
-        #         break
         return best_splits
 
     with torch_device_fn.device(q_device):
@@ -631,37 +626,51 @@ def mha_fwd(
         lse = torch.empty(
             (batch_size, num_heads, seqlen_q), dtype=torch.float, device=q_device
         )
+
+        if out is not None:
+            if seqlenq_ngroups_swapped:
+                out = out.reshape(
+                    batch_size, num_heads_k, q_groups, head_size
+                ).transpose(1, 2)
+        else:
+            out = torch.empty_like(q, dtype=v.dtype)
+
+        # Set dropout params
+        if p_dropout > 0:
+            is_dropout = True
+            increment = batch_size * num_heads * 32
+            philox_seed, philox_offset = update_philox_state(increment)
+            philox_args = torch.tensor(
+                [philox_seed, philox_offset], dtype=torch.int64, device=q_device
+            )
+        else:
+            is_dropout = False
+            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
+
+        p_dropout = 1 - p_dropout
+        p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
+        rp_dropout = 1.0 / p_dropout
+
         if return_softmax:
-            assert (
-                p_dropout > 0
-            ), "return_softmax is only supported when p_dropout > 0.0"
-            p = torch.zeros(
+            assert is_dropout, "Only supported with non-zero dropout."
+            p = torch.empty(
                 (batch_size, num_heads, seqlen_q_rounded, seqlen_k_rounded),
-                dtype=q_dtype,
                 device=q_device,
             )
         else:
             p = torch.empty((), device=q_device)
 
-        # Set dropout params
-        if p_dropout > 0:
-            increment = batch_size * num_heads * 32
-            philox_seed, philox_offset = update_philox_state(increment)
-            philox_seed = torch.tensor(philox_seed, dtype=torch.int64, device=q_device)
-            philox_offset = torch.tensor(
-                philox_offset, dtype=torch.int64, device=q_device
-            )
-            is_dropout = True
-        else:
-            philox_seed, philox_offset = None, None
-            is_dropout = False
-
-        p_dropout = 1 - p_dropout
-        pdrop_u8 = math.floor(p_dropout * 255.0)
-        rpdrop = 1.0 / p_dropout
-
         M_LOG2E = 1.4426950408889634074
-        softmax_scale_log2e = softmax_scale * M_LOG2E
+        if softcap > 0.0:
+            is_softcap = True
+            adjusted_scale_softmax = softcap
+            adjusted_softcap = softmax_scale / softcap
+            adjusted_scale_softmax_log2e = softcap * M_LOG2E
+        else:
+            is_softcap = False
+            adjusted_softcap = 0.0
+            adjusted_scale_softmax = softmax_scale
+            adjusted_scale_softmax_log2e = softmax_scale * M_LOG2E
 
         # Set alibi params
         if alibi_slopes is not None:
@@ -675,25 +684,19 @@ def mha_fwd(
             alibi_slopes_batch_stride = (
                 alibi_slopes.stride(0) if alibi_slopes.ndim == 2 else 0
             )
-            has_alibi = True
+            is_alibi = True
         else:
             alibi_slopes_batch_stride = 0
-            has_alibi = False
-
-        # Set SWA params
-        is_causal = window_size_left < 0 and window_size_right == 0
-        is_local = window_size_left >= 0 and window_size_right >= 0
+            is_alibi = False
 
         # ONLY EVEN_K IS SUPPORTED
         assert head_size == head_size_rounded
 
         # Do kernel dispatching
-        def dispatch(B, H, Q, K, D):
+        def dispatch(B, H, Q, K, D, params):
             num_sms = torch_device_fn.get_device_properties(
                 "cuda"
             ).multi_processor_count
-
-            default_args = {}
 
             # Try bh parallel
             # if B * H > 0.8 * num_sms:
@@ -730,12 +733,10 @@ def mha_fwd(
                         B * H,
                     )
                     splitkv_kernel = flash_fwd_splitkv_kernel[grid]
-                    blocks_per_split = triton.cdiv(n_blocks, n_splits)
-                    splitkv_args = default_args.copy()
-                    splitkv_args["blocks_per_split"] = blocks_per_split
-                    splitkv_args["O_ptr"] = out_splits
-                    splitkv_args["lse_ptr"] = lse_splits
-                    # kernel = yield kernel, args
+                    params.o_ptr = out_splits
+                    params.softmax_lse_ptr = lse_splits
+                    extra_args = {"blocks_per_split": triton.cdiv(n_blocks, n_splits)}
+                    kernel = splitkv_kernel(*params.args(), **extra_args)
 
                     if D % 128 == 0:
                         BLOCK_M = 4
@@ -746,6 +747,12 @@ def mha_fwd(
                     grid = lambda args: (triton.cdiv(B * H * Q, BLOCK_M),)
                     combine_kernel = flash_fwd_splitkv_combine_kernel[grid]
                     combine_args = {
+                        "out_ptr": out,
+                        "lse_ptr": lse,
+                        "head_size": head_size,
+                        "out_b_stride": out.stride(0),
+                        "out_s_stride": out.stride(-3),
+                        "out_h_stride": out.stride(-1),
                         "out_splits_ptr": out_splits,
                         "lse_splits_ptr": lse_splits,
                         "n_splits": n_splits,
@@ -753,7 +760,8 @@ def mha_fwd(
                         "q_total": B * H * Q,
                         "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
                     }
-                    return splitkv_kernel, splitkv_args, combine_kernel, combine_args
+                    combine_kernel(**combine_args)
+                    return kernel
 
             # Last option: flash_fwd
             grid = lambda args: (
@@ -761,11 +769,8 @@ def mha_fwd(
                 H * B,
             )
             kernel = flash_fwd_kernel[grid]
-            return kernel, default_args, None, None
-
-        kernel1, kernel1_args, kernel2, kernel2_args = dispatch(
-            batch_size, num_heads, seqlen_q, seqlen_k, head_size
-        )
+            kernel = kernel(*params.args())
+            return kernel
 
         if _debug:
             p = torch.empty(
@@ -775,54 +780,74 @@ def mha_fwd(
             )
             return_softmax = True
 
-        prefilled_args = {
-            "Q_ptr": q,
-            "K_ptr": k,
-            "V_ptr": v,
-            "P_ptr": p,
-            "O_ptr": out,
-            "lse_ptr": lse,
-            "seqlen_q": seqlen_q,
-            "seqlen_k": seqlen_k,
-            "seqlen_q_rounded": seqlen_q_rounded,
-            "seqlen_k_rounded": seqlen_k_rounded,
-            "q_b_stride": q.stride(0),
-            "q_s_stride": q.stride(-3),
-            "q_h_stride": q.stride(-2),
-            "k_b_stride": k.stride(0),
-            "k_s_stride": k.stride(-3),
-            "k_h_stride": k.stride(-2),
-            "o_b_stride": out.stride(0),
-            "o_s_stride": out.stride(-3),
-            "o_h_stride": out.stride(-2),
-            "h": num_heads,
-            "hk": num_heads_k,
-            "pSlopes": alibi_slopes,
-            "philox_seed": philox_seed,
-            "philox_offset": philox_offset,
-            "pdrop_u8": pdrop_u8,
-            "rpdrop": rpdrop,
-            "slopes_batch_stride": alibi_slopes_batch_stride,
-            "HEAD_DIM": head_size,
-            "is_dropout": is_dropout,
-            "is_causal": is_causal,
-            "is_local": is_local,
-            "has_alibi": has_alibi,
-            "softmax_scale": softmax_scale,
-            "softmax_scale_log2e": softmax_scale_log2e,
-            "ws_left": window_size_left,
-            "ws_right": window_size_right,
-            "return_P": return_softmax,
-            "BATCH_SIZE": batch_size,
-            "blocks_per_split": None,
-            "NUM_HEADS": num_heads,
-            "NUM_HEADS_K": num_heads_k,
-        }
+        params = fwd_params(
+            q,  # q_ptr,
+            k,  # k_ptr,
+            v,  # v_ptr,
+            out,  # o_ptr,
+            p,  # p_ptr,
+            lse,  # softmax_lse_ptr,
+            q.stride(-3),  # q_row_stride,
+            k.stride(-3),  # k_row_stride,
+            v.stride(-3),  # v_row_stride,
+            q.stride(-2),  # q_head_stride,
+            k.stride(-2),  # k_head_stride,
+            v.stride(-2),  # v_head_stride,
+            out.stride(-3),  # o_row_stride,
+            out.stride(-2),  # o_head_stride,
+            q.stride(0),  # q_batch_stride,
+            k.stride(0),  # k_batch_stride,
+            v.stride(0),  # v_batch_stride,
+            out.stride(0),  # o_batch_stride,
+            False,  # is_cu_seqlens_q,
+            None,  # cu_seqlens_q_ptr,
+            False,  # is_cu_seqlens_k,
+            None,  # cu_seqlens_k_ptr,
+            False,  # is_seqused_k,
+            None,  # seqused_k_ptr,
+            # sizes
+            batch_size,  # b,
+            0,  # bk,
+            num_heads,  # h,
+            num_heads_k,  # hk,
+            num_heads // num_heads_k,  # h_hk_ratio,
+            seqlen_q,  # seqlen_q,
+            seqlen_k,  # seqlen_k,
+            seqlen_q_rounded,  # seqlen_q_rounded,
+            seqlen_k_rounded,  # seqlen_k_rounded,
+            head_size,  # d,
+            head_size_rounded,  # d_rounded,
+            # scaling factors
+            is_softcap,
+            adjusted_softcap,  # softcap,
+            adjusted_scale_softmax,  # scale_softmax,
+            adjusted_scale_softmax_log2e,  # scale_softmax_log2,
+            # dropout
+            is_dropout,
+            p_dropout,
+            rp_dropout,
+            p_dropout_in_uint8_t,
+            philox_args,
+            return_softmax,
+            # causal and swa
+            is_causal,  # is_causal,
+            is_local,  # is_local,
+            window_size_left,  # window_size_left,
+            window_size_right,  # window_size_right,
+            seqlenq_ngroups_swapped,  # seqlenq_ngroups_swapped,
+            # alibi
+            is_alibi,  #
+            alibi_slopes,  # alibi_slopes_ptr,
+            alibi_slopes_batch_stride,  # alibi_slopes_batch_stride,
+            # block table params
+            0,  # total_q,
+            None,  # page_table_ptr,
+            0,  # page_table_batch_stride,
+            0,  # block_size,
+        )
 
-        args_copy = prefilled_args.copy()
-        args_copy.update(kernel1_args)
+        kernel = dispatch(batch_size, num_heads, seqlen_q, seqlen_k, head_size, params)
 
-        kernel = kernel1(**args_copy)
         if _debug:
             print(f"{kernel.name} shared memory:", kernel.metadata.shared)
             print(f"{kernel.name} num_warps:", kernel.metadata.num_warps)
@@ -830,27 +855,15 @@ def mha_fwd(
             # print(kernel.asm['ttgir'])
             print("p:", p)
 
-        # Combine
-        if kernel2 is not None:
-            prefilled_args = {
-                "out_ptr": out,
-                "lse_ptr": lse,
-                "head_size": head_size,
-                "out_b_stride": out.stride(0),
-                "out_s_stride": out.stride(-3),
-                "out_h_stride": out.stride(-1),
-            }
-            args_copy = prefilled_args.copy()
-            args_copy.update(kernel2_args)
-            kernel2(**args_copy)
+        if seqlenq_ngroups_swapped:
+            out = out.transpose(1, 2).reshape(
+                (batch_size, 1, num_heads_k * seqlen_q, head_size)
+            )
+            q = q.transpose(1, 2).reshape(
+                (batch_size, 1, num_heads_k * seqlen_q, head_size)
+            )
+            lse = lse.reshape((batch_size, num_heads_k * seqlen_q, 1))
 
-    if swap_seq_and_group:
-        out = out.transpose(1, 2).reshape(
-            (batch_size, 1, num_heads_k * seqlen_q, head_size)
-        )
-        q = q.transpose(1, 2).reshape(
-            (batch_size, 1, num_heads_k * seqlen_q, head_size)
-        )
-        lse = lse.reshape((batch_size, num_heads_k * seqlen_q, 1))
+        unused = torch.empty((), dtype=torch.int64, device=q_device)
 
-    return out, q, k, v, lse, philox_seed, philox_offset, p
+    return out, q, k, v, lse, philox_args, unused, p
