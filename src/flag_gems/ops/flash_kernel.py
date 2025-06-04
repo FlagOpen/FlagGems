@@ -229,7 +229,9 @@ def prune_fwd_configs(configs, nargs, **kwargs):
         ),
     }
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
+)
 def flash_fwd_kernel(
     q_ptr,
     k_ptr,
@@ -261,10 +263,10 @@ def flash_fwd_kernel(
     h: tl.constexpr,
     hk: tl.constexpr,
     h_hk_ratio: tl.constexpr,
-    seqlen_q: tl.constexpr,
-    seqlen_k: tl.constexpr,
-    seqlen_q_rounded: tl.constexpr,
-    seqlen_k_rounded: tl.constexpr,
+    seqlen_q,
+    seqlen_k,
+    seqlen_q_rounded,
+    seqlen_k_rounded,
     d: tl.constexpr,
     d_rounded: tl.constexpr,
     # scaling factors
@@ -614,7 +616,7 @@ def flash_fwd_kernel(
         tl.store(p_lse + row_idx, lse, mask=row_idx < seqlen_q)
 
 
-@triton.jit(do_not_specialize=["seqlen_q", "seqlen_k", "philox_seed", "philox_offset"])
+@triton.jit(do_not_specialize=["seqlen_q", "seqlen_k"])
 def flash_fwd_bh_parallel_kernel():
     # (TODO)
     pass
@@ -637,7 +639,9 @@ def flash_fwd_bh_parallel_kernel():
         ),
     }
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
+)
 def flash_fwd_splitkv_kernel(
     q_ptr,
     k_ptr,
@@ -659,9 +663,9 @@ def flash_fwd_splitkv_kernel(
     o_batch_stride,
     is_cu_seqlens_q,
     cu_seqlens_q_ptr,
-    is_cu_seqlens_k,
+    is_cu_seqlens_k: tl.constexpr,
     cu_seqlens_k_ptr,
-    is_seqused_k,
+    is_seqused_k: tl.constexpr,
     seqused_k_ptr,
     # sizes
     b: tl.constexpr,
@@ -669,10 +673,10 @@ def flash_fwd_splitkv_kernel(
     h: tl.constexpr,
     hk: tl.constexpr,
     h_hk_ratio: tl.constexpr,
-    seqlen_q: tl.constexpr,
-    seqlen_k: tl.constexpr,
-    seqlen_q_rounded: tl.constexpr,
-    seqlen_k_rounded: tl.constexpr,
+    seqlen_q,
+    seqlen_k,
+    seqlen_q_rounded,
+    seqlen_k_rounded,
     d: tl.constexpr,
     d_rounded: tl.constexpr,
     # scaling factors
@@ -698,7 +702,7 @@ def flash_fwd_splitkv_kernel(
     alibi_slopes_ptr,
     alibi_slopes_batch_stride: tl.constexpr,
     # block table
-    total_q: tl.constexpr,
+    total_q,
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
@@ -977,7 +981,15 @@ def block_to_cache_index(
     return cache_page_index * block_size + page_offset
 
 
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "seqlen_q",
+        "seqlen_k",
+        "seqlen_q_rounded",
+        "seqlen_k_rounded",
+        "total_q",
+    ]
+)
 def flash_varlen_fwd_kernel(
     q_ptr,
     k_ptr,
@@ -1009,10 +1021,10 @@ def flash_varlen_fwd_kernel(
     h: tl.constexpr,
     hk: tl.constexpr,
     h_hk_ratio: tl.constexpr,
-    seqlen_q: tl.constexpr,
-    seqlen_k: tl.constexpr,
-    seqlen_q_rounded: tl.constexpr,
-    seqlen_k_rounded: tl.constexpr,
+    seqlen_q,
+    seqlen_k,
+    seqlen_q_rounded,
+    seqlen_k_rounded,
     d: tl.constexpr,
     d_rounded: tl.constexpr,
     # scaling factors
@@ -1038,7 +1050,7 @@ def flash_varlen_fwd_kernel(
     alibi_slopes_ptr,
     alibi_slopes_batch_stride: tl.constexpr,
     # block table
-    total_q: tl.constexpr,
+    total_q,
     page_table_ptr,
     page_table_batch_stride: tl.constexpr,
     block_size: tl.constexpr,
