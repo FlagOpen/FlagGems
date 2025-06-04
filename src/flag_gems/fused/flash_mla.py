@@ -9,6 +9,7 @@ from ..runtime import device, error, torch_device_fn
 from ..utils import triton_lang_extension as tle
 
 device = device.name
+logger = logging.getLogger(__name__)
 
 
 # @triton.autotune(
@@ -167,7 +168,7 @@ def flash_mla(
     dv,
     causal,
 ):
-    logging.debug("GEMS FLASH MLA")
+    logger.debug("GEMS FLASH MLA")
     assert causal, "causal False not supported"
     assert d > dv, "mla with rope dim should be larger than no rope dim"
 
