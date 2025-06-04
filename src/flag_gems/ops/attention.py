@@ -399,8 +399,8 @@ def flash_attention_forward(
     query,
     key,
     value,
-    cum_seq_q,
-    cum_seq_k,
+    cumulative_sequence_length_q,
+    cumulative_sequence_length_k,
     max_q,
     max_k,
     dropout_p,
@@ -415,7 +415,9 @@ def flash_attention_forward(
     disable_splitkv=False,
 ):
     logging.debug("GEMS FLASH_ATTENTION_FORWARD")
-    assert cum_seq_q is None and cum_seq_k is None, "varlen is not supported yet."
+    assert (
+        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
+    ), "varlen is not supported yet."
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]
@@ -432,21 +434,46 @@ def flash_attention_forward(
     else:
         non_null_window_right = -1
 
-    out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
-        query,
-        key,
-        value,
-        None,
-        alibi_slopes,
-        dropout_p,
-        softmax_scale,
-        is_causal,
-        non_null_window_left,
-        non_null_window_right,
-        0,
-        return_debug_mask,
-        disable_splitkv=disable_splitkv,
-    )
+    if cumulative_sequence_length_q is not None:
+        out, q, k, v, lse, philox_seed, philox_offset, p = mha_varlan_fwd(
+            query,
+            key,
+            value,
+            None,
+            cumulative_sequence_length_q,
+            cumulative_sequence_length_k,
+            seqused_k,
+            None,
+            None,  # block_table
+            alibi_slopes,
+            max_q,
+            max_k,
+            dropout_p,
+            scale,
+            False,
+            is_causal,
+            non_null_window_left,
+            non_null_window_right,
+            0,
+            return_debug_mask and dropout_p > 0,
+            None,
+        )
+    else:
+        out, q, k, v, lse, philox_seed, philox_offset, p = mha_fwd(
+            query,
+            key,
+            value,
+            None,
+            alibi_slopes,
+            dropout_p,
+            softmax_scale,
+            is_causal,
+            non_null_window_left,
+            non_null_window_right,
+            0,
+            return_debug_mask,
+            disable_splitkv=disable_splitkv,
+        )
 
     return (out, lse, philox_seed, philox_offset, p)
 
@@ -555,7 +582,7 @@ def flash_attn_varlen_func(
 
     assert fa_version == 2, "Only FA2 is implemented."
 
-    out, softmax_lse = mha_varlan_fwd(
+    out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
         q,
         k,
         v,

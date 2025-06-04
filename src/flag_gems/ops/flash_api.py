@@ -416,7 +416,7 @@ def mha_varlan_fwd(
             )
         else:
             is_dropout = False
-            philox_args = None
+            philox_args = torch.empty((2,), dtype=torch.int64, device=q_device)
 
         p_dropout = 1 - p_dropout
         p_dropout_in_uint8_t = math.floor(p_dropout * 255.0)
@@ -527,7 +527,8 @@ def mha_varlan_fwd(
             lse = lse.reshape(num_heads_k, batch_size, max_seqlen_q)
             lse = lse.reshape(num_heads_k * max_seqlen_q, batch_size)
 
-    return out, lse
+        unused = torch.empty((), dtype=torch.int64, device=q_device)
+    return out, q, k, v, lse, philox_args, unused, p
 
 
 def mha_fwd(
