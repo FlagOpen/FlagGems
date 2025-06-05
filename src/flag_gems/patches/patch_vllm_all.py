@@ -92,20 +92,19 @@ def custom_gems_write_to_paged_cache(
 
 
 def apply_gems_patches_to_vllm(verbose=True):
-    #from vllm.attention.ops.paged_attn import PagedAttention
-    #from vllm.model_executor.layers.activation import SiluAndMul
-    #from vllm.model_executor.layers.layernorm import RMSNorm
-    #from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
+    from vllm.attention.ops.paged_attn import PagedAttention
+    from vllm.model_executor.layers.activation import SiluAndMul
+    from vllm.model_executor.layers.layernorm import RMSNorm
+    from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
 
-    #patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
-    # patch_module_method(
-    #     RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda, verbose
-    # )
-    # patch_module_method(
-    #     PagedAttention,
-    #     "write_to_paged_cache",
-    #     custom_gems_write_to_paged_cache,
-    #     verbose,
-    # )
-    # patch_module_method(SiluAndMul, "forward_cuda", custom_gems_silu_and_mul, verbose)
-    print("GEMS patches applied to vLLM modules.")
+    patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
+    patch_module_method(
+        RotaryEmbedding, "forward_cuda", custom_gems_rope_forward_cuda, verbose
+    )
+    patch_module_method(
+        PagedAttention,
+        "write_to_paged_cache",
+        custom_gems_write_to_paged_cache,
+        verbose,
+    )
+    patch_module_method(SiluAndMul, "forward_cuda", custom_gems_silu_and_mul, verbose)

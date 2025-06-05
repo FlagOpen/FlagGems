@@ -8,26 +8,26 @@ import numpy as np
 import torch
 from vllm import LLM, SamplingParams
 
-#import flag_gems
+import flag_gems
 
-#flag_gems.enable()
-#flag_gems.apply_gems_patches_to_vllm(verbose=True)
+os.environ["VLLM_ENABLE_MOE_ALIGN_BLOCK_SIZE_TRITON"] = "1"
+
+flag_gems.enable()
+flag_gems.apply_gems_patches_to_vllm(verbose=True)
+
 
 def set_seed(seed: int = 42):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)  # 如果你用的是 GPU
-    torch.cuda.manual_seed_all(seed)  # 如果你用多 GPU
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False  # 为了可重复性，关闭 benchmark
+    torch.backends.cudnn.benchmark = False
 
 
-#set_seed(42)
+set_seed(42)
 
-# enable torch profiler, can also be set on cmd line
-# os.environ["VLLM_TORCH_PROFILER_DIR"] = "./vllm_profile"
-# os.environ["VLLM_ENABLE_MOE_ALIGN_BLOCK_SIZE_TRITON"] = "1"
 
 # Sample prompts.
 prompts = [
@@ -36,18 +36,15 @@ prompts = [
     "The capital of France is",
     "The future of AI is",
 ]
+
 # Create a sampling params object.
 sampling_params = SamplingParams(temperature=0.8, top_p=0.95, max_tokens=120)
-
-# compilation_config = {"triton.cudagraphs": True, "max_autotune": True, "shape_padding": True}
 
 
 def main():
     # Create an LLM.
     llm = LLM(
-        # model="Qwen/Qwen2.5-7B-Instruct",
-        model="/home/tianjinjin/checkpoints/Qwen2.5-7B-Instruct/",
-        # model="/home/tianjinjin/checkpoints/DeepSeek-R1/",
+        model="Qwen/Qwen2.5-7B-Instruct",
         tensor_parallel_size=1,
         max_model_len=1024,
         gpu_memory_utilization=0.98,
