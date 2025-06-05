@@ -164,6 +164,7 @@ from .triu import triu
 from .uniform import uniform_
 from .unique import _unique2
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
+from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_nearest2d import upsample_nearest2d
 from .var_mean import var_mean
 from .vdot import vdot
@@ -368,6 +369,7 @@ __all__ = [
     "masked_fill_",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "upsample_bilinear2d",
     "upsample_nearest2d",
     "nonzero",
     "repeat",
