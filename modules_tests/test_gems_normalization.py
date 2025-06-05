@@ -36,7 +36,6 @@ def test_gems_rmsnorm(shape, dtype):
         reference.weight.data.copy_(weight)
         torch_ref = reference(inp)
 
-        out_test = target(inp)
         assert_close(out_test, torch_ref, dtype, reduce_dim=norm_shape)
     else:
         pytest.skip("Skipping PyTorch RMSNorm comparison: torch<2.4.0")
@@ -48,7 +47,6 @@ def test_gems_rmsnorm(shape, dtype):
         vllm_reference.weight.data.copy_(weight)
         vllm_ref = vllm_reference(inp)
 
-        out_test = target(inp)
         assert_close(out_test, vllm_ref, dtype, reduce_dim=norm_shape)
     else:
         pytest.skip("Skipping vLLM RMSNorm comparison: vLLM not installed")

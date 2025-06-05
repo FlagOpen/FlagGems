@@ -9,7 +9,7 @@
 # - yarn_find_correction_range
 # - yarn_get_mscale
 # - yarn_linear_ramp_mask
-# - _set_cos_sin_cache method in `GemsDeepseekV3YarnRoPE`
+# - _set_cos_sin_cache method in `GemsDeepseekYarnRoPE`
 #
 # Source: https://huggingface.co/deepseek-ai/DeepSeek-R1/blob/main/modeling_deepseek.py
 # License: Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
@@ -29,7 +29,7 @@ has_c_extension = False  # Disable C extension for now, as we have not implement
 
 __all__ = [
     "gems_rope_forward",
-    "GemsDeepseekV3YarnRoPE",
+    "GemsDeepseekYarnRoPE",
 ]
 
 
@@ -40,11 +40,12 @@ def gems_rope_forward(
     sin: torch.Tensor,
     position_ids: Optional[torch.IntTensor] = None,
     rotary_interleaved: bool = False,
+    inplace: bool = False,
 ) -> Union[torch.Tensor, torch.Tensor]:
     logger.debug("GEMS CUSTOM ROPE FORWARD")
     # TODO: Implement C++ wrapper for rotary_embedding
     return flag_gems.apply_rotary_pos_emb(
-        query, key, cos, sin, position_ids, rotary_interleaved
+        query, key, cos, sin, position_ids, rotary_interleaved, inplace
     )
 
 
@@ -85,9 +86,9 @@ def yarn_linear_ramp_mask(min, max, dim):
     return ramp_func
 
 
-class GemsDeepseekV3YarnRoPE(nn.Module):
+class GemsDeepseekYarnRoPE(nn.Module):
     """
-    Rotary Position Embedding (RoPE) module for Deepseek-V3 with Yarn enhancements.
+    Rotary Position Embedding (RoPE) module for Deepseek with Yarn enhancements.
 
     This module implements a RoPE variant that supports:
     - Dynamic position cache construction and updating (used in HuggingFace-like models)
@@ -123,7 +124,7 @@ class GemsDeepseekV3YarnRoPE(nn.Module):
         Tuple[torch.Tensor, torch.Tensor]: Transformed (query, key) tensors with RoPE applied.
 
     Usage:
-        rope = GemsDeepseekV3YarnRoPE(dim=128, forward_only=False)
+        rope = GemsDeepseekYarnRoPE(dim=128, forward_only=False)
         q, k = rope(q, k, seq_len=q.shape[-2])
     """
 
@@ -212,6 +213,7 @@ class GemsDeepseekV3YarnRoPE(nn.Module):
         position_ids: Optional[torch.IntTensor] = None,
         rotary_interleaved: bool = False,
         seq_len: Optional[int] = None,
+        inplace: bool = False,
     ) -> Union[torch.Tensor, torch.Tensor]:
         if seq_len is None:
             seq_len = query.shape[-2]
@@ -228,6 +230,6 @@ class GemsDeepseekV3YarnRoPE(nn.Module):
         cos = self.cos_cached[:seq_len].to(dtype=query.dtype)
         sin = self.sin_cached[:seq_len].to(dtype=query.dtype)
 
-        return flag_gems.apply_rotary_pos_emb(
-            query, key, cos, sin, position_ids, rotary_interleaved
+        return gems_rope_forward(
+            query, key, cos, sin, position_ids, rotary_interleaved, inplace
         )
