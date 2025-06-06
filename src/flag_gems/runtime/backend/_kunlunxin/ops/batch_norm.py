@@ -174,12 +174,29 @@ def batch_norm_forward_kernel(
             )
 
 
+def batch_norm_heur_block_m(args):
+    return min(64, triton.next_power_of_2(args["batch_dim"]))
+
+
+def batch_norm_heur_block_n(args):
+    # A maximum of 16384 elements are loaded at once.
+    BLOCK_M = batch_norm_heur_block_m(args)
+    BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
+    return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+
+
 @libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
 )
-@triton.heuristics(runtime.get_heuristic_config("batch_norm"))
+@triton.heuristics(
+    values={
+        "BLOCK_M": batch_norm_heur_block_m,
+        "BLOCK_N": batch_norm_heur_block_n,
+    },
+)
+# @triton.heuristics(runtime.get_heuristic_config("batch_norm"))
 @triton.jit
 def batch_norm_backward_kernel(
     output_grad_pointer,
@@ -216,10 +233,10 @@ def batch_norm_backward_kernel(
     term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
 
     for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
-        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
-            batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
-            batch_mask = batch_offset < batch_dim
+        batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
+        batch_mask = batch_offset < batch_dim
 
+        for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
             spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
             spatial_mask = spatial_offset < spatial_dim
 
@@ -237,13 +254,12 @@ def batch_norm_backward_kernel(
             )
 
             mask = batch_mask[:, None] & spatial_mask[None, :]
-            curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
+            curr_input = tl.load(curr_input_pointer, mask=mask, other=0).to(tl.float32)
 
-            curr_pre_lin = (curr_input - mean) * inv_std
-            curr_output_grad = tl.load(curr_output_grad_pointer, mask=mask).to(
-                tl.float32
-            )
-
+            curr_pre_lin = ((curr_input - mean) * inv_std).to(tl.float32)
+            curr_output_grad = tl.load(
+                curr_output_grad_pointer, mask=mask, other=0.0
+            ).to(tl.float32)
             term1 += curr_pre_lin * curr_output_grad
             term2 += curr_output_grad
 
@@ -262,6 +278,7 @@ def batch_norm_backward_kernel(
         weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
     else:
         weight = 1.0
+        weight = weight.to(tl.float32)
 
     count = batch_dim * spatial_dim
 
@@ -295,6 +312,7 @@ def batch_norm_backward_kernel(
             curr_input = tl.load(
                 curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
             ).to(tl.float32)
+
             curr_pre_lin = (curr_input - mean) * inv_std
             curr_output_grad = tl.load(
                 curr_output_grad_pointer,
@@ -324,7 +342,11 @@ def batch_norm(
 ):
     logger.debug("GEMS BATCHNORM FORWARD")
 
-    input_3d = make_3d_for_bn(input)
+    input_3d_i = make_3d_for_bn(input)
+    m, n, k = input_3d_i.shape
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+    input_3d = make_3d_for_bn(input_3d_f)
+    # input_3d = make_3d_for_bn(input)
 
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     output = torch.empty_like(input_3d)
@@ -354,8 +376,8 @@ def batch_norm(
             eps,
             is_train=training,
         )
-
-    return output.view_as(input), mean, inv_std
+    output_reshaped = output.reshape(m, k, n).permute(0, 2, 1)
+    return output_reshaped.view_as(input), mean, inv_std
 
 
 def batch_norm_backward(
@@ -371,8 +393,15 @@ def batch_norm_backward(
     output_mask=None,
 ):
     logger.debug("GEMS BATCHNORM BACKWARD")
-    input_3d = make_3d_for_bn(input)
-    output_grad_3d = make_3d_for_bn(grad_out)
+
+    input_3d_i = make_3d_for_bn(input)
+    m, n, k = input_3d_i.shape
+    input_3d_f = input_3d_i.permute(0, 2, 1).reshape(-1, n)
+    input_3d = make_3d_for_bn(input_3d_f)
+
+    output_grad_3d_i = make_3d_for_bn(grad_out)
+    output_grad_3d_f = output_grad_3d_i.permute(0, 2, 1).reshape(-1, n)
+    output_grad_3d = make_3d_for_bn(output_grad_3d_f)
 
     batch_dim, feat_dim, spatial_dim = input_3d.shape
 
@@ -388,10 +417,9 @@ def batch_norm_backward(
         bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
     else:
         bias_grad = None
-
     # Launches 1D grid where each program operates over one feature.
     with torch_device_fn.device(input.device):
-        batch_norm_backward_kernel[(feat_dim,)](
+        batch_norm_backward_kernel[(feat_dim, 1, 1)](
             output_grad_3d,
             input_3d,
             save_mean,
@@ -411,7 +439,7 @@ def batch_norm_backward(
     # Pads output with None because a gradient is necessary for
     # all input arguments.
     return (
-        input_grad.view_as(input),
+        input_grad.reshape(m, k, n).permute(0, 2, 1).view_as(input),
         weight_grad,
         bias_grad,
     )
