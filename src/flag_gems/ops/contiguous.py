@@ -56,6 +56,10 @@ def setup_context(ctx, inputs, output):
 
 contiguous_forward.register_autograd(backward, setup_context=setup_context)
 
+# torch.library.register_autograd(
+#     "aten::contiguous", backward, setup_context=setup_context
+# )
+
 
 def contiguous(inp, *, memory_format=torch.contiguous_format):
     assert memory_format == torch.contiguous_format
