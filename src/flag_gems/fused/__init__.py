@@ -7,6 +7,7 @@ from .silu_and_mul import silu_and_mul
 from .skip_layernorm import skip_layer_norm
 from .skip_rms_norm import skip_rms_norm
 from .weight_norm import weight_norm
+from .concat_and_cache_mla import concat_and_cache_mla
 
 __all__ = [
     "apply_rotary_pos_emb",
@@ -18,4 +19,5 @@ __all__ = [
     "outer",
     "instance_norm",
     "weight_norm",
+    "concat_and_cache_mla",
 ]

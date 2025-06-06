@@ -1,11 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-import os
-import sys
-
-# TODO: change this
-sys.path.append(os.path.abspath(os.path.expanduser("~/workspace")))
-from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
-
 import random
 
 import pytest
@@ -61,16 +54,19 @@ def _create_mla_cache(
                        entry_size,
                        dtype=cache_dtype,
                        device=device)
+
+
 # Custom implementation for FP8 conversion (only for testing)
-def convert_fp8(dst: torch.Tensor, 
-                src: torch.Tensor, 
-                scale: float, 
+def convert_fp8(dst: torch.Tensor,
+                src: torch.Tensor,
+                scale: float,
                 kv_dtype: str) -> None:
     if kv_dtype == "fp8":
         dst_ = (src / scale).to(torch.float8_e4m3fn).view(dst.dtype)
         dst.copy_(dst_)
     else:
         dst.copy_(src)
+
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
@@ -117,7 +113,8 @@ def test_concat_and_cache_mla(
     scale = torch.tensor(0.1, dtype=torch.float32, device=device)
     kv_cache = _create_mla_cache(num_blocks, block_size, entry_size, dtype,
                                  kv_cache_dtype, device)
-    ref_temp = to_reference(torch.zeros(*kv_cache.shape, dtype=dtype, device=device))
+    ref_temp = to_reference(torch.zeros(
+        *kv_cache.shape, dtype=dtype, device=device))
 
     for i in range(num_tokens):
         slot = slot_mapping[i].item()
@@ -127,29 +124,30 @@ def test_concat_and_cache_mla(
         ref_temp[block_idx, block_offset, kv_lora_rank:] = k_pe[i]
 
     if kv_cache_dtype == "fp8":
-        ref_kv_cache = to_reference(torch.empty_like(ref_temp, dtype=kv_cache.dtype))
+        ref_kv_cache = to_reference(
+            torch.empty_like(ref_temp, dtype=kv_cache.dtype))
         convert_fp8(ref_kv_cache,
-                        ref_temp,
-                        scale.item(),
-                        kv_dtype=kv_cache_dtype)
+                    ref_temp,
+                    scale.item(),
+                    kv_dtype=kv_cache_dtype)
     else:
         ref_kv_cache = to_reference(ref_temp)
     with flag_gems.use_gems():
-        concat_and_cache_mla(kv_c, k_pe, kv_cache, slot_mapping,
-                             kv_cache_dtype, scale)
+        flag_gems.concat_and_cache_mla(kv_c, k_pe, kv_cache, slot_mapping,
+                                       kv_cache_dtype, scale)
 
     if kv_cache_dtype == "fp8":
         result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)
         convert_fp8(result_temp,
-                        kv_cache.contiguous(),
-                        scale.item(),
-                        kv_dtype=kv_cache_dtype)
-        expected_temp = to_reference(torch.empty_like(ref_kv_cache, dtype=torch.uint8))
+                    kv_cache.contiguous(),
+                    scale.item(),
+                    kv_dtype=kv_cache_dtype)
+        expected_temp = to_reference(
+            torch.empty_like(ref_kv_cache, dtype=torch.uint8))
         convert_fp8(expected_temp,
-                        ref_kv_cache,
-                        scale.item(),
-                        kv_dtype=kv_cache_dtype)
-        # Use the custom assertion for FP8 tensors
+                    ref_kv_cache,
+                    scale.item(),
+                    kv_dtype=kv_cache_dtype)
         dtype = torch.float8_e4m3fn
         # TODO: RuntimeError: Comparing
         # maybe a bug in torch.testing.assert_close
