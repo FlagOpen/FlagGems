@@ -1,8 +1,10 @@
 import torch
+import pytest
 
-from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, SIZES, Benchmark
+from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, SIZES, Benchmark, device
 
 
+@pytest.mark.addmm
 def test_perf_addmm():
     def addmm_args(dtype, batch, size):
         bias = torch.randn(
@@ -10,10 +12,10 @@ def test_perf_addmm():
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=device,
         )
-        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([size, size], dtype=dtype, device=device)
+        inp2 = torch.randn([size, size], dtype=dtype, device=device)
         return bias, inp1, inp2
 
     bench = Benchmark(
@@ -27,10 +29,11 @@ def test_perf_addmm():
     bench.run()
 
 
+@pytest.mark.bmm
 def test_perf_bmm():
     def bmm_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([batch, size, size], dtype=dtype, device=device)
+        inp2 = torch.randn([batch, size, size], dtype=dtype, device=device)
         return inp1, inp2
 
     bench = Benchmark(
@@ -44,10 +47,11 @@ def test_perf_bmm():
     bench.run()
 
 
+@pytest.mark.mm
 def test_perf_mm():
     def mm_args(dtype, batch, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([size, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([size, size], dtype=dtype, device=device)
+        inp2 = torch.randn([size, size], dtype=dtype, device=device)
         return inp1, inp2
 
     bench = Benchmark(
@@ -61,10 +65,11 @@ def test_perf_mm():
     bench.run()
 
 
+@pytest.mark.mv
 def test_perf_mv():
     def mv_args(dtype, batch, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([size, size], dtype=dtype, device=device)
+        inp2 = torch.randn([size], dtype=dtype, device=device)
         return inp1, inp2
 
     bench = Benchmark(
@@ -80,8 +85,8 @@ def test_perf_mv():
 
 def test_perf_outer():
     def outer_args(dtype, batch, size):
-        inp1 = torch.randn([size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([size], dtype=dtype, device=device)
+        inp2 = torch.randn([size], dtype=dtype, device=device)
         return inp1, inp2
 
     bench = Benchmark(

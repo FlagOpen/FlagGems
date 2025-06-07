@@ -1,4 +1,5 @@
 import torch
+import pytest
 
 from .performance_utils import (
     FLOAT_DTYPES,
@@ -11,9 +12,11 @@ from .performance_utils import (
     ternary_args,
     unary_arg,
     unary_int_arg,
+    device
 )
 
 
+@pytest.mark.abs
 def test_perf_abs():
     bench = Benchmark(
         op_name="abs",
@@ -26,6 +29,7 @@ def test_perf_abs():
     bench.run()
 
 
+@pytest.mark.add
 def test_perf_add():
     bench = Benchmark(
         op_name="add",
@@ -38,6 +42,7 @@ def test_perf_add():
     bench.run()
 
 
+@pytest.mark.bitwiseand
 def test_perf_bitwiseand():
     bench = Benchmark(
         op_name="bitwiseand_int",
@@ -50,6 +55,7 @@ def test_perf_bitwiseand():
     bench.run()
 
 
+@pytest.mark.bitwisenot
 def test_perf_bitwisenot():
     bench = Benchmark(
         op_name="bitwisenot_int",
@@ -62,6 +68,7 @@ def test_perf_bitwisenot():
     bench.run()
 
 
+@pytest.mark.bitwiseor
 def test_perf_bitwiseor():
     bench = Benchmark(
         op_name="bitwiseor_int",
@@ -74,6 +81,7 @@ def test_perf_bitwiseor():
     bench.run()
 
 
+@pytest.mark.clamp
 def test_perf_clamp():
     bench = Benchmark(
         op_name="clamp",
@@ -86,6 +94,7 @@ def test_perf_clamp():
     bench.run()
 
 
+@pytest.mark.cos
 def test_perf_cos():
     bench = Benchmark(
         op_name="cos",
@@ -98,6 +107,7 @@ def test_perf_cos():
     bench.run()
 
 
+@pytest.mark.div
 def test_perf_div():
     bench = Benchmark(
         op_name="div",
@@ -110,6 +120,7 @@ def test_perf_div():
     bench.run()
 
 
+@pytest.mark.dropout
 def test_perf_dropout():
     bench = Benchmark(
         op_name="dropout",
@@ -122,6 +133,7 @@ def test_perf_dropout():
     bench.run()
 
 
+@pytest.mark.eq
 def test_perf_eq():
     bench = Benchmark(
         op_name="eq",
@@ -134,6 +146,7 @@ def test_perf_eq():
     bench.run()
 
 
+@pytest.mark.exp
 def test_perf_exp():
     bench = Benchmark(
         op_name="exp",
@@ -146,6 +159,7 @@ def test_perf_exp():
     bench.run()
 
 
+@pytest.mark.ge
 def test_perf_ge():
     bench = Benchmark(
         op_name="ge",
@@ -158,6 +172,7 @@ def test_perf_ge():
     bench.run()
 
 
+@pytest.mark.gelu
 def test_perf_gelu():
     bench = Benchmark(
         op_name="gelu",
@@ -170,6 +185,7 @@ def test_perf_gelu():
     bench.run()
 
 
+@pytest.mark.gt
 def test_perf_gt():
     bench = Benchmark(
         op_name="gt",
@@ -182,6 +198,7 @@ def test_perf_gt():
     bench.run()
 
 
+@pytest.mark.isinf
 def test_perf_isinf():
     bench = Benchmark(
         op_name="isinf",
@@ -194,6 +211,7 @@ def test_perf_isinf():
     bench.run()
 
 
+@pytest.mark.isnan
 def test_perf_isnan():
     bench = Benchmark(
         op_name="isnan",
@@ -206,6 +224,7 @@ def test_perf_isnan():
     bench.run()
 
 
+@pytest.mark.le
 def test_perf_le():
     bench = Benchmark(
         op_name="le",
@@ -218,6 +237,7 @@ def test_perf_le():
     bench.run()
 
 
+@pytest.mark.lt
 def test_perf_lt():
     bench = Benchmark(
         op_name="lt",
@@ -230,6 +250,7 @@ def test_perf_lt():
     bench.run()
 
 
+@pytest.mark.mul
 def test_perf_mul():
     bench = Benchmark(
         op_name="mul",
@@ -242,6 +263,7 @@ def test_perf_mul():
     bench.run()
 
 
+@pytest.mark.ne
 def test_perf_ne():
     bench = Benchmark(
         op_name="ne",
@@ -254,6 +276,7 @@ def test_perf_ne():
     bench.run()
 
 
+@pytest.mark.neg
 def test_perf_neg():
     bench = Benchmark(
         op_name="neg",
@@ -266,6 +289,7 @@ def test_perf_neg():
     bench.run()
 
 
+@pytest.mark.pow
 def test_perf_pow():
     bench = Benchmark(
         op_name="pow",
@@ -278,6 +302,7 @@ def test_perf_pow():
     bench.run()
 
 
+@pytest.mark.reciprocal
 def test_perf_reciprocal():
     bench = Benchmark(
         op_name="reciprocal",
@@ -290,6 +315,7 @@ def test_perf_reciprocal():
     bench.run()
 
 
+@pytest.mark.relu
 def test_perf_relu():
     bench = Benchmark(
         op_name="relu",
@@ -302,6 +328,7 @@ def test_perf_relu():
     bench.run()
 
 
+@pytest.mark.rsqrt
 def test_perf_rsqrt():
     bench = Benchmark(
         op_name="rsqrt",
@@ -314,6 +341,7 @@ def test_perf_rsqrt():
     bench.run()
 
 
+@pytest.mark.sigmoid
 def test_perf_sigmoid():
     bench = Benchmark(
         op_name="sigmoid",
@@ -326,6 +354,7 @@ def test_perf_sigmoid():
     bench.run()
 
 
+@pytest.mark.silu
 def test_perf_silu():
     bench = Benchmark(
         op_name="silu",
@@ -338,6 +367,7 @@ def test_perf_silu():
     bench.run()
 
 
+@pytest.mark.sin
 def test_perf_sin():
     bench = Benchmark(
         op_name="sin",
@@ -350,6 +380,7 @@ def test_perf_sin():
     bench.run()
 
 
+@pytest.mark.sub
 def test_perf_sub():
     bench = Benchmark(
         op_name="sub",
@@ -362,6 +393,7 @@ def test_perf_sub():
     bench.run()
 
 
+@pytest.mark.tanh
 def test_perf_tanh():
     bench = Benchmark(
         op_name="tanh",
@@ -374,6 +406,7 @@ def test_perf_tanh():
     bench.run()
 
 
+@pytest.mark.triu
 def test_perf_triu():
     bench = Benchmark(
         op_name="triu",
@@ -388,8 +421,8 @@ def test_perf_triu():
 
 def test_perf_where():
     def where_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size], dtype=dtype, device="cuda")
-        inp2 = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp1 = torch.randn([batch, size], dtype=dtype, device=device)
+        inp2 = torch.randn([batch, size], dtype=dtype, device=device)
         condition = inp1 > 0
         return condition, inp1, inp2
 

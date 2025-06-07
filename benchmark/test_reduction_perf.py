@@ -1,4 +1,5 @@
 import torch
+import pytest
 
 from .performance_utils import (
     BLAS_BATCH,
@@ -7,9 +8,11 @@ from .performance_utils import (
     SIZES,
     Benchmark,
     unary_arg,
+    device,
 )
 
 
+@pytest.mark.all
 def test_perf_all():
     bench = Benchmark(
         op_name="all",
@@ -22,6 +25,7 @@ def test_perf_all():
     bench.run()
 
 
+@pytest.mark.amax
 def test_perf_amax():
     bench = Benchmark(
         op_name="amax",
@@ -46,6 +50,7 @@ def test_perf_any():
     bench.run()
 
 
+@pytest.mark.argmax
 def test_perf_argmax():
     bench = Benchmark(
         op_name="argmax",
@@ -58,16 +63,17 @@ def test_perf_argmax():
     bench.run()
 
 
+@pytest.mark.cross_entropy_loss
 def test_perf_cross_entropy_loss():
     def cross_entropy_loss_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=device)
         target = torch.randint(
             0,
             size,
             [
                 batch,
             ],
-            device="cuda",
+            device=device,
         )
         return inp, target
 
@@ -84,7 +90,7 @@ def test_perf_cross_entropy_loss():
 
 def test_perf_cumsum():
     def cumsum_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=device)
         return inp, 1
 
     bench = Benchmark(
@@ -98,24 +104,25 @@ def test_perf_cumsum():
     bench.run()
 
 
+@pytest.mark.groupnorm
 def test_perf_groupnorm():
     def group_norm_args(dtype, batch, size):
         C = 16
         G = 16
-        inp = torch.randn([batch, C, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, C, size], dtype=dtype, device=device)
         weight = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device="cuda",
+            device=device,
         )
         bias = torch.randn(
             [
                 C,
             ],
             dtype=dtype,
-            device="cuda",
+            device=device,
         )
         return inp, G, weight, bias
 
@@ -132,20 +139,20 @@ def test_perf_groupnorm():
 
 def test_perf_layernorm():
     def layer_norm_args(dtype, batch, size):
-        inp = torch.randn([batch, size], dtype=dtype, device="cuda")
+        inp = torch.randn([batch, size], dtype=dtype, device=device)
         weight = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=device,
         )
         bias = torch.randn(
             [
                 size,
             ],
             dtype=dtype,
-            device="cuda",
+            device=device,
         )
         return (
             inp,
@@ -167,6 +174,7 @@ def test_perf_layernorm():
     bench.run()
 
 
+@pytest.mark.log_softmax
 def test_perf_log_softmax():
     bench = Benchmark(
         op_name="log_softmax",
@@ -179,6 +187,7 @@ def test_perf_log_softmax():
     bench.run()
 
 
+@pytest.mark.max
 def test_perf_max():
     bench = Benchmark(
         op_name="max",
@@ -191,6 +200,7 @@ def test_perf_max():
     bench.run()
 
 
+@pytest.mark.mean
 def test_perf_mean():
     bench = Benchmark(
         op_name="mean",
@@ -203,6 +213,7 @@ def test_perf_mean():
     bench.run()
 
 
+@pytest.mark.min
 def test_perf_min():
     bench = Benchmark(
         op_name="min",
@@ -215,6 +226,7 @@ def test_perf_min():
     bench.run()
 
 
+@pytest.mark.prod
 def test_perf_prod():
     bench = Benchmark(
         op_name="prod",
@@ -227,6 +239,7 @@ def test_perf_prod():
     bench.run()
 
 
+@pytest.mark.softmax
 def test_perf_softmax():
     bench = Benchmark(
         op_name="softmax",
@@ -239,6 +252,7 @@ def test_perf_softmax():
     bench.run()
 
 
+@pytest.mark.softmax_backward
 def test_perf_softmax_backward():
     bench = Benchmark(
         op_name="softmax",
@@ -252,6 +266,7 @@ def test_perf_softmax_backward():
     bench.run()
 
 
+@pytest.mark.sum
 def test_perf_sum():
     bench = Benchmark(
         op_name="sum",

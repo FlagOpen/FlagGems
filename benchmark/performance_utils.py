@@ -4,6 +4,7 @@ import torch
 import triton
 
 import flag_gems
+import torch_xla.core.xla_model as xm
 
 from .conftest import CPU_MODE
 
@@ -45,28 +46,46 @@ class Benchmark:
         self.gems_op = gems_op
 
     def profile(self, op, *args, **kwargs):
+        mode = 1
+        if args[0].device.type == "cpu":
+            mode = 0
         fn = lambda: op(*args, **kwargs)
         if self.is_backward:
             out = fn()
             dout = torch.randn_like(out)
             fn = lambda: out.backward(dout, retain_graph=True)
+            if mode != 0:
+                xm.mark_step()
         if CPU_MODE:
             for i in range(WARMUP):
-                fn()
+                out = fn()
+                if mode != 0:
+                    xm.mark_step()
             # torch.cuda.synchronize()
             start = time.time()
             for i in range(REPETITION):
-                fn()
+                out = fn()
+                if mode != 0:
+                    xm.mark_step()
             # torch.cuda.synchronize()
             end = time.time()
             latency = (end - start) / REPETITION * 1000
         else:
-            latency = triton.testing.do_bench(
-                fn,
-                warmup=WARMUP,
-                rep=REPETITION,
-                return_mode="median",
-            )
+            if mode == 0:
+                latency = triton.testing.do_bench(
+                    fn,
+                    warmup=WARMUP,
+                    rep=REPETITION,
+                    return_mode="median",
+                )
+            else:
+                latency = triton.testing.do_bench(
+                    fn,
+                    warmup=WARMUP,
+                    rep=REPETITION,
+                    return_mode="median",
+                    device_type="xla"
+                )
         # average latency in ms
         return latency
 
@@ -77,6 +96,7 @@ class Benchmark:
             print("--------------------------------------------------")
             for size in self.sizes:
                 args = ()
+                args_xla = ()
                 if self.arg_func is not None:
                     args = self.arg_func(dtype, self.batch, size)
                 if self.is_backward:
@@ -91,7 +111,8 @@ class Benchmark:
                 if self.kwargs_func is not None:
                     kwargs = self.kwargs_func(dtype, self.batch, size)
 
-                torch_perf = self.profile(self.torch_op, *args, **kwargs)
+                args_xla = tuple(xm.send_cpu_data_to_device(arg, xm.xla_device()) for arg in args)
+                torch_perf = self.profile(self.torch_op, *args_xla, **kwargs)
                 if self.gems_op:
                     gems_perf = self.profile(self.gems_op, *args, **kwargs)
                 else:
