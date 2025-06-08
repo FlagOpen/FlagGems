@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 import pytest
 import torch
+import triton
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
@@ -222,6 +223,7 @@ def test_flash_fwd_nonsquare_qk_causal(
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(triton.__version__ < "3.2", reason="Low Triton Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")

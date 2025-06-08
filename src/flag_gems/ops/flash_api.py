@@ -16,7 +16,7 @@ from .flash_kernel import (
     flash_varlen_fwd_kernel,
 )
 
-_debug = False
+_debug = True
 
 
 def CHECK_DEVICE(x):
@@ -713,13 +713,13 @@ def mha_fwd(
                 n_blocks = triton.cdiv(seqlen_k, BN)
                 n_splits = splits_heuristic(n_tasks, num_sms, n_blocks)
 
-                if _debug:
-                    n_splits = 32
-                    n_blocks = triton.cdiv(K, BN)
-                    blocks_per_split = triton.cdiv(n_blocks, n_splits)
-                    print("block_n:", BN)
-                    print("n_splits:", n_splits)
-                    print("blocks_per_split", blocks_per_split)
+                # if _debug:
+                #     n_splits = 32
+                #     n_blocks = triton.cdiv(K, BN)
+                #     blocks_per_split = triton.cdiv(n_blocks, n_splits)
+                #     print("block_n:", BN)
+                #     print("n_splits:", n_splits)
+                #     print("blocks_per_split", blocks_per_split)
 
                 if n_splits > 1:
                     lse_splits = torch.empty(
@@ -854,7 +854,7 @@ def mha_fwd(
             print(f"{kernel.name} num_warps:", kernel.metadata.num_warps)
             print(f"{kernel.name} num_stages:", kernel.metadata.num_stages)
             # print(kernel.asm['ttgir'])
-            print("p:", p)
+            # print("p:", p)
 
         if seqlenq_ngroups_swapped:
             out = out.transpose(1, 2).reshape(
