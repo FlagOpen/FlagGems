@@ -6,7 +6,7 @@ import flag_gems
 from flag_gems.modules import GemsRMSNorm
 from flag_gems.testing import assert_close
 
-from .module_test_util import has_c_extension, has_vllm, is_torch_version_ge
+from .module_test_util import has_c_extension, has_vllm, init_seed, is_torch_version_ge
 
 device = flag_gems.device
 
@@ -17,7 +17,7 @@ device = flag_gems.device
 @pytest.mark.parametrize("shape", [(4, 64), (8, 128), (1024, 1024)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
 def test_gems_rmsnorm(shape, dtype):
-    np.random.seed(0)
+    init_seed(42)
     norm_shape = shape[-1]
     np_inp = np.random.uniform(-0.1, 0.1, shape).astype(np.float32)
     np_weight = np.random.uniform(-0.1, 0.1, norm_shape).astype(np.float32)
