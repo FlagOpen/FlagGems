@@ -3,7 +3,6 @@ import torch
 RESOLUTION = {
     torch.bool: 0,
     torch.uint8: 0,
-    torch.uint16: 0,
     torch.uint32: 0,
     torch.uint64: 0,
     torch.int8: 0,
