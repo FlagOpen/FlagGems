@@ -375,6 +375,7 @@ def batch_norm(
             momentum,
             eps,
             is_train=training,
+            buffer_size_limit=2048,
         )
     output_reshaped = output.reshape(m, k, n).permute(0, 2, 1)
     return output_reshaped.view_as(input), mean, inv_std
@@ -434,6 +435,7 @@ def batch_norm_backward(
             *input_3d.stride(),
             *input_grad.stride(),
             *output_mask,
+            buffer_size_limit=2048,
         )
 
     # Pads output with None because a gradient is necessary for
