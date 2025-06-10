@@ -12,7 +12,7 @@ import flag_gems
 
 os.environ["VLLM_ENABLE_MOE_ALIGN_BLOCK_SIZE_TRITON"] = "1"
 
-flag_gems.enable()
+# flag_gems.enable()
 flag_gems.apply_gems_patches_to_vllm(verbose=True)
 
 
@@ -48,7 +48,7 @@ def main():
         tensor_parallel_size=1,
         max_model_len=1024,
         gpu_memory_utilization=0.98,
-        enforce_eager=True,
+        # enforce_eager=True,
     )
 
     # Generate texts from the prompts. The output is a list of RequestOutput

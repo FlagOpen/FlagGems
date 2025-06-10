@@ -59,7 +59,7 @@ def custom_gems_rope_forward_cuda(
     return query, key
 
 
-def custom_gems_silu_and_mul(x: torch.Tensor) -> torch.Tensor:
+def custom_gems_silu_and_mul(self, x: torch.Tensor) -> torch.Tensor:
     from flag_gems.modules.activation import gems_silu_and_mul
 
     d = x.shape[-1] // 2
