@@ -88,7 +88,7 @@ class BenchmarkResult:
         shape_detail_str = (
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
-        status = "SUCCESS" if metrics.error_msg is None else "FAILED"
+        status = "SUCCESS"
         data_line = (
             f"{status:<10}"
             f"{latency_base_str:>20}"

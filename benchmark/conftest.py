@@ -7,6 +7,8 @@ import torch
 
 import flag_gems
 
+from enum import Enum
+
 class BenchLevel(Enum):
     COMPREHENSIVE = "comprehensive"
     CORE = "core"
