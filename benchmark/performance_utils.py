@@ -27,6 +27,10 @@ def custom_json_encoder(obj):
         return str(obj)
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
+DEFAULT_METRICS = [
+    metric
+    for metric in ["latency_base", "latency", "speedup"]
+]
 
 @dataclass
 class BenchmarkMetrics:
@@ -41,6 +45,8 @@ class BenchmarkMetrics:
     latency: Optional[float] = None
     # Speedup over baseline
     speedup: Optional[float] = None
+    # TFLOPS (not implemented yet)
+    tflops: Optional[float] = None
 
 @dataclass
 class BenchmarkResult:
@@ -258,6 +264,14 @@ class Benchmark:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
                         
+                if self.get_tflops is not None:
+                    metric.tflops = (
+                        self.get_tflops(self.torch_op, *args, **kwargs)
+                        / metric.latency
+                        / 1e12
+                        * 1e3
+                    )   
+                                         
                 metric.shape_detail = self.record_shapes(*args, **kwargs)
                 metric.latency_base = torch_perf
                 metric.latency = gems_perf
