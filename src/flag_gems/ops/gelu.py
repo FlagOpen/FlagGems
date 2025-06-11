@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def gelu_none(x):
     scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    output = 0.5 * x * (1 + erf(x * scale))
+    output = 0.5 * x * (1 + erf(x.to(tl.float32) * scale))
     return output
 
 
