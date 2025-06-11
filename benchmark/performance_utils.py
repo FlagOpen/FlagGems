@@ -143,6 +143,7 @@ class Benchmark:
         sizes,
         is_backward=False,
         kwargs_func=None,
+        need_dim=False,
     ):
         self.op_name = op_name
         if is_backward:
@@ -155,6 +156,7 @@ class Benchmark:
         self.sizes = sizes
         self.gems_op = None
         self.is_backward = is_backward
+        self.need_dim=need_dim
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
@@ -240,6 +242,8 @@ class Benchmark:
                         else a
                         for a in args
                     )
+                if self.need_dim:
+                    args = args + (1,)
 
                 kwargs = {}
                 if self.kwargs_func is not None:

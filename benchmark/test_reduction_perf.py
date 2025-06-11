@@ -59,6 +59,7 @@ def test_perf_argmax():
         dtypes=FLOAT_DTYPES,
         batch=REDUCTION_BATCH,
         sizes=SIZES,
+        need_dim=True,
     )
     bench.run()
 

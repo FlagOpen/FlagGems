@@ -133,6 +133,18 @@ def test_perf_dropout():
     bench.run()
 
 
+@pytest.mark.native_dropout
+def test_perf_native_dropout():
+    bench = Benchmark(
+        op_name="native_dropout",
+        torch_op=torch.nn.Dropout(p=0.5),
+        arg_func=unary_arg,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+
 @pytest.mark.eq
 def test_perf_eq():
     bench = Benchmark(
@@ -393,6 +405,19 @@ def test_perf_sub():
     bench.run()
 
 
+@pytest.mark.rsub
+def test_perf_rsub():
+    bench = Benchmark(
+        op_name="rsub",
+        torch_op=torch.rsub,
+        arg_func=binary_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+    )
+    bench.run()
+    
+    
 @pytest.mark.tanh
 def test_perf_tanh():
     bench = Benchmark(
