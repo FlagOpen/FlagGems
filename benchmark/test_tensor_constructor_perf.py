@@ -1,4 +1,5 @@
 import torch
+import pytest
 
 from .performance_utils import (
     FLOAT_DTYPES,
@@ -6,6 +7,7 @@ from .performance_utils import (
     SIZES,
     Benchmark,
     unary_arg,
+    device,
 )
 
 
@@ -101,5 +103,24 @@ def test_perf_full_like():
         batch=POINTWISE_BATCH,
         sizes=SIZES,
         kwargs_func=full_kwargs,
+    )
+    bench.run()
+
+@pytest.mark.fill
+def test_perf_fill():
+    def fill_args(dtype, batch, size):
+        inp1 = torch.randint([batch, size], dtype=dtype, device=device)
+        inp2 = torch.tensor(3.1415926, dtype=dtype, device=device)
+        return inp1,inp2
+
+
+    bench = Benchmark(
+        op_name="fill",
+        torch_op=torch.fill,
+        arg_func=fill_args,
+        dtypes=FLOAT_DTYPES,
+        batch=POINTWISE_BATCH,
+        sizes=SIZES,
+        kwargs_func=None,
     )
     bench.run()
