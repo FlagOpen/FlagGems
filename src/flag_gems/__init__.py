@@ -321,7 +321,7 @@ def enable(
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
-            ("baddbmm", baddbmm, Autograd.disable),
+            ("baddbmm", baddbmm, Autograd.enable),
             ("eye", eye, Autograd.disable),
             ("eye.m", eye_m, Autograd.disable),
             ("to.dtype", to_dtype, Autograd.disable),

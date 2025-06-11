@@ -8,6 +8,8 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
+from .bmm import bmm
+from .mul import mul
 
 
 @libentry()
@@ -122,37 +124,100 @@ def baddbmm_kernel(
     tl.store(o_ptrs, o, mask=mask_c)
 
 
-def baddbmm(bias, A, B, *, beta=1, alpha=1):
-    logging.debug("GEMS BADDBMM")
-    batch, M, K = A.shape
-    _, _, N = B.shape
-    A = A.contiguous()
-    B = B.contiguous()
-    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+class BaddbmmFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, bias, A, B, beta, alpha):
+        logging.debug("GEMS BADDBMM FORWARD")
 
-    bbias = torch.broadcast_to(bias, (batch, M, N))
-    bias_batch_stride = bbias.stride(0)
-    bias_M_stride = bbias.stride(1)
-    bias_N_stride = bbias.stride(-1)
+        ctx.save_for_backward(A, B, bias)
+        ctx.alpha = alpha
+        ctx.beta = beta
 
-    grid = lambda meta: (
-        triton.cdiv(meta["M"], meta["TILE_M"]),
-        triton.cdiv(meta["N"], meta["TILE_N"]),
-        batch,
-    )
-    with torch_device_fn.device(A.device):
-        baddbmm_kernel[grid](
-            A,
-            B,
-            out,
-            bbias,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            bias_batch_stride=bias_batch_stride,
-            bias_M_stride=bias_M_stride,
-            bias_N_stride=bias_N_stride,
+        batch, M, K = A.shape
+        _, _, N = B.shape
+        A = A.contiguous()
+        B = B.contiguous()
+        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+
+        bbias = torch.broadcast_to(bias, (batch, M, N))
+        bias_batch_stride = bbias.stride(0)
+        bias_M_stride = bbias.stride(1)
+        bias_N_stride = bbias.stride(-1)
+
+        grid = lambda meta: (
+            triton.cdiv(meta["M"], meta["TILE_M"]),
+            triton.cdiv(meta["N"], meta["TILE_N"]),
+            batch,
         )
-    return out
+        with torch_device_fn.device(A.device):
+            baddbmm_kernel[grid](
+                A,
+                B,
+                out,
+                bbias,
+                alpha,
+                beta,
+                M,
+                N,
+                K,
+                bias_batch_stride=bias_batch_stride,
+                bias_M_stride=bias_M_stride,
+                bias_N_stride=bias_N_stride,
+            )
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        logging.debug("GEMS BADDBMM BACKWARD")
+        A, B, bias = ctx.saved_tensors
+
+        grad_A = None
+        grad_B = None
+        grad_bias = None
+        if ctx.needs_input_grad[0]:
+            grad_bias = compute_bias_grad(grad_output, ctx.beta)
+        if ctx.needs_input_grad[1]:
+            grad_A = compute_A_grad(grad_output, B, ctx.alpha)
+        if ctx.needs_input_grad[2]:
+            grad_B = compute_B_grad(A, grad_output, ctx.alpha)
+
+        return grad_bias, grad_A, grad_B, None, None
+
+
+def compute_bias_grad(d_output, beta):
+    batch, M, N = d_output.shape
+    d_bias = torch.zeros((M, N), device=d_output.device, dtype=d_output.dtype)
+    d_bias = mul(d_output, beta)
+    return d_bias
+
+
+def compute_A_grad(d_output, B, alpha):
+    B_T = B.transpose(1, 2)
+    if B.dtype == torch.float16:
+        Bcopy = B_T.to(torch.float32)
+        dcopye = d_output.to(torch.float32)
+        mul1 = bmm(dcopye, Bcopy)
+        grad_A = mul(mul1, alpha)
+        grad_A = grad_A.to(torch.float16)
+    else:
+        mul1 = bmm(d_output, B_T)
+        grad_A = mul(mul1, alpha)
+    return grad_A
+
+
+def compute_B_grad(A, d_output, alpha):
+    A_T = A.transpose(1, 2)
+    if A.dtype == torch.float16:
+        Acopy = A_T.to(torch.float32)
+        dcopye = d_output.to(torch.float32)
+        mul2 = bmm(Acopy, dcopye)
+        grad_B = mul(mul2, alpha)
+        grad_B = grad_B.to(torch.float16)
+    else:
+        mul2 = bmm(A_T, d_output)
+        grad_B = mul(mul2, alpha)
+    return grad_B
+
+
+def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
+    return BaddbmmFunction.apply(bias, A.contiguous(), B.contiguous(), beta, alpha)
