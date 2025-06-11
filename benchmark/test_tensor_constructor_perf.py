@@ -109,7 +109,7 @@ def test_perf_full_like():
 @pytest.mark.fill
 def test_perf_fill():
     def fill_args(dtype, batch, size):
-        inp1 = torch.randint([batch, size], dtype=dtype, device=device)
+        inp1 = torch.rand([batch, size], dtype=dtype, device=device)
         inp2 = torch.tensor(3.1415926, dtype=dtype, device=device)
         return inp1,inp2
 
