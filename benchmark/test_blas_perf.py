@@ -66,6 +66,15 @@ class BlasBenchmark(Benchmark):
             total_flops = (
                 args[0].shape[0] * args[1].shape[1] * (args[1].shape[0] * 2 + 1)
             )
+        # shape(b,m,n)(b,n,p)
+        # total_flops bxmxpx(2n+1)
+        if self.op_name == "baddbmm":
+            total_flops = (
+                args[0].shape[0]
+                * args[0].shape[1]
+                * args[1].shape[2]
+                * (args[1].shape[1] * 2 + 1)
+            )
         # shape(b,n,m), (b,m,p)
         # total_flops bxnxpx2m
         if self.op_name == "bmm":
@@ -88,6 +97,13 @@ def addmm_input_fn(b, m, n, k, cur_dtype, device):
     inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
     inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
     bias = torch.randn([m, n], dtype=cur_dtype, device=device)
+    yield bias, inp1, inp2,
+
+
+def baddbmm_input_fn(b, m, n, k, cur_dtype, device):
+    inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=device, requires_grad=True)
+    inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=device, requires_grad=True)
+    bias = torch.randn([b, m, n], dtype=cur_dtype, device=device, requires_grad=True)
     yield bias, inp1, inp2,
 
 
@@ -119,6 +135,12 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
             marks=pytest.mark.addmm,
         ),
         pytest.param(
+            "baddbmm",
+            torch.baddbmm,
+            baddbmm_input_fn,
+            marks=pytest.mark.baddbmm,
+        ),
+        pytest.param(
             "bmm",
             torch.bmm,
             bmm_input_fn,
@@ -140,7 +162,11 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
 )
 def test_blas_benchmark(op_name, torch_op, input_fn):
     bench = BlasBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
 
