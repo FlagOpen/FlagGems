@@ -1,5 +1,4 @@
 import logging
-import os
 
 import torch
 
@@ -14,7 +13,9 @@ except ImportError:
 from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
+from .logging_utils import setup_flaggems_logging
 from .ops import *  # noqa: F403
+from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
 from .runtime.register import Register
 
@@ -25,19 +26,6 @@ aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
-
-
-class LogOncePerLocationFilter(logging.Filter):
-    def __init__(self):
-        super().__init__()
-        self.logged_locations = set()
-
-    def filter(self, record):
-        key = (record.pathname, record.lineno)
-        if key in self.logged_locations:
-            return False
-        self.logged_locations.add(key)
-        return True
 
 
 def enable(
@@ -85,6 +73,7 @@ def enable(
             ("pad", pad, Autograd.disable),
             ("constant_pad_nd", constant_pad_nd, Autograd.disable),
             ("cumsum", cumsum, Autograd.disable),
+            ("cumsum.out", cumsum_out, Autograd.disable),
             ("cummin", cummin, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div_.Tensor", true_divide_, Autograd.disable),
@@ -147,6 +136,7 @@ def enable(
             ("gelu", gelu, Autograd.disable),
             ("gelu_", gelu_, Autograd.disable),
             ("gelu_backward", gelu_backward, Autograd.disable),
+            ("glu", glu, Autograd.disable),
             ("native_group_norm", group_norm, Autograd.disable),
             ("native_group_norm_backward", group_norm_backward, Autograd.disable),
             ("_weight_norm_interface", weight_norm_interface, Autograd.disable),
@@ -232,7 +222,7 @@ def enable(
             ("threshold", threshold, Autograd.disable),
             ("threshold_backward", threshold_backward, Autograd.disable),
             ("triu", triu, Autograd.disable),
-            # ("topk", topk, Autograd.disable),
+            ("topk", topk, Autograd.disable),
             ("var_mean.correction", var_mean, Autograd.disable),
             ("linalg_vector_norm", vector_norm, Autograd.disable),
             ("where.self_out", where_self_out, Autograd.disable),
@@ -269,7 +259,9 @@ def enable(
             ("nll_loss2d_forward", nll_loss2d_forward, Autograd.disable),
             ("nll_loss2d_backward", nll_loss2d_backward, Autograd.disable),
             ("scatter.src", scatter, Autograd.disable),
+            ("scatter_.src", scatter_, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
+            ("scatter_.reduce", scatter_, Autograd.disable),
             ("gather", gather, Autograd.disable),
             ("gather_backward", gather_backward, Autograd.disable),
             ("isclose", isclose, Autograd.disable),
@@ -324,29 +316,21 @@ def enable(
             ("elu", elu, Autograd.disable),
             ("index_put_", index_put_, Autograd.disable),
             ("index_put", index_put, Autograd.disable),
+            ("index.Tensor", index, Autograd.disable),
             ("contiguous", contiguous, Autograd.disable),
             ("log_sigmoid", log_sigmoid, Autograd.disable),
             ("vdot", vdot, Autograd.disable),
             ("mse_loss", mse_loss, Autograd.disable),
             ("baddbmm", baddbmm, Autograd.disable),
+            ("eye", eye, Autograd.disable),
+            ("eye.m", eye_m, Autograd.disable),
+            ("to.dtype", to_dtype, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
         forward_only=forward_only,
     )
-    if record:
-        filename = (
-            os.environ.get("HOME") + "/.flaggems/oplist.log" if path is None else path
-        )
-        handler = logging.FileHandler(filename, mode="w")
-        if once:
-            handler.addFilter(LogOncePerLocationFilter())
-        logging.basicConfig(
-            level=logging.DEBUG,
-            handlers=[
-                handler,
-            ],
-        )
+    setup_flaggems_logging(path=path, record=record, once=once)
 
 
 class use_gems:

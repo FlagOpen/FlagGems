@@ -11,13 +11,15 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
 
@@ -39,7 +41,7 @@ def generate_gather_kernel(
     # the decorators
     code.writeline("@libentry()")
     code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("gather"), key=["N"])'
+        '@libtuner(configs=runtime.get_tuned_config("gather"), key=["N"], strategy=["log"])'
     )
     code.writeline("@triton.jit")
 
@@ -239,7 +241,7 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logging.debug("GEMS_CAMBRICON GATHER")
+    logger.debug("GEMS_CAMBRICON GATHER")
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
@@ -270,6 +272,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logging.debug("GEMS_CAMBRICON GATHER BACKWARD")
+    logger.debug("GEMS_CAMBRICON GATHER BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter(result, dim, index, grad, reduce="add")

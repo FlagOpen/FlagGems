@@ -6,13 +6,17 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import dim_compress, libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=["out"])
+@libtuner(
+    configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"]
+)
 @triton.jit
 def sum_kernel_1(
     inp,
@@ -44,7 +48,11 @@ def sum_kernel_1(
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("sum"), key=["M", "N"])
+@libtuner(
+    configs=runtime.get_tuned_config("sum"),
+    key=["M", "N"],
+    strategy=["log", "log"],
+)
 @triton.jit
 def sum_kernel(
     inp,
@@ -82,7 +90,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON SUM")
+    logger.debug("GEMS_CAMBRICON SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -99,7 +107,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON SUM DIM")
+    logger.debug("GEMS_CAMBRICON SUM DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

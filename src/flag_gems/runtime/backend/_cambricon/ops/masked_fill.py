@@ -5,13 +5,19 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import broadcastable_to, libentry
+from flag_gems.utils import broadcastable_to, libentry, libtuner
 
 from ..utils import MAX_GRID_SIZE_X
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
+@libtuner(
+    configs=runtime.get_tuned_config("masked_fill"),
+    key=["N"],
+    strategy=["log"],
+)
 @triton.jit
 def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=0)
@@ -25,7 +31,11 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
+@libtuner(
+    configs=runtime.get_tuned_config("masked_fill"),
+    key=["N"],
+    strategy=["log"],
+)
 @triton.jit
 def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(axis=1) * tl.num_programs(0) + tl.program_id(axis=0)
@@ -38,7 +48,7 @@ def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr
 
 
 def masked_fill(inp, mask, value):
-    logging.debug("GEMS_CAMBRICON MASKED FILL")
+    logger.debug("GEMS_CAMBRICON MASKED FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -79,7 +89,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logging.debug("GEMS_CAMBRICON MASKED FILL")
+    logger.debug("GEMS_CAMBRICON MASKED FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
