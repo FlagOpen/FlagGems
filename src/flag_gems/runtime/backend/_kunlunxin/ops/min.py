@@ -11,6 +11,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
+from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,8 @@ def min_kernel(
 def min(inp):
     logger.debug("GEMS MIN")
     M = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    # block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+    block_size = get_block_size_1d(M, inp.element_size())
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
