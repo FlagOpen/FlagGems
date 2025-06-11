@@ -202,6 +202,16 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             ],
         ),
         pytest.param(
+            "cummax",
+            torch.cummax,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=[
+                pytest.mark.cummax,
+                pytest.mark.skipif(True, reason="triton not supported"),
+            ],
+        ),
+        pytest.param(
             "nll_loss",
             torch.nn.functional.nll_loss,
             nll_loss_input_fn,
@@ -231,7 +241,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["cross_entropy_loss", "nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummin"]:
+        elif op_name in ["cummin", "cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
