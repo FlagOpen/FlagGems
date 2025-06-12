@@ -67,10 +67,20 @@ def pytest_configure(config):
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
             for arg in config.invocation_params.args
         ]
+        
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        if logger.hasHandlers():
+            logger.handlers.clear()
+            filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-")
+            file_handler = logging.FileHandler(filename, mode="w")
+            file_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+            logger.addHandler(file_handler)
+        else:
 
-        logging.basicConfig(
-            filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
-            filemode="w",
-            level=logging.INFO,
-            format="[%(levelname)s] %(message)s",
-        )  
+            logging.basicConfig(
+                filename="result_{}.log".format("_".join(cmd_args)).replace("_-", "-"),
+                filemode="w",
+                level=logging.INFO,
+                format="[%(levelname)s] %(message)s",
+            )  
