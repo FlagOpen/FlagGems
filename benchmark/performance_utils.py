@@ -265,7 +265,7 @@ class Benchmark:
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
                         
                 metric.latency = gems_perf        
-                if self.get_tflops is not None:
+                if hasattr(self, "get_tflops"):
                     metric.tflops = (
                         self.get_tflops(self.torch_op, *args, **kwargs)
                         / metric.latency
