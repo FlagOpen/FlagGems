@@ -74,6 +74,8 @@ def scan_part_max_kernel(
     partial_max_indices,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NEED_PARTIAL: tl.constexpr,
+    USE_OUT_INDICES: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -91,14 +93,18 @@ def scan_part_max_kernel(
         inp_vals = inp_vals.to(tl.int32)
     else:
         inp_vals = inp_vals.to(tl.float32)
-    in_indices_ptrs = out_indices + offset
-    in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    if tl.constexpr(USE_OUT_INDICES):
+        in_indices_ptrs = out_indices + offset
+        in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    else:
+        in_indices_vals = offset
     result, cummax_indices = tl_cummax(inp_vals, in_indices_vals, axis=0)
 
-    # tl.max do not support max_indices_tie_break_right
-    part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
-        inp_vals, in_indices_vals, axis=0
-    )
+    if tl.constexpr(NEED_PARTIAL):
+        # tl.max do not support max_indices_tie_break_right
+        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
+            inp_vals, in_indices_vals, axis=0
+        )
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -106,21 +112,29 @@ def scan_part_max_kernel(
     out_indices_ptrs = out_indices + offset
     tl.store(out_indices_ptrs, cummax_indices, mask=mask)
 
-    partial_max_ptrs = partial_max + pid
-    tl.store(partial_max_ptrs, part_max_via_max)
+    if tl.constexpr(NEED_PARTIAL):
+        partial_max_ptrs = partial_max + pid
+        tl.store(partial_max_ptrs, part_max_via_max)
 
-    partial_max_indices_ptrs = partial_max_indices + pid
-    tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
+        partial_max_indices_ptrs = partial_max_indices + pid
+        tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
 
 
-def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
+def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False):
     # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if n_ele <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
-    partial_max = torch.empty(part_num, dtype=dtype, device=inp.device)
-    partial_max_indices = torch.empty(part_num, dtype=torch.int64, device=inp.device)
+    need_partial = True if part_num >= 2 else False
+    if need_partial:
+        partial_max = torch.empty(part_num, dtype=dtype, device=inp.device)
+        partial_max_indices = torch.empty(
+            part_num, dtype=torch.int64, device=inp.device
+        )
+    else:
+        partial_max = None
+        partial_max_indices = None
 
     grid = (part_num,)
     with torch_device_fn.device(inp.device):
@@ -133,11 +147,18 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype):
             partial_max_indices,
             n_ele,
             BLOCK_SIZE,
+            need_partial,
+            use_out_indices,
         )
 
     if part_num >= 2:
         scan_then_fan_col(
-            partial_max, partial_max, partial_max_indices, part_num, dtype
+            partial_max,
+            partial_max,
+            partial_max_indices,
+            part_num,
+            dtype,
+            use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
             add_base_max_kernel[grid](
@@ -158,6 +179,8 @@ def scan_part_max_abc_kernel(
     C,
     part_num,
     BLOCK_SIZE: tl.constexpr,
+    NEED_PARTIAL: tl.constexpr,
+    USE_OUT_INDICES: tl.constexpr,
 ):
     pid_a = tle.program_id(0)
     pid_b = tle.program_id(1)
@@ -184,15 +207,18 @@ def scan_part_max_abc_kernel(
         inp_vals = inp_vals.to(tl.int32)
     else:
         inp_vals = inp_vals.to(tl.float32)
-    indices_offset = a_idx * B * C + b_idx * C + c_idx
-    in_indices_ptrs = out_indices + indices_offset
-    in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    if tl.constexpr(USE_OUT_INDICES):
+        in_indices_ptrs = out_indices + offset
+        in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
+    else:
+        in_indices_vals = b_idx
     result, cummax_indices = tl_cummax(inp_vals, in_indices_vals, axis=0)
 
-    # tl.max do not support max_indices_tie_break_right
-    part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
-        inp_vals, in_indices_vals, axis=0
-    )
+    if tl.constexpr(NEED_PARTIAL):
+        # tl.max do not support max_indices_tie_break_right
+        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
+            inp_vals, in_indices_vals, axis=0
+        )
 
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
@@ -200,11 +226,12 @@ def scan_part_max_abc_kernel(
     out_indices_ptrs = out_indices + offset
     tl.store(out_indices_ptrs, cummax_indices, mask=mask)
 
-    partial_max_ptrs = partial_max + part_offset
-    tl.store(partial_max_ptrs, part_max_via_max)
+    if tl.constexpr(NEED_PARTIAL):
+        partial_max_ptrs = partial_max + part_offset
+        tl.store(partial_max_ptrs, part_max_via_max)
 
-    partial_max_indices_ptrs = partial_max_indices + part_offset
-    tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
+        partial_max_indices_ptrs = partial_max_indices + part_offset
+        tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
 
 
 @libentry()
@@ -252,16 +279,21 @@ def add_base_max_abc_kernel(
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
 
-def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
+def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     # TODO(all): tune on target board
     BLOCK_SIZE = 1024
     if B <= 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     part_num = math.ceil(B / BLOCK_SIZE)
-    partial_max = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
-    partial_max_indices = torch.empty(
-        A, part_num, C, dtype=torch.int64, device=inp.device
-    )
+    need_partial = True if part_num >= 2 else False
+    if need_partial:
+        partial_max = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
+        partial_max_indices = torch.empty(
+            A, part_num, C, dtype=torch.int64, device=inp.device
+        )
+    else:
+        partial_max = None
+        partial_max_indices = None
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
@@ -276,11 +308,20 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
             C,
             part_num,
             BLOCK_SIZE,
+            need_partial,
+            use_out_indices,
         )
 
     if part_num >= 2:
         scan_then_fan(
-            partial_max, partial_max, partial_max_indices, A, part_num, C, dtype
+            partial_max,
+            partial_max,
+            partial_max_indices,
+            A,
+            part_num,
+            C,
+            dtype,
+            use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
             add_base_max_abc_kernel[grid](
@@ -293,6 +334,90 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
                 part_num,
                 BLOCK_SIZE,
             )
+
+
+@libentry()
+@triton.jit()
+def scan_part_max_abc_loop_kernel(
+    inp,
+    out,
+    out_indices,
+    B,
+    C,
+    loop_num,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid_a = tle.program_id(0)
+    pid_c = tle.program_id(1)
+
+    a_idx = pid_a
+    c_idx = pid_c
+    t_idx = tl.arange(0, BLOCK_SIZE)
+    ac_offset = a_idx * B * C + c_idx
+
+    # init
+    min_value = get_dtype_min(inp.type.element_ty)
+    prev_max_val = tl.full([], min_value, dtype=tl.float32)
+    prev_max_val_idx = tl.full([], 0, dtype=tl.int64)
+
+    for l_idx in range(loop_num):
+        b_idx = l_idx * BLOCK_SIZE + t_idx
+        mask = b_idx < B
+        offset = ac_offset + b_idx * C
+
+        inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+        if (
+            tl.constexpr(inp_vals.dtype.is_int64())
+            or tl.constexpr(inp_vals.dtype.is_uint64())
+        ) or tl.constexpr(inp_vals.dtype.is_fp64()):
+            vals = inp_vals
+        elif tl.constexpr(inp_vals.dtype.is_int()):
+            vals = inp_vals.to(tl.int32)
+        else:
+            vals = inp_vals.to(tl.float32)
+        idxs = b_idx
+
+        # cummax
+        result, cummax_indices = tl_cummax(vals, idxs, axis=0)
+
+        # broadcast
+        prev_max_val_b = tl.broadcast_to(prev_max_val, (BLOCK_SIZE,))
+        prev_max_val_idx_b = tl.broadcast_to(prev_max_val_idx, (BLOCK_SIZE,))
+
+        # update result from prev val and idx
+        cummax_indices = tl.where(
+            result >= prev_max_val_b, cummax_indices, prev_max_val_idx_b
+        )
+        result = tl.maximum(result, prev_max_val_b)
+
+        # update global max val and idx
+        last_mask = t_idx == (BLOCK_SIZE - 1)
+        prev_max_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
+        prev_max_val_idx = tl.sum(tl.where(last_mask, cummax_indices, 0), axis=0)
+
+        # store result
+        tl.store(out + offset, result, mask=mask)
+        tl.store(out_indices + offset, cummax_indices, mask=mask)
+
+
+def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
+    # TODO(all): tune on target board
+    BLOCK_SIZE = 1024
+    if B <= 1024 * 4:
+        BLOCK_SIZE = triton.next_power_of_2(B)
+    loop_num = math.ceil(B / BLOCK_SIZE)
+
+    grid = (A, C)
+    with torch_device_fn.device(inp.device):
+        scan_part_max_abc_loop_kernel[grid](
+            inp,
+            out,
+            out_indices,
+            B,
+            C,
+            loop_num,
+            BLOCK_SIZE,
+        )
 
 
 def cummax(inp, dim=1, *, dtype=None):
@@ -312,21 +437,16 @@ def cummax(inp, dim=1, *, dtype=None):
         if dtype is torch.bool:
             dtype = torch.int64
     out = torch.empty_like(inp, dtype=dtype)
+    out_indices = torch.empty_like(inp, dtype=torch.int64)
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
     if M == 1 and K == 1:
-        out_indices = torch.arange(N, device=inp.device).reshape(shape)
         scan_then_fan_col(inp, out, out_indices, N, compute_dtype)
-    else:
-        index_shape = [N if i == dim else 1 for i in range(inp.ndim)]
-        repeat_factors = [1 if i == dim else shape[i] for i in range(inp.ndim)]
-        out_indices = (
-            torch.arange(N, device=inp.device)
-            .reshape(index_shape)
-            .repeat(repeat_factors)
-        )
+    elif M * K <= 16:
         scan_then_fan(inp, out, out_indices, M, N, K, compute_dtype)
+    else:
+        scan_then_fan_loop(inp, out, out_indices, M, N, K, compute_dtype)
     return out, out_indices
