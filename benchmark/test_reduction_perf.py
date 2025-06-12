@@ -198,7 +198,9 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=[
                 pytest.mark.cummin,
-                pytest.mark.skipif(True, reason="triton not supported"),
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
             ],
         ),
         pytest.param(
@@ -208,7 +210,9 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=[
                 pytest.mark.cummax,
-                pytest.mark.skipif(True, reason="triton not supported"),
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
             ],
         ),
         pytest.param(
