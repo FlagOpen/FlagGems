@@ -407,16 +407,14 @@ class LibEntry(triton.KernelInterface):
                         tune_constexprs = {**tune_constexprs, **config.kwargs}
                     elif isinstance(fn, triton.runtime.Heuristics):
                         for v, heur in fn.values.items():
-                            constexprs[v] = heur(
+                            heur_constexprs[v] = heur(
                                 {
                                     **dict(zip(fn.arg_names, args)),
                                     **kwargs,
                                     **constexprs,
                                 }
                             )
-                            if v in self.signature.parameters.keys():
-                                heur_constexprs[v] = constexprs[v]
-
+                            constexprs[v] = heur_constexprs[v]
                     else:
                         raise RuntimeError("Invalid Runtime Function")
                     fn = fn.fn
@@ -448,9 +446,13 @@ class LibEntry(triton.KernelInterface):
         grid = grid + (1, 1)
 
         if major_version == 3 and minor_version == 3:
-            kernel[grid[0:3]](
-                *k_args, *tune_constexprs.values(), *heur_constexprs.values()
-            )
+            tune_and_heur_args = []
+            for key in list(self.signature.parameters.keys())[len(k_args) :]:
+                if key in tune_constexprs:
+                    tune_and_heur_args.append(tune_constexprs[key])
+                elif key in heur_constexprs:
+                    tune_and_heur_args.append(heur_constexprs[key])
+            kernel[grid[0:3]](*k_args, *tune_and_heur_args)
         else:
             kernel[grid[0:3]](*k_args)
         return kernel, constexprs
