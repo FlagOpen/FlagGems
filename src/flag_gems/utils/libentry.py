@@ -6,6 +6,7 @@ import sqlite3
 import threading
 import time
 import weakref
+from collections import OrderedDict
 from typing import Dict, Optional
 
 import triton
@@ -351,17 +352,22 @@ class LibEntry(triton.KernelInterface):
         spec_args = []  # specialize arguments
         dns_args = []  # do not specialize arguments
         const_args = []  # constexpr arguments
-        k_args = []  # kernel arguments
+        # k_args = []  # kernel arguments
+        k_args = OrderedDict()
+        param_names = list(self.signature.parameters.keys())
         for i, arg in enumerate(args):
             if i in self.specialize_indices:
-                k_args.append(arg)
+                # k_args.append(arg)
+                k_args[param_names[i]] = arg
                 spec_args.append(arg)
             elif i in self.do_not_specialize_indices:
-                k_args.append(arg)
+                # k_args.append(arg)
+                k_args[param_names[i]] = arg
                 dns_args.append(arg)
             else:
                 if major_version == 3 and minor_version == 3:
-                    k_args.append(arg)
+                    # k_args.append(arg)
+                    k_args[param_names[i]] = arg
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
             if p.name in kwargs:
@@ -374,13 +380,16 @@ class LibEntry(triton.KernelInterface):
             if p.is_constexpr:
                 const_args.append(val)
                 if major_version == 3 and minor_version == 3:
-                    k_args.append(val)
+                    # k_args.append(val)
+                    k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
-                k_args.append(val)
+                # k_args.append(val)
+                k_args[p.name] = val
             else:
                 spec_args.append(val)
-                k_args.append(val)
+                # k_args.append(val)
+                k_args[p.name] = val
 
         entry_key = self.key(spec_args, dns_args, const_args)
         device = torch_device_fn.current_device()
@@ -446,15 +455,24 @@ class LibEntry(triton.KernelInterface):
         grid = grid + (1, 1)
 
         if major_version == 3 and minor_version == 3:
-            tune_and_heur_args = []
-            for key in list(self.signature.parameters.keys())[len(k_args) :]:
-                if key in tune_constexprs:
-                    tune_and_heur_args.append(tune_constexprs[key])
+            # tune_and_heur_args = []
+            # for key in list(self.signature.parameters.keys())[len(k_args) :]:
+            #     if key in tune_constexprs:
+            #         tune_and_heur_args.append(tune_constexprs[key])
+            #     elif key in heur_constexprs:
+            #         tune_and_heur_args.append(heur_constexprs[key])
+            # breakpoint()
+            all_args = []
+            for key in list(self.signature.parameters.keys()):
+                if key in k_args:
+                    all_args.append(k_args[key])
+                elif key in tune_constexprs:
+                    all_args.append(tune_constexprs[key])
                 elif key in heur_constexprs:
-                    tune_and_heur_args.append(heur_constexprs[key])
-            kernel[grid[0:3]](*k_args, *tune_and_heur_args)
+                    all_args.append(heur_constexprs[key])
+            kernel[grid[0:3]](*all_args)
         else:
-            kernel[grid[0:3]](*k_args)
+            kernel[grid[0:3]](*k_args.values())
         return kernel, constexprs
 
 

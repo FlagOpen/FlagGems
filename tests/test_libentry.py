@@ -188,6 +188,7 @@ def test_pass_kernel_arg_via_kw():
     x = torch.randn((128, 128, 128), device=flag_gems.device)
     with not_raises(KeyError):
         _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
+        _ = softmax_inner_pass_kernel_arg_via_kw(x, dim=2)
 
 
 @pytest.mark.skipif(
