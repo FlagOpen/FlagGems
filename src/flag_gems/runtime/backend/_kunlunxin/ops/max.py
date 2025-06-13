@@ -12,6 +12,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
+
 from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,20 @@ def heur_n_block_size(args):
     return builtins.min(triton.next_power_of_2(args["N"]), 8192)
 
 
+# def heur_m_block_size(args):
+#     # if triton.next_power_of_2(triton.cdiv(args["M"], cluster_num)) < core_num:
+#     #     return triton.next_power_of_2(triton.cdiv(args["M"], cluster_num))
+#     # else:
+#     return (
+#         triton.cdiv(triton.cdiv(2048, args["ELEMENT_SIZE"]), args["N"])
+#         * 64
+#     )
+
+
+# def heur_n_block_size(args):
+#     return min(args["N"], triton.cdiv(2048, args["ELEMENT_SIZE"]))
+
+
 @libentry()
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("max"),
@@ -80,6 +95,7 @@ def max_kernel(
     M: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
+    ELEMENT_SIZE: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -129,14 +145,14 @@ def max(inp):
     if M == 1:
         return inp.reshape([])
     with torch_device_fn.device(inp.device):
-        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
+        max_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size, buffer_size_limit=2048)
         if mid_size == 1:
             return mid.reshape([])
 
         os.environ["TRITONXPU_OTHER_SIM"] = "1"
         os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
 
-        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        max_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
         if "TRITONXPU_OTHER_SIM" in os.environ:
             del os.environ["TRITONXPU_OTHER_SIM"]
@@ -156,6 +172,7 @@ def max_dim(inp, dim=None, keepdim=False):
     N = shape[dim]
     M = math.prod(shape[:dim])
     K = inp.numel() // M // N
+    ELEMENT_SIZE = inp.element_size()
 
     inp = inp.contiguous()
 
@@ -180,7 +197,14 @@ def max_dim(inp, dim=None, keepdim=False):
 
     with torch_device_fn.device(inp.device):
         max_kernel[grid](
-            inp, out_value, out_index, M, N, K, isCloseCoreTiling=isCloseCoreTiling
+            inp,
+            out_value,
+            out_index,
+            M,
+            N,
+            K,
+            ELEMENT_SIZE,
+            isCloseCoreTiling=isCloseCoreTiling,
         )
 
     if "TRITONXPU_OTHER_SIM" in os.environ:

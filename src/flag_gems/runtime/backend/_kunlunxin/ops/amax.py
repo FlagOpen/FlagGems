@@ -1,5 +1,4 @@
 import logging
-import math
 
 import torch
 import triton
@@ -9,6 +8,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
+
 from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
@@ -110,13 +110,10 @@ def amax(inp, dim=None, keepdim=False):
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             amax_kernel_1[(mid_size, 1)](
-                inp,
-                mid,
-                M,
-                block_size,
+                inp, mid, M, block_size, buffer_size_limit=2048
             )
             amax_kernel_2[(1, 1)](
-                mid, out, mid_size, block_mid
+                mid, out, mid_size, block_mid, buffer_size_limit=2048
             )  # max block size is 128k, so mid does not requires int64 index
         return out
     else:
@@ -138,7 +135,7 @@ def amax(inp, dim=None, keepdim=False):
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
-            amax_kernel[grid](inp, out, M, N)
+            amax_kernel[grid](inp, out, M, N, buffer_size_limit=2048)
         if not keepdim:
             out = out.squeeze(dim=dim)
         return out

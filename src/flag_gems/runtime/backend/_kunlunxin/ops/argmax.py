@@ -9,6 +9,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+
 from ..utils.block_size_utils import get_block_size_1d
 
 logger = logging.getLogger(__name__)
@@ -127,8 +128,11 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
                 mid_index,
                 M,
                 block_size,
+                buffer_size_limit=2048,
             )
-            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+            argmax_kernel_2[(1, 1, 1)](
+                mid_value, mid_index, out, mid_size, block_mid, buffer_size_limit=2048
+            )
         return out
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
