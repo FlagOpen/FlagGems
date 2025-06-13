@@ -98,6 +98,44 @@ def apply_dropout(
 
 
 @triton.jit
+def apply_alibi(
+    S,
+    col_idx,
+    row_idx,
+    max_seqlen_q,
+    max_seqlen_k,
+    is_causal: tl.constexpr,
+    is_alibi: tl.constexpr,
+    alibi_slope: tl.constexpr = None,
+):
+    if is_alibi:
+        if is_causal:
+            # The row independent alibi bias renders the same attention output
+            # as with the standard alibi because softmax is shift invariant, i.e.,
+            # softmax(A + bias + const) = softamx(A + bias). The following two
+            # biases are no different if causal is true.
+            # bias_1 = [
+            #   -4, -3, -2,  X, X,
+            #   -4, -3, -2, -1, X,
+            #   -4, -3, -2, -1, 0,
+            # ]
+            # bias_2 = [
+            #   -2, -1, 0,  X,  X,
+            #   -3, -2, -1, 0,  X,
+            #   -4, -3, -2, -1, 0,
+            # ]
+            bias = alibi_slope * (-max_seqlen_k + 1 + col_idx[None, :]).to(tl.float32)
+            S += bias
+        else:
+            bias = -alibi_slope * tl.abs(
+                col_idx[None, :] - max_seqlen_k + max_seqlen_q - row_idx[:, None]
+            ).to(tl.float32)
+            S += bias
+
+    return S
+
+
+@triton.jit
 def apply_mask(
     S,
     col_idx,
@@ -109,20 +147,15 @@ def apply_mask(
     is_even_mn: tl.constexpr,
     is_causal: tl.constexpr,
     is_local: tl.constexpr,
-    is_alibi: tl.constexpr,
-    alibi_slope: tl.constexpr = None,
 ):
-    # need_mask: tl.constexpr = is_causal | is_alibi | is_local | (not is_even_mn)
-    need_mask: tl.constexpr = is_causal | is_alibi | is_local
+    # need_mask: tl.constexpr = is_causal | is_local | (not is_even_mn)
+    need_mask: tl.constexpr = is_causal | is_local
     if need_mask:
         # Extra care should be taken to void one-off errors: both col_lb and col_rb are inclusive!
         col_lb = max(0, row_idx + max_seqlen_k - max_seqlen_q - window_size_left)
         col_rb = min(
             max_seqlen_k - 1, row_idx + max_seqlen_k - max_seqlen_q + window_size_right
         )
-
-        if is_alibi:
-            S -= alibi_slope * tl.abs(col_idx[None, :] - row_idx[:, None])
 
         if is_causal:
             S = tl.where(col_idx[None, :] > col_rb[:, None], float("-inf"), S)
@@ -413,7 +446,16 @@ def flash_fwd_kernel(
             S = apply_softcap(S, softcap, is_softcap)
             col_idx = col_start + tl.arange(0, BLOCK_N)
             row_idx = row_start + tl.arange(0, BLOCK_M)
-
+            S = apply_alibi(
+                S,
+                col_idx,
+                row_idx,
+                seqlen_q,
+                seqlen_k,
+                is_causal=is_causal,
+                is_alibi=is_alibi,
+                alibi_slope=alibi_slope,
+            )
             # tl.store(p_bp0 + col_start, S)
             S = apply_mask(
                 S,
@@ -426,8 +468,6 @@ def flash_fwd_kernel(
                 is_even_mn=IS_EVEN_MN,
                 is_causal=is_causal,
                 is_local=is_local,
-                is_alibi=is_alibi,
-                alibi_slope=alibi_slope,
             )
 
             acc_, P, rowmax_, rowsum_ = softmax_rescale(
@@ -506,6 +546,16 @@ def flash_fwd_kernel(
         S = apply_softcap(S, softcap, is_softcap)
         col_idx = col_start + tl.arange(0, BLOCK_N)
         row_idx = row_start + tl.arange(0, BLOCK_M)
+        S = apply_alibi(
+            S,
+            col_idx,
+            row_idx,
+            seqlen_q,
+            seqlen_k,
+            is_causal=is_causal,
+            is_alibi=is_alibi,
+            alibi_slope=alibi_slope,
+        )
         S = apply_mask(
             S,
             col_idx,
@@ -517,8 +567,6 @@ def flash_fwd_kernel(
             is_even_mn=True,
             is_causal=False,
             is_local=is_local,
-            is_alibi=is_alibi,
-            alibi_slope=alibi_slope,
         )
 
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
@@ -825,6 +873,16 @@ def flash_fwd_splitkv_kernel(
 
             S = tl.dot(Q, K)
             S = apply_softcap(S, softcap, is_softcap)
+            S = apply_alibi(
+                S,
+                col_idx,
+                row_idx,
+                seqlen_q,
+                seqlen_k,
+                is_causal=is_causal,
+                is_alibi=is_alibi,
+                alibi_slope=alibi_slope,
+            )
             S = apply_mask(
                 S,
                 col_idx,
@@ -836,8 +894,6 @@ def flash_fwd_splitkv_kernel(
                 is_even_mn=IS_EVEN_MN,
                 is_causal=is_causal,
                 is_local=False,
-                is_alibi=is_alibi,
-                alibi_slope=alibi_slope,
             )
 
             acc_, P, rowmax_, rowsum_ = softmax_rescale(
@@ -1188,10 +1244,20 @@ def flash_varlen_fwd_kernel(
         bK = tl.load(gK.advance([0, cache_row_index]))
         # preload V
         bV = tl.load(gV.advance([cache_row_index, 0]))
-        S = tl.dot(bQ, bK)
+        S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        S = apply_alibi(
+            S,
+            col_idx,
+            row_idx,
+            q_len,
+            k_len,
+            is_causal=is_causal,
+            is_alibi=is_alibi,
+            alibi_slope=alibi_slope,
+        )
         S = apply_mask(
             S,
             col_idx,
@@ -1203,8 +1269,6 @@ def flash_varlen_fwd_kernel(
             is_even_mn=is_even_mn,
             is_causal=is_causal,
             is_local=is_local,
-            is_alibi=is_alibi,
-            alibi_slope=alibi_slope,
         )
 
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
@@ -1251,10 +1315,20 @@ def flash_varlen_fwd_kernel(
         bK = tl.load(gK.advance([0, cache_row_index]))
         # preload V
         bV = tl.load(gV.advance([cache_row_index, 0]))
-        S = tl.dot(bQ, bK)
+        S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        S = apply_alibi(
+            S,
+            col_idx,
+            row_idx,
+            q_len,
+            k_len,
+            is_causal=is_causal,
+            is_alibi=is_alibi,
+            alibi_slope=alibi_slope,
+        )
         S = apply_mask(
             S,
             col_idx,
@@ -1266,8 +1340,6 @@ def flash_varlen_fwd_kernel(
             is_even_mn=True,
             is_causal=False,
             is_local=is_local,
-            is_alibi=is_alibi,
-            alibi_slope=alibi_slope,
         )
 
         acc_, P, rowmax_, rowsum_ = softmax_rescale(
@@ -1322,7 +1394,6 @@ def flash_varlen_fwd_kernel(
         block_shape=(BLOCK_M, d),
         order=(1, 0),
     )
-    # tl.device_print("o_offset", o_offset)
     tl.store(gO.advance([m_block * BLOCK_M, 0]), out, boundary_check=(0,))
 
     # Write back lse

@@ -16,7 +16,7 @@ from .flash_kernel import (
     flash_varlen_fwd_kernel,
 )
 
-_debug = True
+_debug = False
 
 
 def CHECK_DEVICE(x):
@@ -334,7 +334,7 @@ def mha_varlan_fwd(
         q_batch_stride = q.stride(0) * max_seqlen_q
         k_batch_stride = k.stride(0)
         v_batch_stride = v.stride(0)
-        o_batch_stride = out.stride(0) * max_seqlen_q
+        # o_batch_stride = out.stride(0) * max_seqlen_q
     else:
         q_batch_stride = 0
         k_batch_stride = 0
@@ -405,6 +405,10 @@ def mha_varlan_fwd(
         else:
             out_ = None
             out = torch.empty_like(q, dtype=v.dtype)
+
+        if seqlenq_ngroups_swapped:
+            o_batch_stride = out.stride(0) * max_seqlen_q
+
         lse = torch.empty((num_heads, total_q), dtype=torch.float, device=q_device)
 
         if p_dropout > 0:
