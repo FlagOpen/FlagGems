@@ -1,8 +1,9 @@
 import logging
 
-import torch
 import triton
 import triton.language as tl
+
+from flag_gems.ops.mm import mm
 
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -71,20 +72,7 @@ def mv_kernel(
 def mv(inp, vec):
     logger.debug("GEMS MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
-    N, M = inp.shape
-    out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
-    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(inp.device):
-        mv_kernel[grid](
-            inp,
-            vec,
-            out,
-            N,
-            M,
-            inp.stride(0),
-            inp.stride(1),
-            vec.stride(0),
-            out.stride(0),
-            buffer_size_limit=256,
-        )
+        vec = vec[:, None]
+        out = mm(inp, vec)
     return out
