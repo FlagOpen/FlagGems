@@ -80,8 +80,6 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name in ["softmax"]:
-        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -101,8 +99,6 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name == "softmax":
-        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(
         op_name=op_name,
         torch_op=torch_op,
@@ -229,7 +225,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["CrossEntropyLoss", "nll_loss"]:
+        if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
         elif op_name in ["cummin"]:
             pytest.skip("CUMSUM UNSUPPORTED")
