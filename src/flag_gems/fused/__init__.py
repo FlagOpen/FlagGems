@@ -1,3 +1,4 @@
+from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
 from .fused_add_rms_norm import fused_add_rms_norm
 from .gelu_and_mul import gelu_and_mul
@@ -8,7 +9,6 @@ from .rotary_embedding import apply_rotary_pos_emb
 from .silu_and_mul import silu_and_mul
 from .skip_layernorm import skip_layer_norm
 from .weight_norm import weight_norm
-from .concat_and_cache_mla import concat_and_cache_mla
 
 __all__ = [
     "apply_rotary_pos_emb",

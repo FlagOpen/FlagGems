@@ -6,7 +6,6 @@ import triton.language as tl
 
 from ..utils import libentry
 
-
 logger = logging.getLogger(__name__)
 
 # enum Fp8KVCacheDataType
@@ -18,23 +17,23 @@ FP8_KV_CACHE_DATA_TYPE_FP8E5M2 = tl.constexpr(2)
 @libentry()
 @triton.jit
 def concat_and_cache_mla_kernel(
-    ###### pointers #####
-    kv_c_ptr,          # in,  [num_tokens, kv_lora_rank]
-    k_pe_ptr,          # in,  [num_tokens, pe_dim]
-    kv_cache_ptr,      # out, [num_blocks, block_size, kv_lora_rank + pe_dim]
+    # pointers
+    kv_c_ptr,  # in,  [num_tokens, kv_lora_rank]
+    k_pe_ptr,  # in,  [num_tokens, pe_dim]
+    kv_cache_ptr,  # out, [num_blocks, block_size, kv_lora_rank + pe_dim]
     slot_mapping_ptr,  # in,  [num_tokens]
-    ###### strides #####
+    # strides
     block_stride,
     entry_stride,
     kv_c_stride,
     k_pe_stride,
-    ###### dims #####
+    # dims
     kv_lora_rank,
     pe_dim,
-    block_size,       # kv cache block size
+    block_size,  # kv cache block size
     scale_ptr,
-    ###### data type #####
-    kv_dtype: tl.constexpr,   # one of Fp8KVCacheDataType
+    # data type
+    kv_dtype: tl.constexpr,  # one of Fp8KVCacheDataType
     BLOCK_SIZE: tl.constexpr,
 ):
     token_idx = tl.program_id(0)
@@ -92,13 +91,15 @@ def concat_and_cache_mla_kernel(
 
 class ConcatAndCacheMla(torch.autograd.Function):
     @staticmethod
-    def forward(ctx,
-                kv_c: torch.Tensor,
-                k_pe: torch.Tensor,
-                kv_cache: torch.Tensor,
-                slot_mapping: torch.Tensor,
-                kv_cache_dtype: str,
-                scale: torch.Tensor):
+    def forward(
+        ctx,
+        kv_c: torch.Tensor,
+        k_pe: torch.Tensor,
+        kv_cache: torch.Tensor,
+        slot_mapping: torch.Tensor,
+        kv_cache_dtype: str,
+        scale: torch.Tensor,
+    ):
         if kv_cache_dtype != "auto" and kv_cache.dtype != torch.uint8:
             raise ValueError("For FP8 kv_cache must be uint8 dtype")
         if kv_cache_dtype == "auto" and kv_cache.dtype != kv_c.dtype:
@@ -136,18 +137,22 @@ class ConcatAndCacheMla(torch.autograd.Function):
         BLOCK_SIZE = min(kv_lora_rank, 512)
 
         assert kv_cache.dim() == 3, "kv_cache must be a 3D tensor"
-        assert kv_cache.size(2) == kv_lora_rank + pe_dim, \
-            "kv_cache's last dimension must match kv_lora_rank + pe_dim"
+        assert (
+            kv_cache.size(2) == kv_lora_rank + pe_dim
+        ), "kv_cache's last dimension must match kv_lora_rank + pe_dim"
         with torch.cuda.device(device):
             concat_and_cache_mla_kernel[grid](
-                kv_c, k_pe, kv_cache, slot_mapping,
+                kv_c,
+                k_pe,
+                kv_cache,
+                slot_mapping,
                 kv_cache.stride(0),  # block_stride
                 kv_cache.stride(1),  # entry_stride
-                kv_c.stride(0),      # kv_c_stride
-                k_pe.stride(0),      # k_pe_stride
+                kv_c.stride(0),  # kv_c_stride
+                k_pe.stride(0),  # k_pe_stride
                 kv_lora_rank,
                 pe_dim,
-                kv_cache.size(1),    # kv cache block_size
+                kv_cache.size(1),  # kv cache block_size
                 scale,
                 kv_dtype=kv_dtype,
                 BLOCK_SIZE=BLOCK_SIZE,
