@@ -148,8 +148,8 @@ def apply_mask(
     is_causal: tl.constexpr,
     is_local: tl.constexpr,
 ):
-    # need_mask: tl.constexpr = is_causal | is_local | (not is_even_mn)
-    need_mask: tl.constexpr = is_causal | is_local
+    need_mask = is_causal | is_local | (not is_even_mn)
+    # need_mask: tl.constexpr = is_causal | is_local
     if need_mask:
         # Extra care should be taken to void one-off errors: both col_lb and col_rb are inclusive!
         col_lb = max(0, row_idx + max_seqlen_k - max_seqlen_q - window_size_left)
@@ -168,8 +168,8 @@ def apply_mask(
                 S,
             )
 
-    if (not is_local) & (not is_causal) & (not is_even_mn):
-        S = tl.where(col_idx[None, :] >= max_seqlen_k, float("-inf"), S)
+        if (not is_local) & (not is_causal) & (not is_even_mn):
+            S = tl.where(col_idx[None, :] >= max_seqlen_k, float("-inf"), S)
 
     return S
 
@@ -247,7 +247,7 @@ def prune_fwd_configs(configs, nargs, **kwargs):
 @triton.autotune(
     configs=list(filter(keep, runtime.get_tuned_config("attention"))),
     prune_configs_by={"early_config_prune": prune_fwd_configs},
-    key=["d"],
+    key=["d", "is_dropout"],
 )
 @triton.heuristics(
     values={
@@ -1155,7 +1155,8 @@ def flash_varlen_fwd_kernel(
     if m_block * BLOCK_M > q_len:
         return
 
-    is_even_mn = (q_len % BLOCK_M == 0) and (k_len % BLOCK_N == 0)
+    # is_even_mn = (q_len % BLOCK_M == 0) and (k_len % BLOCK_N == 0)
+    is_even_mn: tl.constexpr = False
 
     if is_local:
         n_block_min = max(

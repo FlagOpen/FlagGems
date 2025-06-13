@@ -55,11 +55,13 @@ def update_philox_state(increment, device=None):
 
 
 def set_philox_state(seed, offset, device=None):
+    assert offset % 4 == 0
     device = device or torch_device_fn.current_device()
     gen = torch_device_fn.default_generators[device]
-    assert offset % 4 == 0
-    new_state = torch.tensor((seed, offset), dtype=torch.int64)
-    gen.set_state(new_state.view(torch.uint8))
+    state_copy = gen.get_state()
+    state_copy.view(torch.int64)[0] = seed
+    state_copy.view(torch.int64)[1] = offset
+    gen.set_state(state_copy)
     return
 
 

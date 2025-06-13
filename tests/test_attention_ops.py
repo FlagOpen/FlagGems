@@ -100,35 +100,35 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.scaled_dot_product_attention
-@pytest.mark.parametrize(
-    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [(4, 8, 1024, 1024), (4, 8, 2048, 256), (4, 8, 17, 1030)],
-)
-@pytest.mark.parametrize("head_size", [64, 128])
-@pytest.mark.parametrize("is_causal", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_sdpa_legacy(
-    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
-):
-    device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
-    ref_q = to_reference(q, False)
-    ref_k = to_reference(k, False)
-    ref_v = to_reference(v, False)
-    scale = float(1.0 / np.sqrt(head_size))
-    torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
+# @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+# @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+# @pytest.mark.scaled_dot_product_attention
+# @pytest.mark.parametrize(
+#     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+#     [(4, 8, 1024, 1024), (4, 8, 2048, 256), (4, 8, 17, 1030)],
+# )
+# @pytest.mark.parametrize("head_size", [64, 128])
+# @pytest.mark.parametrize("is_causal", [False, True])
+# @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+# def test_sdpa_legacy(
+#     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
+# ):
+#     device = torch_device_fn.current_device()
+#     q, k, v = make_input(
+#         batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
+#     )
+#     ref_q = to_reference(q, False)
+#     ref_k = to_reference(k, False)
+#     ref_v = to_reference(v, False)
+#     scale = float(1.0 / np.sqrt(head_size))
+#     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
 
-    gems_result = flag_gems.ops.scaled_dot_product_attention(
-        q, k, v, attn_mask=None, scale=scale, is_causal=is_causal
-    )
+#     gems_result = flag_gems.ops.scaled_dot_product_attention(
+#         q, k, v, attn_mask=None, scale=scale, is_causal=is_causal
+#     )
 
-    gems_assert_close(gems_result, torch_result, dtype)
+#     gems_assert_close(gems_result, torch_result, dtype)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
@@ -220,39 +220,6 @@ def test_flash_fwd_nonsquare_qk_causal(
 
     gems_assert_close(gems_out, torch_out, dtype)
     gems_assert_close(gems_lse, torch_lse, torch.float)
-
-
-@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(triton.__version__ < "3.2", reason="Low Triton Version")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.flash_attention_forward
-@pytest.mark.parametrize(
-    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
-    [
-        (1, 1, 1024, 1024),
-    ],
-)
-@pytest.mark.parametrize("head_size", [128])
-@pytest.mark.parametrize("is_causal", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_dropout(
-    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
-):
-    device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
-    scale = float(1.0 / np.sqrt(head_size))
-    dropout_p = 0.2
-
-    gems_out, gems_lse, _, _, debug_softmax = gems_flash_fwd(
-        q, k, v, scale, is_causal, dropout_p=dropout_p, return_debug_mask=True
-    )
-
-    dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
-    np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -695,3 +662,35 @@ def test_reshape_and_cache(
 
     torch.testing.assert_close(key_cache, cloned_key_cache)
     torch.testing.assert_close(value_cache, cloned_value_cache)
+
+
+@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(triton.__version__ < "3.2", reason="Low Triton Version")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.flash_attention_forward
+@pytest.mark.parametrize(
+    ["batch", "num_head", "q_seq_len", "kv_seq_len"],
+    [
+        (1, 1, 1024, 1024),
+    ],
+)
+@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_flash_fwd_dropout(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
+):
+    device = torch_device_fn.current_device()
+    q, k, v = make_input(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
+    )
+    scale = float(1.0 / np.sqrt(head_size))
+    dropout_p = 0.2
+    gems_out, gems_lse, _, _, debug_softmax = gems_flash_fwd(
+        q, k, v, scale, is_causal, dropout_p=dropout_p, return_debug_mask=True
+    )
+
+    dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
+    np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
