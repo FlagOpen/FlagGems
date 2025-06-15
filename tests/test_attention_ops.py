@@ -225,6 +225,7 @@ def test_flash_fwd_nonsquare_qk(
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.skipif(torch.__version__ < "2.6", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
