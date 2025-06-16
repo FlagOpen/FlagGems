@@ -11,6 +11,7 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+from flag_gems.ops.mm import mm
 
 def heur_block_n(args):
     return triton.next_power_of_2(triton.cdiv(args["N"], 12))
@@ -75,16 +76,21 @@ def mv(inp, vec):
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(inp.device):
-        mv_kernel[grid](
-            inp,
-            vec,
-            out,
-            N,
-            M,
-            inp.stride(0),
-            inp.stride(1),
-            vec.stride(0),
-            out.stride(0),
-            buffer_size_limit=256,
-        )
+        if M == 1:
+            mv_kernel[grid](
+                inp,
+                vec,
+                out,
+                N,
+                M,
+                inp.stride(0),
+                inp.stride(1),
+                vec.stride(0),
+                out.stride(0),
+                buffer_size_limit=256,
+            )
+        else:
+            vec = vec[:, None]
+            out = mm(inp, vec)
+            out = out.squeeze()
     return out
