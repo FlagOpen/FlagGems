@@ -1,0 +1,13 @@
+{
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape0]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                2,
+                128
+            ]
+        },
+        "result": null
+    }
+}
