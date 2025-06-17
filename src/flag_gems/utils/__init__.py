@@ -19,5 +19,6 @@ __all__ = [
     "offsetCalculator",
     "broadcastable_to",
     "broadcastable",
+    "get_device_properties",
     "tl_extra_shim",
 ]
