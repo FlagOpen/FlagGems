@@ -6,7 +6,6 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import get_device_properties
 from flag_gems.utils.pointwise_dynamic import (
     CodeGenConfig,
