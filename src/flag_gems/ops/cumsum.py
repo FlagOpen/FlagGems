@@ -9,7 +9,7 @@ from flag_gems.utils import libentry
 
 from ..runtime import device, torch_device_fn
 from ..utils import get_device_properties
-from ..utils import sriton_lang_extension as tle
+from ..utils import triton_lang_extension as tle
 
 device = device.name
 logger = logging.getLogger(__name__)
