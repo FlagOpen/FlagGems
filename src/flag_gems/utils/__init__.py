@@ -7,6 +7,7 @@ from .shape_utils import (
     offsetCalculator,
     restride_dim,
 )
+from .triton_driver_helper import get_device_properties
 from .triton_lang_helper import tl_extra_shim
 
 __all__ = [
