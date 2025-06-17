@@ -385,7 +385,7 @@ def test_flash_fwd_nonsquare_qk(
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_alibi_softcap(
+def test_flash_fwd_gqa_alibi_softcap(
     batch,
     num_head,
     num_head_k,
@@ -518,39 +518,6 @@ def test_flash_splitkv(
     )
 
     gems_assert_close(gems_out, torch_out, dtype)
-
-
-@pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.flash_attention_forward
-@pytest.mark.parametrize(
-    ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
-    [(4, 4, 1, 128, 1024), (1, 8, 2, 1, 1024)],
-)
-@pytest.mark.parametrize("head_size", [64, 128])
-@pytest.mark.parametrize("is_causal", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_flash_fwd_gqa(
-    batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, is_causal, dtype
-):
-    device = torch_device_fn.current_device()
-    q, k, v = make_input(
-        batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device
-    )
-    ref_q = to_reference(q, False)
-    ref_k = to_reference(k, False)
-    ref_v = to_reference(v, False)
-    scale = float(1.0 / np.sqrt(head_size))
-
-    torch_out, torch_lse, _, _, _ = torch_flash_fwd(
-        ref_q, ref_k, ref_v, scale, is_causal
-    )
-    gems_out, gems_lse, _, _, _ = gems_flash_fwd(q, k, v, scale, is_causal)
-
-    gems_assert_close(gems_out, torch_out, dtype)
-    gems_assert_close(gems_lse, torch_lse, torch.float)
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
