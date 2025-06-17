@@ -837,10 +837,17 @@ def flash_fwd_splitkv_kernel(
             S = tl.dot(Q, K)
             S = apply_softcap(S, softcap, is_softcap)
             col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-
-            if is_alibi:
-                S -= alibi_slope * tl.abs(col_idx[None, :] - row_idx[:, None])
-
+            row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
+            S = apply_alibi(
+                S,
+                col_idx,
+                row_idx,
+                seqlen_q,
+                seqlen_k,
+                is_causal=is_causal,
+                is_alibi=is_alibi,
+                alibi_slope=alibi_slope,
+            )
             acc_, P, rowmax_, rowsum_ = softmax_rescale(
                 acc_,
                 S,

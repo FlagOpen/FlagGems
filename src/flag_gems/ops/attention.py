@@ -408,6 +408,7 @@ def flash_attention_forward(
     return_debug_mask,
     *,
     scale=None,
+    softcap=0.0,
     window_size_left=None,
     window_size_right=None,
     seqused_k=None,
@@ -455,7 +456,7 @@ def flash_attention_forward(
             is_causal,
             non_null_window_left,
             non_null_window_right,
-            0,
+            softcap,
             return_debug_mask and dropout_p > 0,
             None,
         )
@@ -471,7 +472,7 @@ def flash_attention_forward(
             is_causal,
             non_null_window_left,
             non_null_window_right,
-            0,
+            softcap,
             return_debug_mask,
             disable_splitkv=disable_splitkv,
         )
@@ -582,6 +583,8 @@ def flash_attn_varlen_func(
     dummy_cu_seqlens_k = torch.empty_like(cu_seqlens_q)
 
     assert fa_version == 2, "Only FA2 is implemented."
+
+    out = torch.empty_like(q)
 
     out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
         q,

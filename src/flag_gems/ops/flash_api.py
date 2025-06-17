@@ -1,3 +1,4 @@
+import logging
 import math
 
 import torch
@@ -16,6 +17,7 @@ from .flash_kernel import (
     flash_varlen_fwd_kernel,
 )
 
+logger = logging.getLogger(__name__)
 _debug = False
 
 
@@ -505,6 +507,7 @@ def mha_varlan_fwd(
             block_size,  # block_size,
         )
 
+        logger.debug("kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -601,6 +604,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
+        logger.debug("q_kg swapped.")
         q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
@@ -726,6 +730,7 @@ def mha_fwd(
                 #     print("blocks_per_split", blocks_per_split)
 
                 if n_splits > 1:
+                    logger.debug("kernel: flash_fwd_splitkv")
                     lse_splits = torch.empty(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
@@ -769,6 +774,7 @@ def mha_fwd(
                     return kernel
 
             # Last option: flash_fwd
+            logger.debug("kernel: flash_fwd")
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
                 H * B,
@@ -858,7 +864,6 @@ def mha_fwd(
             print(f"{kernel.name} num_warps:", kernel.metadata.num_warps)
             print(f"{kernel.name} num_stages:", kernel.metadata.num_stages)
             # print(kernel.asm['ttgir'])
-            # print("p:", p)
 
         if seqlenq_ngroups_swapped:
             out = out.transpose(1, 2).reshape(
