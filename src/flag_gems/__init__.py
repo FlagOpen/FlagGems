@@ -325,6 +325,7 @@ def enable(
             ("eye", eye, Autograd.disable),
             ("eye.m", eye_m, Autograd.disable),
             ("to.dtype", to_dtype, Autograd.disable),
+            ("per_token_group_quant_fp8", per_token_group_quant_fp8, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,

@@ -117,6 +117,7 @@ from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tens
 from .ones import ones
 from .ones_like import ones_like
 from .pad import constant_pad_nd, pad
+from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .polar import polar
 from .pow import (
     pow_scalar,
@@ -403,4 +404,6 @@ __all__ = [
     "eye",
     "eye_m",
     "to_dtype",
+    "per_token_group_quant_fp8",
+    "SUPPORTED_FP8_DTYPE",
 ]
