@@ -41,19 +41,17 @@ def log_softmax_backward(x, out_grad, dim : tl.constexpr):
     # dx = dy - softmax(x) * sum(dy)
 
     # (M, N)
-    tmp_x = x.to(tl.float32)
-    softmax_tmp = tl.exp(tmp_x)
-    tmp_out_grad = out_grad.to(tl.float32)
+    softmax_tmp = tl.exp(x)
     # (M, N) => (M)
-    tmp = tl.sum_(tmp_out_grad, axis=dim)
+    tmp = tl.sum_(out_grad, axis=dim)
     # (M, 1)
     tmp = tl.expand_dims(tmp, -1)
     # (M, N)
     tmp = tl.broadcast_to(tmp, x.shape)
 
-    x_grad = tmp_out_grad - softmax_tmp * tmp
+    x_grad = out_grad - softmax_tmp * tmp
 
-    return x_grad.to(x.type.element_ty)
+    return x_grad
 
 
 class LogSoftmax(torch.autograd.Function):

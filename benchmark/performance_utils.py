@@ -2,7 +2,7 @@ import time
 import os
 import torch
 import triton
-
+import pdb
 import flag_gems
 import torch_xla.core.xla_model as xm
 
@@ -12,8 +12,8 @@ from typing import List, Optional, Tuple
 from .conftest import Config
 import logging
 
-WARMUP = 100
-REPETITION = 1000
+WARMUP = 2
+REPETITION = 2
 
 if os.getenv("TRITON_TX8BE_E2E_BACKEND"):
     device = "cpu"
@@ -249,7 +249,13 @@ class Benchmark:
                         for a in args
                     )
                 if self.need_dim:
-                    args = args + (1,)
+                    if args[0].ndim == 1:
+                        args = args + (0,True)
+                    else:
+                       args = args + (1,False)
+
+
+
 
                 kwargs = {}
                 if self.kwargs_func is not None:
@@ -263,7 +269,6 @@ class Benchmark:
                 else:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                        
                 metric.latency = gems_perf        
                 if hasattr(self, "get_tflops"):
                     metric.tflops = (
@@ -275,10 +280,9 @@ class Benchmark:
                                          
                 metric.shape_detail = self.record_shapes(*args, **kwargs)
                 metric.latency_base = torch_perf
-                metric.latency = gems_perf
                 metric.speedup = metric.latency_base / metric.latency
                 metrics.append(metric)
-                print(f"{size: <10}{torch_perf: >20.6}{gems_perf: >20.6}")
+                print(f"{str(size): <10}{torch_perf: >20.6}{gems_perf: >20.6}")
                 
             result = BenchmarkResult(
                 level=Config.bench_level.value,
@@ -300,39 +304,50 @@ DEFAULT_BATCH = 1
 POINTWISE_BATCH = 1024
 REDUCTION_BATCH = 1024
 BLAS_BATCH = 16
-SIZES = [i * 1024 for i in range(1, 81, 5)]
+SIZES = [i * 1024 for i in range(1, 11, 5)]
 LEGACY_NON_BLAS_SHAPES = [(1024, shape) for shape in SIZES]
 
-def unary_arg(dtype, batch, size):
-    inp = torch.randn([batch, size], dtype=dtype, device=device)
-    return (inp,)
+def get_shape(batch, size):
+    if isinstance(size, list):
+        size = tuple(size)
+    if batch == 0:
+        shape = size
+    else:
+        shape = (batch,) + size
+    return shape
 
+def unary_arg(dtype, batch, size):
+    shape = get_shape(batch, size)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return (inp,)
 
 def unary_int_arg(dtype, batch, size):
+    shape = get_shape(batch, size)
     inp = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device=device
+        low=0, high=0x7FFF, size=shape, dtype=dtype, device=device
     )
     return (inp,)
 
-
 def binary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=device)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=device)
+    shape = get_shape(batch, size)
+    inp1 = torch.randn(shape, dtype=dtype, device=device)
+    inp2 = torch.randn(shape, dtype=dtype, device=device)
     return inp1, inp2
-
 
 def binary_int_args(dtype, batch, size):
+    shape = get_shape(batch, size)
     inp1 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device=device
+        low=0, high=0x7FFF, size=shape, dtype=dtype, device=device
     )
     inp2 = torch.randint(
-        low=0, high=0x7FFF, size=[batch, size], dtype=dtype, device=device
+        low=0, high=0x7FFF, size=shape, dtype=dtype, device=device
     )
     return inp1, inp2
 
-
 def ternary_args(dtype, batch, size):
-    inp1 = torch.randn([batch, size], dtype=dtype, device=device)
-    inp2 = torch.randn([batch, size], dtype=dtype, device=device)
-    inp3 = torch.randn([batch, size], dtype=dtype, device=device)
+    shape = get_shape(batch, size)
+    inp1 = torch.randn(shape, dtype=dtype, device=device)
+    inp2 = torch.randn(shape, dtype=dtype, device=device)
+    inp3 = torch.randn(shape, dtype=dtype, device=device)
     return inp1, inp2, inp3
+

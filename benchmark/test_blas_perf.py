@@ -1,7 +1,8 @@
 import torch
 import pytest
+from benchmark.op_configs import op_configs
 
-from .performance_utils import BLAS_BATCH, DEFAULT_BATCH, FLOAT_DTYPES, SIZES, Benchmark, device,DEFAULT_METRICS
+from .performance_utils import Benchmark, device, DEFAULT_METRICS,get_shape
 
 class BlasBenchmark(Benchmark):
     """
@@ -45,98 +46,89 @@ class BlasBenchmark(Benchmark):
 
         return total_flops
 
-
+@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "addmm"])
 @pytest.mark.addmm
-def test_perf_addmm():
+def test_perf_addmm(config):
     def addmm_args(dtype, batch, size):
-        bias = torch.randn(
-            [
-                size,
-            ],
-            dtype=dtype,
-            device=device,
-        )
-        inp1 = torch.randn([size, size], dtype=dtype, device=device)
-        inp2 = torch.randn([size, size], dtype=dtype, device=device)
+        shape=get_shape(batch, size)
+        bias = torch.randn(shape, dtype=dtype, device=device)
+        inp1 = torch.randn(shape, dtype=dtype, device=device)
+        inp2 = torch.randn(shape, dtype=dtype, device=device)
         return bias, inp1, inp2
 
     bench = BlasBenchmark(
         op_name="addmm",
         torch_op=torch.addmm,
         arg_func=addmm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=SIZES,
+        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
     )
     bench.run()
 
-
+@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "bmm"])
 @pytest.mark.bmm
-def test_perf_bmm():
+def test_perf_bmm(config):
     def bmm_args(dtype, batch, size):
-        inp1 = torch.randn([batch, size, size], dtype=dtype, device=device)
-        inp2 = torch.randn([batch, size, size], dtype=dtype, device=device)
+        shape=get_shape(batch, size)
+        inp1 = torch.randn(shape, dtype=dtype, device=device)
+        inp2 = torch.randn(shape, dtype=dtype, device=device)
         return inp1, inp2
 
     bench = BlasBenchmark(
         op_name="bmm",
         torch_op=torch.bmm,
         arg_func=bmm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=SIZES,
+        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
     )
     bench.run()
 
 
+@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "mm"])
 @pytest.mark.mm
-def test_perf_mm():
+def test_perf_mm(config):
     def mm_args(dtype, batch, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device=device)
-        inp2 = torch.randn([size, size], dtype=dtype, device=device)
+        shape=get_shape(batch, size)
+        inp1 = torch.randn(shape, dtype=dtype, device=device)
+        inp2 = torch.randn(shape, dtype=dtype, device=device)
         return inp1, inp2
 
     bench = BlasBenchmark(
         op_name="mm",
         torch_op=torch.mm,
         arg_func=mm_args,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=SIZES,
+        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
     )
     bench.run()
 
-
+@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "mv"])
 @pytest.mark.mv
-def test_perf_mv():
+def test_perf_mv(config):
     def mv_args(dtype, batch, size):
-        inp1 = torch.randn([size, size], dtype=dtype, device=device)
-        inp2 = torch.randn([size], dtype=dtype, device=device)
+        shape=get_shape(batch, size)
+        inp1 = torch.randn(shape, dtype=dtype, device=device)
+        inp2 = torch.randn([shape[0]], dtype=dtype, device=device)
         return inp1, inp2
 
     bench = BlasBenchmark(
         op_name="mv",
         torch_op=torch.mv,
         arg_func=mv_args,
-        dtypes=FLOAT_DTYPES,
-        batch=BLAS_BATCH,
-        sizes=SIZES,
+        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
     )
     bench.run()
 
-
-def test_perf_outer():
+@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "outer"])
+@pytest.mark.outer
+def test_perf_outer(config):
     def outer_args(dtype, batch, size):
-        inp1 = torch.randn([size], dtype=dtype, device=device)
-        inp2 = torch.randn([size], dtype=dtype, device=device)
+        shape=get_shape(batch, size)
+        inp1 = torch.randn(shape, dtype=dtype, device=device)
+        inp2 = torch.randn(shape, dtype=dtype, device=device)
         return inp1, inp2
 
     bench = Benchmark(
         op_name="outer",
         torch_op=torch.outer,
         arg_func=outer_args,
-        dtypes=FLOAT_DTYPES,
-        batch=DEFAULT_BATCH,
-        sizes=SIZES,
+        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
     )
     bench.run()

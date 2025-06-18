@@ -15,7 +15,7 @@ from .accuracy_utils import (
     to_reference,
 )
 
-@pytest.mark.all
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.bool])
 @pytest.mark.parametrize("kind", ["normal", "allTrue"])
@@ -32,7 +32,7 @@ def test_accuracy_all(shape, dtype, kind):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.all
+
 @pytest.mark.skipif(skip_expr, reason=skip_reason)
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -51,7 +51,7 @@ def test_accuracy_all_dim(shape, dim, keepdim, dtype, kind):
         res_out = torch.all(inp, dim=dim, keepdim=keepdim)
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.all
+
 @pytest.mark.skipif(skip_expr, reason=skip_reason)
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
@@ -70,7 +70,7 @@ def test_accuracy_all_dims(shape, dim, keepdim, dtype, kind):
         res_out = torch.all(inp, dim=dim, keepdim=keepdim)
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.amax
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -141,7 +141,6 @@ def test_accuracy_any_dims(shape, dim, keepdim, dtype, kind):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.argmax
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -155,7 +154,7 @@ def test_accuracy_argmax(shape, dim, keepdim, dtype):
         res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.CrossEntropyLoss
+
 @pytest.mark.parametrize("label_smoothing", [0, 0.1, 1])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -199,7 +198,7 @@ def test_accuracy_cross_entropy_loss_indices(
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
-@pytest.mark.CrossEntropyLoss
+
 @pytest.mark.parametrize("label_smoothing", [0, 0.1, 1])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
@@ -250,8 +249,7 @@ def test_accuracy_cumsum(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
-@pytest.mark.group_norm
-@pytest.mark.native_group_norm
+
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
@@ -354,7 +352,7 @@ def test_accuracy_layernorm(shape, dtype):
     gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
     gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
 
-@pytest.mark.log_softmax
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_softmax(shape, dtype):
@@ -374,7 +372,7 @@ def test_accuracy_log_softmax(shape, dtype):
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
-@pytest.mark.max
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_max(shape, dtype):
@@ -387,7 +385,7 @@ def test_accuracy_max(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.max
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("keepdim", [True, False])
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -404,7 +402,7 @@ def test_accuracy_max_dim(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out_index, ref_out_index)
     gems_assert_equal(res_out_value, ref_out_value)
 
-@pytest.mark.mean
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mean(shape, dtype):
@@ -417,7 +415,7 @@ def test_accuracy_mean(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.mean
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -432,7 +430,7 @@ def test_accuracy_mean_dim(shape, dim, keepdim, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.min
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_min(shape, dtype):
@@ -445,7 +443,7 @@ def test_accuracy_min(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.min
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -462,7 +460,7 @@ def test_accuracy_min_dim(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out_index, ref_out_index)
     gems_assert_equal(res_out_value, ref_out_value)
 
-@pytest.mark.prod
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_prod(shape, dtype):
@@ -474,7 +472,7 @@ def test_accuracy_prod(shape, dtype):
         res_out = torch.prod(inp)
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.prod
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])
@@ -582,7 +580,7 @@ def test_accuracy_skip_rmsnorm(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.softmax
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", [0, 1])
@@ -602,7 +600,7 @@ def test_accuracy_softmax(shape, dtype, dim):
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
-@pytest.mark.sum
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sum(shape, dtype):
@@ -615,7 +613,7 @@ def test_accuracy_sum(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
-@pytest.mark.sum
+
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
 @pytest.mark.parametrize("keepdim", [True, False])

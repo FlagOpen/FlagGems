@@ -16,7 +16,7 @@ from .accuracy_utils import (
     to_reference
 )
 
-@pytest.mark.abs
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_abs(shape, dtype):
@@ -30,7 +30,6 @@ def test_accuracy_abs(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.bitwise_not
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_bitwisenot(shape, dtype):
@@ -45,7 +44,7 @@ def test_accuracy_bitwisenot(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.cos
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_cos(shape, dtype):
@@ -58,7 +57,7 @@ def test_accuracy_cos(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.exp
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_exp(shape, dtype):
@@ -71,7 +70,7 @@ def test_accuracy_exp(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.gelu
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_gelu(shape, dtype):
@@ -84,7 +83,7 @@ def test_accuracy_gelu(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.isinf
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_isinf(shape, dtype):
@@ -98,7 +97,7 @@ def test_accuracy_isinf(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.isnan
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_isnan(shape, dtype):
@@ -112,7 +111,7 @@ def test_accuracy_isnan(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.neg
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_neg(shape, dtype):
@@ -125,7 +124,7 @@ def test_accuracy_neg(shape, dtype):
 
     gems_assert_equal(res_out, ref_out)
 
-@pytest.mark.reciprocal
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_reciprocal(shape, dtype):
@@ -138,7 +137,7 @@ def test_accuracy_reciprocal(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
-@pytest.mark.relu
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_relu(shape, dtype):
@@ -158,7 +157,7 @@ def test_accuracy_relu(shape, dtype):
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
-@pytest.mark.rsqrt
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_rsqrt(shape, dtype):
@@ -171,7 +170,7 @@ def test_accuracy_rsqrt(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
-@pytest.mark.sigmoid
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sigmoid(shape, dtype):
@@ -191,7 +190,7 @@ def test_accuracy_sigmoid(shape, dtype):
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
-@pytest.mark.silu
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu(shape, dtype):
@@ -211,7 +210,7 @@ def test_accuracy_silu(shape, dtype):
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
-@pytest.mark.sin
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sin(shape, dtype):
@@ -224,7 +223,7 @@ def test_accuracy_sin(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
-@pytest.mark.tanh
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tanh(shape, dtype):
@@ -244,7 +243,7 @@ def test_accuracy_tanh(shape, dtype):
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
-@pytest.mark.triu
+
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("diagonal", [-3, -1, 0, 1, 3])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

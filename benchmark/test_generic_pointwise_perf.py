@@ -1,31 +1,21 @@
 import torch
 import pytest
+from benchmark.op_configs import op_configs
 
 from .performance_utils import (
-    FLOAT_DTYPES,
-    INT_DTYPES,
-    POINTWISE_BATCH,
-    SIZES,
     Benchmark,
-    binary_args,
-    binary_int_args,
-    ternary_args,
     unary_arg,
-    unary_int_arg,
     device,
-    DEFAULT_METRICS
 )
 
-
+@pytest.mark.parametrize("config", [c for c in op_configs if c["op_name"] == "triu"])
 @pytest.mark.triu
-def test_perf_triu():
+def test_perf_triu(config):
     bench = Benchmark(
         op_name="triu",
         torch_op=torch.triu,
         arg_func=unary_arg,
-        dtypes=FLOAT_DTYPES,
-        batch=POINTWISE_BATCH,
-        sizes=SIZES,
+        **{k: v for k, v in config.items() if k in ["dtypes", "batch", "sizes"]},
     )
     bench.run()
 

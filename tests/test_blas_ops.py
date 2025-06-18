@@ -11,8 +11,7 @@ from .accuracy_utils import (
     to_reference
 )
 
-@pytest.mark.addmm
-@pytest.mark.linear
+
 @pytest.mark.parametrize("M", MNK_SHAPES)
 @pytest.mark.parametrize("N", MNK_SHAPES)
 @pytest.mark.parametrize("K", MNK_SHAPES)
@@ -33,7 +32,7 @@ def test_accuracy_addmm(M, N, K, alpha, beta, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
-@pytest.mark.bmm
+
 @pytest.mark.parametrize("M", MNK_SHAPES)
 @pytest.mark.parametrize("N", MNK_SHAPES)
 @pytest.mark.parametrize("K", MNK_SHAPES)
@@ -51,7 +50,7 @@ def test_accuracy_bmm(M, N, K, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
-@pytest.mark.mm
+
 @pytest.mark.parametrize("M", MNK_SHAPES)
 @pytest.mark.parametrize("N", MNK_SHAPES)
 @pytest.mark.parametrize("K", MNK_SHAPES)
@@ -68,7 +67,7 @@ def test_accuracy_mm(M, N, K, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
-@pytest.mark.mv
+
 @pytest.mark.parametrize("M", MNK_SHAPES)
 @pytest.mark.parametrize("N", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
