@@ -143,10 +143,6 @@ max:
   num_warps: 8
 addmm:
 - META:
-    BLOCK_SIZE_M: 16
-    BLOCK_SIZE_N: 16
-    BLOCK_SIZE_K: 16
-- META:
     BLOCK_SIZE_M: 32
     BLOCK_SIZE_N: 32
     BLOCK_SIZE_K: 32
