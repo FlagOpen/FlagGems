@@ -4,9 +4,9 @@
 
 ## 介绍
 
-FlagGems 是一个使用 OpenAI 推出的[Triton 编程语言](https://github.com/openai/triton)实现的高性能通用算子库，旨在为大语言模型提供一系列可应用于 PyTorch 框架的算子，加速模型的推理与训练。
+FlagGems 是一个使用 OpenAI 推出的[Triton 编程语言](https://github.com/openai/triton)实现的高性能通用算子库，旨在为大语言模型提供一系列可应用于 PyTorch 框架的算子，加速模型面向多种后端平台的推理与训练。
 
-FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，使用户能够在不修改模型代码的情况下平稳地切换到 triton 算子库。FlagGems 不会影响 aten 后端的正常使用，并且会带来良好的性能提升。Triton 语言为算子库提供了更好的可读性和易用性，同时保持了不逊于 CUDA 的算子性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
+FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，一方面模型开发者能够在无需修改底层API的情况下平稳地切换到 triton 算子库，使用其熟悉的Pytorch API同时享受新硬件带来的加速能力，另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
 
 我们为 FlagGems 创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
 
@@ -15,6 +15,17 @@ FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算�
 </p>
 
 ## 特性
+
+- 支持的算子数量规模较大
+- 部分算子已经过深度性能调优
+- 可直接在Eager模式下使用, 无需通过torch.compile
+- Pointwise自动代码生成，灵活支持多种输入类型和内存排布
+- Triton kernel调用优化
+- 灵活的多后端支持机制
+- 代码库已集成10多种后端
+- C++ Triton 函数派发 (开发中)
+
+## 更多特性细节
 
 ### 多后端硬件支持
 
@@ -71,9 +82,19 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 支持平台
 
-|  Platform  | float16 | float32 | bfloat16 |
-| :--------: | :-----: | :-----: | :------: |
-| Nvidia GPU |    ✓    |    ✓    |    ✓     |
+| vendor      | state | float16 | float32 | bfloat16 |
+| ----------- | ----------- |-----------|-----------|-----------|
+| aipu        | ✅  （Partial support）     |✅       |✅       |✅       |
+| ascend      | ✅    （Partial support）    |✅       |✅       |✅       |
+| cambricon   | ✅        |✅       |✅       |✅       |
+| hygon   | ✅        |✅       |✅       |✅       |
+| iluvatar   | ✅        |✅       |✅       |✅       |
+| kunlunxin   | ✅        |✅       |✅       |✅       |
+| metax   | ✅        |✅       |✅       |✅       |
+| mthreads   | ✅       |✅       |✅       |✅       |
+| nvidia   | ✅        |✅       |✅       |✅       |
+| arm(cpu)   | 🚧      |       |      |      |
+| tsingmicro   | 🚧        |       |      |     |
 
 ## 性能表现
 

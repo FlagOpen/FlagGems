@@ -4,9 +4,9 @@
 
 ## Introduction
 
-FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It aims to provide a suite of kernel functions to accelerate LLM training and inference.
+FlagGems is a high-performance general operator library implemented in [OpenAI Triton](https://github.com/openai/triton). It builds on a collection of backend neutral kernels that aims to accelerate LLM training and inference across a diverse set of platforms.
 
-By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing users to switch to the Triton function library without the need to modify their model code. Users can still utilize the ATen backend as usual while experiencing significant performance enhancement. The Triton language offers benefits in readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
+By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless transition, allowing model developers to switch to Triton without changing the low level APIs. Users can still use their familiar Pytorch APIs as usual and benefit from new hardware acceleration technologies. For kernel developers, the Triton language offers readability, user-friendliness and performance comparable to CUDA. This convenience allows developers to engage in the development of FlagGems with minimal learning investment.
 
 We created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
 
@@ -15,6 +15,18 @@ We created WeChat group for FlagGems. Scan the QR code to join the group chat! T
 </p>
 
 ## Features
+
+FlagGems provides the following technical features.
+- A large collection of Pytorch compatible operators
+- Hand optimized performance for selective operators
+- Eager mode ready, independent of torch.compile
+- Automatic pointwise operator codegen supporting arbitrary input types and layout
+- Fast per-function runtime kernel dispatching
+- Multi-backend interface enabling support of diverse hardware platforms
+- Over 10 supported backends
+- C++ Triton function dispatcher (working in progress)
+
+## More About Features
 
 ### Multi-Backend Hardware Support
 
@@ -68,17 +80,28 @@ For a quick start with installing and using flag_gems, please refer to the docum
 
 Operators will be implemented according to [OperatorList](docs/dev-docs/operator_list.md).
 
-## Supported Models
+## Example Models
 
 - Bert-base-uncased
 - Llama-2-7b
 - Llava-1.5-7b
 
+
 ## Supported Platforms
 
-|  Platform  | float16 | float32 | bfloat16 |
-| :--------: | :-----: | :-----: | :------: |
-| Nvidia GPU |    ✓    |    ✓    |    ✓     |
+| vendor      | state | float16 | float32 | bfloat16 |
+| ----------- | ----------- |-----------|-----------|-----------|
+| aipu        | ✅  （Partial support）     |✅       |✅       |✅       |
+| ascend      | ✅    （Partial support）    |✅       |✅       |✅       |
+| cambricon   | ✅        |✅       |✅       |✅       |
+| hygon   | ✅        |✅       |✅       |✅       |
+| iluvatar   | ✅        |✅       |✅       |✅       |
+| kunlunxin   | ✅        |✅       |✅       |✅       |
+| metax   | ✅        |✅       |✅       |✅       |
+| mthreads   | ✅       |✅       |✅       |✅       |
+| nvidia   | ✅        |✅       |✅       |✅       |
+| arm(cpu)   | 🚧      |       |      |      |
+| tsingmicro   | 🚧        |       |      |     |
 
 ## Performance
 
