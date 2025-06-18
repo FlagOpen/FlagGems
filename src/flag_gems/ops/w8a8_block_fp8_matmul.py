@@ -4,7 +4,7 @@ import triton.language as tl
 
 
 @triton.jit
-def matmul_kernel(
+def w8a8_block_fp8_matmul_kernel(
     A,
     B,
     C,
@@ -83,7 +83,7 @@ def matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
-def matmul(
+def w8a8_block_fp8_matmul(
     A: torch.Tensor,
     B: torch.Tensor,
     As: torch.Tensor,
@@ -121,7 +121,7 @@ def matmul(
         return (triton.cdiv(M, META["BLOCK_SIZE_M"]) *
                 triton.cdiv(N, META["BLOCK_SIZE_N"]), )
 
-    matmul_kernel[grid](
+    w8a8_block_fp8_matmul_kernel[grid](
         A,
         B,
         C,
