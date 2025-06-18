@@ -8,8 +8,6 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit(do_not_specialize=["value_scalar"])
@@ -41,9 +39,7 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    if not value.is_cuda:
-        return fill_scalar(input, value.item())
-    logger.debug("GEMS FILL")
+    logging.debug("GEMS FILL")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -59,7 +55,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS FILL")
+    logging.debug("GEMS FILL")
     out = torch.empty_like(input)
     N = out.numel()
     BLOCK_SIZE = 512
@@ -71,9 +67,7 @@ def fill_scalar(input, value):
 
 
 def fill_tensor_(self, value):
-    if not value.is_cuda:
-        return fill_scalar_(self, value.item())
-    logger.debug("GEMS FILL_TENSOR_")
+    logging.debug("GEMS FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -88,7 +82,7 @@ def fill_tensor_(self, value):
 
 
 def fill_scalar_(self, value):
-    logger.debug("GEMS FILL_SCALAR_")
+    logging.debug("GEMS FILL_SCALAR_")
     N = self.numel()
     BLOCK_SIZE = 512
     grid = triton.cdiv(N, BLOCK_SIZE)

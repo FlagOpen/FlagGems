@@ -9,7 +9,7 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .attention import scaled_dot_product_attention
-from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm import batch_norm
 from .bitwise_and import (
     bitwise_and_scalar,
     bitwise_and_scalar_,
@@ -34,8 +34,9 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
+from .cross_entropy_loss import cross_entropy_loss
 from .cummin import cummin
-from .cumsum import cumsum, cumsum_out, normed_cumsum
+from .cumsum import cumsum, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -50,42 +51,39 @@ from .div import (
     true_divide_,
 )
 from .dot import dot
-from .dropout import dropout, dropout_backward
+from .dropout import native_dropout, native_dropout_backward
 from .elu import elu
-from .embedding import embedding, embedding_backward
+from .embedding import embedding
 from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .exponential_ import exponential_
-from .eye import eye
-from .eye_m import eye_m
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
-from .gelu import gelu, gelu_, gelu_backward
-from .glu import glu
-from .groupnorm import group_norm, group_norm_backward
+from .gelu import gelu, gelu_
+from .groupnorm import group_norm
 from .gt import gt, gt_scalar
 from .hstack import hstack
-from .index import index
 from .index_add import index_add
 from .index_put import index_put, index_put_
 from .index_select import index_select
+from .instancenorm import instance_norm
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
 from .isinf import isinf
 from .isnan import isnan
 from .kron import kron
-from .layernorm import layer_norm, layer_norm_backward
+from .layernorm import layer_norm
 from .le import le, le_scalar
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
-from .log_softmax import log_softmax, log_softmax_backward
+from .log_softmax import log_softmax
 from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
@@ -116,6 +114,7 @@ from .nonzero import nonzero
 from .normal import normal_float_tensor, normal_tensor_float, normal_tensor_tensor
 from .ones import ones
 from .ones_like import ones_like
+from .outer import outer
 from .pad import constant_pad_nd, pad
 from .polar import polar
 from .pow import (
@@ -144,21 +143,20 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
-from .scatter import scatter, scatter_
+from .rsub import rsub
+from .scatter import scatter
 from .select_scatter import select_scatter
-from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
-from .silu import silu, silu_, silu_backward
+from .sigmoid import sigmoid, sigmoid_
+from .silu import silu, silu_
 from .sin import sin, sin_
 from .slice_scatter import slice_scatter
-from .softmax import softmax, softmax_backward
+from .softmax import softmax
 from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
 from .sum import sum, sum_dim
-from .tanh import tanh, tanh_, tanh_backward
-from .threshold import threshold, threshold_backward
+from .tanh import tanh, tanh_
 from .tile import tile
-from .to import to_dtype
 from .topk import topk
 from .triu import triu
 from .uniform import uniform_
@@ -169,7 +167,7 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
-from .weightnorm import weight_norm_interface, weight_norm_interface_backward
+from .weightnorm import weight_norm, weight_norm_interface
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -192,7 +190,6 @@ __all__ = [
     "arange",
     "arange_start",
     "batch_norm",
-    "batch_norm_backward",
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_and_scalar",
@@ -223,7 +220,6 @@ __all__ = [
     "constant_pad_nd",
     "cummin",
     "cumsum",
-    "cumsum_out",
     "normed_cumsum",
     "true_divide",
     "true_divide_",
@@ -237,12 +233,11 @@ __all__ = [
     "ones",
     "full",
     "linspace",
-    "dropout",
-    "dropout_backward",
+    "native_dropout",
+    "native_dropout_backward",
     "erf",
     "erf_",
     "embedding",
-    "embedding_backward",
     "eq",
     "eq_scalar",
     "exp",
@@ -262,22 +257,19 @@ __all__ = [
     "ge_scalar",
     "gelu",
     "gelu_",
-    "gelu_backward",
-    "glu",
     "group_norm",
-    "group_norm_backward",
     "gt",
     "gt_scalar",
     "index_select",
+    "instance_norm",
     "isclose",
     "isfinite",
     "isin",
     "isinf",
     "isnan",
     "layer_norm",
-    "layer_norm_backward",
     "weight_norm_interface",
-    "weight_norm_interface_backward",
+    "weight_norm",
     "le",
     "le_scalar",
     "lt",
@@ -319,25 +311,19 @@ __all__ = [
     "relu_",
     "rsqrt",
     "rsqrt_",
+    "rsub",
     "scatter",
-    "scatter_",
     "sigmoid",
     "sigmoid_",
-    "sigmoid_backward",
     "silu",
     "silu_",
-    "silu_backward",
     "sin",
     "sin_",
     "softmax",
-    "softmax_backward",
     "sub",
     "sub_",
     "tanh",
     "tanh_",
-    "tanh_backward",
-    "threshold",
-    "threshold_backward",
     "tile",
     "triu",
     "topk",
@@ -356,7 +342,8 @@ __all__ = [
     "var_mean",
     "vector_norm",
     "log_softmax",
-    "log_softmax_backward",
+    "outer",
+    "cross_entropy_loss",
     "where_self_out",
     "where_self",
     "where_scalar_self",
@@ -396,11 +383,7 @@ __all__ = [
     "nll_loss2d_backward",
     "index_put_",
     "index_put",
-    "index",
     "vdot",
     "mse_loss",
     "log",
-    "eye",
-    "eye_m",
-    "to_dtype",
 ]

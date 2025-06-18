@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -7,10 +6,8 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry, libtuner
+from ..utils import libentry
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -48,7 +45,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 def prod(inp, *, dtype=None):
-    logger.debug("GEMS PROD")
+    print("GEMS PROD")
     if dtype is None:
         dtype = inp.dtype
 
@@ -71,10 +68,12 @@ def heur_block_n(args):
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("naive_reduction"),
-    key=["M", "N"],
-    share="naive_reduction",
+@triton.autotune(
+    configs=runtime.get_tuned_config("prod"),
+    key=[
+        "M",
+        "N",
+    ],
 )
 @triton.jit
 def prod_kernel(
@@ -82,17 +81,19 @@ def prod_kernel(
     out,
     M,
     N,
+    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
     # set offset
     pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
     acc = tl.full((BLOCK_M, BLOCK_N), value=1.0, dtype=tl.float32)
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
-        offset = m_offset[:, None] * N + n_offset[None, :]
+        offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
 
         # set mask
         mask = m_offset[:, None] < M and n_offset[None, :] < N
@@ -101,31 +102,38 @@ def prod_kernel(
         acc *= inp_vals
     result_index = tl.reduce(acc, axis=1, combine_fn=reduce_mul)
 
-    offset_index = m_offset
+    offset_index = m_offset * K + pid_k
     out_ptrs = out + offset_index
     mask1 = m_offset < M
     tl.store(out_ptrs, result_index, mask=mask1)
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS PROD DIM")
+    print("GEMS PROD DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = list(inp.shape)
+    shape = inp.shape
     dim = dim % inp.ndim
-    inp = dim_compress(inp, dim)
     N = shape[dim]
-    shape[dim] = 1
-    M = inp.numel() // N
+    M = math.prod(shape[:dim])
+    K = inp.numel() // M // N
+
+    inp = inp.contiguous()
+
+    shape_list = list(shape)
+    shape_list[dim] = 1
 
     if dtype is None:
         dtype = inp.dtype
-    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    out = torch.empty(shape_list, dtype=dtype, device=inp.device)
     if not keepdim:
         out = torch.squeeze(out, dim)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    grid = lambda meta: (
+        triton.cdiv(M, meta["BLOCK_M"]),
+        K,
+    )
     with torch_device_fn.device(inp.device):
-        prod_kernel[grid](inp, out, M, N)
+        prod_kernel[grid](inp, out, M, N, K)
 
     return out

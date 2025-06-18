@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -7,10 +6,8 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry, libtuner
+from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -43,7 +40,7 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
+    print("GEMS MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -61,10 +58,9 @@ def mean(inp, *, dtype=None):
 
 
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("naive_reduction"),
+@triton.autotune(
+    configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
-    share="naive_reduction",
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
@@ -89,7 +85,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logger.debug("GEMS MEAN DIM")
+    print("GEMS MEAN DIM")
 
     if dtype is None:
         dtype = x.dtype

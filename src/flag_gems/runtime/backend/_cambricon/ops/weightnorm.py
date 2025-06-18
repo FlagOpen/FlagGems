@@ -12,7 +12,6 @@ from flag_gems.utils import libentry
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
 MAX_N = 31744
 
 
@@ -85,9 +84,9 @@ def config_prune_for_first(configs, named_args, **kwargs):
                 max_block_m_without_pipe = (
                     MAX_NRAM_SIZE // 4 // (3 * BLOCK_COL_SIZE + 1)
                 )
-                BLOCK_ROW_SIZE = config.kwargs[
-                    "BLOCK_ROW_SIZE"
-                ] = max_block_m_without_pipe
+                BLOCK_ROW_SIZE = config.kwargs["BLOCK_ROW_SIZE"] = (
+                    max_block_m_without_pipe
+                )
                 num_stages = config.num_stages = 1
                 key = (BLOCK_ROW_SIZE, BLOCK_COL_SIZE, num_warps, num_stages)
                 configs_map.setdefault(key, config)
@@ -305,7 +304,7 @@ def weight_norm_bwd_kernel_first(
 class WeightNormInterface(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim):
-        logger.debug("GEMS_CAMBRICON WEIGHTNORM FORWARD")
+        logging.debug("GEMS_CAMBRICON WEIGHTNORM FORWARD")
         v = v.contiguous()
         g = g.contiguous()
         output = torch.empty_like(v)
@@ -331,7 +330,7 @@ class WeightNormInterface(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, w_grad, norm_grad):
-        logger.debug("GEMS_CAMBRICON WEIGHTNORM BACKWARD")
+        logging.debug("GEMS_CAMBRICON WEIGHTNORM BACKWARD")
         v, g, norm = ctx.saved_tensors
         dim = ctx.DIM
         w_grad = w_grad.contiguous()
@@ -498,7 +497,7 @@ def weight_norm_except_dim_bwd_kernel(
 class WeightNormExceptDim(torch.autograd.Function):
     @staticmethod
     def forward(ctx, v, g, dim):
-        logger.debug("GEMS_CAMBRICON NORM FORWARD")
+        logging.debug("GEMS_CAMBRICON NORM FORWARD")
         v = v.contiguous()
         output = torch.empty_like(v)
         norm = torch.empty_like(g, dtype=torch.float32)
@@ -527,7 +526,7 @@ class WeightNormExceptDim(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad):
-        logger.debug("GEMS_CAMBRICON NORM BACKWARD")
+        logging.debug("GEMS_CAMBRICON NORM BACKWARD")
         grad = grad.contiguous()
         v, g, norm = ctx.saved_tensors
         v_grad = torch.empty_like(v)

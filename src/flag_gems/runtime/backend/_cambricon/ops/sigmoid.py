@@ -8,7 +8,6 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 exp2 = tl_extra_shim.exp2
 
 
@@ -33,7 +32,7 @@ def sigmoid_backward(y, dy):
 class Sigmoid(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logger.debug("GEMS_CAMBRICON SIGMOID FORWARD")
+        logging.debug("GEMS_CAMBRICON SIGMOID FORWARD")
         if A.requires_grad is True:
             out = sigmoid_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -44,7 +43,7 @@ class Sigmoid(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON SIGMOID BACKWARD")
+        logging.debug("GEMS_CAMBRICON SIGMOID BACKWARD")
         out_grad = out_grad.contiguous()
         (out,) = ctx.saved_tensors
         in_grad = sigmoid_backward(out, out_grad)

@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -11,8 +9,6 @@ from flag_gems.utils.random_utils import (
 
 from .. import runtime
 from ..runtime import torch_device_fn
-
-logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("exponential_"))
@@ -84,7 +80,7 @@ def transform_exponential(u, lambd, eps):
 
 
 def exponential_(x, lambd: float = 1.0, *, gen=None):
-    logger.debug("GEMS EXPONENTIAL_")
+    print("GEMS EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()

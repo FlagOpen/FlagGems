@@ -1,11 +1,7 @@
-import logging
-
 import torch
 import triton
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
@@ -15,7 +11,7 @@ def copy_func(x):
 
 
 def diag_embed(x, offset=0, dim1=-2, dim2=-1):
-    logger.debug("GEMS DIAG_EMBED")
+    print("GEMS DIAG_EMBED")
 
     rank = x.ndim + 1
 

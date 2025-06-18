@@ -7,8 +7,6 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -17,7 +15,7 @@ def copy_func(x):
 
 
 def flip(A: torch.Tensor, dims) -> torch.Tensor:
-    logger.debug("GEMS FLIP")
+    logging.debug("GEMS FLIP")
     strides = list(A.stride())
     flip_dims_b = [False for _ in A.stride()]
     for dim in dims:

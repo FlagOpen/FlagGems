@@ -1,5 +1,4 @@
 import importlib
-import logging
 import os
 from typing import Any, Callable, List, Mapping, Tuple
 
@@ -7,8 +6,6 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
-
-logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -218,7 +215,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD")
+    print("GEMS INDEX ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"

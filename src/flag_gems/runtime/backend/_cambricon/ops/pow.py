@@ -7,8 +7,6 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 _pow = tl_extra_shim.pow
 
 
@@ -19,7 +17,7 @@ def pow_func(x, exponent):
 
 
 def pow_tensor_tensor(A, exponent):
-    logger.debug("GEMS_CAMBRICON POW_TENSOR_TENSOR")
+    logging.debug("GEMS_CAMBRICON POW_TENSOR_TENSOR")
     return pow_func(A, exponent)
 
 
@@ -59,7 +57,7 @@ def pow_func_tensor_scalar_int(x, exponent):
 
 
 def pow_tensor_scalar(A, exponent):
-    logger.debug("GEMS_CAMBRICON POW_TENSOR_SCALAR")
+    logging.debug("GEMS_CAMBRICON POW_TENSOR_SCALAR")
     if int(exponent) == exponent:
         return pow_func_tensor_scalar_int(A, exponent)
     return pow_func_tensor_scalar(A, exponent)
@@ -72,5 +70,5 @@ def pow_func_scalar_tensor(x, exponent):
 
 
 def pow_scalar(A, exponent):
-    logger.debug("GEMS_CAMBRICON POW_SCALAR")
+    logging.debug("GEMS_CAMBRICON POW_SCALAR")
     return pow_func_scalar_tensor(A, exponent)

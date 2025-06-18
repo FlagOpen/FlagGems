@@ -12,8 +12,6 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, get_triton_dtype, should_enable_sqmma
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("mm"))
@@ -180,7 +178,7 @@ def get_mm_config():
 
 
 def mm_sqmma(a, b):
-    logger.debug("GEMS MM SQMMA")
+    logging.debug("GEMS MM SQMMA")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -240,7 +238,7 @@ def mm_sqmma(a, b):
 
 
 def mm_fma(a, b):
-    logger.debug("GEMS MM FMA")
+    logging.debug("GEMS MM FMA")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:

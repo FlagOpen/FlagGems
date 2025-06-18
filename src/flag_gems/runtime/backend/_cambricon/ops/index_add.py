@@ -6,8 +6,6 @@ import triton.language as tl
 
 from flag_gems.utils import dim_compress, libentry
 
-logger = logging.getLogger(__name__)
-
 
 def cfggen():
     block_m = [1, 2, 4, 8]
@@ -55,7 +53,7 @@ def index_add_kernel(
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS_CAMBRICON INDEX ADD")
+    logging.debug("GEMS_CAMBRICON INDEX ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device="cuda")
     ), "0 <= index < self.size(dim)"

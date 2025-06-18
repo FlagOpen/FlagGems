@@ -1,5 +1,4 @@
 import itertools
-import logging
 from typing import List, Tuple, Union
 
 import torch
@@ -7,8 +6,6 @@ import triton
 
 from ..utils import pointwise_dynamic
 from ..utils.tensor_wrapper import StridedBuffer
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
@@ -20,7 +17,7 @@ def copy_func(x):
 def hstack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
 ) -> torch.Tensor:
-    logger.debug("GEMS HSTACK")
+    print("GEMS HSTACK")
 
     if len(tensors) == 0:
         raise RuntimeError("hstack expected a non-empty TensorList")

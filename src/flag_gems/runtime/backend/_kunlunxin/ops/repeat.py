@@ -8,8 +8,6 @@ import torch
 from flag_gems.utils.code_cache import cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
-logger = logging.getLogger(__name__)
-
 
 # --------------------------- repeat wrapper genration -----------------------------------
 def parameter_for_wrapper() -> str:
@@ -442,7 +440,7 @@ _repeat_func = RepeatFunction()
 
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
-    logger.debug("GEMS REPEAT")
+    logging.debug("GEMS REPEAT")
 
     out = _repeat_func(inp, sizes)
     return out

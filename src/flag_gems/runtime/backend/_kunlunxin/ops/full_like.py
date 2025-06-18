@@ -7,8 +7,6 @@ from flag_gems.runtime import torch_device_fn
 
 from .full import check_dtype, full_kernel
 
-logger = logging.getLogger(__name__)
-
 
 def full_like(
     x,
@@ -20,7 +18,7 @@ def full_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logger.debug("GEMS FULL_LIKE")
+    logging.debug("GEMS FULL_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

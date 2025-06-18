@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -27,7 +25,6 @@ except AttributeError:
 
 
 device_ = device
-logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("randn"))
@@ -67,7 +64,7 @@ UNROLL = 4
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RANDN")
+    print("GEMS RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

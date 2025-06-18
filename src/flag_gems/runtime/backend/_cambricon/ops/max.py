@@ -8,11 +8,9 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op, prune_reduce_config
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -29,10 +27,9 @@ def max_kernel_float_once(
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
-    strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
@@ -69,10 +66,9 @@ def max_kernel_float(
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
-    strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
@@ -108,10 +104,9 @@ def max_kernel_int(
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=cfggen_reduce_op(),
     key=["M"],
-    strategy=["log"],
     prune_configs_by={"early_config_prune": prune_reduce_config},
 )
 @triton.heuristics(
@@ -161,13 +156,12 @@ def heur_block_n(args):
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("max"),
     key=[
         "M",
         "N",
     ],
-    strategy=["log", "log"],
 )
 @triton.jit
 def max_kernel(
@@ -207,7 +201,7 @@ def max_kernel(
 
 
 def max(inp):
-    logger.debug("GEMS_CAMBRICON MAX")
+    logging.debug("GEMS_CAMBRICON MAX")
     inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
@@ -244,7 +238,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_CAMBRICON MAX DIM")
+    logging.debug("GEMS_CAMBRICON MAX DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

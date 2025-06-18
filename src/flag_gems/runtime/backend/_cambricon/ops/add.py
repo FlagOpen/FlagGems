@@ -5,8 +5,6 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
@@ -31,7 +29,7 @@ def add_func_scalar_tensor(x, y, alpha):
 
 
 def add(A, B, *, alpha=1):
-    logger.debug("GEMS_CAMBRICON ADD")
+    logging.debug("GEMS_CAMBRICON ADD")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return add_func(A, B, alpha)
     elif isinstance(A, torch.Tensor):

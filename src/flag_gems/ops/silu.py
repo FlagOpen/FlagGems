@@ -1,13 +1,10 @@
-import logging
-
+import torch
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic, tl_extra_shim
 
 div_rn = tl_extra_shim.div_rn
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -20,7 +17,7 @@ def silu_forward(x):
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def silu_backward_kernel(x, dy):
+def silu_backward(x, dy):
     dy_fp32 = dy.to(tl.float32)
     x_fp32 = x.to(tl.float32)
     sigma = div_rn(1.0, 1.0 + tl.exp(-x_fp32))
@@ -28,19 +25,43 @@ def silu_backward_kernel(x, dy):
     return dx
 
 
-def silu(self):
-    logger.debug("GEMS SILU FORWARD")
-    output = silu_forward(self)
-    return output
+class Silu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        print("GEMS SILU FORWARD")
+        out = silu_forward(A)
+        ctx.save_for_backward(A)
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        print("GEMS SILU BACKWARD")
+        (inp,) = ctx.saved_tensors
+        in_grad = silu_backward(inp, out_grad)
+        return in_grad
 
 
-def silu_backward(grad_output, self):
-    logger.debug("GEMS SILU BACKWARD")
-    grad_input = silu_backward_kernel(self, grad_output)
-    return grad_input
+def silu(A):
+    return Silu.apply(A)
+
+
+class InplaceSilu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        print("GEMS SILU_ FORWARD")
+        ctx.save_for_backward(A.clone())
+        ctx.mark_dirty(A)
+        out = silu_forward(A, out0=A)
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        print("GEMS SILU_ BACKWARD")
+        (inp,) = ctx.saved_tensors
+        in_grad = silu_backward(inp, out_grad)
+        return in_grad
 
 
 def silu_(A):
-    logger.debug("GEMS SILU_ FORWARD")
-    out = silu_forward(A, out0=A)
-    return out
+    InplaceSilu.apply(A)
+    return A

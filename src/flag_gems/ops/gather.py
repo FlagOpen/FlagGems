@@ -1,5 +1,4 @@
 import importlib
-import logging
 import os
 from typing import Any, Callable, Mapping, Tuple
 
@@ -10,8 +9,6 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter_
-
-logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -184,7 +181,7 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logger.debug("GEMS GATHER")
+    print("GEMS GATHER")
     if out is None:
         out = torch.empty_like(index, dtype=inp.dtype, device=inp.device)
     dim_stride = inp.stride(dim)
@@ -195,6 +192,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logger.debug("GEMS GATHER BACKWARD")
+    print("GEMS GATHER BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

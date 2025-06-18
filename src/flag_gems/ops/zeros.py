@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -9,7 +7,6 @@ from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import volume
 
 device_ = device
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -26,7 +23,7 @@ def zeros_kernel(
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS ZEROS")
+    print("GEMS ZEROS")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

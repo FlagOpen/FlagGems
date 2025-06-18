@@ -8,7 +8,6 @@ from flag_gems.runtime import device
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 device = device.name
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
@@ -22,6 +21,6 @@ def maximum_kernel(X, Y):
 
 
 def maximum(X, Y):
-    logger.debug("GEMS_CAMBRICON MAXIMUM")
+    logging.debug("GEMS_CAMBRICON MAXIMUM")
     assert X.device.type == device and Y.device.type == device
     return maximum_kernel(X, Y)

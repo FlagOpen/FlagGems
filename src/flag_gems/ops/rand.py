@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -13,7 +11,6 @@ from flag_gems.utils.shape_utils import volume
 from .. import runtime
 from ..runtime import device, torch_device_fn
 
-logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -52,7 +49,7 @@ UNROLL = 4
 
 
 def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RAND")
+    print("GEMS RAND")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

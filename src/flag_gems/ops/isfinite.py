@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -11,7 +9,6 @@ try:
     _finitef = tl_extra_shim.finitef
 except Exception:
     pass
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "ALWAYS_BOOL")])
@@ -23,7 +20,7 @@ def isfinite_func(x):
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISFINITE")
+    print("GEMS ISFINITE")
     if A.is_floating_point():
         return isfinite_func(A)
     else:

@@ -12,8 +12,6 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit
@@ -61,7 +59,7 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS MSE LOSS")
+    logging.debug("GEMS MSE LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 
@@ -85,13 +83,15 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
 
     mid = torch.empty(
         (mid_size,),
-        dtype=torch.float32
-        if (
-            dtype == torch.bfloat16
-            and mid_size > 1024
-            and reduction == Reduction.MEAN.value
-        )
-        else dtype,
+        dtype=(
+            torch.float32
+            if (
+                dtype == torch.bfloat16
+                and mid_size > 1024
+                and reduction == Reduction.MEAN.value
+            )
+            else dtype
+        ),
         device=inp.device,
     )
     out = torch.empty([], dtype=dtype, device=inp.device)

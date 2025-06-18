@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 
@@ -9,7 +7,6 @@ from ..utils.random_utils import philox_backend_seed_offset
 from ..utils.shape_utils import broadcast_shapes, volume
 from .randn import randn_kernel
 
-logger = logging.getLogger(__name__)
 UNROLL = 4
 
 
@@ -58,7 +55,7 @@ def normal_distribution(shape, device, *, generator=None):
 
 
 def normal_tensor_tensor(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_TENSOR_TENSOR")
+    print("GEMS NORMAL_TENSOR_TENSOR")
     shape = broadcast_shapes([mean.shape, std.shape])
     device = mean.device
     out = normal_distribution(shape, device)
@@ -66,7 +63,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
 
 
 def normal_tensor_float(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_TENSOR_FLOAT")
+    print("GEMS NORMAL_TENSOR_FLOAT")
     shape = mean.shape
     device = mean.device
     out = normal_distribution(shape, device)
@@ -74,7 +71,7 @@ def normal_tensor_float(mean, std, *, generator=None):
 
 
 def normal_float_tensor(mean, std, *, generator=None):
-    logger.debug("GEMS NORMAL_FLOAT_TENSOR")
+    print("GEMS NORMAL_FLOAT_TENSOR")
     shape = std.shape
     device = std.device
     out = normal_distribution(shape, device)

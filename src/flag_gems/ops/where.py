@@ -1,12 +1,8 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -19,7 +15,7 @@ def where_inner(condition, self, other):
 
 
 def where_self_out(condition, self, other, out=None):
-    logger.debug("GEMS WHERE_SELF_OUT")
+    print("GEMS WHERE_SELF_OUT")
     result_type = torch.result_type(self, other)
     if out is not None:
         assert (
@@ -69,15 +65,15 @@ def where_self_out(condition, self, other, out=None):
 
 
 def where_self(condition, self, other):
-    logger.debug("GEMS WHERE_SELF")
+    print("GEMS WHERE_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_self(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_SELF")
+    print("GEMS WHERE_SCALAR_SELF")
     return where_self_out(condition, self, other)
 
 
 def where_scalar_other(condition, self, other):
-    logger.debug("GEMS WHERE_SCALAR_OTHER")
+    print("GEMS WHERE_SCALAR_OTHER")
     return where_self_out(condition, self, other)

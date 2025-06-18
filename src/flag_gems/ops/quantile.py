@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -8,8 +6,6 @@ from torch import Tensor
 from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry, tl_extra_shim
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 INTERPOLATION_METHOD = ["linear", "lower", "higher", "nearest", "midpoint"]
 
@@ -92,7 +88,7 @@ def quantile_kernel(
 def quantile(
     inp, q, dim=None, keepdim=False, interpolation="linear", out=None
 ) -> Tensor:
-    logger.debug("GEMS QUANTILE DIM")
+    print("GEMS QUANTILE DIM")
     assert torch.is_floating_point(inp)
     assert dim is None or isinstance(dim, int)
     assert isinstance(q, (float, torch.Tensor))

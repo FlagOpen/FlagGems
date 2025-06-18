@@ -11,21 +11,20 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .topk import argsort
 
-logger = logging.getLogger(__name__)
 device_ = device
 
-_MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
-_MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)
-_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
-_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
-_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
-_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
-_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
-_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
-_MAX_UINT32_VAL = tl.constexpr((1 << 32) - 1)
-_MIN_UINT32_VAL = tl.constexpr(0)
-_MIN_INT24_VAL = tl.constexpr(-(2**23))
-_MAX_INT24_VAL = tl.constexpr(2**23 - 1)
+_MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
+_MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
+_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
+_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
+_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
+_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
+_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
+_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
+_MAX_UINT32_VAL: tl.constexpr = (1 << 32) - 1
+_MIN_UINT32_VAL: tl.constexpr = 0
+_MIN_INT24_VAL: tl.constexpr = -(2**23)
+_MAX_INT24_VAL: tl.constexpr = 2**23 - 1
 
 
 @triton.jit
@@ -420,7 +419,7 @@ def randperm(
     requires_grad=False,
     pin_memory=False,
 ):
-    logger.debug("GEMS RANDPERM")
+    logging.debug("GEMS RANDPERM")
     assert dtype == torch.int16 or dtype == torch.int32 or dtype == torch.int64
     assert n <= _MAX_INT64_VAL, "n exceeds maximum int64"
 

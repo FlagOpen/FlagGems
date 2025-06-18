@@ -1,11 +1,7 @@
-import logging
-
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -15,7 +11,7 @@ def ne_func(x, y):
 
 
 def ne(A, B):
-    logger.debug("GEMS NE")
+    print("GEMS NE")
     return ne_func(A, B)
 
 
@@ -26,5 +22,5 @@ def ne_func_scalar(x, y):
 
 
 def ne_scalar(A, B):
-    logger.debug("GEMS NE SCALAR")
+    print("GEMS NE SCALAR")
     return ne_func_scalar(A, B)

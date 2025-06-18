@@ -10,8 +10,6 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.autotune(
@@ -54,7 +52,7 @@ def nonzero_kernel(
 
 
 def nonzero(inp, *, as_tuple=False):
-    logger.debug("GEMS_CAMBRICON NONZERO")
+    logging.debug("GEMS_CAMBRICON NONZERO")
 
     inp_ndim = inp.ndim
 

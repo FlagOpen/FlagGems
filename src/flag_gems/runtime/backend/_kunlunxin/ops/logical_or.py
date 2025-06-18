@@ -5,8 +5,6 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
@@ -15,5 +13,5 @@ def logical_or_func(x, y):
 
 
 def logical_or(A, B):
-    logger.debug("GEMS LOGICAL_OR")
+    logging.debug("GEMS LOGICAL_OR")
     return logical_or_func(A, B)

@@ -9,8 +9,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
 
 def heur_block_m(args):
     return triton.next_power_of_2(triton.cdiv(args["M"], 12))
@@ -154,7 +152,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR MEAN")
+    logging.debug("GEMS VAR MEAN")
     if correction is None:
         correction = 1.0
 

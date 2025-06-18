@@ -1,4 +1,5 @@
 import importlib
+import logging
 import os
 from typing import Callable, List, Mapping, Optional, Tuple
 
@@ -214,7 +215,7 @@ class KernelGenerator:
     def gen_decorators(self, code):
         code.writeline("@libentry()")
         if self.ndim == 1 and (not self.config.prefer_1d_tile):
-            code.writeline("@libtuner(")
+            code.writeline("@triton.autotune(")
             with code.indent():
                 code.writeline("configs=[")
                 with code.indent():
@@ -231,7 +232,6 @@ class KernelGenerator:
                     )
                 code.writeline("],")
                 code.writeline("key=['num_tasks'],")
-                code.writeline("strategy=['log'],")
             code.writeline(")")
 
         num_non_tensor_args = self.fx.num_non_tensor_args()
@@ -1032,7 +1032,7 @@ class ModuleGenerator:
         code.writeline("    stride_order,")
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
-        code.writeline("from flag_gems.utils.libentry import libentry, libtuner")
+        code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
@@ -1071,6 +1071,7 @@ class PointwiseDynamicFunction:
         self.overloads: Mapping[int, Callable] = {}
 
     def __call__(self, *args, **kwargs):
+        logging.debug("GEMS_CAMBRICON POINTWISE TEMPLATE")
         # inputs must be passed by position, outputs must be passed by keyword
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         overload = self.instantiate(ndim)

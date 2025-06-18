@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -9,8 +8,6 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.limits import get_dtype_max
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -296,7 +293,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype):
 
 
 def cummin(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS cummin")
+    print("GEMS cummin")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim

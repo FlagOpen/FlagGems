@@ -1,5 +1,4 @@
 import importlib
-import logging
 import os
 from typing import Any, Callable, List, Mapping, Tuple
 
@@ -8,8 +7,6 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import has_internal_overlapping, restride_dim
-
-logger = logging.getLogger(__name__)
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -324,7 +321,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER")
+    print("GEMS SCATTER")
     out = inp.clone()
 
     if reduce is not None:
@@ -359,7 +356,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
 
 def scatter_(inp, dim, index, src, reduce=None):
-    logger.debug("GEMS SCATTER_")
+    print("GEMS SCATTER_")
     out = inp
 
     if reduce is not None:

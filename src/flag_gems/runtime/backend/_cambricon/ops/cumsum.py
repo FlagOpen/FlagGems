@@ -7,11 +7,10 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
 device = device.name
 
 MAX_C_MLU_CUMSUM = 8192
@@ -120,8 +119,7 @@ def config_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
-@libtuner(
+@triton.autotune(
     configs=[
         triton.Config(
             {
@@ -132,9 +130,9 @@ def config_prune(configs, named_args, **kwargs):
             num_stages=s,
             num_warps=1,
         )
-        for m in range(1, 20, 3)
-        for n in range(7, 13, 1)
-        for t in range(1, 7, 1)
+        for m in range(1, 30, 3)
+        for n in range(7, 14, 1)
+        for t in range(0, 7, 1)
         for s in [1, 3]
     ],
     key=[
@@ -142,18 +140,19 @@ def config_prune(configs, named_args, **kwargs):
         "N",
         "K",
     ],
-    strategy=["log", "log", "log"],
     prune_configs_by={"early_config_prune": config_prune},
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0
+            and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (
+            args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]
+        ),
     },
 )
 @triton.jit
@@ -243,8 +242,7 @@ def config_prune_mid(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
-@libtuner(
+@triton.autotune(
     configs=[
         triton.Config(
             {
@@ -255,9 +253,9 @@ def config_prune_mid(configs, named_args, **kwargs):
             num_stages=s,
             num_warps=1,
         )
-        for m in range(1, 10, 3)
-        for k in range(0, 3, 1)
-        for t in range(5, int(math.log(MAX_TILE_N, 2) + 1), 1)
+        for m in range(1, 30, 3)
+        for k in range(0, 7, 1)
+        for t in range(0, int(math.log(MAX_TILE_N, 2) + 1), 1)
         for s in [1, 3]
     ],
     key=[
@@ -266,18 +264,19 @@ def config_prune_mid(configs, named_args, **kwargs):
         "K",
         "BLOCK_N",
     ],
-    strategy=["log", "log", "log", "log"],
     prune_configs_by={"early_config_prune": config_prune_mid},
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0
+            and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (
+            args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]
+        ),
     },
 )
 @triton.jit
@@ -333,8 +332,7 @@ def cumsum_kernel_mid(
     tl.store(prefix_sum_ptrs, x_block[:, BLOCK_N - 1, :], prefix_sum_mask)
 
 
-@libentry()
-@libtuner(
+@triton.autotune(
     configs=[
         triton.Config(
             {
@@ -354,7 +352,6 @@ def cumsum_kernel_mid(
         "K",
         "BLOCK_N",
     ],
-    strategy=["log", "log", "log", "log"],
 )
 @triton.jit
 def cumsum_kernel_result(
@@ -410,7 +407,7 @@ def cumsum_kernel_result(
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON CUMSUM")
+    logging.debug("GEMS_CAMBRICON CUMSUM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -607,7 +604,7 @@ GRID_Y_LIMIT = MAX_GRID_SIZE_Y
 
 
 def normed_cumsum(inp, dim=-1):
-    logger.debug("GEMS_CAMBRICON NORMED_CUMSUM")
+    logging.debug("GEMS_CAMBRICON NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()

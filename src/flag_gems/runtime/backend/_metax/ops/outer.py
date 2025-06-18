@@ -7,8 +7,6 @@ import triton.language as tl
 # from flag_gems.ops.mul import mul
 from flag_gems.ops.mv import mv
 
-logger = logging.getLogger(__name__)
-
 
 @triton.jit
 def mul_outer_kernel(
@@ -69,7 +67,7 @@ def mul(inp, weight):
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
-        logger.debug("METAX GEMS OUTER")
+        logging.debug("METAX GEMS OUTER")
         assert inp.ndim == 1 and weight.ndim == 1, "Invalid input"
         inp1 = inp[:, None]
         weight1 = weight[None, :]
@@ -81,7 +79,7 @@ class Outer(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("METAX GEMS OUTER VJP")
+        logging.debug("METAX GEMS OUTER VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
 
         inp, weight = ctx.saved_tensors

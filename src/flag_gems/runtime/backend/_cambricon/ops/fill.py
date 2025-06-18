@@ -5,22 +5,18 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
 
-
-@libentry()
-@libtuner(
+@triton.autotune(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 16384}, num_stages=1, num_warps=1),
+        triton.Config(kwargs={"BLOCK_SIZE": 65536}, num_stages=1, num_warps=1),
     ],
     key=["N"],
-    strategy=["log"],
 )
 @triton.jit(do_not_specialize=["value_scalar"])
 def fill_scalar_kernel(
@@ -39,8 +35,7 @@ def fill_scalar_kernel(
         tl.store(out_ptr + offset, value_scalar, mask=offset < N)
 
 
-@libentry()
-@libtuner(
+@triton.autotune(
     configs=[
         triton.Config(kwargs={"BLOCK_SIZE": 1024}, num_stages=1, num_warps=1),
         triton.Config(kwargs={"BLOCK_SIZE": 4096}, num_stages=1, num_warps=1),
@@ -68,7 +63,7 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    logger.debug("GEMS_CAMBRICON FILL TENSOR")
+    logging.debug("GEMS_CAMBRICON FILL TENSOR")
     out = torch.empty_like(input)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)
@@ -80,7 +75,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS_CAMBRICON FILL SCALAR")
+    logging.debug("GEMS_CAMBRICON FILL SCALAR")
     out = torch.empty_like(input)
     N = out.numel()
     # grid = triton.cdiv(N, BLOCK_SIZE)

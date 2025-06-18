@@ -96,7 +96,7 @@ def dropout_backward_kernel(
 UNROLL = 4
 
 
-def dropout(input, p, train=True):
+def native_dropout(input, p, train=True):
     logger.debug("GEMS NATIVE DROPOUT FORWARD")
     if not train or p == 0:
         out = input.clone()
@@ -125,7 +125,7 @@ def dropout(input, p, train=True):
     return out, mask
 
 
-def dropout_backward(grad_output, mask, scale):
+def native_dropout_backward(grad_output, mask, scale):
     logger.debug("GEMS NATIVE DROPOUT BACKWARD")
     grad_output = grad_output.contiguous()
     grad_input = torch.empty_like(grad_output)

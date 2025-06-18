@@ -7,12 +7,10 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils.shape_utils import can_use_int32_index
 
 from ..utils import TOTAL_CORE_NUM
-
-logger = logging.getLogger(__name__)
 
 
 def cfggen_reduce_op():
@@ -33,11 +31,7 @@ def argmax_kernel_once(
 
 
 @libentry()
-@libtuner(
-    configs=cfggen_reduce_op(),
-    key=["M"],
-    strategy=["log"],
-)
+@triton.autotune(configs=cfggen_reduce_op(), key=["M"])
 @triton.jit
 def argmax_kernel_1(
     inp,
@@ -90,13 +84,12 @@ def argmax_kernel_2(mid_value, mid_index, out, real_size, mid_size: tl.constexpr
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=runtime.get_tuned_config("argmax"),
     key=[
         "M",
         "N",
     ],
-    strategy=["log", "log"],
 )
 @triton.jit
 def argmax_kernel(
@@ -141,7 +134,7 @@ def argmax_kernel(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS_CAMBRICON ARGMAX")
+    logging.debug("GEMS_CAMBRICON ARGMAX")
     if dim is None:
         M = inp.numel()
         if dtype is None:

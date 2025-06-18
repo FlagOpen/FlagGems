@@ -16,7 +16,7 @@ def normal_input_fn(shape, cur_dtype, device):
     [
         pytest.param(
             "normal",
-            torch.normal,
+            torch.distributions.normal.Normal,
             normal_input_fn,
             marks=pytest.mark.normal,
         ),

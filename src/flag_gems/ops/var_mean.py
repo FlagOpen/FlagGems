@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -8,8 +6,6 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import dim_compress, libentry
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -131,7 +127,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR MEAN")
+    print("GEMS VAR MEAN")
     if correction is None:
         correction = 1.0
 

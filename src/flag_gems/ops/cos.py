@@ -1,11 +1,7 @@
-import logging
-
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -15,11 +11,11 @@ def cos_func(x):
 
 
 def cos(A):
-    logger.debug("GEMS COS")
+    print("GEMS COS")
     return cos_func(A)
 
 
 def cos_(A):
-    logger.debug("GEMS COS_")
+    print("GEMS COS_")
     cos_func(A, out0=A)
     return A

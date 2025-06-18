@@ -1,11 +1,7 @@
-import logging
-
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -16,10 +12,10 @@ def erf_func(x):
 
 
 def erf(x):
-    logger.debug("GEMS ERF")
+    print("GEMS ERF")
     return erf_func(x)
 
 
 def erf_(x):
-    logger.debug("GEMS ERF_")
+    print("GEMS ERF_")
     return erf_func(x, out0=x)

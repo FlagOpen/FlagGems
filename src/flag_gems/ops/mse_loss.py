@@ -1,4 +1,3 @@
-import logging
 import math
 from enum import Enum
 
@@ -9,8 +8,6 @@ import triton.language as tl
 from ..runtime import torch_device_fn
 from ..utils import libentry, pointwise_dynamic
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -59,7 +56,7 @@ class Reduction(Enum):
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
-    logger.debug("GEMS MSE LOSS")
+    print("GEMS MSE LOSS")
     if reduction == Reduction.NONE.value:
         return func(inp, target)
 

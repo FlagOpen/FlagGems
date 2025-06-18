@@ -139,8 +139,11 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
     ],
 )
 def test_blas_benchmark(op_name, torch_op, input_fn):
+    LOCAL_FLOAT_DTYPES = FLOAT_DTYPES
+    if op_name == "mv" and flag_gems.vendor_name == "ascend":
+        LOCAL_FLOAT_DTYPES = [torch.float16, torch.float32]
     bench = BlasBenchmark(
-        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=LOCAL_FLOAT_DTYPES
     )
     bench.run()
 

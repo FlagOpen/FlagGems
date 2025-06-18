@@ -10,7 +10,6 @@ from flag_gems.utils import tl_extra_shim
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .all import all
 
-logger = logging.getLogger(__name__)
 _isfinited = tl_extra_shim.isfinited
 _finitef = tl_extra_shim.finitef
 
@@ -51,7 +50,7 @@ def isclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISCLOSE")
+    logging.debug("GEMS ISCLOSE")
     if not equal_nan:
         os.environ["XPU_cmp_nan"] = "1"
     else:
@@ -84,5 +83,5 @@ def allclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> bool:
-    logger.debug("GEMS ALLCLOSE")
+    logging.debug("GEMS ALLCLOSE")
     return all(isclose(A, B, rtol, atol, equal_nan)).item()

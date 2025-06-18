@@ -10,7 +10,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
 pow = tl_extra_shim.pow
 
 
@@ -315,7 +314,7 @@ def l1_norm_kernel_2(
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS VECTOR NORM")
+    logging.debug("GEMS VECTOR NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:

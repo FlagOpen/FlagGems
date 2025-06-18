@@ -49,20 +49,23 @@ class CodeGenConfig:
 CODEGEN_COFIGS = {
     vendors.NVIDIA: CodeGenConfig(
         512,
-        (65536, 65536, 65536),
+        # (65536, 65536, 65536),
+        (40, 1, 1),
         32,
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
-    vendors.CAMBRICON: CodeGenConfig(
-        8192,
-        tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
-        32,
-        False,
-        prefer_1d_tile=int(triton.__version__[0]) < 3,
-    )
-    if vendor_module.vendor_info.vendor_name == "cambricon"
-    else None,
+    vendors.CAMBRICON: (
+        CodeGenConfig(
+            8192,
+            tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
+            32,
+            False,
+            prefer_1d_tile=int(triton.__version__[0]) < 3,
+        )
+        if vendor_module.vendor_info.vendor_name == "cambricon"
+        else None
+    ),
     vendors.METAX: CodeGenConfig(
         2048,
         (65536, 65536, 65536),
@@ -83,6 +86,13 @@ CODEGEN_COFIGS = {
         32,
         True,
         prefer_1d_tile=True,
+    ),
+    vendors.ASCEND: CodeGenConfig(
+        4096,
+        tuple([48, 1, 1]),
+        32,
+        False,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
 }
 

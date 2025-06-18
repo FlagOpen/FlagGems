@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -8,8 +7,6 @@ import triton.language as tl
 from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 def prepare_tensor_for_kron(tensor_a, tensor_b):
@@ -130,7 +127,6 @@ def kron_kernel(
 
 
 def kron(A, B):
-    logger.debug("GEMS KRON")
     if A.dim() == 0 and B.dim() == 0:
         return A * B
 

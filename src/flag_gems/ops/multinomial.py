@@ -1,13 +1,9 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -51,7 +47,7 @@ def multinomial_with_replacement(
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
-    logger.debug("GEMS MULTINOMIAL")
+    print("GEMS MULTINOMIAL")
     assert prob.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
     n_categories = prob.size(-1)

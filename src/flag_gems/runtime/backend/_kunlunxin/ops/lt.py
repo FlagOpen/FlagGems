@@ -5,8 +5,6 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
@@ -15,7 +13,7 @@ def lt_func(x, y):
 
 
 def lt(A, B):
-    logger.debug("GEMS LT")
+    logging.debug("GEMS LT")
     return lt_func(A, B)
 
 
@@ -26,5 +24,5 @@ def lt_func_scalar(x, y):
 
 
 def lt_scalar(A, B):
-    logger.debug("GEMS LT SCALAR")
+    logging.debug("GEMS LT SCALAR")
     return lt_func_scalar(A, B)

@@ -10,8 +10,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
 
 @triton.jit
 def reduce_mul(a, b):
@@ -48,7 +46,7 @@ def prod_kernel_result(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 def prod(inp, *, dtype=None):
-    logger.debug("GEMS PROD")
+    logging.debug("GEMS PROD")
     if dtype is None:
         dtype = inp.dtype
 
@@ -122,7 +120,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS prod DIM")
+    logging.debug("GEMS prod DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

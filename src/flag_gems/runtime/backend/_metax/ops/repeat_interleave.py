@@ -9,8 +9,6 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -19,7 +17,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("METAX GEMS REPEAT_INTERLEAVE_SELF_INT")
+    logging.debug("METAX GEMS REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -107,7 +105,7 @@ def fused_repeat_and_index_select_kernel(
 
 
 def repeat_interleave_tensor(repeats, *, output_size=None):
-    logger.debug("METAX GEMS REPEAT_INTERLEAVE_TENSOR")
+    logging.debug("METAX GEMS REPEAT_INTERLEAVE_TENSOR")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
 
@@ -133,7 +131,7 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
 
 
 def fused_repeat_and_index_select(inp, repeats, dim):
-    logger.debug("METAX GEMS FUSED_REPEAT_AND_INDEX_SELECT")
+    logging.debug("METAX GEMS FUSED_REPEAT_AND_INDEX_SELECT")
 
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
 
@@ -157,7 +155,7 @@ def fused_repeat_and_index_select(inp, repeats, dim):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("METAX GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
+    logging.debug("METAX GEMS REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if dim is None:
         inp = inp.flatten()
