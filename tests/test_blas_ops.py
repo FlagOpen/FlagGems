@@ -89,7 +89,7 @@ def gems_assert_close(a: torch.Tensor, b: torch.Tensor, dtype, reduce_dim: int =
 @pytest.mark.matmul
 @pytest.mark.parametrize("M,N,K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_matmul(M, N, K, dtype):
+def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
     device = flag_gems.device 
     block_n = 128
     block_k = 128
