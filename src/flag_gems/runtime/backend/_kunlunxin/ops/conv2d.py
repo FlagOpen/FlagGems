@@ -7,8 +7,6 @@ import triton.language as tl
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(__name__)
-
 
 def conv2d_output_size(
     in_size: int,
@@ -336,7 +334,7 @@ def conv2d_backward_kernel_weight(
 class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
-        logger.debug("GEMS CONV2D")
+        logging.debug("GEMS CONV2D")
         assert weight.ndim == 4, "Weights must be 4D, received shape {weight.shape}"
         assert (
             bias is None or bias.ndim == 1
@@ -436,7 +434,7 @@ class Conv2d(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS CONV2D VJP")
+        logging.debug("GEMS CONV2D VJP")
         (weight, input, bias) = ctx.saved_tensors
         # (out_c equals origin cout divide groups)
         out_c, weight_c, weight_height, weight_width = ctx.weight_info

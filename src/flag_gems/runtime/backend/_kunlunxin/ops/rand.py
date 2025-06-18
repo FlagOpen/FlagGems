@@ -12,7 +12,6 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -148,7 +147,7 @@ def rand_kernel_2(
 
 
 def rand(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS RAND")
+    logging.debug("GEMS RAND")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

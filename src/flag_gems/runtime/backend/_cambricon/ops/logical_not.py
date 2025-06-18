@@ -5,8 +5,6 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(promotion_methods=[(0, "ALWAYS_BOOL")])
 @triton.jit
@@ -15,5 +13,5 @@ def logical_not_func(x):
 
 
 def logical_not(A):
-    logger.debug("GEMS_CAMBRICON LOGICAL_NOT")
+    logging.debug("GEMS_CAMBRICON LOGICAL_NOT")
     return logical_not_func(A)

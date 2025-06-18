@@ -8,7 +8,6 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 _isfinited = tl_extra_shim.isfinited
 _finitef = tl_extra_shim.finitef
 
@@ -22,7 +21,7 @@ def isfinite_func(x):
 def isfinite(
     A: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS ISFINITE")
+    logging.debug("GEMS ISFINITE")
     if A.is_floating_point():
         return isfinite_func(A)
     else:

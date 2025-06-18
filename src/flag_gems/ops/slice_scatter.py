@@ -1,16 +1,12 @@
-import logging
-
 import torch
 import triton
 
 from ..ops.copy import copy
 from ..utils.shape_utils import has_internal_overlapping
 
-logger = logging.getLogger(__name__)
-
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
-    logger.debug("GEMS SLICE_SCATTER")
+    print("GEMS SLICE_SCATTER")
     assert src.device == inp.device, "inp and src reside on different devices."
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     assert step > 0, "slice step must be positive"

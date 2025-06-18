@@ -7,23 +7,22 @@ import triton.language as tl
 
 from flag_gems.ops.topk import topk_stage1_kernel, topk_stage2_kernel
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
-_MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
-_MAX_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).max)
-_MIN_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).min)
-_MAX_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).max)
-_MIN_BFLOAT16_VAL = tl.constexpr(torch.finfo(torch.bfloat16).min)
-_MAX_BFLOAT16_VAL = tl.constexpr(torch.finfo(torch.bfloat16).max)
-_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
-_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
-_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
-_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
-_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
-_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
+_MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
+_MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
+_MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
+_MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
+_MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
+_MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
+_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
+_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
+_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
+_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
+_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
+_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
 
 
 @triton.jit
@@ -103,8 +102,8 @@ def get_topk_bubble_res(
     return ret, ret_ind
 
 
-BLOCK_BATCH = [1, 16]
-BLOCK_N = [128, 512, 1024, 2048]
+BLOCK_BATCH = [1, 4, 16, 64]
+BLOCK_N = [128, 256, 512, 1024, 2048]
 
 
 def topk_cfggen():
@@ -156,7 +155,7 @@ def topk_config_prune(configs, named_args, **kwargs):
 
 
 @libentry()
-@libtuner(
+@triton.autotune(
     configs=topk_cfggen(),
     key=["k", "N", "M", "BLOCK_M", "DESCENDING"],
     prune_configs_by={"early_config_prune": topk_config_prune},
@@ -239,7 +238,7 @@ def topk_bubble_kernel(
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logger.debug("GEMS_CAMBRICON TOPK")
+    logging.debug("GEMS_CAMBRICON TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim
@@ -256,7 +255,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
     out_shape = x.shape[:-1] + (k,)
 
     if k <= math.log2(topk_elem_cnt):
-        logger.debug("GEMS_CAMBRICON TOPK USING BUBBLE")
+        logging.debug("GEMS_CAMBRICON TOPK USING BUBBLE")
         topk_out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
         topk_out_idx = torch.empty(out_shape, device=x.device, dtype=torch.int64)
 
@@ -276,7 +275,7 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
         )
         return (topk_out, topk_out_idx)
     else:
-        logger.debug("GEMS_CAMBRICON TOPK USING SORT")
+        logging.debug("GEMS_CAMBRICON TOPK USING SORT")
         # Note(Zhengzekang): Maybe we should add a heuristic search in selecting a proper chunk size.
         if topk_elem_cnt < 1024:
             chunk_size = 256

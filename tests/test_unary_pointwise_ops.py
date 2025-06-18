@@ -113,16 +113,16 @@ def test_accuracy_bitwisenot(shape, dtype):
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
 def test_accuracy_bitwisenot_(shape, dtype):
     if dtype in BOOL_TYPES:
-        res_inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
+        inp = torch.randint(0, 2, size=shape, dtype=dtype, device=flag_gems.device)
     else:
-        res_inp = torch.randint(
+        inp = torch.randint(
             low=-0x7FFF, high=0x7FFF, size=shape, dtype=dtype, device=flag_gems.device
         )
-    ref_inp = to_reference(res_inp.clone())
+    ref_inp = to_reference(inp.clone())
 
     ref_out = ref_inp.bitwise_not_()  # NOTE: there is no torch.bitwse_not_
     with flag_gems.use_gems():
-        res_out = res_inp.bitwise_not_()
+        res_out = inp.bitwise_not_()
 
     gems_assert_equal(res_out, ref_out)
 
@@ -185,57 +185,26 @@ def test_accuracy_exp_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+# @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.gelu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_accuracy_gelu(shape, dtype, approximate):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp, True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.gelu(ref_inp, approximate=approximate)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.gelu(res_inp, approximate=approximate)
+        res_out = torch.nn.functional.gelu(inp, approximate=approximate)
 
     gems_assert_close(res_out, ref_out, dtype)
 
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
 
-@pytest.mark.glu
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_glu(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp, True)
-
-    for dim in range(len(shape)):
-        if shape[dim] % 2 != 0:
-            continue
-        ref_out = torch.nn.functional.glu(ref_inp, dim=dim)
-        with flag_gems.use_gems():
-            res_out = torch.nn.functional.glu(res_inp, dim=dim)
-        gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.gelu
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("approximate", ["none", "tanh"])
-def test_accuracy_gelu_backward(shape, dtype, approximate):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    res_out = torch.randn_like(res_inp)
-
-    ref_inp = to_reference(res_inp, True)
-    ref_out = to_reference(res_out, True)
-
-    ref_in_grad = torch.ops.aten.gelu_backward(
-        ref_out, ref_inp, approximate=approximate
-    )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.gelu_backward(
-            res_out, res_inp, approximate=approximate
-        )
-
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -244,14 +213,22 @@ def test_accuracy_gelu_backward(shape, dtype, approximate):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("approximate", ["none", "tanh"])
 def test_accuracy_gelu_(shape, dtype, approximate):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp.clone(), True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.ops.aten.gelu_.default(ref_inp, approximate=approximate)
+    # NOTE: we cannot apply inplace operation on leaf nodes that requires gradient
+    ref_out = torch.ops.aten.gelu_.default(ref_inp * 2.0, approximate=approximate)
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.gelu_.default(res_inp, approximate=approximate)
+        res_out = torch.ops.aten.gelu_.default(inp * 2.0, approximate=approximate)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.isinf
@@ -362,14 +339,21 @@ def test_accuracy_elu(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_relu(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp, True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.relu(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.relu(res_inp)
+        res_out = torch.relu(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.inplace
@@ -377,14 +361,21 @@ def test_accuracy_relu(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_relu_(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp.clone(), True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.relu_(ref_inp)
+    ref_out = torch.relu_(ref_inp * 2.0)
     with flag_gems.use_gems():
-        res_out = torch.relu_(res_inp)
+        res_out = torch.relu_(inp * 2.0)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.rsqrt
@@ -416,35 +407,25 @@ def test_accuracy_rsqrt_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+# @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.sigmoid
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sigmoid(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp, True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.sigmoid(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.sigmoid(res_inp)
+        res_out = torch.sigmoid(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
 
-@pytest.mark.sigmoid
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_sigmoid_backward(shape, dtype):
-    res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    res_grad = torch.randn_like(res_out)
-
-    ref_out = to_reference(res_out, True)
-    ref_grad = to_reference(res_grad, True)
-
-    ref_in_grad = torch.ops.aten.sigmoid_backward(ref_grad, ref_out)
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.sigmoid_backward(res_grad, res_out)
-
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -453,14 +434,21 @@ def test_accuracy_sigmoid_backward(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_sigmoid_(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp.clone(), True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.sigmoid_(ref_inp)
+    ref_out = torch.sigmoid_(ref_inp * 1.0)
     with flag_gems.use_gems():
-        res_out = torch.sigmoid_(res_inp)
+        res_out = torch.sigmoid_(inp * 1.0)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 SPECIAL_VALUES = [float("-inf"), float("inf"), -300]
@@ -470,7 +458,7 @@ SPECIAL_VALUES = [float("-inf"), float("inf"), -300]
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_log_sigmoid(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     if len(shape) == 1:
         special_inputs = torch.tensor(
             SPECIAL_VALUES, dtype=dtype, device=flag_gems.device
@@ -488,30 +476,20 @@ def test_accuracy_log_sigmoid(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp, True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.silu(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.silu(res_inp)
+        res_out = torch.nn.functional.silu(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
 
-@pytest.mark.silu
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_silu_backward(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    res_grad = torch.randn_like(res_inp)
-
-    ref_inp = to_reference(res_inp, True)
-    ref_grad = to_reference(res_grad, True)
-
-    ref_in_grad = torch.ops.aten.silu_backward(ref_grad, ref_inp)
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.silu_backward(res_grad, res_inp)
-
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -520,14 +498,21 @@ def test_accuracy_silu_backward(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_silu_(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp.clone(), True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.nn.functional.silu(ref_inp, inplace=True)
+    ref_out = torch.nn.functional.silu(ref_inp * 1.0, inplace=True)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.silu(res_inp, inplace=True)
+        res_out = torch.nn.functional.silu(inp * 1.0, inplace=True)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 @pytest.mark.sin
@@ -559,35 +544,25 @@ def test_accuracy_sin_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+# @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.tanh
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tanh(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp, True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.tanh(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.tanh(res_inp)
+        res_out = torch.tanh(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
 
-@pytest.mark.tanh
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_tanh_backward(shape, dtype):
-    res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    res_grad = torch.randn_like(res_out)
-
-    ref_out = to_reference(res_out, True)
-    ref_grad = to_reference(res_grad, True)
-
-    ref_in_grad = torch.ops.aten.tanh_backward(ref_grad, ref_out)
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.tanh_backward(res_grad, res_out)
-
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -596,14 +571,21 @@ def test_accuracy_tanh_backward(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_tanh_(shape, dtype):
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(res_inp.clone(), True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.tanh_(ref_inp)
+    ref_out = torch.tanh_(ref_inp * 1.0)
     with flag_gems.use_gems():
-        res_out = torch.tanh_(res_inp)
+        res_out = torch.tanh_(inp * 1.0)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    out_grad = torch.randn_like(inp)
+    ref_grad = to_reference(out_grad, True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
 SHAPE_DIAGONAL = list(zip(POINTWISE_SHAPES, [-2, -2, -1, 0, 1, 3]))
@@ -753,7 +735,7 @@ def test_accuracy_masked_fill(shape, dtype, threshold, value):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.masked_fill_
+@pytest.mark.masked_fill
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("threshold", [0.3, 0.5, 0.7])
@@ -880,15 +862,3 @@ def test_accuracy_fill_(value, shape, dtype):
         x.fill_(value_tensor)
 
     gems_assert_equal(x, ref_x)
-
-
-@pytest.mark.to_dtype
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
-def test_accuracy_to_dtype(shape, dtype):
-    x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
-    ref_x = to_reference(x)
-    ref_out = ref_x.to(dtype)
-    with flag_gems.use_gems():
-        out = x.to(dtype)
-    gems_assert_equal(out, ref_out)

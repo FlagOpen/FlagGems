@@ -8,7 +8,6 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 pow = tl_extra_shim.pow
 _tanh = tl_extra_shim.fast_tanh
 
@@ -28,7 +27,7 @@ def tanh_backward(y, dy):
 class Tanh(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logger.debug("GEMS_CAMBRICON TANH FORWARD")
+        logging.debug("GEMS_CAMBRICON TANH FORWARD")
         if A.requires_grad is True:
             out = tanh_forward(A.to(torch.float32))
             ctx.save_for_backward(out)
@@ -39,7 +38,7 @@ class Tanh(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON TANH BACKWARD")
+        logging.debug("GEMS_CAMBRICON TANH BACKWARD")
         out_grad = out_grad.contiguous()
         (out,) = ctx.saved_tensors
         in_grad = tanh_backward(out, out_grad)

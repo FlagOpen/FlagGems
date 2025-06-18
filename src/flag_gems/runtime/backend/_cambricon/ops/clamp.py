@@ -5,8 +5,6 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
@@ -27,7 +25,7 @@ def clamp_func_max_tensor(x, maxi):
 
 
 def clamp_tensor(A, mini=None, maxi=None):
-    logger.debug("GEMS_CAMBRICON CLAMP TENSOR")
+    logging.debug("GEMS_CAMBRICON CLAMP TENSOR")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -59,7 +57,7 @@ def clamp_func_max(x, maxi):
 
 
 def clamp(A, mini=None, maxi=None):
-    logger.debug("GEMS_CAMBRICON CLAMP")
+    logging.debug("GEMS_CAMBRICON CLAMP")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:

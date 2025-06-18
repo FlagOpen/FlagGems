@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -14,7 +13,6 @@ try:
     import torch_npu  # noqa: F401
 except:  # noqa: E722
     pow = tl_extra_shim.pow
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -257,7 +255,7 @@ def l1_norm_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
-    logger.debug("GEMS VECTOR NORM")
+    print("GEMS VECTOR NORM")
     if dtype is not None:
         dtype = torch.dtype(dtype)
     else:

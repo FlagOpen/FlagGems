@@ -9,7 +9,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
 # import math
 
 
@@ -160,7 +159,7 @@ def all_kernel_2(
 
 
 def all(inp):
-    logger.debug("GEMS ALL")
+    logging.debug("GEMS ALL")
     n_elements = inp.numel()
     block_size = min(
         triton.cdiv(get_block(n_elements), cluster_num),
@@ -201,7 +200,7 @@ def all(inp):
 
 
 def all_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIM")
+    logging.debug("GEMS ALL DIM")
     shape = list(inp.shape)
     if dim is None:
         out = all(inp)
@@ -236,7 +235,7 @@ def all_dim(inp, dim=None, keepdim=False):
 
 
 def all_dims(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ALL DIMS")
+    logging.debug("GEMS ALL DIMS")
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)

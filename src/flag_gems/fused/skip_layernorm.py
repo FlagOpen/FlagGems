@@ -9,8 +9,6 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
@@ -62,7 +60,7 @@ def skip_layer_norm_kernel(
 class SkipLayerNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, residual, normalized_shape, weight, bias, eps=1e-5):
-        logger.debug("GEMS SKIP LAYERNORM FORWARD")
+        logging.debug("GEMS SKIP LAYERNORM FORWARD")
         dim = x.ndim - len(normalized_shape)
         M = math.prod(x.shape[:dim])
         N = math.prod(normalized_shape)

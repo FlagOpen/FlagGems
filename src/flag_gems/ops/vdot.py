@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -7,8 +5,6 @@ from torch import Tensor
 
 from .. import runtime
 from ..utils import libentry
-
-logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -115,7 +111,7 @@ def dot_kernel(
 
 
 def vdot(input: Tensor, other: Tensor):
-    logger.debug("GEMS VDOT")
+    print("GEMS VDOT")
 
     assert (
         input.dtype == other.dtype

@@ -1,5 +1,4 @@
 import importlib
-import logging
 import os
 from typing import Any, Callable, List, Mapping, Tuple
 
@@ -7,8 +6,6 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-
-logger = logging.getLogger(__name__)
 
 
 # --------------------------- padding wrapper genration -----------------------------------
@@ -439,7 +436,7 @@ _pad_func = PadFunction()
 
 
 def pad(self, pad, mode="constant", value=None):
-    logger.debug("GEMS CONSTANT PAD ND")
+    print("GEMS CONSTANT PAD ND")
 
     ndim = self.ndim
 

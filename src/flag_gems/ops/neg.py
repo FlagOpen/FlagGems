@@ -1,10 +1,6 @@
-import logging
-
 import triton
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -14,10 +10,10 @@ def neg_func(x):
 
 
 def neg(A):
-    logger.debug("GEMS NEG")
+    print("GEMS NEG")
     return neg_func(A)
 
 
 def neg_(A):
-    logger.debug("GEMS NEG_")
+    print("GEMS NEG_")
     return neg_func(A, out0=A)

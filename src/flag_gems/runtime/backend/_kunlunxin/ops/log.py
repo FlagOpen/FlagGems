@@ -5,8 +5,6 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
 @triton.jit
@@ -15,5 +13,5 @@ def log_func(x):
 
 
 def log(A):
-    logger.debug("GEMS LOG")
+    logging.debug("GEMS LOG")
     return log_func(A)

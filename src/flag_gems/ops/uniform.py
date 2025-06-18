@@ -1,5 +1,3 @@
-import logging
-
 import triton
 import triton.language as tl
 
@@ -11,8 +9,6 @@ from flag_gems.utils.shape_utils import volume
 
 from .. import runtime
 from ..runtime import torch_device_fn
-
-logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("uniform"))
@@ -52,7 +48,7 @@ UNROLL = 4
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS UNIFORM")
+    print("GEMS UNIFORM")
     N = volume(self.shape)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
 

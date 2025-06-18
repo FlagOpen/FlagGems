@@ -1,5 +1,4 @@
 import importlib
-import logging
 import os
 from typing import Callable, List, Mapping
 
@@ -7,8 +6,6 @@ import torch
 
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
-
-logger = logging.getLogger(__name__)
 
 
 # --------------------------- tile wrapper genration -----------------------------------
@@ -437,7 +434,7 @@ _tile_func = TileFunction()
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
-    logger.debug("GEMS TILE")
+    print("GEMS TILE")
 
     out = _tile_func(inp, dims)
     return out

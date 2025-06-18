@@ -9,8 +9,6 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
@@ -21,7 +19,7 @@ def copy_func(x):
 def hstack(
     tensors: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]
 ) -> torch.Tensor:
-    logger.debug("GEMS HSTACK")
+    logging.debug("GEMS HSTACK")
 
     if len(tensors) == 0:
         raise RuntimeError("hstack expected a non-empty TensorList")

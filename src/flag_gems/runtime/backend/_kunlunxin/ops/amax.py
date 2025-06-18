@@ -10,8 +10,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit
@@ -91,7 +89,7 @@ def amax_kernel(
 
 
 def amax(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMAX")
+    logging.debug("GEMS AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))

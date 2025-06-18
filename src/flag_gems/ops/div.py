@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -13,7 +11,6 @@ except:  # noqa: E722
     div_rz = tl_extra_shim.div_rz
     fmod = tl_extra_shim.fmod
     trunc = tl_extra_shim.trunc
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
@@ -35,7 +32,7 @@ def true_div_func_scalar_tensor(x, y):
 
 
 def true_divide(A, B):
-    logger.debug("GEMS TRUE_DIVIDE")
+    print("GEMS TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -48,7 +45,7 @@ def true_divide(A, B):
 
 
 def true_divide_(A, B):
-    logger.debug("GEMS TRUE_DIVIDE_")
+    print("GEMS TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=A)
     else:
@@ -74,7 +71,7 @@ def trunc_div_func_scalar_tensor(x, y):
 
 
 def trunc_divide(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE")
+    print("GEMS TRUNC_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -87,7 +84,7 @@ def trunc_divide(A, B):
 
 
 def trunc_divide_(A, B):
-    logger.debug("GEMS TRUNC_DIVIDE_")
+    print("GEMS TRUNC_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return trunc_div_func(A, B, out0=A)
     else:
@@ -175,7 +172,7 @@ def floor_div_func_scalar_tensor(x, y):
 
 
 def floor_divide(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    print("GEMS FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -188,7 +185,7 @@ def floor_divide(A, B):
 
 
 def floor_divide_(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE_")
+    print("GEMS FLOOR_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, out0=A)
     else:
@@ -246,7 +243,7 @@ def rem_st(x, y):
 
 
 def remainder(A, B):
-    logger.debug("GEMS FLOOR_DIVIDE")
+    print("GEMS FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):
@@ -259,7 +256,7 @@ def remainder(A, B):
 
 
 def remainder_(A, B):
-    logger.debug("GEMS REMAINDER_")
+    print("GEMS REMAINDER_")
     if isinstance(B, torch.Tensor):
         return rem_tt(A, B, out0=A)
     else:

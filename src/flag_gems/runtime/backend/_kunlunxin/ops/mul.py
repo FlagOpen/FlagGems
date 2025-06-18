@@ -5,8 +5,6 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
@@ -21,7 +19,7 @@ def mul_func_scalar(x, y):
 
 
 def mul(A, B):
-    logger.debug("GEMS MUL")
+    logging.debug("GEMS MUL")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return mul_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -34,7 +32,7 @@ def mul(A, B):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logging.debug("GEMS MUL_")
     if isinstance(B, torch.Tensor):
         return mul_func(A, B, out0=A)
     else:

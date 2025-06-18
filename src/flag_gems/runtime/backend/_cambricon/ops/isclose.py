@@ -7,8 +7,6 @@ import triton.language as tl
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .all import all
 
-logger = logging.getLogger(__name__)
-
 
 @pointwise_dynamic(
     is_tensor=[True, True, False, False, False, False],
@@ -56,7 +54,7 @@ def isclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> torch.Tensor:
-    logger.debug("GEMS_CAMBRICON ISCLOSE")
+    logging.debug("GEMS_CAMBRICON ISCLOSE")
     # note: Int8 is not supported in isclose_func, because the result of int8 == int8 is wrong
     # in triton jit function, and needs to be fixed in triton. The same is true for bool.
     if A.dtype == torch.bool:
@@ -84,5 +82,5 @@ def allclose(
     atol=1e-08,
     equal_nan: bool = False,
 ) -> bool:
-    logger.debug("GEMS_CAMBRICON ALLCLOSE")
+    logging.debug("GEMS_CAMBRICON ALLCLOSE")
     return all(isclose(A, B, rtol, atol, equal_nan)).item()

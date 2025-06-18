@@ -10,7 +10,6 @@ from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -29,7 +28,7 @@ def copy_func(x):
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS CAT")
+    logging.debug("GEMS CAT")
 
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")

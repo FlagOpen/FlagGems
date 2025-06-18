@@ -1,11 +1,7 @@
-import logging
-
 import triton
 import triton.language as tl
 
 from ..utils import pointwise_dynamic
-
-logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -15,5 +11,5 @@ def logical_and_func(x, y):
 
 
 def logical_and(A, B):
-    logger.debug("GEMS LOGICAL_AND")
+    print("GEMS LOGICAL_AND")
     return logical_and_func(A, B)

@@ -12,8 +12,6 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, get_triton_dtype, should_enable_sqmma
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit
@@ -189,7 +187,7 @@ def get_mm_config():
 
 
 def bmm_sqmma(A, B):
-    logger.debug("GEMS BMM SQMMA")
+    logging.debug("GEMS BMM SQMMA")
     device = A.device
     batch, M, K = A.shape
     _, _, N = B.shape
@@ -247,7 +245,7 @@ def bmm_sqmma(A, B):
 
 
 def bmm_fma(A, B):
-    logger.debug("GEMS BMM FMA")
+    logging.debug("GEMS BMM FMA")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

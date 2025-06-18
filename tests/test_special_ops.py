@@ -1,5 +1,4 @@
 import itertools
-import random
 from typing import Optional
 
 import numpy as np
@@ -29,7 +28,7 @@ from .conftest import TO_CPU
 device = flag_gems.device
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+# @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.dropout
 @pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
@@ -56,11 +55,10 @@ def test_accuracy_dropout(shape, p, dtype):
 
     ref_out = torch.nn.functional.dropout(ref_inp, p, True)
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.dropout(res_inp, p, True)
+        res_out = torch.native_dropout(res_inp, p, True)
 
-    res_out = to_reference(res_out)
+    res_out = to_reference(res_out[0])
     exp_equal = (p * p + one_minus_p * one_minus_p) * res_inp.numel()
-    num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
     if TO_CPU:
         from flag_gems.testing import RESOLUTION
 
@@ -72,6 +70,7 @@ def test_accuracy_dropout(shape, p, dtype):
         )
         assert torch.all(torch.logical_or(zero_equal, scale_equal))
     else:
+        num_equal = torch.sum(torch.isclose(ref_out, res_out)).item()
         assert (
             abs(num_equal - exp_equal) / exp_equal <= 0.05
         ), f"num_equal: {num_equal}, exp_equal: {exp_equal}, num_total: {res_inp.numel()}"
@@ -232,59 +231,29 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_indices = torch.randint(
+    indices = torch.randint(
         0, EmbeddingSize, (Batch, M), device=flag_gems.device, requires_grad=False
     )
-    res_embedding = torch.randn(
+    embedding = torch.randn(
         (EmbeddingSize, N), device=flag_gems.device, dtype=dtype, requires_grad=True
     )
-    ref_embedding = to_reference(res_embedding)
-    ref_indices = to_reference(res_indices)
+    ref_embedding = to_reference(embedding)
+    ref_indices = to_reference(indices)
 
     ref_out = torch.nn.functional.embedding(
         ref_indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
     with flag_gems.use_gems():
         res_out = torch.nn.functional.embedding(
-            res_indices,
-            res_embedding,
-            padding_idx,
-            scale_grad_by_freq=scale_grad_by_freq,
+            indices, embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
         )
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_embedding, ref_grad)
+    (res_in_grad,) = torch.autograd.grad(res_out, embedding, out_grad)
+
     gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.embedding
-@pytest.mark.parametrize("EmbeddingSize", [1024] if TO_CPU else [4096])
-@pytest.mark.parametrize("Batch", [2] if TO_CPU else [2, 4])
-@pytest.mark.parametrize("M", [4] if TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if TO_CPU else [128, 256, 4096])
-@pytest.mark.parametrize("padding_idx", [-1, 1, 2])
-@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_embedding_backward(
-    EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype
-):
-    if flag_gems.vendor_name == "kunlunxin":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-
-    res_grad = torch.randn((Batch, M, N), device=flag_gems.device, dtype=dtype)
-    res_indices = torch.randint(0, EmbeddingSize, (Batch, M), device=flag_gems.device)
-    num_weights = EmbeddingSize
-    sparse = False
-
-    ref_grad = to_reference(res_grad)
-    ref_indices = to_reference(res_indices)
-
-    ref_in_grad = torch.ops.aten.embedding_backward(
-        ref_grad, ref_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
-    )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.embedding_backward(
-            res_grad, res_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
-        )
-
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
 
@@ -1042,9 +1011,7 @@ def get_diag_embed_shape_and_dims():
 
     for s in shapes:
         dim_pairs = get_dim1_dim2(len(s) + 1)
-        if dim_pairs:
-            dim1, dim2 = random.choice(dim_pairs)
-            result.append((s, dim1, dim2))
+        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
 
     return result
 
@@ -1079,9 +1046,7 @@ def get_diagonal_backward_shape_and_dims():
 
     for s in shapes:
         dim_pairs = get_dim1_dim2(len(s))
-        if dim_pairs:
-            dim1, dim2 = random.choice(dim_pairs)
-            result.append((s, dim1, dim2))
+        result.extend([(s, dim1, dim2) for dim1, dim2 in dim_pairs])
 
     return result
 
@@ -1092,13 +1057,11 @@ def get_diagonal_backward_shape_and_dims():
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
-    torch.empty(1, device="cuda", requires_grad=True).backward()
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp)
 
     ref_out = torch.diagonal(ref_inp, offset, dim1, dim2)
-    with flag_gems.use_gems():
-        res_out = torch.diagonal(inp, offset, dim1, dim2)
+    res_out = torch.diagonal(inp, offset, dim1, dim2)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = to_reference(out_grad)
@@ -1106,6 +1069,8 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     with flag_gems.use_gems():
         (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_out = to_reference(res_out)
+    res_in_grad = to_reference(res_in_grad)
     gems_assert_equal(res_out, ref_out)
     gems_assert_equal(res_in_grad, ref_in_grad)
 

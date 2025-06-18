@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -7,7 +8,6 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
@@ -61,28 +61,60 @@ def gelu_backward_tanh(x, dy):
     return dx
 
 
-def gelu(self, *, approximate="none"):
-    logger.debug("GEMS GELU FORWARD")
-    if approximate == "tanh":
-        out = gelu_tanh(self)
-    else:
-        out = gelu_none(self)
-    return out
+class Gelu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, approximate):
+        logging.debug("GEMS GELU FORWARD")
+        if approximate == "tanh":
+            out = gelu_tanh(A)
+        else:
+            out = gelu_none(A)
+        ctx.save_for_backward(A)
+        ctx.approximate = approximate
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        logging.debug("GEMS GELU BACKWARD")
+        (inp,) = ctx.saved_tensors
+        approximate = ctx.approximate
+        if approximate == "tanh":
+            in_grad = gelu_backward_tanh(inp, out_grad)
+        else:
+            in_grad = gelu_backward_none(inp, out_grad)
+        return in_grad, None
 
 
-def gelu_backward(grad_output, self, *, approximate="none"):
-    logger.debug("GEMS GELU BACKWARD")
-    if approximate == "tanh":
-        in_grad = gelu_backward_tanh(self, grad_output)
-    else:
-        in_grad = gelu_backward_none(self, grad_output)
-    return in_grad
+def gelu(A, *, approximate="none"):
+    return Gelu.apply(A, approximate)
+
+
+class InplaceGelu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, approximate):
+        logging.debug("GEMS GELU_ FORWARD")
+        ctx.save_for_backward(A.clone())
+        ctx.mark_dirty(A)
+        ctx.approximate = approximate
+
+        if approximate == "tanh":
+            out = gelu_tanh(A, out0=A)
+        else:
+            out = gelu_none(A, out0=A)
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        logging.debug("GEMS GELU_ BACKWARD")
+        (inp,) = ctx.saved_tensors
+        approximate = ctx.approximate
+        if approximate == "tanh":
+            in_grad = gelu_backward_tanh(inp, out_grad)
+        else:
+            in_grad = gelu_backward_none(inp, out_grad)
+        return in_grad, None
 
 
 def gelu_(A, *, approximate="none"):
-    logger.debug("GEMS GELU_ FORWARD")
-    if approximate == "tanh":
-        out = gelu_tanh(A, out0=A)
-    else:
-        out = gelu_none(A, out0=A)
-    return out
+    InplaceGelu.apply(A, approximate)
+    return A

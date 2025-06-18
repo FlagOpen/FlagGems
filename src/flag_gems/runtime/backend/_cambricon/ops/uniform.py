@@ -14,8 +14,6 @@ from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
-
 
 @triton.heuristics(runtime.get_heuristic_config("uniform"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
@@ -56,7 +54,7 @@ UNROLL = 4
 
 
 def uniform_(self, from_=0.0, to=1.0, *, generator=None):
-    logger.debug("GEMS_CAMBRICON UNIFORM")
+    logging.debug("GEMS_CAMBRICON UNIFORM")
     N = volume(self.shape)
     grid_fn = lambda meta: (
         min(triton.cdiv(N, meta["BLOCK"] * UNROLL), TOTAL_CORE_NUM),

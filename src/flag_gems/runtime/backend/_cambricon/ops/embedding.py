@@ -8,8 +8,6 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit
@@ -93,7 +91,7 @@ class Embedding(torch.autograd.Function):
     def forward(
         ctx, weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False
     ):
-        logger.debug("GEMS_CAMBRICON EMBEDDING FORWARD")
+        logging.debug("GEMS_CAMBRICON EMBEDDING FORWARD")
         assert not sparse, "Currently do not support sparse format"
 
         indices = indices.contiguous()
@@ -122,15 +120,17 @@ class Embedding(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        logger.debug("GEMS_CAMBRICON EMBEDDING BACKWARD")
+        logging.debug("GEMS_CAMBRICON EMBEDDING BACKWARD")
         assert not ctx.sparse, "Currently do not support sparse format"
 
         grad_inputs = torch.zeros(
             (ctx.num_weights, grad_outputs.shape[-1]),
             device=grad_outputs.device,
-            dtype=torch.float32
-            if grad_outputs.dtype is torch.bfloat16
-            else grad_outputs.dtype,
+            dtype=(
+                torch.float32
+                if grad_outputs.dtype is torch.bfloat16
+                else grad_outputs.dtype
+            ),
         )
 
         if ctx.scale_grad_by_freq:
@@ -171,9 +171,11 @@ class Embedding(torch.autograd.Function):
                     grad_inputs, indice_freq, ctx.num_weights, ctx.N, BLOCK_SIZE
                 )
         return (
-            grad_inputs.to(torch.bfloat16)
-            if grad_outputs.dtype is torch.bfloat16
-            else grad_inputs,
+            (
+                grad_inputs.to(torch.bfloat16)
+                if grad_outputs.dtype is torch.bfloat16
+                else grad_inputs
+            ),
             None,
             None,
             None,

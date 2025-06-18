@@ -10,7 +10,6 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
 device_ = device
 
 
@@ -30,7 +29,7 @@ def zeros_kernel(
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("METAX GEMS ZEROS")
+    logging.debug("METAX GEMS ZEROS")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

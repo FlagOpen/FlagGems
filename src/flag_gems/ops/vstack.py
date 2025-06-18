@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -8,8 +6,6 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -64,7 +60,7 @@ def vstack_kernel(
 
 
 def vstack(tensors: list):
-    logger.debug("GEMS VSTACK")
+    print("GEMS VSTACK")
 
     tensors = torch.atleast_2d(tensors)
     num_tensors = len(tensors)

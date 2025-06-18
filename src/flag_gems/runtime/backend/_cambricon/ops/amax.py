@@ -11,8 +11,6 @@ from flag_gems.utils.shape_utils import can_use_int32_index
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
-logger = logging.getLogger(__name__)
-
 
 @libentry()
 @triton.jit
@@ -129,7 +127,7 @@ def amax_kernel(
 
 
 def amax(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_CAMBRICON AMAX")
+    logging.debug("GEMS_CAMBRICON AMAX")
     if dim is None or len(dim) == 0:
         M = inp.numel()
         dtype = inp.dtype

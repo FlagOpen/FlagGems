@@ -15,8 +15,6 @@ from ..utils import (
     count_divisible_by_2,
 )
 
-logger = logging.getLogger(__name__)
-
 
 @triton.jit
 def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
@@ -219,7 +217,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS_CAMBRICON VAR MEAN")
+    logging.debug("GEMS_CAMBRICON VAR MEAN")
     if correction is None:
         correction = 1.0
 

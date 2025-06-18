@@ -8,8 +8,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-
 
 def heur_block(args):
     if args["N"] <= 1024:
@@ -65,7 +63,7 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    logger.debug("METAX GEMS FILL")
+    logging.debug("METAX GEMS FILL")
     out = torch.empty_like(input)
     N = out.numel()
     BLOCK_SIZE = 512
@@ -77,7 +75,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("METAX GEMS FILL")
+    logging.debug("METAX GEMS FILL")
     out = torch.empty_like(input)
     N = out.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)

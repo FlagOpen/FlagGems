@@ -1,12 +1,9 @@
-import logging
-
 import triton
 import triton.language as tl
 
 from ..runtime import device
 from ..utils import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -22,7 +19,7 @@ def eq(A, B):
             B = B.to(A.device)
         else:
             A = A.to(B.device)
-    logger.debug("GEMS EQ")
+    print("GEMS EQ")
     return eq_func(A, B)
 
 
@@ -33,5 +30,5 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS EQ SCALAR")
+    print("GEMS EQ SCALAR")
     return eq_func_scalar(A, B)

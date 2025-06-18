@@ -1,12 +1,9 @@
-import logging
-
 import triton
 import triton.language as tl
 
 from ..runtime import device
 from ..utils import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -21,6 +18,6 @@ def maximum_kernel(X, Y):
 
 
 def maximum(X, Y):
-    logger.debug("GEMS MAXIMUM")
+    print("GEMS MAXIMUM")
     assert X.device.type == device and Y.device.type == device
     return maximum_kernel(X, Y)

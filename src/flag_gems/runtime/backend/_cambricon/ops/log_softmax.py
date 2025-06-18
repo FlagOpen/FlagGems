@@ -11,7 +11,6 @@ from flag_gems.runtime import torch_device_fn
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
 MAX_N = 16384
 
 
@@ -651,7 +650,7 @@ def log_softmax_backward_kernel_inner(
 class LogSoftmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dim, dtype):
-        logger.debug("GEMS_CAMBRICON LOG_SOFTMAX")
+        logging.debug("GEMS_CAMBRICON LOG_SOFTMAX")
 
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         dim = dim % x.ndim
@@ -667,7 +666,7 @@ class LogSoftmax(torch.autograd.Function):
 
         with torch_device_fn.device(inp.device):
             if K > 1:
-                logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE NON INNER")
+                logging.debug("GEMS_CAMBRICON LOGSOFTMAX USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
                 log_softmax_kernel_non_inner[grid](
                     out,
@@ -677,7 +676,7 @@ class LogSoftmax(torch.autograd.Function):
                     K,
                 )
             else:
-                logger.debug("GEMS_CAMBRICON LOGSOFTMAX USE INNER")
+                logging.debug("GEMS_CAMBRICON LOGSOFTMAX USE INNER")
                 log_softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
                     inp,
@@ -690,7 +689,7 @@ class LogSoftmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS_CAMBRICON LOG_SOFTMAX VJP")
+        logging.debug("GEMS_CAMBRICON LOG_SOFTMAX VJP")
 
         dim = ctx.dim
         (out,) = ctx.saved_tensors
@@ -708,7 +707,7 @@ class LogSoftmax(torch.autograd.Function):
 
         with torch_device_fn.device(in_grad.device):
             if K > 1:
-                logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE NON INNER")
+                logging.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
                 log_softmax_backward_kernel_non_inner[grid](
                     out,
@@ -719,7 +718,7 @@ class LogSoftmax(torch.autograd.Function):
                     K,
                 )
             else:
-                logger.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE INNER")
+                logging.debug("GEMS_CAMBRICON LOG SOFTMAX VJP USE INNER")
                 grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
                 log_softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,

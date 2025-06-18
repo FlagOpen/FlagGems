@@ -1,5 +1,3 @@
-import logging
-
 import torch
 import triton
 import triton.language as tl
@@ -8,8 +6,6 @@ from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import broadcastable, libentry
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -35,7 +31,7 @@ def masked_select_kernel(
 
 
 def masked_select(inp, mask):
-    logger.debug("GEMS MASKED SELECT")
+    print("GEMS MASKED SELECT")
 
     inp_shape = tuple(inp.shape)
     mask_shape = tuple(mask.shape)

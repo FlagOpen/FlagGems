@@ -9,8 +9,6 @@ from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger(__name__)
-
 
 @triton.autotune(
     configs=[
@@ -68,7 +66,7 @@ def check_dtype(fill_value, dtype, device):
 
 
 def full(size, fill_value, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS_CAMBRICON FULL")
+    logging.debug("GEMS_CAMBRICON FULL")
     if device is None:
         device = torch.device("cpu")
     if dtype is None:

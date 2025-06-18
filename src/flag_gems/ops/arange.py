@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -8,8 +7,6 @@ import triton.language as tl
 from .. import runtime
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
-
-logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -28,7 +25,7 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("GEMS ARANGE")
+    print("GEMS ARANGE")
     if dtype is torch.int64:
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
