@@ -173,7 +173,7 @@ from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-from .matmul import matmul
+from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 __all__ = [
     "log_sigmoid",
     "all",
@@ -403,5 +403,5 @@ __all__ = [
     "eye",
     "eye_m",
     "to_dtype",
-    "matmul",
+    "w8a8_block_fp8_matmul",
 ]
