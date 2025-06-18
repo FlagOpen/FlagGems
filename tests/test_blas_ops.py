@@ -77,16 +77,7 @@ MNK_SHAPES = [
 FLOAT_DTYPES = [
     torch.float8_e5m2,
 ]
-
-def to_reference(mat: torch.Tensor, is_input: bool) -> torch.Tensor:
-    return mat.to(torch.float32)
-
-def gems_assert_close(a: torch.Tensor, b: torch.Tensor, dtype, reduce_dim: int = None):
-    atol = 1e-2 if dtype == torch.float16 else 1e-5
-    rtol = atol
-    assert torch.allclose(a, b, atol=atol, rtol=rtol), \
-        f"Results differ more than tolerance: max abs diff = {(a - b).abs().max().item()}"
-@pytest.mark.matmul
+@pytest.mark.w8a8_block_fp8_matmul
 @pytest.mark.parametrize("M,N,K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
@@ -104,10 +95,10 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
     As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(dtype)
     Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(dtype)
 
-    A_ref = to_reference(A, True)
-    B_ref = to_reference(B, True)
-    As_ref = to_reference(As, True)
-    Bs_ref = to_reference(Bs, True)
+    A_ref = A.to(torch.float32)
+    B_ref = B.to(torch.float32)
+    As_ref = As.to(torch.float32)
+    Bs_ref = Bs.to(torch.float32)
 
     A_scaled = torch.zeros_like(A_ref)
     for k_group in range(num_k_groups):
