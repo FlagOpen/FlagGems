@@ -196,6 +196,10 @@ class Benchmark:
                         shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
                     ]
 
+            if vendor_name == "ascend":
+                if self.op_name in ["addmm"]:
+                    self.shapes = [(1, 384, 384, 384)]
+
             # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")
