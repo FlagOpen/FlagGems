@@ -325,7 +325,7 @@ def enable(
             ("eye", eye, Autograd.disable),
             ("eye.m", eye_m, Autograd.disable),
             ("to.dtype", to_dtype, Autograd.disable),
-            ("matmul", matmul, Autograd.disable),
+            ("w8a8_block_fp8_matmul", w8a8_block_fp8_matmul, Autograd.disable),
         ),
         user_unused_ops_list=[] if unused is None else unused,
         lib=lib,
