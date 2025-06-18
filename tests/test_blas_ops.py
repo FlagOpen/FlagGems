@@ -79,17 +79,9 @@ FLOAT_DTYPES = [
 ]
 
 def to_reference(mat: torch.Tensor, is_input: bool) -> torch.Tensor:
-    """
-    这里根据你的需求实现对输入矩阵的处理。
-    例如对 FP8 类型转 float32，或带缩放因子放大等。
-    下面示例是简单转 float32：
-    """
     return mat.to(torch.float32)
 
 def gems_assert_close(a: torch.Tensor, b: torch.Tensor, dtype, reduce_dim: int = None):
-    """
-    简单的误差断言函数，默认使用相对误差和绝对误差判断。
-    """
     atol = 1e-2 if dtype == torch.float16 else 1e-5
     rtol = atol
     assert torch.allclose(a, b, atol=atol, rtol=rtol), \
@@ -98,32 +90,25 @@ def gems_assert_close(a: torch.Tensor, b: torch.Tensor, dtype, reduce_dim: int =
 @pytest.mark.parametrize("M,N,K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_matmul(M, N, K, dtype):
-    device = flag_gems.device  # 例如 "cuda"
-
-    # 这里模拟 block size
+    device = flag_gems.device 
     block_n = 128
     block_k = 128
     block_size = [block_n, block_k]
 
-    # 生成 FP8 数据，形状对应二维矩阵
-    # 对应之前的 A 和 B, 这里没 batch，直接 2D
     A = torch.randn((M, K), device=device).to(dtype)
     B = torch.randn((N, K), device=device).to(dtype)
 
-    # 生成缩放因子 As, Bs，注意 As 是针对 A 的 K 维度分组，Bs 是针对 B 的 N-K 块
     num_k_groups = (K + block_k - 1) // block_k
     num_n_groups = (N + block_n - 1) // block_n
 
     As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(dtype)
     Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(dtype)
 
-    # 参考实现（类似 pytorch_reference_matmul）用 float32
     A_ref = to_reference(A, True)
     B_ref = to_reference(B, True)
     As_ref = to_reference(As, True)
     Bs_ref = to_reference(Bs, True)
 
-    # block-wise 缩放参考实现
     A_scaled = torch.zeros_like(A_ref)
     for k_group in range(num_k_groups):
         k_start = k_group * block_k
@@ -142,14 +127,9 @@ def test_accuracy_matmul(M, N, K, dtype):
             B_scaled[n_start:n_end, k_start:k_end] = B_ref[n_start:n_end, k_start:k_end] * scale
 
     ref_out = torch.matmul(A_scaled, B_scaled.T)
-
-    # 调用 flag_gems Triton FP8 matmul
     with flag_gems.use_gems():
-        res_out = flag_gems.matmul(A, B, As, Bs, block_size, output_dtype=torch.float16)
-
-    # 转 fp16 比较
+        res_out = flag_gems.w8a8_block_fp8_matmul(A, B, As, Bs, block_size, output_dtype=torch.float16)
     ref_out_fp16 = ref_out.to(torch.float16)
-
     gems_assert_close(res_out, ref_out_fp16, dtype=torch.float16, reduce_dim=K)
 
 # TODO: failed at (1, 1, 2)
