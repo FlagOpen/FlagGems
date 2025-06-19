@@ -17,6 +17,7 @@ We created WeChat group for FlagGems. Scan the QR code to join the group chat! T
 ## Features
 
 FlagGems provides the following technical features.
+
 - A large collection of PyTorch compatible operators
 - Hand optimized performance for selective operators
 - Eager mode ready, independent of torch.compile
