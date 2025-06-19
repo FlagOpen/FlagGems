@@ -6,7 +6,7 @@ import triton
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils.random_utils import update_philox_state
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .flash_kernel import (
     block_m_splitkv_heuristic,
@@ -416,7 +416,7 @@ def mha_varlan_fwd(
         if p_dropout > 0:
             is_dropout = True
             increment = batch_size * num_heads * 32
-            philox_seed, philox_offset = update_philox_state(increment)
+            philox_seed, philox_offset = philox_backend_seed_offset(increment)
             philox_args = torch.tensor(
                 [philox_seed, philox_offset], dtype=torch.int64, device=q_device
             )
@@ -648,7 +648,7 @@ def mha_fwd(
         if p_dropout > 0:
             is_dropout = True
             increment = batch_size * num_heads * 32
-            philox_seed, philox_offset = update_philox_state(increment)
+            philox_seed, philox_offset = philox_backend_seed_offset(increment)
             philox_args = torch.tensor(
                 [philox_seed, philox_offset], dtype=torch.int64, device=q_device
             )
