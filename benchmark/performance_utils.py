@@ -253,10 +253,6 @@ class Benchmark:
                         args = args + (0,True)
                     else:
                        args = args + (1,False)
-
-
-
-
                 kwargs = {}
                 if self.kwargs_func is not None:
                     kwargs = self.kwargs_func(dtype, self.batch, size)
