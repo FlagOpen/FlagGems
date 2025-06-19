@@ -14,6 +14,7 @@ from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
 from .logging_utils import setup_flaggems_logging
+from .modules import *  # noqa: F403
 from .ops import *  # noqa: F403
 from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
@@ -259,7 +260,9 @@ def enable(
             ("nll_loss2d_forward", nll_loss2d_forward, Autograd.disable),
             ("nll_loss2d_backward", nll_loss2d_backward, Autograd.disable),
             ("scatter.src", scatter, Autograd.disable),
+            ("scatter_.src", scatter_, Autograd.disable),
             ("scatter.reduce", scatter, Autograd.disable),
+            ("scatter_.reduce", scatter_, Autograd.disable),
             ("gather", gather, Autograd.disable),
             ("gather_backward", gather_backward, Autograd.disable),
             ("isclose", isclose, Autograd.disable),
