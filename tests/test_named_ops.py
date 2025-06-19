@@ -176,6 +176,7 @@ special_ops_ut_map = {
     "embedding": ("test_embedding",),
     "resolve_neg": ("test_accuracy_resolve_neg",),
     "resolve_conj": ("test_accuracy_resolve_conj",),
+    "upsample_bilinear2d": ("test_upsample_bilinear2d",),
 }
 
 op_name_to_unit_test_maps = {

@@ -540,6 +540,19 @@ upsample_nearest2d:
   block_n: [1024, 2048]
   warps: [4, 8]
 
+
+upsample_bilinear2d:
+- gen : true
+  param_map:
+    META:
+      BLOCK_SIZE_H: block_h
+      BLOCK_SIZE_W: block_w
+    num_warps: warps
+  block_h: [16]
+  block_w: [128]
+  warps: [8]
+
+
 upsample_bicubic2d_aa:
 - gen : true
   param_map:
