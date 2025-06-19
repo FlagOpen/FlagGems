@@ -1,3 +1,4 @@
+
 # How To Use FlagGems
 ## Basic Usage
 To use the `FlagGems` operator library, import it and enable acceleration before running computations. You can enable it globally or temporarily.
@@ -199,10 +200,55 @@ print(output)
 ```
 
 ### Example 3: Megatron
+[Megatron-LM](https://github.com/NVIDIA/Megatron-LM) is a highly optimized framework for large-scale language model pretraining and fine-tuning. Due to its tight integration with custom training loops and internal utilities, integrating `flag_gems` into Megatron requires a slightly more targeted approach.
 
-`flag_gems` can be integrated into Megatron models by enabling it before the forward pass begins. The example illustrates how to inject acceleration logic into Megatron's pretraining workflow.
+Since Megatron’s training loop tightly couples distributed data loading, gradient accumulation, and pipeline parallelism, we recommend applying `flag_gems` only around the forward and backward computation stages.
 
-See [`examples/megatron_pretrain.py`](https://github.com/your_repo/flag_gems/blob/main/examples/megatron_pretrain.py) for reference.
+#### Recommended Integration Point
+The most reliable way to use `flag_gems` in Megatron is by modifying the `train_step` function in [`megatron/training/training.py`](https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/training/training.py#L1360).
+Specifically, wrap the block where `forward_backward_func` is invoked as shown below:
+```
+def train_step(forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config):
+    """Single training step."""
+    args = get_args()
+    timers = get_timers()
+
+     # CUDA Graph capturing logic omitted
+    rerun_state_machine = get_rerun_state_machine()
+    while rerun_state_machine.should_run_forward_backward(data_iterator):
+    	# Gradient zeroing logic omitted
+
+        # Forward pass with flag_gems acceleration
+        import flag_gems
+        with flag_gems.use_gems():
+          forward_backward_func = get_forward_backward_func()
+          losses_reduced = forward_backward_func(
+              forward_step_func=forward_step_func,
+              data_iterator=data_iterator,
+              model=model,
+              num_microbatches=get_num_microbatches(),
+              seq_length=args.seq_length,
+              micro_batch_size=args.micro_batch_size,
+              decoder_seq_length=args.decoder_seq_length,
+              forward_only=False,
+              adjust_tensor_shapes_fn=adjust_tensor_shapes_fn,
+          )
+
+    should_checkpoint, should_exit, exit_code = rerun_state_machine.should_checkpoint_and_exit()
+    if should_exit:
+        return {}, True, should_checkpoint, should_exit, exit_code, None, None
+
+    # Other post-step operations omitted
+```
+
+This ensures that only the forward and backward computation logic runs with `flag_gems` acceleration, while other components such as data loading and optimizer steps remain unchanged. A full example of the integration described above is available at: `examples/model_with_megatron_test.py`
+#### Scope and Limitations
+While `flag_gems.enable()` is sufficient in most frameworks, we observed that applying it early in Megatron’s pipeline can sometimes cause unexpected behavior, especially during the data loading phase. For better stability, we recommend using `flag_gems.use_gems()` as a context manager limited to the computation stage.
+
+If you wish to accelerate a broader range of components (e.g., optimizer, preprocessing), you may try enabling `flag_gems` globally with `flag_gems.enable()`. However, this approach is less tested and may require additional validation based on your Megatron version.
+
+We encourage community contributions — please open an `issue` or submit a PR to help improve broader Megatron integration.
+
 
 ## Multi-GPU Deployment
 In real-world LLM deployment scenarios, multi-GPU or multi-node setups are often required to support large model sizes and high-throughput inference. `flag_gems` supports these scenarios by accelerating operator execution across multiple GPUs.
@@ -223,10 +269,23 @@ Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
 
 2. **Inject `flag_gems` into vLLM Worker Code**
    Locate the appropriate model runner script depending on your vLLM version:
-   - For **vLLM ≥ 0.8** (recommended: `v0.8.4`): modify `vllm/v1/worker/gpu_model_runner.py`
-   - For **vLLM < 0.8** (recommended: `v0.7.2`): modify `vllm/worker/model_runner.py`
-   Add the initialization logic after the last `import` statement in the file.
-    *(See code snippet for details.)*
+   - If you are using the **vLLM v1 architecture** (available in vLLM ≥ 0.8), modify `vllm/v1/worker/gpu_model_runner.py`
+   - If you are using the **legacy v0 architecture**, modify `vllm/worker/model_runner.py`
+
+ 	In either file, insert the following logic after the last `import` statement:
+    ```
+    import os
+	if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
+	try:
+		import flag_gems
+        flag_gems.enable()
+		flag_gems.apply_gems_patches_to_vllm(verbose=True)
+        logger.info("Successfully enabled flag_gems as default ops implementation.")
+    except ImportError:
+        logger.warning("Failed to import 'flag_gems'. Falling back to default implementation.")
+    except Exception as e:
+        logger.warning(f"Failed to enable 'flag_gems': {e}. Falling back to default implementation.")
+    ```
 
 3. **Set Environment Variables on All Nodes**
    Before launching the service, ensure all nodes have the following environment variable set:
@@ -247,39 +306,24 @@ Here’s how to enable `flag_gems` in a distributed vLLM + DeepSeek deployment:
 This confirms that `flag_gems` has been successfully enabled across all GPUs.
 
 ## Building Custom Models Using Gems Operators
-In some scenarios, users may wish to build their own models from scratch or modify existing ones to better suit specific requirements. To support this, `flag_gems` is gradually expanding a collection of high-performance modules commonly used in large language models (LLMs).
+In some scenarios, users may wish to build their own models from scratch or modify existing ones to better suit specific requirements. To support this, `flag_gems` provides a growing collection of high-performance modules commonly used in large language models (LLMs).
 
-These components are implemented using `flag_gems`-accelerated operators and can be used just like any other `torch.nn.Module`. You can seamlessly integrate them into your own model architectures to benefit from operator-level acceleration without needing to write custom kernels.
+These components are implemented using `flag_gems`-accelerated operators and can be used like any standard `torch.nn.Module`. You can seamlessly integrate them into your architecture to benefit from kernel-level acceleration, without writing custom CUDA or Triton code.
 
-All currently available modules are located in the following directory:
+Available modules are located in:
 [flag_gems/modules](https://github.com/FlagOpen/FlagGems/tree/master/src/flag_gems/modules)
 
-While the number of modules is still limited, we are actively expanding this collection. Future updates will continue to provide more reusable and optimized building blocks for transformer-based models and other deep learning architectures.
+### Available Modules
 
-### Currently Available Modules
+| Module                  | Description                                          | Supported Features                         |
+|-------------------------|------------------------------------------------------|---------------------------------------------|
+| `GemsRMSNorm`           | RMS LayerNorm                                        | Fused residual add, `inplace` & `outplace`  |
+| `GemsRope`              | Standard rotary position embedding                   | `inplace` & `outplace`                      |
+| `GemsDeepseekYarnRoPE`  | RoPE with extrapolation for DeepSeek-style LLMs      | `inplace` & `outplace`                      |
+| `GemsSiluAndMul`        | Fused SiLU activation with elementwise multiplication| `outplace` only                             |
 
-- **RoPE**
-  A standard rotary position embedding module, optimized with accelerated trigonometric computation and fused application over QKV.
 
-- **DeepSeekYarnRoPE**
-  A specialized RoPE variant designed for DeepSeek-style "Yarn" rotary position embedding. This module supports dynamic RoPE scaling and extrapolation strategies tailored for long-context LLMs.
-
-- **RMSNorm**
-  Root Mean Square Layer Normalization, commonly used in modern LLMs like LLaMA. The implementation includes fused operations to reduce memory overhead and kernel launch latency.
-
-- **Fused Add-RMSNorm**
-  A composite module that fuses residual connection addition and RMS normalization into a single operator. This reduces memory access and improves performance in deep transformer blocks.
-
-- **ActAndMul Series**
-  A set of utility modules combining activation functions (e.g., SiLU, GELU) with post-activation scaling or elementwise multiplication. These are designed to streamline common MLP patterns found in transformer feedforward layers.
-
-We encourage users to explore these modules and use them as drop-in replacements for equivalent PyTorch components. Contributions and suggestions for additional module implementations are also welcome.
-
-### Upcoming Modules
-
-The `flag_gems.modules` collection is actively growing. In upcoming releases, we plan to add more essential components for LLMs and transformer-based architectures, such as fused attention blocks, optimized moe layers, and parallel residual modules.
-
-For a detailed overview of planned modules and release targets, please refer to the [Roadmap](#roadmap) section.
+We encourage users to use these as drop-in replacements for equivalent PyTorch layers. More components such as fused attention, MoE layers, and transformer blocks are under development — see the [Roadmap](#roadmap) for planned modules and release targets.
 
 
 ## Achieving Optimal Performance with Gems
