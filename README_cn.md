@@ -33,7 +33,7 @@ FlagGems 支持更多的硬件平台并且在不通硬件上进行了充分的�
 
 ### 自动代码生成
 
-FlagGems 提供了一套自动代码生成的机制，开发者可以使用它来便捷地生成 pointwise 类型的单算子与融合算子。自动代码生成可以处理常规的对位计算、非张量参数、指定输出类型等多种需求。详细信息参考 [pointwise_dynamic](docs/dev-docs/pointwise_dynamic.md)
+FlagGems 提供了一套自动代码生成的机制，开发者可以使用它来便捷地生成 pointwise 类型的单算子与融合算子。自动代码生成可以处理常规的对位计算、非张量参数、指定输出类型等多种需求。详细信息参考 [pointwise_dynamic](docs/pointwise_dynamic.md)
 
 ### LibEntry
 
@@ -41,7 +41,7 @@ FlagGems 构造了 `LibEntry` 独立维护 kernel cache, 绕过 `Autotuner`、`H
 
 ### C++ 运行时
 
-FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的包安装。C++ 运行时旨在解决 python 运行时开销昂贵的问题, 提高整个端到端的性能，详细信息参考 [c++ extensions](docs/usr-docs/build_flaggems_with_c_extensions.md)
+FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的包安装。C++ 运行时旨在解决 python 运行时开销昂贵的问题, 提高整个端到端的性能，详细信息参考 [c++ extensions](docs/build_flaggems_with_c_extensions.md)
 
 ## 更新日志
 
@@ -68,11 +68,11 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 快速入门
 
-参考文档 [开始使用](docs/usr-docs/get_start_with_flaggems.md) 快速安装使用 flag_gems
+参考文档 [开始使用](docs/get_start_with_flaggems.md) 快速安装使用 flag_gems
 
 ## 支持算子
 
-算子将按照文档 [OperatorList](docs/dev-docs/operator_list.md) 的顺序逐步实现。
+算子将按照文档 [OperatorList](docs/operator_list.md) 的顺序逐步实现。
 
 ## 支持模型
 

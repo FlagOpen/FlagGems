@@ -37,7 +37,7 @@ FlagGems supports a wide range of hardware platforms and has been extensively te
 
 FlagGems provides an automatic code generation mechanism that enables developers to easily generate both pointwise and fused operators.
 The auto-generation system supports a variety of needs, including standard element-wise computations, non-tensor parameters, and specifying output types.
-For more details, please refer to [pointwise_dynamic](docs/dev-docs/pointwise_dynamic.md).
+For more details, please refer to [pointwise_dynamic](docs/pointwise_dynamic.md).
 
 ### LibEntry
 
@@ -48,7 +48,7 @@ FlagGems introduces `LibEntry`, which independently manages the kernel cache and
 ### C++ Runtime
 
 FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
-For more details, please refer to [c++ extensions](docs/usr-docs/build_flaggems_with_c_extensions.md).
+For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_extensions.md).
 
 ## Changelog
 
@@ -75,11 +75,11 @@ For more details, please refer to [c++ extensions](docs/usr-docs/build_flaggems_
 
 ## Get Start
 
-For a quick start with installing and using flag_gems, please refer to the documentation [GetStart](docs/usr-docs/get_start_with_flaggems.md).
+For a quick start with installing and using flag_gems, please refer to the documentation [GetStart](docs/get_start_with_flaggems.md).
 
 ## Supported Operators
 
-Operators will be implemented according to [OperatorList](docs/dev-docs/operator_list.md).
+Operators will be implemented according to [OperatorList](docs/operator_list.md).
 
 ## Example Models
 
