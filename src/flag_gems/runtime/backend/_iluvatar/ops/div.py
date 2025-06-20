@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
+logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
@@ -31,7 +32,7 @@ def true_div_func_scalar_tensor(x, y):
 
 
 def true_divide(A, B):
-    logging.debug("GEMS TRUE_DIVIDE")
+    logger.debug("GEMS TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -41,6 +42,14 @@ def true_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def true_divide_(A, B):
+    logger.debug("GEMS TRUE_DIVIDE_")
+    if isinstance(B, torch.Tensor):
+        return true_div_func(A, B, out0=A)
+    else:
+        return true_div_func_tensor_scalar(A, B, out0=A)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -62,7 +71,7 @@ def trunc_div_func_scalar_tensor(x, y):
 
 
 def trunc_divide(A, B):
-    logging.debug("GEMS TRUNC_DIVIDE iluvatar")
+    logger.debug("GEMS TRUNC_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return trunc_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -72,6 +81,14 @@ def trunc_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def trunc_divide_(A, B):
+    logger.debug("GEMS TRUNC_DIVIDE_")
+    if isinstance(B, torch.Tensor):
+        return trunc_div_func(A, B, out0=A)
+    else:
+        return trunc_div_func_tensor_scalar(A, B, out0=A)
 
 
 @triton.jit
@@ -155,7 +172,7 @@ def floor_div_func_scalar_tensor(x, y):
 
 
 def floor_divide(A, B):
-    logging.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -167,6 +184,14 @@ def floor_divide(A, B):
         return torch.tensor(A // B)
 
 
+def floor_divide_(A, B):
+    logger.debug("GEMS FLOOR_DIVIDE_")
+    if isinstance(B, torch.Tensor):
+        return floor_div_func(A, B, out0=A)
+    else:
+        return floor_div_func_tensor_scalar(A, B, out0=A)
+
+
 def div_mode(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide(A, B)
@@ -174,6 +199,18 @@ def div_mode(A, B, rounding_mode=None):
         return trunc_divide(A, B)
     elif rounding_mode == "floor":
         return floor_divide(A, B)
+    else:
+        msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
+        raise ValueError(msg)
+
+
+def div_mode_(A, B, rounding_mode=None):
+    if rounding_mode is None:
+        return true_divide_(A, B)
+    elif rounding_mode == "trunc":
+        return trunc_divide_(A, B)
+    elif rounding_mode == "floor":
+        return floor_divide_(A, B)
     else:
         msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
         raise ValueError(msg)
@@ -206,7 +243,7 @@ def rem_st(x, y):
 
 
 def remainder(A, B):
-    logging.debug("GEMS FLOOR_DIVIDE")
+    logger.debug("GEMS FLOOR_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B)
     elif isinstance(A, torch.Tensor):
@@ -216,3 +253,11 @@ def remainder(A, B):
     else:
         # Both scalar
         return torch.tensor(A % B)
+
+
+def remainder_(A, B):
+    logger.debug("GEMS REMAINDER_")
+    if isinstance(B, torch.Tensor):
+        return rem_tt(A, B, out0=A)
+    else:
+        return rem_ts(A, B, out0=A)

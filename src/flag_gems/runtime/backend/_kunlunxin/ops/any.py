@@ -1,18 +1,40 @@
 import logging
-import math
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems.ops.max import max_kernel_1, max_kernel_2
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 # torch.any: Tests if any elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if any elements in input evaluate to non-zero value
 # In triton function, test if any elements in input evaluate to non-zero value is ok.
+
+cluster_num = 12
+core_num = 64
+thread_num = core_num * cluster_num
+buf_len_per_core = 2048
+vector_size = 16
+
+
+def get_block(n: int) -> int:
+    if n < cluster_num:
+        res = cluster_num
+    else:
+        res = cluster_num * triton.cdiv(n, cluster_num)
+    return res
+
+
+def heur_m_block_size(args):
+    return triton.next_power_of_2(min(triton.cdiv(args["M"], cluster_num), core_num))
+
+
+def heur_n_block_size(args):
+    return triton.next_power_of_2(min(args["N"], triton.cdiv(buf_len_per_core, 4)))
 
 
 @triton.jit
@@ -21,7 +43,13 @@ def reduce_any(a, b):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+# @triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
 @triton.jit
 def any_kernel_dim(
     inp,
@@ -51,12 +79,45 @@ def any_kernel_dim(
 
 
 @libentry()
+@triton.heuristics(
+    values={
+        "BLOCK_M": heur_m_block_size,
+        "BLOCK_N": heur_n_block_size,
+    },
+)
+@triton.jit
+def max_kernel_dim(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    xoffset = tl.program_id(0) * BLOCK_M
+    xindex = xoffset + tl.arange(0, BLOCK_M)[:, None]
+    xmask = xindex < M
+    rbase = tl.arange(0, BLOCK_N)[None, :]
+    _max = tl.full([BLOCK_M, BLOCK_N], float("-inf"), tl.float32)
+    for roffset in range(0, N, BLOCK_N):
+        rindex = roffset + rbase
+        rmask = rindex < N
+        r1 = rindex
+        inp = tl.load(
+            in_ptr + (r1 + (N * xindex)), rmask & xmask, other=float("-inf")
+        ).to(tl.float32)
+        inpb = tl.broadcast_to(inp, [BLOCK_M, BLOCK_N])
+        _max = tl.maximum(_max, inpb)
+    tmp2 = tl.max(_max, axis=1, return_indices=False)[:, None]
+    tl.store(out_ptr + xindex, tmp2, xmask)
+
+
+@libentry()
 @triton.jit
 def any_kernel_1(
     inp,
     mid,
     n_elements,
-    mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -81,26 +142,48 @@ def any_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def any(inp):
-    logging.debug("GEMS ANY")
+    logger.debug("GEMS ANY")
     n_elements = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
+    block_size = min(
+        triton.cdiv(get_block(n_elements), cluster_num),
+        triton.cdiv(buf_len_per_core * core_num, 4),
+    )
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    if n_elements >= vector_size * thread_num:
+        # according to api, op == any, use max to calculate
+        inpf = inp.to(torch.float)
+        midf = torch.empty((mid_size,), dtype=torch.float, device=inp.device)
+        outf = torch.empty([], dtype=torch.float, device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        any_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-        if mid_size == 1:
-            return mid.reshape([])
-        any_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+        with torch_device_fn.device(inp.device):
+            max_kernel_1[(mid_size, 1)](
+                inpf, midf, n_elements, block_size, buffer_size_limit=2048
+            )
+            if mid_size == 1:
+                return midf.to(torch.bool).reshape([])
+            max_kernel_2[(1, 1)](
+                midf, outf, mid_size, block_mid, buffer_size_limit=2048
+            )
+        out = outf.to(torch.bool)
+    else:
+        mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
+        out = torch.empty([], dtype=torch.bool, device=inp.device)
+
+        with torch_device_fn.device(inp.device):
+            any_kernel_1[(mid_size, 1)](
+                inp, mid, n_elements, block_size, buffer_size_limit=2048
+            )
+            if mid_size == 1:
+                return mid.reshape([])
+            any_kernel_2[(1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
 
     return out
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY DIM")
+    logger.debug("GEMS ANY DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -114,18 +197,28 @@ def any_dim(inp, dim=None, keepdim=False):
         shape[dim] = 1
         M = inp.numel() // N
 
-        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        if N >= vector_size * vector_size:
+            # according to api, op == any, use max to calculate
+            inpf = inp.to(torch.float)
+            outf = torch.empty(shape, dtype=torch.float, device=inp.device)
 
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
-            any_kernel_dim[grid](inp, out, M, N)
+            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+            with torch_device_fn.device(inp.device):
+                max_kernel_dim[grid](inpf, outf, M, N, buffer_size_limit=2048)
+            out = outf.to(torch.bool)
+        else:
+            out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+            grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+            with torch_device_fn.device(inp.device):
+                any_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+
         if not keepdim:
             out = out.squeeze(dim=dim)
     return out
 
 
 def any_dims(inp, dim=None, keepdim=False):
-    logging.debug("GEMS ANY DIMS")
+    logger.debug("GEMS ANY DIMS")
 
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
@@ -140,11 +233,21 @@ def any_dims(inp, dim=None, keepdim=False):
         shape[i] = 1
     M = inp.numel() // N
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    if N >= vector_size * core_num:
+        # according to api, op == any, use max to calculate
+        inpf = inp.to(torch.float)
+        outf = torch.empty(shape, dtype=torch.float, device=inp.device)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
-        any_kernel_dim[grid](inp, out, M, N)
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        with torch_device_fn.device(inp.device):
+            max_kernel_dim[grid](inpf, outf, M, N, buffer_size_limit=2048)
+        out = outf.to(torch.bool)
+    else:
+        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        with torch_device_fn.device(inp.device):
+            any_kernel_dim[grid](inp, out, M, N, buffer_size_limit=2048)
+
     if not keepdim:
         out = out.squeeze(dim=dim)
     return out

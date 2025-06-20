@@ -8,9 +8,11 @@ import triton.language as tl
 from flag_gems.utils import libentry
 
 from ..runtime import device, torch_device_fn
+from ..utils import get_device_properties
 from ..utils import triton_lang_extension as tle
 
 device = device.name
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -192,8 +194,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
             add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
 
-def cumsum(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS CUMSUM")
+def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -208,7 +209,8 @@ def cumsum(inp, dim=1, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
-    out = torch.empty_like(inp, dtype=dtype)
+    if out is None:
+        out = torch.empty_like(inp, dtype=dtype)
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
@@ -219,6 +221,16 @@ def cumsum(inp, dim=1, *, dtype=None):
     else:
         scan_then_fan(inp, out, M, N, K, compute_dtype)
     return out
+
+
+def cumsum(inp, dim=1, *, dtype=None):
+    logger.debug("GEMS CUMSUM")
+    return cumsum_wrapper(inp, dim, dtype)
+
+
+def cumsum_out(inp, dim=1, *, dtype=None, out):
+    logger.debug("GEMS CUMSUM_OUT")
+    return cumsum_wrapper(inp, dim, dtype, out)
 
 
 @libentry()
@@ -365,7 +377,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logging.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()
@@ -380,7 +392,7 @@ def normed_cumsum(inp, dim=-1):
     out = torch.empty_like(inp)
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
-        num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
+        num_sms = get_device_properties(device).multi_processor_count
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.

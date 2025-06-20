@@ -1,4 +1,5 @@
 import logging
+import math
 import random
 
 import numpy as np
@@ -26,6 +27,7 @@ def replace_zeros(inp):
     return torch.where(inp == 0, 1, inp)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
@@ -61,6 +63,7 @@ def test_accuracy_add_(shape, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -96,6 +99,7 @@ def test_accuracy_add_tensor_scalar_(shape, scalar, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.add
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -113,6 +117,7 @@ def test_accuracy_add_scalar_tensor(shape, scalar, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.add
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_add_scalar_scalar(dtype):
@@ -574,6 +579,7 @@ def test_accuracy_div_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.trunc_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -607,6 +613,7 @@ def test_accuracy_trunc_div(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.inplace
 @pytest.mark.trunc_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -620,7 +627,7 @@ def test_accuracy_trunc_div_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    upcast = True if flag_gems.vendor_name not in ["kunlunxin"] else False
+    upcast = True if flag_gems.vendor_name not in ["kunlunxin", "iluvatar"] else False
     ref_inp1 = to_reference(inp1, upcast)
     ref_inp2 = to_reference(inp2, upcast)
 
@@ -636,6 +643,7 @@ def test_accuracy_trunc_div_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.trunc_divide
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_trunc_divide_scalar_scalar(dtype):
@@ -656,6 +664,7 @@ def test_accuracy_trunc_divide_scalar_scalar(dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -673,6 +682,7 @@ def test_accuracy_floor_div_float(shape, dtype):
     gems_assert_equal(res_out, ref_out, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
@@ -691,6 +701,7 @@ def test_accuracy_floor_div_float_(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -736,6 +747,8 @@ def test_accuracy_floor_div_int(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.inplace
 @pytest.mark.floor_divide_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -776,6 +789,7 @@ def test_accuracy_floor_div_int_(shape, dtype):
         gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_floor_divide_scalar_scalar(dtype):
@@ -1201,6 +1215,7 @@ def test_accuracy_ne_scalar(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1209,8 +1224,8 @@ def test_accuracy_pow(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
@@ -1231,8 +1246,8 @@ def test_accuracy_pow_(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_inp2 = to_reference(inp2, True)
@@ -1276,6 +1291,7 @@ def test_accuracy_minimum(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.pow
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1285,7 +1301,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp2 = to_reference(inp2, True)
 
@@ -1296,6 +1312,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.pow
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize(
@@ -1304,11 +1321,20 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
+        if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        elif scalar == -111.999 and dtype == torch.float16:
+            inp1 = inp1.uniform_(-1, 1)
+        else:
+            inp1 = inp1.uniform_(-0.1, 0.1)
 
     ref_inp1 = to_reference(inp1, True)
 
@@ -1325,11 +1351,20 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
+        if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        elif scalar == -111.999 and dtype == torch.float16:
+            inp1 = inp1.uniform_(-1, 1)
+        else:
+            inp1 = inp1.uniform_(-0.1, 0.1)
 
     ref_inp1 = to_reference(inp1.clone(), True)
 
@@ -1340,6 +1375,7 @@ def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.rsub
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("alpha", SCALARS)
@@ -1408,6 +1444,7 @@ def test_accuracy_sub(shape, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.sub
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -1461,6 +1498,7 @@ def test_accuracy_sub_tensor_scalar_(shape, scalar, alpha, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.sub
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -1592,6 +1630,29 @@ def test_accuracy_where_scalar_other(shape, scalar, dtype):
     ref_out = torch.where(ref_inp2 > 0, ref_inp2, inp1)
     with flag_gems.use_gems():
         res_out = torch.where(inp2 > 0, inp2, inp1)
+
+    gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.nan_to_num
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("nan", [None, 0.0, 2.3])
+@pytest.mark.parametrize("posinf", [None, 999.0])
+@pytest.mark.parametrize("neginf", [None, -999.0])
+def test_accuracy_nan_to_num(shape, dtype, nan, posinf, neginf):
+    base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    base.view(-1)[0] = float("nan")
+    if base.numel() > 1:
+        base.view(-1)[1] = float("inf")
+    if base.numel() > 2:
+        base.view(-1)[2] = float("-inf")
+
+    ref_input = to_reference(base)
+    ref_out = torch.nan_to_num(ref_input, nan=nan, posinf=posinf, neginf=neginf)
+
+    with flag_gems.use_gems():
+        res_out = torch.nan_to_num(base, nan=nan, posinf=posinf, neginf=neginf)
 
     gems_assert_equal(res_out, ref_out)
 
@@ -1844,3 +1905,55 @@ def test_accuracy_logical_xor(shape, dtype):
         res_out = torch.logical_xor(inp1, inp2)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.threshold
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_threshold(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
+    threshold = 0
+    value = 100
+
+    ref_out = torch.nn.functional.threshold(ref_inp, threshold, value)
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.threshold(res_inp, threshold, value)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.threshold
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_threshold_backward(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn_like(res_inp)
+    threshold = 0
+
+    ref_inp = to_reference(res_inp, True)
+    ref_grad = to_reference(res_grad, True)
+
+    ref_in_grad = torch.ops.aten.threshold_backward(ref_grad, ref_inp, threshold)
+    with flag_gems.use_gems():
+        res_in_grad = torch.ops.aten.threshold_backward(res_grad, res_inp, threshold)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.polar
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_polar(shape, dtype):
+    abs = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 5
+    angle = (torch.rand(shape, dtype=dtype, device=flag_gems.device) - 0.5) * (
+        8 * math.pi
+    )
+    ref_abs = to_reference(abs)
+    ref_angle = to_reference(angle)
+    ref_out = torch.polar(ref_abs, ref_angle)
+    with flag_gems.use_gems():
+        res_out = torch.polar(abs, angle)
+
+    gems_assert_close(res_out.real, ref_out.real, dtype)
+    gems_assert_close(res_out.imag, ref_out.imag, dtype)

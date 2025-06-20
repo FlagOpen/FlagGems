@@ -11,6 +11,8 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["K", "N", "philox_seed", "philox_offset"])
@@ -64,7 +66,7 @@ def multinomial_with_replacement(
 
 
 def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
-    logging.debug("GEMS_CAMBRICON MULTINOMIAL")
+    logger.debug("GEMS_CAMBRICON MULTINOMIAL")
     assert prob.dtype in (torch.float16, torch.float32, torch.bfloat16, torch.float64)
     assert 0 < prob.dim() <= 2, "prob_dist must be 1 or 2 dim"
     n_categories = prob.size(-1)
@@ -99,7 +101,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     # The CTA level parallelism is framed in a 2d grid of blocks with grid.y
     # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
     multinomial_with_replacement[grid](
         cum_prob, out, n_categories, n_samples, philox_seed, philox_offset, num_warps=1

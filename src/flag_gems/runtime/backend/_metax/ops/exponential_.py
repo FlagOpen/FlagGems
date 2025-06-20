@@ -10,6 +10,7 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+logger = logging.getLogger(__name__)
 eps: tl.constexpr = [
     2.220446049250313e-16,
     1.1920928955078125e-07,
@@ -225,7 +226,7 @@ def transform_exponential_bfloat16(u):
 
 
 def exponential_(x, lambd: float = 1.0, *, gen=None):
-    logging.debug("GEMS EXPONENTIAL_")
+    logger.debug("METAX GEMS EXPONENTIAL_")
     dtype = x.dtype
     device = x.device
     inplace = x.is_contiguous()
@@ -238,7 +239,7 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     type_index = lst.index(dtype)

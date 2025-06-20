@@ -11,6 +11,8 @@ from flag_gems.utils.shape_utils import restride_dim
 
 from .scatter import scatter_
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
@@ -59,7 +61,7 @@ def generate_gather_kernel(
 
     code.writeline("def heur_block_n(args):")
     with code.indent():
-        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 8192)')
+        code.writeline('return builtins.min(triton.next_power_of_2(args["N"]), 4096)')
 
     code.newline()
     code.newline()
@@ -100,10 +102,10 @@ def generate_gather_kernel(
             )
             code.writeline(f"{shape_args}, # shape for index")
 
-            code.writeline("dim,")
-            code.writeline("stride_dim,")
-            code.writeline("M,")
-            code.writeline("N,")
+            code.writeline("dim: tl.constexpr,")
+            code.writeline("stride_dim: tl.constexpr,")
+            code.writeline("M: tl.constexpr,")
+            code.writeline("N: tl.constexpr,")
             code.writeline("BLOCK_M: tl.constexpr,")
             code.writeline("BLOCK_N: tl.constexpr,")
     code.writeline("):")
@@ -272,7 +274,7 @@ _gather_func = GatherFunction()
 
 
 def gather(inp, dim, index, out=None, sparse_grad=False):
-    logging.debug("GEMS GATHER")
+    logger.debug("GEMS GATHER")
     inp = inp.contiguous()
     index = index.contiguous()
     if out is None:
@@ -290,6 +292,6 @@ def gather(inp, dim, index, out=None, sparse_grad=False):
 
 
 def gather_backward(grad, self, dim, index, sparse_grad):
-    logging.debug("GEMS GATHER BACKWARD")
+    logger.debug("GEMS GATHER BACKWARD")
     result = grad.new_zeros(self.shape)
     return scatter_(result, dim, index, grad, reduce="add")

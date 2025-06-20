@@ -6,13 +6,17 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import dim_compress, libentry, libtuner
 
 from ..utils import TOTAL_CORE_NUM, cfggen_reduce_op
 
+logger = logging.getLogger(__name__)
+
 
 @libentry()
-@triton.autotune(configs=cfggen_reduce_op(), key=["M"], reset_to_zero=["out"])
+@libtuner(
+    configs=cfggen_reduce_op(), key=["M"], strategy=["log"], reset_to_zero=["out"]
+)
 @triton.jit
 def mean_kernel_1(
     inp,
@@ -37,7 +41,7 @@ def mean_kernel_1(
 
 
 def mean(inp, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON MEAN")
+    logger.debug("GEMS_CAMBRICON MEAN")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -50,9 +54,10 @@ def mean(inp, *, dtype=None):
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("mean"),
     key=["M", "N"],
+    strategy=["log", "log"],
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
@@ -83,7 +88,7 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
 
 
 def mean_dim(x, dim, keepdim=False, *, dtype=None):
-    logging.debug("GEMS_CAMBRICON MEAN DIM")
+    logger.debug("GEMS_CAMBRICON MEAN DIM")
 
     if dtype is None:
         dtype = x.dtype

@@ -83,6 +83,25 @@ def mm_heur_even_k(args):
     return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
 
 
+def ones_heur_block_size(args):
+    if args["N"] <= 1024:
+        return 1024
+    elif args["N"] <= 2048:
+        return 2048
+    else:
+        return 4096
+
+
+def ones_heur_num_warps(args):
+    if (
+        args["output_ptr"].dtype == torch.float16
+        or args["output_ptr"].dtype == torch.bfloat16
+    ):
+        return 2
+    else:
+        return 4
+
+
 def rand_heur_block(args):
     if args["N"] <= 512:
         return 512
@@ -203,6 +222,10 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def upsample_nearest2d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
+
+
 def batch_norm_heur_block_m(args):
     return min(2048, triton.next_power_of_2(args["batch_dim"]))
 
@@ -222,6 +245,25 @@ def vdot_heur_block_size(args):
         return 256
     else:
         return 1024
+
+
+def zeros_heur_block_size(args):
+    if args["N"] <= 1024:
+        return 1024
+    elif args["N"] <= 2048:
+        return 2048
+    else:
+        return 4096
+
+
+def zeros_heur_num_warps(args):
+    if (
+        args["output_ptr"].dtype == torch.float16
+        or args["output_ptr"].dtype == torch.bfloat16
+    ):
+        return 2
+    else:
+        return 4
 
 
 HEURISTICS_CONFIGS = {
@@ -257,6 +299,10 @@ HEURISTICS_CONFIGS = {
     "mm": {
         "EVEN_K": mm_heur_even_k,
     },
+    "ones": {
+        "BLOCK_SIZE": ones_heur_block_size,
+        "num_warps": ones_heur_num_warps,
+    },
     "rand": {
         "BLOCK": rand_heur_block,
         "num_warps": rand_heur_num_warps,
@@ -291,6 +337,7 @@ HEURISTICS_CONFIGS = {
     "upsample_nearest2d": {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,
@@ -301,5 +348,9 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "zeros": {
+        "BLOCK_SIZE": zeros_heur_block_size,
+        "num_warps": zeros_heur_num_warps,
     },
 }

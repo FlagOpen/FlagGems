@@ -6,13 +6,16 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K"],
+    strategy=["log", "log", "log"],
 )
 @triton.heuristics(runtime.get_heuristic_config("bmm"))
 @triton.jit
@@ -114,7 +117,7 @@ def bmm_kernel(
 
 
 def bmm(A, B):
-    logging.debug("GEMS_CAMBRICON BMM")
+    logger.debug("GEMS_CAMBRICON BMM")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()

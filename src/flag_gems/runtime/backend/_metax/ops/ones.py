@@ -4,38 +4,17 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems.runtime as runtime
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.shape_utils import volume
 
+logger = logging.getLogger(__name__)
 device_ = device
 
 
-def heur_block(args):
-    if args["N"] <= 1024:
-        return 1024
-    elif args["N"] <= 2048:
-        return 2048
-    else:
-        return 4096
-
-
-def heur_num_warps(args):
-    if args["N"] <= 1024:
-        return 4
-    elif args["N"] <= 2048:
-        return 8
-    else:
-        return 16
-
-
-@triton.heuristics(
-    {
-        "BLOCK_SIZE": heur_block,
-        "num_warps": heur_num_warps,
-    }
-)
+@triton.heuristics(runtime.get_heuristic_config("ones"))
 @libentry()
 @triton.jit
 def ones_kernel(
@@ -51,7 +30,7 @@ def ones_kernel(
 
 
 def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS ONES")
+    logger.debug("METAX GEMS ONES")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

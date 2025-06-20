@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -9,6 +10,7 @@ from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -111,6 +113,7 @@ def scan_part_sum_abc_kernel(
 
     part_sum_via_sum = tl.sum(inp_vals)
 
+    offset = tl.where(mask, offset, -1)
     out_ptrs = out + offset
     tl.store(out_ptrs, result, mask=mask)
 
@@ -180,10 +183,24 @@ def scan_then_fan(inp, out, A, B, C, dtype):
     partial_sum = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
 
     grid = (A, part_num, C)
-    with torch_device_fn.device(inp.device):
+
+    if inp.shape[1] > 8192:
+        os.environ["TRITONXPU_OTHER_SIM"] = "1"
+        os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
         scan_part_sum_abc_kernel[grid](
             inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
         )
+
+        if "TRITONXPU_OTHER_SIM" in os.environ:
+            del os.environ["TRITONXPU_OTHER_SIM"]
+        if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+            del os.environ["TRITONXPU_STORE_MASK_SIM"]
+
+    else:
+        with torch_device_fn.device(inp.device):
+            scan_part_sum_abc_kernel[grid](
+                inp, out, partial_sum, B, C, part_num, BLOCK_SIZE
+            )
 
     if part_num >= 2:
         scan_then_fan(partial_sum, partial_sum, A, part_num, C, dtype)
@@ -191,8 +208,7 @@ def scan_then_fan(inp, out, A, B, C, dtype):
             add_base_sum_abc_kernel[grid](out, partial_sum, B, C, part_num, BLOCK_SIZE)
 
 
-def cumsum(inp, dim=1, *, dtype=None):
-    logging.debug("GEMS CUMSUM")
+def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
@@ -207,7 +223,8 @@ def cumsum(inp, dim=1, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int64
-    out = torch.empty_like(inp, dtype=dtype)
+    if out is None:
+        out = torch.empty_like(inp, dtype=dtype)
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
@@ -218,6 +235,16 @@ def cumsum(inp, dim=1, *, dtype=None):
     else:
         scan_then_fan(inp, out, M, N, K, compute_dtype)
     return out
+
+
+def cumsum(inp, dim=1, *, dtype=None):
+    logger.debug("GEMS CUMSUM")
+    return cumsum_wrapper(inp, dim, dtype)
+
+
+def cumsum_out(inp, dim=1, *, dtype=None, out):
+    logger.debug("GEMS CUMSUM_OUT")
+    return cumsum_wrapper(inp, dim, dtype, out)
 
 
 @libentry()
@@ -249,14 +276,14 @@ def block_cumsum_kernel(
     inp,
     out,
     sums,
-    r,
-    t,
-    R,
-    K,
-    r_stride,
-    k_stride,
-    out_r_stride,
-    out_k_stride,
+    r: tl.constexpr,
+    t: tl.constexpr,
+    R: tl.constexpr,
+    K: tl.constexpr,
+    r_stride: tl.constexpr,
+    k_stride: tl.constexpr,
+    out_r_stride: tl.constexpr,
+    out_k_stride: tl.constexpr,
     OUTPUT_SUMS: tl.constexpr,
     NORMALIZE: tl.constexpr,
     HAS_OUT_LAYOUT: tl.constexpr,
@@ -364,7 +391,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logging.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()
@@ -380,7 +407,7 @@ def normed_cumsum(inp, dim=-1):
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         num_sms = torch_device_fn.get_device_properties(device).multi_processor_count
-        TILE = 2048
+        TILE = 8192
         # Each row is split into n_chunks of chunks where each chunk is compised of
         # n_tiles of tiles. Different chunks are assigned to different ctas.
         n_rows = N // K
@@ -413,6 +440,7 @@ def normed_cumsum(inp, dim=-1):
                 NORMALIZE=True,
                 HAS_OUT_LAYOUT=False,
                 TILE=TILE,
+                isCloseUnrollControl=True,
             )
             return out
 
@@ -436,6 +464,7 @@ def normed_cumsum(inp, dim=-1):
             NORMALIZE=False,
             HAS_OUT_LAYOUT=False,
             TILE=TILE,
+            isCloseUnrollControl=True,
         )
         # Pass two, scan partial cumsums
         block_cumsum_kernel[(1, n_batch)](
@@ -454,6 +483,7 @@ def normed_cumsum(inp, dim=-1):
             NORMALIZE=False,
             HAS_OUT_LAYOUT=True,
             TILE=TILE,
+            isCloseUnrollControl=True,
         )
         # print(sums)
         rscale = cumsums[..., -1]

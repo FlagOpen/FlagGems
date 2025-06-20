@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
+logger = logging.getLogger(__name__)
+
 
 def nonzero_kernel_heur_block_size(args):
     return triton.next_power_of_2(triton.cdiv(args["n_elements"], 12))  # cluster_num
@@ -31,7 +33,7 @@ def nonzero_kernel(
     inp,
     prefix_sum,
     out,
-    n_elements,
+    n_elements: tl.constexpr,
     shape,
     ndim: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
@@ -51,11 +53,13 @@ def nonzero_kernel(
         dim_size = tl.load(shape + dim)
         remainder = idx_flat % dim_size
         idx_flat //= dim_size
-        tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+        final_out_offset = out_offset * ndim + dim
+        final_out_offset = tl.where(nonzero_mask, final_out_offset, -1)
+        tl.store(out + final_out_offset, remainder, mask=nonzero_mask)
 
 
 def nonzero(inp, *, as_tuple=False):
-    logging.debug("GEMS NONZERO")
+    logger.debug("GEMS NONZERO")
 
     inp_ndim = inp.ndim
 
@@ -75,8 +79,27 @@ def nonzero(inp, *, as_tuple=False):
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
 
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    import os
+
+    os.environ["TRITONXPU_OTHER_SIM"] = "1"
+    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+
     with torch_device_fn.device(inp.device):
-        nonzero_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
+        nonzero_kernel[grid](
+            inp_bool,
+            prefix_sum,
+            out,
+            n_elements,
+            shape,
+            inp_ndim,
+            isCloseUnrollControl=True,
+        )
+
+    if "TRITONXPU_OTHER_SIM" in os.environ:
+        del os.environ["TRITONXPU_OTHER_SIM"]
+    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
+        del os.environ["TRITONXPU_STORE_MASK_SIM"]
 
     num_nonzeros = prefix_sum[n_elements - 1].item()
     out = out[0:num_nonzeros]

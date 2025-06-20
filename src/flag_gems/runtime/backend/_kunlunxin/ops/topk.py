@@ -17,18 +17,19 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-_MIN_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).min
-_MAX_FLOAT32_VAL: tl.constexpr = torch.finfo(torch.float32).max
-_MIN_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).min
-_MAX_FLOAT16_VAL: tl.constexpr = torch.finfo(torch.float16).max
-_MIN_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).min
-_MAX_BFLOAT16_VAL: tl.constexpr = torch.finfo(torch.bfloat16).max
-_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
-_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
-_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
-_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
-_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
-_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
+logger = logging.getLogger(__name__)
+_MIN_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).min)
+_MAX_FLOAT32_VAL = tl.constexpr(torch.finfo(torch.float32).max)
+_MIN_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).min)
+_MAX_FLOAT16_VAL = tl.constexpr(torch.finfo(torch.float16).max)
+_MIN_BFLOAT16_VAL = tl.constexpr(torch.finfo(torch.bfloat16).min)
+_MAX_BFLOAT16_VAL = tl.constexpr(torch.finfo(torch.bfloat16).max)
+_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
+_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
+_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
+_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
+_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
+_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
 
 
 @triton.jit
@@ -274,7 +275,7 @@ def topk_stage2_kernel(
 
 
 def topk(x, k, dim=-1, largest=True, sorted=True):
-    logging.debug("GEMS TOPK")
+    logger.debug("GEMS TOPK")
     # If dim equals to last dim, we set it to -1.
     if dim < 0:
         dim = dim + x.ndim

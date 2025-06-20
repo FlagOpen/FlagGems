@@ -7,8 +7,10 @@ import triton.language as tl
 
 from .. import runtime
 from ..runtime import torch_device_fn
-from ..utils import dim_compress, libentry
+from ..utils import dim_compress, libentry, libtuner
 from ..utils import triton_lang_extension as tle
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -56,7 +58,11 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("sum"), key=["M", "N"])
+@libtuner(
+    configs=runtime.get_tuned_config("naive_reduction"),
+    key=["M", "N"],
+    share="naive_reduction",
+)
 @triton.jit
 def sum_kernel(
     inp,
@@ -92,7 +98,7 @@ def sum_kernel(
 
 
 def sum(inp, *, dtype=None):
-    logging.debug("GEMS SUM")
+    logger.debug("GEMS SUM")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -113,7 +119,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logging.debug("GEMS SUM DIM")
+    logger.debug("GEMS SUM DIM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:

@@ -51,9 +51,9 @@ class UnaryReductionBenchmark(Benchmark):
 
 
 forward_operations = [
+    ("all", torch.all, FLOAT_DTYPES),
     *(
         [
-            ("all", torch.all, FLOAT_DTYPES),
             ("any", torch.any, FLOAT_DTYPES),
         ]
         if flag_gems.device != "musa"
@@ -80,7 +80,7 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name in ["var_mean", "softmax"]:
+    if vendor_name == "kunlunxin" and op_name in ["softmax"]:
         pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
@@ -164,18 +164,20 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             "nonzero",
             torch.nonzero,
             unary_input_fn,
-            FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+            FLOAT_DTYPES
+            + ([torch.int32] if vendor_name == "kunlunxin" else INT_DTYPES)
+            + BOOL_DTYPES,
             marks=[
                 pytest.mark.nonzero,
                 pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError"),
             ],
         ),
         pytest.param(
-            "CrossEntropyLoss",
+            "cross_entropy_loss",
             torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.CrossEntropyLoss,
+            marks=pytest.mark.cross_entropy_loss,
         ),
         pytest.param(
             "cumsum",
@@ -227,13 +229,15 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["CrossEntropyLoss", "nll_loss", "log_softmax"]:
+        if op_name in ["cross_entropy_loss", "nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cumsum", "cummin", "nonzero"]:
+        elif op_name in ["cummin"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
+    if op_name == "cross_entropy_loss":
+        bench.set_gems(flag_gems.cross_entropy_loss)
     bench.run()
 
 
@@ -255,6 +259,24 @@ def test_perf_count_nonzero():
         torch_op=torch.count_nonzero,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.dot
+def test_perf_dot():
+    def dot_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        if inp.dim() > 1:
+            inp = inp.flatten()
+        yield inp, inp
+
+    bench = GenericBenchmark(
+        input_fn=dot_input_fn,
+        op_name="dot",
+        torch_op=torch.dot,
+        dtypes=FLOAT_DTYPES,
+    )
+
     bench.run()
 
 

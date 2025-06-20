@@ -4,7 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
@@ -12,6 +11,7 @@ from flag_gems.utils.random_utils import (
 )
 from flag_gems.utils.shape_utils import volume
 
+logger = logging.getLogger(__name__)
 try:
     pair_uniform_to_normal = tl.pair_uniform_to_normal
 except AttributeError:
@@ -28,7 +28,6 @@ except AttributeError:
 device_ = device
 
 
-@triton.heuristics(runtime.get_heuristic_config("randn"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def randn_kernel(
     out_ptr,
@@ -44,7 +43,7 @@ def randn_kernel(
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O, 7)
     r0 = uint_to_uniform_float(r0)
     r1 = uint_to_uniform_float(r1)
     r2 = uint_to_uniform_float(r2)
@@ -65,18 +64,23 @@ UNROLL = 4
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logging.debug("GEMS RANDN")
+    logger.debug("GEMS RANDN")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    cluster_num = 12
+    BLOCK_SIZE = min(
+        triton.next_power_of_2(triton.cdiv(N, cluster_num * UNROLL)),
+        1024,
+    )
+    grid_fn = triton.cdiv(N, BLOCK_SIZE * UNROLL)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
     with torch_device_fn.device(device):
-        randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+        randn_kernel[(grid_fn,)](out, N, philox_seed, philox_offset, BLOCK_SIZE)
     return out

@@ -14,6 +14,7 @@ import flag_gems
 
 from .attri_util import (
     BOOL_DTYPES,
+    COMPLEX_DTYPES,
     DEFAULT_METRICS,
     DEFAULT_SHAPES,
     FLOAT_DTYPES,
@@ -32,6 +33,9 @@ device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 if device == "musa":
     torch.backends.mudnn.allow_tf32 = False
+elif device == "npu":
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
 else:
     torch_backend_device.matmul.allow_tf32 = False
 
@@ -183,6 +187,15 @@ class Benchmark:
                         self.shapes = self.DEFAULT_SHAPES
 
             self.shapes = [tuple(shape) for shape in self.shapes]
+            if vendor_name == "kunlunxin":
+                if self.op_name in ["isin", "nonzero"]:
+                    # isin oom  # nonzero oot
+                    import math
+
+                    self.shapes = [
+                        shape for shape in self.shapes if math.prod(shape) < 1024 * 1024
+                    ]
+
             # merge shapes from subclass If subclass has `set_more_shapes`, call it to merge shapes
             if (
                 hasattr(self, "set_more_shapes")
@@ -310,6 +323,7 @@ class Benchmark:
                 or isinstance(item, (int, float))
                 or item is None
                 or isinstance(item, (list, tuple))
+                or isinstance(item, torch.dtype)
             ):
                 args.append(item)
             elif isinstance(item, dict):
@@ -476,6 +490,8 @@ def generate_tensor_input(shape, dtype, device):
         ).to(device)
     elif dtype in BOOL_DTYPES:
         return torch.randint(0, 2, size=shape, dtype=dtype, device="cpu").to(device)
+    elif dtype in COMPLEX_DTYPES:
+        return torch.randn(shape, dtype=dtype, device=device)
 
 
 def binary_input_fn(shape, cur_dtype, device):

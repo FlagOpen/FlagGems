@@ -67,15 +67,12 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
-    if vendor_name == "kunlunxin" and op_name == "topk":
-        pytest.skip("RUNTIME TODOFIX")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.isin
 def test_isin_perf():
@@ -100,7 +97,6 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.unique
 def test_perf_unique():
@@ -137,8 +133,6 @@ def test_perf_sort():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.multinomial
 def test_multinomial_with_replacement():
     def multinomial_input_fn(shape, dtype, device):
@@ -248,7 +242,6 @@ def test_perf_upsample_bicubic2d_aa():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.upsample_nearest2d
 def test_perf_upsample_nearest2d():
     def upsample_nearest2d_input_fn(shape, dtype, device):
@@ -399,6 +392,28 @@ def test_perf_kron():
         op_name="kron",
         torch_op=torch.kron,
         dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()
+
+
+@pytest.mark.contiguous
+def test_perf_contiguous():
+    def contiguous_input_fn(shape, dtype, device):
+        if dtype in FLOAT_DTYPES:
+            inp = torch.randn(shape, dtype=dtype, device=device)
+        else:
+            inp = torch.randint(
+                low=-10000, high=10000, size=shape, dtype=dtype, device=device
+            )
+        inp = inp[::2]
+        yield inp,
+
+    bench = GenericBenchmark(
+        input_fn=contiguous_input_fn,
+        op_name="torch.Tensor.contiguous",
+        torch_op=torch.Tensor.contiguous,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
     )
 
     bench.run()

@@ -8,9 +8,11 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_NRAM_SIZE, TOTAL_CORE_NUM
 
+logger = logging.getLogger(__name__)
 MAX_N = 16384
 
 
@@ -87,12 +89,14 @@ def softmax_tile_mode_for_non_inner(M, N, K, TILE_N, TILE_K):
         return 2
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_non_inner"),
     key=[
         "N",
         "K",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune1},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
@@ -245,12 +249,14 @@ def softmax_tile_mode_for_inner(args):
         return 2
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_inner"),
     key=[
         "M",
         "N",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune2},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
@@ -402,12 +408,14 @@ def config_prune3(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_non_inner_bw"),
     key=[
         "N",
         "K",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune3},
 )
 @triton.heuristics(runtime.get_heuristic_config("softmax_backward_non_inner"))
@@ -532,12 +540,14 @@ def config_prune4(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@triton.autotune(
+@libentry()
+@libtuner(
     configs=runtime.get_tuned_config("softmax_inner_bw"),
     key=[
         "M",
         "N",
     ],
+    strategy=["log", "log"],
     prune_configs_by={"early_config_prune": config_prune4},
 )
 @triton.heuristics(
@@ -609,7 +619,7 @@ def softmax_backward_kernel_inner(
 class Softmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, dim, dtype):
-        logging.debug("GEMS_CAMBRICON SOFTMAX")
+        logger.debug("GEMS_CAMBRICON SOFTMAX")
 
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         dim = dim % x.ndim
@@ -625,7 +635,7 @@ class Softmax(torch.autograd.Function):
 
         with torch_device_fn.device(inp.device):
             if K > 1:
-                logging.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
                 softmax_kernel_non_inner[grid](
                     out,
@@ -635,7 +645,7 @@ class Softmax(torch.autograd.Function):
                     K,
                 )
             else:
-                logging.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX USE INNER")
                 softmax_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
                     inp,
@@ -648,7 +658,7 @@ class Softmax(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_CAMBRICON SOFTMAX VJP")
+        logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
         dim = ctx.dim
         (out,) = ctx.saved_tensors
 
@@ -665,7 +675,7 @@ class Softmax(torch.autograd.Function):
 
         with torch_device_fn.device(in_grad.device):
             if K > 1:
-                logging.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE NON INNER")
                 grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
                 softmax_backward_kernel_non_inner[grid](
                     out,
@@ -676,7 +686,7 @@ class Softmax(torch.autograd.Function):
                     K,
                 )
             else:
-                logging.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
+                logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
                 softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     out,
                     out_grad,

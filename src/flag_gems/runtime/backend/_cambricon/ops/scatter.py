@@ -8,13 +8,15 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import torch")
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
     code.newline()
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.newline()
@@ -40,7 +42,7 @@ def generate_scatter_kernel(
     # the decorators
     code.writeline("@libentry()")
     code.writeline(
-        '@triton.autotune(configs=runtime.get_tuned_config("scatter"), key=["N"])'
+        '@libtuner(configs=runtime.get_tuned_config("scatter"), key=["N"], strategy=["log"])'
     )
     code.writeline("@triton.jit")
 
@@ -269,7 +271,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter(inp, dim, index, src, reduce=None):
-    logging.debug("GEMS_CAMBRICON SCATTER")
+    logger.debug("GEMS_CAMBRICON SCATTER")
     inp = inp.contiguous()
     index = index.contiguous()
     src = src.contiguous()
