@@ -249,10 +249,14 @@ class Benchmark:
                         for a in args
                     )
                 if self.need_dim:
-                    if args[0].ndim == 1:
-                        args = args + (0,True)
+                    if self.op_name == "argmax":
+                        if args[0].ndim > 1:
+                            args = args + (1,False)
+                        else:
+                            args = args + (0,False)
                     else:
-                       args = args + (1,False)
+                        if args[0].ndim > 1:
+                            args = args + (1,)
                 kwargs = {}
                 if self.kwargs_func is not None:
                     kwargs = self.kwargs_func(dtype, self.batch, size)
