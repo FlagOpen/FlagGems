@@ -98,7 +98,7 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm
+from .mm import mm, mm_out
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
@@ -286,6 +286,7 @@ __all__ = [
     "mean",
     "mean_dim",
     "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multinomial",
