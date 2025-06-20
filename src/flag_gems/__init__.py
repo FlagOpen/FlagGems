@@ -184,6 +184,7 @@ def enable(
             ("mean", mean, Autograd.disable),
             ("mean.dim", mean_dim, Autograd.disable),
             ("mm", mm, Autograd.disable),
+            ("mm.out", mm_out, Autograd.disable),
             ("mul.Tensor", mul, Autograd.disable),
             ("mul_.Tensor", mul_, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
