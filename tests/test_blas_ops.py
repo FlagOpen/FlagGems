@@ -68,6 +68,7 @@ def test_accuracy_bmm(M, N, K, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
+
 MNK_SHAPES = [
     (128, 256, 512),
     (64, 128, 128),
@@ -77,11 +78,13 @@ MNK_SHAPES = [
 FLOAT_DTYPES = [
     torch.float8_e5m2,
 ]
+
+
 @pytest.mark.w8a8_block_fp8_matmul
 @pytest.mark.parametrize("M,N,K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
-    device = flag_gems.device 
+    device = flag_gems.device
     block_n = 128
     block_k = 128
     block_size = [block_n, block_k]
@@ -93,7 +96,9 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
     num_n_groups = (N + block_n - 1) // block_n
 
     As = (0.01 * torch.rand(M, num_k_groups, device=device) + 0.005).to(dtype)
-    Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(dtype)
+    Bs = (0.01 * torch.rand(num_n_groups, num_k_groups, device=device) + 0.005).to(
+        dtype
+    )
 
     A_ref = A.to(torch.float32)
     B_ref = B.to(torch.float32)
@@ -104,7 +109,7 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
     for k_group in range(num_k_groups):
         k_start = k_group * block_k
         k_end = min(k_start + block_k, K)
-        scale = As_ref[:, k_group:k_group + 1]  # [M, 1]
+        scale = As_ref[:, k_group : k_group + 1]  # [M, 1]
         A_scaled[:, k_start:k_end] = A_ref[:, k_start:k_end] * scale
 
     B_scaled = torch.zeros_like(B_ref)
@@ -115,13 +120,18 @@ def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
             k_start = k_group * block_k
             k_end = min(k_start + block_k, K)
             scale = Bs_ref[n_group, k_group]  # scalar
-            B_scaled[n_start:n_end, k_start:k_end] = B_ref[n_start:n_end, k_start:k_end] * scale
+            B_scaled[n_start:n_end, k_start:k_end] = (
+                B_ref[n_start:n_end, k_start:k_end] * scale
+            )
 
     ref_out = torch.matmul(A_scaled, B_scaled.T)
     with flag_gems.use_gems():
-        res_out = flag_gems.w8a8_block_fp8_matmul(A, B, As, Bs, block_size, output_dtype=torch.float16)
+        res_out = flag_gems.w8a8_block_fp8_matmul(
+            A, B, As, Bs, block_size, output_dtype=torch.float16
+        )
     ref_out_fp16 = ref_out.to(torch.float16)
     gems_assert_close(res_out, ref_out_fp16, dtype=torch.float16, reduce_dim=K)
+
 
 # TODO: failed at (1, 1, 2)
 @pytest.mark.mm

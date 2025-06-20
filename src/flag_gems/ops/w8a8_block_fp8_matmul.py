@@ -1,6 +1,14 @@
+import functools
+import json
+import logging
+import os
+from typing import Any, Dict, List, Optional
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -30,7 +38,6 @@ def w8a8_block_fp8_matmul_kernel(
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
 ):
-
     pid = tl.program_id(axis=0)
     num_pid_m = tl.cdiv(M, BLOCK_SIZE_M)
     num_pid_n = tl.cdiv(N, BLOCK_SIZE_N)
@@ -53,12 +60,8 @@ def w8a8_block_fp8_matmul_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(a_ptrs,
-                    mask=offs_k[None, :] < K - k * BLOCK_SIZE_K,
-                    other=0.0)
-        b = tl.load(b_ptrs,
-                    mask=offs_k[:, None] < K - k * BLOCK_SIZE_K,
-                    other=0.0)
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_SIZE_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_SIZE_K, other=0.0)
 
         k_start = k * BLOCK_SIZE_K
         offs_ks = k_start // group_k
@@ -83,15 +86,43 @@ def w8a8_block_fp8_matmul_kernel(
     tl.store(c_ptrs, c, mask=c_mask)
 
 
+@functools.lru_cache
+def get_w8a8_block_fp8_configs(
+    N: int, K: int, block_n: int, block_k: int
+) -> Optional[Dict[int, Any]]:
+    device_name = torch.cuda.get_device_name().replace(" ", "_")
+    json_file_name = (
+        f"N={N},K={K},device_name={device_name},"
+        f"dtype=fp8_w8a8,block_shape=[{block_n},{block_k}].json"
+    )
+
+    config_dir = os.path.join(os.path.dirname(__file__), "..", "utils", "configs")
+    config_file_path = os.path.join(config_dir, json_file_name)
+
+    if os.path.exists(config_file_path):
+        with open(config_file_path) as f:
+            logger.info(
+                "Using configuration from %s for W8A8 Block FP8 kernel.",
+                config_file_path,
+            )
+            return {int(key): val for key, val in json.load(f).items()}
+
+    logger.warning(
+        "Using default W8A8 Block FP8 kernel config. Performance might "
+        "be sub-optimal! Config file not found at %s",
+        config_file_path,
+    )
+    return None
+
+
 def w8a8_block_fp8_matmul(
     A: torch.Tensor,
     B: torch.Tensor,
     As: torch.Tensor,
     Bs: torch.Tensor,
-    block_size: list[int],
+    block_size: List[int],
     output_dtype: torch.dtype = torch.float16,
 ) -> torch.Tensor:
-    
     assert len(block_size) == 2
     block_n, block_k = block_size[0], block_size[1]
 
@@ -105,21 +136,26 @@ def w8a8_block_fp8_matmul(
     assert triton.cdiv(N, block_n) == Bs.shape[0]
     assert triton.cdiv(K, block_k) == Bs.shape[1]
 
-    C_shape = A.shape[:-1] + (N, )
+    C_shape = A.shape[:-1] + (N,)
     C = A.new_empty(C_shape, dtype=output_dtype)
-    
-    config = {
-        "BLOCK_SIZE_M": 64,
-        "BLOCK_SIZE_N": block_size[0],
-        "BLOCK_SIZE_K": block_size[1],
-        "GROUP_SIZE_M": 32,
-        "num_warps": 4,
-        "num_stages": 2,
-    }
+
+    configs = get_w8a8_block_fp8_configs(N, K, block_n, block_k)
+    if configs:
+        config = configs[min(configs.keys(), key=lambda x: abs(x - M))]
+    else:
+        config = {
+            "BLOCK_SIZE_M": 64,
+            "BLOCK_SIZE_N": block_size[0],
+            "BLOCK_SIZE_K": block_size[1],
+            "GROUP_SIZE_M": 32,
+            "num_warps": 4,
+            "num_stages": 2,
+        }
 
     def grid(META):
-        return (triton.cdiv(M, META["BLOCK_SIZE_M"]) *
-                triton.cdiv(N, META["BLOCK_SIZE_N"]), )
+        return (
+            triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        )
 
     w8a8_block_fp8_matmul_kernel[grid](
         A,
