@@ -8,35 +8,35 @@ import triton.language as tl
 from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
-from ..utils.limits import get_dtype_max
+from ..utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def tl_cummin(input, index, axis=0):
+def tl_cummax(input, index, axis=0):
     return tl.associative_scan(
-        (input, index), axis, tle.minimum_with_index_tie_break_right
+        (input, index), axis, tle.maximum_with_index_tie_break_right
     )
 
 
 @triton.jit
-def tl_min_tie_break_right(input, index, axis=None, keep_dims=False):
+def tl_max_tie_break_right(input, index, axis=None, keep_dims=False):
     return tl.reduce(
         (input, index),
         axis,
-        tle.minimum_with_index_tie_break_right,
+        tle.maximum_with_index_tie_break_right,
         keep_dims=keep_dims,
     )
 
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
-def add_base_min_kernel(
+def add_base_max_kernel(
     out,
     out_indices,
-    partial_min,
-    partial_min_indices,
+    partial_max,
+    partial_max_indices,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -50,14 +50,14 @@ def add_base_min_kernel(
     out_indices = tl.load(out_indices_ptrs, mask=mask)
 
     if pid > 0:
-        partial_min_ptrs = partial_min + pid - 1
-        last_part_min_via_min = tl.load(partial_min_ptrs)
-        partial_min_indices_ptrs = partial_min_indices + pid - 1
-        last_part_min_index_via_min = tl.load(partial_min_indices_ptrs)
+        partial_max_ptrs = partial_max + pid - 1
+        last_part_max_via_max = tl.load(partial_max_ptrs)
+        partial_max_indices_ptrs = partial_max_indices + pid - 1
+        last_part_max_index_via_max = tl.load(partial_max_indices_ptrs)
 
-        final_vals = tl.minimum(out_vals, last_part_min_via_min)
+        final_vals = tl.maximum(out_vals, last_part_max_via_max)
         final_indices = tl.where(
-            out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min
+            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
         )
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
@@ -65,13 +65,13 @@ def add_base_min_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements"])
-def scan_part_min_kernel(
+def scan_part_max_kernel(
     inp,
     out,
     in_indices,
     out_indices,
-    partial_min,
-    partial_min_indices,
+    partial_max,
+    partial_max_indices,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
     NEED_PARTIAL: tl.constexpr,
@@ -81,9 +81,9 @@ def scan_part_min_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    max_value = get_dtype_max(inp.type.element_ty)
+    min_value = get_dtype_min(inp.type.element_ty)
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -98,11 +98,11 @@ def scan_part_min_kernel(
         in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
     else:
         in_indices_vals = offset
-    result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
+    result, cummax_indices = tl_cummax(inp_vals, in_indices_vals, axis=0)
 
     if tl.constexpr(NEED_PARTIAL):
-        # tl.min do not support min_indices_tie_break_right
-        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
+        # tl.max do not support max_indices_tie_break_right
+        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
             inp_vals, in_indices_vals, axis=0
         )
 
@@ -110,14 +110,14 @@ def scan_part_min_kernel(
     tl.store(out_ptrs, result, mask=mask)
 
     out_indices_ptrs = out_indices + offset
-    tl.store(out_indices_ptrs, cummin_indices, mask=mask)
+    tl.store(out_indices_ptrs, cummax_indices, mask=mask)
 
     if tl.constexpr(NEED_PARTIAL):
-        partial_min_ptrs = partial_min + pid
-        tl.store(partial_min_ptrs, part_min_via_min)
+        partial_max_ptrs = partial_max + pid
+        tl.store(partial_max_ptrs, part_max_via_max)
 
-        partial_min_indices_ptrs = partial_min_indices + pid
-        tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
+        partial_max_indices_ptrs = partial_max_indices + pid
+        tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
 
 
 def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False):
@@ -128,23 +128,23 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     need_partial = True if part_num >= 2 else False
     if need_partial:
-        partial_min = torch.empty(part_num, dtype=dtype, device=inp.device)
-        partial_min_indices = torch.empty(
+        partial_max = torch.empty(part_num, dtype=dtype, device=inp.device)
+        partial_max_indices = torch.empty(
             part_num, dtype=torch.int64, device=inp.device
         )
     else:
-        partial_min = None
-        partial_min_indices = None
+        partial_max = None
+        partial_max_indices = None
 
     grid = (part_num,)
     with torch_device_fn.device(inp.device):
-        scan_part_min_kernel[grid](
+        scan_part_max_kernel[grid](
             inp,
             out,
             out_indices,
             out_indices,
-            partial_min,
-            partial_min_indices,
+            partial_max,
+            partial_max_indices,
             n_ele,
             BLOCK_SIZE,
             need_partial,
@@ -153,28 +153,28 @@ def scan_then_fan_col(inp, out, out_indices, n_ele, dtype, use_out_indices=False
 
     if part_num >= 2:
         scan_then_fan_col(
-            partial_min,
-            partial_min,
-            partial_min_indices,
+            partial_max,
+            partial_max,
+            partial_max_indices,
             part_num,
             dtype,
             use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
-            add_base_min_kernel[grid](
-                out, out_indices, partial_min, partial_min_indices, n_ele, BLOCK_SIZE
+            add_base_max_kernel[grid](
+                out, out_indices, partial_max, partial_max_indices, n_ele, BLOCK_SIZE
             )
 
 
 @libentry()
 @triton.jit(do_not_specialize=["part_num"])
-def scan_part_min_abc_kernel(
+def scan_part_max_abc_kernel(
     inp,
     out,
     in_indices,
     out_indices,
-    partial_min,
-    partial_min_indices,
+    partial_max,
+    partial_max_indices,
     B,
     C,
     part_num,
@@ -196,8 +196,8 @@ def scan_part_min_abc_kernel(
 
     mask = b_idx < B
     inp_ptrs = inp + offset
-    max_value = get_dtype_max(inp.type.element_ty)
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
+    min_value = get_dtype_min(inp.type.element_ty)
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
     if (
         tl.constexpr(inp_vals.dtype.is_int64())
         or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -212,11 +212,11 @@ def scan_part_min_abc_kernel(
         in_indices_vals = tl.load(in_indices_ptrs, mask=mask)
     else:
         in_indices_vals = b_idx
-    result, cummin_indices = tl_cummin(inp_vals, in_indices_vals, axis=0)
+    result, cummax_indices = tl_cummax(inp_vals, in_indices_vals, axis=0)
 
     if tl.constexpr(NEED_PARTIAL):
-        # tl.min do not support min_indices_tie_break_right
-        part_min_via_min, part_min_indices_via_min = tl_min_tie_break_right(
+        # tl.max do not support max_indices_tie_break_right
+        part_max_via_max, part_max_indices_via_max = tl_max_tie_break_right(
             inp_vals, in_indices_vals, axis=0
         )
 
@@ -224,23 +224,23 @@ def scan_part_min_abc_kernel(
     tl.store(out_ptrs, result, mask=mask)
 
     out_indices_ptrs = out_indices + offset
-    tl.store(out_indices_ptrs, cummin_indices, mask=mask)
+    tl.store(out_indices_ptrs, cummax_indices, mask=mask)
 
     if tl.constexpr(NEED_PARTIAL):
-        partial_min_ptrs = partial_min + part_offset
-        tl.store(partial_min_ptrs, part_min_via_min)
+        partial_max_ptrs = partial_max + part_offset
+        tl.store(partial_max_ptrs, part_max_via_max)
 
-        partial_min_indices_ptrs = partial_min_indices + part_offset
-        tl.store(partial_min_indices_ptrs, part_min_indices_via_min)
+        partial_max_indices_ptrs = partial_max_indices + part_offset
+        tl.store(partial_max_indices_ptrs, part_max_indices_via_max)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["part_num"])
-def add_base_min_abc_kernel(
+def add_base_max_abc_kernel(
     out,
     out_indices,
-    partial_min,
-    partial_min_indices,
+    partial_max,
+    partial_max_indices,
     B,
     C,
     part_num,
@@ -266,14 +266,14 @@ def add_base_min_abc_kernel(
     out_indices = tl.load(out_indices_ptrs, mask=mask)
 
     if pid_b > 0:
-        partial_min_ptrs = partial_min + last_part_offset
-        last_part_min_via_min = tl.load(partial_min_ptrs)
-        partial_min_index_ptrs = partial_min_indices + last_part_offset
-        last_part_min_index_via_min = tl.load(partial_min_index_ptrs)
+        partial_max_ptrs = partial_max + last_part_offset
+        last_part_max_via_max = tl.load(partial_max_ptrs)
+        partial_max_index_ptrs = partial_max_indices + last_part_offset
+        last_part_max_index_via_max = tl.load(partial_max_index_ptrs)
 
-        final_vals = tl.minimum(out_vals, last_part_min_via_min)
+        final_vals = tl.maximum(out_vals, last_part_max_via_max)
         final_indices = tl.where(
-            out_vals <= last_part_min_via_min, out_indices, last_part_min_index_via_min
+            out_vals >= last_part_max_via_max, out_indices, last_part_max_index_via_max
         )
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
@@ -287,23 +287,23 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
     part_num = math.ceil(B / BLOCK_SIZE)
     need_partial = True if part_num >= 2 else False
     if need_partial:
-        partial_min = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
-        partial_min_indices = torch.empty(
+        partial_max = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
+        partial_max_indices = torch.empty(
             A, part_num, C, dtype=torch.int64, device=inp.device
         )
     else:
-        partial_min = None
-        partial_min_indices = None
+        partial_max = None
+        partial_max_indices = None
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
-        scan_part_min_abc_kernel[grid](
+        scan_part_max_abc_kernel[grid](
             inp,
             out,
             out_indices,
             out_indices,
-            partial_min,
-            partial_min_indices,
+            partial_max,
+            partial_max_indices,
             B,
             C,
             part_num,
@@ -314,9 +314,9 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
 
     if part_num >= 2:
         scan_then_fan(
-            partial_min,
-            partial_min,
-            partial_min_indices,
+            partial_max,
+            partial_max,
+            partial_max_indices,
             A,
             part_num,
             C,
@@ -324,11 +324,11 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
             use_out_indices=True,
         )
         with torch_device_fn.device(inp.device):
-            add_base_min_abc_kernel[grid](
+            add_base_max_abc_kernel[grid](
                 out,
                 out_indices,
-                partial_min,
-                partial_min_indices,
+                partial_max,
+                partial_max_indices,
                 B,
                 C,
                 part_num,
@@ -338,7 +338,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
 
 @libentry()
 @triton.jit()
-def scan_part_min_abc_loop_kernel(
+def scan_part_max_abc_loop_kernel(
     inp,
     out,
     out_indices,
@@ -356,16 +356,16 @@ def scan_part_min_abc_loop_kernel(
     ac_offset = a_idx * B * C + c_idx
 
     # init
-    max_value = get_dtype_max(inp.type.element_ty)
-    prev_min_val = tl.full([], max_value, dtype=tl.float32)
-    prev_min_val_idx = tl.full([], 0, dtype=tl.int64)
+    min_value = get_dtype_min(inp.type.element_ty)
+    prev_max_val = tl.full([], min_value, dtype=tl.float32)
+    prev_max_val_idx = tl.full([], 0, dtype=tl.int64)
 
     for l_idx in range(loop_num):
         b_idx = l_idx * BLOCK_SIZE + t_idx
         mask = b_idx < B
         offset = ac_offset + b_idx * C
 
-        inp_vals = tl.load(inp + offset, mask=mask, other=max_value)
+        inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
         if (
             tl.constexpr(inp_vals.dtype.is_int64())
             or tl.constexpr(inp_vals.dtype.is_uint64())
@@ -377,27 +377,27 @@ def scan_part_min_abc_loop_kernel(
             vals = inp_vals.to(tl.float32)
         idxs = b_idx
 
-        # cummin
-        result, cummin_indices = tl_cummin(vals, idxs, axis=0)
+        # cummax
+        result, cummax_indices = tl_cummax(vals, idxs, axis=0)
 
         # broadcast
-        prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
-        prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
+        prev_max_val_b = tl.broadcast_to(prev_max_val, (BLOCK_SIZE,))
+        prev_max_val_idx_b = tl.broadcast_to(prev_max_val_idx, (BLOCK_SIZE,))
 
         # update result from prev val and idx
-        cummin_indices = tl.where(
-            result <= prev_min_val_b, cummin_indices, prev_min_val_idx_b
+        cummax_indices = tl.where(
+            result >= prev_max_val_b, cummax_indices, prev_max_val_idx_b
         )
-        result = tl.minimum(result, prev_min_val_b)
+        result = tl.maximum(result, prev_max_val_b)
 
-        # update global min val and idx
+        # update global max val and idx
         last_mask = t_idx == (BLOCK_SIZE - 1)
-        prev_min_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
-        prev_min_val_idx = tl.sum(tl.where(last_mask, cummin_indices, 0), axis=0)
+        prev_max_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
+        prev_max_val_idx = tl.sum(tl.where(last_mask, cummax_indices, 0), axis=0)
 
         # store result
         tl.store(out + offset, result, mask=mask)
-        tl.store(out_indices + offset, cummin_indices, mask=mask)
+        tl.store(out_indices + offset, cummax_indices, mask=mask)
 
 
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
@@ -409,7 +409,7 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
 
     grid = (A, C)
     with torch_device_fn.device(inp.device):
-        scan_part_min_abc_loop_kernel[grid](
+        scan_part_max_abc_loop_kernel[grid](
             inp,
             out,
             out_indices,
@@ -420,8 +420,8 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         )
 
 
-def cummin(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS cummin")
+def cummax(inp, dim=1, *, dtype=None):
+    logger.debug("GEMS cummax")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = inp.shape
     dim = dim % inp.ndim
