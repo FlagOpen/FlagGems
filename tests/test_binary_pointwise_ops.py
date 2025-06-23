@@ -1982,8 +1982,8 @@ def test_accuracy_lerp(shape, dtype):
         res_out = torch.lerp(input, end, weight=5.0)
     gems_assert_close(res_out, ref_out, dtype)
 
-    ref_out = torch.lerp(ref_input, ref_end, weight=weight)
+    ref_out = torch.lerp(ref_input, ref_end, weight=ref_weight)
     with flag_gems.use_gems():
-        res_out = torch.lerp(input, end, weight=ref_weight)
+        res_out = torch.lerp(input, end, weight=weight)
 
     gems_assert_close(res_out, ref_out, dtype)
