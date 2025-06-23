@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.language.core import _unwrap_if_constexpr
 
 from ..runtime import torch_device_fn
 from ..utils import libentry
@@ -10,26 +11,24 @@ from .topk import _get_finfo_val, _get_iinfo_val, argsort
 
 logger = logging.getLogger(__name__)
 
-# NOTE(chenfeiyu): In Triton 3.3+, callable constexpr is *finally* allowed
-# which allows us to call some function which does not return tl.tensor
-# Althought it still has some usability issues
-# Yes, it is *possible* to decorate a function with constexpr, looks like c++
-# constexpr function? You could be next!
-
 
 @tl.constexpr
-def get_int_t(num_bits, signed):
+def get_int_t(num_bits: tl.constexpr, signed: tl.constexpr) -> tl.dtype:
+    num_bits = _unwrap_if_constexpr(num_bits)
+    signed = _unwrap_if_constexpr(signed)
     return tl.core.get_int_dtype(num_bits, signed)
 
 
 @tl.constexpr
-def one_zeros(num_bits):
-    return tl.constexpr(1) << (num_bits - 1)
+def one_zeros(num_bits: tl.constexpr) -> int:
+    num_bits = _unwrap_if_constexpr(num_bits)
+    return 1 << (num_bits - 1)
 
 
 @tl.constexpr
-def zero_ones(num_bits):
-    return (tl.constexpr(1) << (num_bits - 1)) - 1
+def zero_ones(num_bits: tl.constexpr) -> int:
+    num_bits = _unwrap_if_constexpr(num_bits)
+    return (1 << (num_bits - 1)) - 1
 
 
 @triton.jit
@@ -63,10 +62,10 @@ def floating_to_uint(x, descending: tl.constexpr = False):
     ux = x.to(udtype, bitcast=True)
 
     sign_bit_mask: tl.constexpr = one_zeros(num_bits)
+    # mind the dtype, right_shift for signed is arithmetic right shift
     mask = sign_bit_mask | (sx >> (num_bits - 1)).to(udtype, bitcast=True)
     # 1000000000...0 for positive
     # 1111111111...1 for negative
-
     if descending:
         out = ux ^ (~mask)
     else:
@@ -86,7 +85,7 @@ def convert_to_uint_preverse_order(x: tl.tensor, descending: tl.constexpr = Fals
 
 
 @triton.jit
-def compute_global_hist(
+def compute_global_hist_kernel(
     arr_ptr,
     out_ptr,
     num_passes,
@@ -97,7 +96,7 @@ def compute_global_hist(
     num_bits_per_pass: tl.constexpr,
     descending: tl.constexpr,
 ):
-    # arr_ptr: (m, N)
+    # arr_ptr: (m, n)
     # out_ptr: (m, n_passes, r), where r = 2 ** k_bits is the number of bins
     pid_n = tl.program_id(1)
     pid_m = tl.program_id(0)
@@ -134,13 +133,11 @@ def compute_global_hist(
 @triton.jit
 def sweep(
     arr_ptr,
-    associate_arr_ptr,
-    excumsum_bins_ptr,
+    associate_arr_ptr,  # inputs: (key & value)
     out_ptr,
-    associate_out_ptr,  # outputs
-    flag_ptr,
-    aggregate_ptr,
-    inclusive_prefix_ptr,  # status
+    associate_out_ptr,  # outputs: (key & value)
+    excumsum_bins_ptr,
+    status_ptr,  # aux input and status
     n_passes,
     pass_id,
     bit_offset,
@@ -158,8 +155,7 @@ def sweep(
     # out_ptr: (m, N)
     # excumsum_bins_ptr: (m, n_passes, r)
     # flag_ptr: (m, r, OUT_N)
-    # aggregate_ptr: (m, r, OUT_N)
-    # inclusive_prefix_ptr: (m, r, OUT_N)
+
     # grid: (m, grid_r, grid_n)
 
     # load data
@@ -167,16 +163,16 @@ def sweep(
     pid_r = tl.program_id(2)
     pid_m = tl.program_id(0)
 
+    # bit masks
+    aggregate_mask: tl.constexpr = 1 << 30
+    inclusive_prefix_mask: tl.constexpr = 1 << 31
+    v_mask: tl.constexpr = (1 << 30) - 1
+    bfe_mask: tl.constexpr = (1 << k_bits) - 1  # a.k.a. 2 ** k_bits - 1
+
     # initialize flag to zero-local sum is not ready
     r: tl.constexpr = 2**k_bits
-    bfe_mask: tl.constexpr = (1 << k_bits) - 1  # a.k.a. 2 ** k_bits - 1
     cta_r_start = pid_r * TILE_R
     cta_r_end = tl.minimum(cta_r_start + TILE_R, r)
-
-    # write flags for (TILE_R,) once
-    bins = cta_r_start + tl.arange(0, TILE_R)
-    flag_offsets_ = pid_m * (r * OUT_N) + bins * OUT_N + pid_n  # (TILE_R, )
-    tl.atomic_xchg(flag_ptr + flag_offsets_, 0, sem="release")
 
     # cumsum for a bin_index
     n_offsets = pid_n * TILE_N + tl.arange(0, TILE_N)  # (TILE_N, )
@@ -184,39 +180,36 @@ def sweep(
     arr = tl.load(arr_ptr + pid_m * N + n_offsets, mask=mask)
     arr_u = convert_to_uint_preverse_order(arr, descending)
     key = (arr_u >> bit_offset) & bfe_mask  # (TILE_N, )
-    # since triton can only use scalar as condition, loop by bin_index
-    for bin_index in tl.range(cta_r_start, cta_r_end, num_stages=2):
-        matches = tl.where(mask, key == bin_index, False)  # (TILE_N, )
 
+    # since triton can only use scalar as condition, loop by bin_index
+    # status must be pre zero-initialized, or else we have to initialize it
+    for bin_index in range(cta_r_start, cta_r_end):
+        matches = tl.where(mask, key == bin_index, False)  # (TILE_N, ) bool
         # cta level cumsum per bin
-        local_sum = tl.sum(matches, axis=0)  # scalar
-        state_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
-        flag_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
-        tl.store(aggregate_ptr + state_offset, local_sum)
-        tl.atomic_xchg(flag_ptr + flag_offset, 1, sem="release")
+        # CAUTION: tl.sum in triton 3.2 does not promote type
+        local_sum = tl.sum(matches.to(tl.uint32), axis=0)
+        pack0 = aggregate_mask | local_sum
+        status_offset = pid_m * (r * OUT_N) + bin_index * OUT_N + pid_n
+        tl.store(status_ptr + status_offset, pack0, cache_modifier=".cg")
 
         # decoupled lookback
-        exclusive_prefix = tl.zeros((), dtype=tl.int64)
+        exclusive_prefix = tl.zeros((), dtype=tl.uint32)
         i_lookback = pid_n - 1
         while i_lookback >= 0:
-            state_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
             flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
-            flag = tl.atomic_add(flag_ptr + flag_offset_i, 0, sem="acquire")
-            while flag == 0:
-                flag = tl.atomic_add(flag_ptr + flag_offset_i, 0, sem="acquire")
-            if flag == 1:
-                this_aggregate = tl.load(aggregate_ptr + state_offset_i)
-                exclusive_prefix += this_aggregate
+            pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
+            while pack1 == 0:
+                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)
+            exclusive_prefix += pack1 & v_mask
+            if (pack1 & aggregate_mask) == aggregate_mask:
                 i_lookback -= 1
-            else:  # flag == 2
-                inclusive_prefix = tl.load(inclusive_prefix_ptr + state_offset_i)
-                exclusive_prefix += inclusive_prefix
-                i_lookback = -1  # go back to -1 to break to loop
-        tl.store(inclusive_prefix_ptr + state_offset, exclusive_prefix + local_sum)
-        tl.atomic_xchg(flag_ptr + flag_offset, 2, sem="release")
+            else:
+                i_lookback = -1
+        pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
+        tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
         local_ex_cumsum = (
-            tl.cumsum(matches.to(tl.int64), axis=0) - matches
+            tl.cumsum(matches.to(tl.uint32), axis=0) - matches
         )  # (TILE_N, )
         ex_cumsum_in_bin = (
             exclusive_prefix + local_ex_cumsum
@@ -227,9 +220,8 @@ def sweep(
             excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
         )  # scalar
         pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
-        # tl.static_print(pos.shape)
-        # tl.static_print(arr.shape)
-        # tl.static_print(matches.shape)
+
+        # scatter
         tl.store(out_ptr + pid_m * N + pos, arr, mask=matches)
         if associate_arr_ptr is not None:
             associate_arr = tl.load(
@@ -237,13 +229,10 @@ def sweep(
             )
             tl.store(associate_out_ptr + pid_m * N + pos, associate_arr, mask=matches)
 
-        # tl.store(out_ptr + pid_m * N + n_offsets, pos, mask=matches)
 
-
-# radix sort a contiguous matrix along the last dimension
-# TODO(chenfeiyu): implement inplace radix sort when sorting dimension size is smaller
 def radix_sort(arr, k_bits=8, descending=False):
     m, n = arr.shape
+    assert n < (1 << 30), "we have not implemented 2**30 per launch"
     dtype = arr.dtype
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
 
@@ -255,14 +244,14 @@ def radix_sort(arr, k_bits=8, descending=False):
     n_passes = triton.cdiv(num_bits, k_bits)
     TILE_R = 16
 
-    with torch_device_fn.device(arr.device):
-        grid_n = triton.cdiv(n, CTA_TILE_N)
-        grid_for_global_hist = (m, grid_n, 1)
+    grid_n = triton.cdiv(n, CTA_TILE_N)
+    grid_for_global_hist = (m, grid_n, 1)
 
+    with torch_device_fn.device(arr.device):
         global_hist = torch.zeros(
-            (m, n_passes, num_bins), device=arr.device, dtype=torch.int64
+            (m, n_passes, num_bins), device=arr.device, dtype=torch.int32
         )
-        compute_global_hist[grid_for_global_hist](
+        compute_global_hist_kernel[grid_for_global_hist](
             arr,
             global_hist,
             n_passes,
@@ -274,6 +263,7 @@ def radix_sort(arr, k_bits=8, descending=False):
             descending,
         )
         ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
+        ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
 
         # sort
         arr_in = torch.clone(arr)
@@ -289,31 +279,22 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_r = triton.cdiv(num_bins, TILE_R)
         TILE_N = 2048
         grid_n = triton.cdiv(n, TILE_N)
-        grid_for_sweep = (
-            m,
-            grid_n,
-            grid_r,
-        )
+        grid_for_sweep = (m, grid_n, grid_r)
 
-        flag = torch.empty((m, num_bins, grid_n), device=arr.device, dtype=torch.int64)
-        aggregate = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.int64
-        )
-        inclusive_prefix = torch.empty(
-            (m, num_bins, grid_n), device=arr.device, dtype=torch.int64
+        status = torch.empty(
+            (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
         )
 
         for i in range(0, n_passes):
             bit_offset = i * k_bits
+            status.zero_()
             sweep[grid_for_sweep](
                 arr_in,
                 indices_in,
-                ex_cumsum_bins,
                 arr_out,
                 indices_out,
-                flag,
-                aggregate,
-                inclusive_prefix,
+                ex_cumsum_bins,
+                status,
                 n_passes,
                 i,
                 bit_offset,
@@ -324,6 +305,7 @@ def radix_sort(arr, k_bits=8, descending=False):
                 k_bits,
                 descending,
             )
+            # print(f"< sorted last {bit_offset + k_bits:>2d} bits: {arr_out}")
             arr_in, arr_out = arr_out, arr_in
             indices_in, indices_out = indices_out, indices_in
 
