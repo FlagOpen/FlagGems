@@ -76,7 +76,7 @@ MNK_SHAPES = [
 ]
 
 FLOAT_DTYPES = [
-    torch.float8_e5m2,
+    torch.float8_e4m3fn,
 ]
 
 
