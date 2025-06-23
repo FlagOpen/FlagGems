@@ -359,8 +359,9 @@ def scan_part_max_abc_loop_kernel(
     min_value = get_dtype_min(inp.type.element_ty)
     prev_max_val = tl.full([], min_value, dtype=tl.float32)
     prev_max_val_idx = tl.full([], 0, dtype=tl.int64)
+    last_mask = t_idx == (BLOCK_SIZE - 1)
 
-    for l_idx in range(loop_num):
+    for l_idx in tl.range(loop_num):
         b_idx = l_idx * BLOCK_SIZE + t_idx
         mask = b_idx < B
         offset = ac_offset + b_idx * C
@@ -391,7 +392,6 @@ def scan_part_max_abc_loop_kernel(
         result = tl.maximum(result, prev_max_val_b)
 
         # update global max val and idx
-        last_mask = t_idx == (BLOCK_SIZE - 1)
         prev_max_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
         prev_max_val_idx = tl.sum(tl.where(last_mask, cummax_indices, 0), axis=0)
 
@@ -403,7 +403,7 @@ def scan_part_max_abc_loop_kernel(
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
     # TODO(all): tune on target board
     BLOCK_SIZE = 1024
-    if B <= 1024 * 4:
+    if B < 1024 * 4:
         BLOCK_SIZE = triton.next_power_of_2(B)
     loop_num = math.ceil(B / BLOCK_SIZE)
 
