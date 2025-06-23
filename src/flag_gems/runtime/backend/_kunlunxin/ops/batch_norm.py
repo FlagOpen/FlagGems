@@ -173,6 +173,7 @@ def batch_norm_forward_kernel(
                 mask=batch_mask[:, None] & spatial_mask[None, :],
             )
 
+
 def batch_norm_heur_block_m(args):
     return min(64, triton.next_power_of_2(args["batch_dim"]))
 
@@ -182,6 +183,7 @@ def batch_norm_heur_block_n(args):
     BLOCK_M = batch_norm_heur_block_m(args)
     BLOCK_N = triton.next_power_of_2(args["spatial_dim"])
     return min(BLOCK_N, max(1, 2**14 // BLOCK_M))
+
 
 @libentry()
 @triton.autotune(
@@ -231,12 +233,10 @@ def batch_norm_backward_kernel(
     term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
 
     for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
-
         batch_offset = m_step * BLOCK_M + tl.arange(0, BLOCK_M)
         batch_mask = batch_offset < batch_dim
 
         for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
-
             spatial_offset = n_step * BLOCK_N + tl.arange(0, BLOCK_N)
             spatial_mask = spatial_offset < spatial_dim
 
@@ -257,9 +257,9 @@ def batch_norm_backward_kernel(
             curr_input = tl.load(curr_input_pointer, mask=mask, other=0).to(tl.float32)
 
             curr_pre_lin = ((curr_input - mean) * inv_std).to(tl.float32)
-            curr_output_grad = tl.load(curr_output_grad_pointer, mask=mask, other=0.0).to(
-                tl.float32
-            )
+            curr_output_grad = tl.load(
+                curr_output_grad_pointer, mask=mask, other=0.0
+            ).to(tl.float32)
 
             term1 += curr_pre_lin * curr_output_grad
             term2 += curr_output_grad
