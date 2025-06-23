@@ -35,12 +35,6 @@ def heur_block_d(args):
         "BLOCK_D": heur_block_d,
     },
 )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.jit(do_not_specialize=["ignore_index"])
 def celoss_indices_kernel(
     inp_ptr,
@@ -109,12 +103,6 @@ def celoss_indices_kernel(
         "BLOCK_D": heur_block_d,
     },
 )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.jit(do_not_specialize=["label_smoothing"])
 def celoss_probability_kernel(
     inp_ptr,
@@ -175,12 +163,6 @@ def celoss_probability_kernel(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
@@ -274,12 +256,6 @@ def celoss_indices_smooth_kernel(
         "BLOCK_D": heur_block_d,
     },
 )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
 def celoss_indices_bwd(
     out_grad_ptr,
@@ -350,12 +326,6 @@ def celoss_indices_bwd(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
@@ -444,12 +414,6 @@ def celoss_probability_bwd(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
