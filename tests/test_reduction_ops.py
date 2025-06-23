@@ -122,7 +122,7 @@ def test_accuracy_argmin(shape, dim, keepdim, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
-@pytest.mark.CrossEntropyLoss
+@pytest.mark.cross_entropy_loss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
 @pytest.mark.parametrize("weight", [True, False])
@@ -172,7 +172,7 @@ def test_accuracy_cross_entropy_loss_indices(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
-@pytest.mark.CrossEntropyLoss
+@pytest.mark.cross_entropy_loss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

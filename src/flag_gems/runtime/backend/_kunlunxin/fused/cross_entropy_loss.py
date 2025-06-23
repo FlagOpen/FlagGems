@@ -35,12 +35,6 @@ def heur_block_d(args):
         "BLOCK_D": heur_block_d,
     },
 )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.jit(do_not_specialize=["ignore_index"])
 def celoss_indices_kernel(
     inp_ptr,
@@ -97,18 +91,11 @@ def celoss_indices_kernel(
     tl.store(out_ptrs, out, mask=tgt_mask)
 
 
-
 @libentry()
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
@@ -169,18 +156,11 @@ def celoss_probability_kernel(
     tl.store(out_ptrs, out, mask=offset_d < D)
 
 
-
 @libentry()
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
@@ -274,12 +254,6 @@ def celoss_indices_smooth_kernel(
         "BLOCK_D": heur_block_d,
     },
 )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.jit(do_not_specialize=["ignore_index", "mean_num"])
 def celoss_indices_bwd(
     out_grad_ptr,
@@ -350,12 +324,6 @@ def celoss_indices_bwd(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
@@ -439,17 +407,12 @@ def celoss_probability_bwd(
         inp_grad_ptrs = inp_grad_ptr + offset
         tl.store(inp_grad_ptrs, inp_grad, mask)
 
+
 @libentry()
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("cross_entropy_loss"),
 #     key=["C", "D"],
 # )
-@triton.heuristics(
-    values={
-        "BLOCK_C": heur_block_c,
-        "BLOCK_D": heur_block_d,
-    },
-)
 @triton.heuristics(
     values={
         "BLOCK_C": heur_block_c,
@@ -543,7 +506,6 @@ def celoss_indices_smooth_bwd(
             inp_grad_ptr + pid_n * C * D + offset_d[:, None] * C + offset_c[None, :]
         )
         tl.store(inp_grad_ptrs, inp_grad, mask=inp_mask and ignore_mask)
-
 
 
 @libentry()
