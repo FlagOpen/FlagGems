@@ -154,7 +154,7 @@ from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
-from .sum import sum, sum_dim
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -347,7 +347,9 @@ __all__ = [
     "min",
     "min_dim",
     "sum",
+    "sum_out",
     "sum_dim",
+    "sum_dim_out",
     "amax",
     "argmax",
     "argmin",

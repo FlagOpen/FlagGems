@@ -241,7 +241,9 @@ def enable(
             ("prod", prod, Autograd.disable),
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
+            ("sum.out", sum_out, Autograd.disable),
             ("sum.dim_IntList", sum_dim, Autograd.disable),
+            ("sum.IntList_out", sum_dim_out, Autograd.disable),
             (
                 "scaled_dot_product_attention",
                 scaled_dot_product_attention,
