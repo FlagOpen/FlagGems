@@ -1,6 +1,5 @@
-import random
-
 import math
+import random
 
 import numpy as np
 import pytest
@@ -86,7 +85,6 @@ def test_scaled_dot_product_attention(
                 query, key, value, attn_mask=attn_bias, scale=scale, is_causal=is_causal
             )
     gems_assert_close(flaggem_result, torch_result, dtype, reduce_dim=head_size)
-
 
 
 def create_kv_caches_with_random(

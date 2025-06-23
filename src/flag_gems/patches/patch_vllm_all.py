@@ -1,6 +1,6 @@
-import torch
-
 from typing import Optional, Tuple
+
+import torch
 
 from flag_gems.patches.patch_util import patch_module_method
 
