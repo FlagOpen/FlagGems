@@ -1,5 +1,6 @@
 import logging
 import math
+from typing import List, Tuple, Union
 
 import torch
 import triton
@@ -9,6 +10,8 @@ from ..runtime import torch_device_fn
 from ..utils import libentry
 from ..utils import triton_lang_extension as tle
 from ..utils.limits import get_dtype_max
+
+Tensor = torch.Tensor
 
 logger = logging.getLogger(__name__)
 
@@ -420,33 +423,37 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         )
 
 
-def cummin(inp, dim=1, *, dtype=None):
+def cummin(
+    input: Tensor,
+    dim: int,
+    *,
+    out: Union[Tensor, Tuple[Tensor, ...], List[Tensor], None] = None,
+) -> torch.return_types.cummin:
     logger.debug("GEMS cummin")
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    shape = inp.shape
-    dim = dim % inp.ndim
+    assert dim >= -input.ndim and dim < input.ndim, "Invalid dim"
+    shape = input.shape
+    dim = dim % input.ndim
     M = 1
     N = shape[dim]
     for i in range(dim):
         M *= shape[i]
-    inp = inp.contiguous()
-    K = inp.numel() // M // N
+    input = input.contiguous()
+    K = input.numel() // M // N
 
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            dtype = torch.int64
-    out = torch.empty_like(inp, dtype=dtype)
-    out_indices = torch.empty_like(inp, dtype=torch.int64)
+    dtype = input.dtype
+    if dtype is torch.bool:
+        dtype = torch.int64
+    out = torch.empty_like(input, dtype=dtype)
+    out_indices = torch.empty_like(input, dtype=torch.int64)
 
     compute_dtype = out.dtype
-    if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
+    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
     if M == 1 and K == 1:
-        scan_then_fan_col(inp, out, out_indices, N, compute_dtype)
+        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
     elif M * K <= 16:
-        scan_then_fan(inp, out, out_indices, M, N, K, compute_dtype)
+        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
     else:
-        scan_then_fan_loop(inp, out, out_indices, M, N, K, compute_dtype)
+        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
     return out, out_indices
