@@ -57,6 +57,8 @@ from .eq import eq, eq_scalar
 from .erf import erf, erf_
 from .exp import exp, exp_
 from .exponential_ import exponential_
+from .eye import eye
+from .eye_m import eye_m
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
@@ -64,9 +66,11 @@ from .full_like import full_like
 from .gather import gather, gather_backward
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
+from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hstack import hstack
+from .index import index
 from .index_add import index_add
 from .index_put import index_put, index_put_
 from .index_select import index_select
@@ -78,6 +82,7 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -140,7 +145,7 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rsqrt import rsqrt, rsqrt_
-from .scatter import scatter
+from .scatter import scatter, scatter_
 from .select_scatter import select_scatter
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .silu import silu, silu_, silu_backward
@@ -259,6 +264,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "glu",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -275,6 +281,10 @@ __all__ = [
     "weight_norm_interface_backward",
     "le",
     "le_scalar",
+    "lerp_scalar",
+    "lerp_scalar_",
+    "lerp_tensor",
+    "lerp_tensor_",
     "lt",
     "lt_scalar",
     "rms_norm",
@@ -315,6 +325,7 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scatter",
+    "scatter_",
     "sigmoid",
     "sigmoid_",
     "sigmoid_backward",
@@ -390,8 +401,11 @@ __all__ = [
     "nll_loss2d_backward",
     "index_put_",
     "index_put",
+    "index",
     "vdot",
     "mse_loss",
     "log",
+    "eye",
+    "eye_m",
     "to_dtype",
 ]

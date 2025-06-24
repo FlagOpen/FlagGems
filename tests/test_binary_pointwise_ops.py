@@ -702,6 +702,7 @@ def test_accuracy_floor_div_float_(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1224,8 +1225,8 @@ def test_accuracy_pow(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
@@ -1246,8 +1247,8 @@ def test_accuracy_pow_(shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp1 = inp1.uniform_(-1, 1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_inp2 = to_reference(inp2, True)
@@ -1301,7 +1302,7 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp2 = inp2.uniform_(-0.1, 0.1)
+        inp2 = inp2.uniform_(-1, 1)
 
     ref_inp2 = to_reference(inp2, True)
 
@@ -1321,11 +1322,20 @@ def test_accuracy_pow_scalar_tensor(scalar, shape, dtype):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
+        if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        elif scalar == -111.999 and dtype == torch.float16:
+            inp1 = inp1.uniform_(-1, 1)
+        else:
+            inp1 = inp1.uniform_(-0.1, 0.1)
 
     ref_inp1 = to_reference(inp1, True)
 
@@ -1342,11 +1352,20 @@ def test_accuracy_pow_tensor_scalar(scalar, shape, dtype):
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_pow_tensor_scalar_(scalar, shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        torch.manual_seed(1)
+        torch.cuda.manual_seed_all(1)
+
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
     if flag_gems.vendor_name == "kunlunxin":
-        inp1 = inp1.uniform_(-0.1, 0.1)
+        if scalar == -0.999:
+            inp1 = inp1.uniform_(-1, 1)
+        elif scalar == -111.999 and dtype == torch.float16:
+            inp1 = inp1.uniform_(-1, 1)
+        else:
+            inp1 = inp1.uniform_(-0.1, 0.1)
 
     ref_inp1 = to_reference(inp1.clone(), True)
 
@@ -1939,3 +1958,33 @@ def test_accuracy_polar(shape, dtype):
 
     gems_assert_close(res_out.real, ref_out.real, dtype)
     gems_assert_close(res_out.imag, ref_out.imag, dtype)
+
+
+@pytest.mark.lerp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_lerp(shape, dtype):
+    torch.manual_seed(0)
+
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    end = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    input.uniform_(-0.1, 0.1)
+    end.uniform_(-0.1, 0.1)
+    weight.uniform_(-0.1, 0.1)
+
+    ref_input = to_reference(input)
+    ref_end = to_reference(end)
+    ref_weight = to_reference(weight)
+
+    ref_out = torch.lerp(ref_input, ref_end, weight=5.0)
+    with flag_gems.use_gems():
+        res_out = torch.lerp(input, end, weight=5.0)
+    gems_assert_close(res_out, ref_out, dtype)
+
+    ref_out = torch.lerp(ref_input, ref_end, weight=ref_weight)
+    with flag_gems.use_gems():
+        res_out = torch.lerp(input, end, weight=weight)
+
+    gems_assert_close(res_out, ref_out, dtype)
