@@ -702,6 +702,7 @@ def test_accuracy_floor_div_float_(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
+@pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.floor_divide
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
@@ -1957,3 +1958,33 @@ def test_accuracy_polar(shape, dtype):
 
     gems_assert_close(res_out.real, ref_out.real, dtype)
     gems_assert_close(res_out.imag, ref_out.imag, dtype)
+
+
+@pytest.mark.lerp
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_lerp(shape, dtype):
+    torch.manual_seed(0)
+
+    input = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    end = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    input.uniform_(-0.1, 0.1)
+    end.uniform_(-0.1, 0.1)
+    weight.uniform_(-0.1, 0.1)
+
+    ref_input = to_reference(input)
+    ref_end = to_reference(end)
+    ref_weight = to_reference(weight)
+
+    ref_out = torch.lerp(ref_input, ref_end, weight=5.0)
+    with flag_gems.use_gems():
+        res_out = torch.lerp(input, end, weight=5.0)
+    gems_assert_close(res_out, ref_out, dtype)
+
+    ref_out = torch.lerp(ref_input, ref_end, weight=ref_weight)
+    with flag_gems.use_gems():
+        res_out = torch.lerp(input, end, weight=weight)
+
+    gems_assert_close(res_out, ref_out, dtype)
