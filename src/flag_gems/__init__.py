@@ -14,6 +14,7 @@ from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
 from .logging_utils import setup_flaggems_logging
+from .modules import *  # noqa: F403
 from .ops import *  # noqa: F403
 from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
@@ -159,6 +160,10 @@ def enable(
             ("native_layer_norm_backward", layer_norm_backward, Autograd.disable),
             ("le.Tensor", le, Autograd.disable),
             ("le.Scalar", le_scalar, Autograd.disable),
+            ("lerp.Scalar", lerp_scalar, Autograd.disable),
+            ("lerp.Tensor", lerp_tensor, Autograd.disable),
+            ("lerp_.Scalar", lerp_scalar_, Autograd.disable),
+            ("lerp_.Tensor", lerp_tensor_, Autograd.disable),
             ("lt.Tensor", lt, Autograd.disable),
             ("lt.Scalar", lt_scalar, Autograd.disable),
             ("log", log, Autograd.disable),
