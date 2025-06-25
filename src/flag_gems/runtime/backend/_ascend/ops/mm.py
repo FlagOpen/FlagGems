@@ -10,6 +10,7 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),

@@ -13,6 +13,7 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
+
 @libentry()
 @triton.jit
 def amax_kernel_1(

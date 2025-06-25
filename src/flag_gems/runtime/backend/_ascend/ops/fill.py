@@ -1,4 +1,5 @@
 import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -8,6 +9,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["value_scalar"])
