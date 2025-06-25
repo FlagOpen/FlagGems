@@ -1,4 +1,5 @@
 import torch
+
 from .. import runtime
 
 if runtime.device.vendor_name == "kunlunxin":
