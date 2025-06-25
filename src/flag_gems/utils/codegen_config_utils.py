@@ -84,6 +84,13 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=True,
     ),
+    vendors.ASCEND: CodeGenConfig(
+        4096,
+        tuple([48, 1, 1]),
+        32,
+        False,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
 }
 
 HEURISTICS_CONFIG = {

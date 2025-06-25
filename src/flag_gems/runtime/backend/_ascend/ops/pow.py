@@ -3,11 +3,11 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 _pow = tl_extra_shim.pow
-logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
