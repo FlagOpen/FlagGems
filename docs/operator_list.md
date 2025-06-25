@@ -1,67 +1,70 @@
 ## Operator List
 
-- \_\_or\_\_
 - abs
-- abs\_
+- abs_
 - add
-- add\_
+- add_
 - addmm
 - all
 - allclose
 - amax
 - angle
 - any
-- apply_rotary_pos_emb
 - arange
 - argmax
 - argmin
 - batch_norm
 - bitwise_and
-- bitwise_and\_
+- bitwise_and_
 - bitwise_not
-- bitwise_not\_
+- bitwise_not_
 - bitwise_or
-- bitwise_or\_
+- bitwise_or_
 - bmm
 - cat
 - clamp
-- clamp\_
-- concat
-- constant_pad_nd
+- clamp_
+- concat_and_cache_mla
 - contiguous
+- conv1d
+- conv2d
+- conv_depthwise2d
 - cos
-- cos\_
+- cos_
 - count_nonzero
-- CrossEntropyLoss
+- cross_entropy_loss
+- cummax
 - cummin
 - cumsum
 - diag
 - diag_embed
-- diagonal_backward
+- diagonal
 - div
-- div\_
+- div_
 - dot
 - dropout
 - elu
 - embedding
 - eq
 - erf
-- erf\_
+- erf_
 - exp
-- exp\_
-- exponential\_
+- exp_
+- exponential_
 - eye
 - fill
-- fill\_
+- fill_
+- flash_attention_forward
+- flash_attn_varlen_func
 - flip
 - floor_divide
-- floor_divide\_
 - full
 - full_like
+- fused_add_rms_norm
 - gather
 - ge
 - gelu
-- gelu\_
+- gelu_
 - gelu_and_mul
 - glu
 - group_norm
@@ -70,7 +73,7 @@
 - index
 - index_add
 - index_put
-- index_put\_
+- index_put_
 - index_select
 - instance_norm
 - isclose
@@ -81,7 +84,7 @@
 - kron
 - layer_norm
 - le
-- linear
+- lerp
 - linspace
 - log
 - log_sigmoid
@@ -92,9 +95,8 @@
 - logical_xor
 - lt
 - masked_fill
-- masked_fill\_
+- masked_fill_
 - masked_select
-- matmul
 - max
 - maximum
 - mean
@@ -103,16 +105,13 @@
 - mm
 - mse_loss
 - mul
-- mul\_
+- mul_
 - multinomial
 - mv
 - nan_to_num
-- native_dropout
-- native_group_norm
-- native_layer_norm
 - ne
 - neg
-- neg\_
+- neg_
 - nll_loss
 - nonzero
 - normal
@@ -122,7 +121,7 @@
 - pad
 - polar
 - pow
-- pow\_
+- pow_
 - prod
 - quantile
 - rand
@@ -131,57 +130,240 @@
 - randn_like
 - randperm
 - reciprocal
-- reciprocal\_
+- reciprocal_
 - relu
-- relu\_
+- relu_
 - remainder
-- remainder\_
+- remainder_
 - repeat
 - repeat_interleave
 - reshape_and_cache
 - resolve_conj
 - resolve_neg
 - rms_norm
+- rotary_embedding
 - rsqrt
-- rsqrt\_
-- rsub
+- rsqrt_
 - scaled_dot_product_attention
 - scatter
-- scatter\_
+- scatter_
 - select_scatter
 - sigmoid
-- sigmoid\_
+- sigmoid_
 - silu
-- silu\_
+- silu_
 - silu_and_mul
 - sin
-- sin\_
+- sin_
 - skip_layer_norm
-- skip_rms_norm
 - slice_scatter
 - softmax
 - sort
 - stack
 - sub
-- sub\_
+- sub_
 - sum
 - tanh
-- tanh\_
+- tanh_
+- threshold
 - tile
-- to.dtype
+- to
 - topk
 - triu
-- trunc_divide
-- uniform\_
+- true_divide
+- true_divide_
+- uniform_
 - unique
-- upsample_bicubic2d_aa
-- upsample_nearest2d
+- upsample
 - var_mean
 - vdot
 - vector_norm
 - vstack
 - weight_norm
-- weight_norm_interface
 - where
 - zeros
 - zeros_like
+
+abs
+abs_
+add
+add_
+addmm
+all
+allclose
+amax
+angle
+any
+arange
+argmax
+argmin
+batch_norm
+bitwise_and
+bitwise_and_
+bitwise_not
+bitwise_not_
+bitwise_or
+bitwise_or_
+bmm
+cat
+clamp
+clamp_
+concat_and_cache_mla
+contiguous
+conv1d
+conv2d
+conv_depthwise2d
+cos
+cos_
+count_nonzero
+cross_entropy_loss
+cummax
+cummin
+cumsum
+diag
+diag_embed
+diagonal
+div
+div_
+dot
+dropout
+elu
+embedding
+eq
+erf
+erf_
+exp
+exp_
+exponential_
+eye
+fill
+fill_
+flash_attention_forward
+flash_attn_varlen_func
+flip
+floor_divide
+full
+full_like
+fused_add_rms_norm
+gather
+ge
+gelu
+gelu_
+gelu_and_mul
+glu
+group_norm
+gt
+hstack
+index
+index_add
+index_put
+index_put_
+index_select
+instance_norm
+isclose
+isfinite
+isin
+isinf
+isnan
+kron
+layer_norm
+le
+lerp
+linspace
+log
+log_sigmoid
+log_softmax
+logical_and
+logical_not
+logical_or
+logical_xor
+lt
+masked_fill
+masked_fill_
+masked_select
+max
+maximum
+mean
+min
+minimum
+mm
+mse_loss
+mul
+mul_
+multinomial
+mv
+nan_to_num
+ne
+neg
+neg_
+nll_loss
+nonzero
+normal
+ones
+ones_like
+outer
+pad
+polar
+pow
+pow_
+prod
+quantile
+rand
+rand_like
+randn
+randn_like
+randperm
+reciprocal
+reciprocal_
+relu
+relu_
+remainder
+remainder_
+repeat
+repeat_interleave
+reshape_and_cache
+resolve_conj
+resolve_neg
+rms_norm
+rotary_embedding
+rsqrt
+rsqrt_
+scaled_dot_product_attention
+scatter
+scatter_
+select_scatter
+sigmoid
+sigmoid_
+silu
+silu_
+silu_and_mul
+sin
+sin_
+skip_layer_norm
+slice_scatter
+softmax
+sort
+stack
+sub
+sub_
+sum
+tanh
+tanh_
+threshold
+tile
+to
+topk
+triu
+true_divide
+true_divide_
+uniform_
+unique
+upsample
+var_mean
+vdot
+vector_norm
+vstack
+weight_norm
+where
+zeros
+zeros_like
