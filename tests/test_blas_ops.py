@@ -69,21 +69,19 @@ def test_accuracy_bmm(M, N, K, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
-MNK_SHAPES = [
+FP8_MNK_SHAPES = [
     (128, 256, 512),
     (64, 128, 128),
     (256, 256, 256),
-]
-
-FLOAT_DTYPES = [
-    torch.float8_e4m3fn,
+    (83, 7748, 3884),
+    (84, 7168, 3884),
 ]
 
 
 @pytest.mark.w8a8_block_fp8_matmul
-@pytest.mark.parametrize("M,N,K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_w8a8_block_fp8_matmul(M, N, K, dtype):
+@pytest.mark.parametrize("M,N,K", FP8_MNK_SHAPES)
+def test_accuracy_w8a8_block_fp8_matmul(M, N, K):
+    dtype = torch.float8_e4m3fn
     device = flag_gems.device
     block_n = 128
     block_k = 128
