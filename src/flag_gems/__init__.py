@@ -41,6 +41,7 @@ def enable(
     global current_work_registrar
     current_work_registrar = registrar(
         (
+            ("moe_sum", moe_sum, Autograd.disable),
             ("abs", abs, Autograd.disable),
             ("abs_", abs_, Autograd.disable),
             ("add.Tensor", add, Autograd.disable),
