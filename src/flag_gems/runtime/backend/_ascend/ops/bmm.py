@@ -72,7 +72,6 @@ def bmm_kernel(
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for i in range(num_iters):
-
         mask_a = offs_k[None, :] < K - i * TILE_K
         mask_b = offs_k[:, None] < K - i * TILE_K
         a = tl.load(a_ptrs, mask=mask_a)
