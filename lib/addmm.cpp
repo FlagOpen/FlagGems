@@ -25,10 +25,11 @@ at::Tensor addmm(at::Tensor& bias, at::Tensor& mat1, at::Tensor& mat2, double be
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  unsigned int grid_x = ((mat1_sizes[0] + 127) / 128) * ((mat2_sizes[1] + 127) / 128);
+  unsigned int grid_x = ((mat1_sizes[0] + 127) / 128);
+  unsigned int grid_y = ((mat2_sizes[1] + 127) / 128);
   f(/* CUstream = */ raw_stream,
     /* grid_x = */ grid_x,
-    /* grid_y = */ 1,
+    /* grid_y = */ grid_y,
     /* grid_z = */ 1,
     /* num_warps = */ 4,
     /* num_stages = */ 1,
