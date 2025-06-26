@@ -1,24 +1,10 @@
-import logging
-
-import torch
 import triton
 import triton.language as tl
 
-# from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
 
-
-@libentry()
-@triton.autotune(
-    configs=[],
-    generate_configs="addmm",
-    key=["M", "N", "K"],
-)
-@triton.jit(do_not_specialize=["alpha", "beta"])
+@triton.jit()
 def addmm_kernel(
     a_ptr,
     b_ptr,
@@ -52,8 +38,16 @@ def addmm_kernel(
 
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a = tl.load(a_ptrs)
-        b = tl.load(b_ptrs)
+        a = tl.load(
+            a_ptrs,
+            mask=(offs_am[:, None] < M) & (offs_k[None, :] < K - k * BLOCK_SIZE_K),
+            other=0.0,
+        )
+        b = tl.load(
+            b_ptrs,
+            mask=(offs_k[:, None] < K - k * BLOCK_SIZE_K) & (offs_bn[None, :] < N),
+            other=0.0,
+        )
         accumulator += tl.dot(a, b, allow_tf32=False)
         a_ptrs += BLOCK_SIZE_K * stride_ak
         b_ptrs += BLOCK_SIZE_K * stride_bk
@@ -68,44 +62,3 @@ def addmm_kernel(
     accumulator = accumulator * alpha + bias * beta
     c = accumulator.to(bias.dtype)
     tl.store(c_ptrs, c, mask=c_mask)
-
-
-def addmm(bias, mat1, mat2, *, beta=1.0, alpha=1.0):
-    logger.debug("GEMS ADDMM")
-    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (mat1.shape[0], mat2.shape[1])
-    ), "Incompatible input shape"
-    M, K = mat1.shape
-    _, N = mat2.shape
-
-    mat1 = mat1.contiguous()
-    mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
-
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]),
-        triton.cdiv(N, META["BLOCK_SIZE_N"]),
-    )
-    with torch_device_fn.device(mat1.device):
-        addmm_kernel[grid](
-            mat1,
-            mat2,
-            bias,
-            out,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            mat1.stride(0),
-            mat1.stride(1),
-            mat2.stride(0),
-            mat2.stride(1),
-            bias.stride(0),
-            bias.stride(1),
-            out.stride(0),
-            out.stride(1),
-        )
-    return out
