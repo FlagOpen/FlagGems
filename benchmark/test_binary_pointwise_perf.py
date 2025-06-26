@@ -60,7 +60,6 @@ class BinaryPointwiseBenchmark(Benchmark):
             *(
                 [
                     ("pow", torch.pow, FLOAT_DTYPES),
-                    ("rsub", torch.rsub, FLOAT_DTYPES),
                 ]
                 if flag_gems.device != "npu"
                 else []
@@ -81,7 +80,6 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
-            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),

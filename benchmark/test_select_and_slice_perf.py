@@ -199,7 +199,7 @@ def slice_scatter_gbps(bench_fn_args, latency):
 @pytest.mark.gather_backward
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
-        op_name="gather_backward",
+        op_name="gather",
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         get_gbps=gather_scatter_gbps,

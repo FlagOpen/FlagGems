@@ -389,7 +389,7 @@ def test_perf_diagonal_backward():
 
     bench = GenericBenchmarkExcluse1D(
         input_fn=diagonal_backward_input_fn,
-        op_name="diagonal_backward",
+        op_name="diagonal",
         torch_op=torch.diagonal,
         dtypes=FLOAT_DTYPES,
         is_backward=True,

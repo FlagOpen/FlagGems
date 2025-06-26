@@ -21,7 +21,7 @@ class AttentionBenchmark(GenericBenchmark):
 @pytest.mark.skipif(
     flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
 )
-@pytest.mark.attention
+@pytest.mark.scaled_dot_product_attention
 def test_perf_scaled_dot_product_attention():
     def scaled_dot_product_attention_kwargs(shape, dtype, device):
         query = torch.randn(shape, device=device, dtype=dtype)

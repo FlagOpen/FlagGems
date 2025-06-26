@@ -661,7 +661,7 @@ def test_accuracy_trunc_divide_scalar_scalar(dtype):
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at large size, eg. (65536 * 2048,)
-@pytest.mark.div
+@pytest.mark.floor_div
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_floor_div_float(shape, dtype):
@@ -680,7 +680,7 @@ def test_accuracy_floor_div_float(shape, dtype):
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 # TODO: failed at large size, eg. (65536 * 2048,)
 @pytest.mark.inplace
-@pytest.mark.div_
+@pytest.mark.floor_div_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_accuracy_floor_div_float_(shape, dtype):
@@ -699,7 +699,7 @@ def test_accuracy_floor_div_float_(shape, dtype):
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.vendor_name == "aipu", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
-@pytest.mark.div
+@pytest.mark.floor_div
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_floor_div_int(shape, dtype):
@@ -746,7 +746,7 @@ def test_accuracy_floor_div_int(shape, dtype):
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="Assertion Error")
 @pytest.mark.inplace
-@pytest.mark.div_
+@pytest.mark.floor_div_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_floor_div_int_(shape, dtype):
@@ -786,7 +786,7 @@ def test_accuracy_floor_div_int_(shape, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
-@pytest.mark.div
+@pytest.mark.floor_div
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_accuracy_floor_divide_scalar_scalar(dtype):
     if dtype == torch.float32:
