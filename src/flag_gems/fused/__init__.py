@@ -3,6 +3,7 @@ from .cross_entropy_loss import cross_entropy_loss
 from .fused_add_rms_norm import fused_add_rms_norm
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
+from .moe_align_block_size import moe_align_block_size
 from .outer import outer
 from .reshape_and_cache import reshape_and_cache
 from .rotary_embedding import apply_rotary_pos_emb
@@ -22,4 +23,5 @@ __all__ = [
     "weight_norm",
     "concat_and_cache_mla",
     "reshape_and_cache",
+    "moe_align_block_size",
 ]
