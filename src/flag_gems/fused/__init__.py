@@ -1,5 +1,6 @@
 from .concat_and_cache_mla import concat_and_cache_mla
 from .cross_entropy_loss import cross_entropy_loss
+from .flash_mla import flash_mla
 from .fused_add_rms_norm import fused_add_rms_norm
 from .gelu_and_mul import gelu_and_mul
 from .instance_norm import instance_norm
@@ -22,4 +23,5 @@ __all__ = [
     "weight_norm",
     "concat_and_cache_mla",
     "reshape_and_cache",
+    "flash_mla",
 ]
