@@ -1,4 +1,5 @@
 import builtins
+import hashlib
 import inspect
 import math
 import os
@@ -26,6 +27,17 @@ ATTRS = {
 }
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
+
+
+def get_kernel_hash(func):
+    if hasattr(func, "fn"):
+        original_func = func.fn
+    else:
+        original_func = func
+
+    source_code = inspect.getsource(original_func)
+    return hashlib.md5(source_code.encode("utf-8")).hexdigest()[:8]
+
 
 if major_version == 2:
 
@@ -192,16 +204,23 @@ class LibTuner(triton.runtime.Autotuner):
         self.cache = libcache[share] if share else libcache[self.__name__]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
+        self.base_fn = fn
+        while not inspect.isfunction(self.base_fn):
+            self.base_fn = self.base_fn.fn
+        self.kernel_hash = get_kernel_hash(self.base_fn)
 
     def get_key(self, args):
         if self.strategy is None:
             key = [args[k] for k in self.keys if k in args]
-            return key
-        key = []
-        for i, k in enumerate(self.keys):
-            s = STRATEGY[self.strategy[i]]
-            v = s(args[k])
-            key.append(v)
+        else:
+            key = []
+            for i, k in enumerate(self.keys):
+                s = STRATEGY[self.strategy[i]]
+                v = s(args[k])
+                key.append(v)
+
+        key.append(f"hash_{self.kernel_hash}")
+
         return key
 
     def run(self, *args, **kwargs):
