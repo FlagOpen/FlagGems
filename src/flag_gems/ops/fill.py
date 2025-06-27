@@ -61,6 +61,12 @@ def fill_tensor_(self, value):
 
 def fill_scalar_(self, value):
     logging.debug("GEMS FILL_SCALAR_")
-    with torch_device_fn.device(self.device):
-        fill_scalar_func(self, value, out0=self)
+    if self.is_contiguous():
+        with torch_device_fn.device(self.device):
+            fill_scalar_func(self, value, out0=self)
+    else:
+        contiguous_self = self.contiguous()
+        with torch_device_fn.device(self.device):
+            fill_scalar_func(contiguous_self, value, out0=contiguous_self)
+        self.copy_(contiguous_self)
     return self
