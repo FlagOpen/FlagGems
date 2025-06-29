@@ -4,37 +4,14 @@ import torch
 import triton
 import triton.language as tl
 
-from .. import runtime
 from ..runtime import torch_device_fn
 from ..utils import broadcastable, libentry
-from ..utils import triton_lang_extension as tle
 from ..utils.shape_utils import bracket_next_power_of_2
 
 logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("elementwise_generic"))
-@triton.jit
-def masked_select_kernel(
-    inp_ptr,
-    select_mask_ptr,
-    prefix_sum_ptr,
-    out_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = tle.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
-    select_mask = tl.load(select_mask_ptr + offsets, mask=mask, other=0.0).to(tl.int1)
-    out_offset = tl.load(prefix_sum_ptr + offsets, mask=mask, other=0.0) - 1
-
-    tl.store(out_ptr + out_offset, inp, mask=(select_mask and mask))
-
-
 @triton.jit
 def masked_select_single_pass_kernel(
     inp_ptr, mask_ptr, out_ptr, N, BLOCK_SIZE: tl.constexpr
@@ -63,6 +40,7 @@ def masked_select_single_pass(inp, mask, out, N):
     return out
 
 
+@libentry()
 @triton.jit(do_not_specialize=["N", "nr", "row_stride"])
 def mask_part_sum_kernel(
     inp_ptr,
@@ -109,6 +87,7 @@ def mask_part_sum_kernel(
         tl.store(part_sums_ptr + np, final_sum)
 
 
+@libentry()
 @triton.jit(do_not_specialize=["N", "nr", "row_stride"])
 def write_back_kernel(
     inp_ptr,
