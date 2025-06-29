@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=["align32", None, None],
 )
 @triton.heuristics(runtime.get_heuristic_config("mm"))
 @triton.jit

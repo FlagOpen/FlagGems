@@ -66,6 +66,7 @@ if major_version == 2:
 STRATEGY = {
     None: lambda v: v,
     "log": lambda v: math.ceil(math.log2(v)),
+    "align32": lambda v: (v // 32) * 32,
 }
 
 
