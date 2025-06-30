@@ -203,9 +203,13 @@ def test_apply_rotary_pos_emb(
         position_ids=ref_position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
-
-    q_embed_out, k_embed_out = torch.ops.flag_gems.rotary_embedding(
-        q, k, cos, sin, position_ids if has_pos_id else None, rotary_interleaved
+    q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
+        q=q,
+        k=k,
+        cos=cos,
+        sin=sin,
+        position_ids=position_ids if has_pos_id else None,
+        rotary_interleaved=rotary_interleaved,
     )
 
     gems_assert_close(q_embed_out, q_embed_ref, dtype)

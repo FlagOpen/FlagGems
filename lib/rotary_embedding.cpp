@@ -9,65 +9,78 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-void rotary_embedding_inplace(
-    at::Tensor& q,          // [batch_size, seq_len, q_heads, head_dim] or [num_tokens, q_heads, head_dim]
-    at::Tensor& k,          // [batch_size, seq_len, k_heads, head_dim] or [num_tokens, k_heads, head_dim]
+void check_rotary_embedding_inputs(
+    const at::Tensor& q,    // [batch_size, seq_len, q_heads, head_dim] or [num_tokens, q_heads, head_dim]
+    const at::Tensor& k,    // [batch_size, seq_len, k_heads, head_dim] or [num_tokens, k_heads, head_dim]
     const at::Tensor& cos,  // [max_seq_len, head_dim // 2]
     const at::Tensor& sin,  // [max_seq_len, head_dim // 2]
-    std::optional<at::Tensor> position_ids,  // None or [..., seq_len]
-    bool rotary_interleaved) {               // default false
-
+    const std::optional<at::Tensor>& position_ids) {  // None or [..., seq_len]
+  // 1. Check that q and k have the same head dimension
   TORCH_CHECK(k.size(-1) == q.size(-1),
               "q and k must have the same last dimension, got ",
               q.sizes(),
               " and ",
               k.sizes());
+
+  // 2. Check that cos and sin have the same last dimension
   TORCH_CHECK(cos.size(-1) == sin.size(-1),
               "cos and sin must have the same last dimension, got ",
               cos.sizes(),
               " and ",
               sin.sizes());
+
+  // 3. Check that cos/sin dimension matches q/k head_dim // 2
   TORCH_CHECK(cos.size(-1) * 2 == q.size(-1),
               "cos/sin dim must be half of q/k dim, got ",
               cos.sizes(),
               " and ",
               q.sizes());
 
-  TORCH_CHECK(cos.stride(-1) == 1, "cos must be contiguous at the last dimension");
-  TORCH_CHECK(sin.stride(-1) == 1, "sin must be contiguous at the last dimension");
+  // 4. Check that cos and sin are contiguous at the last dimension
+  TORCH_CHECK(cos.stride(-1) == 1,
+              "cos must be contiguous at the last dimension, got stride ",
+              cos.stride(-1));
+  TORCH_CHECK(sin.stride(-1) == 1,
+              "sin must be contiguous at the last dimension, got stride ",
+              sin.stride(-1));
 
   auto q_sizes = q.sizes();
   auto k_sizes = k.sizes();
-  std::optional<int64_t> seq_len;
 
+  // 5. Check that q and k have the same number of dimensions
   TORCH_CHECK(q_sizes.size() == k_sizes.size(),
               "q and k must have the same number of dimensions, got ",
               q_sizes.size(),
               " and ",
               k_sizes.size());
 
+  // 6. Check that all dimensions except the last two match between q and k
   for (int i = 0; i < q_sizes.size() - 2; ++i) {
     TORCH_CHECK(q_sizes[i] == k_sizes[i],
-                "q and k must have the same shape before the last two dims, got ",
-                q_sizes,
+                "Mismatch in q and k shape at dim ",
+                i,
+                ": got ",
+                q_sizes[i],
                 " and ",
-                k_sizes);
+                k_sizes[i]);
   }
 
+  // 7. If position_ids is not provided, q must have 4 dimensions
   if (!position_ids.has_value()) {
     TORCH_CHECK(q_sizes.size() == 4,
                 "q must have 4 dimensions if position_ids is not provided, got ",
                 q_sizes.size());
-    seq_len = q_sizes[1];
-
-  } else {  // default case
+  } else {
     auto pos_sizes = position_ids.value().sizes();
+
+    // 8. Check that position_ids has the same number of dims as q.shape[:-2]
     TORCH_CHECK(pos_sizes.size() == q_sizes.size() - 2,
                 "position_ids must have the same number of dims as q.shape[:-2], got ",
                 pos_sizes.size(),
                 " and ",
                 q_sizes.size() - 2);
 
+    // 9. Check that position_ids shape matches q.shape[:-2] on each dimension
     for (int i = 0; i < pos_sizes.size(); ++i) {
       TORCH_CHECK(pos_sizes[i] == q_sizes[i],
                   "Mismatch in position_ids and q shape at dim ",
@@ -77,7 +90,28 @@ void rotary_embedding_inplace(
                   " and ",
                   q_sizes[i]);
     }
+  }
+}
 
+void rotary_embedding_inplace(
+    at::Tensor& q,          // [batch_size, seq_len, q_heads, head_dim] or [num_tokens, q_heads, head_dim]
+    at::Tensor& k,          // [batch_size, seq_len, k_heads, head_dim] or [num_tokens, k_heads, head_dim]
+    const at::Tensor& cos,  // [max_seq_len, head_dim // 2]
+    const at::Tensor& sin,  // [max_seq_len, head_dim // 2]
+    std::optional<at::Tensor> position_ids,  // None or [..., seq_len]
+    bool rotary_interleaved) {               // default false
+
+  check_rotary_embedding_inputs(q, k, cos, sin, position_ids);
+
+  auto q_sizes = q.sizes();
+  auto k_sizes = k.sizes();
+  std::optional<int64_t> seq_len;
+
+  if (!position_ids.has_value()) {
+    seq_len = q_sizes[1];
+
+  } else {  // default case
+    auto pos_sizes = position_ids.value().sizes();
     position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
     seq_len = std::nullopt;
   }
@@ -166,67 +200,18 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
                                                     const at::Tensor& sin,
                                                     std::optional<at::Tensor> position_ids,
                                                     bool rotary_interleaved) {
-  TORCH_CHECK(k.size(-1) == q.size(-1),
-              "q and k must have the same last dimension, got ",
-              q.sizes(),
-              " and ",
-              k.sizes());
-  TORCH_CHECK(cos.size(-1) == sin.size(-1),
-              "cos and sin must have the same last dimension, got ",
-              cos.sizes(),
-              " and ",
-              sin.sizes());
-  TORCH_CHECK(cos.size(-1) * 2 == q.size(-1),
-              "cos/sin dim must be half of q/k dim, got ",
-              cos.sizes(),
-              " and ",
-              q.sizes());
-
-  TORCH_CHECK(cos.stride(-1) == 1, "cos must be contiguous at the last dimension");
-  TORCH_CHECK(sin.stride(-1) == 1, "sin must be contiguous at the last dimension");
+  // Check inputs
+  check_rotary_embedding_inputs(q, k, cos, sin, position_ids);
 
   auto q_sizes = q.sizes();
   auto k_sizes = k.sizes();
   std::optional<int64_t> seq_len;
 
-  TORCH_CHECK(q_sizes.size() == k_sizes.size(),
-              "q and k must have the same number of dimensions, got ",
-              q_sizes.size(),
-              " and ",
-              k_sizes.size());
-
-  for (int i = 0; i < q_sizes.size() - 2; ++i) {
-    TORCH_CHECK(q_sizes[i] == k_sizes[i],
-                "q and k must have the same shape before the last two dims, got ",
-                q_sizes,
-                " and ",
-                k_sizes);
-  }
-
   if (!position_ids.has_value()) {
-    TORCH_CHECK(q_sizes.size() == 4,
-                "q must have 4 dimensions if position_ids is not provided, got ",
-                q_sizes.size());
     seq_len = q_sizes[1];
 
   } else {  // default case
     auto pos_sizes = position_ids.value().sizes();
-    TORCH_CHECK(pos_sizes.size() == q_sizes.size() - 2,
-                "position_ids must have the same number of dims as q.shape[:-2], got ",
-                pos_sizes.size(),
-                " and ",
-                q_sizes.size() - 2);
-
-    for (int i = 0; i < pos_sizes.size(); ++i) {
-      TORCH_CHECK(pos_sizes[i] == q_sizes[i],
-                  "Mismatch in position_ids and q shape at dim ",
-                  i,
-                  ": got ",
-                  pos_sizes[i],
-                  " and ",
-                  q_sizes[i]);
-    }
-
     position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
     seq_len = std::nullopt;
   }
