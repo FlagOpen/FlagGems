@@ -415,7 +415,7 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
-    logging.debug("GEMS FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS FLASH_ATTENTION_FORWARD")
     assert (
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
