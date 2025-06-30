@@ -16,3 +16,8 @@ add_executable(test_triton_norm test_triton_norm.cpp)
 target_link_libraries(test_triton_norm
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_norm COMMAND test_triton_norm)
+
+add_executable(test_triton_zeros test_triton_zeros.cpp)
+target_link_libraries(test_triton_zeros
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_zeros COMMAND test_triton_zeros)
