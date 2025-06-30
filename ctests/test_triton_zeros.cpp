@@ -5,9 +5,7 @@
 TEST(zeros_op_test, zeros) {
   const torch::Device device(torch::kCUDA, 0);
   int64_t n = 100;
-  auto options = torch::TensorOptions()
-        .device(device)
-        .dtype(torch::kFloat32);
+  auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
   torch::Tensor out_torch = torch::zeros({n}, options);
   torch::Tensor out_triton_0 = flag_gems::zeros_tensor(n);
   torch::Tensor out_triton_1 = flag_gems::zeros_tensor(n, torch::kFloat32);
