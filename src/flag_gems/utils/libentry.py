@@ -167,6 +167,8 @@ class LibTuner(triton.runtime.Autotuner):
         do_bench=None,
         strategy=None,
         share=None,
+        early_stop_threshold=0.03,
+        early_stop_min_configs=5,
     ):
         if major_version == 2:
             super().__init__(
@@ -209,6 +211,33 @@ class LibTuner(triton.runtime.Autotuner):
         while not inspect.isfunction(self.base_fn):
             self.base_fn = self.base_fn.fn
         self.kernel_hash = get_kernel_hash(self.base_fn)
+        self.early_stop_threshold = early_stop_threshold
+        self.early_stop_min_configs = early_stop_min_configs
+
+    def _should_early_stop(self, timings, configs_tested):
+        if configs_tested < self.early_stop_min_configs:
+            return False
+
+        if len(timings) < 2:
+            return False
+
+        def extract_timing(timing_value):
+            if isinstance(timing_value, (list, tuple)):
+                return float(timing_value[0])
+            return float(timing_value)
+
+        timing_values = [extract_timing(t) for t in timings.values()]
+        best_time = min(timing_values)
+        sorted_times = sorted(timing_values)
+
+        if configs_tested >= self.early_stop_min_configs:
+            if len(sorted_times) >= 2:
+                second_best = sorted_times[1]
+                improvement_ratio = (second_best - best_time) / best_time
+                if improvement_ratio < self.early_stop_threshold:
+                    return True
+
+        return False
 
     def get_key(self, args):
         if self.strategy is None:
@@ -241,10 +270,21 @@ class LibTuner(triton.runtime.Autotuner):
                 used_cached_result = False
                 pruned_configs = self.prune_configs(kwargs)
                 bench_start = time.time()
-                timings = {
-                    config: self._bench(*args, config=config, **kwargs)
-                    for config in pruned_configs
-                }
+                timings = {}
+                configs_tested = 0
+                for config in pruned_configs:
+                    timing = self._bench(*args, config=config, **kwargs)
+                    timings[config] = timing
+                    configs_tested += 1
+
+                    if self._should_early_stop(timings, configs_tested):
+                        if os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1":
+                            print(
+                                f"Early stopping after {configs_tested}/{len(pruned_configs)} "
+                                f"configs for {self.__name__}"
+                            )
+                        break
+
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 self.cache[key] = builtins.min(timings, key=timings.get)
@@ -290,6 +330,8 @@ def libtuner(
     do_bench=None,
     strategy=None,
     share=None,
+    early_stop_threshold=0.05,
+    early_stop_min_configs=3,
 ):
     """
     Decorator for triton library autotuner.
@@ -312,6 +354,8 @@ def libtuner(
             do_bench=do_bench,
             strategy=strategy,
             share=share,
+            early_stop_threshold=early_stop_threshold,
+            early_stop_min_configs=early_stop_min_configs,
         )
 
     return decorator
