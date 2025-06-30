@@ -2,7 +2,7 @@ import triton
 import triton.language as tl
 
 from .. import runtime
-from ..utils import tl_extra_shim
+from ..utils import libentry, tl_extra_shim
 
 
 @triton.jit
@@ -244,6 +244,7 @@ def prune_fwd_configs(configs, nargs, **kwargs):
         return configs
 
 
+@libentry()
 @triton.autotune(
     configs=list(filter(keep, runtime.get_tuned_config("attention"))),
     prune_configs_by={"early_config_prune": prune_fwd_configs},
@@ -670,6 +671,7 @@ def flash_fwd_bh_parallel_kernel():
     pass
 
 
+@libentry()
 @triton.heuristics(
     values={
         "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["d"]),
@@ -967,6 +969,7 @@ def flash_fwd_splitkv_kernel(
         )
 
 
+@libentry()
 @triton.jit
 def flash_fwd_splitkv_combine_kernel(
     out_ptr,
@@ -1044,6 +1047,7 @@ def block_to_cache_index(
     return cache_page_index * block_size + page_offset
 
 
+@libentry()
 @triton.jit(
     do_not_specialize=[
         "seqlen_q",
