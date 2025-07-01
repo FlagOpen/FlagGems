@@ -231,7 +231,8 @@ def sweep(
 
 
 def radix_sort(arr, k_bits=8, descending=False):
-    m, n = arr.shape
+    n = arr.shape[-1]
+    m = arr.numel() // n
     assert n < (1 << 30), "we have not implemented 2**30 per launch"
     dtype = arr.dtype
     num_bits = 1 if dtype == torch.bool else (arr.itemsize * 8)
@@ -269,7 +270,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         arr_in = torch.clone(arr)
         indices_in = (
             torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
-            .broadcast_to((m, n))
+            .broadcast_to(arr.shape)
             .contiguous()
         )
         arr_out = torch.empty_like(arr)

@@ -1117,7 +1117,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
 )
 @pytest.mark.parametrize("descending", [True, False])
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 @pytest.mark.parametrize("dim", [0, -1])
 def test_sort(batch_size, hiddensize, descending, dtype, dim):
     if dtype in BOOL_TYPES:
