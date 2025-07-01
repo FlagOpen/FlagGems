@@ -20,12 +20,13 @@ void rotary_embedding_inplace(at::Tensor &q,
                               at::Tensor &k,
                               const at::Tensor &cos,
                               const at::Tensor &sin,
-                              ::std::optional<at::Tensor> position_ids = ::std::nullopt,
+                              const std::optional<at::Tensor> &position_ids = std::nullopt,
                               bool rotary_interleaved = false);
-std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor &q,
-                                                    const at::Tensor &k,
-                                                    const at::Tensor &cos,
-                                                    const at::Tensor &sin,
-                                                    ::std::optional<at::Tensor> position_ids = ::std::nullopt,
-                                                    bool rotary_interleaved = false);
+std::tuple<at::Tensor, at::Tensor> rotary_embedding(
+    const at::Tensor &q,
+    const at::Tensor &k,
+    const at::Tensor &cos,
+    const at::Tensor &sin,
+    const std::optional<at::Tensor> &position_ids = std::nullopt,
+    bool rotary_interleaved = false);
 }  // namespace flag_gems

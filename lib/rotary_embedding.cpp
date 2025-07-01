@@ -98,21 +98,20 @@ void rotary_embedding_inplace(
     at::Tensor& k,          // [batch_size, seq_len, k_heads, head_dim] or [num_tokens, k_heads, head_dim]
     const at::Tensor& cos,  // [max_seq_len, head_dim // 2]
     const at::Tensor& sin,  // [max_seq_len, head_dim // 2]
-    std::optional<at::Tensor> position_ids,  // None or [..., seq_len]
-    bool rotary_interleaved) {               // default false
+    const std::optional<at::Tensor>& position_ids,  // None or [..., seq_len]
+    bool rotary_interleaved) {                      // default false
 
   check_rotary_embedding_inputs(q, k, cos, sin, position_ids);
 
   auto q_sizes = q.sizes();
   auto k_sizes = k.sizes();
-  std::optional<int64_t> seq_len;
 
+  std::optional<int64_t> seq_len = std::nullopt;
+  std::optional<at::Tensor> flat_position_ids = std::nullopt;
   if (!position_ids.has_value()) {
     seq_len = q_sizes[1];
-
-  } else {                                           // default case
-    position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
-    seq_len = std::nullopt;
+  } else {                                                // default case
+    flat_position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
   }
 
   q = q.view({-1, q.size(-2), q.size(-1)});  // [num_tokens, q_heads, head_dim]
@@ -167,14 +166,15 @@ def apply_rotary_pos_emb_inplace_kernel(
     k,
     cos,
     sin,
-    position_ids,  // std::optional<at::Tensor>
+    flat_position_ids,  // std::optional<at::Tensor>
     q.stride(0),
     q.stride(1),
     q.stride(2),
     k.stride(0),
     k.stride(1),
     k.stride(2),
-    position_ids.has_value() ? position_ids.value().stride(0) : 0,  // 0 if position_ids is not defined
+    flat_position_ids.has_value() ? flat_position_ids.value().stride(0)
+                                  : 0,  // 0 if flat_position_ids is not defined
     cos.stride(0),
     sin.stride(0),
     seq_len,     // std::optional<long int>
@@ -197,21 +197,20 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
                                                     const at::Tensor& k,
                                                     const at::Tensor& cos,
                                                     const at::Tensor& sin,
-                                                    std::optional<at::Tensor> position_ids,
+                                                    const std::optional<at::Tensor>& position_ids,
                                                     bool rotary_interleaved) {
   // Check inputs
   check_rotary_embedding_inputs(q, k, cos, sin, position_ids);
 
   auto q_sizes = q.sizes();
   auto k_sizes = k.sizes();
-  std::optional<int64_t> seq_len;
+  std::optional<int64_t> seq_len = std::nullopt;
+  std::optional<at::Tensor> flat_position_ids = std::nullopt;
 
   if (!position_ids.has_value()) {
     seq_len = q_sizes[1];
-
-  } else {                                           // default case
-    position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
-    seq_len = std::nullopt;
+  } else {                                                // default case
+    flat_position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
   }
 
   auto q_view = q.view({-1, q.size(-2), q.size(-1)});  // [num_tokens, q_heads, head_dim]
@@ -248,7 +247,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
     k_view,
     cos,
     sin,
-    position_ids,  // std::optional<at::Tensor>
+    flat_position_ids,  // std::optional<at::Tensor>
     q_view.stride(0),
     q_view.stride(1),
     q_view.stride(2),
@@ -261,7 +260,8 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
     k_embed_stride[0],
     k_embed_stride[1],
     k_embed_stride[2],
-    position_ids.has_value() ? position_ids.value().stride(0) : 0,  // 0 if position_ids is not defined
+    flat_position_ids.has_value() ? flat_position_ids.value().stride(0)
+                                  : 0,  // 0 if flat_position_ids is not defined
     cos.stride(0),
     sin.stride(0),
     seq_len,          // std::optional<long int>
@@ -276,6 +276,6 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   // Reshape back to original shapes
   q_embed = q_embed.view(q_sizes.vec());
   k_embed = k_embed.view(k_sizes.vec());
-  return {q_embed, k_embed};
+  return std::make_tuple(q_embed, k_embed);
 }
 }  // namespace flag_gems
