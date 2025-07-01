@@ -94,8 +94,6 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name == "elu":
-        pytest.skip("RUNTIME TODOFIX")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
