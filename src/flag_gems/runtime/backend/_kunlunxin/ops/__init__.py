@@ -34,6 +34,7 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
+from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
@@ -82,6 +83,7 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -102,7 +104,7 @@ from .mm import mm
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
-from .mv import mv
+from .mv import mv, mv_cluster
 from .nan_to_num import nan_to_num
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
@@ -222,6 +224,7 @@ __all__ = [
     "elu",
     "pad",
     "constant_pad_nd",
+    "cummax",
     "cummin",
     "cumsum",
     "cumsum_out",
@@ -281,6 +284,10 @@ __all__ = [
     "weight_norm_interface_backward",
     "le",
     "le_scalar",
+    "lerp_scalar",
+    "lerp_scalar_",
+    "lerp_tensor",
+    "lerp_tensor_",
     "lt",
     "lt_scalar",
     "rms_norm",
@@ -304,6 +311,7 @@ __all__ = [
     "normal_tensor_tensor",
     "uniform_",
     "mv",
+    "mv_cluster",
     "nan_to_num",
     "ne",
     "ne_scalar",
