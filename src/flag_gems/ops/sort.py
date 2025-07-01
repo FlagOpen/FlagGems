@@ -89,6 +89,7 @@ def compute_global_hist_kernel(
     arr_ptr,
     out_ptr,
     num_passes,
+    m,
     n,
     tiles_n_per_cta,
     TILE_N: tl.constexpr,
@@ -98,8 +99,9 @@ def compute_global_hist_kernel(
 ):
     # arr_ptr: (m, n)
     # out_ptr: (m, n_passes, r), where r = 2 ** k_bits is the number of bins
-    pid_n = tl.program_id(1)
-    pid_m = tl.program_id(0)
+    pid = tl.program_id(0)
+    pid_n = pid // m
+    pid_m = pid % m
 
     r: tl.constexpr = 2**num_bits_per_pass
     bfe_mask: tl.constexpr = (1 << num_bits_per_pass) - 1  # a.k.a. 2 ** k_bits - 1
@@ -141,6 +143,7 @@ def sweep(
     n_passes,
     pass_id,
     bit_offset,
+    m,
     N,
     OUT_N,
     TILE_N: tl.constexpr,
@@ -159,9 +162,10 @@ def sweep(
     # grid: (m, grid_r, grid_n)
 
     # load data
-    pid_n = tl.program_id(1)  # TODO: use a global counter to avoid dead-lock
-    pid_r = tl.program_id(2)
-    pid_m = tl.program_id(0)
+    pid = tl.program_id(0)
+    pid_m = pid % m
+    pid_n = pid // m
+    pid_r = tl.program_id(1)
 
     # bit masks
     aggregate_mask: tl.constexpr = 1 << 30
@@ -246,7 +250,7 @@ def radix_sort(arr, k_bits=8, descending=False):
     TILE_R = 16
 
     grid_n = triton.cdiv(n, CTA_TILE_N)
-    grid_for_global_hist = (m, grid_n, 1)
+    grid_for_global_hist = (m * grid_n, 1, 1)
 
     with torch_device_fn.device(arr.device):
         global_hist = torch.zeros(
@@ -256,6 +260,7 @@ def radix_sort(arr, k_bits=8, descending=False):
             arr,
             global_hist,
             n_passes,
+            m,
             n,
             tiles_n_per_cta,
             TILE_N,
@@ -280,7 +285,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_r = triton.cdiv(num_bins, TILE_R)
         TILE_N = 2048
         grid_n = triton.cdiv(n, TILE_N)
-        grid_for_sweep = (m, grid_n, grid_r)
+        grid_for_sweep = (m * grid_n, grid_r)
 
         status = torch.empty(
             (m, num_bins, grid_n), device=arr.device, dtype=torch.uint32
@@ -299,6 +304,7 @@ def radix_sort(arr, k_bits=8, descending=False):
                 n_passes,
                 i,
                 bit_offset,
+                m,
                 n,
                 grid_n,
                 TILE_N,
