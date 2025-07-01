@@ -121,8 +121,6 @@ def test_accuracy_argmin(shape, dim, keepdim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.cross_entropy_loss
 @pytest.mark.parametrize("label_smoothing, ignore_index, shape", SMOOTH_IGNORE_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -172,8 +170,6 @@ def test_accuracy_cross_entropy_loss_indices(
     gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.cross_entropy_loss
 @pytest.mark.parametrize("label_smoothing, shape", SMOOTH_SHAPE)
 @pytest.mark.parametrize("reduction", CROSS_ENTROPY_LOSS_REDUCTION)
@@ -304,6 +300,34 @@ def test_accuracy_cummin(shape, dtype):
     ref_out = torch.cummin(ref_inp, dim=dim)
     with flag_gems.use_gems():
         res_out = torch.cummin(inp, dim=dim)
+    gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
+CUMMAX_SHAPES = (
+    [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
+)
+
+
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(
+    SkipVersion("triton", "<3.0"),
+    reason="Skipping when associative_scan only support single tensor input.",
+)
+@pytest.mark.cummax
+@pytest.mark.parametrize("shape", CUMMAX_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+def test_accuracy_cummax(shape, dtype):
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+    if dtype in INT_DTYPES:
+        inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummax(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummax(inp, dim=dim)
     gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
     gems_assert_equal(res_out.indices, ref_out.indices)
 
