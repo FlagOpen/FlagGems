@@ -110,8 +110,7 @@ void rotary_embedding_inplace(
   if (!position_ids.has_value()) {
     seq_len = q_sizes[1];
 
-  } else {  // default case
-    auto pos_sizes = position_ids.value().sizes();
+  } else {                                           // default case
     position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
     seq_len = std::nullopt;
   }
@@ -210,8 +209,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(const at::Tensor& q,
   if (!position_ids.has_value()) {
     seq_len = q_sizes[1];
 
-  } else {  // default case
-    auto pos_sizes = position_ids.value().sizes();
+  } else {                                           // default case
     position_ids = position_ids.value().view({-1});  // flatten the position_ids tensor
     seq_len = std::nullopt;
   }

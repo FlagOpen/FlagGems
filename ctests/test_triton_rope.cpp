@@ -124,8 +124,8 @@ TEST_P(RotaryEmbeddingTest, CompareWithReference) {
   double atol = (dtype == torch::kFloat16) ? 1e-2 : 1e-5;
   double rtol = (dtype == torch::kFloat16) ? 1e-2 : 1e-3;
 
-  ASSERT_TRUE(torch::allclose(q_out, q_ref, rtol, atol));
-  ASSERT_TRUE(torch::allclose(k_out, k_ref, rtol, atol));
+  ASSERT_TRUE(torch::allclose(q_out, q_ref.to(dtype), rtol, atol));
+  ASSERT_TRUE(torch::allclose(k_out, k_ref.to(dtype), rtol, atol));
 }
 
 INSTANTIATE_TEST_SUITE_P(RotaryEmbeddingTests,
@@ -136,7 +136,7 @@ INSTANTIATE_TEST_SUITE_P(RotaryEmbeddingTests,
                              std::make_tuple(2, 512, 4, 64, torch::kFloat32, false, true),
                              std::make_tuple(4, 1024, 8, 128, torch::kFloat16, true, true),
                              std::make_tuple(8, 2048, 128, 128, torch::kBFloat16, false, true),
+                             std::make_tuple(8, 2048, 32, 64, torch::kFloat16, true, false),
+                             std::make_tuple(8, 2048, 16, 32, torch::kBFloat16, false, false),
                              std::make_tuple(8, 1024, 64, 128, torch::kFloat32, true, false),
-                             std::make_tuple(8, 2048, 128, 256, torch::kFloat32, false, false),
-                             std::make_tuple(8, 2048, 32, 64, torch::kFloat16, true, true),
-                             std::make_tuple(8, 2048, 16, 32, torch::kBFloat16, false, false)));
+                             std::make_tuple(8, 2048, 128, 256, torch::kFloat32, false, false)));
