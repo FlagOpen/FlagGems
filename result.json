@@ -1,0 +1,794 @@
+{
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape0]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape1]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape2]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape3]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape4]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape5]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                1,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape6]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                33,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape7]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                33,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape8]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                33,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape9]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                33,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape10]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                33,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape11]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                33,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape12]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                64,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape13]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                64,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape14]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                64,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape15]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                64,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape16]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                64,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape17]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                64,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape18]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                222,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape19]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                222,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape20]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                222,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape21]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                222,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape22]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                222,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype0-shape23]": {
+        "params": {
+            "dtype": "torch.float16",
+            "shape": [
+                222,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape0]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape1]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape2]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape3]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape4]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape5]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                1,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape6]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                33,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape7]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                33,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape8]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                33,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape9]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                33,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape10]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                33,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape11]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                33,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape12]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                64,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape13]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                64,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape14]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                64,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape15]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                64,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape16]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                64,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape17]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                64,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape18]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                222,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape19]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                222,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape20]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                222,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape21]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                222,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape22]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                222,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype1-shape23]": {
+        "params": {
+            "dtype": "torch.float32",
+            "shape": [
+                222,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape0]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape1]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape2]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape3]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape4]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape5]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                1,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape6]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                33,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape7]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                33,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape8]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                33,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape9]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                33,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape10]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                33,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape11]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                33,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape12]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                64,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape13]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                64,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape14]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                64,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape15]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                64,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape16]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                64,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape17]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                64,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape18]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                222,
+                2,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape19]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                222,
+                2,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape20]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                222,
+                2,
+                1024
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape21]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                222,
+                6,
+                128
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape22]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                222,
+                6,
+                511
+            ]
+        },
+        "result": "passed"
+    },
+    "tests/test_moe_sum.py::test_moe_sum[dtype2-shape23]": {
+        "params": {
+            "dtype": "torch.bfloat16",
+            "shape": [
+                222,
+                6,
+                1024
+            ]
+        },
+        "result": "passed"
+    }
+}
