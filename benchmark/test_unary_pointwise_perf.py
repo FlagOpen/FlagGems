@@ -12,7 +12,7 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from .performance_utils import Benchmark, generate_tensor_input, vendor_name
+from .performance_utils import Benchmark, generate_tensor_input
 
 
 class UnaryPointwiseBenchmark(Benchmark):
