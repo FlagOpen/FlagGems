@@ -57,20 +57,19 @@ def mask_part_sum_kernel(
     start_block = row_id * num_blocks_per_row
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     acc = tl.zeros((BLOCK_SIZE,), dtype=tl.constexpr(part_sums_ptr.dtype.element_ty))
-    if row_id < tl.num_programs(0) - 1:
-        for block_id in range(start_block, start_block + num_blocks_per_row):
-            select = tl.load(mask_ptr + offset)
-            select_ints = select.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
-            acc += select_ints
-            offset += BLOCK_SIZE
-    else:
-        for block_id in range(
-            start_block, min(num_blocks, start_block + num_blocks_per_row)
-        ):
-            select = tl.load(mask_ptr + offset, mask=offset < N, other=0)
-            select_ints = select.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
-            acc += select_ints
-            offset += BLOCK_SIZE
+
+    last_block_id = min(num_blocks - 1, start_block + num_blocks_per_row - 1)
+
+    for block_id in range(start_block, last_block_id):
+        select = tl.load(mask_ptr + offset)
+        select_ints = select.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
+        acc += select_ints
+        offset += BLOCK_SIZE
+    # Peeled last block
+    select = tl.load(mask_ptr + offset, mask=offset < N, other=0)
+    select_ints = select.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
+    acc += select_ints
+
     part_sum = tl.sum(acc, axis=0)
     tl.store(part_sums_ptr + row_id, part_sum)
     # cumsum the part_sums
@@ -106,30 +105,24 @@ def write_back_kernel(
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     advance = tl.load(part_sums_ptr + row_id)
 
-    if row_id < tl.num_programs(0) - 1:
-        for block_id in range(start_block, start_block + num_blocks_per_row):
-            inp = tl.load(inp_ptr + offset)
-            select_mask = tl.load(mask_ptr + offset).to(tl.int1)
-            select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
-            out_ptr += advance
-            advance = tl.sum(select_ints, axis=0)
-            pre_sums = tl.cumsum(select_ints, axis=0) - 1
-            tl.store(out_ptr + pre_sums, inp, mask=select_mask)
-            offset += BLOCK_SIZE
-    else:
-        for block_id in range(
-            start_block, min(num_blocks, start_block + num_blocks_per_row)
-        ):
-            inp = tl.load(inp_ptr + offset, mask=offset < N)
-            select_mask = tl.load(mask_ptr + offset, mask=offset < N, other=0).to(
-                tl.int1
-            )
-            select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
-            out_ptr += advance
-            advance = tl.sum(select_ints, axis=0)
-            pre_sums = tl.cumsum(select_ints, axis=0) - 1
-            tl.store(out_ptr + pre_sums, inp, mask=offset < N and select_mask)
-            offset += BLOCK_SIZE
+    last_block_id = min(num_blocks - 1, start_block + num_blocks_per_row - 1)
+
+    for block_id in range(start_block, last_block_id):
+        inp = tl.load(inp_ptr + offset)
+        select_mask = tl.load(mask_ptr + offset).to(tl.int1)
+        select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
+        out_ptr += advance
+        advance = tl.sum(select_ints, axis=0)
+        pre_sums = tl.cumsum(select_ints, axis=0) - 1
+        tl.store(out_ptr + pre_sums, inp, mask=select_mask)
+        offset += BLOCK_SIZE
+    # Peeled last block
+    inp = tl.load(inp_ptr + offset, mask=offset < N)
+    select_mask = tl.load(mask_ptr + offset, mask=offset < N, other=0).to(tl.int1)
+    select_ints = select_mask.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
+    out_ptr += advance
+    pre_sums = tl.cumsum(select_ints, axis=0) - 1
+    tl.store(out_ptr + pre_sums, inp, mask=offset < N and select_mask)
 
 
 def masked_select(inp, mask):
@@ -144,7 +137,7 @@ def masked_select(inp, mask):
     inp, mask = torch.broadcast_tensors(inp, mask)
 
     inp = inp.contiguous()
-    mask = mask.ravel()
+    mask = mask.contiguous()
 
     N = inp.numel()
     if N <= 4096:
@@ -166,7 +159,7 @@ def masked_select(inp, mask):
     np = triton.cdiv(n_blocks, n_blocks_per_row)
     NP_BLOCK = triton.next_power_of_2(np)
 
-    # Tally partial sums over cols
+    # Compute per cta sums and cumulative sums across ctas
     dtype = torch.int32 if N < 2**31 else torch.int64
     part_sums = torch.empty(np + 1, dtype=dtype, device=mask.device)
     barrier = torch.zeros([], dtype=torch.int, device=mask.device)
@@ -183,8 +176,7 @@ def masked_select(inp, mask):
         num_warps=num_warps,
     )
 
-    # Cumsum to obtain nonzero output starting offsets for each col of blocks
-    # pre_sums = part_sums.cumsum(axis=0)
+    # Write back selected data
     out = torch.empty(part_sums[-1], dtype=inp.dtype, device=mask.device)
     # write_offsets = pre_sums - part_sums
     write_back_kernel[(np,)](
