@@ -56,18 +56,18 @@ def mask_part_sum_kernel(
     row_id = tl.program_id(0)
     start_block = row_id * num_blocks_per_row
     offset = start_block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    acc = tl.zeros((BLOCK_SIZE,), dtype=tl.constexpr(part_sums_ptr.dtype.element_ty))
+    acc = tl.zeros((BLOCK_SIZE,), dtype=part_sums_ptr.dtype.element_ty)
 
     last_block_id = min(num_blocks - 1, start_block + num_blocks_per_row - 1)
 
     for block_id in range(start_block, last_block_id):
         select = tl.load(mask_ptr + offset)
-        select_ints = select.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
+        select_ints = select.to(part_sums_ptr.dtype.element_ty)
         acc += select_ints
         offset += BLOCK_SIZE
     # Peeled last block
     select = tl.load(mask_ptr + offset, mask=offset < N, other=0)
-    select_ints = select.to(tl.constexpr(part_sums_ptr.dtype.element_ty))
+    select_ints = select.to(part_sums_ptr.dtype.element_ty)
     acc += select_ints
 
     part_sum = tl.sum(acc, axis=0)
