@@ -29,4 +29,6 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     const at::Tensor &sin,
     const std::optional<at::Tensor> &position_ids = std::nullopt,
     bool rotary_interleaved = false);
+std::tuple<at::Tensor, at::Tensor> topk(
+    const at::Tensor &x, int64_t k, int64_t dim = -1, bool largest = true, bool sorted = true);
 }  // namespace flag_gems
