@@ -118,7 +118,7 @@ def test_perf_unique():
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
-            return [(1024, 1), (1024, 512)]
+            return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
 
     def sort_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -203,6 +203,30 @@ def test_perf_embedding():
             torch.float32,
             torch.float16,
         ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+    )
+    bench.run()
+
+
+class LerpBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+@pytest.mark.lerp
+def test_perf_lerp():
+    def lerp_input_fn(shape, dtype, device):
+        input = torch.randn(*shape, device=device, dtype=dtype)
+        end = input + 10
+        weight = torch.randn(*shape, device=device, dtype=dtype)
+        yield {"input": input, "end": end, "weight": weight},
+
+    bench = LerpBenchmark(
+        input_fn=lerp_input_fn,
+        op_name="lerp",
+        torch_op=torch.lerp,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 

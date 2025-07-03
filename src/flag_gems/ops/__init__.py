@@ -34,6 +34,7 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
+from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
@@ -82,6 +83,7 @@ from .isnan import isnan
 from .kron import kron
 from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
+from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .linspace import linspace
 from .log import log
 from .log_sigmoid import log_sigmoid
@@ -98,7 +100,7 @@ from .maximum import maximum
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .minimum import minimum
-from .mm import mm
+from .mm import mm, mm_out
 from .mse_loss import mse_loss
 from .mul import mul, mul_
 from .multinomial import multinomial
@@ -154,7 +156,7 @@ from .softmax import softmax, softmax_backward
 from .sort import sort
 from .stack import stack
 from .sub import sub, sub_
-from .sum import sum, sum_dim
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -222,6 +224,7 @@ __all__ = [
     "pad",
     "constant_pad_nd",
     "cummin",
+    "cummax",
     "cumsum",
     "cumsum_out",
     "normed_cumsum",
@@ -280,12 +283,17 @@ __all__ = [
     "weight_norm_interface_backward",
     "le",
     "le_scalar",
+    "lerp_scalar",
+    "lerp_scalar_",
+    "lerp_tensor",
+    "lerp_tensor_",
     "lt",
     "lt_scalar",
     "rms_norm",
     "mean",
     "mean_dim",
     "mm",
+    "mm_out",
     "mul",
     "mul_",
     "multinomial",
@@ -346,7 +354,9 @@ __all__ = [
     "min",
     "min_dim",
     "sum",
+    "sum_out",
     "sum_dim",
+    "sum_dim_out",
     "amax",
     "argmax",
     "argmin",
