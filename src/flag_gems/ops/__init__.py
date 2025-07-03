@@ -175,6 +175,7 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .vstack import vstack
+from .w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zeros import zeros
@@ -419,4 +420,5 @@ __all__ = [
     "eye",
     "eye_m",
     "to_dtype",
+    "w8a8_block_fp8_matmul",
 ]
