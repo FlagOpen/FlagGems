@@ -37,7 +37,8 @@ at::Tensor nonzero(const at::Tensor &inp) {
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
-  unsigned int grid_x = (n_elements + 1023) / 1024;
+  int BLOCK_SIZE = 1024;
+  unsigned int grid_x = (n_elements + BLOCK_SIZE - 1) / BLOCK_SIZE;
   f(/* CUstream = */ raw_stream,
     /* grid_x = */ grid_x,
     /* grid_y = */ 1,
@@ -50,10 +51,10 @@ at::Tensor nonzero(const at::Tensor &inp) {
     n_elements,
     shape,
     inp_ndim,
-    /* BLOCK_SIZE */ 1024);
+    /* BLOCK_SIZE */ BLOCK_SIZE);
 
-  // num_nonzeros = prefix_sum[n_elements - 1].item();
-  // out = out[0:num_nonzeros];
+  num_nonzeros = prefix_sum[n_elements - 1].item().to<int64_t>();
+  out = out.index({torch::indexing::Slice(0, num_nonzeros)});
   return out;
 }
 
