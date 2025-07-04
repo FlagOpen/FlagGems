@@ -12,17 +12,17 @@ logger = logging.getLogger(__name__)
 
 
 @tl.constexpr
-def get_int_t(num_bits: tl.constexpr, signed: tl.constexpr) -> tl.dtype:
+def get_int_t(num_bits, signed) -> tl.dtype:
     return tl.core.get_int_dtype(num_bits, signed)
 
 
 @tl.constexpr
-def one_zeros(num_bits: tl.constexpr) -> int:
+def one_zeros(num_bits) -> int:
     return 1 << (num_bits - 1)
 
 
 @tl.constexpr
-def zero_ones(num_bits: tl.constexpr) -> int:
+def zero_ones(num_bits) -> int:
     return (1 << (num_bits - 1)) - 1
 
 
