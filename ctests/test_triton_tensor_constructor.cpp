@@ -7,9 +7,9 @@ TEST(zeros_op_test, zeros) {
   int64_t n = 100;
   auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
   torch::Tensor out_torch = torch::zeros({n}, options);
-  torch::Tensor out_triton_0 = flag_gems::zeros_tensor(n);
-  torch::Tensor out_triton_1 = flag_gems::zeros_tensor(n, torch::kFloat32);
-  torch::Tensor out_triton_2 = flag_gems::zeros_tensor(n, torch::kFloat32, c10::nullopt);
+  torch::Tensor out_triton_0 = flag_gems::zeros(n);
+  torch::Tensor out_triton_1 = flag_gems::zeros(n, torch::kFloat32);
+  torch::Tensor out_triton_2 = flag_gems::zeros(n, torch::kFloat32, c10::nullopt);
 
   EXPECT_TRUE(torch::allclose(out_torch, out_triton_0));
   EXPECT_TRUE(torch::allclose(out_torch, out_triton_1));

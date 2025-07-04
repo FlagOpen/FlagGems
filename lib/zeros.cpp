@@ -8,9 +8,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor zeros_tensor(int64_t n_elements,
-                        c10::optional<at::ScalarType> dtype,
-                        c10::optional<at::Device> device) {
+at::Tensor zeros(int64_t n_elements, c10::optional<at::ScalarType> dtype, c10::optional<at::Device> device) {
   TORCH_CHECK(n_elements > 0, "the element of tensor must >0")
 
   at::ScalarType final_dtype = dtype.value_or(at::typeMetaToScalarType(at::get_default_dtype()));
