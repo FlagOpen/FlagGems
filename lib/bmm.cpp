@@ -8,7 +8,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor bmm(at::Tensor& A, at::Tensor& B) {
+at::Tensor bmm(const at::Tensor& A, const at::Tensor& B) {
   TORCH_CHECK(A.dim() == 3 && B.dim() == 3, "both the tensors must be 3-D");
   TORCH_CHECK(A.dtype() == B.dtype(),
               "expected a and b to have the same dtype, but got: ",
@@ -18,10 +18,10 @@ at::Tensor bmm(at::Tensor& A, at::Tensor& B) {
   at::IntArrayRef A_sizes = A.sizes();
   at::IntArrayRef B_sizes = B.sizes();
 
-  A = A.contiguous();
-  B = B.contiguous();
+  at::Tensor A_contig = A.contiguous();
+  at::Tensor B_contig = B.contiguous();
 
-  at::Tensor out = at::empty({A_sizes[0], A_sizes[1], B_sizes[2]}, A.options());
+  at::Tensor out = at::empty({A_sizes[0], A_sizes[1], B_sizes[2]}, A_contig.options());
 
   const TritonJITFunction& f =
       TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "bmm.py"), "bmm_kernel");
@@ -51,8 +51,8 @@ at::Tensor bmm(at::Tensor& A, at::Tensor& B) {
     /* grid_z = */ A_sizes[0],
     /* num_warps = */ 4,
     /* num_stages = */ 1,
-    A,
-    B,
+    A_contig,
+    B_contig,
     out,
     A_sizes[1],
     B_sizes[2],
