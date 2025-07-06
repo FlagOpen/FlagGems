@@ -29,4 +29,5 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     const at::Tensor &sin,
     const std::optional<at::Tensor> &position_ids = std::nullopt,
     bool rotary_interleaved = false);
+at::Tensor contiguous(at::Tensor &input, at::MemoryFormat memory_format = at::MemoryFormat::Contiguous);
 }  // namespace flag_gems
