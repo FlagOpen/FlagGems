@@ -9,7 +9,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable, libentry
 from flag_gems.utils.shape_utils import bracket_next_power_of_2
 
-
 logger = logging.getLogger(__name__)
 
 
