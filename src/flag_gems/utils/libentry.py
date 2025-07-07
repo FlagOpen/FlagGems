@@ -215,17 +215,10 @@ class LibTuner(triton.runtime.Autotuner):
         self.share = share
         self.kernel_hash = get_kernel_hash(self.base_fn, self.configs)
         # Use table name with hash instead of hash in key
-        self.table_name = (
-            f"{share}_{self.kernel_hash}"
-            if share
-            else f"{self.__name__}_{self.kernel_hash}"
-        )
+        self.table_name = f"{self.__name__}_{self.kernel_hash}"
         self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
-        self.base_fn = fn
-        while not inspect.isfunction(self.base_fn):
-            self.base_fn = self.base_fn.fn
 
     def get_key(self, args):
         if self.strategy is None:
