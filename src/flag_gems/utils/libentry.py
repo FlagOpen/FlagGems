@@ -171,7 +171,6 @@ class LibTuner(triton.runtime.Autotuner):
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
-        share=None,
     ):
         # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
         if major_version == 2 or (major_version == 3 and minor_version <= 1):
@@ -212,7 +211,6 @@ class LibTuner(triton.runtime.Autotuner):
         self.__name__ = self.base_fn.__name__
         self.keys = key
         self.strategy = strategy
-        self.share = share
         self.kernel_hash = get_kernel_hash(self.base_fn, self.configs)
         # Use table name with hash instead of hash in key
         self.table_name = f"{self.__name__}_{self.kernel_hash}"
@@ -296,7 +294,6 @@ def libtuner(
     use_cuda_graph=False,
     do_bench=None,
     strategy=None,
-    share=None,
 ):
     """
     Decorator for triton library autotuner.
@@ -318,7 +315,6 @@ def libtuner(
             use_cuda_graph=use_cuda_graph,
             do_bench=do_bench,
             strategy=strategy,
-            share=share,
         )
 
     return decorator
