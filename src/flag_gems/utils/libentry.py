@@ -1,4 +1,4 @@
-import builtins
+import hashlib
 import inspect
 import logging
 import math
@@ -31,6 +31,19 @@ ATTRS = {
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 
+
+def get_kernel_hash(func, configs):
+    if hasattr(func, "fn"):
+        original_func = func.fn
+    else:
+        original_func = func
+
+    source_code = inspect.getsource(original_func)
+    config_strs = [str(config) for config in configs]
+    combined_content = f"{source_code}{config_strs}"
+    return hashlib.md5(combined_content.encode("utf-8")).hexdigest()[:8]
+
+
 if major_version == 2:
 
     def all_kwargs(self):
@@ -58,6 +71,7 @@ if major_version == 2:
 STRATEGY = {
     None: lambda v: v,
     "log": lambda v: math.ceil(math.log2(v)),
+    "align32": lambda v: (v // 32) * 32,
 }
 
 
@@ -158,6 +172,8 @@ class LibTuner(triton.runtime.Autotuner):
         do_bench=None,
         strategy=None,
         share=None,
+        early_stop_threshold=0.03,
+        early_stop_min_configs=5,
     ):
         # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
         if major_version == 2 or (major_version == 3 and minor_version <= 1):
@@ -199,9 +215,38 @@ class LibTuner(triton.runtime.Autotuner):
         self.keys = key
         self.strategy = strategy
         self.share = share
-        self.cache = libcache[share] if share else libcache[self.__name__]
+        self.kernel_hash = get_kernel_hash(self.base_fn, self.configs)
+        # Use table name with hash instead of hash in key
+        self.table_name = (
+            f"{share}_{self.kernel_hash}"
+            if share
+            else f"{self.__name__}_{self.kernel_hash}"
+        )
+        self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
+        self.base_fn = fn
+        while not inspect.isfunction(self.base_fn):
+            self.base_fn = self.base_fn.fn
+        self.early_stop_threshold = early_stop_threshold
+        self.early_stop_min_configs = early_stop_min_configs
+
+    def _extract_timing(self, timing):
+        """Extract actual timing value from benchmark result."""
+        if isinstance(timing, (list, tuple)):
+            return float(timing[0])
+        return float(timing)
+
+    def _should_early_stop(self, optimal_perf, suboptimal_perf, configs_tested):
+        if configs_tested < self.early_stop_min_configs:
+            return False
+        if self.early_stop_min_configs == 1:
+            return True
+        if optimal_perf is not None and suboptimal_perf is not None:
+            improvement_ratio = (suboptimal_perf - optimal_perf) / optimal_perf
+            if improvement_ratio < self.early_stop_threshold:
+                return True
+        return False
 
     def get_key(self, args):
         if self.strategy is None:
@@ -231,20 +276,47 @@ class LibTuner(triton.runtime.Autotuner):
                 used_cached_result = False
                 pruned_configs = self.prune_configs(kwargs)
                 bench_start = time.time()
-                timings = {
-                    config: self._bench(*args, config=config, **kwargs)
-                    for config in pruned_configs
-                }
+                configs_tested = 0
+                optimal_perf = None
+                suboptimal_perf = None
+                best_config = None
+
+                for config in pruned_configs:
+                    timing = self._bench(*args, config=config, **kwargs)
+                    configs_tested += 1
+
+                    # Extract actual timing value
+                    timing_val = self._extract_timing(timing)
+
+                    # Update optimal and suboptimal performance
+                    if optimal_perf is None or timing_val < optimal_perf:
+                        suboptimal_perf = optimal_perf
+                        optimal_perf = timing_val
+                        best_config = config
+                    elif suboptimal_perf is None or timing_val < suboptimal_perf:
+                        suboptimal_perf = timing_val
+
+                    if self._should_early_stop(
+                        optimal_perf, suboptimal_perf, configs_tested
+                    ):
+                        if os.getenv("TRITON_PRINT_AUTOTUNING", None) == "1":
+                            print(
+                                f"Early stopping after {configs_tested}/{len(pruned_configs)} "
+                                f"configs for {self.__name__}"
+                            )
+                        break
+
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
-                self.cache[key] = builtins.min(timings, key=timings.get)
+                self.cache[key] = best_config
                 full_nargs = {
                     **self.nargs,
                     **kwargs,
                     **self.cache[key].all_kwargs(),
                 }
                 self.pre_hook(full_nargs, reset_only=True)
-                self.configs_timings = timings
+                # Keep timings for backward compatibility, but only store the best one
+                self.configs_timings = {best_config: optimal_perf}
             config = self.cache[key]
         else:
             config = self.configs[0]
@@ -280,6 +352,8 @@ def libtuner(
     do_bench=None,
     strategy=None,
     share=None,
+    early_stop_threshold=0.05,
+    early_stop_min_configs=3,
 ):
     """
     Decorator for triton library autotuner.
@@ -302,6 +376,8 @@ def libtuner(
             do_bench=do_bench,
             strategy=strategy,
             share=share,
+            early_stop_threshold=early_stop_threshold,
+            early_stop_min_configs=early_stop_min_configs,
         )
 
     return decorator
