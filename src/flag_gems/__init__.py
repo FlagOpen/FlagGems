@@ -14,6 +14,7 @@ from . import testing  # noqa: F401
 from . import runtime
 from .fused import *  # noqa: F403
 from .logging_utils import setup_flaggems_logging
+from .modules import *  # noqa: F403
 from .ops import *  # noqa: F403
 from .patches import *  # noqa: F403
 from .runtime.commom_utils import Autograd
@@ -75,6 +76,7 @@ def enable(
             ("cumsum", cumsum, Autograd.disable),
             ("cumsum.out", cumsum_out, Autograd.disable),
             ("cummin", cummin, Autograd.disable),
+            ("cummax", cummax, Autograd.disable),
             ("div.Tensor", true_divide, Autograd.disable),
             ("div_.Tensor", true_divide_, Autograd.disable),
             ("div.Scalar", true_divide, Autograd.disable),
@@ -159,6 +161,10 @@ def enable(
             ("native_layer_norm_backward", layer_norm_backward, Autograd.disable),
             ("le.Tensor", le, Autograd.disable),
             ("le.Scalar", le_scalar, Autograd.disable),
+            ("lerp.Scalar", lerp_scalar, Autograd.disable),
+            ("lerp.Tensor", lerp_tensor, Autograd.disable),
+            ("lerp_.Scalar", lerp_scalar_, Autograd.disable),
+            ("lerp_.Tensor", lerp_tensor_, Autograd.disable),
             ("lt.Tensor", lt, Autograd.disable),
             ("lt.Scalar", lt_scalar, Autograd.disable),
             ("log", log, Autograd.disable),
@@ -183,6 +189,7 @@ def enable(
             ("mean", mean, Autograd.disable),
             ("mean.dim", mean_dim, Autograd.disable),
             ("mm", mm, Autograd.disable),
+            ("mm.out", mm_out, Autograd.disable),
             ("mul.Tensor", mul, Autograd.disable),
             ("mul_.Tensor", mul_, Autograd.disable),
             ("multinomial", multinomial, Autograd.disable),
@@ -239,10 +246,12 @@ def enable(
             ("prod", prod, Autograd.disable),
             ("prod.dim_int", prod_dim, Autograd.disable),
             ("sum", sum, Autograd.disable),
+            ("sum.out", sum_out, Autograd.disable),
             ("sum.dim_IntList", sum_dim, Autograd.disable),
+            ("sum.IntList_out", sum_dim_out, Autograd.disable),
             (
-                "scaled_dot_product_attention",
-                scaled_dot_product_attention,
+                "_flash_attention_forward",
+                flash_attention_forward,
                 Autograd.disable,
             ),
             ("all", all, Autograd.disable),

@@ -4,12 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.ops.topk import argsort
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
-
-from .. import runtime
-from ..runtime import device, torch_device_fn
-from ..utils import libentry
-from .topk import argsort
 
 logger = logging.getLogger(__name__)
 device_ = device
@@ -285,7 +284,7 @@ def duplicate_keys_shuffle_kernel(
     tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
-def sort_by_key(key, value, valid_bits):
+def sort_by_key(key, value, valid_bits, generator=None):
     n_elements = key.numel()
     if n_elements > 2 * 1024:
         # radix method
@@ -382,7 +381,9 @@ def sort_by_key(key, value, valid_bits):
         # last step, shuffle inner-block data
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
-        philox_seed, philox_offset = philox_backend_seed_offset(n_elements)
+        philox_seed, philox_offset = philox_backend_seed_offset(
+            n_elements, generator=generator
+        )
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
@@ -459,5 +460,5 @@ def randperm(
     rand_key = torch.randint(
         low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
     )
-    perm_range = sort_by_key(rand_key, in_range, valid_bits)
+    perm_range = sort_by_key(rand_key, in_range, valid_bits, generator=generator)
     return perm_range
