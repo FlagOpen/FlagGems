@@ -18,6 +18,7 @@ MNK_SHAPES = (
 )
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
@@ -53,6 +54,7 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
 
     gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
@@ -73,6 +75,7 @@ def test_accuracy_bmm(M, N, K, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
@@ -92,6 +95,7 @@ def test_accuracy_mm(M, N, K, dtype):
         res_out = torch.mm(mat1, mat2)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
@@ -177,3 +181,4 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
             res_out = torch.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)
     gems_assert_close(res_out, ref_out, dtype)
+    
