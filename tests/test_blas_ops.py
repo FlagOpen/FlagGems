@@ -181,4 +181,3 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
             res_out = torch.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)
     gems_assert_close(res_out, ref_out, dtype)
-    
