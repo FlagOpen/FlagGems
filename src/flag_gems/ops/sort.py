@@ -359,25 +359,7 @@ def sort_kernel(
 def sort(inp, dim=-1, descending=False):
     # We only implement stable radix sort here
     logger.debug("GEMS SORT")
-    sort_elem_cnt = inp.shape[dim]
-    if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int64)
-
-    if dim < 0:
-        dim = dim + inp.ndim
-    if dim != inp.ndim - 1:
-        inp = torch.movedim(inp, dim, -1).contiguous()
-    else:
-        inp = inp.contiguous()
-
-    dtype = inp.dtype
-    num_bits_per_pass = 1 if dtype == torch.bool else 4
-    out, out_index = radix_sort(inp, num_bits_per_pass, descending)
-
-    if dim != inp.ndim - 1:
-        out = torch.movedim(out, -1, dim)
-        out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index
+    return sort_stable(inp, stable=False, dim=dim, descending=descending)
 
 
 def sort_stable(inp, *, stable, dim=-1, descending=False):
