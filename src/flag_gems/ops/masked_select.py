@@ -159,36 +159,38 @@ def masked_select(inp, mask):
     np = triton.cdiv(n_blocks, n_blocks_per_row)
     NP_BLOCK = triton.next_power_of_2(np)
 
-    # Compute per cta sums and cumulative sums across ctas
-    dtype = torch.int32 if N < 2**31 else torch.int64
-    part_sums = torch.empty(np + 1, dtype=dtype, device=mask.device)
-    barrier = torch.zeros([], dtype=torch.int, device=mask.device)
-    mask_part_sum_kernel[(np,)](
-        inp,
-        mask,
-        part_sums,
-        barrier,
-        N,
-        n_blocks,
-        n_blocks_per_row,
-        NP_BLOCK=NP_BLOCK,
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
-    )
+    with torch_device_fn.device(inp.device):
+        # Compute per cta sums and cumulative sums across ctas
+        dtype = torch.int32 if N < 2**31 else torch.int64
+        part_sums = torch.empty(np + 1, dtype=dtype, device=mask.device)
+        barrier = torch.zeros([], dtype=torch.int, device=mask.device)
+        mask_part_sum_kernel[(np,)](
+            inp,
+            mask,
+            part_sums,
+            barrier,
+            N,
+            n_blocks,
+            n_blocks_per_row,
+            NP_BLOCK=NP_BLOCK,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
 
-    # Write back selected data
-    out = torch.empty(part_sums[-1], dtype=inp.dtype, device=mask.device)
-    # write_offsets = pre_sums - part_sums
-    write_back_kernel[(np,)](
-        inp,
-        mask,
-        part_sums,
-        out,
-        N,
-        n_blocks,
-        n_blocks_per_row,
-        NP_BLOCK=triton.next_power_of_2(np),
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
-    )
+        # Write back selected data
+        out = torch.empty(part_sums[-1], dtype=inp.dtype, device=mask.device)
+        # write_offsets = pre_sums - part_sums
+        write_back_kernel[(np,)](
+            inp,
+            mask,
+            part_sums,
+            out,
+            N,
+            n_blocks,
+            n_blocks_per_row,
+            NP_BLOCK=triton.next_power_of_2(np),
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
+
     return out
