@@ -1141,7 +1141,7 @@ def create_kv_caches_with_random_flash(
     return key_caches, value_caches
 
 
-@pytest.mark.test_reshape_and_cache_flash
+@pytest.mark.reshape_and_cache_flash
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_size", [64, 80, 120, 256])
