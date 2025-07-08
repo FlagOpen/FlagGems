@@ -8,6 +8,7 @@ add_library(operators
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
             cat.cpp)
+            bmm.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
