@@ -214,9 +214,7 @@ class LibTuner(triton.runtime.Autotuner):
             func_hash = jit_fn.cache_key
             config_strs = [str(config) for config in self.configs]
             combined_content = f"{func_hash}{config_strs}"
-            self.kernel_hash = hashlib.md5(
-                combined_content.encode("utf-8")
-            ).hexdigest()[:8]
+            self.kernel_hash = hashlib.md5(combined_content.encode("utf-8")).hexdigest()
         return self.kernel_hash
 
     def get_key(self, args):
