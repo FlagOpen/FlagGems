@@ -8,18 +8,37 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor zeros(int64_t n_elements, c10::optional<at::ScalarType> dtype, c10::optional<at::Device> device) {
-  TORCH_CHECK(n_elements > 0, "the element of tensor must >0")
+at::Tensor zeros(at::IntArrayRef size,
+                 c10::optional<at::ScalarType> dtype,
+                 c10::optional<at::Layout> layout,
+                 c10::optional<at::Device> device,
+                 c10::optional<bool> pin_memory) {
+  int64_t n_elements = 1;
+  for (auto dim : size) {
+    n_elements *= dim;
+  }
 
-  at::ScalarType final_dtype = dtype.value_or(at::typeMetaToScalarType(at::get_default_dtype()));
-  at::Device final_device =
-      device.value_or(torch::cuda::is_available() ? at::Device(at::kCUDA) : at::Device(at::kCPU));
-  at::Tensor out = at::empty({n_elements}, at::TensorOptions().dtype(final_dtype).device(final_device));
+  auto options =
+      at::TensorOptions()
+          .dtype(dtype.value_or(at::typeMetaToScalarType(at::get_default_dtype())))
+          .layout(layout.value_or(at::kStrided))
+          .device(device.value_or(torch::cuda::is_available() ? at::Device(at::kCUDA) : at::Device(at::kCPU)))
+          .pinned_memory(pin_memory.value_or(false));
+
+  TORCH_CHECK(n_elements >= 0, "Total elements must be non-negative");
+
+  if (n_elements == 0) {
+    return at::empty(size, options);
+  }
+
+  at::Tensor out = at::empty(size, options);
+
   int64_t tile_size = 1024;
   const int num_warps = 8;
   const int num_stages = 1;
 
   const uint64_t num_blocks = (static_cast<uint64_t>(n_elements) + tile_size - 1) / tile_size;
+
   const TritonJITFunction &f =
       TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "zeros.py"), "zeros_kernel");
 
@@ -36,6 +55,7 @@ at::Tensor zeros(int64_t n_elements, c10::optional<at::ScalarType> dtype, c10::o
     out,
     n_elements,
     tile_size);
+
   return out;
 }
 }  // namespace flag_gems

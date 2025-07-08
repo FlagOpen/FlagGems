@@ -8,7 +8,9 @@ PYBIND11_MODULE(c_operators, m) {
 
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
-  m.def("zeros(SymInt n_elements, ScalarType? dtype=None, Device? device=None) -> Tensor");
+  m.def(
+      "zeros(SymInt[] size, ScalarType? dtype=None,Layout? layout=None, Device? device=None, bool? "
+      "pin_memory=None) -> Tensor");
   m.def("sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor");
   m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
   // Norm
