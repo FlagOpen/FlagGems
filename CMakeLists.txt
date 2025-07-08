@@ -112,4 +112,7 @@ if(FLAGGEMS_INSTALL)
   # install the FindTorch
   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindTorch.cmake
           DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FlagGems)
+  install(FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/triton_src/fill.py
+  DESTINATION triton_src)
 endif()
