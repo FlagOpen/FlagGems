@@ -237,10 +237,6 @@ def test_threadsafety():
             run_two_threads()
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
 def test_hash_generation():
     @libtuner(
         configs=[
@@ -291,10 +287,6 @@ def test_hash_generation():
     assert kernel_a.kernel_hash != kernel_b.kernel_hash
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="Test Files for Operators Not Pending Testing",
-)
 def test_hash_changes_when_dependency_modified():
     @triton.jit
     def sub_func(x, y):
