@@ -7,7 +7,7 @@ add_library(operators
             rms_norm.cpp
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
-            cat.cpp)
+            cat.cpp
             bmm.cpp)
 target_include_directories(operators
   PUBLIC

@@ -10,7 +10,7 @@ TEST(TritonCatTest, basictest) {
   torch::Tensor out_torch = torch::cat({t1, t2}, 0);
   torch::Tensor out_gems = flag_gems::cat({t1, t2}, 0);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_gems));
+  EXPECT_TRUE(torch::equal(out_torch, out_gems));
 }
 
 TEST(TritonCatTest, 2dimtest) {
@@ -22,7 +22,7 @@ TEST(TritonCatTest, 2dimtest) {
   torch::Tensor out_torch = torch::cat({t1, t2}, dim_to_test);
   torch::Tensor out_gems = flag_gems::cat({t1, t2}, dim_to_test);
 
-  EXPECT_TRUE(torch::allclose(out_gems, out_torch));
+  EXPECT_TRUE(torch::equal(out_gems, out_torch));
 
   EXPECT_EQ(out_gems.size(0), 3);
   EXPECT_EQ(out_gems.size(1), 6);
@@ -39,7 +39,7 @@ TEST(TritonCatTest, 3dimtest) {
   torch::Tensor out_torch = torch::cat({t1, t2}, dim_to_test);
   torch::Tensor out_gems = flag_gems::cat({t1, t2}, dim_to_test);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_gems));
+  EXPECT_TRUE(torch::equal(out_torch, out_gems));
 }
 
 TEST(TritonCatTest, 4dimtest) {
@@ -53,7 +53,7 @@ TEST(TritonCatTest, 4dimtest) {
   torch::Tensor out_torch = torch::cat({t1, t2}, dim_to_test);
   torch::Tensor out_gems = flag_gems::cat({t1, t2}, dim_to_test);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_gems));
+  EXPECT_TRUE(torch::equal(out_torch, out_gems));
 }
 
 TEST(TritonCatTest, IntegerConcatenation) {
@@ -80,7 +80,7 @@ TEST(TritonCatTest, EmptyTensorConcatenation) {
   torch::Tensor out_torch = torch::cat({t1, t2}, 0);
   torch::Tensor out_gems = flag_gems::cat({t1, t2}, 0);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_gems));
+  EXPECT_TRUE(torch::equal(out_torch, out_gems));
 
   torch::Tensor t3 = torch::randn({0, 3}, options);
   torch::Tensor t4 = torch::randn({0, 3}, options);
@@ -88,7 +88,7 @@ TEST(TritonCatTest, EmptyTensorConcatenation) {
   torch::Tensor out_torch_both_empty = torch::cat({t3, t4}, 0);
   torch::Tensor out_gems_both_empty = flag_gems::cat({t3, t4}, 0);
 
-  EXPECT_TRUE(torch::allclose(out_torch_both_empty, out_gems_both_empty));
+  EXPECT_TRUE(torch::equal(out_torch_both_empty, out_gems_both_empty));
   EXPECT_EQ(out_gems_both_empty.numel(), 0);
 }
 
@@ -104,7 +104,7 @@ TEST(TritonCatTest, 3tensorcat) {
   torch::Tensor out_torch = torch::cat({t1, t2, t3}, dim_to_test);
   torch::Tensor out_gems = flag_gems::cat({t1, t2, t3}, dim_to_test);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_gems));
+  EXPECT_TRUE(torch::equal(out_torch, out_gems));
   EXPECT_EQ(out_gems.size(0), 7);
   EXPECT_EQ(out_gems.size(1), 3);
 }
@@ -125,7 +125,7 @@ TEST(TritonCatTest, HandlesNonContiguousInput) {
   torch::Tensor out_torch = torch::cat({t1_non_contiguous, t2_contiguous}, dim_to_test);
   torch::Tensor out_gems = flag_gems::cat({t1_non_contiguous, t2_contiguous}, dim_to_test);
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_gems));
+  EXPECT_TRUE(torch::equal(out_torch, out_gems));
 
   EXPECT_EQ(out_gems.size(0), 2);
   EXPECT_EQ(out_gems.size(1), 4);
