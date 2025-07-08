@@ -118,7 +118,7 @@ def test_perf_unique():
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
-            return [(1024, 1), (1024, 512)]
+            return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
 
     def sort_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)

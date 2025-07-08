@@ -3,8 +3,8 @@ import logging
 import triton
 import triton.language as tl
 
-from ..runtime import torch_device_fn
-from ..utils import libentry
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +17,14 @@ def reshape_and_cache_kernel(
     key_cache,
     value_cache,
     slot_mapping,
-    k_scale,
-    v_scale,
     key_stride,
     value_stride,
     num_heads,
     head_size,
     block_size,
     x,
+    k_scale,
+    v_scale,
     n: tl.constexpr,
 ):
     token_idx = tl.program_id(0)
@@ -94,13 +94,13 @@ def reshape_and_cache(
             key_cache,
             value_cache,
             slot_mapping,
-            k_scale,
-            v_scale,
             key_stride,
             value_stride,
             num_heads,
             head_size,
             block_size,
             x,
+            k_scale,
+            v_scale,
             num_heads * head_size,
         )

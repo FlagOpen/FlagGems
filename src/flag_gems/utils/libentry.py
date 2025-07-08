@@ -1,5 +1,7 @@
 import builtins
+import hashlib
 import inspect
+import logging
 import math
 import os
 import sqlite3
@@ -11,9 +13,12 @@ from typing import Dict, Optional
 
 import triton
 
-from .. import runtime
-from ..runtime import torch_device_fn
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+
 from .code_cache import config_cache_dir
+
+logger = logging.getLogger(__name__)
 
 DEVICE_COUNT = runtime.device.device_count
 ATTRS = {
@@ -21,11 +26,24 @@ ATTRS = {
     (2, 3): 5,
     (3, 0): 4,
     (3, 1): 4,
-    (3, 2): 8,
+    (3, 2): 4,
     (3, 3): 8,
 }
 version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
+
+
+def get_kernel_hash(func, configs):
+    if hasattr(func, "fn"):
+        original_func = func.fn
+    else:
+        original_func = func
+
+    source_code = inspect.getsource(original_func)
+    config_strs = [str(config) for config in configs]
+    combined_content = f"{source_code}{config_strs}"
+    return hashlib.md5(combined_content.encode("utf-8")).hexdigest()[:8]
+
 
 if major_version == 2:
 
@@ -148,13 +166,18 @@ class LibTuner(triton.runtime.Autotuner):
         pre_hook=None,
         post_hook=None,
         prune_configs_by: Optional[Dict] = None,
-        warmup=25,
-        rep=100,
+        warmup=None,
+        rep=None,
         use_cuda_graph=False,
         do_bench=None,
         strategy=None,
-        share=None,
     ):
+        # NOTE(zhengyang): See discussion in https://github.com/triton-lang/triton/pull/4496
+        if major_version == 2 or (major_version == 3 and minor_version <= 1):
+            if warmup is None:
+                warmup = 25
+            if rep is None:
+                rep = 100
         if major_version == 2:
             super().__init__(
                 fn,
@@ -188,8 +211,10 @@ class LibTuner(triton.runtime.Autotuner):
         self.__name__ = self.base_fn.__name__
         self.keys = key
         self.strategy = strategy
-        self.share = share
-        self.cache = libcache[share] if share else libcache[self.__name__]
+        self.kernel_hash = get_kernel_hash(self.base_fn, self.configs)
+        # Use table name with hash instead of hash in key
+        self.table_name = f"{self.__name__}_{self.kernel_hash}"
+        self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
 
@@ -269,7 +294,6 @@ def libtuner(
     use_cuda_graph=False,
     do_bench=None,
     strategy=None,
-    share=None,
 ):
     """
     Decorator for triton library autotuner.
@@ -291,7 +315,6 @@ def libtuner(
             use_cuda_graph=use_cuda_graph,
             do_bench=do_bench,
             strategy=strategy,
-            share=share,
         )
 
     return decorator
@@ -449,6 +472,7 @@ class LibEntry(triton.KernelInterface):
 
         if major_version == 3 and minor_version == 3:
             all_args = []
+            missing_keys = []
             for key in list(self.signature.parameters.keys()):
                 if key in k_args:
                     all_args.append(k_args[key])
@@ -456,6 +480,14 @@ class LibEntry(triton.KernelInterface):
                     all_args.append(tune_constexprs[key])
                 elif key in heur_constexprs:
                     all_args.append(heur_constexprs[key])
+                elif key in constexprs:
+                    all_args.append(constexprs[key])
+                else:
+                    missing_keys.append(key)
+                if len(missing_keys):
+                    raise RuntimeError(
+                        f"[libentry]: probably a bug, the following kernel params where not captured: {missing_keys}"
+                    )
             kernel[grid[0:3]](*all_args)
         else:
             kernel[grid[0:3]](*k_args.values())

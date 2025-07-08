@@ -48,6 +48,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("div", torch.div, FLOAT_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
+            ("pow", torch.pow, FLOAT_DTYPES),
             *(
                 [
                     ("polar", torch.polar, [torch.float32]),
@@ -55,13 +56,6 @@ class BinaryPointwiseBenchmark(Benchmark):
                     ("remainder", torch.remainder, INT_DTYPES),
                 ]
                 if flag_gems.device != "musa"
-                else []
-            ),
-            *(
-                [
-                    ("pow", torch.pow, FLOAT_DTYPES),
-                ]
-                if flag_gems.device != "npu"
                 else []
             ),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
