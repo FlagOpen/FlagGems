@@ -60,7 +60,7 @@ Since pointwise operators shares similar logic at meta data computation, which h
 
 - infer the rank of the task-space. This is a factor related to the code generation which depends on the arguments. It also involes trying to reduce the dimension of task-space to 1 when all pre-allocated tensors are dense and non-overlapping and have the same size and strides at all dimensions.
 
-Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`. In the cases where thers are pre-allocated tensors in output tensors, the shape, layout, dtype and device of theses pre-allocated tensors are respected and checked.
+Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`. In the cases where there are pre-allocated tensors in output tensors, the shape, layout, dtype and device of theses pre-allocated tensors are respected and checked.
 
 The meta data computation can also be skipped, but in this case, you should ensure that the outputs have correct meta data and are pre-allocated. And you should provide the rank of the task-space.
 
