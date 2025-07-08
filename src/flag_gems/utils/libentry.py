@@ -200,15 +200,18 @@ class LibTuner(triton.runtime.Autotuner):
         self.keys = key
         self.strategy = strategy
         # Use table name with hash instead of hash in key
-        self.kernel_hash = self.get_kernel_hash
-        self.table_name = f"{self.__name__}_{self.kernel_hash}"
+        self.kernel_hash = None
+        self.table_name = f"{self.__name__}_{self.get_kernel_hash()}"
         self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
-            func_hash = self.fn.cache_key
+            jit_fn = self.fn
+            while not isinstance(jit_fn, triton.runtime.JITFunction):
+                jit_fn = jit_fn.fn
+            func_hash = jit_fn.cache_key
             config_strs = [str(config) for config in self.configs]
             combined_content = f"{func_hash}{config_strs}"
             self.kernel_hash = hashlib.md5(
