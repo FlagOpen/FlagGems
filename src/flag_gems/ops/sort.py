@@ -48,11 +48,13 @@ def int_to_uint(x, descending: tl.constexpr = False):
     if descending:
         # 0111111....1
         bit_mask: tl.constexpr = zero_ones(num_bits)
-        out = ux ^ bit_mask
+        bit_mask_tensor = tl.full((), value=bit_mask, dtype=udtype)
+        out = ux ^ bit_mask_tensor
     else:
         # 1000000...0
         sign_bit_mask: tl.constexpr = one_zeros(num_bits)
-        out = ux ^ sign_bit_mask
+        sign_bit_mask_tensor = tl.full((), value=sign_bit_mask, dtype=udtype)
+        out = ux ^ sign_bit_mask_tensor
     return out
 
 
@@ -66,7 +68,9 @@ def floating_to_uint(x, descending: tl.constexpr = False):
 
     sign_bit_mask: tl.constexpr = one_zeros(num_bits)
     # mind the dtype, right_shift for signed is arithmetic right shift
-    mask = sign_bit_mask | (sx >> (num_bits - 1)).to(udtype, bitcast=True)
+    # Fix for triton 3.1 or else `sx >> rshift_bits` is promoted to int32
+    rshift_bits = tl.full((), value=num_bits - 1, dtype=sdtype)
+    mask = sign_bit_mask | (sx >> rshift_bits).to(udtype, bitcast=True)
     # 1000000000...0 for positive
     # 1111111111...1 for negative
     if descending:
