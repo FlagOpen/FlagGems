@@ -18,11 +18,11 @@ FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算�
 
 - 支持的算子数量规模较大
 - 部分算子已经过深度性能调优
-- 可直接在Eager模式下使用, 无需通过torch.compile
-- Pointwise自动代码生成，灵活支持多种输入类型和内存排布
-- Triton kernel调用优化
+- 可直接在 Eager 模式下使用, 无需通过 `torch.compile`
+- Pointwise 自动代码生成，灵活支持多种输入类型和内存排布
+- Triton kernel 调用优化
 - 灵活的多后端支持机制
-- 代码库已集成10多种后端
+- 代码库已集成十余种后端
 - C++ Triton 函数派发 (开发中)
 
 ## 更多特性细节
@@ -45,18 +45,11 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 更新日志
 
-### v1.0
+### v3.0
 
-- 支持 BLAS 类算子：addmm, bmm, mm
-- 支持 pointwise 类算子：abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
-- 支持 reduction 类算子：cumsum, layernorm, mean, softmax
-
-### v2.0
-
-- 支持 BLAS 类算子: mv, outer
-- 支持 pointwise 类算子: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
-- 支持 reduction 类算子: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
-- 支持融合算子: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+- 共计支持 183 个算子，包括大模型推理使用的定制算子
+- 支持更多的硬件平台，新增 Ascend、AIPU 等
+- 兼容 vllm 框架，DeepSeek模型推理验证通过
 
 ### v2.1
 
@@ -65,6 +58,19 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 - 支持基础数学算子：allclose, isclose, isfinite, floor_divide, trunc_divide, maximum, minimum
 - 支持分布类算子：normal, uniform\_, exponential\_, multinomial, nonzero, topk, rand, randn, rand_like, randn_like
 - 支持科学计算算子：erf, resolve_conj, resolve_neg
+
+### v2.0
+
+- 支持 BLAS 类算子: mv, outer
+- 支持 pointwise 类算子: bitwise_and, bitwise_not, bitwise_or, cos, clamp, eq, ge, gt, isinf, isnan, le, lt, ne, neg, or, sin, tanh, sigmoid
+- 支持 reduction 类算子: all, any, amax, argmax, max, min, prod, sum, var_mean, vector_norm, cross_entropy_loss, group_norm, log_softmax, rms_norm
+- 支持融合算子: fused_add_rms_norm, skip_layer_norm, gelu_and_mul, silu_and_mul, apply_rotary_position_embedding
+
+### v1.0
+
+- 支持 BLAS 类算子：addmm, bmm, mm
+- 支持 pointwise 类算子：abs, add, div, dropout, exp, gelu, mul, pow, reciprocal, relu, rsqrt, silu, sub, triu
+- 支持 reduction 类算子：cumsum, layernorm, mean, softmax
 
 ## 快速入门
 
