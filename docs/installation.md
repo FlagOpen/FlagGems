@@ -17,11 +17,11 @@ cd FlagGems/
 
 FlagGems follows [PEP 518 ](https://peps.python.org/pep-0518/) and contains a `pyproject.toml` file to specify how to build the package.
 
-The Python package `flag_gems` uses `scikit-build-core` as the [build backend](https://peps.python.org/pep-0517/#build-backend-interface). As a brief introduction, [`scikit-build-core`]([scikit-build-core 0.11.5.dev2 documentation](https://scikit-build-core.readthedocs.io/en/latest/)) is a build-backend that provides a bridge between CMake and the Python build system, making it easier to create Python modules with CMake. We use it to avoid wrapping CMake in `setup.py` ourselves. 
+The Python package `flag_gems` uses `scikit-build-core` as the [build backend](https://peps.python.org/pep-0517/#build-backend-interface). As a brief introduction, [`scikit-build-core`]([scikit-build-core 0.11.5.dev2 documentation](https://scikit-build-core.readthedocs.io/en/latest/)) is a build-backend that provides a bridge between CMake and the Python build system, making it easier to create Python modules with CMake. We use it to avoid wrapping CMake in `setup.py` ourselves.
 
 ### Build-isolation
 
-Following the [recommendations for build frontends](https://peps.python.org/pep-0517/#recommendations-for-build-frontends-non-normative) in PEP 517,  `pip` or other modern build frontends uses an isolated environment to build packages. This invole## Packagings creating a virtual environment and installing the build requirements in it before building the package.
+Following the [recommendations for build frontends](https://peps.python.org/pep-0517/#recommendations-for-build-frontends-non-normative) in PEP 517, `pip` or other modern build frontends uses an isolated environment to build packages. This invole## Packagings creating a virtual environment and installing the build requirements in it before building the package.
 
 If you do not want build isolation (often in the case with editable installation), you can pass `--no-build-isolation` flag to `pip install`, but you will need install build-requirements in your current environment beforehand. Check the `[build-system.requires]` section in pyproject.toml and install the requires packages.
 
@@ -35,7 +35,7 @@ FlagGems can be installed as either a pure python package or a package with C ex
 
 ### Install as a pure Python package
 
-To install FlagGems as a pure Python package,  use the commands below.
+To install FlagGems as a pure Python package, use the commands below.
 
 ```shell
 # install to site-packages

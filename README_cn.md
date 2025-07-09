@@ -6,7 +6,7 @@
 
 FlagGems 是一个使用 OpenAI 推出的[Triton 编程语言](https://github.com/openai/triton)实现的高性能通用算子库，旨在为大语言模型提供一系列可应用于 PyTorch 框架的算子，加速模型面向多种后端平台的推理与训练。
 
-FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，一方面模型开发者能够在无需修改底层API的情况下平稳地切换到 triton 算子库，使用其熟悉的PyTorch API同时享受新硬件带来的加速能力，另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
+FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算子库的无缝替换，一方面模型开发者能够在无需修改底层 API 的情况下平稳地切换到 triton 算子库，使用其熟悉的 PyTorch API 同时享受新硬件带来的加速能力，另一方面对 kernel 开发者而言，Triton 语言提供了更好的可读性和易用性，可媲美 CUDA 的性能，因此开发者只需付出较低的学习成本，即可参与 FlagGems 的算子开发与建设。
 
 我们为 FlagGems 创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
 
@@ -49,7 +49,7 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 - 共计支持 183 个算子，包括大模型推理使用的定制算子
 - 支持更多的硬件平台，新增 Ascend、AIPU 等
-- 兼容 vllm 框架，DeepSeek模型推理验证通过
+- 兼容 vllm 框架，DeepSeek 模型推理验证通过
 
 ### v2.1
 
@@ -88,19 +88,19 @@ FlagGems 可以作为纯 Python 包安装，也可以作为带有 C++ 扩展的�
 
 ## 支持平台
 
-| vendor      | state | float16 | float32 | bfloat16 |
-| ----------- | ----------- |-----------|-----------|-----------|
-| aipu        | ✅  （Partial support）     |✅       |✅       |✅       |
-| ascend      | ✅    （Partial support）    |✅       |✅       |✅       |
-| cambricon   | ✅        |✅       |✅       |✅       |
-| hygon   | ✅        |✅       |✅       |✅       |
-| iluvatar   | ✅        |✅       |✅       |✅       |
-| kunlunxin   | ✅        |✅       |✅       |✅       |
-| metax   | ✅        |✅       |✅       |✅       |
-| mthreads   | ✅       |✅       |✅       |✅       |
-| nvidia   | ✅        |✅       |✅       |✅       |
-| arm(cpu)   | 🚧      |       |      |      |
-| tsingmicro   | 🚧        |       |      |     |
+| vendor     | state                  | float16 | float32 | bfloat16 |
+| ---------- | ---------------------- | ------- | ------- | -------- |
+| aipu       | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| ascend     | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| cambricon  | ✅                     | ✅      | ✅      | ✅       |
+| hygon      | ✅                     | ✅      | ✅      | ✅       |
+| iluvatar   | ✅                     | ✅      | ✅      | ✅       |
+| kunlunxin  | ✅                     | ✅      | ✅      | ✅       |
+| metax      | ✅                     | ✅      | ✅      | ✅       |
+| mthreads   | ✅                     | ✅      | ✅      | ✅       |
+| nvidia     | ✅                     | ✅      | ✅      | ✅       |
+| arm(cpu)   | 🚧                     |         |         |          |
+| tsingmicro | 🚧                     |         |         |          |
 
 ## 性能表现
 

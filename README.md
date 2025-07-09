@@ -93,22 +93,21 @@ Operators will be implemented according to [OperatorList](docs/operator_list.md)
 - Llama-2-7b
 - Llava-1.5-7b
 
-
 ## Supported Platforms
 
-| vendor      | state | float16 | float32 | bfloat16 |
-| ----------- | ----------- |-----------|-----------|-----------|
-| aipu        | ✅  （Partial support）     |✅       |✅       |✅       |
-| ascend      | ✅    （Partial support）    |✅       |✅       |✅       |
-| cambricon   | ✅        |✅       |✅       |✅       |
-| hygon   | ✅        |✅       |✅       |✅       |
-| iluvatar   | ✅        |✅       |✅       |✅       |
-| kunlunxin   | ✅        |✅       |✅       |✅       |
-| metax   | ✅        |✅       |✅       |✅       |
-| mthreads   | ✅       |✅       |✅       |✅       |
-| nvidia   | ✅        |✅       |✅       |✅       |
-| arm(cpu)   | 🚧      |       |      |      |
-| tsingmicro   | 🚧        |       |      |     |
+| vendor     | state                  | float16 | float32 | bfloat16 |
+| ---------- | ---------------------- | ------- | ------- | -------- |
+| aipu       | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| ascend     | ✅ （Partial support） | ✅      | ✅      | ✅       |
+| cambricon  | ✅                     | ✅      | ✅      | ✅       |
+| hygon      | ✅                     | ✅      | ✅      | ✅       |
+| iluvatar   | ✅                     | ✅      | ✅      | ✅       |
+| kunlunxin  | ✅                     | ✅      | ✅      | ✅       |
+| metax      | ✅                     | ✅      | ✅      | ✅       |
+| mthreads   | ✅                     | ✅      | ✅      | ✅       |
+| nvidia     | ✅                     | ✅      | ✅      | ✅       |
+| arm(cpu)   | 🚧                     |         |         |          |
+| tsingmicro | 🚧                     |         |         |          |
 
 ## Performance
 
