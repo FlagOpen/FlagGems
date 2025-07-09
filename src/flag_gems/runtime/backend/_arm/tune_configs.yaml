@@ -516,6 +516,7 @@ scatter:
       BLOCK_N: block_n
     num_warps: 4
   block_m:
+  - 1
   - 2
   - 4
   block_n:
@@ -523,6 +524,7 @@ scatter:
   - 8
   - 16
   - 32
+  - 64
 sum:
 - gen: true
   param_map:

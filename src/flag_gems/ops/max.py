@@ -44,6 +44,7 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_SIZE": 1}, num_warps=1),
         triton.Config({"BLOCK_SIZE": 8}, num_warps=1),
         triton.Config({"BLOCK_SIZE": 2}, num_warps=2),
         triton.Config({"BLOCK_SIZE": 16}, num_warps=4),
