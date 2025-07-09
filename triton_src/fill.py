@@ -3,12 +3,7 @@ import triton.language as tl
 
 
 @triton.jit
-def fill_scalar_kernel(
-    out_ptr,             
-    value_scalar,       
-    n_elements,         
-    BLOCK_SIZE: tl.constexpr  
-):
+def fill_scalar_kernel(out_ptr, value_scalar, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
@@ -16,12 +11,7 @@ def fill_scalar_kernel(
 
 
 @triton.jit
-def fill_tensor_kernel(
-    out_ptr,             
-    value_ptr,           
-    n_elements,         
-    BLOCK_SIZE: tl.constexpr
-):
+def fill_tensor_kernel(out_ptr, value_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements

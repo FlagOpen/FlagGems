@@ -31,16 +31,16 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     const std::optional<at::Tensor> &position_ids = std::nullopt,
     bool rotary_interleaved = false);
 
-at::Tensor fill_scalar(const at::Tensor& input, double value);
+at::Tensor fill_scalar(const at::Tensor &input, double value);
 
 // 张量填充，返回新张量（value 是 0 维张量）
-at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value);
+at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 
 // 原地标量填充
-void fill_scalar_(at::Tensor& input, double value);
+void fill_scalar_(at::Tensor &input, double value);
 
 // 原地张量填充
-void fill_tensor_(at::Tensor& input, const at::Tensor& value);
+void fill_tensor_(at::Tensor &input, const at::Tensor &value);
 
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
 }  // namespace flag_gems
