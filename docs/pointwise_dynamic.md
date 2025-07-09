@@ -58,7 +58,7 @@ Since pointwise operators shares similar logic at meta data computation, which h
 
 - output allocation.
 
-- infer the rank of the task-space. This is a factor related to the code generation which depends on the arguments. It also involes trying to reduce the dimension of task-space to 1 when all pre-allocated tensors are dense and non-overlapping and have the same size and strides at all dimensions.
+- infer the rank of the task-space. This is a factor related to the code generation which depends on the arguments. It also involes trying to reduce the dimension of task-space to 1 when all pre-allocated tensors are dense and non-overlapping and have the same size and stride for each dimension.
 
 Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`. In the cases where there are pre-allocated tensors in output tensors, the shape, layout, dtype and device of theses pre-allocated tensors are respected and checked.
 
@@ -200,7 +200,7 @@ Note that in these cases, you have to ensure that the output has the right meta 
 
 ### Manual Instantiation
 
-For some operations you may want to skip the meta data computation, especially the process reducing the rank of task space, and prepare all inputs and outputs manually. Then you can call `instantiate` method of `PointwiseDynamicFunction` with a specific task rank to get a specific cached function and call it directly.
+For some operations you may want to skip the meta data computation, especially the process to reduce the rank of task space, and prepare all inputs and outputs manually. Then you can call `instantiate` method of `PointwiseDynamicFunction` with a specific task rank to get a specific cached function and call it directly.
 
 For example, `flip` operator is not a pointwise operator in the sense that each element in the output only depends on the element in the inputs at the corresponding position. But if we can create a view of the input tensor with negative strides and shifted data pointer, it can be framed as a pointwise copy. That is how we implement it with `pointwise_dynamic`.
 

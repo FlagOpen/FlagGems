@@ -21,7 +21,7 @@ The Python package `flag_gems` uses `scikit-build-core` as the [build backend](h
 
 ### Build-isolation
 
-Following the [recommendations for build frontends](https://peps.python.org/pep-0517/#recommendations-for-build-frontends-non-normative) in PEP 517, `pip` or other modern build frontends uses an isolated environment to build packages. This involves## Packagings creating a virtual environment and installing the build requirements in it before building the package.
+Following the [recommendations for build frontends](https://peps.python.org/pep-0517/#recommendations-for-build-frontends-non-normative) in PEP 517, `pip` or other modern build frontends uses an isolated environment to build packages. This involves creating a virtual environment and installing the build requirements in it before building the package.
 
 If you do not want build isolation (often in the case with editable installation), you can pass `--no-build-isolation` flag to `pip install`, but you will need install build-requirements in your current environment beforehand. Check the `[build-system.requires]` section in pyproject.toml and install the required packages.
 
@@ -61,7 +61,7 @@ The options for configuring FlagGems are listed below:
 | FLAGGEMS_BUILD_CTESTS            | Whether build CPP unit tests                | the value of FLAGGEMS_BUILD_C_EXTENSIONS |
 | FLAGGEMS_INSTALL                 | Whether to install FlagGems's cmake package | ON when it is the op level project       |
 
-The C extension of FlagGems depends on [TritonJIT](https://github.com/iclementine/libtorch_example/), which is a library that implements a Triton JIT runtime in C++ and enables the calling Triton jit functions from C++. Note that if you are building FlagGems with an external TritonJIT, you should build and install it beforehand and pass the option `-DTritonJIT_ROOT=<install path>` to CMake.
+The C extension of FlagGems depends on [TritonJIT](https://github.com/iclementine/libtorch_example/), which is a library that implements a Triton JIT runtime in C++ and enables calling Triton jit functions from C++. Note that if you are building FlagGems with an external TritonJIT, you should build and install it beforehand and pass the option `-DTritonJIT_ROOT=<install path>` to CMake.
 
 Other commonly used environemnt variables that configures scikit-build-core are:
 
