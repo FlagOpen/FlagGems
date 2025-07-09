@@ -222,10 +222,10 @@ class LibTuner(triton.runtime.Autotuner):
         self.cache = libcache[self.table_name]
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
-        if isinstance(search_strategy, str) and search_strategy in SEARCH_STRATEGIES:
-            self.search_strategy = SEARCH_STRATEGIES[search_strategy]
-        else:
-            self.search_strategy = default_search_strategy
+        assert (
+            isinstance(search_strategy, str) and search_strategy in SEARCH_STRATEGIES
+        ), "Invalid search strategy"
+        self.search_strategy = SEARCH_STRATEGIES[search_strategy]
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
@@ -317,7 +317,7 @@ def libtuner(
     use_cuda_graph=False,
     do_bench=None,
     strategy=None,
-    search_strategy=None,
+    search_strategy="brute",
 ):
     """
     Decorator for triton library autotuner.
