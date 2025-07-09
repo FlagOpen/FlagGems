@@ -682,8 +682,8 @@ def flash_fwd_bh_parallel_kernel():
 @libentry()
 @triton.heuristics(
     values={
-        "BLOCK_M": lambda args: block_m_splitkv_heuristic,
-        "BLOCK_N": lambda args: block_n_splitkv_heuristic,
+        "BLOCK_M": lambda args: block_m_splitkv_heuristic_spec_argd,
+        "BLOCK_N": lambda args: block_n_splitkv_heuristic_spec_argd,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
         "PRE_LOAD_V": lambda args: True,
