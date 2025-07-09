@@ -22,6 +22,11 @@ TORCH_LIBRARY(flag_gems, m) {
       "rotary_embedding(Tensor q, Tensor k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
+  // ** 新增 fill 算子声明 **
+  m.def("fill_scalar(Tensor input, double value) -> Tensor");
+  m.def("fill_tensor(Tensor input, Tensor value) -> Tensor");
+  m.def("fill_scalar_(Tensor! input, double value) -> Tensor!");
+  m.def("fill_tensor_(Tensor! input, Tensor value) -> Tensor!");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -35,5 +40,10 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
   m.impl("bmm", TORCH_FN(bmm));
+  // ** 新增 fill 算子实现绑定 **
+  m.impl("fill_scalar", TORCH_FN(flag_gems::fill_scalar));
+  m.impl("fill_tensor", TORCH_FN(flag_gems::fill_tensor));
+  m.impl("fill_scalar_", TORCH_FN(flag_gems::fill_scalar_));
+  m.impl("fill_tensor_", TORCH_FN(flag_gems::fill_tensor_));
 }
 }  // namespace flag_gems
