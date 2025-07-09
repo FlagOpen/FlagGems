@@ -9,6 +9,7 @@ import threading
 import time
 import weakref
 from collections import OrderedDict
+from itertools import starmap
 from typing import Dict, Optional
 
 import triton
@@ -244,14 +245,18 @@ class LibTuner(triton.runtime.Autotuner):
         return self.kernel_hash
 
     def get_key(self, args):
-        if self.strategy is None:
-            key = [args[k] for k in self.keys if k in args]
-            return key
-        key = []
-        for i, k in enumerate(self.keys):
-            s = STRATEGY[self.strategy[i]]
-            v = s(args[k])
-            key.append(v)
+        key = (
+            tuple(args[k] for k in self.keys if k in args)
+            if self.strategy is None
+            else tuple(
+                strategy(arg)
+                for strategy, arg in starmap(
+                    lambda idx0, idx1: (STRATEGY[self.strategy[idx0]], args[idx1]),
+                    enumerate(self.keys),
+                )
+            )
+            + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
+        )
         return key
 
     def run(self, *args, **kwargs):
@@ -259,13 +264,8 @@ class LibTuner(triton.runtime.Autotuner):
         used_cached_result = True
         if len(self.configs) > 1:
             all_args = {**self.nargs, **kwargs}
-            _args = {k: v for (k, v) in all_args.items() if k in self.arg_names}
-            # key = [_args[key] for key in self.keys if key in _args]
+            _args = {k: v for k, v in all_args.items() if k in self.arg_names}
             key = self.get_key(_args)
-            for _, arg in _args.items():
-                if hasattr(arg, "dtype"):
-                    key.append(str(arg.dtype))
-            key = tuple(key)
             if key not in self.cache:
                 # prune configs
                 used_cached_result = False
