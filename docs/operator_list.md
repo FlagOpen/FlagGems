@@ -29,7 +29,6 @@
 - contiguous
 - conv1d
 - conv2d
-- conv_depthwise2d
 - cos
 - cos_
 - count_nonzero
