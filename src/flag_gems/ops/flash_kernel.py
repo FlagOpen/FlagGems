@@ -218,6 +218,14 @@ def block_n_splitkv_heuristic(headdim):
     return 64 if headdim <= 64 else 32
 
 
+def block_m_splitkv_heuristic_spec_argd(args):
+    return 128 if args["d"] <= 128 else 64
+
+
+def block_n_splitkv_heuristic_spec_argd(args):
+    return 64 if args["d"] <= 64 else 32
+
+
 def is_even_mn(M, N, BM, BN, WL, WR):
     if M % BM == 0 and N % BN == 0:
         if M % N == 0 or N % M == 0:
@@ -672,23 +680,23 @@ def flash_fwd_bh_parallel_kernel():
 
 
 @libentry()
-# @triton.heuristics(
-#     values={
-#         "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["d"]),
-#         "BLOCK_N": lambda args: block_n_splitkv_heuristic(args["d"]),
-#         "num_warps": lambda args: 4,
-#         "num_stages": lambda args: 3,
-#         "PRE_LOAD_V": lambda args: True,
-#         "IS_EVEN_MN": lambda args: is_even_mn(
-#             args["seqlen_q"],
-#             args["seqlen_k"],
-#             args["BLOCK_M"],
-#             args["BLOCK_N"],
-#             args["window_size_left"],
-#             args["window_size_right"],
-#         ),
-#     }
-# )
+@triton.heuristics(
+    values={
+        "BLOCK_M": lambda args: block_m_splitkv_heuristic,
+        "BLOCK_N": lambda args: block_n_splitkv_heuristic,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+        "PRE_LOAD_V": lambda args: True,
+        "IS_EVEN_MN": lambda args: is_even_mn(
+            args["seqlen_q"],
+            args["seqlen_k"],
+            args["BLOCK_M"],
+            args["BLOCK_N"],
+            args["window_size_left"],
+            args["window_size_right"],
+        ),
+    }
+)
 @triton.jit(
     do_not_specialize=["seqlen_q", "seqlen_k", "seqlen_q_rounded", "seqlen_k_rounded"]
 )
