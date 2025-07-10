@@ -7,10 +7,11 @@ import os
 import sqlite3
 import threading
 import time
+import sys
 import weakref
 from collections import OrderedDict
-from itertools import starmap
-from typing import Dict, Optional
+from itertools import chain, starmap
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import triton
 
@@ -304,6 +305,158 @@ class LibTuner(triton.runtime.Autotuner):
         return ret
 
 
+class MultiArmedBanditImpl(LibTuner):
+    def __init__(
+        self,
+        fn,
+        arg_names,
+        configs,
+        key,
+        reset_to_zero,
+        restore_value,
+        pre_hook=None,
+        post_hook=None,
+        prune_configs_by: Optional[Dict] = None,
+        warmup=None,
+        rep=None,
+        use_cuda_graph=False,
+        do_bench=None,
+        strategy=None,
+        K: float = 1.0,
+        delta: float = 0.05,
+    ):
+        super().__init__(
+            fn,
+            arg_names,
+            configs,
+            key,
+            reset_to_zero,
+            restore_value,
+            pre_hook,
+            post_hook,
+            prune_configs_by,
+            warmup,
+            rep,
+            use_cuda_graph,
+            do_bench,
+            strategy,
+        )
+        self._K: float = K
+        self._delta: float = delta
+        # Initialize the cache for the multi-armed bandit autotuner. If the key is a config, it means that the best config has been found for the corresponding arguments. Otherwise, it should be a dict, which stores the number of rounds and the total time cost for each config.
+        self._tcache: Dict[
+            Tuple[Any],
+            Union[
+                triton.runtime.Config,
+                Dict[triton.runtime.Config, Tuple[int, float]],
+            ],
+        ] = {}
+
+    def run(self, *args, **kwargs):
+        self.nargs: Dict[str, Any] = dict(zip(self.arg_names, args))
+        key = self.get_key(
+            {
+                k: v
+                for k, v in chain(self.nargs.items(), kwargs.items())
+                if k in self.arg_names
+            }
+        )
+        cache: Union[
+            triton.runtime.Config,
+            Dict[triton.runtime.Config, Tuple[int, float]],
+        ] = self._tcache.get(
+            key, {config: (0, 0.0) for config in self.prune_configs(kwargs)}
+        )
+        ret = None
+        while ret == None:
+            isconfig: bool = isinstance(cache, triton.runtime.Config)
+            if isconfig:
+                config: triton.runtime.Config = cache
+            else:
+
+                t: int = sum(starmap(lambda rep, _: rep, cache.values()))
+
+                def _get_mean(n: int, reward: float) -> float:
+                    return reward / n if n > 0 else 0.0
+
+                def _get_select_bonus(n: int) -> float:
+                    return math.sqrt(2 * math.log(t) / n) if n > 0 else 0.0
+
+                def _get_stop_bonus(n: int) -> float:
+                    return (
+                        math.sqrt(math.log(2 * self._K * t**2 / self._delta))
+                        if n > 0
+                        else sys.float_info.max
+                    )
+
+                def _get_select_lower_boundary(n: int, reward: float) -> float:
+                    return _get_mean(n, reward) - _get_select_bonus(n)
+
+                def _get_stop_lower_boundary(n: int, reward: float) -> float:
+                    return _get_mean(n, reward) - _get_stop_bonus(n)
+
+                def _get_stop_upper_boundary(n: int, reward: float) -> float:
+                    return _get_mean(n, reward) + _get_stop_bonus(n)
+
+                # Find those configs that haven't beed tested enough.
+                candidates: List[triton.runtime.Config] = [
+                    config
+                    for config, (_, reward) in cache.items()
+                    if reward < self.num_reps
+                ]
+
+                if candidates:
+                    config = min(
+                        candidates,
+                        key=lambda config: _get_select_lower_boundary(*cache[config]),
+                    )
+                    ubound: float = _get_stop_upper_boundary(*cache[config])
+                    isconfig = all(
+                        _get_stop_lower_boundary(n, reward) > ubound
+                        for c, (n, reward) in cache.items()
+                        if c != config
+                    )
+                else:
+                    config = min(
+                        cache,
+                        key=lambda c: _get_mean(*cache[c]),
+                    )
+                    isconfig = True
+                if isconfig:
+                    self._tcache[key] = config
+            if config.pre_hook is not None:
+                full_nargs = {**self.nargs, **kwargs, **config.all_kwargs()}
+                config.pre_hook(full_nargs)
+            # If `isconfig` is False, it means that we haven't found the best config yet, so we need to collect the runtime information and use them for the future policy.
+            if not isconfig:
+                di = triton.runtime.driver.active.get_device_interface()
+                start_event = di.Event(enable_timing=True)
+                end_event = di.Event(enable_timing=True)
+                start_event.record()
+            try:
+                ret = self.fn.run(
+                    *args,
+                    **kwargs,
+                    **config.all_kwargs(),
+                )
+            except triton.runtime.OutOfResources:
+                ret = None
+            if not isconfig:
+                end_event.record()
+                # TODO(Jinjie Liu): vLLM reports an error when capturing CUDA graph here. Maybe I need some special handling for `use_cuda_graph`?
+                di.synchronize()
+                timecost: float = start_event.elapsed_time(end_event)
+                if ret is None:
+                    self._tcache[key].pop(config)
+                else:
+                    # Update the runtime information cache.
+                    n, reward = cache[config]
+                    cache[config] = (n + 1, reward + timecost)
+                    self._tcache[key] = cache
+        self.nargs = None
+        return ret
+
+
 def libtuner(
     configs,
     key,
@@ -525,6 +678,7 @@ def libentry():
     """
 
     def decorator(fn):
-        return LibEntry(fn)
+        # TODO(Jinjie Liu): Remove the `LibEntry` wrapper temporarily due to compatibility issues
+        return fn
 
     return decorator
