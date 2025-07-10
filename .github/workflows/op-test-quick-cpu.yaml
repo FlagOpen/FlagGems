@@ -30,4 +30,5 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
+          pip install -e .
           bash tools/op-test-quick-cpu.sh ${PR_ID}
