@@ -2,7 +2,7 @@
 
 ## Pointwise operations
 
-Pointwise operators are trivial to parallelize. Most parallel programming guides begins with pointwise addition between 2 contiguous vectors. For [vector_add in Triton](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html#sphx-glr-getting-started-tutorials-01-vector-add-py), it is simple to implement a task partitioning schema that each CTA reads a contiguous range from each input vector and writes to a contiguous range of the output vector.
+Pointwise operators are trivial to parallelize. Most parallel programming guides begin with pointwise addition between 2 contiguous vectors. For [vector_add in Triton](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html#sphx-glr-getting-started-tutorials-01-vector-add-py), it is simple to implement a task partitioning schema that each CTA reads a contiguous range from each input vector and writes to a contiguous range of the output vector.
 
 However, actual use caes for pointwise operators may be more complicated.
 
@@ -12,7 +12,7 @@ However, actual use caes for pointwise operators may be more complicated.
 
 - The input tensors may have different but broadcastable shape;
 
-- The inputs may mix tensor/non-tensor, ;
+- The inputs may mix tensor/non-tensor;
 
 - Different pointwise operators share common logic to compute indices, while it is tedious to rewrite them over-and-over for each operator;
 
@@ -32,9 +32,9 @@ The result is a decorator `@pointwise_dynamic`. It provides a common wrapper for
 
 The basic usage of pointwise_dynamic is to decorate a triton.jit function that has return value, which is used to map inputs to outputs. The jit function is similar to a function with `__device__` declaration specifier, a function that can be called from device. And we generate a triton jit function to call it, which acts like a cuda kernel(a function with `__global__` declaration specifier) that loads and stores data at global memory.
 
-In order to support input tensors of different rank, shape, stride, we pass the shape of the output tensor (which is also the task-space for pointwise operation) , and strides of each tensor at every dimension. The shape and strides are unpacked as passed to to kernel as integers. Due to the lack of support for tuple as arguments to Triton kernels, we have to generate different kernels for different number of integers in the shape and strides. Although Triton supports tuple as arguemnts since version 3.3, it does not support all operation on tuples(indexing, iteration, ...).
+In order to support input tensors of different rank, shape, stride, we pass the shape of the output tensor (which is also the task-space for pointwise operation) , and strides of each tensor at every dimension. The shape and strides are unpacked and passed to kernel as integers. Due to the lack of support for tuple as arguments to Triton kernels, we have to generate different kernels for different number of integers in the shape and strides. Although Triton supports tuple as arguemnts since version 3.3, it does not support all operation on tuples(indexing, iteration, ...).
 
-In the triton kernel, we map indices in task-space to the tensor multi-index according to the shape of the task space. Then we map from tensor multi-index to memory offsets on each tensor according to its strides at each dimension. For example, for a binary add operation of tensor of shape `(2, 3)` and `(2, 3)`, the task space is `(2, 3)`, then task-id 4 maps to `(1, 1)` in task space. Say that the strides for the lhs are `(3, 1)`, then the memory offset at the tensor is 4, and that the strides for the rhs are `(1, 2)`, then the memory offset for it is 3.
+In the triton kernel, we map indices in task-space to the tensor multi-index according to the shape of the task space. Then we map them from tensor multi-index to memory offsets on each tensor according to its strides at each dimension. For example, for a binary add operation of tensor of shape `(2, 3)` and `(2, 3)`, the task space is `(2, 3)`, then task-id 4 is mapped to `(1, 1)` in task space. Say that the strides for the lhs are `(3, 1)`, the memory offset at the tensor is 4, and the strides for the rhs are `(1, 2)`, thus the memory offset for it is 3.
 
 For tensors with broadcastable but different shapes, we first broadcast those shapes to get the shape of task space and view each tensors as the task shape, which returns new tensors that share the same storage, but with new strides w.r.t the new shape.
 
@@ -58,11 +58,11 @@ Since pointwise operators shares similar logic at meta data computation, which h
 
 - output allocation.
 
-- infer the rank of the task-space. This is a factor related to the code generation which depends on the arguments. In also involes trying to reduce the dimension of task-space to 1 when all pre-allocated tensors are dense and non-overlapping and have the same size and stride at all dimensions.
+- infer the rank of the task-space. This is a factor related to the code generation which depends on the arguments. It also involes trying to reduce the dimension of task-space to 1 when all pre-allocated tensors are dense and non-overlapping and have the same size and stride for each dimension.
 
-Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`. In the cases where thers are pre-allocated tensors in output tensors, the shape, layout, dtype and device of theses pre-allocated tensors are respected and checked.
+Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`. In the cases where there are pre-allocated tensors in output tensors, the shape, layout, dtype and device of theses pre-allocated tensors are respected and checked.
 
-The meta data computation can also be skipped, but in this case, you should ensure that the outputs have correct meta data and is pre-allocated. And you should provide the rank of the task-space.
+The meta data computation can also be skipped, but in this case, you should ensure that the outputs have correct meta data and are pre-allocated. And you should provide the rank of the task-space.
 
 ## Caching and dispatching
 
@@ -107,12 +107,12 @@ def add_func(x, y, alpha):
 
 a = torch.randn(128, 256, device="cuda")
 b = torch.randn(256, device="cuda")
-add_func(a, b 0.2)
+add_func(a, b, 0.2)
 ```
 
 ### Ouput dtypes
 
-For pointwise operatos to allocate outputs with correct dtype, `promotion_methods` is erquired. Since the output dtype may be depedent on the input dtypes with some rules, specifying the rule is more expressive then providing output dtypes directly.
+For pointwise operatos to allocate outputs with correct dtype, `promotion_methods` is required. Since the output dtype may be depedent on the input dtypes with some rules, specifying the rule is more expressive than providing output dtypes directly.
 
 `promotion_methods` is a list of tuples (one per output), each of which consists of several arg indices and a promotion method. An arg index (an integer) is used to indicate the position of the argument, which is dependent by the promotion method. The promotion method (an enum or string) denotes the method of type promotion.
 
@@ -141,7 +141,7 @@ Examples：
 
 ### Number of outputs
 
-For pointwise operations with multiple output tensos, we need to inform `pointwise_dynamic` about the number of outputs for it to generate code to store to the output tensors. For number of inputs, it can be infered from the length of `is_tensor` of `dtypes`.
+For pointwise operations with multiple output tensors, we need to inform `pointwise_dynamic` about the number of outputs so it could generate code to store the output tensors. For number of inputs, it can be inferred from the length of `is_tensor` of `dtypes`.
 
 ```python
 @pointwise_dynamic(
@@ -166,7 +166,7 @@ PointwiseDynamicFunction can be called with the same function signature as the d
 
 ### Inplace Operation & Output arguments
 
-Since `pointwise_dynamic` generates wrappers that take outputs as arguments, we can use it to implement inplace-operations. For all `PointwiseDynamicFunction`s, you can pass output parameters to it by key-word. To discriminate between input arguements and output arguments, we now follows a simple rule that all input arguments must be passed by position and all output arguments must be passed by keyword.
+Since `pointwise_dynamic` generates wrappers that take outputs as arguments, we can use it to implement inplace-operations. For all `PointwiseDynamicFunction`s, you can pass output parameters to it by key-word. To discriminate between input arguments and output arguments, we now follow a simple rule that all input arguments must be passed by position and all output arguments must be passed by keyword.
 
 The output parameters are named as `out{output_index}`. Since the decorated function does not have name for return values, we simply use the naming rule by suffixing `out` with output index.
 
@@ -200,9 +200,9 @@ Note that in these cases, you have to ensure that the output has the right meta 
 
 ### Manual Instantiation
 
-For some operations you may wan to skip the meta data computation, especially the process the reduce the rank of task space, and prepare all inputs and outputs manually. Then you can call `instantiate` method of `PointwiseDynamicFunction` with a specific task rank to get a specific cached function and call it directly.
+For some operations you may want to skip the meta data computation, especially the process to reduce the rank of task space, and prepare all inputs and outputs manually. Then you can call `instantiate` method of `PointwiseDynamicFunction` with a specific task rank to get a specific cached function and call it directly.
 
-For example, `flip` operator is not a pointwise operator in the sense that each element in the output only depends on the element in the inputs are the corresponding position. But if we can create a view of the input tensor with negative strides and shited data pointer, it can be framed as a pointwise copy. That is how we implement it with `pointwise_dynamic`.
+For example, `flip` operator is not a pointwise operator in the sense that each element in the output only depends on the element in the inputs at the corresponding position. But if we can create a view of the input tensor with negative strides and shifted data pointer, it can be framed as a pointwise copy. That is how we implement it with `pointwise_dynamic`.
 
 ```python
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
