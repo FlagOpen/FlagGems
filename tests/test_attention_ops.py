@@ -1,3 +1,4 @@
+import math
 import random
 from typing import List, Optional, Tuple
 
@@ -667,7 +668,7 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
-@pytest.mark.varlen_fwd_paged
+@pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
 @pytest.mark.parametrize("head_size", [128, 256])
@@ -678,7 +679,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("num_blocks", [32768, 2048])
 @torch.inference_mode()
-def test_varlen_paged(
+def test_flash_attn_varlen_func(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -771,7 +772,7 @@ def test_varlen_paged(
     ), f"{torch.max(torch.abs(output - ref_output))}"
 
 
-@pytest.mark.varlen_fwd_paged
+@pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
 @pytest.mark.parametrize("head_size", [128])
@@ -781,7 +782,7 @@ def test_varlen_paged(
 @pytest.mark.parametrize("soft_cap", [None, 10.0])
 @pytest.mark.parametrize("num_blocks", [2048])
 @torch.inference_mode()
-def test_varlen_paged_swap_qg(
+def test_flash_attn_varlen_func_swap_qg(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -1006,7 +1007,7 @@ def create_kv_caches_with_random(
     return key_caches, value_caches
 
 
-@pytest.mark.test_reshape_and_cache
+@pytest.mark.reshape_and_cache
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_size", [64, 80, 120, 256])
@@ -1107,3 +1108,254 @@ def test_flash_fwd_dropout(
 
     dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
     np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
+
+
+def create_kv_caches_with_random_flash(
+    num_blocks,
+    block_size,
+    num_layers,
+    num_heads,
+    head_size,
+    cache_dtype,
+    model_dtype,
+    seed,
+    device,
+):
+    init_seed(seed)
+    torch_dtype = model_dtype
+    key_value_cache_shape = (num_blocks, 2, block_size, num_heads, head_size)
+    scale = head_size**-0.5
+
+    key_caches: list[torch.Tensor] = []
+    value_caches: list[torch.Tensor] = []
+
+    for _ in range(num_layers):
+        key_value_cache = torch.empty(
+            size=key_value_cache_shape, dtype=torch_dtype, device=device
+        )
+        if cache_dtype in ["auto", "half", "bfloat16", "float"]:
+            key_value_cache.uniform_(-scale, scale)
+        else:
+            raise ValueError(f"Does not support key cache of type {cache_dtype}")
+        key_caches.append(key_value_cache[:, 0])
+        value_caches.append(key_value_cache[:, 1])
+    return key_caches, value_caches
+
+
+@pytest.mark.reshape_and_cache_flash
+@pytest.mark.parametrize("num_tokens", [42])
+@pytest.mark.parametrize("num_heads", [8])
+@pytest.mark.parametrize("head_size", [64, 80, 120, 256])
+@pytest.mark.parametrize("block_size", [8, 16, 32])
+@pytest.mark.parametrize("num_blocks", [1024, 10000])
+@pytest.mark.parametrize("dtype", [torch.half, torch.bfloat16, torch.float])
+@pytest.mark.parametrize("kv_cache_dtype", ["auto"])
+@pytest.mark.parametrize("seed", [2025])
+@torch.inference_mode()
+def test_reshape_and_cache_flash(
+    num_tokens: int,
+    num_heads: int,
+    head_size: int,
+    block_size: int,
+    num_blocks: int,
+    dtype: torch.dtype,
+    kv_cache_dtype: str,
+    seed: int,
+) -> None:
+    init_seed(seed)
+    torch.set_default_device(device)
+
+    # Create a random slot mapping.
+    num_slots = block_size * num_blocks
+    slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+    slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+
+    qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype, device=device)
+    _, key, value = qkv.unbind(dim=1)
+
+    # Create the KV caches.
+    key_caches, value_caches = create_kv_caches_with_random_flash(
+        num_blocks,
+        block_size,
+        1,
+        num_heads,
+        head_size,
+        kv_cache_dtype,
+        dtype,
+        seed=seed,
+        device=device,
+    )
+    key_cache, value_cache = key_caches[0].contiguous(), value_caches[0].contiguous()
+    del key_caches
+    del value_caches
+
+    k_scale = (key.amax() / 64.0).to(torch.float32)
+    v_scale = (value.amax() / 64.0).to(torch.float32)
+
+    # Clone the KV caches.
+    cloned_key_cache = key_cache.clone()
+    cloned_value_cache = value_cache.clone()
+
+    # Call the reshape_and_cache kernel.
+    flag_gems.reshape_and_cache_flash(
+        key,
+        value,
+        key_cache,
+        value_cache,
+        slot_mapping,
+        kv_cache_dtype,
+        k_scale,
+        v_scale,
+    )
+
+    # Run the reference implementation.
+    block_indicies = torch.div(slot_mapping, block_size, rounding_mode="floor")
+    block_indicies_lst = block_indicies.cpu().tolist()
+    block_offsets = slot_mapping % block_size
+    block_offsets_lst = block_offsets.cpu().tolist()
+    for i in range(num_tokens):
+        block_idx = block_indicies_lst[i]
+        block_offset = block_offsets_lst[i]
+        cloned_key_cache[block_idx, block_offset, :, :] = key[i]
+        cloned_value_cache[block_idx, block_offset, :, :] = value[i]
+
+    torch.testing.assert_close(key_cache, cloned_key_cache)
+    torch.testing.assert_close(value_cache, cloned_value_cache)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.flash_mla
+@pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.bfloat16,
+    ],
+)
+def test_flash_mla(seqlen, dtype):
+    b = 128
+    s_q = 1
+    h_q = 128
+    h_kv = 1
+    d = 576
+    dv = 512
+    causal = True
+    block_size = 64
+    cache_seqlens = torch.tensor(
+        [seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device
+    )
+    max_seqlen = cache_seqlens.max().item()
+    max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
+
+    q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
+    block_table = torch.arange(
+        b * max_seqlen_pad // block_size, dtype=torch.int32, device=device
+    ).view(b, max_seqlen_pad // block_size)
+    blocked_k = torch.randn(
+        [block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device
+    )
+
+    ref_q = to_reference(q)
+    ref_block_table = to_reference(block_table)
+    ref_blocked_k = to_reference(blocked_k)
+    ref_cache_seqlens = to_reference(cache_seqlens)
+
+    def scaled_dot_product_attention(query, key, value, h_q, h_kv, is_causal=False):
+        query = query.float()
+        key = key.float()
+        value = value.float()
+        key = key.repeat_interleave(h_q // h_kv, dim=0)
+        value = value.repeat_interleave(h_q // h_kv, dim=0)
+        attn_weight = query @ key.transpose(-2, -1) / math.sqrt(query.size(-1))
+        if is_causal:
+            s_q = query.shape[-2]
+            s_k = key.shape[-2]
+            attn_bias = torch.zeros(s_q, s_k, dtype=query.dtype, device=query.device)
+            temp_mask = torch.ones(
+                s_q, s_k, dtype=torch.bool, device=query.device
+            ).tril(diagonal=s_k - s_q)
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias.to(query.dtype)
+            attn_weight += attn_bias
+        lse = attn_weight.logsumexp(dim=-1)
+        attn_weight = torch.softmax(attn_weight, dim=-1, dtype=torch.float32)
+        return attn_weight @ value, lse
+
+    def ref_mla(
+        q,
+        block_table,
+        blocked_k,
+        max_seqlen_pad,
+        block_size,
+        b,
+        s_q,
+        cache_seqlens,
+        h_q,
+        h_kv,
+        d,
+        dv,
+        causal,
+    ):
+        device = q.device
+        blocked_v = blocked_k[..., :dv]
+        out = torch.empty(b, s_q, h_q, dv, dtype=torch.float32, device=device)
+        lse = torch.empty(b, h_q, s_q, dtype=torch.float32, device=device)
+        for i in range(b):
+            begin = i * max_seqlen_pad
+            end = begin + cache_seqlens[i]
+            O, LSE = scaled_dot_product_attention(
+                q[i].transpose(0, 1),
+                blocked_k.view(-1, h_kv, d)[begin:end].transpose(0, 1),
+                blocked_v.view(-1, h_kv, dv)[begin:end].transpose(0, 1),
+                h_q=h_q,
+                h_kv=h_kv,
+                is_causal=causal,
+            )
+            out[i] = O.transpose(0, 1)
+            lse[i] = LSE
+        return out, lse
+
+    ref_out, _ = ref_mla(
+        ref_q,
+        ref_block_table,
+        ref_blocked_k,
+        max_seqlen_pad,
+        block_size,
+        b,
+        s_q,
+        ref_cache_seqlens,
+        h_q,
+        h_kv,
+        d,
+        dv,
+        causal,
+    )
+    res_out = flag_gems.flash_mla(
+        q,
+        block_table,
+        blocked_k,
+        max_seqlen_pad,
+        block_size,
+        b,
+        s_q,
+        cache_seqlens,
+        h_q,
+        h_kv,
+        d,
+        dv,
+        causal,
+    )
+
+    def cal_diff(x: torch.Tensor, y: torch.Tensor, name: str) -> None:
+        x, y = x.double(), y.double()
+        x = x.to(y.device)
+        RMSE = ((x - y) * (x - y)).mean().sqrt().item()
+        cos_diff = 1 - 2 * (x * y).sum().item() / max(
+            (x * x + y * y).sum().item(), 1e-12
+        )
+        amax_diff = (x - y).abs().max().item()
+        assert cos_diff < 1e-5, f"{name}: {cos_diff=}, {RMSE=}, {amax_diff=}"
+
+    cal_diff(res_out, ref_out, "out")
