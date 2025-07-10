@@ -289,6 +289,7 @@ def index_add_gbps(bench_fn_args, latency):
     io_amount = sum([shape_utils.size_in_bytes(item) for item in [index, src, src]])
     return io_amount * 1e-9 / (latency * 1e-3)
 
+
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_add
 def test_index_add_perf():
