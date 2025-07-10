@@ -230,7 +230,7 @@ def bayesian_search_strategy(bench_fn, configs, args, kwargs, tuner, key):
 
     param_names = list(configs[0].kwargs.keys())
     for name in param_names:
-        values = sorted(list(set(c.kwargs[name] for c in configs)))
+        values = sorted(set(c.kwargs[name] for c in configs))
         search_space.append(Categorical(values, name=name))
 
     # Define objective function
