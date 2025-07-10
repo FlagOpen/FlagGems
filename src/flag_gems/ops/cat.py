@@ -1,27 +1,48 @@
-import itertools
 import logging
 from typing import List, Tuple, Union
 
 import torch
 import triton
-
-from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.tensor_wrapper import StridedBuffer
+import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def copy_func(x):
-    return x
+def copy_func_kernel(
+    out_ptr,
+    in_ptr,
+    dim_size_in,
+    dim_size_out,
+    dim_prod_post,
+    dim_offset,
+    total_elements,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    block_start = pid * BLOCK
+    offsets = tl.arange(0, BLOCK)
+    mask = block_start + offsets < total_elements
+
+    idx = block_start + offsets
+
+    pre_idx = idx // (dim_size_in * dim_prod_post)
+    dim_idx = (idx // dim_prod_post) % dim_size_in
+    post_idx = idx % dim_prod_post
+
+    out_idx = (
+        pre_idx * dim_size_out * dim_prod_post
+        + (dim_idx + dim_offset) * dim_prod_post
+        + post_idx
+    )
+
+    data = tl.load(in_ptr + idx, mask=mask)
+    tl.store(out_ptr + out_idx, data, mask=mask)
 
 
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    logger.debug("GEMS CAT")
-
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
     if len(A) == 1:
@@ -51,18 +72,44 @@ def cat(
                     f"{tensor_idx} in the list"
                 )
 
-    out_shape = list(inp0_shape)
-    out_shape[dim] = sum(s[dim] for s in inp_shapes)
-    out0 = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
-    out0_strides = out0.stride()
-    out0_offsets = list(
-        itertools.accumulate(
-            [s[dim] * out0_strides[dim] for s in inp_shapes[:-1]], initial=0
-        )
-    )
+    dtype = A[0].dtype
+    device = A[0].device
+    ndims = A[0].ndim
+    shapes = [t.shape for t in A]
 
-    for a, out0_offset in zip(A, out0_offsets):
-        in_view = StridedBuffer(a, a.shape, a.stride())
-        out_view = StridedBuffer(out0, a.shape, out0.stride(), offset=out0_offset)
-        copy_func.instantiate(a.ndim)(in_view, out0=out_view)
-    return out0
+    cat_dim_sizes = [s[dim] for s in shapes]
+    out_shape = list(shapes[0])
+    out_shape[dim] = sum(cat_dim_sizes)
+    out = torch.empty(out_shape, dtype=dtype, device=device)
+
+    BLOCK = 1024
+    dim_offset = 0
+
+    for i, tensor in enumerate(A):
+        tensor_shape = tensor.shape
+
+        dim_size_in = tensor_shape[dim]
+        dim_size_out = out_shape[dim]
+
+        dim_prod_post = 1
+        for d in range(dim + 1, ndims):
+            dim_prod_post *= tensor_shape[d]
+
+        total_elements = tensor.numel()
+
+        grid = lambda meta: (triton.cdiv(total_elements, BLOCK),)
+
+        copy_func_kernel[grid](
+            out,
+            tensor,
+            dim_size_in,
+            dim_size_out,
+            dim_prod_post,
+            dim_offset,
+            total_elements,
+            BLOCK=BLOCK,
+        )
+
+        dim_offset += dim_size_in
+
+    return out
