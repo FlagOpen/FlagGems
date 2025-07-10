@@ -4,6 +4,7 @@ import inspect
 import logging
 import math
 import os
+import random
 import sqlite3
 import threading
 import time
@@ -12,6 +13,9 @@ from collections import OrderedDict
 from typing import Dict, Optional
 
 import triton
+from skopt import gp_minimize
+from skopt.space import Categorical
+from skopt.utils import use_named_args
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -141,6 +145,7 @@ class LibCache:
 
 libcache = LibCache()
 SEARCH_STRATEGIES = {}
+SHOULD_SEARCH_HOOKS = {}
 
 
 def register_search_strategy(name):
@@ -151,10 +156,124 @@ def register_search_strategy(name):
     return decorator
 
 
+def register_should_search_hook(name):
+    def decorator(fn):
+        SHOULD_SEARCH_HOOKS[name] = fn
+        return fn
+
+    return decorator
+
+
+@register_should_search_hook("default")
+def default_should_search_hook(tuner, key):
+    return key not in tuner.cache
+
+
+@register_should_search_hook("bayesian")
+def bayesian_should_search_hook(tuner, key):
+    if key not in tuner.cache:
+        return True
+    tuner.call_counts[key] = tuner.call_counts.get(key, 0) + 1
+    # Starts with a 20% chance of exploration, decays over calls
+    explore_prob = 0.2 * (0.95 ** (tuner.call_counts[key] - 1))
+    return random.random() < explore_prob
+
+
 @register_search_strategy("brute")
-def default_search_strategy(bench_fn, configs, args, kwargs):
+def brute_search_strategy(bench_fn, configs, args, kwargs, tuner, key):
     timings = {config: bench_fn(config) for config in configs}
     best_config = builtins.min(timings, key=timings.get)
+    return best_config, timings
+
+
+@register_search_strategy("early_stop")
+def early_stop_search_strategy(bench_fn, configs, args, kwargs, tuner, key):
+    timings = {}
+    best_config = None
+    best_timing = float("inf")
+    second_best_timing = float("inf")
+    # Stop if the relative difference between the best and second-best is less than x%
+    # Only start checking after this many configs
+    threshold = 0.03
+    min_search_before_stop = 5
+    search_count = 0
+
+    for config in configs:
+        search_count += 1
+        timing = bench_fn(config)[0]
+        timings[config] = timing
+
+        if timing < best_timing:
+            second_best_timing = best_timing
+            best_timing = timing
+            best_config = config
+        elif timing < second_best_timing:
+            second_best_timing = timing
+
+        # Check for early stopping condition
+        if (
+            search_count >= min_search_before_stop
+            and (second_best_timing - best_timing) / best_timing < threshold
+        ):
+            break
+    return best_config, timings
+
+
+@register_search_strategy("bayesian")
+def bayesian_search_strategy(bench_fn, configs, args, kwargs, tuner, key):
+    timings = tuner.timings_cache.get(key, {})
+
+    # Define search space
+    search_space = []
+    if not configs:
+        return None, {}
+
+    param_names = list(configs[0].kwargs.keys())
+    for name in param_names:
+        values = sorted(list(set(c.kwargs[name] for c in configs)))
+        search_space.append(Categorical(values, name=name))
+
+    # Define objective function
+    @use_named_args(search_space)
+    def objective(**params):
+        for config in configs:
+            if config.kwargs == params:
+                if config not in timings:
+                    timing = bench_fn(config)
+                    if isinstance(timing, list):
+                        timing = timing[0]
+                    if math.isinf(timing):
+                        timing = 1e9
+                    timings[config] = timing
+                return timings[config]
+        return 1e9
+
+    # Run Bayesian optimization
+    # n_initial_points is the number of random points to sample before fitting the model
+    # n_calls is the total number of evaluations
+    space_size = len(configs)
+    n_initial_points = min(max(3, int(space_size**0.5)), 10)
+    n_calls = min(max(5, int(space_size * 0.5)), 25)
+
+    # Ensure n_calls is not smaller than n_initial_points
+    n_calls = max(n_calls, n_initial_points)
+
+    result = gp_minimize(
+        objective,
+        search_space,
+        n_calls=n_calls,
+        n_initial_points=n_initial_points,
+        random_state=0,
+    )
+
+    # Find the best config
+    best_params = {param.name: value for param, value in zip(search_space, result.x)}
+    best_config = None
+    for config in configs:
+        if config.kwargs == best_params:
+            best_config = config
+            break
+
     return best_config, timings
 
 
@@ -225,7 +344,13 @@ class LibTuner(triton.runtime.Autotuner):
         assert (
             isinstance(search_strategy, str) and search_strategy in SEARCH_STRATEGIES
         ), "Invalid search strategy"
-        self.search_strategy = SEARCH_STRATEGIES[search_strategy]
+        self.search_strategy_name = search_strategy
+        self.search_fn = SEARCH_STRATEGIES[search_strategy]
+        self.should_search_fn = SHOULD_SEARCH_HOOKS.get(
+            search_strategy, SHOULD_SEARCH_HOOKS["default"]
+        )
+        self.call_counts = {}
+        self.timings_cache = {}
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
@@ -261,8 +386,8 @@ class LibTuner(triton.runtime.Autotuner):
                 if hasattr(arg, "dtype"):
                     key.append(str(arg.dtype))
             key = tuple(key)
-            if key not in self.cache:
-                # prune configs
+
+            if self.should_search_fn(self, key):
                 used_cached_result = False
                 pruned_configs = self.prune_configs(kwargs)
                 bench_start = time.time()
@@ -270,12 +395,13 @@ class LibTuner(triton.runtime.Autotuner):
                 def bench_fn(config):
                     return self._bench(*args, config=config, **kwargs)
 
-                best_config, timings = self.search_strategy(
-                    bench_fn, pruned_configs, args, kwargs
+                best_config, timings = self.search_fn(
+                    bench_fn, pruned_configs, args, kwargs, self, key
                 )
                 bench_end = time.time()
                 self.bench_time = bench_end - bench_start
                 self.cache[key] = best_config
+                self.timings_cache[key] = timings  # Store timings for future use
                 full_nargs = {
                     **self.nargs,
                     **kwargs,
