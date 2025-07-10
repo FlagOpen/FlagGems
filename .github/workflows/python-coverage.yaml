@@ -94,6 +94,7 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
+          pip install -e .
           bash tools/code_coverage/coverage.sh ${PR_ID}
 
       - name: Report python coverage
@@ -108,4 +109,5 @@ jobs:
             echo "This is a push event. The relate PR number is ${PR_NUMBER}"
             PR_ID=${PR_NUMBER}
           fi
+          pip install -e .
           bash tools/code_coverage/report_coverage.sh ${PR_ID}
