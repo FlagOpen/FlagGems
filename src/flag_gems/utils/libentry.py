@@ -252,18 +252,15 @@ class LibTuner(triton.runtime.Autotuner):
         return self.kernel_hash
 
     def get_key(self, args):
-        key = (
-            tuple(args[k] for k in self.keys if k in args)
-            if self.strategy is None
-            else tuple(
-                strategy(arg)
-                for strategy, arg in starmap(
-                    lambda idx0, idx1: (STRATEGY[self.strategy[idx0]], args[idx1]),
+        if self.strategy is None:
+            key = tuple(args[k] for k in self.keys if k in args)
+        else:
+            key = tuple(
+                starmap(
+                    lambda idx0, idx1: (STRATEGY[self.strategy[idx0]])(args[idx1]),
                     enumerate(self.keys),
                 )
-            )
-            + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
-        )
+            ) + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
         return key
 
     @abstractmethod
