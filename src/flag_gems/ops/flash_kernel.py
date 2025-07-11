@@ -1274,9 +1274,9 @@ def flash_varlen_fwd_kernel(
             k_row_stride,
             BLOCK_N,
         )
-        bK = tl.load(gK.advance([0, cache_row_index]))
+        bK = tl.load(gK.advance([0, cache_row_index]), boundary_check=(0, 1))
         # preload V
-        bV = tl.load(gV.advance([cache_row_index, 0]))
+        bV = tl.load(gV.advance([cache_row_index, 0]), boundary_check=(0, 1))
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
