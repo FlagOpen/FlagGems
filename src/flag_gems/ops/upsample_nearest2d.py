@@ -7,7 +7,6 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
 
 device = device.name
 logger = logging.getLogger(__name__)
@@ -37,7 +36,7 @@ def upsample_nearest2d_kernel(
     if USE_INT32_IDX:
         pid = tl.program_id(axis=0)
     else:
-        pid = tle.program_id(axis=0)
+        pid = tl.program_id(axis=0).to(tl.int64)
     nc_stride = tl.num_programs(axis=1)
     NC = N * C
     nc_iter = tl.program_id(axis=1)
