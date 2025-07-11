@@ -9,38 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def copy_func_kernel(
-    out_ptr,
-    in_ptr,
-    dim_size_in,
-    dim_size_out,
-    dim_prod_post,
-    dim_offset,
-    total_elements,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK
-    offsets = tl.arange(0, BLOCK)
-    mask = block_start + offsets < total_elements
-
-    idx = block_start + offsets
-
-    pre_idx = idx // (dim_size_in * dim_prod_post)
-    dim_idx = (idx // dim_prod_post) % dim_size_in
-    post_idx = idx % dim_prod_post
-
-    out_idx = (
-        pre_idx * dim_size_out * dim_prod_post
-        + (dim_idx + dim_offset) * dim_prod_post
-        + post_idx
-    )
-
-    data = tl.load(in_ptr + idx, mask=mask)
-    tl.store(out_ptr + out_idx, data, mask=mask)
-
-
-@triton.jit
 def cat_copy_func_kernel_4(
     out_ptr,
     in_ptr_a,
