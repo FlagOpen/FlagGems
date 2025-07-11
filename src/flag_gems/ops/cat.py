@@ -41,7 +41,7 @@ def copy_func_kernel(
 
 
 @triton.jit
-def copy_func_kernel_4(
+def cat_copy_func_kernel_4(
     out_ptr,
     in_ptr_a,
     in_ptr_b,
@@ -198,7 +198,7 @@ def cat(
             total_elements_d,
         ) = args
 
-        copy_func_kernel_4[grid](
+        cat_copy_func_kernel_4[grid](
             out,
             tensor_a,
             tensor_b,
