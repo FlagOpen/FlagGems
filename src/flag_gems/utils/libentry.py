@@ -8,6 +8,7 @@ import sqlite3
 import threading
 import time
 import weakref
+from abc import abstractmethod
 from collections import OrderedDict
 from itertools import starmap
 from typing import Dict, Optional
@@ -258,6 +259,50 @@ class LibTuner(triton.runtime.Autotuner):
             + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
         )
         return key
+
+    @abstractmethod
+    def run(self, *args, **kwargs):
+        raise NotImplementedError(
+            f"`run` isn't implemented in {self.__class__.__name__}"
+        )
+
+
+class DefaultLibTunerImpl(LibTuner):
+    def __init__(
+        self,
+        fn,
+        arg_names,
+        configs,
+        key,
+        reset_to_zero,
+        restore_value,
+        pre_hook=None,
+        post_hook=None,
+        prune_configs_by: Optional[Dict] = None,
+        warmup=None,
+        rep=None,
+        use_cuda_graph=False,
+        do_bench=None,
+        strategy=None,
+        search_strategy=None,
+    ):
+        super().__init__(
+            fn,
+            arg_names,
+            configs,
+            key,
+            reset_to_zero,
+            restore_value,
+            pre_hook=pre_hook,
+            post_hook=post_hook,
+            prune_configs_by=prune_configs_by,
+            warmup=warmup,
+            rep=rep,
+            use_cuda_graph=use_cuda_graph,
+            do_bench=do_bench,
+            strategy=strategy,
+            search_strategy=search_strategy,
+        )
 
     def run(self, *args, **kwargs):
         self.nargs = dict(zip(self.arg_names, args))
