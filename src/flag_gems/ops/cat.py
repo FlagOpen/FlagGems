@@ -119,7 +119,7 @@ def cat(
     assert dim >= -A[0].ndim and dim < A[0].ndim, f"Invalid dim: {dim}"
     dim %= A[0].ndim
 
-    # Validation checks
+    # Same rank check
     inp_shapes = [list(_.shape) for _ in A]
     inp0_shape = inp_shapes[0]
     for s in inp_shapes[1:]:
