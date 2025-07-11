@@ -151,7 +151,9 @@ libcache = LibCache()
 class LibTuner(triton.runtime.Autotuner):
     """`LibTuner` is the base class for `FlagGems` library autotuner.
 
-    It could be extended by reimplementing the `policy` method.
+    It could be extended in two ways, overriding the `policy` or `run` method in a subclass.
+    For `policy` extension, `LibTuner` provides a decorator `register_policy` to register a policy function quickly.
+    Please refer to the implementation of `default_policy` for an example.
     """
 
     # The dispatch table for `LibTuner` subclasses. It's shared across all instances.
@@ -220,26 +222,6 @@ class LibTuner(triton.runtime.Autotuner):
         if strategy:
             assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
 
-    @classmethod
-    def register(cls, name: str):
-        """Register a subclass of `LibTuner` with a name.
-
-        Args:
-            name: The name of the subclass.
-        Returns:
-            A decorator that registers the subclass with the name.
-        """
-
-        def decorator(subclass):
-            cls._dispatch_table[name] = subclass
-            return subclass
-
-        return decorator
-
-    @classmethod
-    def get(cls, name: str):
-        return cls._dispatch_table[name]
-
     def get_kernel_hash(self):
         if self.kernel_hash is None:
             jit_fn = self.fn
@@ -263,48 +245,6 @@ class LibTuner(triton.runtime.Autotuner):
             ) + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
         return key
 
-    @abstractmethod
-    def run(self, *args, **kwargs):
-        raise NotImplementedError(
-            f"`run` isn't implemented in {self.__class__.__name__}"
-        )
-
-
-class OfflineLibTuner(LibTuner):
-    def __init__(
-        self,
-        fn,
-        arg_names,
-        configs,
-        key,
-        reset_to_zero,
-        restore_value,
-        pre_hook=None,
-        post_hook=None,
-        prune_configs_by: Optional[Dict] = None,
-        warmup=None,
-        rep=None,
-        use_cuda_graph=False,
-        do_bench=None,
-        strategy=None,
-    ):
-        super().__init__(
-            fn,
-            arg_names,
-            configs,
-            key,
-            reset_to_zero,
-            restore_value,
-            pre_hook=pre_hook,
-            post_hook=post_hook,
-            prune_configs_by=prune_configs_by,
-            warmup=warmup,
-            rep=rep,
-            use_cuda_graph=use_cuda_graph,
-            do_bench=do_bench,
-            strategy=strategy,
-        )
-
     @staticmethod
     @abstractmethod
     def policy(
@@ -318,13 +258,33 @@ class OfflineLibTuner(LibTuner):
             f"`policy` isn't implemented in {self.__class__.__name__}"
         )
 
+    @classmethod
+    def register(cls, name: str):
+        """Register a subclass of `LibTuner` with a name.
+
+        Args:
+            name: The name of the subclass.
+        Returns:
+            A decorator that registers the subclass with the name.
+        """
+
+        def decorator(subclass):
+            cls._dispatch_table[name] = subclass
+            return subclass
+
+        return decorator
+
+    @classmethod
+    def get(cls, name: str):
+        return cls._dispatch_table[name]
+
     @staticmethod
     def register_policy(
         name: str,
     ) -> Type["LibTuner"]:
-        """A decorator to register a policy for `OfflineLibTuner`.
+        """A decorator to register a policy for `LibTuner`.
 
-        This decorator allows you to create a new `OfflineLibTuner` subclass without defining a new class explicitly.
+        This decorator allows you to create a new `LibTuner` subclass without defining a new class explicitly.
         The new subclass will have the `policy` method set to the provided policy function and will be registered under
         the specified name in the `LibTuner` dispatch table.
         """
@@ -341,7 +301,7 @@ class OfflineLibTuner(LibTuner):
             ],
         ):
             @LibTuner.register(name)
-            class AnonymousLibTunerImpl(OfflineLibTuner):
+            class AnonymousLibTunerImpl(LibTuner):
                 def __init__(self, *args, **kwargs):
                     super().__init__(*args, **kwargs)
 
@@ -407,7 +367,7 @@ class OfflineLibTuner(LibTuner):
         return ret
 
 
-@OfflineLibTuner.register_policy("default")
+@LibTuner.register_policy("default")
 def default_policy(
     bench_fn: triton.runtime.KernelInterface,
     configs: Iterator[triton.Config],
@@ -427,7 +387,7 @@ def default_policy(
     This is one way to implement a default policy for offline autotuning. It's equal to the following
     ```
     @LibTuner.register("default")
-    class DefaultLibTunerImpl(OfflineLibTuner):
+    class DefaultLibTunerImpl(LibTuner):
         def __init__(
             self,
             *args,
