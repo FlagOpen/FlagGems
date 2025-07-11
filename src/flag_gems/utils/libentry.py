@@ -164,7 +164,7 @@ def register_should_search_hook(name):
     return decorator
 
 
-@register_should_search_hook("default")
+@register_should_search_hook("brute")
 def default_should_search_hook(tuner, key):
     return key not in tuner.cache
 
@@ -347,7 +347,7 @@ class LibTuner(triton.runtime.Autotuner):
         self.search_strategy_name = search_strategy
         self.search_fn = SEARCH_STRATEGIES[search_strategy]
         self.should_search_fn = SHOULD_SEARCH_HOOKS.get(
-            search_strategy, SHOULD_SEARCH_HOOKS["default"]
+            search_strategy, SHOULD_SEARCH_HOOKS["brute"]
         )
         self.call_counts = {}
         self.timings_cache = {}

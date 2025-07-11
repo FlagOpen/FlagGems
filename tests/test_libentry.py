@@ -9,6 +9,7 @@ from triton import language as tl
 import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.libentry import SEARCH_STRATEGIES, SHOULD_SEARCH_HOOKS
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -348,3 +349,51 @@ def test_hash_changes_when_dependency_modified():
         f"Expected different hashes when sub-function changes, "
         f"but got same hash: {original_hash}"
     )
+
+
+def test_libtuner_strategy():
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+        search_strategy="brute",
+    )
+    @triton.jit
+    def kernel_brute(x, y):
+        return x + y
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+        search_strategy="bayesian",
+    )
+    @triton.jit
+    def kernel_bayesian(x, y):
+        return x + y
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+        search_strategy="early_stop",
+    )
+    @triton.jit
+    def kernel_early_stop(x, y):
+        return x + y
+
+    assert kernel_brute.search_strategy_name == "brute"
+    assert kernel_bayesian.search_strategy_name == "bayesian"
+    assert kernel_early_stop.search_strategy_name == "early_stop"
+    assert kernel_brute.search_fn == SEARCH_STRATEGIES["brute"]
+    assert kernel_bayesian.search_fn == SEARCH_STRATEGIES["bayesian"]
+    assert kernel_early_stop.search_fn == SEARCH_STRATEGIES["early_stop"]
+    assert kernel_brute.should_search_fn == SHOULD_SEARCH_HOOKS["brute"]
+    assert kernel_bayesian.should_search_fn == SHOULD_SEARCH_HOOKS["bayesian"]
+    assert kernel_early_stop.should_search_fn == SHOULD_SEARCH_HOOKS["brute"]
