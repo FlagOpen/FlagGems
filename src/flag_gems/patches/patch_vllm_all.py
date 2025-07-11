@@ -138,11 +138,30 @@ def custom_gems_flash_mla_forward(
     return o
 
 
+def custom_gems_flash_attention_impl_forwad(
+    self,
+    layer: torch.nn.Module,
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    kv_cache: torch.Tensor,
+    attn_metadata,  #: FlashAttentionMetadata,
+    output: Optional[torch.Tensor] = None,
+    output_scale: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    from flag_gems.modules.attention import gems_flash_attention_impl_forwad
+
+    return gems_flash_attention_impl_forwad(
+        self, layer, query, key, value, kv_cache, attn_metadata, output, output_scale
+    )
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
     from vllm.model_executor.layers.rotary_embedding import RotaryEmbedding
+    from vllm.v1.attention.backends.flash_attn import FlashAttentionImpl
     from vllm.v1.attention.backends.mla.triton_mla import TritonMLAImpl
 
     patch_module_method(RMSNorm, "forward_cuda", custom_gems_rms_forward_cuda, verbose)
@@ -158,4 +177,7 @@ def apply_gems_patches_to_vllm(verbose=True):
     patch_module_method(SiluAndMul, "forward_cuda", custom_gems_silu_and_mul, verbose)
     patch_module_method(
         TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward, verbose
+    )
+    patch_module_method(
+        FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
     )
