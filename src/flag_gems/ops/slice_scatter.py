@@ -28,7 +28,6 @@ def slice_scatter_kernel(
     mask = block_start + offsets < total_elements
 
     idx = block_start + offsets
-
     pre_idx = idx // (dim_size * dim_prod_post)
     dim_idx = (idx // dim_prod_post) % dim_size
     post_idx = idx % dim_prod_post
