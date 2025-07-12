@@ -107,11 +107,11 @@ def dot_kernel(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp = tl.load(inp_ptr + inp_stride * offset, mask=mask).to(tl.float32)
-    other = tl.load(other_ptr + other_stride * offset, mask=mask).to(tl.float32)
+    inp = tl.load(inp_ptr + inp_stride * offset, mask=mask)
+    other = tl.load(other_ptr + other_stride * offset, mask=mask)
 
     out = tl.sum(inp * other)
-    tl.atomic_add(out_ptr, out)
+    tl.store(out_ptr, out)
 
 
 def vdot(input: Tensor, other: Tensor):
@@ -166,7 +166,7 @@ def vdot(input: Tensor, other: Tensor):
 
         return torch.view_as_complex(output_real)
     else:
-        output = torch.zeros([], dtype=torch.float32, device=inp.device)
+        output = torch.zeros([], dtype=inp.dtype, device=inp.device)
         n_elements = inp.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         dot_kernel[grid](
@@ -177,4 +177,4 @@ def vdot(input: Tensor, other: Tensor):
             inp_stride=inp_stride,
             other_stride=other_stride,
         )
-        return output.to(inp.dtype)
+        return output
