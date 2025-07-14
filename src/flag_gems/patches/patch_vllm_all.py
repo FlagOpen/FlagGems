@@ -238,9 +238,7 @@ def custom_gems_flash_attention_impl_forwad(
         return output
 
     # TODO: Support cascade_attention.
-    raise NotImplementedError(
-        "Cascade attention is not implemented in this version of vLLM."
-    )
+    raise NotImplementedError("Cascade attention is not implemented in flag_gems.")
 
     # assert not use_local_attn, "Cascade attention does not support local attention."
     # # Cascade attention (rare case).
