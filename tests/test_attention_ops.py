@@ -284,7 +284,6 @@ def test_sdpa_legacy(
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -315,7 +314,6 @@ def test_sdpa_square_qk_even_mn(
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
