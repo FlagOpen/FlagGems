@@ -245,7 +245,8 @@ class LibTuner(triton.runtime.Autotuner):
                     lambda idx0, idx1: self.strategy[idx0](args[idx1]),
                     enumerate(self.keys),
                 )
-            ) + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
+            )
+        key += tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
         return key
 
     @staticmethod
