@@ -138,8 +138,6 @@ def mv_input_fn(b, m, n, k, cur_dtype, device):
         ),
     ],
 )
-
-
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
