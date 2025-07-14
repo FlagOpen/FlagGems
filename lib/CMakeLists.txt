@@ -9,7 +9,8 @@ add_library(operators
             nonzero.cpp
             rotary_embedding.cpp
             cat.cpp
-            bmm.cpp)
+            bmm.cpp
+            embedding.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

@@ -33,4 +33,15 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
 
 at::Tensor cat(const at::TensorList &tensors, int64_t dim = 0);
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
+at::Tensor embedding(const at::Tensor &weight,
+                     const at::Tensor &indices,
+                     int64_t padding_idx = -1,
+                     bool scale_grad_by_freq = false,
+                     bool sparse = false);
+at::Tensor embedding_backward(const at::Tensor &grad_outputs,
+                              const at::Tensor &indices,
+                              int64_t num_weights,
+                              int64_t padding_idx = -1,
+                              bool scale_grad_by_freq = false,
+                              bool sparse = false);
 }  // namespace flag_gems
