@@ -162,26 +162,10 @@ def custom_gems_flash_attention_impl_forwad(
         # Profiling run.
         return output
 
-    # IMPORTANT!
-    # NOTE(woosuk): With piece-wise CUDA graphs, this method is executed in
-    # eager-mode PyTorch. Thus, we need to be careful about any CPU overhead
-    # in this method. For example, `view` and `slice` (or `[:n]`) operations
-    # are surprisingly slow even in the case they do not invoke any GPU ops.
-    # Minimize the PyTorch ops in this method as much as possible.
-    # Whenever making a change in this method, please benchmark the
-    # performance to make sure it does not introduce any overhead.
-
     num_actual_tokens = attn_metadata.num_actual_tokens
     key_cache, value_cache = kv_cache.unbind(0)
 
     if self.kv_sharing_target_layer_name is None:
-        # Reshape the input keys and values and store them in the cache.
-        # Skip this if sharing KV cache with an earlier attention layer.
-        # NOTE(woosuk): Here, key and value are padded while slot_mapping is
-        # not padded. However, we don't need to do key[:num_actual_tokens]
-        # and value[:num_actual_tokens] because the reshape_and_cache_flash
-        # op uses the slot_mapping's shape to determine the number of
-        # actual tokens.
         reshape_and_cache_flash(
             key,
             value,
@@ -253,7 +237,7 @@ def custom_gems_flash_attention_impl_forwad(
         )
         return output
 
-    # TODO: Support cascade attention.
+    # TODO: Support cascade_attention.
     raise NotImplementedError(
         "Cascade attention is not implemented in this version of vLLM."
     )
