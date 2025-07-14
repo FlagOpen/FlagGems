@@ -1,3 +1,4 @@
+import math
 import random
 from typing import List, Optional, Tuple
 
@@ -283,6 +284,7 @@ def test_sdpa_legacy(
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -313,6 +315,7 @@ def test_sdpa_square_qk_even_mn(
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
@@ -667,7 +670,7 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
-@pytest.mark.varlen_fwd_paged
+@pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
 @pytest.mark.parametrize("head_size", [128, 256])
@@ -678,7 +681,7 @@ def ref_paged_attn(
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("num_blocks", [32768, 2048])
 @torch.inference_mode()
-def test_varlen_paged(
+def test_flash_attn_varlen_func(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -693,85 +696,87 @@ def test_varlen_paged(
     if alibi is True and soft_cap is not None:
         return
 
-    torch.set_default_device(flag_gems.device)
-    init_seed(1234567890)
-    num_seqs = len(seq_lens)
-    query_lens = [x[0] for x in seq_lens]
-    kv_lens = [x[1] for x in seq_lens]
-    num_query_heads = num_heads[0]
-    num_kv_heads = num_heads[1]
-    assert num_query_heads % num_kv_heads == 0
-    max_query_len = max(query_lens)
-    max_kv_len = max(kv_lens)
-    window_size = (
-        (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
-    )
-    scale = head_size**-0.5
-    query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
-    key_cache = torch.randn(
-        num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
-    )
-    value_cache = torch.randn_like(key_cache)
-    cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-        dim=0, dtype=torch.int32
-    )
-    seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
-
-    max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
-    block_tables = torch.randint(
-        0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
-    )
-
-    causal = True
-
-    if alibi:
-        # alibi_slopes = torch.rand(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
-        alibi_slopes = (
-            torch.ones(num_seqs, num_query_heads, device=device, dtype=torch.float32)
-            * 0.3
+    with torch.device(flag_gems.device):
+        init_seed(1234567890)
+        num_seqs = len(seq_lens)
+        query_lens = [x[0] for x in seq_lens]
+        kv_lens = [x[1] for x in seq_lens]
+        num_query_heads = num_heads[0]
+        num_kv_heads = num_heads[1]
+        assert num_query_heads % num_kv_heads == 0
+        max_query_len = max(query_lens)
+        max_kv_len = max(kv_lens)
+        window_size = (
+            (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
         )
-        attn_bias = attn_bias_from_alibi_slopes(
-            alibi_slopes, max_query_len, max_kv_len, causal=causal
+        scale = head_size**-0.5
+        query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
+        key_cache = torch.randn(
+            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
         )
-    else:
-        alibi_slopes, attn_bias = None, None
+        value_cache = torch.randn_like(key_cache)
+        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
+            dim=0, dtype=torch.int32
+        )
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
 
-    output = flag_gems.ops.flash_attn_varlen_func(
-        q=query,
-        k=key_cache,
-        v=value_cache,
-        cu_seqlens_q=cu_query_lens,
-        seqused_k=seqused_k,
-        max_seqlen_q=max_query_len,
-        max_seqlen_k=max_kv_len,
-        softmax_scale=scale,
-        causal=causal,
-        window_size=window_size,
-        block_table=block_tables,
-        softcap=soft_cap if soft_cap is not None else 0,
-        alibi_slopes=alibi_slopes,
-        fa_version=2,
-    )
+        max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
+        block_tables = torch.randint(
+            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+        )
 
-    ref_output = ref_paged_attn(
-        query=query,
-        key_cache=key_cache,
-        value_cache=value_cache,
-        query_lens=query_lens,
-        kv_lens=kv_lens,
-        block_tables=block_tables,
-        scale=scale,
-        attn_bias=attn_bias,
-        sliding_window=sliding_window,
-        soft_cap=soft_cap,
-    )
+        causal = True
 
-    torch.testing.assert_close(
-        output, ref_output, atol=2e-2, rtol=1e-2
-    ), f"{torch.max(torch.abs(output - ref_output))}"
+        if alibi:
+            # alibi_slopes = torch.rand(num_seqs, num_query_heads, device=device, dtype=torch.float32) * 0.3
+            alibi_slopes = (
+                torch.ones(
+                    num_seqs, num_query_heads, device=device, dtype=torch.float32
+                )
+                * 0.3
+            )
+            attn_bias = attn_bias_from_alibi_slopes(
+                alibi_slopes, max_query_len, max_kv_len, causal=causal
+            )
+        else:
+            alibi_slopes, attn_bias = None, None
+
+        output = flag_gems.ops.flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=max_query_len,
+            max_seqlen_k=max_kv_len,
+            softmax_scale=scale,
+            causal=causal,
+            window_size=window_size,
+            block_table=block_tables,
+            softcap=soft_cap if soft_cap is not None else 0,
+            alibi_slopes=alibi_slopes,
+            fa_version=2,
+        )
+
+        ref_output = ref_paged_attn(
+            query=query,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            query_lens=query_lens,
+            kv_lens=kv_lens,
+            block_tables=block_tables,
+            scale=scale,
+            attn_bias=attn_bias,
+            sliding_window=sliding_window,
+            soft_cap=soft_cap,
+        )
+
+        torch.testing.assert_close(
+            output, ref_output, atol=2e-2, rtol=1e-2
+        ), f"{torch.max(torch.abs(output - ref_output))}"
 
 
-@pytest.mark.varlen_fwd_paged
+@pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
 @pytest.mark.parametrize("head_size", [128])
@@ -781,7 +786,7 @@ def test_varlen_paged(
 @pytest.mark.parametrize("soft_cap", [None, 10.0])
 @pytest.mark.parametrize("num_blocks", [2048])
 @torch.inference_mode()
-def test_varlen_paged_swap_qg(
+def test_flash_attn_varlen_func_swap_qg(
     seq_lens: List[Tuple[int, int]],
     num_heads: Tuple[int, int],
     head_size: int,
@@ -791,66 +796,66 @@ def test_varlen_paged_swap_qg(
     soft_cap: Optional[float],
     num_blocks: int,
 ) -> None:
-    torch.set_default_device(flag_gems.device)
-    init_seed(1234567890)
-    num_seqs = len(seq_lens)
-    query_lens = [x[0] for x in seq_lens]
-    kv_lens = [x[1] for x in seq_lens]
-    num_query_heads = num_heads[0]
-    num_kv_heads = num_heads[1]
-    assert num_query_heads % num_kv_heads == 0
-    max_query_len = max(query_lens)
-    max_kv_len = max(kv_lens)
-    window_size = (
-        (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
-    )
-    scale = head_size**-0.5
-    query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
-    key_cache = torch.randn(
-        num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
-    )
-    value_cache = torch.randn_like(key_cache)
-    cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
-        dim=0, dtype=torch.int32
-    )
-    seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
+    with torch.device(flag_gems.device):
+        init_seed(1234567890)
+        num_seqs = len(seq_lens)
+        query_lens = [x[0] for x in seq_lens]
+        kv_lens = [x[1] for x in seq_lens]
+        num_query_heads = num_heads[0]
+        num_kv_heads = num_heads[1]
+        assert num_query_heads % num_kv_heads == 0
+        max_query_len = max(query_lens)
+        max_kv_len = max(kv_lens)
+        window_size = (
+            (sliding_window, sliding_window) if sliding_window is not None else (-1, -1)
+        )
+        scale = head_size**-0.5
+        query = torch.randn(sum(query_lens), num_query_heads, head_size, dtype=dtype)
+        key_cache = torch.randn(
+            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype
+        )
+        value_cache = torch.randn_like(key_cache)
+        cu_query_lens = torch.tensor([0] + query_lens, dtype=torch.int32).cumsum(
+            dim=0, dtype=torch.int32
+        )
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32)
 
-    max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
-    block_tables = torch.randint(
-        0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
-    )
+        max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
+        block_tables = torch.randint(
+            0, num_blocks, (num_seqs, max_num_blocks_per_seq), dtype=torch.int32
+        )
 
-    output = flag_gems.ops.flash_attn_varlen_func(
-        q=query,
-        k=key_cache,
-        v=value_cache,
-        cu_seqlens_q=cu_query_lens,
-        seqused_k=seqused_k,
-        max_seqlen_q=max_query_len,
-        max_seqlen_k=max_kv_len,
-        softmax_scale=scale,
-        causal=True,
-        window_size=window_size,
-        block_table=block_tables,
-        softcap=soft_cap if soft_cap is not None else 0,
-        fa_version=2,
-    )
+        output = flag_gems.ops.flash_attn_varlen_func(
+            q=query,
+            k=key_cache,
+            v=value_cache,
+            cu_seqlens_q=cu_query_lens,
+            seqused_k=seqused_k,
+            max_seqlen_q=max_query_len,
+            max_seqlen_k=max_kv_len,
+            softmax_scale=scale,
+            causal=True,
+            window_size=window_size,
+            block_table=block_tables,
+            softcap=soft_cap if soft_cap is not None else 0,
+            fa_version=2,
+        )
 
-    ref_output = ref_paged_attn(
-        query=query,
-        key_cache=key_cache,
-        value_cache=value_cache,
-        query_lens=query_lens,
-        kv_lens=kv_lens,
-        block_tables=block_tables,
-        scale=scale,
-        sliding_window=sliding_window,
-        soft_cap=soft_cap,
-    )
+        ref_output = ref_paged_attn(
+            query=query,
+            key_cache=key_cache,
+            value_cache=value_cache,
+            query_lens=query_lens,
+            kv_lens=kv_lens,
+            block_tables=block_tables,
+            scale=scale,
+            sliding_window=sliding_window,
+            soft_cap=soft_cap,
+        )
 
-    torch.testing.assert_close(
-        output, ref_output, atol=2e-2, rtol=1e-2
-    ), f"{torch.max(torch.abs(output - ref_output))}"
+        torch.testing.assert_close(
+            output, ref_output, atol=2e-2, rtol=1e-2
+        ), f"{torch.max(torch.abs(output - ref_output))}"
 
 
 DTYPES = [torch.half, torch.bfloat16, torch.float]
@@ -919,53 +924,64 @@ def test_concat_and_cache_mla(
 ) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
-    torch.set_default_device(device)
 
-    total_slots = num_blocks * block_size
-    slot_mapping_lst = random.sample(range(total_slots), num_tokens)
-    slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+    with torch.device(device):
+        total_slots = num_blocks * block_size
+        slot_mapping_lst = random.sample(range(total_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
 
-    kv_c = torch.randn(num_tokens, kv_lora_rank, dtype=dtype, device=device)
-    k_pe = torch.randn(num_tokens, qk_rope_head_dim, dtype=dtype, device=device)
-    entry_size = kv_lora_rank + qk_rope_head_dim
+        kv_c = torch.randn(num_tokens, kv_lora_rank, dtype=dtype, device=device)
+        k_pe = torch.randn(num_tokens, qk_rope_head_dim, dtype=dtype, device=device)
+        entry_size = kv_lora_rank + qk_rope_head_dim
 
-    scale = torch.tensor(0.1, dtype=torch.float32, device=device)
-    kv_cache = _create_mla_cache(
-        num_blocks, block_size, entry_size, dtype, kv_cache_dtype, device
-    )
-    ref_temp = to_reference(torch.zeros(*kv_cache.shape, dtype=dtype, device=device))
-
-    for i in range(num_tokens):
-        slot = slot_mapping[i].item()
-        block_idx = slot // block_size
-        block_offset = slot % block_size
-        ref_temp[block_idx, block_offset, :kv_lora_rank] = kv_c[i]
-        ref_temp[block_idx, block_offset, kv_lora_rank:] = k_pe[i]
-
-    if kv_cache_dtype == "fp8":
-        ref_kv_cache = to_reference(torch.empty_like(ref_temp, dtype=kv_cache.dtype))
-        convert_fp8(ref_kv_cache, ref_temp, scale.item(), kv_dtype=kv_cache_dtype)
-    else:
-        ref_kv_cache = to_reference(ref_temp)
-    with flag_gems.use_gems():
-        flag_gems.concat_and_cache_mla(
-            kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+        scale = torch.tensor(0.1, dtype=torch.float32, device=device)
+        kv_cache = _create_mla_cache(
+            num_blocks, block_size, entry_size, dtype, kv_cache_dtype, device
+        )
+        ref_temp = to_reference(
+            torch.zeros(*kv_cache.shape, dtype=dtype, device=device)
         )
 
-    if kv_cache_dtype == "fp8":
-        result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)
-        convert_fp8(
-            result_temp, kv_cache.contiguous(), scale.item(), kv_dtype=kv_cache_dtype
-        )
-        expected_temp = to_reference(torch.empty_like(ref_kv_cache, dtype=torch.uint8))
-        convert_fp8(expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype)
-        dtype = torch.float8_e4m3fn
-        # TODO: RuntimeError: Comparing
-        # maybe a bug in torch.testing.assert_close
-        # gems_assert_close(kv_cache.view(dtype), ref_kv_cache.view(dtype), dtype)
-        torch.testing.assert_close(result_temp, expected_temp, atol=0.001, rtol=0.1)
-    else:
-        gems_assert_close(kv_cache, ref_kv_cache, kv_cache.dtype)
+        for i in range(num_tokens):
+            slot = slot_mapping[i].item()
+            block_idx = slot // block_size
+            block_offset = slot % block_size
+            ref_temp[block_idx, block_offset, :kv_lora_rank] = kv_c[i]
+            ref_temp[block_idx, block_offset, kv_lora_rank:] = k_pe[i]
+
+        if kv_cache_dtype == "fp8":
+            ref_kv_cache = to_reference(
+                torch.empty_like(ref_temp, dtype=kv_cache.dtype)
+            )
+            convert_fp8(ref_kv_cache, ref_temp, scale.item(), kv_dtype=kv_cache_dtype)
+        else:
+            ref_kv_cache = to_reference(ref_temp)
+        with flag_gems.use_gems():
+            flag_gems.concat_and_cache_mla(
+                kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+            )
+
+        if kv_cache_dtype == "fp8":
+            result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)
+            convert_fp8(
+                result_temp,
+                kv_cache.contiguous(),
+                scale.item(),
+                kv_dtype=kv_cache_dtype,
+            )
+            expected_temp = to_reference(
+                torch.empty_like(ref_kv_cache, dtype=torch.uint8)
+            )
+            convert_fp8(
+                expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype
+            )
+            dtype = torch.float8_e4m3fn
+            # TODO: RuntimeError: Comparing
+            # maybe a bug in torch.testing.assert_close
+            # gems_assert_close(kv_cache.view(dtype), ref_kv_cache.view(dtype), dtype)
+            torch.testing.assert_close(result_temp, expected_temp, atol=0.001, rtol=0.1)
+        else:
+            gems_assert_close(kv_cache, ref_kv_cache, kv_cache.dtype)
 
 
 def create_kv_caches_with_random(
@@ -1006,7 +1022,7 @@ def create_kv_caches_with_random(
     return key_caches, value_caches
 
 
-@pytest.mark.test_reshape_and_cache
+@pytest.mark.reshape_and_cache
 @pytest.mark.parametrize("num_tokens", [42])
 @pytest.mark.parametrize("num_heads", [8])
 @pytest.mark.parametrize("head_size", [64, 80, 120, 256])
@@ -1026,55 +1042,55 @@ def test_reshape_and_cache(
     seed: int,
 ) -> None:
     init_seed(seed)
-    torch.set_default_device(device)
-    # Create a random slot mapping.
-    num_slots = block_size * num_blocks
-    slot_mapping_lst = random.sample(range(num_slots), num_tokens)
-    slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long)
+    with torch.device(device):
+        # Create a random slot mapping.
+        num_slots = block_size * num_blocks
+        slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long)
 
-    qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype)
-    _, key, value = qkv.unbind(dim=1)
+        qkv = torch.randn(num_tokens, 3, num_heads, head_size, dtype=dtype)
+        _, key, value = qkv.unbind(dim=1)
 
-    # Create the KV caches.
-    key_caches, value_caches = create_kv_caches_with_random(
-        num_blocks, block_size, 1, num_heads, head_size, kv_cache_dtype, dtype, seed
-    )
-    key_cache, value_cache = key_caches[0], value_caches[0]
+        # Create the KV caches.
+        key_caches, value_caches = create_kv_caches_with_random(
+            num_blocks, block_size, 1, num_heads, head_size, kv_cache_dtype, dtype, seed
+        )
+        key_cache, value_cache = key_caches[0], value_caches[0]
 
-    # Using default kv_scale
-    k_scale = (key.amax() / 64.0).to(torch.float32)
-    v_scale = (value.amax() / 64.0).to(torch.float32)
+        # Using default kv_scale
+        k_scale = (key.amax() / 64.0).to(torch.float32)
+        v_scale = (value.amax() / 64.0).to(torch.float32)
 
-    # Clone the KV caches.
-    cloned_key_cache = key_cache.clone()
-    cloned_value_cache = value_cache.clone()
+        # Clone the KV caches.
+        cloned_key_cache = key_cache.clone()
+        cloned_value_cache = value_cache.clone()
 
-    # Call the reshape_and_cache kernel.
-    flag_gems.reshape_and_cache(
-        key,
-        value,
-        key_cache,
-        value_cache,
-        slot_mapping,
-        kv_cache_dtype,
-        k_scale,
-        v_scale,
-    )
+        # Call the reshape_and_cache kernel.
+        flag_gems.reshape_and_cache(
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_mapping,
+            kv_cache_dtype,
+            k_scale,
+            v_scale,
+        )
 
-    # Run the reference implementation.
-    reshaped_key = key.reshape(num_tokens, *key_cache[0, :, :, 0, :].shape)
-    block_indicies = torch.div(slot_mapping, block_size, rounding_mode="floor")
-    block_indicies_lst = block_indicies.cpu().tolist()
-    block_offsets = slot_mapping % block_size
-    block_offsets_lst = block_offsets.cpu().tolist()
-    for i in range(num_tokens):
-        block_idx = block_indicies_lst[i]
-        block_offset = block_offsets_lst[i]
-        cloned_key_cache[block_idx, :, :, block_offset, :] = reshaped_key[i]
-        cloned_value_cache[block_idx, :, :, block_offset] = value[i]
+        # Run the reference implementation.
+        reshaped_key = key.reshape(num_tokens, *key_cache[0, :, :, 0, :].shape)
+        block_indicies = torch.div(slot_mapping, block_size, rounding_mode="floor")
+        block_indicies_lst = block_indicies.cpu().tolist()
+        block_offsets = slot_mapping % block_size
+        block_offsets_lst = block_offsets.cpu().tolist()
+        for i in range(num_tokens):
+            block_idx = block_indicies_lst[i]
+            block_offset = block_offsets_lst[i]
+            cloned_key_cache[block_idx, :, :, block_offset, :] = reshaped_key[i]
+            cloned_value_cache[block_idx, :, :, block_offset] = value[i]
 
-    torch.testing.assert_close(key_cache, cloned_key_cache)
-    torch.testing.assert_close(value_cache, cloned_value_cache)
+        torch.testing.assert_close(key_cache, cloned_key_cache)
+        torch.testing.assert_close(value_cache, cloned_value_cache)
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -1107,3 +1123,259 @@ def test_flash_fwd_dropout(
 
     dropout_ratio = torch.sum(debug_softmax < 0) / torch.sum(debug_softmax != 0)
     np.testing.assert_allclose(dropout_ratio.to("cpu"), dropout_p, rtol=5e-2)
+
+
+def create_kv_caches_with_random_flash(
+    num_blocks,
+    block_size,
+    num_layers,
+    num_heads,
+    head_size,
+    cache_dtype,
+    model_dtype,
+    seed,
+    device,
+):
+    init_seed(seed)
+    torch_dtype = model_dtype
+    key_value_cache_shape = (num_blocks, 2, block_size, num_heads, head_size)
+    scale = head_size**-0.5
+
+    key_caches: list[torch.Tensor] = []
+    value_caches: list[torch.Tensor] = []
+
+    for _ in range(num_layers):
+        key_value_cache = torch.empty(
+            size=key_value_cache_shape, dtype=torch_dtype, device=device
+        )
+        if cache_dtype in ["auto", "half", "bfloat16", "float"]:
+            key_value_cache.uniform_(-scale, scale)
+        else:
+            raise ValueError(f"Does not support key cache of type {cache_dtype}")
+        key_caches.append(key_value_cache[:, 0])
+        value_caches.append(key_value_cache[:, 1])
+    return key_caches, value_caches
+
+
+@pytest.mark.reshape_and_cache_flash
+@pytest.mark.parametrize("num_tokens", [42])
+@pytest.mark.parametrize("num_heads", [8])
+@pytest.mark.parametrize("head_size", [64, 80, 120, 256])
+@pytest.mark.parametrize("block_size", [8, 16, 32])
+@pytest.mark.parametrize("num_blocks", [1024, 10000])
+@pytest.mark.parametrize("dtype", [torch.half, torch.bfloat16, torch.float])
+@pytest.mark.parametrize("kv_cache_dtype", ["auto"])
+@pytest.mark.parametrize("seed", [2025])
+@torch.inference_mode()
+def test_reshape_and_cache_flash(
+    num_tokens: int,
+    num_heads: int,
+    head_size: int,
+    block_size: int,
+    num_blocks: int,
+    dtype: torch.dtype,
+    kv_cache_dtype: str,
+    seed: int,
+) -> None:
+    init_seed(seed)
+    with torch.device(device):
+        # Create a random slot mapping.
+        num_slots = block_size * num_blocks
+        slot_mapping_lst = random.sample(range(num_slots), num_tokens)
+        slot_mapping = torch.tensor(slot_mapping_lst, dtype=torch.long, device=device)
+        qkv = torch.randn(
+            num_tokens, 3, num_heads, head_size, dtype=dtype, device=device
+        )
+        _, key, value = qkv.unbind(dim=1)
+
+        # Create the KV caches.
+        key_caches, value_caches = create_kv_caches_with_random_flash(
+            num_blocks,
+            block_size,
+            1,
+            num_heads,
+            head_size,
+            kv_cache_dtype,
+            dtype,
+            seed=seed,
+            device=device,
+        )
+        key_cache, value_cache = (
+            key_caches[0].contiguous(),
+            value_caches[0].contiguous(),
+        )
+        del key_caches
+        del value_caches
+
+        k_scale = (key.amax() / 64.0).to(torch.float32)
+        v_scale = (value.amax() / 64.0).to(torch.float32)
+
+        # Clone the KV caches.
+        cloned_key_cache = key_cache.clone()
+        cloned_value_cache = value_cache.clone()
+
+        # Call the reshape_and_cache kernel.
+        flag_gems.reshape_and_cache_flash(
+            key,
+            value,
+            key_cache,
+            value_cache,
+            slot_mapping,
+            kv_cache_dtype,
+            k_scale,
+            v_scale,
+        )
+
+        # Run the reference implementation.
+        block_indicies = torch.div(slot_mapping, block_size, rounding_mode="floor")
+        block_indicies_lst = block_indicies.cpu().tolist()
+        block_offsets = slot_mapping % block_size
+        block_offsets_lst = block_offsets.cpu().tolist()
+        for i in range(num_tokens):
+            block_idx = block_indicies_lst[i]
+            block_offset = block_offsets_lst[i]
+            cloned_key_cache[block_idx, block_offset, :, :] = key[i]
+            cloned_value_cache[block_idx, block_offset, :, :] = value[i]
+
+        torch.testing.assert_close(key_cache, cloned_key_cache)
+        torch.testing.assert_close(value_cache, cloned_value_cache)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.flash_mla
+@pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.bfloat16,
+    ],
+)
+def test_flash_mla(seqlen, dtype):
+    b = 128
+    s_q = 1
+    h_q = 128
+    h_kv = 1
+    d = 576
+    dv = 512
+    causal = True
+    block_size = 64
+    cache_seqlens = torch.tensor(
+        [seqlen + 2 * i for i in range(b)], dtype=torch.int32, device=device
+    )
+    max_seqlen = cache_seqlens.max().item()
+    max_seqlen_pad = triton.cdiv(max_seqlen, 256) * 256
+
+    q = torch.randn([b, s_q, h_q, d], dtype=dtype, device=device)
+    block_table = torch.arange(
+        b * max_seqlen_pad // block_size, dtype=torch.int32, device=device
+    ).view(b, max_seqlen_pad // block_size)
+    blocked_k = torch.randn(
+        [block_table.numel(), block_size, h_kv, d], dtype=dtype, device=device
+    )
+
+    ref_q = to_reference(q)
+    ref_block_table = to_reference(block_table)
+    ref_blocked_k = to_reference(blocked_k)
+    ref_cache_seqlens = to_reference(cache_seqlens)
+
+    def scaled_dot_product_attention(query, key, value, h_q, h_kv, is_causal=False):
+        query = query.float()
+        key = key.float()
+        value = value.float()
+        key = key.repeat_interleave(h_q // h_kv, dim=0)
+        value = value.repeat_interleave(h_q // h_kv, dim=0)
+        attn_weight = query @ key.transpose(-2, -1) / math.sqrt(query.size(-1))
+        if is_causal:
+            s_q = query.shape[-2]
+            s_k = key.shape[-2]
+            attn_bias = torch.zeros(s_q, s_k, dtype=query.dtype, device=query.device)
+            temp_mask = torch.ones(
+                s_q, s_k, dtype=torch.bool, device=query.device
+            ).tril(diagonal=s_k - s_q)
+            attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+            attn_bias.to(query.dtype)
+            attn_weight += attn_bias
+        lse = attn_weight.logsumexp(dim=-1)
+        attn_weight = torch.softmax(attn_weight, dim=-1, dtype=torch.float32)
+        return attn_weight @ value, lse
+
+    def ref_mla(
+        q,
+        block_table,
+        blocked_k,
+        max_seqlen_pad,
+        block_size,
+        b,
+        s_q,
+        cache_seqlens,
+        h_q,
+        h_kv,
+        d,
+        dv,
+        causal,
+    ):
+        device = q.device
+        blocked_v = blocked_k[..., :dv]
+        out = torch.empty(b, s_q, h_q, dv, dtype=torch.float32, device=device)
+        lse = torch.empty(b, h_q, s_q, dtype=torch.float32, device=device)
+        for i in range(b):
+            begin = i * max_seqlen_pad
+            end = begin + cache_seqlens[i]
+            O, LSE = scaled_dot_product_attention(
+                q[i].transpose(0, 1),
+                blocked_k.view(-1, h_kv, d)[begin:end].transpose(0, 1),
+                blocked_v.view(-1, h_kv, dv)[begin:end].transpose(0, 1),
+                h_q=h_q,
+                h_kv=h_kv,
+                is_causal=causal,
+            )
+            out[i] = O.transpose(0, 1)
+            lse[i] = LSE
+        return out, lse
+
+    ref_out, _ = ref_mla(
+        ref_q,
+        ref_block_table,
+        ref_blocked_k,
+        max_seqlen_pad,
+        block_size,
+        b,
+        s_q,
+        ref_cache_seqlens,
+        h_q,
+        h_kv,
+        d,
+        dv,
+        causal,
+    )
+    res_out = flag_gems.flash_mla(
+        q,
+        block_table,
+        blocked_k,
+        max_seqlen_pad,
+        block_size,
+        b,
+        s_q,
+        cache_seqlens,
+        h_q,
+        h_kv,
+        d,
+        dv,
+        causal,
+    )
+
+    def cal_diff(x: torch.Tensor, y: torch.Tensor, name: str) -> None:
+        x, y = x.double(), y.double()
+        x = x.to(y.device)
+        RMSE = ((x - y) * (x - y)).mean().sqrt().item()
+        cos_diff = 1 - 2 * (x * y).sum().item() / max(
+            (x * x + y * y).sum().item(), 1e-12
+        )
+        amax_diff = (x - y).abs().max().item()
+        assert cos_diff < 1e-5, f"{name}: {cos_diff=}, {RMSE=}, {amax_diff=}"
+
+    cal_diff(res_out, ref_out, "out")
