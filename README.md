@@ -54,7 +54,7 @@ For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_ex
 
 ### v3.0
 
-- support 183 operators in total, including custom operators used in large model inference
+- support 184 operators in total, including custom operators used in large model inference
 - support more hardware platforms, add Ascend, AIPU, etc.
 - compatible with the vLLM framework, with the inference verification of DeepSeek model passed
 

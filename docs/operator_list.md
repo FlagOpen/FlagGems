@@ -87,6 +87,7 @@
 - layer_norm
 - le
 - lerp
+- lerp\_
 - linspace
 - log
 - log_sigmoid
