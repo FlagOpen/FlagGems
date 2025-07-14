@@ -1,6 +1,7 @@
 import torch
 import triton
 
+
 def simple_elementwise_blocksize_heur(args):
     return 1024
 
