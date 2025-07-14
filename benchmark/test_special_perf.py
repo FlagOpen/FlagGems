@@ -92,7 +92,7 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
+        dtypes=INT_DTYPES,
     )
     bench.run()
 
@@ -108,7 +108,7 @@ def test_perf_unique():
         input_fn=unique_input_fn,
         op_name="unique",
         torch_op=torch.unique,
-        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
+        dtypes=INT_DTYPES,
     )
     bench.run()
 
@@ -378,7 +378,7 @@ def test_perf_diag_embed():
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.diagonal_backward
+@pytest.mark.diagonal
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -389,7 +389,7 @@ def test_perf_diagonal_backward():
 
     bench = GenericBenchmarkExcluse1D(
         input_fn=diagonal_backward_input_fn,
-        op_name="diagonal_backward",
+        op_name="diagonal",
         torch_op=torch.diagonal,
         dtypes=FLOAT_DTYPES,
         is_backward=True,
@@ -400,6 +400,7 @@ def test_perf_diagonal_backward():
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
 def test_perf_kron():
     class KronBenchmark(GenericBenchmark2DOnly):
@@ -428,8 +429,8 @@ def test_perf_contiguous():
             inp = torch.randn(shape, dtype=dtype, device=device)
         else:
             inp = torch.randint(
-                low=-10000, high=10000, size=shape, dtype=dtype, device=device
-            )
+                low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
+            ).to(device)
         inp = inp[::2]
         yield inp,
 

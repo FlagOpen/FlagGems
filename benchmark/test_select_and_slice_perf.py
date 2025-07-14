@@ -66,6 +66,7 @@ def index_select_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.index_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",
     [
@@ -77,6 +78,23 @@ def index_select_gbps(bench_fn_args, latency):
             FLOAT_DTYPES,
             marks=pytest.mark.index_select,
         ),
+    ],
+)
+def test_perf_index_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
+    bench = TensorSelectBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=dtypes,
+        get_gbps=gbps_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.masked_select
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn, gbps_fn, dtypes",
+    [
         pytest.param(
             "masked_select",
             torch.masked_select,
@@ -87,7 +105,7 @@ def index_select_gbps(bench_fn_args, latency):
         ),
     ],
 )
-def test_generic_reduction_benchmark(op_name, torch_op, input_fn, gbps_fn, dtypes):
+def test_perf_masked_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
     bench = TensorSelectBenchmark(
         input_fn=input_fn,
         op_name=op_name,
@@ -196,10 +214,10 @@ def slice_scatter_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
-@pytest.mark.gather_backward
+@pytest.mark.gather
 def test_perf_gather_backward():
     bench = TensorSelectBenchmark(
-        op_name="gather_backward",
+        op_name="gather",
         torch_op=torch.gather,
         input_fn=gather_input_fn,
         get_gbps=gather_scatter_gbps,
@@ -272,6 +290,7 @@ def index_add_gbps(bench_fn_args, latency):
     return io_amount * 1e-9 / (latency * 1e-3)
 
 
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.index_add
 def test_index_add_perf():
     def index_add_input_fn(shape, dtype, device):

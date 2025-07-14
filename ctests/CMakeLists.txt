@@ -22,10 +22,17 @@ target_link_libraries(test_triton_rope
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_rope COMMAND test_triton_rope)
 
+<<<<<<< HEAD
 add_executable(test_triton_zeros test_triton_tensor_constructor.cpp)
 target_link_libraries(test_triton_zeros
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_zeros COMMAND test_triton_zeros)
+=======
+add_executable(test_triton_cat test_triton_cat.cpp)
+target_link_libraries(test_triton_cat
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_cat COMMAND test_triton_cat)
+>>>>>>> master
 add_executable(test_triton_bmm test_triton_bmm.cpp)
 target_link_libraries(test_triton_bmm
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)

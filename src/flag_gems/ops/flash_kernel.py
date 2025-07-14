@@ -53,7 +53,7 @@ def apply_dropout_mask(
     if encode_dropout_in_sign_bit:
         P = tl.where(mask, -P, P)
     else:
-        P = tl.where(mask, P * 0, P)
+        P = tl.where(mask, (P * 0).to(P.dtype), P)
     return P
 
 
@@ -222,6 +222,34 @@ def is_even_mn(M, N, BM, BN, WL, WR):
     if M % BM == 0 and N % BN == 0:
         if M % N == 0 or N % M == 0:
             if (WL == -1 or WL % BN == 0) and (WR == -1 or WR % BN == 0):
+                return True
+    return False
+
+
+def block_m_splitkv_heuristic_spec_args(args):
+    return 128 if args["d"] <= 128 else 64
+
+
+def block_n_splitkv_heuristic_spec_args(args):
+    return 64 if args["d"] <= 64 else 32
+
+
+def is_even_mn_spec_args(args):
+    if (
+        args["seqlen_q"] % args["BLOCK_M"] == 0
+        and args["seqlen_k"] % args["BLOCK_N"] == 0
+    ):
+        if (
+            args["seqlen_q"] % args["seqlen_k"] == 0
+            or args["seqlen_k"] % args["seqlen_q"] == 0
+        ):
+            if (
+                args["window_size_left"] == -1
+                or args["window_size_left"] % args["BLOCK_N"] == 0
+            ) and (
+                args["window_size_right"] == -1
+                or args["window_size_right"] % args["BLOCK_N"] == 0
+            ):
                 return True
     return False
 
@@ -674,19 +702,12 @@ def flash_fwd_bh_parallel_kernel():
 @libentry()
 @triton.heuristics(
     values={
-        "BLOCK_M": lambda args: block_m_splitkv_heuristic(args["d"]),
-        "BLOCK_N": lambda args: block_n_splitkv_heuristic(args["d"]),
+        "BLOCK_M": block_m_splitkv_heuristic_spec_args,
+        "BLOCK_N": block_n_splitkv_heuristic_spec_args,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
         "PRE_LOAD_V": lambda args: True,
-        "IS_EVEN_MN": lambda args: is_even_mn(
-            args["seqlen_q"],
-            args["seqlen_k"],
-            args["BLOCK_M"],
-            args["BLOCK_N"],
-            args["window_size_left"],
-            args["window_size_right"],
-        ),
+        "IS_EVEN_MN": is_even_mn_spec_args,
     }
 )
 @triton.jit(
