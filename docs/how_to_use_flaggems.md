@@ -430,12 +430,16 @@ This gives you **precise control** over operator dispatch, which can be benefici
 
 #### Currently Supported C++-Wrapped Operators
 
-| Operator Name        | Description                    |
-| -------------------- | ------------------------------ |
-| `add`                | Element-wise addition          |
-| `sum`                | Reduction across dimensions    |
-| `rms_norm`           | Root Mean Square normalization |
-| `fused_add_rms_norm` | Fused addition + RMSNorm       |
-| `mm`                 | Matrix multiplication          |
+| Operator Name        | Description                              |
+| -------------------- | ---------------------------------------- |
+| `add`                | Element-wise addition                    |
+| `bmm`                | Batch Matrix Multiplication              |
+| `cat`                | Concatenate                              |
+| `fused_add_rms_norm` | Fused addition + RMSNorm                 |
+| `mm`                 | Matrix multiplication                    |
+| `nonzero`            | Returns the indices of non-zero elements |
+| `rms_norm`           | Root Mean Square normalization           |
+| `rotary_embedding`   | Rotary position embedding                |
+| `sum`                | Reduction across dimensions              |
 
 We are actively expanding this list as part of our ongoing performance roadmap.
