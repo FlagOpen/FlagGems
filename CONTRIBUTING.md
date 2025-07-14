@@ -16,7 +16,7 @@ Please report bugs using Github's issues. When reporting bugs, please provide
 ## 2. Code Contribution
 
 In pull requests, contributor should describe what changed and why. Please also provide test cases if applicable.
-Pull requests require approvals from **one members** before merging. Additionally, they must pass continuous integration checks. More details see [Code Contribution](docs/code_countribution.md)
+Pull requests require approvals from **one member** before merging. Additionally, they must pass continuous integration checks. More details see [Code Contribution](docs/code_countribution.md)
 
 Currently, continuous integration checks include four pipelines:
 
