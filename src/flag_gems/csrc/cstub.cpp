@@ -34,6 +34,7 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
+  m.def("argmax(Tensor self, int? dim=None, bool keepdim=False, *,ScalarType? dtype=None) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -48,5 +49,6 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
   m.impl("cat", TORCH_FN(cat));
   m.impl("bmm", TORCH_FN(bmm));
+  m.impl("argmax", TORCH_FN(argmax));
 }
 }  // namespace flag_gems
