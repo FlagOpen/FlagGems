@@ -10,7 +10,7 @@ import weakref
 from abc import abstractmethod
 from collections import OrderedDict
 from itertools import starmap
-from typing import Any, Callable, Dict, Iterator, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
 
 import triton
 
@@ -61,12 +61,6 @@ if major_version == 2:
         }
 
     setattr(triton.Config, "all_kwargs", all_kwargs)
-
-
-STRATEGY = {
-    None: lambda v: v,
-    "log": lambda v: math.ceil(math.log2(v)),
-}
 
 
 class LibCache:
@@ -158,6 +152,7 @@ class LibTuner(triton.runtime.Autotuner):
 
     # The dispatch table for `LibTuner` subclasses. It's shared across all instances.
     _dispatch_table: Dict[str, Type["LibTuner"]] = {}
+    _strategy_table: Dict[str, Callable[[Any], Any]] = {}
 
     def __init__(
         self,
@@ -214,13 +209,21 @@ class LibTuner(triton.runtime.Autotuner):
             )
         self.__name__ = self.base_fn.__name__
         self.keys = key
+        if isinstance(strategy, str):
+            strategy = LibTuner.get_strategy(strategy)
+        if not isinstance(strategy, (list, tuple)):
+            strategy = [strategy] * len(self.keys)
+        assert len(strategy) == len(
+            self.keys
+        ), f"the length of strategy {len(strategy)} must match the length of keys {len(self.keys)}"
+        strategy: List[Callable[[Any], Any]] = [
+            LibTuner.get_strategy(s) if isinstance(s, str) else s for s in strategy
+        ]
         self.strategy = strategy
         # Use table name with hash instead of hash in key
         self.kernel_hash = None
         self.table_name = f"{self.__name__}_{self.get_kernel_hash()}"
         self.cache = libcache[self.table_name]
-        if strategy:
-            assert len(self.strategy) == len(self.keys), "Invalid number of strategies"
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
@@ -239,7 +242,7 @@ class LibTuner(triton.runtime.Autotuner):
         else:
             key = tuple(
                 starmap(
-                    lambda idx0, idx1: (STRATEGY[self.strategy[idx0]])(args[idx1]),
+                    lambda idx0, idx1: self.strategy[idx0](args[idx1]),
                     enumerate(self.keys),
                 )
             ) + tuple(str(arg.dtype) for arg in args.values() if hasattr(arg, "dtype"))
@@ -278,6 +281,10 @@ class LibTuner(triton.runtime.Autotuner):
     def get(cls, name: str):
         return cls._dispatch_table[name]
 
+    @classmethod
+    def get_strategy(cls, name: str):
+        return cls._strategy_table[name]
+
     @staticmethod
     def register_policy(
         name: str,
@@ -315,6 +322,16 @@ class LibTuner(triton.runtime.Autotuner):
                     return policy(fn, configs, args, kwargs)
 
             return AnonymousLibTunerImpl
+
+        return decorator
+
+    @staticmethod
+    def register_strategy(name: str):
+        def decorator(
+            strategy: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        ):
+            LibTuner._strategy_table[name] = strategy
+            return strategy
 
         return decorator
 
@@ -365,6 +382,17 @@ class LibTuner(triton.runtime.Autotuner):
         )
         self.nargs = None
         return ret
+
+
+@LibTuner.register_strategy(None)
+@LibTuner.register_strategy("default")
+def default_strategy(key: Any) -> Any:
+    return key
+
+
+@LibTuner.register_strategy("log")
+def log2_strategy(key: Union[int, float]) -> float:
+    return math.ceil(math.log2(key))
 
 
 @LibTuner.register_policy("default")
@@ -434,11 +462,18 @@ def libtuner(
     rep=100,
     use_cuda_graph=False,
     do_bench=None,
-    strategy=None,
+    strategy: Union[
+        str, Callable[[Any], Any], List[Union[str, Callable[[Any], Any]]]
+    ] = "default",
     policy: Union[str, Type[LibTuner]] = "default",
 ):
     """Decorator for triton library autotuner.
 
+    `strategy` is a function that takes a key and returns a value.
+    It accepts a string, which is the name of a registered strategy, or a callable function.
+    In this form it will be applied to each key in the `key` list.
+    If it's a tuple or list, it should have the same length as `key`,
+    and each element should be a string or a callable function that takes a key and returns a value.
     `policy` accepts a string, which is the name of a registered `LibTuner` subclass, or a `LibTuner` subclass itself.
     """
 
