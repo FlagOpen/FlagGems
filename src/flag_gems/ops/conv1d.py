@@ -5,6 +5,7 @@ from flag_gems.ops.conv2d import conv2d
 logger = logging.getLogger(__name__)
 
 
+
 def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS CONV1D")
     if isinstance(stride, (list, tuple)):

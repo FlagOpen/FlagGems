@@ -98,10 +98,13 @@ def dot_kernel(
     inp_ptr,
     other_ptr,
     out_ptr,
+    reduce_ptr,
+    counter_ptr,
     n_elements,
     inp_stride: tl.constexpr,
     other_stride: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    tl_type: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -111,9 +114,13 @@ def dot_kernel(
     other = tl.load(other_ptr + other_stride * offset, mask=mask).to(tl.float32)
 
     out = tl.sum(inp * other)
-    tl.atomic_add(out_ptr, out)
-
-
+    res = tl.atomic_add(reduce_ptr, out).to(tl_type)
+    count = tl.atomic_add(counter_ptr, 1)
+    np = tl.num_programs(0)
+    tl.debug_barrier()
+    if count == np - 1:
+        tl.store(out_ptr, res)
+    
 def vdot(input: Tensor, other: Tensor):
     logger.debug("GEMS VDOT")
 
@@ -166,15 +173,26 @@ def vdot(input: Tensor, other: Tensor):
 
         return torch.view_as_complex(output_real)
     else:
-        output = torch.zeros([], dtype=torch.float32, device=inp.device)
+        if inp.dtype == torch.float16:
+            tl_type = tl.float16
+        elif inp.dtype == torch.bfloat16:
+            tl_type = tl.bfloat16
+        elif inp.dtype == torch.float32:
+            tl_type = tl.float32
+        output = torch.zeros([], dtype=inp.dtype, device=inp.device)
+        reduce_ptr = torch.zeros([], dtype=torch.float32, device=inp.device)
+        barrier = torch.zeros([], dtype=torch.int, device=inp.device)
         n_elements = inp.numel()
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         dot_kernel[grid](
             inp,
             other,
             output,
+            reduce_ptr,
+            barrier,
             n_elements=n_elements,
             inp_stride=inp_stride,
             other_stride=other_stride,
+            tl_type=tl_type,
         )
-        return output.to(inp.dtype)
+        return output
