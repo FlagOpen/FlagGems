@@ -8,25 +8,25 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor contiguous(at::Tensor &input, at::MemoryFormat memory_format) {
+at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format) {
   TORCH_CHECK(memory_format == at::MemoryFormat::Contiguous);
-  if (input.is_contiguous(memory_format = memory_format)) {
-    return input;
+  if (self.is_contiguous(memory_format = memory_format)) {
+    return self;
   }
-  at::Tensor out = at::empty_like(input, memory_format = memory_format);
+  at::Tensor out = at::empty_like(self, memory_format = memory_format);
 
   const TritonJITFunction &f =
       TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "contiguous.py"),
                                      "copy_kernel");
 
   int64_t tile_size = 1024;
-  const int num_warps = 8;
+  const int num_warps = 4;
   const int num_stages = 1;
   int64_t n = out.numel();
   int64_t ndim = out.dim();
-  auto options = torch::TensorOptions().device(input.device()).dtype(torch::kInt64);
-  at::Tensor input_sizes = torch::tensor(input.sizes(), options);
-  at::Tensor input_strides = torch::tensor(input.strides(), options);
+  auto options = torch::TensorOptions().device(self.device()).dtype(torch::kInt64);
+  at::Tensor input_sizes = torch::tensor(self.sizes(), options);
+  at::Tensor input_strides = torch::tensor(self.strides(), options);
   at::Tensor out_strides = torch::tensor(out.strides(), options);
   const unsigned int num_blocks = (n + tile_size - 1) / tile_size;
 
@@ -39,7 +39,7 @@ at::Tensor contiguous(at::Tensor &input, at::MemoryFormat memory_format) {
     1,
     num_warps,
     num_stages,
-    input,
+    self,
     out,
     input_strides,
     out_strides,

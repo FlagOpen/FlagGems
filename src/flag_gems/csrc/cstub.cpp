@@ -20,7 +20,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def(
       "rotary_embedding(Tensor q, Tensor k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
-  m.def("contiguous(Tensor self, *, MemoryFormat memory_format=contiguous_format) -> Tensor");
+  m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
 }
 
