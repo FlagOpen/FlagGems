@@ -30,7 +30,7 @@ add_test(NAME test_triton_cat COMMAND test_triton_cat)
 add_executable(test_triton_zeros_constructor test_triton_tensor_constructor.cpp)
 target_link_libraries(test_triton_zeros_constructor
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_zeros_constructor COMMAND test_triton_zeros)
+add_test(NAME test_triton_zeros_constructor COMMAND test_triton_zeros_constructor)
 add_executable(test_triton_bmm test_triton_bmm.cpp)
 target_link_libraries(test_triton_bmm
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
