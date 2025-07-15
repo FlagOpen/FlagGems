@@ -117,7 +117,6 @@ def dot_kernel(
     res = tl.atomic_add(reduce_ptr, out).to(tl_type)
     count = tl.atomic_add(counter_ptr, 1)
     np = tl.num_programs(0)
-    tl.debug_barrier()
     if count == np - 1:
         tl.store(out_ptr, res)
     
