@@ -2,9 +2,12 @@
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
-TEST(reduction_op_test, argmax) {
+class reduction_op_test : public ::testing::TestWithParam<torch::ScalarType> {};
+
+TEST_P(reduction_op_test, argmax) {
   const torch::Device device(torch::kCUDA, 0);
-  torch::Tensor input = torch::randn({4, 4}, device);
+  auto dtype = GetParam();
+  torch::Tensor input = torch::randn({1024, 1024}, device).to(dtype);
 
   torch::Tensor ref_output = at::argmax(input);
   torch::Tensor triton_output = flag_gems::argmax(input);
@@ -12,9 +15,10 @@ TEST(reduction_op_test, argmax) {
   EXPECT_TRUE(torch::equal(ref_output, triton_output));
 }
 
-TEST(reduction_op_test, argmax_dim_specific) {
+TEST_P(reduction_op_test, argmax_dim_specific) {
   const torch::Device device(torch::kCUDA, 0);
-  torch::Tensor input = torch::randn({3, 5, 7}, device);
+  auto dtype = GetParam();
+  torch::Tensor input = torch::randn({64, 64, 128}, device).to(dtype);
 
   torch::Tensor ref_dim0 = at::argmax(input, 0);
   torch::Tensor triton_dim0 = flag_gems::argmax(input, 0);
@@ -27,9 +31,10 @@ TEST(reduction_op_test, argmax_dim_specific) {
   EXPECT_TRUE(torch::equal(ref_dim1, triton_dim1));
 }
 
-TEST(reduction_op_test, argmax_keepdim_option) {
+TEST_P(reduction_op_test, argmax_keepdim_option) {
   const torch::Device device(torch::kCUDA, 0);
-  torch::Tensor input = torch::randn({2, 2, 2, 2}, device);
+  auto dtype = GetParam();
+  torch::Tensor input = torch::randn({2, 4, 64, 64}, device).to(dtype);
 
   torch::Tensor ref_keep = at::argmax(input, 1, true);
   torch::Tensor triton_keep = flag_gems::argmax(input, 1, true);
@@ -42,3 +47,7 @@ TEST(reduction_op_test, argmax_keepdim_option) {
 
   EXPECT_TRUE(torch::equal(ref_no_keep, triton_no_keep));
 }
+
+INSTANTIATE_TEST_SUITE_P(DTypeTests,
+                         reduction_op_test,
+                         ::testing::Values(torch::kFloat32, torch::kFloat16, torch::kBFloat16));
