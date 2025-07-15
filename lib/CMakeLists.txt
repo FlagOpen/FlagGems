@@ -1,6 +1,6 @@
 add_library(operators
             SHARED
-	          zeros.cpp
+	    zeros.cpp
             utils.cpp
             add.cpp
             sum.cpp
