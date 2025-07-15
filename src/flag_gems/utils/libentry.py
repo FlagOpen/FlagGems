@@ -298,7 +298,7 @@ class LibTuner(triton.runtime.Autotuner):
         """
 
         def decorator(
-            policy: Callable[
+            policy_impl: Callable[
                 [
                     triton.runtime.KernelInterface,
                     Iterator[triton.Config],
@@ -320,7 +320,7 @@ class LibTuner(triton.runtime.Autotuner):
                     args: Tuple[Any],
                     kwargs: Dict[str, Any],
                 ) -> Tuple[triton.Config, Dict[str, float]]:
-                    return policy(fn, configs, args, kwargs)
+                    return policy_impl(fn, configs, args, kwargs)
 
             return AnonymousLibTunerImpl
 
@@ -337,6 +337,8 @@ class LibTuner(triton.runtime.Autotuner):
         return decorator
 
     def run(self, *args, **kwargs):
+        # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
+        # so please make sure the orders of `arg_names` and `args` match.
         self.nargs = dict(zip(self.arg_names, args))
         used_cached_result = True
         if len(self.configs) > 1:
