@@ -23,7 +23,7 @@ target_link_libraries(test_triton_rope
 add_test(NAME test_triton_rope COMMAND test_triton_rope)
 
 
-add_executable(test_triton_special test_triton_special.cpp)
-target_link_libraries(test_triton_special
+add_executable(test_triton_topk test_triton_topk.cpp)
+target_link_libraries(test_triton_topk
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_special COMMAND test_triton_special)
+add_test(NAME test_triton_topk COMMAND test_triton_topk)
