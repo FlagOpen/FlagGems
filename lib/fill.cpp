@@ -6,7 +6,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-// ----------- scalar fill：创建新张量并用标量填充 -----------
+// -----------  Scalar fill: create a new tensor and fill it with a scalar value -----------
 at::Tensor fill_scalar(const at::Tensor& input, double value) {
   at::Tensor out = at::empty_like(input);
   int64_t numel = out.numel();
@@ -27,7 +27,7 @@ at::Tensor fill_scalar(const at::Tensor& input, double value) {
   return out;
 }
 
-// ----------- tensor fill：创建新张量并用 value 填充（value 为 0-dim） -----------
+// ----------- Tensor fill: create a new tensor and fill it with a 0-dimensional tensor value -----------
 at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   TORCH_CHECK(value.dim() == 0, "fill_tensor only supports 0-dim value tensor");
   at::Tensor out = at::empty_like(input);

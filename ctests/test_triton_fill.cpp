@@ -61,9 +61,9 @@ TEST(FillTest, EmptyTensor) {
 TEST(FillTest, DifferentDtypes) {
   const torch::Device device(torch::kCUDA, 0);
 
-  auto check_dtype = [&](auto dtype) {
+   auto check_dtype = [&](auto dtype) {
     torch::Tensor t = torch::empty({5, 5}, torch::TensorOptions().device(device).dtype(dtype));
-    double val = 123.0;
+    double val = static_cast<double>(std::rand()) / RAND_MAX * 100.0;
     torch::Tensor out = flag_gems::fill_scalar(t, val);
     torch::Tensor ref = torch::full_like(t, val);
     EXPECT_TRUE(torch::allclose(out.to(torch::kFloat32), ref.to(torch::kFloat32)));

@@ -1,7 +1,7 @@
 #pragma once
 #include <optional>
 #include "torch/torch.h"
-
+#include <c10/core/Scalar.h>
 namespace flag_gems {
 at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
@@ -33,13 +33,13 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
 
 at::Tensor fill_scalar(const at::Tensor &input, double value);
 
-// 张量填充，返回新张量（value 是 0 维张量）
+// Tensor fill, returns a new tensor (value is a 0-dimensional tensor)
 at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 
-// 原地标量填充
+// In-place scalar fill
 void fill_scalar_(at::Tensor &input, double value);
 
-// 原地张量填充
+// In-place tensor fill
 void fill_tensor_(at::Tensor &input, const at::Tensor &value);
 
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
