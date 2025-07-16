@@ -15,6 +15,7 @@ void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
                         const at::Tensor &weight,
                         double epsilon = 1e-5);
+at::Tensor nonzero(const at::Tensor &inp);
 // Rotary embedding
 void rotary_embedding_inplace(at::Tensor &q,
                               at::Tensor &k,
@@ -30,5 +31,6 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     const std::optional<at::Tensor> &position_ids = std::nullopt,
     bool rotary_interleaved = false);
 at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format = c10::MemoryFormat::Contiguous);
+at::Tensor cat(const at::TensorList &tensors, int64_t dim = 0);
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
 }  // namespace flag_gems

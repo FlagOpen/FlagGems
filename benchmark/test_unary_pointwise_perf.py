@@ -12,7 +12,9 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from .performance_utils import Benchmark, generate_tensor_input
+from .performance_utils import Benchmark, generate_tensor_input, vendor_name
+
+fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
 class UnaryPointwiseBenchmark(Benchmark):
@@ -59,7 +61,6 @@ forward_operations = [
     ("log", torch.log, FLOAT_DTYPES),
     # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
     # Dropout
-    ("native_dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
@@ -69,8 +70,14 @@ forward_operations = [
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
-    ("cos", torch.cos, FLOAT_DTYPES),
-    ("sin", torch.sin, FLOAT_DTYPES),
+    *(
+        []
+        if vendor_name == "iluvatar"  # FIXME(iluvatar): large shapes not support now.
+        else [
+            ("cos", torch.cos, FLOAT_DTYPES),
+            ("sin", torch.sin, FLOAT_DTYPES),
+        ]
+    ),
     ("tanh", torch.tanh, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
@@ -132,12 +139,13 @@ class ToDtypeBenchmark(UnaryPointwiseBenchmark):
             yield inp, cur_dtype
 
 
-@pytest.mark.to_dtype
+@pytest.mark.to
 def test_to_dtype_perf():
     bench = ToDtypeBenchmark(
-        op_name="to_dtype",
+        op_name="to",
         torch_op=torch.Tensor.to,
-        dtypes=[torch.float16, torch.bfloat16, torch.float64],
+        dtypes=[torch.float16, torch.bfloat16]
+        + ([torch.float64] if fp64_is_supported else []),
     )
     bench.run()
 
@@ -147,7 +155,7 @@ class GluBenchmark(UnaryPointwiseBenchmark):
         return
 
 
-@pytest.mark.to_dtype
+@pytest.mark.glu
 def test_glu_perf():
     bench = GluBenchmark(
         op_name="glu",
