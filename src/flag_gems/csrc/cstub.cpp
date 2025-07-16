@@ -34,7 +34,7 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
-  m.def("argmax(Tensor self, int? dim=None, bool keepdim=False, *,ScalarType? dtype=None) -> Tensor");
+  m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {

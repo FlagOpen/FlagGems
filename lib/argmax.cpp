@@ -9,19 +9,15 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor argmax(const at::Tensor &self,
-                  std::optional<int64_t> dim,
-                  bool keepdim,
-                  ::std::optional<at::ScalarType> dtype) {
+at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepdim) {
   if (!dim.has_value()) {
     int64_t M = self.numel();
-    c10::ScalarType out_dtype = dtype.has_value() ? dtype.value() : self.scalar_type();
 
     int64_t block_size = utils::next_power_of_2(static_cast<int64_t>(std::ceil(std::sqrt(M))));
     int64_t mid_size = (M + block_size - 1) / block_size;
     int64_t block_mid = utils::next_power_of_2(mid_size);
 
-    at::Tensor mid_value = at::empty({mid_size}, self.options().dtype(out_dtype));
+    at::Tensor mid_value = at::empty({mid_size}, self.options());
     at::Tensor mid_index = at::empty({mid_size}, self.options().dtype(at::kLong));
 
     at::Tensor out;
