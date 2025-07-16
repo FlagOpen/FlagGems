@@ -1,14 +1,7 @@
 import logging
+import os
 
 import torch
-
-# C extensions
-try:
-    from flag_gems import ext_ops  # noqa: F401
-
-    has_c_extension = True
-except ImportError:
-    has_c_extension = False
 
 from . import testing  # noqa: F401
 from . import runtime
@@ -18,6 +11,20 @@ from .modules import *  # noqa: F403
 from .ops import *  # noqa: F403
 from .patches import *  # noqa: F403
 from .runtime.register import Register
+
+has_c_extension = False
+use_c_extension = False
+
+try:
+    from flag_gems import c_operators
+
+    has_c_extension = True
+except ImportError:
+    c_operators = None  # avoid import error if c_operators is not available
+    has_c_extension = False
+
+if has_c_extension and os.environ.get("USE_C_EXTENSION", "0") == "1":
+    use_c_extension = True
 
 __version__ = "3.0"
 device = runtime.device.name
@@ -79,7 +86,7 @@ def enable(
             ("bitwise_or.Tensor", bitwise_or_tensor),
             ("bitwise_or_.Scalar", bitwise_or_scalar_),
             ("bitwise_or_.Tensor", bitwise_or_tensor_),
-            ("bmm", bmm),
+            ("bmm", c_operators.bmm if use_c_extension else bmm),
             ("cat", cat),
             ("clamp", clamp),
             ("clamp.Tensor", clamp_tensor),
@@ -214,7 +221,7 @@ def enable(
             ("nll_loss_forward", nll_loss_forward),
             ("nll_loss2d_backward", nll_loss2d_backward),
             ("nll_loss2d_forward", nll_loss2d_forward),
-            ("nonzero", nonzero),
+            ("nonzero", c_operators.nonzero if use_c_extension else nonzero),
             ("normal.float_Tensor", normal_float_tensor),
             ("normal.Tensor_float", normal_tensor_float),
             ("normal.Tensor_Tensor", normal_tensor_tensor),
@@ -250,7 +257,7 @@ def enable(
             ("repeat_interleave.Tensor", repeat_interleave_tensor),
             ("resolve_conj", resolve_conj),
             ("resolve_neg", resolve_neg),
-            ("rms_norm", rms_norm),
+            ("rms_norm", c_operators.rms_norm if use_c_extension else rms_norm),
             ("rsqrt", rsqrt),
             ("rsqrt_", rsqrt_),
             ("scatter.reduce", scatter),
@@ -273,7 +280,7 @@ def enable(
             ("sub.Tensor", sub),
             ("sub_.Tensor", sub_),
             ("sum", sum),
-            ("sum.dim_IntList", sum_dim),
+            ("sum.dim_IntList", c_operators.sum_dim if use_c_extension else sum_dim),
             ("sum.IntList_out", sum_dim_out),
             ("sum.out", sum_out),
             ("tanh", tanh),
