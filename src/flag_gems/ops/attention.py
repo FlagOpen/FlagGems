@@ -4,11 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
+from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
-
-from .. import runtime
-from .flash_api import mha_fwd, mha_varlan_fwd
-from .flash_kernel import keep
 
 logger = logging.getLogger(__name__)
 
@@ -584,7 +583,12 @@ def flash_attn_varlen_func(
 
     assert fa_version == 2, "Only FA2 is implemented."
 
-    out = torch.empty_like(q)
+    max_seqlen_q = (
+        max_seqlen_q.item() if isinstance(max_seqlen_q, torch.Tensor) else max_seqlen_q
+    )
+    max_seqlen_k = (
+        max_seqlen_k.item() if isinstance(max_seqlen_k, torch.Tensor) else max_seqlen_k
+    )
 
     out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
         q,

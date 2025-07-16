@@ -1,5 +1,6 @@
 add_library(operators
             SHARED
+            zeros.cpp
             utils.cpp
             add.cpp
             sum.cpp
@@ -7,7 +8,14 @@ add_library(operators
             rms_norm.cpp
             fused_add_rms_norm.cpp
             rotary_embedding.cpp
-            topk.cpp)
+            topk.cpp
+            addmm.cpp
+            nonzero.cpp
+            rotary_embedding.cpp
+            cat.cpp
+            bmm.cpp
+            embedding.cpp
+            argmax.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

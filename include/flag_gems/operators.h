@@ -3,6 +3,11 @@
 #include "torch/torch.h"
 
 namespace flag_gems {
+at::Tensor zeros(at::IntArrayRef size,
+                 c10::optional<at::ScalarType> dtype = ::std::nullopt,
+                 c10::optional<at::Layout> layout = ::std::nullopt,
+                 c10::optional<at::Device> device = ::std::nullopt,
+                 c10::optional<bool> pin_memory = ::std::nullopt);
 at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor sum_dim(const at::Tensor &self,
@@ -15,6 +20,12 @@ void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
                         const at::Tensor &weight,
                         double epsilon = 1e-5);
+at::Tensor addmm(const at::Tensor &self,
+                 const at::Tensor &mat1,
+                 const at::Tensor &mat2,
+                 const at::Scalar &beta = 1.0,
+                 const at::Scalar &alpha = 1.0);
+at::Tensor nonzero(const at::Tensor &inp);
 // Rotary embedding
 void rotary_embedding_inplace(at::Tensor &q,
                               at::Tensor &k,
@@ -31,4 +42,19 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     bool rotary_interleaved = false);
 std::tuple<at::Tensor, at::Tensor> topk(
     const at::Tensor &x, int64_t k, int64_t dim = -1, bool largest = true, bool sorted = true);
+
+at::Tensor cat(const at::TensorList &tensors, int64_t dim = 0);
+at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
+at::Tensor embedding(const at::Tensor &weight,
+                     const at::Tensor &indices,
+                     int64_t padding_idx = -1,
+                     bool scale_grad_by_freq = false,
+                     bool sparse = false);
+at::Tensor embedding_backward(const at::Tensor &grad_outputs,
+                              const at::Tensor &indices,
+                              int64_t num_weights,
+                              int64_t padding_idx = -1,
+                              bool scale_grad_by_freq = false,
+                              bool sparse = false);
+at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
 }  // namespace flag_gems

@@ -3,31 +3,34 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.language.core import _unwrap_if_constexpr
 
-from ..runtime import torch_device_fn
-from ..utils import libentry
-from .topk import _get_finfo_val, _get_iinfo_val, argsort
+from flag_gems.ops.topk import _get_finfo_val, _get_iinfo_val, argsort
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 
+def unwrap_if_constexpr(o):
+    return o.value if isinstance(o, tl.constexpr) else o
+
+
 @tl.constexpr
 def get_int_t(num_bits: tl.constexpr, signed: tl.constexpr) -> tl.dtype:
-    num_bits = _unwrap_if_constexpr(num_bits)
-    signed = _unwrap_if_constexpr(signed)
+    num_bits = unwrap_if_constexpr(num_bits)
+    signed = unwrap_if_constexpr(signed)
     return tl.core.get_int_dtype(num_bits, signed)
 
 
 @tl.constexpr
 def one_zeros(num_bits: tl.constexpr) -> int:
-    num_bits = _unwrap_if_constexpr(num_bits)
+    num_bits = unwrap_if_constexpr(num_bits)
     return 1 << (num_bits - 1)
 
 
 @tl.constexpr
 def zero_ones(num_bits: tl.constexpr) -> int:
-    num_bits = _unwrap_if_constexpr(num_bits)
+    num_bits = unwrap_if_constexpr(num_bits)
     return (1 << (num_bits - 1)) - 1
 
 
@@ -45,11 +48,13 @@ def int_to_uint(x, descending: tl.constexpr = False):
     if descending:
         # 0111111....1
         bit_mask: tl.constexpr = zero_ones(num_bits)
-        out = ux ^ bit_mask
+        bit_mask_tensor = tl.full((), value=bit_mask, dtype=udtype)
+        out = ux ^ bit_mask_tensor
     else:
         # 1000000...0
         sign_bit_mask: tl.constexpr = one_zeros(num_bits)
-        out = ux ^ sign_bit_mask
+        sign_bit_mask_tensor = tl.full((), value=sign_bit_mask, dtype=udtype)
+        out = ux ^ sign_bit_mask_tensor
     return out
 
 
@@ -61,9 +66,13 @@ def floating_to_uint(x, descending: tl.constexpr = False):
     sx = x.to(sdtype, bitcast=True)
     ux = x.to(udtype, bitcast=True)
 
-    sign_bit_mask: tl.constexpr = one_zeros(num_bits)
+    sign_bit_mask_v: tl.constexpr = one_zeros(num_bits)
+    sign_bit_mask = tl.full((), value=sign_bit_mask_v, dtype=udtype)
     # mind the dtype, right_shift for signed is arithmetic right shift
-    mask = sign_bit_mask | (sx >> (num_bits - 1)).to(udtype, bitcast=True)
+    # Fix for triton 3.1 or else `sx >> rshift_bits` is promoted to int32
+    rshift_bits = tl.full((), value=num_bits - 1, dtype=sdtype)
+    mask = sign_bit_mask | (sx >> rshift_bits).to(udtype, bitcast=True)
+    tl.static_assert(mask.dtype == udtype, "type mismatch")
     # 1000000000...0 for positive
     # 1111111111...1 for negative
     if descending:
@@ -354,7 +363,15 @@ def sort_kernel(
 
 
 def sort(inp, dim=-1, descending=False):
+    # We only implement stable radix sort here
     logger.debug("GEMS SORT")
+    return sort_stable(inp, stable=False, dim=dim, descending=descending)
+
+
+def sort_stable(inp, *, stable, dim=-1, descending=False):
+    logger.debug("GEMS SORT.STABLE")
+    # We only implement stable radix sort here
+    _ = stable
     sort_elem_cnt = inp.shape[dim]
     if sort_elem_cnt == 1:
         return inp, torch.zeros_like(inp, dtype=torch.int64)
