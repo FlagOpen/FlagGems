@@ -8,7 +8,7 @@ from triton import language as tl
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
@@ -235,3 +235,116 @@ def test_threadsafety():
     for i in range(100):
         with not_raises(Exception):
             run_two_threads()
+
+
+def test_hash_generation():
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+            triton.Config({"TILE_N": 128}),
+            triton.Config({"TILE_N": 256}),
+            triton.Config({"TILE_N": 512}),
+            triton.Config({"TILE_N": 1024}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def kernel_a(x, y):
+        return x + y + 1
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+            triton.Config({"TILE_N": 128}),
+            triton.Config({"TILE_N": 256}),
+            triton.Config({"TILE_N": 512}),
+            triton.Config({"TILE_N": 1024}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def kernel_b(x, y):
+        return x + y
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+            triton.Config({"TILE_N": 128}),
+            triton.Config({"TILE_N": 256}),
+            triton.Config({"TILE_N": 512}),
+            triton.Config({"TILE_N": 1024}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def kernel_a_copy(x, y):
+        return x + y + 1
+
+    assert kernel_a.kernel_hash != kernel_a_copy.kernel_hash
+    assert kernel_a.kernel_hash != kernel_b.kernel_hash
+
+
+def test_hash_changes_when_dependency_modified():
+    @triton.jit
+    def sub_func(x, y):
+        return x + y
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def main_kernel(x, y):
+        return sub_func(x, y) * 2
+
+    original_hash = main_kernel.kernel_hash
+
+    @triton.jit
+    def sub_func(x, y):  # noqa:F811
+        return x + y + 1
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def main_kernel(x, y):
+        return sub_func(x, y) * 2
+
+    modified_hash = main_kernel.kernel_hash
+
+    assert original_hash != modified_hash, (
+        f"Expected different hashes when sub-function changes, "
+        f"but got same hash: {original_hash}"
+    )
+    original_hash = modified_hash
+
+    @triton.jit
+    def sub_func(x, y, z=0):  # noqa:F811
+        return x + y + z
+
+    @libtuner(
+        configs=[
+            triton.Config({"TILE_N": 32}),
+            triton.Config({"TILE_N": 64}),
+        ],
+        key=["x"],
+    )
+    @triton.jit
+    def main_kernel(x, y):
+        return sub_func(x, y) * 2
+
+    modified_hash = main_kernel.kernel_hash
+    assert original_hash != modified_hash, (
+        f"Expected different hashes when sub-function changes, "
+        f"but got same hash: {original_hash}"
+    )
