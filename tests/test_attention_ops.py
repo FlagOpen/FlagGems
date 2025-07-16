@@ -1242,7 +1242,6 @@ def test_reshape_and_cache_flash(
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_mla
 @pytest.mark.parametrize("seqlen", [1024, 2048, 4096, 8192])
@@ -1376,4 +1375,4 @@ def test_flash_mla(seqlen, dtype):
         amax_diff = (x - y).abs().max().item()
         assert cos_diff < 1e-5, f"{name}: {cos_diff=}, {RMSE=}, {amax_diff=}"
 
-    cal_diff(res_out, ref_out, "out")
+    cal_diff(to_reference(res_out), ref_out, "out")
