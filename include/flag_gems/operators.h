@@ -1,7 +1,6 @@
 #pragma once
 #include <optional>
 #include "torch/torch.h"
-#include <c10/core/Scalar.h>
 namespace flag_gems {
 at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
