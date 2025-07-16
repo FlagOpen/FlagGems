@@ -37,7 +37,7 @@ INSTANTIATE_TEST_SUITE_P(embedding_test,
                              // N: [128, 256, 4096]
                              ::testing::Values(128, 256, 4096),
                              // padding_idx: [None(-1), -1, 1, 2]
-                             ::testing::Values(-1, -1, 1, 2),  
+                             ::testing::Values(-1, -1, 1, 2),
                              // scale_grad_by_freq: [true, false]
                              ::testing::Values(true, false),
                              // dtype: [kFloat32, kFloat16, kBFloat16]
