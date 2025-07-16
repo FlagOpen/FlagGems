@@ -16,14 +16,13 @@ TEST_P(EmbeddingTest, CompareWithPyTorch) {
                      {Batch, M},
                      torch::TensorOptions().device(device).dtype(torch::kLong).requires_grad(false));
   auto embedding = torch::randn({EmbeddingSize, N}, options.requires_grad(true));
-  int64_t actual_padding_idx = padding_idx == -1 ? -1 : padding_idx;
   auto out_torch = torch::nn::functional::embedding(indices,
                                                     embedding,
                                                     torch::nn::functional::EmbeddingFuncOptions()
-                                                        .padding_idx(actual_padding_idx)
+                                                        .padding_idx(padding_idx)
                                                         .scale_grad_by_freq(scale_grad_by_freq)
                                                         .sparse(false));
-  auto out_triton = flag_gems::embedding(embedding, indices, actual_padding_idx, scale_grad_by_freq, false);
+  auto out_triton = flag_gems::embedding(embedding, indices, padding_idx, scale_grad_by_freq, false);
   EXPECT_TRUE(torch::allclose(out_torch, out_triton));
 }
 INSTANTIATE_TEST_SUITE_P(embedding_test,
@@ -38,7 +37,7 @@ INSTANTIATE_TEST_SUITE_P(embedding_test,
                              // N: [128, 256, 4096]
                              ::testing::Values(128, 256, 4096),
                              // padding_idx: [None(-1), -1, 1, 2]
-                             ::testing::Values(-1, -1, 1, 2),  // 第一个-1表示None
+                             ::testing::Values(-1, -1, 1, 2),  
                              // scale_grad_by_freq: [true, false]
                              ::testing::Values(true, false),
                              // dtype: [kFloat32, kFloat16, kBFloat16]
