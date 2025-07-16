@@ -8,7 +8,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
+at::Tensor mm(const at::Tensor &mat1, const at::Tensor &mat2) {
   TORCH_CHECK(mat1.dim() == 2 && mat2.dim() == 2, "both the tensors must be 2-D");
   TORCH_CHECK(mat1.dtype() == mat2.dtype(),
               "expected a and b to have the same dtype, but got: ",

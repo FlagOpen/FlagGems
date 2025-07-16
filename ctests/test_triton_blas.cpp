@@ -8,7 +8,7 @@ TEST(blas_op_test, mm) {
   torch::Tensor b = torch::randn({10, 10}, device);
 
   torch::Tensor out_torch = at::mm(a, b);
-  torch::Tensor out_triton = flag_gems::mm_tensor(a, b);
+  torch::Tensor out_triton = flag_gems::mm(a, b);
 
   EXPECT_TRUE(torch::allclose(out_torch, out_triton));
 }

@@ -8,8 +8,8 @@ at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<at::Layout> layout = ::std::nullopt,
                  c10::optional<at::Device> device = ::std::nullopt,
                  c10::optional<bool> pin_memory = ::std::nullopt);
-at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_);
-at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2);
+at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_, const c10::Scalar &alpha);
+at::Tensor mm(const at::Tensor &mat1, const at::Tensor &mat2);
 at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim = false,
