@@ -35,8 +35,8 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
-      "embedding(Tensor weight, Tensor indices, SymInt padding_idx, bool scale_grad_by_freq, bool sparse) -> "
-      "Tensor");
+      "embedding(Tensor weight, Tensor indices, SymInt padding_idx=-1, bool scale_grad_by_freq=False, bool "
+      "sparse=False) -> Tensor");
   m.def(
       "embedding_backward(Tensor grad_outputs, Tensor indices, SymInt num_weights, SymInt padding_idx, bool "
       "scale_grad_by_freq, bool sparse) -> Tensor");
