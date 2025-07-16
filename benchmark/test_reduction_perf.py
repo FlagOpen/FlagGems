@@ -47,7 +47,7 @@ class UnaryReductionBenchmark(Benchmark):
             if inp.ndim > 1:
                 yield inp, 1
             else:
-                yield inp,
+                yield inp, 0
 
 
 forward_operations = [

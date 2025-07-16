@@ -6,20 +6,21 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
-  TORCH_CHECK(tensors.size() > 0, "torch.cat(): expected a non-empty list of Tensors");
-  if (tensors.size() == 1) {
-    return tensors[0];
+at::Tensor cat(const at::ITensorListRef& tensors, int64_t dim) {
+  auto materialized = tensors.materialize();
+  TORCH_CHECK(materialized.size() > 0, "torch.cat(): expected a non-empty list of Tensors");
+  if (materialized.size() == 1) {
+    return materialized[0];
   }
-  const auto& first_tensor = tensors[0];
+  const at::Tensor& first_tensor = materialized[0];
   int64_t ndim = first_tensor.dim();
   TORCH_CHECK(dim >= -ndim && dim < ndim, "cat(): dimension out of range");
   if (dim < 0) {
     dim += ndim;
   }
   const at::IntArrayRef first_shape = first_tensor.sizes();
-  for (size_t i = 1; i < tensors.size(); ++i) {
-    const auto& current_tensor = tensors[i];
+  for (size_t i = 1; i < materialized.size(); ++i) {
+    const at::Tensor& current_tensor = materialized[i];
     TORCH_CHECK(current_tensor.dim() == ndim,
                 "Tensors must have same number of dimensions: got ",
                 ndim,
@@ -42,7 +43,7 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
 
   std::vector<int64_t> out_shape_vec = first_shape.vec();
   int64_t cat_dim_size = 0;
-  for (const auto& t : tensors) {
+  for (const at::Tensor& t : materialized) {
     cat_dim_size += t.size(dim);
   }
   out_shape_vec[dim] = cat_dim_size;
@@ -52,8 +53,8 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
   int64_t current_storage_offset = 0;
   storage_offsets.push_back(current_storage_offset);
   int64_t out_stride_for_dim = out.stride(dim);
-  for (size_t i = 0; i < tensors.size() - 1; ++i) {
-    current_storage_offset += tensors[i].size(dim) * out_stride_for_dim;
+  for (size_t i = 0; i < materialized.size() - 1; ++i) {
+    current_storage_offset += materialized[i].get().size(dim) * out_stride_for_dim;
     storage_offsets.push_back(current_storage_offset);
   }
 
@@ -64,8 +65,8 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    const auto& input_tensor = tensors[i];
+  for (size_t i = 0; i < materialized.size(); ++i) {
+    const at::Tensor& input_tensor = materialized[i];
     if (input_tensor.numel() == 0) continue;
 
     at::Tensor output_view = at::as_strided(out, input_tensor.sizes(), out.strides(), storage_offsets[i]);
