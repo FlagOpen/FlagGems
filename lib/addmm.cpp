@@ -22,8 +22,6 @@ at::Tensor addmm(const at::Tensor &self,
   at::Tensor mat2_c = mat2.contiguous();
   at::Tensor out = at::empty({mat1_sizes[0], mat2_sizes[1]}, mat1.options());
   at::Tensor self_c = self.broadcast_to(out.sizes()).contiguous();
-  double alpha_val = alpha.toDouble();
-  double beta_val = beta.toDouble();
 
   const TritonJITFunction &f =
       TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "addmm.py"), "addmm_kernel");
@@ -43,8 +41,8 @@ at::Tensor addmm(const at::Tensor &self,
     mat2_c,
     self_c,
     out,
-    alpha_val,
-    beta_val,
+    alpha.to<float>(),
+    beta.to<float>(),
     mat1_sizes[0],
     mat2_sizes[1],
     mat1_sizes[1],
