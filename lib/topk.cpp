@@ -13,9 +13,7 @@ std::tuple<at::Tensor, at::Tensor> topk(
     const at::Tensor &x, int64_t k, int64_t dim, bool largest, bool sorted) {
   TORCH_CHECK(x.dim() >= 1, "input tensor must have at least one dimension");
   TORCH_CHECK(sorted, "currently only support sorted == true");
-  if (dim < 0) {
-    dim = x.dim() + dim;
-  }
+  dim = dim < 0 ? x.dim() + dim : dim;
   TORCH_CHECK(dim == x.dim() - 1, "currently only support topk in last dimension");
   auto topk_elem_cnt = x.size(dim);
   int64_t batch_size = 1;
@@ -47,15 +45,15 @@ std::tuple<at::Tensor, at::Tensor> topk(
   c10::DeviceGuard guard(stage1_out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  /*def topk_stage1_kernel(
-  y_ptr,
-  index_ptr,
-  x_ptr,
-  k,
-  N: tl.constexpr,
-  CHUNK_SIZE: tl.constexpr,
-  DESCENDING: tl.constexpr,
-  ):*/
+  /*
+  def topk_stage1_kernel(y_ptr,
+                         index_ptr,
+                         x_ptr,
+                         k,
+                         N: tl.constexpr,
+                         CHUNK_SIZE: tl.constexpr,
+                         DESCENDING: tl.constexpr):
+*/
   f1(raw_stream,
      batch_size,
      chunk_num,
@@ -69,17 +67,17 @@ std::tuple<at::Tensor, at::Tensor> topk(
      topk_elem_cnt,
      chunk_size,
      descending);
-  /*def topk_stage2_kernel(
-  y_ptr,
-  index_ptr,
-  chunk_x,
-  chunk_index,
-  sort_dim: tl.constexpr,
-  k: tl.constexpr,
-  N: tl.constexpr,
-  BLOCK_SIZE: tl.constexpr,
-  DESCENDING: tl.constexpr,
-  ):*/
+  /*
+  def topk_stage2_kernel(y_ptr,
+                           index_ptr,
+                           chunk_x,
+                           chunk_index,
+                           sort_dim: tl.constexpr,
+                           k: tl.constexpr,
+                           N: tl.constexpr,
+                           BLOCK_SIZE: tl.constexpr,
+                           DESCENDING: tl.constexpr,):
+*/
   f2(raw_stream,
      batch_size,
      1,
