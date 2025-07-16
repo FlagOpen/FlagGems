@@ -26,10 +26,7 @@ at::Tensor argmax(const at::Tensor &self,
 
     at::Tensor out;
     if (keepdim) {
-      auto shape = self.sizes().vec();
-      for (auto &s : shape) {
-        s = 1;
-      }
+      const auto shape = std::vector<int64_t>(self.dim(), 1);
       out = at::empty(shape, self.options().dtype(at::kLong));
     } else {
       out = at::empty({}, self.options().dtype(at::kLong));
@@ -45,9 +42,29 @@ at::Tensor argmax(const at::Tensor &self,
     c10::DeviceGuard guard(self.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
 
-    f1(stream, mid_size, 1, 1, 4 /*num_warps*/, 2 /*num_stages*/, self, mid_value, mid_index, M, block_size);
+    f1(stream,
+       mid_size,
+       1,
+       1,
+       /* num_warps = */ 4,
+       /* num_stages = */ 2,
+       self,
+       mid_value,
+       mid_index,
+       M,
+       block_size);
 
-    f2(stream, 1, 1, 1, 4 /*num_warps*/, 2 /*num_stages*/, mid_value, mid_index, out, mid_size, block_mid);
+    f2(stream,
+       1,
+       1,
+       1,
+       /* num_warps = */ 4,
+       /* num_stages = */ 2,
+       mid_value,
+       mid_index,
+       out,
+       mid_size,
+       block_mid);
 
     return out;
   }
@@ -55,7 +72,7 @@ at::Tensor argmax(const at::Tensor &self,
   int64_t dim_val = dim.value();
   dim_val = at::maybe_wrap_dim(dim_val, self.dim());
 
-  auto shape = self.sizes();
+  const auto &shape = self.sizes();
   int64_t N = shape[dim_val];
   int64_t M = 1;
   for (int64_t i = 0; i < dim_val; ++i) {
