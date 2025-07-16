@@ -47,11 +47,8 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   // Rotary embedding
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
-<<<<<<< HEAD
   m.impl("contiguous", TORCH_FN(contiguous));
-=======
   m.impl("cat", TORCH_FN(cat));
->>>>>>> master
   m.impl("bmm", TORCH_FN(bmm));
 }
 }  // namespace flag_gems
