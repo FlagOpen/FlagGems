@@ -128,7 +128,7 @@ def sum_dim_kernel_non_inner(
         inp_offset = pid_m * N * K + n_offsets * K + k_offsets
         mask = (n_offsets < N) & (k_offsets < K)
         input_ptrs = input_ptr + inp_offset
-        inp = tl.load(input_ptrs, mask=mask, other=0)
+        inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
         out = tl.sum(inp, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
         output_ptrs = output_ptr + out_offset
@@ -173,7 +173,7 @@ def sum_dim_kernel_inner(
         inp_offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + inp_offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=0)
+        inp = tl.load(input_ptrs, mask=mask, other=0).to(cdtype)
         out = tl.sum(inp, axis=0)
         out_offset = pid_m
         output_ptrs = output_ptr + out_offset
