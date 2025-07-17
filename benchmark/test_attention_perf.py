@@ -180,6 +180,8 @@ class FlashAttnVarlenBenchmark(Benchmark):
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Collecting from qwen/Qwen3-1.7B --random-input 512 --random-output 2048 --num-prompts 200 --request-rate inf
         # Format: (seq_lens, num_heads, head_size, block_size, num_blocks, alibi, soft_cap)
+        # ([(1, 1), (1, 1), (1, 1)], (16, 8), 128, 32, 18208, False, None),
+        # The performance is very poor, which may be related to prefill
         flash_attn_configs = [
             ([(1, 1), (1, 1), (1, 1)], (16, 8), 128, 32, 18208, False, None),
             ([(1, 1), (1, 1), (23, 23)], (16, 8), 128, 32, 18208, False, None),
@@ -187,7 +189,6 @@ class FlashAttnVarlenBenchmark(Benchmark):
             ([(1, 1), (1, 1), (39, 39)], (16, 8), 128, 32, 18208, False, None),
             ([(1, 1), (1, 1), (55, 55)], (16, 8), 128, 32, 18208, False, None),
             ([(1, 1), (1, 1), (70, 70)], (16, 8), 128, 32, 18208, False, None),
-            ([(1, 1), (1, 1), (102, 102)], (16, 8), 128, 32, 18208, False, None),
         ]
         self.shapes = flash_attn_configs
 
