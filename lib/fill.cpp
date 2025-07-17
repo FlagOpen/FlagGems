@@ -6,7 +6,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor fill_scalar(const at::Tensor& input, const c10::Scala& value) {
+at::Tensor fill_scalar(const at::Tensor& input, const c10::Scalar& value) {
   at::Tensor out = at::empty_like(input);
   int64_t numel = out.numel();
   if (numel == 0) return out;
