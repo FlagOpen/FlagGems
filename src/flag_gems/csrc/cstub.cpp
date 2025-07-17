@@ -23,10 +23,10 @@ TORCH_LIBRARY(flag_gems, m) {
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   // fill operator declaration 
-  m.def("fill_scalar(Tensor input, double value) -> Tensor");
-  m.def("fill_tensor(Tensor input, Tensor value) -> Tensor");
-  m.def("fill_scalar_(Tensor! input, double value) -> Tensor!");
-  m.def("fill_tensor_(Tensor! input, Tensor value) -> Tensor!");
+  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
+  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
+  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
+  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -41,9 +41,9 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
   m.impl("bmm", TORCH_FN(bmm));
   // Fill operator binding
-  m.impl("fill_scalar", TORCH_FN(flag_gems::fill_scalar));
-  m.impl("fill_tensor", TORCH_FN(flag_gems::fill_tensor));
-  m.impl("fill_scalar_", TORCH_FN(flag_gems::fill_scalar_));
-  m.impl("fill_tensor_", TORCH_FN(flag_gems::fill_tensor_));
+  m.impl("fill.Scalar", TORCH_FN(flag_gems::fill_scalar));
+  m.impl("fill.Tensor", TORCH_FN(flag_gems::fill_tensor));
+  m.impl("fill_.Scalar", TORCH_FN(flag_gems::fill_scalar_));
+  m.impl("fill_.Tensor", TORCH_FN(flag_gems::fill_tensor_));
 }
 }  // namespace flag_gems

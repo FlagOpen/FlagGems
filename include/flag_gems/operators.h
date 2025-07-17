@@ -30,16 +30,10 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     const std::optional<at::Tensor> &position_ids = std::nullopt,
     bool rotary_interleaved = false);
 
-at::Tensor fill_scalar(const at::Tensor &input,  c10::Scalar value);
-
-// Tensor fill, returns a new tensor (value is a 0-dimensional tensor)
-at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
-
-// In-place scalar fill
-void fill_scalar_(at::Tensor &input,  c10::Scalar value);
-
-// In-place tensor fill
-void fill_tensor_(at::Tensor &input, const at::Tensor &value);
+at::Tensor fill_scalar(const at::Tensor &self, const c10::Scalar &value);
+at::Tensor fill_tensor(const at::Tensor &self, const at::Tensor &value);
+at::Tensor& fill_scalar_(at::Tensor &self, const c10::Scalar &value);
+at::Tensor& fill_tensor_(at::Tensor &self, const at::Tensor &value);
 
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
 }  // namespace flag_gems

@@ -6,9 +6,9 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-// -----------  Scalar fill: create a new tensor and fill it with a scalar value -----------
-at::Tensor fill_scalar(const at::Tensor& input, c10::Scalar value) {
-  at::Tensor out = at::empty_like(input);
+// ----------- Scalar fill: create a new tensor and fill it with a scalar value -----------
+at::Tensor fill_scalar(const at::Tensor& self, const c10::Scalar& value) {
+  at::Tensor out = at::empty_like(self);
   int64_t numel = out.numel();
   if (numel == 0) return out;
 
@@ -16,7 +16,7 @@ at::Tensor fill_scalar(const at::Tensor& input, c10::Scalar value) {
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   TritonJITFunction fill_kernel =
-     TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
+      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_scalar_kernel");
 
   c10::DeviceGuard guard(out.device());
@@ -28,9 +28,9 @@ at::Tensor fill_scalar(const at::Tensor& input, c10::Scalar value) {
 }
 
 // ----------- Tensor fill: create a new tensor and fill it with a 0-dimensional tensor value -----------
-at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
+at::Tensor fill_tensor(const at::Tensor& self, const at::Tensor& value) {
   TORCH_CHECK(value.dim() == 0, "fill_tensor only supports 0-dim value tensor");
-  at::Tensor out = at::empty_like(input);
+  at::Tensor out = at::empty_like(self);
   int64_t numel = out.numel();
   if (numel == 0) return out;
 
@@ -38,7 +38,7 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   TritonJITFunction fill_kernel =
-     TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
+      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_tensor_kernel");
 
   c10::DeviceGuard guard(out.device());
@@ -49,10 +49,10 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   return out;
 }
 
-// ----------- scalar fill inplace -----------
-void fill_scalar_(at::Tensor& input, c10::Scalar value) {
-  int64_t numel = input.numel();
-  if (numel == 0) return;
+// ----------- Scalar fill inplace -----------
+at::Tensor& fill_scalar_(at::Tensor& self, const c10::Scalar& value) {
+  int64_t numel = self.numel();
+  if (numel == 0) return self;
 
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -61,17 +61,19 @@ void fill_scalar_(at::Tensor& input, c10::Scalar value) {
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_scalar_kernel");
 
-  c10::DeviceGuard guard(input.device());
+  c10::DeviceGuard guard(self.device());
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-  fill_kernel(stream, grid_x, 1, 1, 4, 0, input, value, numel, BLOCK_SIZE);
+  fill_kernel(stream, grid_x, 1, 1, 4, 0, self, value, numel, BLOCK_SIZE);
+
+  return self;
 }
 
-// ----------- tensor fill inplace -----------
-void fill_tensor_(at::Tensor& input, const at::Tensor& value) {
+// ----------- Tensor fill inplace -----------
+at::Tensor& fill_tensor_(at::Tensor& self, const at::Tensor& value) {
   TORCH_CHECK(value.dim() == 0, "fill_tensor_ only supports 0-dim value tensor");
-  int64_t numel = input.numel();
-  if (numel == 0) return;
+  int64_t numel = self.numel();
+  if (numel == 0) return self;
 
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -80,10 +82,12 @@ void fill_tensor_(at::Tensor& input, const at::Tensor& value) {
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_tensor_kernel");
 
-  c10::DeviceGuard guard(input.device());
+  c10::DeviceGuard guard(self.device());
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
-  fill_kernel(stream, grid_x, 1, 1, 4, 0, input, value, numel, BLOCK_SIZE);
+  fill_kernel(stream, grid_x, 1, 1, 4, 0, self, value, numel, BLOCK_SIZE);
+
+  return self;
 }
 
 }  // namespace flag_gems
