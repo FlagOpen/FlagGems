@@ -1,7 +1,7 @@
+#include "c10/cuda/CUDAFunctions.h"
 #include "flag_gems/operators.h"
 #include "gtest/gtest.h"
 #include "torch/torch.h"
-#include "c10/cuda/CUDAFunctions.h"
 
 TEST(FillTest, ScalarFill) {
   const torch::Device device(torch::kCUDA, 0);
