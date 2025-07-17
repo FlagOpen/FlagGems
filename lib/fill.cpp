@@ -16,7 +16,7 @@ at::Tensor fill_scalar(const at::Tensor& input, c10::Scalar value) {
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   TritonJITFunction fill_kernel =
-     TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
+      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_scalar_kernel");
 
   c10::DeviceGuard guard(out.device());
@@ -38,7 +38,7 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   TritonJITFunction fill_kernel =
-     TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
+      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_tensor_kernel");
 
   c10::DeviceGuard guard(out.device());

@@ -39,7 +39,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
-  // fill operator declaration 
+  // fill operator declaration
   m.def("fill_scalar(Tensor input, double value) -> Tensor");
   m.def("fill_tensor(Tensor input, Tensor value) -> Tensor");
   m.def("fill_scalar_(Tensor! input, double value) -> Tensor!");

@@ -42,13 +42,13 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
 std::tuple<at::Tensor, at::Tensor> topk(
     const at::Tensor &x, int64_t k, int64_t dim = -1, bool largest = true, bool sorted = true);
 
-at::Tensor fill_scalar(const at::Tensor &input,  c10::Scalar value);
+at::Tensor fill_scalar(const at::Tensor &input, c10::Scalar value);
 
 // Tensor fill, returns a new tensor (value is a 0-dimensional tensor)
 at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 
 // In-place scalar fill
-void fill_scalar_(at::Tensor &input,  c10::Scalar value);
+void fill_scalar_(at::Tensor &input, c10::Scalar value);
 
 // In-place tensor fill
 void fill_tensor_(at::Tensor &input, const at::Tensor &value);
