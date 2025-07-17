@@ -7,7 +7,7 @@ namespace flag_gems {
 using namespace triton_jit;
 
 // -----------  Scalar fill: create a new tensor and fill it with a scalar value -----------
-at::Tensor fill_scalar(const at::Tensor& input, double value) {
+at::Tensor fill_scalar(const at::Tensor& input, c10::Scalar value) {
   at::Tensor out = at::empty_like(input);
   int64_t numel = out.numel();
   if (numel == 0) return out;
@@ -50,7 +50,7 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
 }
 
 // ----------- scalar fill inplace -----------
-void fill_scalar_(at::Tensor& input, double value) {
+void fill_scalar_(at::Tensor& input, c10::Scalar value) {
   int64_t numel = input.numel();
   if (numel == 0) return;
 
