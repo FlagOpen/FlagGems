@@ -178,34 +178,27 @@ class FlashAttnVarlenBenchmark(Benchmark):
     """
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
-        # Define flash attention test configurations as "shapes"
+        # Collecting from qwen/Qwen3-1.7B --random-input 512 --random-output 2048 --num-prompts 200 --request-rate inf
         # Format: (seq_lens, num_heads, head_size, block_size, num_blocks, alibi, soft_cap)
         flash_attn_configs = [
-            ([(1, 1328), (5, 18), (129, 463)], (4, 4), 128, 32, 2048, False, None),
-            ([(1, 1328), (5, 18), (129, 463)], (8, 2), 128, 32, 2048, False, None),
-            ([(1, 1328), (5, 18), (129, 463)], (16, 2), 128, 32, 2048, False, None),
-            ([(1, 1328), (5, 18), (129, 463)], (4, 4), 256, 32, 2048, False, None),
-            ([(1, 1328), (5, 18), (129, 463)], (8, 2), 256, 32, 2048, False, None),
-            ([(1, 1328), (5, 18), (129, 463)], (16, 2), 256, 32, 2048, False, None),
-            # Add alibi tests
-            ([(1, 1328), (5, 18), (129, 463)], (4, 4), 128, 32, 2048, True, None),
-            ([(1, 1328), (5, 18), (129, 463)], (8, 2), 128, 32, 2048, True, None),
-            # Add soft_cap tests
-            ([(1, 1328), (5, 18), (129, 463)], (4, 4), 128, 32, 2048, False, 10.0),
-            ([(1, 1328), (5, 18), (129, 463)], (8, 2), 128, 32, 2048, False, 50.0),
+            ([(1, 1), (1, 1), (1, 1)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (23, 23)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (7, 7)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (39, 39)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (55, 55)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (70, 70)], (16, 8), 128, 32, 18208, False, None),
+            ([(1, 1), (1, 1), (102, 102)], (16, 8), 128, 32, 18208, False, None),
         ]
         self.shapes = flash_attn_configs
 
     def get_input_iter(self, cur_dtype):
         for config in self.shapes:
-            print(f"Running with config: {config}")
             yield from self.flash_attn_varlen_input_fn(config, cur_dtype, self.device)
 
     def flash_attn_varlen_input_fn(self, config, dtype, device):
         """Input function for flash attention varlen benchmark"""
         seq_lens, num_heads, head_size, block_size, num_blocks, alibi, soft_cap = config
 
-        # Skip combination that causes numerical stability issues
         if alibi is True and soft_cap is not None:
             return
 
@@ -216,7 +209,7 @@ class FlashAttnVarlenBenchmark(Benchmark):
         num_kv_heads = num_heads[1]
         max_query_len = max(query_lens)
         max_kv_len = max(kv_lens)
-        window_size = (-1, -1)  # No sliding window for performance test
+        window_size = (-1, -1)
         scale = head_size**-0.5
 
         query = torch.randn(
