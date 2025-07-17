@@ -15,6 +15,7 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
+  m.def("addmm", &flag_gems::addmm);
 }
 
 namespace flag_gems {
@@ -37,6 +38,7 @@ TORCH_LIBRARY(flag_gems, m) {
       "rotary_embedding(Tensor q, Tensor k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
+  m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
@@ -66,6 +68,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
   m.impl("topk", TORCH_FN(topk));
+  m.impl("contiguous", TORCH_FN(contiguous));
   m.impl("cat", TORCH_FN(cat));
   m.impl("bmm", TORCH_FN(bmm));
   m.impl("embedding", TORCH_FN(embedding));
