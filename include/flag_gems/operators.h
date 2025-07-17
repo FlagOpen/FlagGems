@@ -3,6 +3,11 @@
 #include "torch/torch.h"
 
 namespace flag_gems {
+at::Tensor exponential_(
+    const at::Tensor x,
+    double lambd = 1.0,
+    c10::optional<at::Generator> gen =
+        c10::nullopt);  // because the dtat of x will be update in triton ,x not const at::Tensor &x
 at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<at::ScalarType> dtype = ::std::nullopt,
                  c10::optional<at::Layout> layout = ::std::nullopt,

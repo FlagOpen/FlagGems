@@ -15,7 +15,8 @@ add_library(operators
             cat.cpp
             bmm.cpp
             embedding.cpp
-            argmax.cpp)
+            argmax.cpp
+	    exponential_.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
