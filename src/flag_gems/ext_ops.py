@@ -6,7 +6,7 @@ import torch
 # set FLAGGEMS_SOURCE_DIR to be used for c_operators
 os.environ["FLAGGEMS_SOURCE_DIR"] = str(Path(__file__).parent.absolute())
 
-if True:
+if False:
     # enable C extension, where we create a flag_gems lib
     # and also ovevrride some operators' cuda implementation
     from flag_gems import c_operators  # noqa: F401, E402
