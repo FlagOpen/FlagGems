@@ -1,4 +1,5 @@
 import math
+from typing import List, Optional
 
 import pytest
 import torch
@@ -168,4 +169,253 @@ def test_perf_flash_mla():
         ],
     )
     bench.set_gems(flag_gems.flash_mla)
+    bench.run()
+
+
+def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
+    batch, nheads = slopes.shape
+    device = slopes.device
+    slopes = slopes.unsqueeze(-1).unsqueeze(-1)
+    if causal:
+        return (
+            torch.arange(-seqlen_k + 1, 1, device=device, dtype=torch.float32) * slopes
+        )
+
+    row_idx = torch.arange(seqlen_q, device=device, dtype=torch.long).unsqueeze(-1)
+    col_idx = torch.arange(seqlen_k, device=device, dtype=torch.long)
+    relative_pos = torch.abs(row_idx + seqlen_k - seqlen_q - col_idx)
+    return -slopes * relative_pos.to(dtype=slopes.dtype)
+
+
+def ref_paged_attn(
+    query: torch.Tensor,
+    key_cache: torch.Tensor,
+    value_cache: torch.Tensor,
+    query_lens: List[int],
+    kv_lens: List[int],
+    block_tables: torch.Tensor,
+    scale: float,
+    attn_bias: torch.Tensor = None,
+    sliding_window: Optional[int] = None,
+    soft_cap: Optional[float] = None,
+) -> torch.Tensor:
+    num_seqs = len(query_lens)
+    block_tables = block_tables.cpu().numpy()
+    _, block_size, num_kv_heads, head_size = key_cache.shape
+
+    outputs: List[torch.Tensor] = []
+    start_idx = 0
+    for i in range(num_seqs):
+        query_len = query_lens[i]
+        kv_len = kv_lens[i]
+        # clone to avoid clobbering the query tensor
+        q = query[start_idx : start_idx + query_len].clone()
+        q *= scale
+
+        num_kv_blocks = (kv_len + block_size - 1) // block_size
+        block_indices = block_tables[i, :num_kv_blocks]
+
+        k = key_cache[block_indices].view(-1, num_kv_heads, head_size)
+        k = k[:kv_len]
+        v = value_cache[block_indices].view(-1, num_kv_heads, head_size)
+        v = v[:kv_len]
+
+        if q.shape[1] != k.shape[1]:
+            k = torch.repeat_interleave(k, q.shape[1] // k.shape[1], dim=1)
+            v = torch.repeat_interleave(v, q.shape[1] // v.shape[1], dim=1)
+
+        attn = torch.einsum("qhd,khd->hqk", q, k)
+        empty_mask = torch.ones(query_len, kv_len, device=q.device)
+        mask = torch.triu(empty_mask, diagonal=kv_len - query_len + 1).bool()
+        if sliding_window is not None:
+            sliding_window_mask = (
+                torch.triu(
+                    empty_mask, diagonal=kv_len - (query_len + sliding_window) + 1
+                )
+                .bool()
+                .logical_not()
+            )
+            mask |= sliding_window_mask
+        if soft_cap is not None:
+            attn = soft_cap * torch.tanh(attn / soft_cap)
+        attn.masked_fill_(mask, float("-inf"))
+
+        if attn_bias is not None:
+            attn = attn + attn_bias[i, :, :query_len, :kv_len]
+
+        attn = torch.softmax(attn, dim=-1).to(v.dtype)
+        out = torch.einsum("hqk,khd->qhd", attn, v)
+
+        outputs.append(out)
+        start_idx += query_len
+
+    return torch.cat(outputs, dim=0)
+
+
+class FlashAttnVarlenBenchmark(GenericBenchmark):
+    """
+    benchmark for flash_attn_varlen_func
+    """
+
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(
+    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
+)
+@pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
+@pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
+@pytest.mark.parametrize("head_size", [128, 256])
+@pytest.mark.parametrize("block_size", [32])
+@pytest.mark.parametrize("num_blocks", [2048])
+@pytest.mark.parametrize("alibi", [False, True])
+@pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
+def test_perf_flash_attn_varlen_func(
+    seq_lens, num_heads, head_size, block_size, num_blocks, alibi, soft_cap
+):
+    # Skip combination that causes numerical stability issues
+    if alibi is True and soft_cap is not None:
+        return
+
+    def flash_attn_varlen_kwargs(shape, dtype, device):
+        # Use the parameterized values directly instead of unpacking from shape
+        num_seqs = len(seq_lens)
+        query_lens = [x[0] for x in seq_lens]
+        kv_lens = [x[1] for x in seq_lens]
+        num_query_heads = num_heads[0]
+        num_kv_heads = num_heads[1]
+        max_query_len = max(query_lens)
+        max_kv_len = max(kv_lens)
+        window_size = (-1, -1)  # No sliding window for performance test
+        scale = head_size**-0.5
+
+        query = torch.randn(
+            sum(query_lens), num_query_heads, head_size, dtype=dtype, device=device
+        )
+        key_cache = torch.randn(
+            num_blocks, block_size, num_kv_heads, head_size, dtype=dtype, device=device
+        )
+        value_cache = torch.randn_like(key_cache)
+        cu_query_lens = torch.tensor(
+            [0] + query_lens, dtype=torch.int32, device=device
+        ).cumsum(dim=0, dtype=torch.int32)
+        seqused_k = torch.tensor(kv_lens, dtype=torch.int32, device=device)
+
+        max_num_blocks_per_seq = (max_kv_len + block_size - 1) // block_size
+        block_tables = torch.randint(
+            0,
+            num_blocks,
+            (num_seqs, max_num_blocks_per_seq),
+            dtype=torch.int32,
+            device=device,
+        )
+
+        causal = True
+
+        if alibi:
+            alibi_slopes = (
+                torch.ones(
+                    num_seqs, num_query_heads, device=device, dtype=torch.float32
+                )
+                * 0.3
+            )
+        else:
+            alibi_slopes = None
+
+        yield (
+            query,
+            key_cache,
+            value_cache,
+            max_query_len,
+            cu_query_lens,
+            max_kv_len,
+            None,
+            seqused_k,
+            None,
+            0.0,
+            scale,
+            causal,
+            window_size,
+            soft_cap if soft_cap is not None else 0,
+            alibi_slopes,
+            False,
+            False,
+            block_tables,
+            False,
+            None,
+            None,
+            None,
+            None,
+            None,
+            0,
+            2,
+        )
+
+    def torch_flash_attn_varlen_func(
+        q,
+        k,
+        v,
+        max_seqlen_q,
+        cu_seqlens_q,
+        max_seqlen_k,
+        cu_seqlens_k=None,  # only used for non-paged prefill
+        seqused_k=None,
+        q_v=None,
+        dropout_p=0.0,
+        softmax_scale=None,
+        causal=False,
+        window_size=None,
+        softcap=0.0,  # 0.0 means deactivated
+        alibi_slopes=None,
+        deterministic=False,
+        return_attn_probs=False,
+        block_table=None,
+        return_softmax_lse=False,
+        out=None,
+        # Dummy FA3 arguments
+        scheduler_metadata=None,
+        q_descale=None,
+        k_descale=None,
+        v_descale=None,
+        num_splits: int = 0,
+        fa_version: int = 2,
+    ):
+        # For benchmark reference, we use the ref_paged_attn implementation
+        query_lens = (cu_seqlens_q[1:] - cu_seqlens_q[:-1]).cpu().tolist()
+        kv_lens = seqused_k.cpu().tolist()
+
+        attn_bias = None
+        if alibi_slopes is not None:
+            attn_bias = attn_bias_from_alibi_slopes(
+                alibi_slopes, max_seqlen_q, max_seqlen_k, causal=causal
+            )
+
+        return ref_paged_attn(
+            query=q,
+            key_cache=k,
+            value_cache=v,
+            query_lens=query_lens,
+            kv_lens=kv_lens,
+            block_tables=block_table,
+            scale=softmax_scale,
+            attn_bias=attn_bias,
+            sliding_window=None,
+            soft_cap=softcap if softcap > 0 else None,
+        )
+
+    bench = FlashAttnVarlenBenchmark(
+        op_name="flash_attn_varlen_func",
+        input_fn=flash_attn_varlen_kwargs,
+        torch_op=torch_flash_attn_varlen_func,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.set_gems(flag_gems.ops.flash_attn_varlen_func)
     bench.run()
