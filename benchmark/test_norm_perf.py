@@ -9,6 +9,7 @@ from .performance_utils import (
     GenericBenchmark,
     GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
+    SkipVersion,
     unary_input_fn,
     vendor_name,
 )
@@ -194,6 +195,10 @@ def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
 
 
 @pytest.mark.rms_norm
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The version prior to 2.4 does not include the rms_norm API in torch.",
+)
 def test_perf_rms_norm():
     def rms_norm_input_fn(shape, dtype, device):
         M, N = shape
