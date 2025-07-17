@@ -19,7 +19,7 @@ from .ops import *  # noqa: F403
 from .patches import *  # noqa: F403
 from .runtime.register import Register
 
-__version__ = "2.2"
+__version__ = "3.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
 aten_lib = torch.library.Library("aten", "IMPL")
@@ -268,6 +268,7 @@ def enable(
             ("sin_", sin_),
             ("slice_scatter", slice_scatter),
             ("sort", sort),
+            ("sort.stable", sort_stable),
             ("stack", stack),
             ("sub.Tensor", sub),
             ("sub_.Tensor", sub_),
