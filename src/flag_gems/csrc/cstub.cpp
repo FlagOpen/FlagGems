@@ -49,10 +49,10 @@ TORCH_LIBRARY(flag_gems, m) {
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
 
-  m.def("fill_scalar(Tensor input, const Scalar& value) -> Tensor");
-  m.def("fill_tensor(Tensor input, const Tensor& value) -> Tensor");
-  m.def("fill_scalar_(Tensor! input, const Scalar& value) -> Tensor!");
-  m.def("fill_tensor_(Tensor! input, const Tensor& value) -> Tensor!");
+  m.def("fill.scalar(Tensor self, Scalar value) -> Tensor");
+  m.def("fill.tensor(Tensor self, Tensor value) -> Tensor");
+  m.def("fill_.scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
+  m.def("fill_.tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {

@@ -6,7 +6,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor fill_scalar(const at::Tensor& input, const c10::Scalar value) {
+at::Tensor fill_scalar(const at::Tensor& input, const c10::Scala& value) {
   at::Tensor out = at::empty_like(input);
   int64_t numel = out.numel();
   if (numel == 0) return out;
@@ -15,7 +15,7 @@ at::Tensor fill_scalar(const at::Tensor& input, const c10::Scalar value) {
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   TritonJITFunction fill_kernel =
-     TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
+      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_scalar_kernel");
 
   c10::DeviceGuard guard(out.device());
@@ -36,7 +36,7 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
   TritonJITFunction fill_kernel =
-     TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
+      TritonJITFunction::getInstance((utils::get_triton_src_path() / "fill.py").string(),
                                      "fill_tensor_kernel");
 
   c10::DeviceGuard guard(out.device());
@@ -47,7 +47,7 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   return out;
 }
 
-void fill_scalar_(at::Tensor& input, const c10::Scalar value) {
+void fill_scalar_(at::Tensor& input, const c10::Scalar& value) {
   int64_t numel = input.numel();
   if (numel == 0) return;
 
