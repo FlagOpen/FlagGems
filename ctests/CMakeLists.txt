@@ -28,10 +28,10 @@ target_link_libraries(test_triton_topk
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_topk COMMAND test_triton_topk)
 
-add_executable(test_triton_special test_triton_special.cpp)
-target_link_libraries(test_triton_special
+add_executable(test_triton_contiguous test_triton_contiguous.cpp)
+target_link_libraries(test_triton_contiguous
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
-add_test(NAME test_triton_special COMMAND test_triton_special)
+add_test(NAME test_triton_contiguous COMMAND test_triton_contiguous)
 
 add_executable(test_triton_cat test_triton_cat.cpp)
 target_link_libraries(test_triton_cat

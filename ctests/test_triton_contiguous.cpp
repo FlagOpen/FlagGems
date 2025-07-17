@@ -2,7 +2,7 @@
 #include "flag_gems/operators.h"
 #include "torch/torch.h"
 
-TEST(special_op_test, contiguous) {
+TEST(contiguous_op_test, contiguous) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor inp = torch::randn({10, 10, 10}, device);
   inp = inp.index({torch::indexing::Slice(torch::indexing::None, torch::indexing::None, 2)});
