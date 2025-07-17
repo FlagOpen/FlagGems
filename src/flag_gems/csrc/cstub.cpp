@@ -15,6 +15,20 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
+  // blas div kernels
+  m.def("true_div(Tensor a, Tensor b) -> Tensor");
+  m.def("trunc_div(Tensor a, Tensor b) -> Tensor");
+  m.def("floor_div(Tensor a, Tensor b) -> Tensor");
+  m.def("div_mode(Tensor a, Tensor b, str rounding_mode) -> Tensor");
+  m.def("remainder_tt(Tensor a, Tensor b) -> Tensor");
+  m.def("remainder_ts(Tensor a, float b) -> Tensor");
+  m.def("remainder_st(float a, Tensor b) -> Tensor");
+  m.def("remainder(Tensor a, Tensor b) -> Tensor");
+  m.def("true_div_(Tensor a, Tensor b) -> Tensor");
+  m.def("trunc_div_(Tensor a, Tensor b) -> Tensor");
+  m.def("floor_div_(Tensor a, Tensor b) -> Tensor");
+  m.def("div_mode_(Tensor a, Tensor b, str rounding_mode) -> Tensor");
+  m.def("remainder_(Tensor a, Tensor b) -> Tensor");
 }
 
 namespace flag_gems {
@@ -66,5 +80,19 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("embedding", TORCH_FN(embedding));
   m.impl("embedding_backward", TORCH_FN(embedding_backward));
   m.impl("argmax", TORCH_FN(argmax));
+  // blas div kernels
+  m.impl("true_div", TORCH_FN(true_div));
+  m.impl("trunc_div", TORCH_FN(trunc_div));
+  m.impl("floor_div", TORCH_FN(floor_div));
+  m.impl("div_mode", TORCH_FN(div_mode));
+  m.impl("remainder_tt", TORCH_FN(remainder_tt));
+  m.impl("remainder_ts", TORCH_FN(remainder_ts));
+  m.impl("remainder_st", TORCH_FN(remainder_st));
+  m.impl("remainder", TORCH_FN(remainder));
+  m.impl("true_div_", TORCH_FN(true_div_));
+  m.impl("trunc_div_", TORCH_FN(trunc_div_));
+  m.impl("floor_div_", TORCH_FN(floor_div_));
+  m.impl("div_mode_", TORCH_FN(div_mode_));
+  m.impl("remainder_", TORCH_FN(remainder_));
 }
 }  // namespace flag_gems
