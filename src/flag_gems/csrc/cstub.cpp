@@ -19,7 +19,7 @@ PYBIND11_MODULE(c_operators, m) {
 
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
-  m.def("exponential_(Tensor x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor");
+  m.def("exponential_(Tensor(a!) x, float  lambd = 1.0, *,Generator? gen = None) -> Tensor(a!)");
   m.def(
       "zeros(SymInt[] size, ScalarType? dtype=None,Layout? layout=None, Device? device=None, bool? "
       "pin_memory=None) -> Tensor");

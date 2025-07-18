@@ -92,7 +92,7 @@ std::pair<uint64_t, uint64_t> philox_backend_seed_offset(
   gen.set_state(state_copy);
   return std::make_pair(seed, offset);
 }
-at::Tensor exponential_(at::Tensor x, double lambd, c10::optional<at::Generator> gen) {
+at::Tensor exponential_(at::Tensor &x, double lambd, c10::optional<at::Generator> gen) {
   torch::Dtype dtype = x.scalar_type();
   torch::Device device = x.device();
 
