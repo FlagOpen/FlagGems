@@ -165,17 +165,16 @@ def custom_gems_flash_attention_impl_forwad(
     num_actual_tokens = attn_metadata.num_actual_tokens
     key_cache, value_cache = kv_cache.unbind(0)
 
-    if self.kv_sharing_target_layer_name is None:
-        reshape_and_cache_flash(
-            key,
-            value,
-            key_cache,
-            value_cache,
-            attn_metadata.slot_mapping,
-            self.kv_cache_dtype,
-            layer._k_scale,
-            layer._v_scale,
-        )
+    reshape_and_cache_flash(
+        key,
+        value,
+        key_cache,
+        value_cache,
+        attn_metadata.slot_mapping,
+        self.kv_cache_dtype,
+        layer._k_scale,
+        layer._v_scale,
+    )
 
     # TODO: Support FP8
     if self.kv_cache_dtype.startswith("fp8"):

@@ -890,6 +890,12 @@ def test_accuracy_slice_scatter(shape, stride, dim, dtype, start, end, step):
         res_out = kl_ops.slice_scatter(
             inp, dim=dim, src=src, start=start, end=end, step=step
         )
+    elif flag_gems.vendor_name == "cambricon":
+        from flag_gems.runtime.backend._cambricon import ops as cam_ops
+
+        res_out = cam_ops.slice_scatter(
+            inp, dim=dim, src=src, start=start, end=end, step=step
+        )
     else:
         res_out = flag_gems.ops.slice_scatter(
             inp, dim=dim, src=src, start=start, end=end, step=step
@@ -999,7 +1005,6 @@ SHAPE_CONV1D = [
 ]
 
 
-@pytest.mark.skip("conv1d introduces failures, disable it temporarily")
 @pytest.mark.conv1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [2])

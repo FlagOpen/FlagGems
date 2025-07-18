@@ -583,6 +583,13 @@ def flash_attn_varlen_func(
 
     assert fa_version == 2, "Only FA2 is implemented."
 
+    max_seqlen_q = (
+        max_seqlen_q.item() if hasattr(max_seqlen_q, "item") else max_seqlen_q
+    )
+    max_seqlen_k = (
+        max_seqlen_k.item() if hasattr(max_seqlen_k, "item") else max_seqlen_k
+    )
+
     out, q, k, v, softmax_lse, *_ = mha_varlan_fwd(
         q,
         k,
