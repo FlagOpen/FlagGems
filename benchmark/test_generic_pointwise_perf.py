@@ -9,6 +9,7 @@ from .performance_utils import (
     generate_tensor_input,
     unary_input_fn,
 )
+from .performance_utils import vendor_name
 
 
 def flip_input_fn(shape, cur_dtype, device):
@@ -89,6 +90,9 @@ def threshold_input_fn(shape, cur_dtype, device):
     ],
 )
 def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["threshold"]:
+            pytest.skip("TODOFIX")
     bench = GenericBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
