@@ -92,30 +92,31 @@ std::pair<uint64_t, uint64_t> philox_backend_seed_offset(
   gen.set_state(state_copy);
   return std::make_pair(seed, offset);
 }
-at::Tensor exponential_(at::Tensor &x, double lambd, c10::optional<at::Generator> gen) {
-  torch::Dtype dtype = x.scalar_type();
-  torch::Device device = x.device();
+at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Generator> gen) {
+  torch::Dtype dtype = self.scalar_type();
+  torch::Device device = self.device();
 
-  bool inplace = x.is_contiguous();
+  bool inplace = self.is_contiguous();
 
   AT_ASSERT(dtype == torch::kFloat16 || dtype == torch::kBFloat16 || dtype == torch::kFloat32 ||
                 dtype == torch::kFloat64,
             "Unsupported dtype");
-
+  TORCH_CHECK(lambd > 0.0, "exponential_ requires lambd > 0.0, but got ", lambd);
+  TORCH_CHECK(self.is_cuda(), "exponential_ currently only supports CUDA tensors");
   bool is_double = (dtype == torch::kFloat64);
 
   const int UNROLL = is_double ? 2 : 4;
 
-  const int64_t N = x.numel();
+  const int64_t N = self.numel();
   const int64_t increment = (N + UNROLL - 1) / UNROLL;
 
   auto [philox_seed, philox_offset] = philox_backend_seed_offset(increment, gen);
 
   at::Tensor x_;
   if (inplace) {
-    x_ = x;
+    x_ = self;
   } else {
-    x_ = at::empty(x.sizes(), at::TensorOptions().dtype(dtype).device(device));
+    x_ = at::empty(self.sizes(), at::TensorOptions().dtype(dtype).device(device));
   }
   constexpr int64_t BLOCK = 128;
   unsigned grid_x = (N + BLOCK * UNROLL - 1) / (BLOCK * UNROLL);
@@ -142,9 +143,9 @@ at::Tensor exponential_(at::Tensor &x, double lambd, c10::optional<at::Generator
     static_cast<int64_t>(philox_offset),
     128);
   if (!inplace) {
-    x.copy_(x_);
-    return x;
+    self.copy_(x_);
+    return self;
   }
-  return x_;
+  return self;
 }
 }  // namespace flag_gems
