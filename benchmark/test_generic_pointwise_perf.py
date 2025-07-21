@@ -8,8 +8,8 @@ from .performance_utils import (
     GenericBenchmarkExcluse1D,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
-from .performance_utils import vendor_name
 
 
 def flip_input_fn(shape, cur_dtype, device):
