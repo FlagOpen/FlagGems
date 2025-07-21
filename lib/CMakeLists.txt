@@ -17,7 +17,8 @@ add_library(operators
             bmm.cpp
             embedding.cpp
             argmax.cpp
-            fill.cpp)
+            fill.cpp
+            softmax.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
