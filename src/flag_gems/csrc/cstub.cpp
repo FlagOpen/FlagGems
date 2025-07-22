@@ -38,6 +38,7 @@ TORCH_LIBRARY(flag_gems, m) {
       "rotary_embedding(Tensor q, Tensor k, Tensor cos, Tensor sin, Tensor? position_ids=None, "
       "bool rotary_interleaved=False) -> (Tensor, Tensor)");  // q and k may be view to other size
   m.def("topk(Tensor x, SymInt k, int dim, bool largest, bool sorted) -> (Tensor, Tensor)");
+  m.def("contiguous(Tensor(a) self, *, MemoryFormat memory_format=contiguous_format) -> Tensor(a)");
   m.def("cat(Tensor[] tensors, int dim=0) -> Tensor");
   m.def("bmm(Tensor self, Tensor mat2) -> Tensor");
   m.def(
@@ -47,6 +48,11 @@ TORCH_LIBRARY(flag_gems, m) {
       "embedding_backward(Tensor grad_outputs, Tensor indices, SymInt num_weights, SymInt padding_idx, bool "
       "scale_grad_by_freq, bool sparse) -> Tensor");
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
+
+  m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
+  m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
+  m.def("fill_.Scalar(Tensor(a!) self, Scalar value) -> Tensor(a!)");
+  m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -63,10 +69,16 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));
   m.impl("rotary_embedding_inplace", TORCH_FN(rotary_embedding_inplace));
   m.impl("topk", TORCH_FN(topk));
+  m.impl("contiguous", TORCH_FN(contiguous));
   m.impl("cat", TORCH_FN(cat));
   m.impl("bmm", TORCH_FN(bmm));
   m.impl("embedding", TORCH_FN(embedding));
   m.impl("embedding_backward", TORCH_FN(embedding_backward));
   m.impl("argmax", TORCH_FN(argmax));
+
+  m.impl("fill.Scalar", TORCH_FN(fill_scalar));
+  m.impl("fill.Tensor", TORCH_FN(fill_tensor));
+  m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
+  m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
 }
 }  // namespace flag_gems
