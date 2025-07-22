@@ -17,10 +17,10 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("bmm", &flag_gems::bmm);
   m.def("addmm", &flag_gems::addmm);
 
-  m.impl("fill_scalar", &flag_gems::fill_scalar);
-  m.impl("fill_tensor", &flag_gems::fill_tensor);
-  m.impl("fill_scalar_", &flag_gems::fill_scalar_);
-  m.impl("fill_tensor_", &flag_gems::fill_tensor_);
+  m.def("fill_scalar", &flag_gems::fill_scalar);
+  m.def("fill_tensor", &flag_gems::fill_tensor);
+  m.def("fill_scalar_", &flag_gems::fill_scalar_);
+  m.def("fill_tensor_", &flag_gems::fill_tensor_);
 }
 
 namespace flag_gems {
