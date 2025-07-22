@@ -21,7 +21,6 @@ double calculate_ks_statistic(const std::vector<double>& samples, double lambda)
   double d_plus = 0.0;
   double d_minus = 0.0;
 
-  // 计算K-S统计量
   for (size_t i = 0; i < n; ++i) {
     double f_emp = (i + 1.0) / n;
     double f_theo = y_samples[i];
@@ -33,7 +32,6 @@ double calculate_ks_statistic(const std::vector<double>& samples, double lambda)
   return std::max(d_plus, d_minus);
 }
 
-// 计算p值
 double approximate_ks_pvalue(double d, size_t n) {
   double x = d * std::sqrt(n);
   double p = 0.0;
@@ -70,27 +68,22 @@ void RunExponentialTest(torch::ScalarType dtype) {
         samples.push_back(static_cast<double>(data_ptr[i]));
       }
     } else if (dtype == torch::kFloat32) {
-      // 处理float32类型
       auto data_ptr = cpu_x.data_ptr<float>();
       for (int64_t i = 0; i < cpu_x.numel(); ++i) {
         samples.push_back(static_cast<double>(data_ptr[i]));
       }
     } else if (dtype == torch::kFloat64) {
-      // 处理float64类型
       auto data_ptr = cpu_x.data_ptr<double>();
       for (int64_t i = 0; i < cpu_x.numel(); ++i) {
         samples.push_back(data_ptr[i]);
       }
     }
 
-    // 计算K-S统计量
     double d = calculate_ks_statistic(samples, lambda);
 
-    // 计算p值
     size_t n = samples.size();
     double p_value = approximate_ks_pvalue(d, n);
 
-    // 验证p值 > 0.05
     EXPECT_GT(p_value, alpha) << "Failed for lambda=" << lambda << ", dtype=" << dtype
                               << ", p_value=" << p_value;
   }

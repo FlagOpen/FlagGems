@@ -34,10 +34,8 @@ double get_epsilon(FloatType type) {
     case FloatType::Float64:
       return get_epsilon<double>();
     case FloatType::Float16:
-      // 使用 IEEE 754 标准值: 2^(-10) = 9.765625e-04
       return 0.0009765625;
     case FloatType::BFloat16:
-      // bfloat16 的 epsilon: 2^(-7) = 0.0078125
       return 0.0078125;
     default:
       throw std::invalid_argument("Unsupported floating point type");
