@@ -35,7 +35,7 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
     /* grid_y = */ 1,
     /* grid_z = */ 1,
     /* num_warps = */ 4,
-    /* num_stages = */ 4,
+    /* num_stages = */ 2,
     mat1,
     mat2,
     out,
