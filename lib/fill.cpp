@@ -47,9 +47,9 @@ at::Tensor fill_tensor(const at::Tensor& input, const at::Tensor& value) {
   return out;
 }
 
-at::Tensor& fill_scalar_(at::Tensor& input, const c10::Scalar& value) {
+void fill_scalar_(at::Tensor& input, const c10::Scalar& value) {
   int64_t numel = input.numel();
-  if (numel == 0) return input;
+  if (numel == 0) return;
 
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -62,13 +62,12 @@ at::Tensor& fill_scalar_(at::Tensor& input, const c10::Scalar& value) {
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
   fill_kernel(stream, grid_x, 1, 1, 4, 0, input, value, numel, BLOCK_SIZE);
-  return input;
 }
 
-at::Tensor& fill_tensor_(at::Tensor& input, const at::Tensor& value) {
+void fill_tensor_(at::Tensor& input, const at::Tensor& value) {
   TORCH_CHECK(value.dim() == 0, "fill_tensor_ only supports 0-dim value tensor");
   int64_t numel = input.numel();
-  if (numel == 0) return input;
+  if (numel == 0) return;
 
   constexpr int BLOCK_SIZE = 1024;
   unsigned int grid_x = (numel + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -81,7 +80,6 @@ at::Tensor& fill_tensor_(at::Tensor& input, const at::Tensor& value) {
   cudaStream_t stream = c10::cuda::getCurrentCUDAStream();
 
   fill_kernel(stream, grid_x, 1, 1, 4, 0, input, value, numel, BLOCK_SIZE);
-  return input;
 }
 
 }  // namespace flag_gems
