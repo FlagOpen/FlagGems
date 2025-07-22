@@ -1,10 +1,20 @@
+import logging
+import math
+
+import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
+logger = logging.getLogger(__name__)
 
+
+@libentry()
 @triton.jit
 def argmax_kernel_1(
     inp,
@@ -27,6 +37,7 @@ def argmax_kernel_1(
     tl.store(max_index_ptr, max_index)
 
 
+@libentry()
 @triton.jit
 def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
@@ -40,6 +51,8 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     tl.store(out, out_val)
 
 
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("argmax"))
 @triton.jit
 def argmax_kernel(
     inp,
@@ -79,3 +92,65 @@ def argmax_kernel(
     out_index_ptrs = out_index + offset_index
     mask1 = m_offset < M
     tl.store(out_index_ptrs, argmax_values, mask=mask1)
+
+
+def argmax(inp, dim=None, keepdim=False, *, dtype=None):
+    logger.debug("GEMS ARGMAX")
+    if dim is None:
+        M = inp.numel()
+        if dtype is None:
+            dtype = inp.dtype
+        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+        mid_size = triton.cdiv(M, block_size)
+        block_mid = triton.next_power_of_2(mid_size)
+
+        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
+        if keepdim:
+            shape = list(inp.shape)
+            for i in range(0, inp.dim()):
+                shape[i] = 1
+            out = torch.empty(shape, dtype=torch.int64, device=inp.device)
+        else:
+            out = torch.empty([], dtype=torch.int64, device=inp.device)
+
+        with torch_device_fn.device(inp.device):
+            argmax_kernel_1[(mid_size, 1, 1)](
+                inp,
+                mid_value,
+                mid_index,
+                M,
+                block_size,
+            )
+            argmax_kernel_2[(1, 1, 1)](mid_value, mid_index, out, mid_size, block_mid)
+        return out
+    else:
+        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+        shape = inp.shape
+        dim = dim % inp.ndim
+        N = shape[dim]
+        M = math.prod(shape[:dim])
+        K = inp.numel() // M // N
+
+        inp = inp.contiguous()
+
+        shape_list = list(shape)
+        shape_list[dim] = 1
+        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+        if not keepdim:
+            out_index = torch.squeeze(out_index, dim)
+
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BLOCK_M"]),
+            K,
+        )
+        with torch_device_fn.device(inp.device):
+            argmax_kernel[grid](
+                inp,
+                out_index,
+                M,
+                N,
+                K,
+            )
+
+        return out_index
