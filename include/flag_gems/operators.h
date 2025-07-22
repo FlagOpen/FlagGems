@@ -57,4 +57,5 @@ at::Tensor embedding_backward(const at::Tensor &grad_outputs,
                               bool scale_grad_by_freq = false,
                               bool sparse = false);
 at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim = std::nullopt, bool keepdim = false);
+std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor &self, int64_t dim = -1, bool descending = false);
 }  // namespace flag_gems

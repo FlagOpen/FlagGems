@@ -52,3 +52,8 @@ add_executable(test_triton_argmax test_triton_argmax.cpp)
 target_link_libraries(test_triton_argmax
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_argmax COMMAND test_triton_argmax)
+
+add_executable(test_triton_sort test_triton_sort.cpp)
+target_link_libraries(test_triton_sort
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_sort COMMAND test_triton_sort)
