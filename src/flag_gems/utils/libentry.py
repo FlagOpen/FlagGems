@@ -84,11 +84,11 @@ class LibCache:
         weakref.finalize(self, self.store)
 
         # For vllm
-        def sigintHandler(signum, frame):
+        def sigint_handler(signum, frame):
             self.store()
 
-        signal.signal(signal.SIGINT, sigintHandler)
-        signal.signal(signal.SIGTERM, sigintHandler)
+        signal.signal(signal.SIGINT, sigint_handler)
+        signal.signal(signal.SIGTERM, sigint_handler)
 
     def __getitem__(self, key):
         if key not in self.global_cache:
