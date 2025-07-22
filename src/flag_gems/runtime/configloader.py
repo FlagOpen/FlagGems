@@ -26,7 +26,7 @@ class ConfigLoader(object):
             self.vendor_heuristics_config = self.get_vendor_heuristics_config()
             self.default_heuristics_config = self.get_default_heuristics_config()
 
-            if self.heuristics_config is None:
+            if self.vendor_heuristics_config is None:
                 vendorname = self.device.vendor_name
                 warnings.warn(
                     f"The {vendorname} configuration of heuristics_config is None"
