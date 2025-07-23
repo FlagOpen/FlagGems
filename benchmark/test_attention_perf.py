@@ -6,9 +6,8 @@ import torch
 import triton
 
 import flag_gems
-from tests.accuracy_utils import SkipVersion
 
-from .performance_utils import Benchmark, GenericBenchmark, vendor_name
+from .performance_utils import Benchmark, GenericBenchmark, SkipVersion, vendor_name
 
 
 class AttentionBenchmark(GenericBenchmark):
