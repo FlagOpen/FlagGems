@@ -26,8 +26,8 @@ def softmax_kernel_inner(
     exp_row = tl.exp(row)
     denom = tl.sum(exp_row, axis=0) + 1e-10
     softmax = exp_row / denom
-    softmax = softmax.to(tl.float16)  
     tl.store(output_ptrs, softmax, mask=mask)
+
 
 
 @triton.jit
@@ -55,7 +55,7 @@ def softmax_kernel_non_inner(
     x = x - x_max
     exp_x = tl.exp(x)
     denom = tl.sum(exp_x, axis=0) + 1e-10
-    softmax = (exp_x / denom).to(tl.float16)
+    softmax = exp_x / denom
     tl.store(output_ptrs, softmax, mask=mask)
 
 

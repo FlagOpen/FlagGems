@@ -7,15 +7,16 @@
 TEST(TritonSoftmaxTest, ForwardInnerDim) {
   const torch::Device device(torch::kCUDA, 0);
   auto input = torch::randn({4, 16}, device).to(torch::kFloat16);
+  int dim = 1;
+  int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
 
-  // Call flag_gems softmax, assuming dim=1 is the inner dimension softmax
-  auto out_gems = flag_gems::softmax(input, 1, false);
-  auto out_torch = torch::softmax(input.to(torch::kFloat32), 1).to(torch::kFloat16);
+  auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
+  auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
   EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
 
-  // Numerical check: each row sum should be close to 1
-  auto row_sums = out_gems.sum(1);
+  // Sum over each row (dim=1), the sums should all be 1
+  auto row_sums = out_gems.sum(wrapped_dim);
   auto ones = torch::ones_like(row_sums);
   EXPECT_TRUE(torch::allclose(row_sums, ones, 1e-2, 1e-3));
 }
@@ -23,15 +24,16 @@ TEST(TritonSoftmaxTest, ForwardInnerDim) {
 TEST(TritonSoftmaxTest, ForwardNonInnerDim) {
   const torch::Device device(torch::kCUDA, 0);
   auto input = torch::randn({2, 8, 3}, device).to(torch::kFloat16);
+  int dim = 1;
+  int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
 
-  // dim=1 is not the inner-most dimension
-  auto out_gems = flag_gems::softmax(input, 1, false);
-  auto out_torch = torch::softmax(input.to(torch::kFloat32), 1).to(torch::kFloat16);
+  auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
+  auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
   EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
 
-  // Numerical check
-  auto sums = out_gems.sum(1);
+  // Sum along dim=1 for verification
+  auto sums = out_gems.sum(wrapped_dim);
   auto ones = torch::ones_like(sums);
   EXPECT_TRUE(torch::allclose(sums, ones, 1e-2, 1e-3));
 }
@@ -39,15 +41,16 @@ TEST(TritonSoftmaxTest, ForwardNonInnerDim) {
 TEST(TritonSoftmaxTest, ForwardDim0) {
   const torch::Device device(torch::kCUDA, 0);
   auto input = torch::randn({5, 10}, device).to(torch::kFloat16);
+  int dim = 0;
+  int wrapped_dim = at::maybe_wrap_dim(dim, input.dim());
 
-  // Test softmax along dim=0
-  auto out_gems = flag_gems::softmax(input, 0, false);
-  auto out_torch = torch::softmax(input.to(torch::kFloat32), 0).to(torch::kFloat16);
+  auto out_gems = flag_gems::softmax(input, wrapped_dim, false);
+  auto out_torch = torch::softmax(input.to(torch::kFloat32), wrapped_dim).to(torch::kFloat16);
 
   EXPECT_TRUE(torch::allclose(out_gems, out_torch, 1e-2, 1e-3));
 
-  // Numerical check: column-wise sum should be close to 1
-  auto col_sums = out_gems.sum(0);
+  // Sum along dim=0 for verification
+  auto col_sums = out_gems.sum(wrapped_dim);
   auto ones = torch::ones_like(col_sums);
   EXPECT_TRUE(torch::allclose(col_sums, ones, 1e-2, 1e-3));
 }
@@ -113,7 +116,7 @@ TEST(TritonSoftmaxTest, BackwardDim0) {
     grad_input_ref = torch::autograd::grad({output_ref}, {input}, {grad_output})[0];
   }
 
-  auto grad_input_triton = flag_gems::softmax_backward(grad_output, output_triton, dim, input.scalar_type());
+  auto grad_input_triton = flag_gems::softmax_backward(grad_output, output_triton, wrapped_dim, input.scalar_type());
 
   EXPECT_TRUE(torch::allclose(grad_input_triton, grad_input_ref, 1e-2, 1e-2));
 }

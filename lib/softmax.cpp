@@ -27,7 +27,7 @@ at::Tensor softmax_forward(const at::Tensor& input, int dim) {
   TORCH_CHECK(input.dim() >= 2, "Softmax input must be at least 2D");
   TORCH_CHECK(dim >= 0 && dim < input.dim(), "Softmax dim out of range");
 
-  at::Tensor output = at::empty_like(input);
+  at::Tensor output = at::empty_like(input, input.options());
 
   int64_t M, N, K;
   compute_mnk(input, dim, M, N, K);
@@ -112,7 +112,7 @@ at::Tensor softmax_backward_impl(const at::Tensor& output,
 
   TORCH_CHECK(wrapped_dim >= 0 && wrapped_dim < output.dim(), "wrapped_dim out of range!");
 
-  at::Tensor grad_input = at::empty_like(grad_output);
+  at::Tensor grad_input = at::empty_like(grad_output, grad_output.options());
 
   int64_t M, N, K;
   int64_t stride_m, stride_n, stride_k;
@@ -161,21 +161,43 @@ at::Tensor softmax_backward_impl(const at::Tensor& output,
 
 // Public API: softmax
 at::Tensor softmax(const at::Tensor& input, int64_t dim, bool half_to_float) {
-  (void)half_to_float;
-  return softmax_forward(input, static_cast<int>(dim));
-}
+  at::Tensor input_tensor = input;
+  if (half_to_float && input.scalar_type() == at::kHalf) {
+    input_tensor = input_tensor.to(at::kFloat);
+  }
 
+  at::Tensor output = softmax_forward(input_tensor, static_cast<int>(dim));
+
+  if (half_to_float && input.scalar_type() == at::kHalf) {
+    output = output.to(at::kHalf);
+  }
+
+  return output;
+}
 // Public API: softmax backward
 at::Tensor softmax_backward(const at::Tensor& grad_output,
                             const at::Tensor& output,
                             int64_t dim,
                             at::ScalarType input_dtype) {
-  (void)input_dtype;
-
-  // Normalize the dim here
   int64_t wrapped_dim = at::maybe_wrap_dim(dim, output.dim());
 
-  return softmax_backward_impl(output, grad_output, wrapped_dim);
+  at::Tensor output_tensor = output;
+  at::Tensor grad_output_tensor = grad_output;
+
+  if (input_dtype == at::kHalf) {
+    output_tensor = output.to(at::kFloat);
+    grad_output_tensor = grad_output.to(at::kFloat);
+  }
+
+  at::Tensor grad_input = softmax_backward_impl(output_tensor, grad_output_tensor, wrapped_dim);
+
+  if (grad_input.scalar_type() != input_dtype) {
+    grad_input = grad_input.to(input_dtype);
+  }
+
+  return grad_input;
 }
+
+
 
 }  // namespace flag_gems
