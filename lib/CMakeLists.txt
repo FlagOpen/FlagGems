@@ -12,11 +12,13 @@ add_library(operators
             addmm.cpp
             nonzero.cpp
             rotary_embedding.cpp
+            contiguous.cpp
             cat.cpp
             bmm.cpp
             embedding.cpp
             argmax.cpp
             sort.cpp)
+            fill.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

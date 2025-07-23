@@ -28,6 +28,11 @@ target_link_libraries(test_triton_topk
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_topk COMMAND test_triton_topk)
 
+add_executable(test_triton_contiguous test_triton_contiguous.cpp)
+target_link_libraries(test_triton_contiguous
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_contiguous COMMAND test_triton_contiguous)
+
 add_executable(test_triton_cat test_triton_cat.cpp)
 target_link_libraries(test_triton_cat
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
@@ -37,13 +42,13 @@ add_executable(test_triton_zeros_constructor test_triton_tensor_constructor.cpp)
 target_link_libraries(test_triton_zeros_constructor
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_zeros_constructor COMMAND test_triton_zeros_constructor)
-add_executable(test_triton_bmm test_triton_bmm.cpp)
 
+add_executable(test_triton_bmm test_triton_bmm.cpp)
 target_link_libraries(test_triton_bmm
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_bmm COMMAND test_triton_bmm)
-add_executable(test_triton_embedding test_triton_embedding.cpp)
 
+add_executable(test_triton_embedding test_triton_embedding.cpp)
 target_link_libraries(test_triton_embedding
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_embedding COMMAND test_triton_embedding)
@@ -53,7 +58,14 @@ target_link_libraries(test_triton_argmax
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_argmax COMMAND test_triton_argmax)
 
+
 add_executable(test_triton_sort test_triton_sort.cpp)
 target_link_libraries(test_triton_sort
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_sort COMMAND test_triton_sort)
+
+add_executable(test_triton_fill  test_triton_fill.cpp)
+target_link_libraries(test_triton_fill
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_fill COMMAND test_triton_fill)
+
