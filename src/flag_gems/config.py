@@ -1,4 +1,5 @@
 import os
+import warnings
 
 has_c_extension = False
 use_c_extension = False
@@ -9,10 +10,19 @@ try:
 
     has_c_extension = True
 except ImportError:
-    c_operators = None  # avoid import error if c_operators is not available
+    c_operators = None
     has_c_extension = False
 
-if has_c_extension and os.environ.get("USE_C_EXTENSION", "0") == "1":
+
+use_env_c_extension = os.environ.get("USE_C_EXTENSION", "0") == "1"
+if use_env_c_extension and not has_c_extension:
+    warnings.warn(
+        "[FlagGems] USE_C_EXTENSION is set, but C extension is not available. "
+        "Falling back to pure Python implementation.",
+        RuntimeWarning,
+    )
+
+if has_c_extension and use_env_c_extension:
     try:
         from flag_gems import aten_patch
 

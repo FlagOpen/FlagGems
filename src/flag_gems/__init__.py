@@ -295,7 +295,7 @@ def enable(
             ("zeros_like", zeros_like),
         ),
         user_unused_ops_list=list(
-            set([] if unused is None else unused) & set(aten_patch_list)
+            set([] if unused is None else unused) | set(aten_patch_list)
         ),
         lib=lib,
     )
