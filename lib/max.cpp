@@ -65,7 +65,8 @@ using namespace triton_jit;
   auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dims_);
   permuted_self = permuted_self.contiguous();
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "max.py"), "max_kernel");
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+                                     "max_kernel");
   int64_t tile_m = 4;
   int64_t tile_n = 512;
   const int num_warps = 8;
@@ -114,9 +115,11 @@ at::Tensor max(const at::Tensor &self) {
   at::Tensor out = torch::empty({}, self.options());
 
   const TritonJITFunction &max_kernel_1 =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "max.py"), "max_kernel_1");
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+                                     "max_kernel_1");
   const TritonJITFunction &max_kernel_2 =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "max.py"), "max_kernel_2");
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+                                     "max_kernel_2");
   block_size = next_power_of_2(static_cast<int>(std::ceil(std::sqrt(M))));
   mid_size = cdiv(M, block_size);
   block_mid = next_power_of_2(mid_size);
