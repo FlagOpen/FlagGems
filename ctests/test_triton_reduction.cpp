@@ -8,7 +8,6 @@ TEST(reduction_op_test, sum) {
 
   torch::Tensor out_torch = at::sum(a, {1});
   torch::Tensor out_triton = flag_gems::sum_dim(a, {1});
-  torch::cuda::synchronize();
   if (!torch::allclose(out_torch, out_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
@@ -23,7 +22,6 @@ TEST(reduction_op_test, nonzero) {
 
   torch::Tensor out_torch = at::nonzero(a);
   torch::Tensor out_triton = flag_gems::nonzero(a);
-  torch::cuda::synchronize();
   if (!torch::allclose(out_torch, out_triton, 1e-5, 1e-8)) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
