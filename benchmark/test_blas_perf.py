@@ -4,16 +4,15 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import (
+from benchmark.attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
     FLOAT_DTYPES,
     BenchLevel,
     model_shapes,
 )
-from .conftest import Config
-from .performance_utils import Benchmark, GenericBenchmark2DOnly, vendor_name
+from benchmark.conftest import Config
+from benchmark.performance_utils import Benchmark, GenericBenchmark2DOnly, vendor_name
 
 
 class BlasBenchmark(Benchmark):
