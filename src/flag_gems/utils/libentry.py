@@ -3,6 +3,7 @@ import inspect
 import logging
 import math
 import os
+import signal
 import sqlite3
 import threading
 import time
@@ -17,8 +18,7 @@ import triton
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend import vendor_module
-
-from .code_cache import config_cache_dir
+from flag_gems.utils.code_cache import config_cache_dir
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,13 @@ class LibCache:
         )
         self.preload()
         weakref.finalize(self, self.store)
+
+        # For vllm
+        def signal_handler(signum, frame):
+            self.store()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
     def __getitem__(self, key):
         if key not in self.global_cache:
