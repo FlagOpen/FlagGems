@@ -85,7 +85,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("fill.Tensor", TORCH_FN(fill_tensor));
   m.impl("fill_.Scalar", TORCH_FN(fill_scalar_));
   m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
-  m.impl("softmax", TORCH_FN(flag_gems::softmax));
-  m.impl("softmax_backward", TORCH_FN(flag_gems::softmax_backward));
+  m.impl("softmax", TORCH_FN(softmax));
+  m.impl("softmax_backward", TORCH_FN(softmax_backward));
 }
 }  // namespace flag_gems
