@@ -255,6 +255,29 @@ def test_accuracy_glu(shape, dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.glu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_glu_backward(shape, dtype):
+    for dim in range(len(shape)):
+        if shape[dim] == 0 or shape[dim] % 2 != 0:
+            continue
+
+        res_self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        out_shape = list(shape)
+        out_shape[dim] //= 2
+        res_grad_output = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+
+        ref_self = to_reference(res_self)
+        ref_grad_output = to_reference(res_grad_output)
+        
+        ref_in_grad = torch.ops.aten.glu_backward(ref_grad_output, ref_self, dim=dim)
+        with flag_gems.use_gems():
+            res_in_grad = torch.ops.aten.glu_backward(res_grad_output, res_self, dim=dim)
+
+        gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 @pytest.mark.isinf
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
