@@ -129,23 +129,26 @@ class LibCache:
         connect.close()
 
     def store(self):
-        connect = sqlite3.connect(self.cache_path)
-        c = connect.cursor()
-        for operator, cache in self.global_cache.items():
-            if len(cache) == self.volumn.get(operator, 0):
-                continue
-
-            c.execute(
-                f"CREATE TABLE IF NOT EXISTS {operator} (key TEXT PRIMARY KEY, config TEXT)"
-            )
-            for key, config in cache.items():
-                c.execute(
-                    f"INSERT OR IGNORE INTO {operator} (key, config) VALUES (?, ?)",
-                    (str(key), config.__str__()),
-                )
-
-        connect.commit()
-        connect.close()
+        try:
+            with sqlite3.connect(self.cache_path, timeout=10.0) as connect:
+                c = connect.cursor()
+                c.execute("PRAGMA journal_mode=WAL;")
+                for operator, cache in self.global_cache.items():
+                    if len(cache) == self.volumn.get(operator, 0):
+                        continue
+                    c.execute(
+                        f"CREATE TABLE IF NOT EXISTS {operator} (key TEXT PRIMARY KEY, config TEXT)"
+                    )
+                    data_to_insert = [
+                        (str(key), str(config)) for key, config in cache.items()
+                    ]
+                    if data_to_insert:
+                        c.execute(
+                            f"INSERT OR IGNORE INTO {operator} (key, config) VALUES (?, ?)",
+                            data_to_insert,
+                        )
+        except sqlite3.Error as e:
+            print(f"[SQLITE3 WRITE FAIL]: {e}")
 
 
 libcache = LibCache()
