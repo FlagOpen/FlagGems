@@ -207,7 +207,8 @@ def sweep(
 
         # decoupled lookback
         exclusive_prefix = tl.zeros((), dtype=tl.uint32)
-        i_lookback = pid_n - 1
+        # i_lookback = pid_n - 1
+        i_lookback = (pid_n - 1).to(tl.int64)
         while i_lookback >= 0:
             flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
             pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
@@ -217,7 +218,8 @@ def sweep(
             if (pack1 & aggregate_mask) == aggregate_mask:
                 i_lookback -= 1
             else:
-                i_lookback = -1
+                # i_lookback = -1
+                i_lookback = tl.full((), -1, dtype=tl.int64)
         pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
         tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
