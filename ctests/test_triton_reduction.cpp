@@ -47,7 +47,7 @@ TEST_P(MaxDimTest, max_dim) {
   auto out_torch = at::max(input, param.dim_to_keep, param.keepdim);
   torch::Tensor max_torch = std::get<0>(out_torch);
   torch::Tensor index_torch = std::get<1>(out_torch);
-  auto out_triton = flag_gems::max_dim(input, param.dim_to_keep, param.keepdim, std::nullopt);
+  auto out_triton = flag_gems::max_dim(input, param.dim_to_keep, param.keepdim);
   torch::Tensor max_triton = std::get<0>(out_triton);
   torch::Tensor index_triton = std::get<1>(out_triton);
   if (!torch::allclose(max_torch, max_triton, 1e-5, 1e-8)) {

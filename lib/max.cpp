@@ -12,22 +12,14 @@
 #include "c10/util/DimVector.h"
 
 namespace {
-std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
-    const at::Tensor &tensor, at::OptionalIntArrayRef reduction_axes_opt) {
+std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(const at::Tensor &tensor,
+                                                                      int reduction_axis) {
   int64_t dim = tensor.dim();
-  c10::DimVector reduction_axes;
-
-  if (reduction_axes_opt.has_value()) {
-    reduction_axes = reduction_axes_opt.value().vec();
-  }
-
-  std::unordered_set<int64_t> reduction_set(reduction_axes.begin(), reduction_axes.end());
-
   c10::DimVector left_axes, right_axes;
   int64_t non_reduction_size = 1, reduction_size = 1;
 
   for (int64_t i = 0; i < dim; ++i) {
-    if (reduction_set.count(i)) {
+    if (i == reduction_axis) {
       right_axes.push_back(i);
       reduction_size *= tensor.size(i);
     } else {
@@ -35,8 +27,6 @@ std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
       non_reduction_size *= tensor.size(i);
     }
   }
-
-  // Concatenate left and right axes to form the new permutation order
   c10::DimVector permute_order = left_axes;
   permute_order.insert(permute_order.end(), right_axes.begin(), right_axes.end());
 
@@ -48,21 +38,17 @@ int next_power_of_2(int x) {
 int cdiv(int a, int b) {
   return (a + b - 1) / b;
 }
-
 }  // anonymous namespace
 
 namespace flag_gems {
 using namespace triton_jit;
-::std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self,
-                                             at::OptionalIntArrayRef dim,
-                                             bool keepdim,
-                                             ::std::optional<at::ScalarType> dtype) {
-  at::DimVector dims_ = at::native::make_dim_vector(dim, self.dim());
-  at::maybe_wrap_dims(dims_, self.dim());
-  at::DimVector shape = at::meta::get_reduction_shape(self, dims_, keepdim, false);
+// max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
+::std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self, int64_t dim, bool keepdim) {
+  at::DimVector shape = at::meta::get_reduction_shape(self, dim, keepdim, false);
   at::Tensor out_value = at::empty(shape, self.options());
   at::Tensor out_index = at::empty(shape, self.options().dtype(at::kLong));
-  auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dims_);
+
+  auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dim);
   permuted_self = permuted_self.contiguous();
   const TritonJITFunction &f =
       TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
