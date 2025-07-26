@@ -139,16 +139,12 @@ class LibCache:
                     c.execute(
                         f"CREATE TABLE IF NOT EXISTS {operator} (key TEXT PRIMARY KEY, config TEXT)"
                     )
-                    data_to_insert = [
-                        (str(key), str(config)) for key, config in cache.items()
-                    ]
-                    if data_to_insert:
-                        c.execute(
-                            f"INSERT OR IGNORE INTO {operator} (key, config) VALUES (?, ?)",
-                            data_to_insert,
-                        )
+                    c.executemany(
+                        f"INSERT OR IGNORE INTO {operator} (key, config) VALUES (?, ?)",
+                        [(str(key), str(config)) for key, config in cache.items()],
+                    )
         except sqlite3.Error as e:
-            print(f"[SQLITE3 WRITE FAIL]: {e}")
+            print(f"[CACHE STORE ERROR]: {e}")
 
 
 libcache = LibCache()
