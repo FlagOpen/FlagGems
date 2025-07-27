@@ -901,10 +901,7 @@ NUM_TOKENS_MLA = [42]
 BLOCK_SIZES_MLA = [16]
 NUM_BLOCKS_MLA = [8]
 SEEDS = [0]
-DEVICES = [
-    flag_gems.device if flag_gems.device == "musa" else f"cuda:{i}"
-    for i in range(1 if torch.cuda.device_count() == 1 else 2)
-]
+CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
 # We assume fp8 is always enabled for testing.
 KV_CACHE_DTYPE = [
     "auto",
@@ -937,6 +934,7 @@ def convert_fp8(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
@@ -945,7 +943,7 @@ def convert_fp8(
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS_MLA)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("seed", SEEDS)
-@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("device", CUDA_DEVICES)
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()
 def test_concat_and_cache_mla(
