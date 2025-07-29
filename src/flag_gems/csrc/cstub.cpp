@@ -16,28 +16,33 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
   // div
-  m.def("div.Tensor", &flag_gems::true_div) m.def("div_.Tensor", &flag_gems::true_div_) m
-      .def("div.Tensor_mode", &flag_gems::div_mode) m.def("div_.Tensor_mode", &flag_gems::div_mode_)
-          m.def("div.Scalar", &flag_gems::true_div) m.def("div_.Scalar", &flag_gems::true_div_)
-              m.def("div.Scalar_mode", &flag_gems::div_mode)
-                  m.def("div_.Scalar_mode", &flag_gems::div_mode_)
-                      m.def("floor_divide", &flag_gems::floor_div)
-                          m.def("floor_divide_.Tensor", &flag_gems::floor_div_)
-                              m.def("floor_divide.Scalar", &flag_gems::floor_div)
-                                  m.def("floor_divide_.Scalar", &flag_gems::floor_div_) m
-      .def("divide.Tensor", &flag_gems::true_div) m.def("divide_.Tensor", &flag_gems::true_div_)
-          m.def("divide.Scalar", &flag_gems::true_div) m.def("divide_.Scalar", &flag_gems::true_div_)
-              m.def("divide.Tensor_mode", &flag_gems::div_mode)
-                  m.def("divide_.Tensor_mode", &flag_gems::div_mode_)
-                      m.def("divide.Scalar_mode", &flag_gems::div_mode)
-                          m.def("divide_.Scalar_mode", &flag_gems::div_mode_)
-                              m.def("true_divide.Tensor", &flag_gems::true_div)
-                                  m.def("true_divide_.Tensor", &flag_gems::true_div_)
-                                      m.def("remainder.Scalar", &flag_gems::remainder)
-                                          m.def("remainder_.Scalar", &flag_gems::remainder_)
-                                              m.def("remainder.Tensor", &flag_gems::remainder)
-                                                  m.def("remainder_.Tensor", &flag_gems::remainder_)
-                                                      m.def("remainder.Scalar_Tensor", &flag_gems::remainder)
+  m.def("div.Tensor", &flag_gems::true_div);
+  m.def("div_.Tensor", &flag_gems::true_div_);
+  m.def("div.Tensor_mode", &flag_gems::div_mode);
+  m.def("div_.Tensor_mode", &flag_gems::div_mode_);
+  m.def("div.Scalar", &flag_gems::true_div);
+  m.def("div_.Scalar", &flag_gems::true_div_);
+  m.def("div.Scalar_mode", &flag_gems::div_mode);
+  m.def("div_.Scalar_mode", &flag_gems::div_mode_);
+  m.def("floor_divide", &flag_gems::floor_div);
+  m.def("floor_divide_.Tensor", &flag_gems::floor_div_);
+  m.def("floor_divide.Scalar", &flag_gems::floor_div);
+  m.def("floor_divide_.Scalar", &flag_gems::floor_div_);
+  m.def("divide.Tensor", &flag_gems::true_div);
+  m.def("divide_.Tensor", &flag_gems::true_div_);
+  m.def("divide.Scalar", &flag_gems::true_div);
+  m.def("divide_.Scalar", &flag_gems::true_div_);
+  m.def("divide.Tensor_mode", &flag_gems::div_mode);
+  m.def("divide_.Tensor_mode", &flag_gems::div_mode_);
+  m.def("divide.Scalar_mode", &flag_gems::div_mode);
+  m.def("divide_.Scalar_mode", &flag_gems::div_mode_);
+  m.def("true_divide.Tensor", &flag_gems::true_div);
+  m.def("true_divide_.Tensor", &flag_gems::true_div_);
+  m.def("remainder.Scalar", &flag_gems::remainder);
+  m.def("remainder_.Scalar", &flag_gems::remainder_);
+  m.def("remainder.Tensor", &flag_gems::remainder);
+  m.def("remainder_.Tensor", &flag_gems::remainder_);
+  m.def("remainder.Scalar_Tensor", &flag_gems::remainder);
 }
 
 namespace flag_gems {
