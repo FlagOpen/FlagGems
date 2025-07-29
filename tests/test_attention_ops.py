@@ -1145,8 +1145,8 @@ def test_reshape_and_cache(
             cloned_key_cache[block_idx, :, :, block_offset, :] = reshaped_key[i]
             cloned_value_cache[block_idx, :, :, block_offset] = value[i]
 
-        torch.testing.assert_close(key_cache, cloned_key_cache)
-        torch.testing.assert_close(value_cache, cloned_value_cache)
+        torch.testing.assert_close(key_cache.cpu(), cloned_key_cache.cpu())
+        torch.testing.assert_close(value_cache.cpu(), cloned_value_cache.cpu())
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -1293,8 +1293,8 @@ def test_reshape_and_cache_flash(
             cloned_key_cache[block_idx, block_offset, :, :] = key[i]
             cloned_value_cache[block_idx, block_offset, :, :] = value[i]
 
-        torch.testing.assert_close(key_cache, cloned_key_cache)
-        torch.testing.assert_close(value_cache, cloned_value_cache)
+        torch.testing.assert_close(key_cache.cpu(), cloned_key_cache.cpu())
+        torch.testing.assert_close(value_cache.cpu(), cloned_value_cache.cpu())
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
