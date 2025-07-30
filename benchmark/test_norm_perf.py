@@ -2,12 +2,13 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import FLOAT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
+    GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
+    SkipVersion,
     unary_input_fn,
     vendor_name,
 )
@@ -189,4 +190,24 @@ def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
     )
     if op_name == "weight_norm":
         bench.set_gems(flag_gems.weight_norm)
+    bench.run()
+
+
+@pytest.mark.rms_norm
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The version prior to 2.4 does not include the rms_norm API in torch.",
+)
+def test_perf_rms_norm():
+    def rms_norm_input_fn(shape, dtype, device):
+        M, N = shape
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        weight = torch.randn(N, dtype=dtype, device=device)
+        yield inp, (N,), weight
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=rms_norm_input_fn,
+        op_name="rms_norm",
+        torch_op=torch.nn.functional.rms_norm,
+    )
     bench.run()

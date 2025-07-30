@@ -14,7 +14,8 @@ at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim = false,
                    ::std::optional<at::ScalarType> dtype = ::std::nullopt);
-
+std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self, int64_t dim, bool keepdim);
+at::Tensor max(const at::Tensor &self);
 at::Tensor rms_norm(const at::Tensor &input, const at::Tensor &weight, double epsilon = 1e-5);
 void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
@@ -23,8 +24,8 @@ void fused_add_rms_norm(at::Tensor &input,
 at::Tensor addmm(const at::Tensor &self,
                  const at::Tensor &mat1,
                  const at::Tensor &mat2,
-                 const at::Scalar &beta = 1.0,
-                 const at::Scalar &alpha = 1.0);
+                 const at::Scalar &beta = 1,
+                 const at::Scalar &alpha = 1);
 at::Tensor nonzero(const at::Tensor &inp);
 // Rotary embedding
 void rotary_embedding_inplace(at::Tensor &q,
@@ -42,7 +43,7 @@ std::tuple<at::Tensor, at::Tensor> rotary_embedding(
     bool rotary_interleaved = false);
 std::tuple<at::Tensor, at::Tensor> topk(
     const at::Tensor &x, int64_t k, int64_t dim = -1, bool largest = true, bool sorted = true);
-
+at::Tensor contiguous(const at::Tensor &self, at::MemoryFormat memory_format = c10::MemoryFormat::Contiguous);
 at::Tensor cat(const at::TensorList &tensors, int64_t dim = 0);
 at::Tensor bmm(const at::Tensor &A, const at::Tensor &B);
 at::Tensor embedding(const at::Tensor &weight,
@@ -70,4 +71,12 @@ at::Tensor remainder_ts(const at::Tensor &a, double b_scalar);
 at::Tensor remainder_st(double a_scalar, const at::Tensor &b);
 at::Tensor remainder(const at::Tensor &a, const at::Tensor &b);
 at::Tensor remainder_(at::Tensor &a, const at::Tensor &b);
+
+at::Tensor fill_scalar(const at::Tensor &input, const c10::Scalar &value);
+
+at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
+
+at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
+
+at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
 }  // namespace flag_gems

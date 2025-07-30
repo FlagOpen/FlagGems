@@ -4,6 +4,7 @@ add_library(operators
             utils.cpp
             add.cpp
             sum.cpp
+            max.cpp
             mm.cpp
             rms_norm.cpp
             fused_add_rms_norm.cpp
@@ -12,11 +13,13 @@ add_library(operators
             addmm.cpp
             nonzero.cpp
             rotary_embedding.cpp
+            contiguous.cpp
             cat.cpp
             bmm.cpp
             embedding.cpp
             argmax.cpp
-            div.cpp)
+            div.cpp
+            fill.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

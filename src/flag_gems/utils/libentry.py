@@ -3,6 +3,7 @@ import inspect
 import logging
 import math
 import os
+import signal
 import sqlite3
 import threading
 import time
@@ -17,8 +18,7 @@ import triton
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend import vendor_module
-
-from .code_cache import config_cache_dir
+from flag_gems.utils.code_cache import config_cache_dir
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,8 @@ if major_version == 2:
 
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
+FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
+
 
 class LibCache:
     _instance = None
@@ -79,6 +81,13 @@ class LibCache:
         )
         self.preload()
         weakref.finalize(self, self.store)
+
+        # For vllm
+        def signal_handler(signum, frame):
+            self.store()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
 
     def __getitem__(self, key):
         if key not in self.global_cache:
@@ -120,23 +129,22 @@ class LibCache:
         connect.close()
 
     def store(self):
-        connect = sqlite3.connect(self.cache_path)
-        c = connect.cursor()
-        for operator, cache in self.global_cache.items():
-            if len(cache) == self.volumn.get(operator, 0):
-                continue
-
-            c.execute(
-                f"CREATE TABLE IF NOT EXISTS {operator} (key TEXT PRIMARY KEY, config TEXT)"
-            )
-            for key, config in cache.items():
-                c.execute(
-                    f"INSERT OR IGNORE INTO {operator} (key, config) VALUES (?, ?)",
-                    (str(key), config.__str__()),
-                )
-
-        connect.commit()
-        connect.close()
+        try:
+            with sqlite3.connect(self.cache_path, timeout=10.0) as connect:
+                c = connect.cursor()
+                c.execute("PRAGMA journal_mode=WAL;")
+                for operator, cache in self.global_cache.items():
+                    if len(cache) == self.volumn.get(operator, 0):
+                        continue
+                    c.execute(
+                        f"CREATE TABLE IF NOT EXISTS {operator} (key TEXT PRIMARY KEY, config TEXT)"
+                    )
+                    c.executemany(
+                        f"INSERT OR IGNORE INTO {operator} (key, config) VALUES (?, ?)",
+                        [(str(key), str(config)) for key, config in cache.items()],
+                    )
+        except sqlite3.Error as e:
+            print(f"[CACHE STORE ERROR]: {e}")
 
 
 libcache = LibCache()
@@ -223,7 +231,10 @@ class LibTuner(triton.runtime.Autotuner):
         # Use table name with hash instead of hash in key
         self.kernel_hash = None
         self.table_name = f"{self.__name__}_{self.get_kernel_hash()}"
-        self.cache = libcache[self.table_name]
+        if FLAGGEMS_ENABLE_DISK_CACHE:
+            self.cache = libcache[self.table_name]
+        else:
+            self.cache = {}
 
     def get_kernel_hash(self):
         if self.kernel_hash is None:
@@ -396,6 +407,11 @@ def default_strategy(key: Any) -> Any:
 @LibTuner.register_strategy("log")
 def log2_strategy(key: Union[int, float]) -> float:
     return math.ceil(math.log2(key))
+
+
+@LibTuner.register_strategy("align32")
+def align32_strategy(key: Union[int, float]) -> int:
+    return math.ceil(key / 32)
 
 
 @LibTuner.register_policy("default")
