@@ -18,7 +18,7 @@ int64_t get_num_bits(const at::ScalarType& dtype) {
 
 std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_bits, bool descending) {
   int64_t n = arr.size(-1);
-  int64_t m = arr.numel() / n;
+  int32_t m = arr.numel() / n;
   TORCH_CHECK(n < (1 << 30), "we have not implemented 2**30 per launch");
 
   auto dtype = arr.scalar_type();
