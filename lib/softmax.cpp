@@ -178,9 +178,6 @@ at::Tensor softmax(const at::Tensor &input, int64_t dim, bool half_to_float) {
 
   at::Tensor output = softmax_forward(input_tensor, static_cast<int>(dim));
 
-  if (half_to_float && input.scalar_type() == at::kHalf) {
-    output = output.to(at::kHalf);
-  }
   return output;
 }
 
