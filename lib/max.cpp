@@ -42,6 +42,55 @@ int cdiv(int a, int b) {
 
 namespace flag_gems {
 using namespace triton_jit;
+// max.dim_max(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) max, Tensor(b!) max_values) ->
+// (Tensor(a!) values, Tensor(b!) indices)
+::std::tuple<at::Tensor, at::Tensor> max_dim_max(const at::Tensor &self,
+                                                 int64_t dim,
+                                                 bool keepdim,
+                                                 const at::Tensor out_value,
+                                                 const at::Tensor out_index) {
+  auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dim);
+  // set_output(out_value,out_index);
+  permuted_self = permuted_self.contiguous();
+  const TritonJITFunction &f =
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+                                     "max_kernel");
+  int64_t tile_m = 4;
+  int64_t tile_n = 512;
+  const int num_warps = 8;
+  const int num_stages = 2;
+  const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
+  /*
+  def max_kernel(
+      inp,
+      out_value,
+      out_index,
+      M,
+      N,
+      BLOCK_M: tl.constexpr,
+      BLOCK_N: tl.constexpr,
+  ):
+  */
+  c10::DeviceGuard guard(out_value.device());
+  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+
+  f(stream,
+    num_blocks,
+    1,
+    1,
+    num_warps,
+    num_stages,
+    permuted_self,
+    out_value,
+    out_index,
+    non_reduction_size,
+    reduction_size,
+    tile_m,
+    tile_n);
+
+  return std::make_tuple(out_value, out_index);
+}
 // max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)
 ::std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self, int64_t dim, bool keepdim) {
   at::DimVector shape = at::meta::get_reduction_shape(self, dim, keepdim, false);

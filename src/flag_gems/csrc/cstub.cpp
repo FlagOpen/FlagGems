@@ -10,6 +10,7 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("max_dim", &flag_gems::max_dim);
   m.def("max", &flag_gems::max);
   m.def("add_tensor", &flag_gems::add_tensor);
+  m.def("max_dim_max", &flag_gems::max_dim_max);
   m.def("rms_norm", &flag_gems::rms_norm);
   m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
   m.def("nonzero", &flag_gems::nonzero);
@@ -30,6 +31,9 @@ TORCH_LIBRARY(flag_gems, m) {
       "zeros(SymInt[] size, ScalarType? dtype=None,Layout? layout=None, Device? device=None, bool? "
       "pin_memory=None) -> Tensor");
   m.def("sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor");
+  m.def(
+      "max.dim_max(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) max, Tensor(b!) max_values) -> "
+      "(Tensor(a!) values, Tensor(b!) indices)");
   m.def("max.dim(Tensor self, int dim, bool keepdim=False) -> (Tensor values, Tensor indices)");
   m.def("max(Tensor self) -> Tensor");
   m.def("add_tensor(Tensor self, Tensor other) -> Tensor", {at::Tag::pt2_compliant_tag});
@@ -69,6 +73,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
 
   m.impl("zeros", TORCH_FN(zeros));
   m.impl("sum.dim_IntList", TORCH_FN(sum_dim));
+  m.impl("max.dim_max", TORCH_FN(max_dim_max));
   m.impl("max.dim", TORCH_FN(max_dim));
   m.impl("max", TORCH_FN(max));
   m.impl("add_tensor", TORCH_FN(add_tensor));
