@@ -196,9 +196,6 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
 
   at::Tensor grad_input = softmax_backward_impl(output_tensor, grad_output_tensor, wrapped_dim);
 
-  if (grad_input.scalar_type() != input_dtype) {
-    grad_input = grad_input.to(input_dtype);
-  }
   return grad_input;
 }
 
