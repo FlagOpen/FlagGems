@@ -55,7 +55,6 @@ else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   FetchContent_Declare(TritonJIT
     GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git
-    # GIT_REPOSITORY git@github.com:AdvancedCompiler/libtriton_jit.git
     # SOURCE_DIR /home/clement/projects/libtorch_example    # use local source dir in development
   )
   FetchContent_MakeAvailable(TritonJIT)
