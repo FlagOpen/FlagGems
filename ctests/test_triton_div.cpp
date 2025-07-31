@@ -78,8 +78,8 @@ TEST(blas_op_test, div_mode) {
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
 
-  auto out_torch = at::div(a, b);
-  auto out_triton = flag_gems::div_mode(a, b);
+  auto out_torch = at::div(a, b, c10::make_optional<std::string>("floor"));
+  auto out_triton = flag_gems::div_mode(a, b, c10::make_optional<std::string>("floor"));
 
   EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-4, 1e-6));
 }
@@ -89,8 +89,8 @@ TEST(blas_op_test, div_mode_) {
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
   torch::Tensor a_inplace = a.clone();
-  auto out_torch = torch::div(a, b);
-  auto out_triton = flag_gems::div_mode(a_inplace, b);
+  auto out_torch = torch::div(a, b, c10::make_optional<std::string>("floor"));
+  auto out_triton = flag_gems::div_mode(a_inplace, b, c10::make_optional<std::string>("floor"));
 
   EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-4, 1e-6));
 }

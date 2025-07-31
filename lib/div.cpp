@@ -286,7 +286,9 @@ at::Tensor floor_div_(at::Tensor& a_, const at::Tensor& b_) {
   return launch_floor_div_kernel_(a_, b_, is_int);
 }
 
-at::Tensor div_mode(const at::Tensor& a_, const at::Tensor& b_, const std::string& rounding_mode) {
+at::Tensor div_mode(const at::Tensor& a_,
+                    const at::Tensor& b_,
+                    const c10::optional<std::string>& rounding_mode) {
   auto res = torch::broadcast_tensors({a_, b_});
   at::Tensor a = res[0].contiguous();
   at::Tensor b = res[1].contiguous();
@@ -296,10 +298,12 @@ at::Tensor div_mode(const at::Tensor& a_, const at::Tensor& b_, const std::strin
 
   std::string kernel_name;
   if (rounding_mode == "floor") {
-    kernel_name = "floor_divide_kernel";
+    kernel_name =
+        c10::isIntegralType(a.scalar_type(), true) ? "int_floordiv_kernel" : "float_floordiv_kernel";
+    ;
   } else if (rounding_mode == "trunc") {
     kernel_name = "trunc_divide_kernel";
-  } else if (rounding_mode.empty() || rounding_mode == "none") {
+  } else if (!rounding_mode.has_value() || rounding_mode.value() == "none") {
     kernel_name = "true_div_kernel";
   } else {
     TORCH_CHECK(false, "div_mode rounding_mode must be 'floor', 'trunc', or empty.");
@@ -322,7 +326,7 @@ at::Tensor div_mode(const at::Tensor& a_, const at::Tensor& b_, const std::strin
   return out;
 }
 
-at::Tensor div_mode_(at::Tensor& a_, const at::Tensor& b_, const std::string& rounding_mode) {
+at::Tensor div_mode_(at::Tensor& a_, const at::Tensor& b_, const c10::optional<std::string>& rounding_mode) {
   at::Tensor a = a_.contiguous();
   at::Tensor b = b_.contiguous();
 
@@ -344,7 +348,7 @@ at::Tensor div_mode_(at::Tensor& a_, const at::Tensor& b_, const std::string& ro
         c10::isIntegralType(a.scalar_type(), true) ? "int_floordiv_kernel_" : "float_floordiv_kernel_";
   } else if (rounding_mode == "trunc") {
     kernel_name = "trunc_divide_kernel_";
-  } else if (rounding_mode.empty() || rounding_mode == "none") {
+  } else if (!rounding_mode.has_value() || rounding_mode.value() == "none") {
     kernel_name = "true_div_kernel_";
   } else {
     TORCH_CHECK(false, "div_mode_: invalid rounding_mode");
