@@ -26,7 +26,7 @@ at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
       TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
                                      "sum_kernel_1");
   const TritonJITFunction &sum_kernel_2 =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
                                      "sum_kernel_2");
   const int num_warps = 8;
   const int num_stages = 2;
