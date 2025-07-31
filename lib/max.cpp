@@ -122,7 +122,7 @@ using namespace triton_jit;
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
-  f(stream,
+  f(raw_stream,
     num_blocks,
     1,
     1,
