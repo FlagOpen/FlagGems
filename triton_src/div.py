@@ -108,9 +108,10 @@ def float_floordiv_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < M * N
+    col = offsets % N
 
     a = tl.load(a_ptr + offsets, mask=mask)
-    b = tl.load(b_ptr + offsets, mask=mask)
+    b = tl.load(b_ptr + col, mask=mask)
 
     div = a / b
     q = tl.math.floor(div)
@@ -120,7 +121,7 @@ def float_floordiv_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
     fix = (diff < -threshold) & ((a < 0) != (b < 0))
     q = tl.where(fix, q - 1.0, q)
 
-    q = tl.where(b == 0.0, 0.0, q)
+    q = tl.where(b == 0.0, div, q)
     tl.store(c_ptr + offsets, q, mask=mask)
 
 

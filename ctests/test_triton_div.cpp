@@ -88,11 +88,12 @@ TEST(blas_op_test, div_mode_) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({64, 64}, device);
   torch::Tensor b = torch::randn({1, 64}, device).clamp_min(1e-3);
-  torch::Tensor a_inplace = a.clone();
-  auto out_torch = torch::div(a, b, c10::make_optional<std::string>("floor"));
-  auto out_triton = flag_gems::div_mode(a_inplace, b, c10::make_optional<std::string>("floor"));
+  torch::Tensor torch_out = a.clone();
+  torch_out.div_(b, c10::make_optional<std::string>("floor"));
+  torch::Tensor triton_out = a.clone();
+  flag_gems::div_mode_(triton_out, b, c10::make_optional<std::string>("floor"));
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-4, 1e-6));
+  EXPECT_TRUE(torch::allclose(torch_out, triton_out, 1e-4, 1e-6));
 }
 
 TEST(blas_op_test, remainder) {
