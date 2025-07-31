@@ -11,41 +11,12 @@
 #include "ATen/native/ReduceOpsUtils.h"
 #include "c10/util/DimVector.h"
 
-namespace {
-std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
-    const at::Tensor &tensor, at::OptionalIntArrayRef reduction_axes_opt) {
-  int64_t dim = tensor.dim();
-  c10::DimVector reduction_axes;
-
-  if (reduction_axes_opt.has_value()) {
-    reduction_axes = reduction_axes_opt.value().vec();
-  }
-
-  std::unordered_set<int64_t> reduction_set(reduction_axes.begin(), reduction_axes.end());
-
-  c10::DimVector left_axes, right_axes;
-  int64_t non_reduction_size = 1, reduction_size = 1;
-
-  for (int64_t i = 0; i < dim; ++i) {
-    if (reduction_set.count(i)) {
-      right_axes.push_back(i);
-      reduction_size *= tensor.size(i);
-    } else {
-      left_axes.push_back(i);
-      non_reduction_size *= tensor.size(i);
-    }
-  }
-
-  // Concatenate left and right axes to form the new permutation order
-  c10::DimVector permute_order = left_axes;
-  permute_order.insert(permute_order.end(), right_axes.begin(), right_axes.end());
-
-  return {tensor.permute(permute_order), non_reduction_size, reduction_size};
-}
-}  // anonymous namespace
-
 namespace flag_gems {
 using namespace triton_jit;
+// sum(Tensor self, *, ScalarType? dtype=None) -> Tensor
+at::Tensor sum_dim(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
+}
+
 // signature
 // sum.dim_IntList(Tensor self, int[1]? dim, bool keepdim=False, *, ScalarType?
 // dtype=None) -> Tensor
@@ -59,7 +30,7 @@ at::Tensor sum_dim(const at::Tensor &self,
   c10::ScalarType out_dtype = at::native::get_dtype_from_self(self, dtype, true);
   at::Tensor out = at::empty(shape, self.options());
 
-  auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dims_);
+  auto [permuted_self, non_reduction_size, reduction_size] = utils::permute_reduction_axes_right(self, dims_);
   permuted_self = permuted_self.contiguous();
 
   /* signature to remind yourself
@@ -74,7 +45,8 @@ at::Tensor sum_dim(const at::Tensor &self,
   ):
   */
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "sum.py"), "sum_kernel");
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                     "sum_kernel");
 
   // add utility to build this automatically
   int64_t tile_m = 4;

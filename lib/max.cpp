@@ -11,35 +11,6 @@
 #include "ATen/native/ReduceOpsUtils.h"
 #include "c10/util/DimVector.h"
 
-namespace {
-std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(const at::Tensor &tensor,
-                                                                      int reduction_axis) {
-  int64_t dim = tensor.dim();
-  c10::DimVector left_axes, right_axes;
-  int64_t non_reduction_size = 1, reduction_size = 1;
-
-  for (int64_t i = 0; i < dim; ++i) {
-    if (i == reduction_axis) {
-      right_axes.push_back(i);
-      reduction_size *= tensor.size(i);
-    } else {
-      left_axes.push_back(i);
-      non_reduction_size *= tensor.size(i);
-    }
-  }
-  c10::DimVector permute_order = left_axes;
-  permute_order.insert(permute_order.end(), right_axes.begin(), right_axes.end());
-
-  return {tensor.permute(permute_order), non_reduction_size, reduction_size};
-}
-int next_power_of_2(int x) {
-  return (1 << (32 - __builtin_clz(x - 1)));
-}
-int cdiv(int a, int b) {
-  return (a + b - 1) / b;
-}
-}  // anonymous namespace
-
 namespace flag_gems {
 using namespace triton_jit;
 // max.dim_max(Tensor self, int dim, bool keepdim=False, *, Tensor(a!) max, Tensor(b!) max_values) ->
@@ -97,7 +68,7 @@ using namespace triton_jit;
   at::Tensor out_value = at::empty(shape, self.options());
   at::Tensor out_index = at::empty(shape, self.options().dtype(at::kLong));
 
-  auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dim);
+  auto [permuted_self, non_reduction_size, reduction_size] = utils::permute_reduction_axes_right(self, dim);
   permuted_self = permuted_self.contiguous();
   const TritonJITFunction &f =
       TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
@@ -142,9 +113,9 @@ using namespace triton_jit;
 at::Tensor max(const at::Tensor &self) {
   TORCH_CHECK(self.is_contiguous(), "Input tensor must be contiguous");
   int64_t M = self.numel();
-  int64_t block_size = 1 << static_cast<int>(std::ceil(std::log2(std::sqrt(M))));
-  int64_t mid_size = (M + block_size - 1) / block_size;
-  int64_t block_mid = 1 << static_cast<int>(std::ceil(std::log2(mid_size)));
+  int64_t block_size = utils::next_power_of_2(static_cast<int>(std::ceil(std::sqrt(M))));
+  int64_t mid_size = utils::cdiv(M, block_size);
+  int64_t block_mid = utils::next_power_of_2(mid_size);
 
   at::Tensor mid = torch::empty({mid_size}, self.options());
   at::Tensor out = torch::empty({}, self.options());
@@ -155,9 +126,6 @@ at::Tensor max(const at::Tensor &self) {
   const TritonJITFunction &max_kernel_2 =
       TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
                                      "max_kernel_2");
-  block_size = next_power_of_2(static_cast<int>(std::ceil(std::sqrt(M))));
-  mid_size = cdiv(M, block_size);
-  block_mid = next_power_of_2(mid_size);
   const int num_warps = 8;
   const int num_stages = 2;
   c10::DeviceGuard guard(out.device());
