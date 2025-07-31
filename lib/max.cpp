@@ -20,7 +20,7 @@ using namespace triton_jit;
                                                  bool keepdim,
                                                  const at::Tensor out_value,
                                                  const at::Tensor out_index) {
-  auto [permuted_self, non_reduction_size, reduction_size] = permute_reduction_axes_right(self, dim);
+  auto [permuted_self, non_reduction_size, reduction_size] = utils::permute_reduction_axes_right(self, dim);
   // set_output(out_value,out_index);
   permuted_self = permuted_self.contiguous();
   const TritonJITFunction &f =

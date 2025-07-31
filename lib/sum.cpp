@@ -15,6 +15,27 @@ namespace flag_gems {
 using namespace triton_jit;
 // sum(Tensor self, *, ScalarType? dtype=None) -> Tensor
 at::Tensor sum_dim(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
+  TORCH_CHECK(self.is_contiguous(), "Input tensor must be contiguous");
+  int64_t M = self.numel();
+  int64_t block_size = utils::next_power_of_2(static_cast<int>(std::ceil(std::sqrt(M))));
+  int64_t mid_size = utils::cdiv(M, block_size);
+  int64_t block_mid = utils::next_power_of_2(mid_size);
+  at::Tensor mid = torch::empty({mid_size}, self.options());
+  at::Tensor out = torch::empty({}, self.options());
+  const TritonJITFunction &sum_kernel_1 =
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                     "sum_kernel_1");
+  const TritonJITFunction &sum_kernel_2 =
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
+                                     "sum_kernel_2");
+  const int num_warps = 8;
+  const int num_stages = 2;
+  c10::DeviceGuard guard(out.device());
+  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+  sum_kernel_1(raw_stream, mid_size, 1, 1, num_warps, num_stages, self, mid, M, block_size);
+  sum_kernel_2(raw_stream, 1, 1, 1, num_warps, num_stages, mid, out, mid_size, block_mid);
+  return out;
 }
 
 // signature
