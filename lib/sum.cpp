@@ -14,7 +14,7 @@
 namespace flag_gems {
 using namespace triton_jit;
 // sum(Tensor self, *, ScalarType? dtype=None) -> Tensor
-at::Tensor sum_dim(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
+at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
   TORCH_CHECK(self.is_contiguous(), "Input tensor must be contiguous");
   int64_t M = self.numel();
   int64_t block_size = utils::next_power_of_2(static_cast<int>(std::ceil(std::sqrt(M))));

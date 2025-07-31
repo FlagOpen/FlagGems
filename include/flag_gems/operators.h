@@ -14,7 +14,7 @@ at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim = false,
                    ::std::optional<at::ScalarType> dtype = ::std::nullopt);
-at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype);
+at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype = ::std::nullopt);
 std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self, int64_t dim, bool keepdim);
 std::tuple<at::Tensor, at::Tensor> max_dim_max(const at::Tensor &self,
                                                int64_t dim,
