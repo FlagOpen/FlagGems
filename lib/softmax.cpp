@@ -103,6 +103,9 @@ namespace {
 
   at::Tensor softmax_backward_impl(const at::Tensor &output, const at::Tensor &grad_output, int dim) {
     int wrapped_dim = at::maybe_wrap_dim(dim, output.dim());
+
+    at::Tensor grad_output_contiguous = grad_output.contiguous();
+    
     at::Tensor grad_input = at::empty_like(grad_output, grad_output.options());
 
     int64_t M, N, K;
@@ -189,13 +192,13 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
 
   at::Tensor output_tensor = output;
   at::Tensor grad_output_tensor = grad_output;
-  if (input_dtype == at::kHalf) {
-    output_tensor = output.to(at::kFloat);
-    grad_output_tensor = grad_output.to(at::kFloat);
-  }
 
   at::Tensor grad_input = softmax_backward_impl(output_tensor, grad_output_tensor, wrapped_dim);
 
+  if (grad_input.scalar_type() != input_dtype) {
+    grad_input = grad_input.to(input_dtype);
+  }
+  
   return grad_input;
 }
 
