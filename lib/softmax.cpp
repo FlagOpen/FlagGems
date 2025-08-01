@@ -1,9 +1,9 @@
+#include <ATen/WrapDimUtils.h>
 #include <iostream>
 #include "c10/cuda/CUDAStream.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "triton_jit/triton_jit_function.h"
-
 namespace flag_gems {
 using namespace triton_jit;
 
@@ -28,13 +28,10 @@ namespace {
   at::Tensor softmax_forward(const at::Tensor &input, int dim) {
     TORCH_CHECK(input.dim() >= 2, "Softmax input must be at least 2D");
 
-    int real_dim = dim >= 0 ? dim : dim + input.dim();
-    TORCH_CHECK(real_dim >= 0 && real_dim < input.dim(), "Softmax dim out of range");
-
     at::Tensor output = at::empty_like(input, input.options());
 
     int64_t M, N, K;
-    compute_mnk(input, real_dim, M, N, K);
+    compute_mnk(input, dim, M, N, K);
 
     constexpr unsigned int TILE_N = 128;
     constexpr unsigned int TILE_K = 1;
@@ -102,15 +99,13 @@ namespace {
   }
 
   at::Tensor softmax_backward_impl(const at::Tensor &output, const at::Tensor &grad_output, int dim) {
-    int wrapped_dim = at::maybe_wrap_dim(dim, output.dim());
-
     at::Tensor grad_output_contiguous = grad_output.contiguous();
-    
+
     at::Tensor grad_input = at::empty_like(grad_output, grad_output.options());
 
     int64_t M, N, K;
     int64_t stride_m, stride_n, stride_k;
-    compute_mnk_for_backward(output, wrapped_dim, M, N, K, stride_m, stride_n, stride_k);
+    compute_mnk_for_backward(output, dim, M, N, K, stride_m, stride_n, stride_k);
 
     constexpr unsigned int TILE_N = 128;
     constexpr unsigned int TILE_K = 1;
@@ -170,16 +165,14 @@ namespace {
 
 // Public API
 at::Tensor softmax(const at::Tensor &input, int64_t dim, bool half_to_float) {
-  int64_t ndim = input.dim();
-  if (dim < 0) dim += ndim;
-  TORCH_CHECK(dim >= 0 && dim < ndim, "softmax dim out of range");
+  int64_t dim_ = at::maybe_wrap_dim(dim, input.dim());
 
   at::Tensor input_tensor = input;
   if (half_to_float && input.scalar_type() == at::kHalf) {
     input_tensor = input_tensor.to(at::kFloat);
   }
 
-  at::Tensor output = softmax_forward(input_tensor, static_cast<int>(dim));
+  at::Tensor output = softmax_forward(input_tensor, static_cast<int>(dim_));
 
   return output;
 }
@@ -198,7 +191,7 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
   if (grad_input.scalar_type() != input_dtype) {
     grad_input = grad_input.to(input_dtype);
   }
-  
+
   return grad_input;
 }
 
