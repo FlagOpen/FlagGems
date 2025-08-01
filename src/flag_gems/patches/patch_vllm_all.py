@@ -275,6 +275,14 @@ def custom_sliu_and_mul(out: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
     return flag_gems.silu_and_mul_out(x, y, out)
 
 
+silu_and_mul_overload = torch._ops.OpOverloadPacket(
+    qualified_op_name="_C::silu_and_mul",
+    op_name="silu_and_mul",
+    op=custom_sliu_and_mul,
+    overload_names=[""],
+)
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
@@ -301,4 +309,4 @@ def apply_gems_patches_to_vllm(verbose=True):
     patch_module_method(
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
     )
-    patch_module_method(torch.ops._C, "silu_and_mul", custom_sliu_and_mul, verbose)
+    patch_module_method(torch.ops._C, "silu_and_mul", silu_and_mul_overload, verbose)
