@@ -5,7 +5,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES
+from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, to_reference
 
 device = flag_gems.device
 
@@ -15,6 +15,9 @@ device = flag_gems.device
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_normal(float, shape, dtype):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     loc = (
         3.0
         if float == "mean"
@@ -31,8 +34,9 @@ def test_accuracy_normal(float, shape, dtype):
     )
     with flag_gems.use_gems():
         res_out = torch.normal(loc, scale)
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
     assert torch.abs(mean - 3.0) < 0.1
     assert torch.abs(std - 10.0) < 0.1
 

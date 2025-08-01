@@ -4,9 +4,8 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
@@ -92,7 +91,7 @@ def test_isin_perf():
         input_fn=isin_input_fn,
         op_name="isin",
         torch_op=torch.isin,
-        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
+        dtypes=INT_DTYPES,
     )
     bench.run()
 
@@ -108,7 +107,7 @@ def test_perf_unique():
         input_fn=unique_input_fn,
         op_name="unique",
         torch_op=torch.unique,
-        dtypes=[torch.int32] if vendor_name == "cambricon" else INT_DTYPES,
+        dtypes=INT_DTYPES,
     )
     bench.run()
 
@@ -118,7 +117,7 @@ def test_perf_unique():
 def test_perf_sort():
     class SortBenchmark(GenericBenchmark2DOnly):
         def set_more_shapes(self):
-            return [(1024, 1), (1024, 512)]
+            return [(1024, 1), (1024, 512), (16, 128 * 1024), (8, 256 * 1024)]
 
     def sort_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -203,6 +202,30 @@ def test_perf_embedding():
             torch.float32,
             torch.float16,
         ],  # Note(Zhengzekang): triton do not support bfloat16 atomic add which is used in embedding grad.
+    )
+    bench.run()
+
+
+class LerpBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+@pytest.mark.lerp
+def test_perf_lerp():
+    def lerp_input_fn(shape, dtype, device):
+        input = torch.randn(*shape, device=device, dtype=dtype)
+        end = input + 10
+        weight = torch.randn(*shape, device=device, dtype=dtype)
+        yield {"input": input, "end": end, "weight": weight},
+
+    bench = LerpBenchmark(
+        input_fn=lerp_input_fn,
+        op_name="lerp",
+        torch_op=torch.lerp,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
 
@@ -354,7 +377,7 @@ def test_perf_diag_embed():
 
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
-@pytest.mark.diagonal_backward
+@pytest.mark.diagonal
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):
         inp = generate_tensor_input(shape, dtype, device)
@@ -365,7 +388,7 @@ def test_perf_diagonal_backward():
 
     bench = GenericBenchmarkExcluse1D(
         input_fn=diagonal_backward_input_fn,
-        op_name="diagonal_backward",
+        op_name="diagonal",
         torch_op=torch.diagonal,
         dtypes=FLOAT_DTYPES,
         is_backward=True,
@@ -376,6 +399,7 @@ def test_perf_diagonal_backward():
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
 def test_perf_kron():
     class KronBenchmark(GenericBenchmark2DOnly):
@@ -404,8 +428,8 @@ def test_perf_contiguous():
             inp = torch.randn(shape, dtype=dtype, device=device)
         else:
             inp = torch.randint(
-                low=-10000, high=10000, size=shape, dtype=dtype, device=device
-            )
+                low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
+            ).to(device)
         inp = inp[::2]
         yield inp,
 

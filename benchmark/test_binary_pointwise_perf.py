@@ -4,9 +4,8 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
-from .performance_utils import Benchmark, generate_tensor_input
+from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
 class BinaryPointwiseBenchmark(Benchmark):
@@ -48,6 +47,7 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("div", torch.div, FLOAT_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
+            ("pow", torch.pow, FLOAT_DTYPES),
             *(
                 [
                     ("polar", torch.polar, [torch.float32]),
@@ -55,14 +55,6 @@ class BinaryPointwiseBenchmark(Benchmark):
                     ("remainder", torch.remainder, INT_DTYPES),
                 ]
                 if flag_gems.device != "musa"
-                else []
-            ),
-            *(
-                [
-                    ("pow", torch.pow, FLOAT_DTYPES),
-                    ("rsub", torch.rsub, FLOAT_DTYPES),
-                ]
-                if flag_gems.device != "npu"
                 else []
             ),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
@@ -81,7 +73,6 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
-            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),

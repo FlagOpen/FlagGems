@@ -1,13 +1,16 @@
-import torch
 import triton
 
 
+def simple_elementwise_blocksize_heur(args):
+    return 1024
+
+
 def argmax_heur_block_m(args):
-    return 4 if args["M"] < 4096 else 8
+    return 16
 
 
 def argmax_heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
+    return 100
 
 
 def argmin_heur_block_m(args):
@@ -34,7 +37,7 @@ def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
     else:
-        return 1024
+        return 4096
 
 
 def dropout_heur_num_warps(args):
@@ -116,10 +119,11 @@ def randn_heur_num_warps(args):
 
 
 def softmax_heur_tile_k(args):
-    MAX_TILE_K = 8192
-    NUM_SMS = torch.cuda.get_device_properties(
-        torch.cuda.current_device()
-    ).multi_processor_count
+    MAX_TILE_K = 4096
+    # FIXME:
+    # NUM_SMS should be obtained by API.
+    # It is actually the number of AIV cores which depends on the Ascend version.
+    NUM_SMS = 40
     tile_k = 1
     upper_bound = min(args["K"], MAX_TILE_K)
     while tile_k <= upper_bound:
@@ -133,7 +137,7 @@ def softmax_heur_tile_k(args):
 
 
 def softmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(8192, args["TILE_K"])
+    return triton.cdiv(1024, args["TILE_K"])
 
 
 def softmax_heur_one_tile_per_cta(args):
@@ -301,5 +305,9 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "elementwise_generic": {
+        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
+        "num_warps": lambda args: 8,
     },
 }

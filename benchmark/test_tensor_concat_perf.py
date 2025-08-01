@@ -3,8 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
@@ -197,7 +197,6 @@ def repeat_interleave_tensor_input_fn(shape, dtype, device):
 def test_tensor_repeat_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin" and op_name in [
         "repeat_interleave_self_tensor",
-        "repeat_interleave_tensor",
     ]:
         pytest.skip("RUNTIME TODOFIX")
     bench = TensorRepeatBenchmark(

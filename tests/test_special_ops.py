@@ -1,5 +1,6 @@
 import itertools
 import random
+import time
 from typing import Optional
 
 import numpy as np
@@ -26,12 +27,13 @@ from .accuracy_utils import (
 )
 from .conftest import TO_CPU
 
+# Make sure every thread has same seed.
+random.seed(time.time() // 100)
+
 device = flag_gems.device
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "ascend", reason="TODO")
 @pytest.mark.dropout
-@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -78,7 +80,6 @@ def test_accuracy_dropout(shape, p, dtype):
 
 
 @pytest.mark.dropout
-@pytest.mark.native_dropout
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("p", [0.3, 0.6, 0.9])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -204,7 +205,6 @@ def test_apply_rotary_pos_emb(
         position_ids=ref_position_ids if has_pos_id else None,
         rotary_interleaved=rotary_interleaved,
     )
-
     q_embed_out, k_embed_out = flag_gems.apply_rotary_pos_emb(
         q=q,
         k=k,
@@ -444,6 +444,9 @@ def test_accuracy_unique(shape, dtype, sorted, return_inverse, return_counts):
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize("n_samples", [1000])
 def test_accuracy_multinomial_with_replacement(shape, dtype, n_samples):
+    if flag_gems.vendor_name == "cambricon":
+        torch.manual_seed(42)
+        torch.mlu.manual_seed_all(42)
     if shape[-1] == 1:
         dist = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
         with flag_gems.use_gems():
@@ -483,7 +486,6 @@ def test_accuracy_multinomial_without_replacement(pool, dtype):
 
 @pytest.mark.pad
 @pytest.mark.parametrize("shape", [[1024, 1024], [64, 64, 64, 64]])
-# @pytest.mark.parametrize("dtype", [torch.float32] if TO_CPU else FLOAT_DTYPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("pad_mode", ["constant", "reflect", "replicate", "circular"])
 @pytest.mark.parametrize("contiguous", [True, False])
@@ -528,7 +530,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
-@pytest.mark.upsample_bicubic2d_aa
+@pytest.mark.upsample
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
 @pytest.mark.parametrize(
@@ -566,7 +568,7 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
-@pytest.mark.upsample_nearest2d
+@pytest.mark.upsample
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1086,8 +1088,9 @@ def get_diagonal_backward_shape_and_dims():
     return result
 
 
+@pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="MUSA error: unknown error")
-@pytest.mark.diagonal_backward
+@pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1113,44 +1116,35 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
-@pytest.mark.parametrize("hiddensize", [1, 256, 2048, 9333, 65536])
+@pytest.mark.parametrize(
+    "hiddensize", [1, 256, 2048, 9333, 65536, 32768, 128 * 1024, 256 * 1024]
+)
 @pytest.mark.parametrize("descending", [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 @pytest.mark.parametrize("dim", [0, -1])
 def test_sort(batch_size, hiddensize, descending, dtype, dim):
-    if dtype in FLOAT_DTYPES:
-        x = torch.empty((hiddensize,), dtype=dtype, device=flag_gems.device)
-        tmp = torch.tensor(0, dtype=dtype)
-        inf = torch.tensor(float("inf"), dtype=dtype)
-        for i in range(0, hiddensize):
-            x[i] = tmp.item()
-            tmp = torch.nextafter(tmp, inf)
-            if tmp.item() == inf.item():
-                hiddensize = i
-                x = x[:hiddensize]
-                break
+    if dtype in BOOL_TYPES:
+        y = torch.randint(
+            0, 2, (batch_size, hiddensize), dtype=dtype, device=flag_gems.device
+        )
+    elif dtype in ALL_INT_DTYPES:
+        min_v, max_v = torch.iinfo(dtype).min, torch.iinfo(dtype).max
+        y = torch.randint(
+            min_v, max_v, (batch_size, hiddensize), dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     else:
-        if flag_gems.device == "musa" and dtype == torch.int16:
-            # arange short type on torch of mthreads not supported yet.
-            x = torch.arange(hiddensize, dtype=torch.int32, device=flag_gems.device).to(
-                dtype
-            )
-        else:
-            x = torch.arange(hiddensize, dtype=dtype, device=flag_gems.device)
-    y = torch.empty((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
+        y = torch.randn((batch_size, hiddensize), dtype=dtype, device=flag_gems.device)
 
-    # Each row use different shuffled index.
-    col_indices = torch.randperm(x.size(0))
-    for bsz in range(batch_size):
-        col_indices = torch.randperm(x.size(0))
-        y[bsz, :] = x[col_indices]
-    if dim == 0:
-        y = torch.movedim(y, dim, -1)
     ref_y = to_reference(y)
-    ref_value, ref_index = torch.sort(ref_y, dim=dim, descending=descending)
+    # we only implement stable sort, non-stable sort is undefined
+    ref_value, ref_index = torch.sort(
+        ref_y, dim=dim, stable=True, descending=descending
+    )
 
     with flag_gems.use_gems():
-        res_value, res_index = torch.sort(y, dim=dim, descending=descending)
+        res_value, res_index = torch.sort(
+            y, dim=dim, stable=True, descending=descending
+        )
 
     gems_assert_close(res_value, ref_value, dtype)
     gems_assert_equal(res_index, ref_index)
@@ -1163,11 +1157,11 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
 def test_accuracy_kron(shape, dtype):
     if dtype in INT_DTYPES:
         inp1 = torch.randint(
-            low=-10, high=10, size=shape[0], dtype=dtype, device=flag_gems.device
-        )
+            low=-10, high=10, size=shape[0], dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
         inp2 = torch.randint(
-            low=-10, high=10, size=shape[1], dtype=dtype, device=flag_gems.device
-        )
+            low=-10, high=10, size=shape[1], dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
     elif dtype in FLOAT_DTYPES:
         inp1 = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(shape[1], dtype=dtype, device=flag_gems.device)
@@ -1200,8 +1194,9 @@ def test_accuracy_contiguous(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     else:
         inp = torch.randint(
-            low=-10000, high=10000, size=shape, dtype=dtype, device=flag_gems.device
-        )
+            low=-10000, high=10000, size=shape, dtype=dtype, device="cpu"
+        ).to(flag_gems.device)
+
     inp = inp[::2]
     assert inp.is_contiguous() is False
 

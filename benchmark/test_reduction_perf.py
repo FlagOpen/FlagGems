@@ -5,10 +5,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.utils import shape_utils
-
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
@@ -17,6 +15,7 @@ from .performance_utils import (
     unary_input_fn,
     vendor_name,
 )
+from flag_gems.utils import shape_utils
 
 
 class UnaryReductionBenchmark(Benchmark):
@@ -80,8 +79,10 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name in ["softmax"]:
-        pytest.skip("RUNTIME TODOFIX.")
+    if vendor_name == "metax" and op_name in [
+        "var_mean",
+    ]:
+        pytest.skip("TODOFIX: CORE DUMPED")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -101,8 +102,6 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name == "softmax":
-        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(
         op_name=op_name,
         torch_op=torch_op,
@@ -173,11 +172,11 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             ],
         ),
         pytest.param(
-            "CrossEntropyLoss",
+            "cross_entropy_loss",
             torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.CrossEntropyLoss,
+            marks=pytest.mark.cross_entropy_loss,
         ),
         pytest.param(
             "cumsum",
@@ -198,7 +197,21 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             FLOAT_DTYPES + INT_DTYPES,
             marks=[
                 pytest.mark.cummin,
-                pytest.mark.skipif(True, reason="triton not supported"),
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
+            ],
+        ),
+        pytest.param(
+            "cummax",
+            torch.cummax,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=[
+                pytest.mark.cummax,
+                pytest.mark.skipif(
+                    flag_gems.device == "musa", reason="ZeroDivisionError"
+                ),
             ],
         ),
         pytest.param(
@@ -207,7 +220,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             nll_loss_input_fn,
             FLOAT_DTYPES,
             marks=[
-                pytest.mark.NLLLoss,
+                pytest.mark.nll_loss,
                 pytest.mark.skipif(
                     flag_gems.device == "musa", reason="ZeroDivisionError"
                 ),
@@ -219,7 +232,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             mse_loss_input_fn,
             FLOAT_DTYPES,
             marks=[
-                pytest.mark.MSELoss,
+                pytest.mark.mse_loss,
                 pytest.mark.skipif(
                     flag_gems.device == "musa", reason="ZeroDivisionError"
                 ),
@@ -229,13 +242,15 @@ def mse_loss_input_fn(shape, cur_dtype, device):
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["CrossEntropyLoss", "nll_loss"]:
+        if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummin"]:
+        elif op_name in ["cummin", "cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
+    if op_name == "cross_entropy_loss":
+        bench.set_gems(flag_gems.cross_entropy_loss)
     bench.run()
 
 

@@ -1,13 +1,14 @@
 import pytest
 import torch
 
-from .attri_util import FLOAT_DTYPES, INT_DTYPES
-from .conftest import BenchLevel, Config
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES, INT_DTYPES
+from benchmark.conftest import BenchLevel, Config
+from benchmark.performance_utils import (
     GenericBenchmark,
     GenericBenchmarkExcluse1D,
     generate_tensor_input,
     unary_input_fn,
+    vendor_name,
 )
 
 
@@ -47,6 +48,11 @@ def clamp_input_fn(shape, cur_dtype, device):
         yield inp1, None, 3.14
 
 
+def threshold_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    yield inp1, 3.14, 2.71
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
@@ -74,9 +80,19 @@ def clamp_input_fn(shape, cur_dtype, device):
         pytest.param(
             "where", torch.where, where_input_fn, FLOAT_DTYPES, marks=pytest.mark.where
         ),
+        pytest.param(
+            "threshold",
+            torch.nn.functional.threshold,
+            threshold_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.threshold,
+        ),
     ],
 )
 def test_generic_pointwise_benchmark(op_name, torch_op, input_fn, dtypes):
+    if vendor_name == "kunlunxin":
+        if op_name in ["threshold"]:
+            pytest.skip("TODOFIX")
     bench = GenericBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
