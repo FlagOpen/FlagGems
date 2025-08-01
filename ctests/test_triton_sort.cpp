@@ -165,3 +165,14 @@ TEST(TensorSortTest, LargeTensor) {
   torch::Tensor diff = values_custom.diff();
   EXPECT_GE(diff.min().item<float>(), 0);
 }
+
+TEST(TensorSortStableTest, Basic1DAscending) {
+  const torch::Device device(torch::kCUDA, 0);
+  torch::Tensor input = torch::tensor({5.0, 3.0, 1.0, 4.0, 2.0}, device);
+  auto [values_ref, indices_ref] = torch::sort(input, false);
+  auto [values_custom, indices_custom] = flag_gems::sort_stable(input, false);
+  EXPECT_TRUE(torch::equal(values_ref, values_custom));
+  EXPECT_TRUE(torch::equal(indices_ref, indices_custom));
+  torch::Tensor expected = torch::tensor({1.0, 2.0, 3.0, 4.0, 5.0}, device);
+  EXPECT_TRUE(torch::equal(values_custom, expected));
+}

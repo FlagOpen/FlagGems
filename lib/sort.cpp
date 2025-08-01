@@ -120,7 +120,7 @@ std::tuple<at::Tensor, at::Tensor> radix_sort(const at::Tensor& arr, int64_t k_b
   return std::make_tuple(arr_in, indices_in);
 }
 
-std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor& inp, int64_t dim, bool descending) {
+std::tuple<at::Tensor, at::Tensor> sort_stable(const at::Tensor& inp,  c10::optional<bool> stable, int64_t dim, bool descending){
   if (inp.numel() == 0) {
     at::Tensor empty_out = at::empty_like(inp);
     at::Tensor empty_idx = at::empty_like(inp, at::TensorOptions().dtype(torch::kInt64));
@@ -149,6 +149,10 @@ std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor& inp, int64_t dim, bool
   }
 
   return std::make_tuple(out, out_index);
+}
+
+std::tuple<at::Tensor, at::Tensor> sort(const at::Tensor& inp, int64_t dim, bool descending) {
+  return sort_stable(inp, false, dim, descending);
 }
 
 }  // namespace flag_gems

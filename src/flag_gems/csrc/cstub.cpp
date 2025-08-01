@@ -17,8 +17,6 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
-  // sort
-  m.def("sort", &flag_gems::sort);
 }
 
 namespace flag_gems {
@@ -58,6 +56,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("argmax(Tensor self, int? dim=None, bool keepdim=False) -> Tensor");
   // sort
   m.def("sort(Tensor self, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)");
+  m.def("sort.stable(Tensor self, *, bool? stable, int dim=-1, bool descending=False) -> (Tensor values, Tensor indices)");
 
   m.def("fill.Scalar(Tensor self, Scalar value) -> Tensor");
   m.def("fill.Tensor(Tensor self, Tensor value) -> Tensor");
@@ -92,6 +91,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("argmax", TORCH_FN(argmax));
   // sort
   m.impl("sort", TORCH_FN(sort));
+  m.impl("sort.stable", TORCH_FN(sort_stable));
 
   m.impl("fill.Scalar", TORCH_FN(fill_scalar));
   m.impl("fill.Tensor", TORCH_FN(fill_tensor));
