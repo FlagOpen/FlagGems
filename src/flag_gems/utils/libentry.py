@@ -78,11 +78,11 @@ class LibCache:
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
         cache_file_name = (
-            f"TunedConfig_{torch.cuda.get_device_name()}_triton_{major_version}_{minor_version}.db"
+            f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
             if vendor_module.vendor_info.vendor_name == "nvidia"
             else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
         )
-        cache_file_name = cache_file_name.replace(" ", "_")
+
         self.cache_path = config_cache_dir() / cache_file_name
         self.preload()
         weakref.finalize(self, self.store)
