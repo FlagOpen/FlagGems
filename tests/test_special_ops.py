@@ -11,6 +11,7 @@ import flag_gems
 
 from .accuracy_utils import (
     ALL_INT_DTYPES,
+    ARANGE_START,
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
@@ -583,7 +584,7 @@ def test_upsample_nearest2d(dtype, shape, scale):
 
 
 @pytest.mark.arange
-@pytest.mark.parametrize("start", [0, 1, 3])
+@pytest.mark.parametrize("start", ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
