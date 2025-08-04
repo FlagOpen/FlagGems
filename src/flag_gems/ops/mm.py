@@ -1,10 +1,10 @@
 import logging
+from typing import List
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
@@ -18,11 +18,47 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+def build_config_space():
+    return [
+        triton.Config(
+            {"BLOCK_M": block_m, "BLOCK_N": block_n, "BLOCK_K": block_k},
+            num_stages=num_stages,
+            num_warps=num_warps,
+        )
+        for block_m in map(lambda i: 2**i, range(4, 11))
+        for block_n in map(lambda i: 2**i, range(4, 11))
+        for block_k in map(lambda i: 2**i, range(4, 11))
+        for num_stages in range(1, 6)
+        for num_warps in map(lambda i: 2**i, range(1, 4))
+    ]
+
+
+def early_config_prune(
+    configs: List[triton.Config], named_args, **kwargs
+) -> List[triton.Config]:
+    device = triton.runtime.driver.active.get_current_device()
+    shared_mem: int = triton.runtime.driver.active.utils.get_device_properties(device)[
+        "max_shared_mem"
+    ]
+    return [
+        config
+        for config in configs
+        if (
+            config.kwargs["BLOCK_M"] * config.kwargs["BLOCK_N"]
+            + config.kwargs["BLOCK_M"] * config.kwargs["BLOCK_K"]
+            + config.kwargs["BLOCK_N"] * config.kwargs["BLOCK_K"]
+        )
+        * config.num_stages
+        < shared_mem
+    ]
+
+
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("mm"),
+    configs=build_config_space(),
     key=["M", "N", "K"],
-    strategy=["log", "log", "log"],
+    strategy=["default", "default", "default"],
+    prune_configs_by={"early_config_prune": early_config_prune},
 )
 @triton.jit
 def mm_kernel(
