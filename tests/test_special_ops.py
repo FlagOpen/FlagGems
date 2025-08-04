@@ -592,10 +592,8 @@ def test_upsample_nearest2d(dtype, shape, scale):
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.
 def test_arange(start, step, end, dtype, device, pin_memory):
-    if TO_CPU:
-        return
     ref_out = torch.arange(
-        start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
+        start, end, step, dtype=dtype, device="cpu" if TO_CPU else device, pin_memory=pin_memory
     )
     with flag_gems.use_gems():
         res_out = torch.arange(
@@ -613,15 +611,13 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 @pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize("pin_memory", [False, None])
 def test_linspace(start, end, steps, dtype, device, pin_memory):
-    if TO_CPU:
-        return
     ref_out = torch.linspace(
         start,
         end,
         steps,
         dtype=dtype,
         layout=None,
-        device=device,
+        device="cpu" if TO_CPU else device,
         pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
