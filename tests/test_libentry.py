@@ -494,6 +494,6 @@ def test_libcache_concurrent_write_on_signal():
                 p.kill()
         if cache_path.exists():
             try:
-                cache_path.unlink()  # 删除整个缓存文件
+                cache_path.unlink()
             except sqlite3.Error:
                 pass
