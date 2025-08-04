@@ -494,7 +494,6 @@ def test_libcache_concurrent_write_on_signal():
                 p.kill()
         if cache_path.exists():
             try:
-                with sqlite3.connect(cache_path) as conn:
-                    conn.execute(f"DROP TABLE IF EXISTS {TABLE_NAME}")
+                cache_path.unlink()  # 删除整个缓存文件
             except sqlite3.Error:
                 pass
