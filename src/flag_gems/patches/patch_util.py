@@ -1,6 +1,7 @@
 import torch
 
 vllm_C_lib = torch.library.Library("_C", "IMPL")
+vllm_moe_C_lib = torch.library.Library("_moe_C", "IMPL")
 
 
 def patch_module_method(cls, method_name: str, new_method: callable, verbose=True):
@@ -17,3 +18,9 @@ def patch_vllm_C_lib(name, fn, key, verbose=True):
     vllm_C_lib.impl(name, fn, key)
     if verbose:
         print(f"Patched torch.ops._C.{name} with FLAGGEMS {fn.__name__}")
+
+
+def patch_vllm_moe_C_lib(name, fn, key, verbose=True):
+    vllm_moe_C_lib.impl(name, fn, key)
+    if verbose:
+        print(f"Patched torch.ops._moe_C.{name} with FLAGGEMS {fn.__name__}")

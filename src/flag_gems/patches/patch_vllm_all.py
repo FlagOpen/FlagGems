@@ -3,7 +3,11 @@ from typing import Optional, Tuple
 import torch
 
 import flag_gems
-from flag_gems.patches.patch_util import patch_module_method, patch_vllm_C_lib
+from flag_gems.patches.patch_util import (
+    patch_module_method,
+    patch_vllm_C_lib,
+    patch_vllm_moe_C_lib,
+)
 
 
 def custom_gems_rms_forward_cuda(self, x, residual=None):
@@ -275,6 +279,24 @@ def custom_sliu_and_mul(out: torch.Tensor, input: torch.Tensor):
     flag_gems.silu_and_mul_out(x, y, out)
 
 
+def custom_moe_align_block_size(
+    topk_ids: torch.Tensor,
+    num_experts: int,
+    block_size: int,
+    sorted_token_ids: torch.Tensor,
+    experts_ids: torch.Tensor,
+    num_tokens_post_pad: torch.Tensor,
+):
+    flag_gems.moe_align_block_size_triton(
+        topk_ids,
+        num_experts,
+        block_size,
+        sorted_token_ids,
+        experts_ids,
+        num_tokens_post_pad,
+    )
+
+
 def apply_gems_patches_to_vllm(verbose=True):
     import vllm  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
@@ -302,3 +324,6 @@ def apply_gems_patches_to_vllm(verbose=True):
         FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
     )
     patch_vllm_C_lib("silu_and_mul", custom_sliu_and_mul, "CUDA", verbose)
+    patch_vllm_moe_C_lib(
+        "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
+    )
