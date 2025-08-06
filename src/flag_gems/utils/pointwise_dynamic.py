@@ -296,6 +296,8 @@ class KernelGenerator:
 
             # signature: strides, for each tensor arguments
             ndim = self.ndim
+            if ndim == 1:
+                code.writeline("# use fast path or simple linear tensor")
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
@@ -1054,6 +1056,8 @@ class ModuleGenerator:
     def codegen(self, code: IndentedBuffer):
         # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
+        print("codegen config")
+        print(self.config)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)
             code = self.kernel_gen.codegen_1d_tile(code)
@@ -1108,6 +1112,7 @@ class PointwiseDynamicFunction:
     def prepare_args(self, *args, **kwargs):
         # output allocation(when needed)
         # task simplification & task-rank infernece & input-output reinterpretation
+        print("prepare args")
         schema = self.fx
         outputs_that_need_allocation: List[int] = []
         out_tensors = []
@@ -1142,6 +1147,7 @@ class PointwiseDynamicFunction:
             task_shape = (tensors[0].numel(),)
             strides = (1,)
             ndim = 1
+            # print(args) # input
             args = tuple(
                 (
                     StridedBuffer(item, task_shape, strides)
@@ -1150,10 +1156,12 @@ class PointwiseDynamicFunction:
                 )
                 for i, item in enumerate(args)
             )
+            print(args)  # 通常是两个tensor
             kwargs = {
                 k: StridedBuffer(item, task_shape, strides)
                 for k, item in kwargs.items()
             }
+            print(kwargs)
             for seq_id, output_id in enumerate(outputs_that_need_allocation):
                 kwargs[f"out{output_id}"] = StridedBuffer(
                     allocated_outputs[seq_id], task_shape, strides

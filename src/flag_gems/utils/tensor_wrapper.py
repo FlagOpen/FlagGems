@@ -121,3 +121,12 @@ class StridedBuffer:
             src_buffer = StridedBuffer(src)
             self.copy_(src_buffer)
         return self
+
+    def __repr__(self):
+        return (
+            f"StridedBuffer(shape={self.shape}, "
+            f"strides={self._strides}, "
+            f"dtype={self.dtype}, "
+            f"offset={self.offset}, "
+            f"device={self.device})"
+        )
