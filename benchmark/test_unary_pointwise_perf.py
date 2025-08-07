@@ -4,15 +4,14 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import (
+from benchmark.attri_util import (
     BOOL_DTYPES,
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from .performance_utils import Benchmark, generate_tensor_input, vendor_name
+from benchmark.performance_utils import Benchmark, generate_tensor_input, vendor_name
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
@@ -54,6 +53,7 @@ forward_operations = [
     ),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
+    ("exp2", torch.exp2, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),

@@ -5,10 +5,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.utils import shape_utils
-
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
@@ -17,6 +15,7 @@ from .performance_utils import (
     unary_input_fn,
     vendor_name,
 )
+from flag_gems.utils import shape_utils
 
 
 class UnaryReductionBenchmark(Benchmark):
@@ -80,10 +79,6 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "metax" and op_name in [
-        "var_mean",
-    ]:
-        pytest.skip("TODOFIX: CORE DUMPED")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 

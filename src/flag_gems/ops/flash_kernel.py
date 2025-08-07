@@ -254,12 +254,15 @@ def is_even_mn_spec_args(args):
     return False
 
 
-def keep(cfg):
+def keep(cfg, must_keep=None):
     BM = cfg.kwargs["BLOCK_M"]
     BN = cfg.kwargs["BLOCK_N"]
     w = cfg.num_warps
 
-    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8))
+    # we always keep configurations in `must_keep`
+    return (BM, BN, w) in ((128, 32, 4), (128, 128, 8)) or (
+        must_keep and cfg in must_keep
+    )
 
 
 def prune_fwd_configs(configs, nargs, **kwargs):
@@ -1079,9 +1082,15 @@ def load_from_kvcache(
     return bK, bV
 
 
-# @libentry()
+@libentry()
 @triton.jit(
     do_not_specialize=[
+        "q_batch_stride",
+        "k_batch_stride",
+        "v_batch_stride",
+        "o_batch_stride",
+        "b",
+        "bk",
         "seqlen_q",
         "seqlen_k",
         "seqlen_q_rounded",
@@ -1115,8 +1124,8 @@ def flash_varlen_fwd_kernel(
     is_seqused_k: tl.constexpr,
     seqused_k_ptr,
     # sizes
-    b: tl.constexpr,
-    bk: tl.constexpr,
+    b,
+    bk,
     h: tl.constexpr,
     hk: tl.constexpr,
     h_hk_ratio: tl.constexpr,
