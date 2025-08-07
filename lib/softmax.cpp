@@ -27,10 +27,6 @@ namespace {
   // Forward kernel wrapper
   at::Tensor softmax_forward(const at::Tensor &input, int dim) {
     TORCH_CHECK(input.dim() >= 2, "Softmax input must be at least 2D");
-    TORCH_CHECK(dim >= -static_cast<int>(input.dim()) && dim < static_cast<int>(input.dim()), "Softmax dim out of range");
-    if (dim < 0) {
-       dim += input.dim();
-    }
 
     at::Tensor output = at::empty_like(input, input.options());
 
