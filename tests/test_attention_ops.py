@@ -723,6 +723,7 @@ def ref_paged_attn(
 
     return torch.cat(outputs, dim=0)
 
+
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
@@ -829,6 +830,7 @@ def test_flash_attn_varlen_func(
         torch.testing.assert_close(
             output, ref_output, atol=2e-2, rtol=1e-2
         ), f"{torch.max(torch.abs(output - ref_output))}"
+
 
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
