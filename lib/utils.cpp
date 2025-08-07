@@ -105,7 +105,7 @@ void checkIfScalar(const torch::Tensor& tensor1,
   is_tensor[0] = (tensor1.dim() == 0);
   is_tensor[1] = (tensor2.dim() == 0);
 }
-
+/*
 class StridedBuffer {
  public:
   StridedBuffer(const torch::Tensor& base,
@@ -208,7 +208,7 @@ class StridedBuffer {
   torch::Device device_;
   int64_t ndim_;
 };
-
+*/
 bool broadcastable_to(const Shape& shape, const Shape& new_shape) {
   int r1 = shape.size();
   int r2 = new_shape.size();

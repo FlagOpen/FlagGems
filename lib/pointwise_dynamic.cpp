@@ -5,115 +5,24 @@
 #include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
-namespace pointwise_dynamic {
-
-// 构造函数
-// src/flag_gems/utils/pointwise_dynamic.py:prepare_args
-/*
-args = tuple(
-(
-StridedBuffer(
-  item,
-  task_shape,
-  broadcasted_stride(item.shape, item.stride(), task_shape),
-)
-if schema.is_tensor(i)
-else item
-)
-for i, item in enumerate(args)
-)
-kwargs = {
-    k: StridedBuffer(
-        item,
-        task_shape,
-        broadcasted_stride(item.shape, item.stride(), task_shape),
-    )
-    for k, item in kwargs.items()
-}
-*/
-pointwise_dynamic::StridedBuffer
-
-    Shape
-    broadcast(const Shape& s1, const Shape& s2) {
-  if (s1.empty()) {
-    return s2;
-  }
-  if (s2.empty()) {
-    return s1;
-  }
-
-  const Shape* _s1 = &s1;
-  const Shape* _s2 = &s2;
-
-  if (_s1->size() < _s2->size()) {
-    std::swap(_s1, _s2);
-  }
-
-  size_t r1 = _s1->size();
-  size_t r2 = _s2->size();
-  size_t d = r1 - r2;
-
-  Shape s = *_s1;
-
-  for (size_t i = 0; i < r2; ++i) {
-    if ((*_s1)[d + i] == 1) {
-      s[d + i] = (*_s2)[i];
-    } else if ((*_s2)[i] == 1) {
-      s[d + i] = (*_s1)[d + i];
-    } else if ((*_s2)[i] == (*_s1)[d + i]) {
-      s[d + i] = (*_s2)[i];
-    } else {
-      std::string msg = "Unbroadcastable shapes: (";
-      for (size_t j = 0; j < s1.size(); ++j) msg += std::to_string(s1[j]) + (j < s1.size() - 1 ? ", " : "");
-      msg += ") and (";
-      for (size_t j = 0; j < s2.size(); ++j) msg += std::to_string(s2[j]) + (j < s2.size() - 1 ? ", " : "");
-      msg += ")";
-      throw std::invalid_argument(msg);
-    }
-  }
-
-  return s;
-}
-
-template <typename Iterable>
-Shape broadcast_shapes(const Iterable& shapes) {
-  if (std::empty(shapes)) {
-    return {};
-  }
-
-  auto it = std::begin(shapes);
-  Shape result_shape = *it;
-  ++it;
-
-  for (; it != std::end(shapes); ++it) {
-    result_shape = broadcast(result_shape, *it);
-  }
-
-  return result_shape;
-}
-};  // namespace pointwise_dynamic
-
 namespace flag_gems {
 using namespace triton_jit;
-int64_t cdiv(int64_t a, int64_t b) {
-  return (a + b - 1) / b;
-}
+using Shape = std::vector<long>;
+using Stride = std::vector<long>;
+
 at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   // TODO: parse tensor meta info
   std::vector<void*> kernel_params;
   // 2 input
-  kernel_params.push(a_);
-  kernel_params.push(b_);
+  void* a_ptr = a_.data_ptr();
+  void* b_ptr = b_.data_ptr();
+  kernel_params.push_back(&a_ptr);
+  kernel_params.push_back(&b_ptr);
+
   // 1 output
-  at::Tensor out = at::empty(a.sizes(), a.options());
-  kernel_params.push(&out);
-  // if input和output都连续
-  // 或者stride相同和第一个tensor torch.ops.aten.is_non_overlapping_and_dense
-  // 但是后者不是都连续，为什么stride=1，如连续的ab转置，我们可以忽略它的stride，只计算element wise就行
-  // 但返回的时候，是不是要somehow拿回它的stride，不过这可能是python端里的问题
+  at::Tensor out = at::empty(a_.sizes(), a_.options());
+  kernel_params.push_back(&out);
   std::vector<at::Tensor> tensors = {a_, b_, out};
-  // WrapperGenerator: gen_kernel_launch
-  // KernelGenerator:
   if (pointwise_dynamic::use_fast_path(tensors)) {
     int task_shape = tensors[0].numel();
     void* task_shape_ptr = &task_shape;
@@ -125,18 +34,18 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
                                             // push args
                                             // stride for input
                                             kernel_params.push(stride_ptr);
-    kernel_params.push(fast_path_stride_order_ptr);
-    kernel_params.push(stride_ptr);
-    kernel_params.push(fast_path_stride_order_ptr);
+    kernel_params.push_back(fast_path_stride_order_ptr);
+    kernel_params.push_back(stride_ptr);
+    kernel_params.push_back(fast_path_stride_order_ptr);
     // stride for output
-    kernel_params.push(stride_ptr);
+    kernel_params.push_back(stride_ptr);
 
     // task_space -> shape_args... shape = out0.shape
     // use fast path需要考虑shape吗
     // prepare args里设置 task_shape = (tensors[0].numel(),)
-    kernel_params.push(task_shape_ptr);
+    kernel_params.push_back(task_shape_ptr);
     // num_tasks -> num_tasks = out0.numel()
-    kernel_params.push(task_shape_ptr);
+    kernel_params.push_back(task_shape_ptr);
   } else {
     // TODO
     //  stride for input/output
@@ -164,29 +73,31 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
       kernel_params.push_back(&stride);
     }
   }
+  void* global_scratch = nullptr;
+  kernel_params.push_back(&global_scratch);
   // # tile size & tiles_per_cta, gsl style
   // tile_sizes = heuristics_for_tile_size(512, *shape)
   int64_t tile_sizes = 1024;
-  int64_t num_tiles = cdiv(task_shape, tile_sizes);  // aka num blocks
+  int64_t num_tiles = utils::cdiv(task_shape, tile_sizes);  // aka num blocks
   // num_ctas = min(65536, num_tiles)
   int64_t num_ctas = std::min(65536, num_tiles);
   // tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
-  int64_t tiles_per_cta = cdiv(num_tiles, num_ctas);
+  int64_t tiles_per_cta = utils::cdiv(num_tiles, num_ctas);
   // one_tile_per_cta = tiles_per_cta==1
   bool one_tile_per_cta = (tiles_per_cta == 1);
   // get function
   std::array<bool, 2> is_tensor;
   checkIfScalar(scalar_tensor, vector_tensor, is_tensor);
-  const TritonKernel kernel;
+  TritonJITFunction f;
   if (is_tensor[0] && is_tensor[1]) {
-    &f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
-                                        "add_func");
+    f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
+                                       "add_func");
   } else if (is_tensor[0] && !is_tensor[1]) {
-    &f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
-                                        "add_func_tensor_scalar");
+    f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
+                                       "add_func_tensor_scalar");
   } else if (!is_tensor[0] && is_tensor[1]) {
-    &f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
-                                        "add_func_scalar_tensor");
+    f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
+                                       "add_func_scalar_tensor");
   } else {
     return a_ + b_;
   }
@@ -195,7 +106,10 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   const int num_warps = 8;
   const int num_stages = 1;
-  f(stream, num_tiles, 1, 1, num_warps, num_stages, kernel_params);
+
+  std::string signature = "*fp32:16,*fp32:16,*fp32:16,i64,1024";
+  f.launch_with_raw_args(raw_stream, num_tiles, 1, 1, num_warps, num_stages, signature, kernel_params.data());
+  return out;
 }
 
 };  // namespace flag_gems
