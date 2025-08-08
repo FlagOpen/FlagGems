@@ -80,7 +80,6 @@ at::Tensor sum_dim(const at::Tensor &self,
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   at::Tensor self_contiguous = self.contiguous();
-  LOG(INFO) << "dims_.size()" << dims_.size();
   if (dims_.size() == 1) {
     int64_t selected_dim = dims_[0];
     // M, N, K in python sum_dim_comm
@@ -105,7 +104,6 @@ at::Tensor sum_dim(const at::Tensor &self,
         tile_k,
         ONE_TILE_PER_CTA);
     } else {
-      LOG(INFO) << "K=1";
       auto [non_reduction_size, reduction_size, remain_size] =
           utils::parse_reduction_axes(self, selected_dim);
       const TritonJITFunction &f =
