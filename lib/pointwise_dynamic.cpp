@@ -30,10 +30,10 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
     void* stride_ptr = &stride;
     int ndim = 1;
     int fast_path_stride_order = 0;
-    void* fast_path_stride_order_ptr = &fast_path_stride_order
-                                            // push args
-                                            // stride for input
-                                            kernel_params.push(stride_ptr);
+    void* fast_path_stride_order_ptr = &fast_path_stride_order;
+    // push args
+    // stride for input
+    kernel_params.push(stride_ptr);
     kernel_params.push_back(fast_path_stride_order_ptr);
     kernel_params.push_back(stride_ptr);
     kernel_params.push_back(fast_path_stride_order_ptr);
@@ -51,27 +51,6 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
     //  stride for input/output
     //  calculate task space
     //  shapes = tuple(item.shape for item in in_tensors)，
-    std::vector<Shape> shapes;
-    shapes.reserve(2);
-    for (const auto& tensor : in_tensors) {
-      shapes.push_back(tensor.shape());
-    }
-    Shape task_shape = broadcast_shapes(shapes);
-    int64_t ndim = task_shape.size();
-    // task_shape = broadcast_shapes(shapes)
-    // get stride, TODO，using ndim as python warpper
-    auto a_strides = a_.strides();
-    for (int64_t stride : a_strides) {
-      kernel_params.push_back(&stride);
-    }
-    auto b_strides = b_.strides();
-    for (int64_t stride : b_strides) {
-      kernel_params.push_back(&stride);
-    }
-    auto out_strides = out.strides();
-    for (int64_t stride : out_strides) {
-      kernel_params.push_back(&stride);
-    }
   }
   void* global_scratch = nullptr;
   kernel_params.push_back(&global_scratch);
