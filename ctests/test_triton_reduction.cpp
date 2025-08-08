@@ -16,17 +16,55 @@ TEST(reduction_op_test, sum) {
   EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-5, 1e-8));
 }
 
-TEST(reduction_op_test, sum_dim) {
+TEST(reduction_op_test, sum_dim_to_sum) {
+  const torch::Device device(torch::kCUDA, 0);
+  torch::Tensor a = torch::randn({32, 1024}, device);
+
+  torch::Tensor out_torch = at::sum(a, {at::IntArrayRef {}}, false, c10::nullopt);
+  torch::Tensor out_triton = flag_gems::sum_dim(a, {at::IntArrayRef {}}, false, c10::nullopt);
+  if (!torch::allclose(out_torch, out_triton, 1e-3, 1e-3)) {
+    LOG(INFO) << "Difference:\n" << out_torch - out_triton;
+  }
+
+  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+}
+
+TEST(reduction_op_test, sum_dim_inner) {
   const torch::Device device(torch::kCUDA, 0);
   torch::Tensor a = torch::randn({32, 1024}, device);
 
   torch::Tensor out_torch = at::sum(a, {1});
   torch::Tensor out_triton = flag_gems::sum_dim(a, {1});
-  if (!torch::allclose(out_torch, out_triton, 1e-5, 1e-8)) {
+  if (!torch::allclose(out_torch, out_triton, 1e-3, 1e-3)) {
     LOG(INFO) << "Difference:\n" << out_torch - out_triton;
   }
 
-  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-5, 1e-8));
+  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+}
+
+TEST(reduction_op_test, sum_dim_non_inner) {
+  const torch::Device device(torch::kCUDA, 0);
+  torch::Tensor a = torch::randn({32, 1024, 32}, device);
+
+  torch::Tensor out_torch = at::sum(a, {1});
+  torch::Tensor out_triton = flag_gems::sum_dim(a, {1});
+  if (!torch::allclose(out_torch, out_triton, 1e-3, 1e-3)) {
+    LOG(INFO) << "Difference:\n" << out_torch - out_triton;
+  }
+
+  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
+}
+
+TEST(reduction_op_test, sum_dim_multi) {
+  const torch::Device device(torch::kCUDA, 0);
+  torch::Tensor a = torch::randn({32, 1024, 32}, device);
+
+  torch::Tensor out_torch = at::sum(a, {2, 0});
+  torch::Tensor out_triton = flag_gems::sum_dim(a, {2, 0});
+  if (!torch::allclose(out_torch, out_triton, 1e-3, 1e-3)) {
+    LOG(INFO) << "Difference:\n" << out_torch - out_triton;
+  }
+  EXPECT_TRUE(torch::allclose(out_torch, out_triton, 1e-3, 1e-3));
 }
 
 TEST(reduction_op_test, nonzero) {

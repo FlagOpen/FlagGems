@@ -21,5 +21,6 @@ std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(const at::
                                                                       int reduction_axis);
 std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
     const at::Tensor &tensor, at::OptionalIntArrayRef reduction_axes_opt);
+std::tuple<int64_t, int64_t, int64_t> parse_reduction_axes(const at::Tensor &tensor, int reduction_axis);
 int cdiv(int a, int b);
 }  // namespace flag_gems::utils

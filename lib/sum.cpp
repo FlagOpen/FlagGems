@@ -45,54 +45,122 @@ at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim,
                    ::std::optional<at::ScalarType> dtype) {
+  at::TensorOptions out_options = self.options();
+  at::ScalarType out_dtype;
+  if (dtype.has_value()) {
+    out_dtype = dtype.value();
+  } else {
+    out_dtype = self.dtype().toScalarType();
+    ;
+    if (out_dtype == torch::kBool) {
+      out_dtype = torch::kInt64;
+    }
+  }
+  out_options = out_options.dtype(out_dtype);
   at::DimVector dims_ = at::native::make_dim_vector(dim, self.dim());
   at::maybe_wrap_dims(dims_, self.dim());
   at::DimVector shape = at::meta::get_reduction_shape(self, dims_, keepdim, false);
-  c10::ScalarType out_dtype = at::native::get_dtype_from_self(self, dtype, true);
-  at::Tensor out = at::empty(shape, self.options());
+  at::Tensor out = at::empty(at::IntArrayRef(shape), out_options);
+  out = out.contiguous();
 
-  auto [permuted_self, non_reduction_size, reduction_size] = utils::permute_reduction_axes_right(self, dims_);
-  permuted_self = permuted_self.contiguous();
-
-  /* signature to remind yourself
-  def sum_kernel(
-    in_ptr,
-    out_ptr,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    STAGE: tl.constexpr,
-  ):
-  */
-  const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                     "sum_kernel");
-
-  // add utility to build this automatically
+  if (!dim.has_value() || dim->empty()) {
+    if (!keepdim) {
+      return flag_gems::sum(self, std::optional<at::ScalarType> {});
+    } else {
+      at::Tensor result = flag_gems::sum(self, dtype);
+      return result.reshape(std::vector<int64_t>(self.dim(), 1));
+    }
+  }
   int64_t tile_m = 4;
   int64_t tile_n = 512;
+  int64_t tile_k = 4;
   const int num_warps = 8;
   const int num_stages = 2;
-  const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
-
-  c10::DeviceGuard guard(out.device());
+  c10::DeviceGuard guard(self.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  f(raw_stream,
-    num_blocks,
-    1,
-    1,
-    num_warps,
-    num_stages,
-    permuted_self,
-    out,
-    non_reduction_size,
-    reduction_size,
-    tile_m,
-    tile_n,
-    num_stages);
-  return out;
+  at::Tensor self_contiguous = self.contiguous();
+  LOG(INFO) << "dims_.size()" << dims_.size();
+  if (dims_.size() == 1) {
+    int64_t selected_dim = dims_[0];
+    // M, N, K in python sum_dim_comm
+    auto [non_reduction_size, reduction_size, remain_size] = utils::parse_reduction_axes(self, selected_dim);
+    bool ONE_TILE_PER_CTA = (tile_n >= reduction_size);
+    if (remain_size > 1) {
+      const TritonJITFunction &f =
+          TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                         "sum_dim_kernel_non_inner");
+      f(raw_stream,
+        non_reduction_size,
+        utils::cdiv(remain_size, tile_k),
+        1,
+        num_warps,
+        num_stages,
+        out,
+        self_contiguous,
+        non_reduction_size,
+        reduction_size,
+        remain_size,
+        tile_n,
+        tile_k,
+        ONE_TILE_PER_CTA);
+    } else {
+      LOG(INFO) << "K=1";
+      auto [non_reduction_size, reduction_size, remain_size] =
+          utils::parse_reduction_axes(self, selected_dim);
+      const TritonJITFunction &f =
+          TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                         "sum_dim_kernel_inner");
+      f(raw_stream,
+        non_reduction_size,
+        1,
+        1,
+        num_warps,
+        num_stages,
+        out,
+        self_contiguous,
+        non_reduction_size,
+        reduction_size,
+        tile_n,
+        ONE_TILE_PER_CTA);
+    }
+    return out;
+  } else {
+    auto [permuted_self, non_reduction_size, reduction_size] =
+        utils::permute_reduction_axes_right(self, dims_);
+    const unsigned int num_blocks = (non_reduction_size + tile_m - 1) / tile_m;
+    permuted_self = permuted_self.contiguous();
+    /* signature to remind yourself
+    def sum_kernel(
+      in_ptr,
+      out_ptr,
+      M,
+      N,
+      BLOCK_M: tl.constexpr,
+      BLOCK_N: tl.constexpr,
+      STAGE: tl.constexpr,
+    ):
+    */
+    const TritonJITFunction &f =
+        TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
+                                       "sum_dim_kernel");
+    c10::DeviceGuard guard(out.device());
+    c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    f(raw_stream,
+      num_blocks,
+      1,
+      1,
+      num_warps,
+      num_stages,
+      permuted_self,
+      out,
+      non_reduction_size,
+      reduction_size,
+      tile_m,
+      tile_n);
+    return out;
+  }
 }
 
 }  // namespace flag_gems

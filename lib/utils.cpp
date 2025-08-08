@@ -80,6 +80,7 @@ bool broadcastable_to(at::IntArrayRef s1, at::IntArrayRef s2) {
 
   return true;
 }
+
 std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
     const at::Tensor &tensor, at::OptionalIntArrayRef reduction_axes_opt) {
   int64_t dim = tensor.dim();
@@ -129,6 +130,28 @@ std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(const at::
   permute_order.insert(permute_order.end(), right_axes.begin(), right_axes.end());
 
   return {tensor.permute(permute_order), non_reduction_size, reduction_size};
+}
+
+std::tuple<int64_t, int64_t, int64_t> parse_reduction_axes(const at::Tensor &tensor, int reduction_axis) {
+  int64_t dim = tensor.dim();
+  c10::DimVector left_axes, right_axes, remain_axes;  // 声明remain_axes
+  int64_t non_reduction_size = 1;
+  int64_t reduction_size = 1;
+  int64_t remain_size = 1;
+
+  for (int64_t i = 0; i < dim; ++i) {
+    if (i < reduction_axis) {  // 规约轴左边的维度
+      left_axes.push_back(i);
+      non_reduction_size *= tensor.size(i);
+    } else if (i == reduction_axis) {  // 规约轴本身
+      right_axes.push_back(i);         // 将规约轴放在中间
+      reduction_size *= tensor.size(i);
+    } else {  // 规约轴右边的维度
+      remain_axes.push_back(i);
+      remain_size *= tensor.size(i);
+    }
+  }
+  return {non_reduction_size, reduction_size, remain_size};
 }
 int cdiv(int a, int b) {
   return (a + b - 1) / b;
