@@ -27,4 +27,11 @@ Stride broadcasted_stride(const Shape& shape, const Stride& stride, const Shape&
 bool all_the_same_shape(const std::vector<at::Tensor>& tensors);
 bool all_c_contiguous(const std::vector<at::Tensor>& tensors);
 bool use_fast_path(const std::vector<at::Tensor>& tensors);
+std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(const at::Tensor& tensor,
+                                                                      int reduction_axis);
+std::tuple<at::Tensor, int64_t, int64_t> permute_reduction_axes_right(
+    const at::Tensor& tensor, at::OptionalIntArrayRef reduction_axes_opt);
+std::tuple<int64_t, int64_t, int64_t> parse_reduction_axes(const at::Tensor& tensor, int reduction_axis);
+int cdiv(int a, int b);
+
 };  // namespace flag_gems::pointwise_dynamic

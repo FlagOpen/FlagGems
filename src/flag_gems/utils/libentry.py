@@ -13,6 +13,7 @@ from collections import OrderedDict
 from itertools import starmap
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
 
+import torch
 import triton
 
 from flag_gems import runtime
@@ -30,6 +31,7 @@ ATTRS = {
     (3, 1): 4,
     (3, 2): 4,
     (3, 3): 8,
+    (3, 4): 4,
 }
 # Set (3, 2) to 9 for cambricon (special Autotune config)
 if vendor_module.vendor_info.vendor_name == "cambricon":
@@ -63,23 +65,31 @@ if major_version == 2:
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
 FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
+FLAGGEMS_DUMP_DISK_INTERVAL = float(os.getenv("FLAGGEMS_DUMP_DISK_INTERVAL", "5"))
 
 
 class LibCache:
     _instance = None
 
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(LibCache, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, interval: float):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
-        self.cache_path = (
-            config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
+        cache_file_name = (
+            f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
+            if vendor_module.vendor_info.vendor_name == "nvidia"
+            else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
         )
+
+        self.cache_path = config_cache_dir() / cache_file_name
         self.preload()
+        thread = threading.Timer(interval, self.store)
+        thread.daemon = True
+        thread.start()
         weakref.finalize(self, self.store)
 
         # For vllm
@@ -147,7 +157,7 @@ class LibCache:
             print(f"[CACHE STORE ERROR]: {e}")
 
 
-libcache = LibCache()
+libcache = LibCache(FLAGGEMS_DUMP_DISK_INTERVAL)
 
 
 class LibTuner(triton.runtime.Autotuner):
@@ -406,12 +416,12 @@ def default_strategy(key: Any) -> Any:
 
 @LibTuner.register_strategy("log")
 def log2_strategy(key: Union[int, float]) -> float:
-    return math.ceil(math.log2(key))
+    return 2 ** math.ceil(math.log2(key))
 
 
 @LibTuner.register_strategy("align32")
 def align32_strategy(key: Union[int, float]) -> int:
-    return math.ceil(key / 32)
+    return math.ceil(key / 32) * 32
 
 
 @LibTuner.register_policy("default")
@@ -588,7 +598,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(arg)
             else:
-                if major_version == 3 and minor_version == 3:
+                if major_version == 3 and 3 <= minor_version <= 4:
                     k_args[param_names[i]] = arg
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
@@ -601,7 +611,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and minor_version == 3:
+                if major_version == 3 and 3 <= minor_version <= 4:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -673,7 +683,7 @@ class LibEntry(triton.KernelInterface):
             grid = grid(meta)
         grid = grid + (1, 1)
 
-        if major_version == 3 and minor_version == 3:
+        if major_version == 3 and 3 <= minor_version <= 4:
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):

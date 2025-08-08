@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-8.4.1, pluggy-1.6.0
+rootdir: /home/fyf/FlagGems
+configfile: pytest.ini
+plugins: hypothesis-6.136.4
+collected 1468 items / 1462 deselected / 6 selected
+
+test_reduction_ops.py dim == [] in sum_dim_comm
+.dim == [] in sum_dim_comm
+.dim == [] in sum_dim_comm
+.dim == [] in sum_dim_comm
+.dim == [] in sum_dim_comm
+.dim == [] in sum_dim_comm
+.
+
+=============================== warnings summary ===============================
+../../.virtualenvs/flaggem/lib/python3.10/site-packages/triton/runtime/autotuner.py:108: 11 warnings
+  /home/fyf/.virtualenvs/flaggem/lib/python3.10/site-packages/triton/runtime/autotuner.py:108: DeprecationWarning: warmup, rep, and use_cuda_graph parameters are deprecated. See https://github.com/triton-lang/triton/pull/4496 for details.
+    warnings.warn(("warmup, rep, and use_cuda_graph parameters are deprecated. See "
+
+tests/test_reduction_ops.py::test_accuracy_sum_all_dims_keepdim_forward_only[dtype0-shape0]
+  /home/fyf/.virtualenvs/flaggem/lib/python3.10/site-packages/torch/library.py:365: UserWarning: Warning only once for all operators,  other operators may also be overridden.
+    Overriding a previously registered kernel for the same operator and the same dispatch key
+    operator: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask)
+      registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
+    dispatch key: CUDA
+    previous kernel: registered at /pytorch/torch/csrc/autograd/generated/VariableType_0.cpp:18106
+         new kernel: registered at /dev/null:223 (Triggered internally at /pytorch/aten/src/ATen/core/dispatch/OperatorEntry.cpp:154.)
+    self.m.impl(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 6 passed, 1462 deselected, 12 warnings in 0.81s ================
