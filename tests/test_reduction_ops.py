@@ -1427,3 +1427,25 @@ def test_accuracy_mse_loss(shape, dtype, reduction):
     with flag_gems.use_gems():
         res_out = torch.nn.functional.mse_loss(inp, target, reduction=reduction)
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True, reduce_dim=shape[dim])
+
+
+DIFF_N_VALUES = list(range(0, 50))
+@pytest.mark.diff
+@pytest.mark.parametrize("shape", [(1024**2,)] + REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIM_LIST)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
+@pytest.mark.parametrize("n", DIFF_N_VALUES)
+def test_accuracy_diff(shape, dim, dtype, n):
+    if dtype in INT_DTYPES:
+        inp = torch.randint(
+            low=-10, high=11, size=shape, dtype=dtype, device=flag_gems.device
+        )
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.diff(ref_inp, n, dim % inp.ndim)
+    with flag_gems.use_gems():
+        res_out = torch.diff(inp, n, dim)
+
+    reduce_dim = shape[dim % inp.ndim]
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True)
