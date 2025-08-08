@@ -2,7 +2,6 @@ add_library(operators
             SHARED
             zeros.cpp
             utils.cpp
-            add.cpp
             sum.cpp
             max.cpp
             mm.cpp

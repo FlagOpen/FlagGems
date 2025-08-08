@@ -285,21 +285,6 @@ class StridedBuffer {
   int64_t ndim_;
 };
 */
-bool broadcastable_to(const Shape& shape, const Shape& new_shape) {
-  int r1 = shape.size();
-  int r2 = new_shape.size();
-  int min_rank = std::min(r1, r2);
-
-  for (int i = 1; i <= min_rank; ++i) {
-    int dim1 = shape[r1 - i];
-    int dim2 = new_shape[r2 - i];
-    if (dim1 != dim2 && dim1 != 1 && dim2 != 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 Stride broadcasted_stride(const Shape& shape, const Stride& stride, const Shape& new_shape) {
   assert(broadcastable_to(shape, new_shape) && "Shapes are not broadcastable.");
 

@@ -23,8 +23,9 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   at::Tensor out = at::empty(a_.sizes(), a_.options());
   kernel_params.push_back(&out);
   std::vector<at::Tensor> tensors = {a_, b_, out};
+  int task_shape;
   if (pointwise_dynamic::use_fast_path(tensors)) {
-    int task_shape = tensors[0].numel();
+    task_shape = tensors[0].numel();
     void* task_shape_ptr = &task_shape;
     int stride = 1;
     void* stride_ptr = &stride;
@@ -33,7 +34,7 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
     void* fast_path_stride_order_ptr = &fast_path_stride_order;
     // push args
     // stride for input
-    kernel_params.push(stride_ptr);
+    kernel_params.push_back(stride_ptr);
     kernel_params.push_back(fast_path_stride_order_ptr);
     kernel_params.push_back(stride_ptr);
     kernel_params.push_back(fast_path_stride_order_ptr);
@@ -41,8 +42,6 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
     kernel_params.push_back(stride_ptr);
 
     // task_space -> shape_args... shape = out0.shape
-    // use fast path需要考虑shape吗
-    // prepare args里设置 task_shape = (tensors[0].numel(),)
     kernel_params.push_back(task_shape_ptr);
     // num_tasks -> num_tasks = out0.numel()
     kernel_params.push_back(task_shape_ptr);
@@ -59,15 +58,15 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   int64_t tile_sizes = 1024;
   int64_t num_tiles = utils::cdiv(task_shape, tile_sizes);  // aka num blocks
   // num_ctas = min(65536, num_tiles)
-  int64_t num_ctas = std::min(65536, num_tiles);
+  int64_t num_ctas = std::min(static_cast<int64_t>(65536), num_tiles);
   // tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
   int64_t tiles_per_cta = utils::cdiv(num_tiles, num_ctas);
   // one_tile_per_cta = tiles_per_cta==1
   bool one_tile_per_cta = (tiles_per_cta == 1);
   // get function
   std::array<bool, 2> is_tensor;
-  checkIfScalar(scalar_tensor, vector_tensor, is_tensor);
-  TritonJITFunction f;
+  pointwise_dynamic::checkIfScalar(a_, b_, is_tensor);
+  std::optional<TritonJITFunction> f;
   if (is_tensor[0] && is_tensor[1]) {
     f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
                                        "add_func");
@@ -87,7 +86,14 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   const int num_stages = 1;
 
   std::string signature = "*fp32:16,*fp32:16,*fp32:16,i64,1024";
-  f.launch_with_raw_args(raw_stream, num_tiles, 1, 1, num_warps, num_stages, signature, kernel_params.data());
+  f->launch_with_raw_args(raw_stream,
+                          num_tiles,
+                          1,
+                          1,
+                          num_warps,
+                          num_stages,
+                          signature,
+                          kernel_params.data());
   return out;
 }
 
