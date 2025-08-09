@@ -102,24 +102,24 @@ def conv3d_forward_kernel(
     dilation_height: tl.constexpr,
     dilation_width: tl.constexpr,
     groups: tl.constexpr,
-    BLOCK_NI_HO_WO_DO: tl.constexpr,
+    BLOCK_NI_DO_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
 ):
-    pid_ni_ho_wo = tl.program_id(0)
+    pid_ni_do_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
     pid_group = tl.program_id(2)
 
-    # caculate in_n out_height out_weight value in kernel
-    ni_ho_wo_do_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO_DO + tl.arange(
-        0, BLOCK_NI_HO_WO_DO
+    # caculate in_n out_depth out_height out_weight value in kernel
+    ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(
+        0, BLOCK_NI_DO_HO_WO
     )
-    ni_ho_wo_offset = ni_ho_wo_do_offset // out_depth
-    ni_ho_offset = ni_ho_wo_offset // out_width
-    in_n_point_value = ni_ho_offset // out_height
-    output_height_point_value = ni_ho_offset % out_height
-    output_width_point_value = ni_ho_wo_offset % out_width
-    output_depth_point_value = ni_ho_wo_do_offset % out_depth
+    ni_do_ho_offset = ni_do_ho_wo_offset // out_width
+    ni_do_offset = ni_do_ho_offset // out_height
+    in_n_point_value = ni_do_offset // out_depth
+    output_depth_point_value = ni_do_offset % out_depth
+    output_height_point_value = ni_do_ho_offset % out_height
+    output_width_point_value = ni_do_ho_wo_offset % out_width
 
     # Load the input and weight pointers. input and weight are of shape
     # [in_n, groups, in_c, input_height, input_width] and [groups, out_c, in_c, weight_height, weight_width]
@@ -133,17 +133,20 @@ def conv3d_forward_kernel(
         + weight_n_stride * pid_group * out_per_group_c
     )[None, :]
 
-    accum = tl.zeros((BLOCK_NI_HO_WO_DO, BLOCK_CO), dtype=tl.float32)
+    accum = tl.zeros((BLOCK_NI_DO_HO_WO, BLOCK_CO), dtype=tl.float32)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
-    for hwdc in range(weight_height * weight_width * weight_depth * BLOCK_CI_COUNT):
-        c = (hwdc % BLOCK_CI_COUNT) * BLOCK_CI
-        hwd = hwdc // BLOCK_CI_COUNT
-        d = hwd // (weight_height * weight_width)
-        hw = hwd % (weight_height * weight_width)
-        h = hw // weight_width
-        w = hw % weight_width
+    for dhwc in range(weight_depth * weight_height * weight_width * BLOCK_CI_COUNT):
+        c = (dhwc % BLOCK_CI_COUNT) * BLOCK_CI
+        dhw = dhwc // BLOCK_CI_COUNT
+        dh = dhw // weight_width
+        d = dh // weight_height
+        h = dh % weight_height
+        w = dhw % weight_width
 
         input_c_offset = c + tl.arange(0, BLOCK_CI)
+        input_depth_offset = (
+            d * dilation_depth - padding_depth + stride_depth * output_depth_point_value
+        )
         input_height_offset = (
             h * dilation_height
             - padding_height
@@ -153,34 +156,30 @@ def conv3d_forward_kernel(
             w * dilation_width - padding_width + stride_width * output_width_point_value
         )
 
-        input_depth_offset = (
-            d * dilation_width - padding_width + stride_width * output_depth_point_value
-        )
-
         curr_input_pointer = (
             input_pointer
             + (input_c_stride * input_c_offset)[None, :]
+            + (input_depth_stride * input_depth_offset)[:, None]
             + (input_height_stride * input_height_offset)[:, None]
             + (input_width_stride * input_width_offset)[:, None]
-            + (input_depth_stride * input_depth_offset)[:, None]
         )
         curr_weight_pointer = (
             weight_pointer
             + (weight_c_stride * input_c_offset)[:, None]
+            + (weight_depth_stride * d)
             + (weight_height_stride * h)
             + (weight_width_stride * w)
-            + (weight_depth_stride * d)
         )
 
         input_mask = (
             (in_n_point_value < in_n)[:, None]
             & (input_c_offset < weight_c)[None, :]
+            & (0 <= input_depth_offset)[:, None]
+            & (input_depth_offset < input_depth)[:, None]
             & (0 <= input_height_offset)[:, None]
             & (input_height_offset < input_height)[:, None]
             & (0 <= input_width_offset)[:, None]
             & (input_width_offset < input_width)[:, None]
-            & (0 <= input_depth_offset)[:, None]
-            & (input_depth_offset < input_depth)[:, None]
         )
         weight_mask = (input_c_offset < weight_c)[:, None] & (
             output_c_offset < out_per_group_c
@@ -199,16 +198,16 @@ def conv3d_forward_kernel(
     output_pointer += (
         (output_n_stride * in_n_point_value)[:, None]
         + (output_c_stride * (pid_group * out_per_group_c + output_c_offset))[None, :]
+        + (output_depth_stride * output_depth_point_value)[:, None]
         + (output_height_stride * output_height_point_value)[:, None]
         + (output_width_stride * output_width_point_value)[:, None]
-        + (output_depth_stride * output_depth_point_value)[:, None]
     )
     output_mask = (
         (in_n_point_value < in_n)[:, None]
         & (output_c_offset < out_per_group_c)[None, :]
+        & (output_depth_point_value < out_depth)[:, None]
         & (output_height_point_value < out_height)[:, None]
         & (output_width_point_value < out_width)[:, None]
-        & (output_depth_point_value < out_depth)[:, None]
     )
 
     tl.store(output_pointer, accum, mask=output_mask)
@@ -274,7 +273,7 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     # one group per cat
     grid = lambda META: (
         triton.cdiv(
-            in_n * out_depth * out_height * out_width, META["BLOCK_NI_HO_WO_DO"]
+            in_n * out_depth * out_height * out_width, META["BLOCK_NI_DO_HO_WO"]
         ),
         triton.cdiv(out_c // groups, META["BLOCK_CO"]),
         groups,
