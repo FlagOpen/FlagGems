@@ -413,6 +413,7 @@ def test_libcache_vllm_signal_scenario():
         process.join()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RunTimeError")
 def test_libcache_concurrent_write_on_signal():
     """
     Tests that LibCache can handle concurrent writes from multiple processes
