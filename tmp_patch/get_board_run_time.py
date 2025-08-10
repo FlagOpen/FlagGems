@@ -2,7 +2,7 @@ import os
 import json
 import csv
 
-CASE_DIR = '/data/baai-benchmark-test-case/abs'
+CASE_DIR = '/data/baai-benchmark-test-case'
 
 KCORES = []
 for root, dirs, files in os.walk(CASE_DIR):
@@ -19,7 +19,7 @@ with open('result_new.csv', 'w', newline='') as result_file:
     fieldnames = ['op_name', 'dtype', 'shape_detail', 'latency_base', 'latency', 'latency_new', 'speedup_new', 'speedup', 'tflops']
     writer = csv.DictWriter(result_file, fieldnames=fieldnames, extrasaction='ignore')
     writer.writeheader()
-    
+
     for kcore in KCORES:
         with open(kcore['kcore_info_filepath'], 'r') as f:
             case_info = json.load(f)
