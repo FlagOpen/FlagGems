@@ -66,7 +66,7 @@ class Cache(object):
         self.py2sql: Dict[type, str] = {
             int: "INTEGER",
             float: "DOUBLE",
-            str: "VARCHAR(16)",
+            str: "VARCHAR(16)",  # it often stores string values like 'torch.float16', so 16 would be long enough
         }
 
     @staticmethod
@@ -85,19 +85,27 @@ class Cache(object):
 
 
 class ConfigCache(Cache):
+    """
+    `ConfigCache` is used to store the relationship between keys and their known best configurations.
+    """
+
     def __init__(
         self, table_name: str, conn: sqlite3.Connection, *args, **kwargs
     ) -> ConfigCache:
         super().__init__(table_name, conn, *args, **kwargs)
         self.config_signature: inspect.Signature = inspect.signature(triton.Config)
-        self.dict_cache: Dict[Tuple[Union[int, float, str], ...], triton.Config] = {}
+        self.dict_cache: Dict[
+            Tuple[Union[int, float, str], ...], triton.Config
+        ] = {}  # this dict is used to cache some results in the memory
         self.names: List[str] = [
             name
             for _, name, _, _, _, _ in self.conn.execute(
                 f"PRAGMA table_info({self.table_name});"
             ).fetchall()
         ]
-        self.create_sql: Optional[str] = None
+        self.create_sql: Optional[
+            str
+        ] = None  # if the corresponding sql instruction is None, meaning the table is not ready, we need to flush it
         self.insert_sql: Optional[str] = None
 
     def __contains__(self, key: Tuple[Union[int, float, str], ...]) -> bool:
@@ -117,11 +125,15 @@ class ConfigCache(Cache):
 
     @property
     def knames(self) -> Iterator[str]:
-        return filter(lambda name: name.startswith("key_"), self.names)
+        return filter(
+            lambda name: name.startswith("key_"), self.names
+        )  # if the column name starts with "key_", it should be a key defined by the libtuner
 
     @property
     def cnames(self) -> Iterator[str]:
-        return filter(lambda name: not name.startswith("key_"), self.names)
+        return filter(
+            lambda name: not name.startswith("key_"), self.names
+        )  # otherwise, it should be a parameter in the config
 
     @property
     def select_sql(self) -> Optional[str]:
@@ -137,6 +149,8 @@ class ConfigCache(Cache):
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
         ret = self.dict_cache.get(key)
         if ret is not None or self.select_sql is None:
+            # if the key is already in the dict cache, we can return it directly
+            # or if `select_sql` is not ready yet, which means the table is not ready yet, we can return None
             return ret
         rets = self.conn.execute(self.select_sql, key).fetchall()
         if not rets:
@@ -169,7 +183,7 @@ class ConfigCache(Cache):
         if not self.names:
             self.names = queries
         if self.insert_sql is None:
-            self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({})".format(
+            self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
                 self.table_name, ", ".join("?" for _ in queries.values())
             )
         self.conn.execute(self.insert_sql, [*queries.values()])
@@ -185,16 +199,23 @@ class BenchmarkCache(Cache):
         *args,
         **kwargs,
     ) -> BenchmarkCache:
+        """
+        `BenchmarkCache` is used to store the benchmark results for the pair of the specific key and configuration.
+        """
         super().__init__(table_name, conn, *args, **kwargs)
         self.key: Tuple[Union[int, float, str], ...] = key
         self.create_sql: Optional[str] = None
+        self.select_sql: Optional[str] = None
         self.insert_sql: Optional[str] = None
 
     def __getitem__(self, config: triton.Config) -> Optional[List[float]]:
         queries: Dict[str, Union[int, float, str]] = self.build_query(config)
-        where: str = " AND ".join(f"{k} = ?" for k in queries.keys())
-        select_sql: str = f"SELECT p50, p20, p80 FROM {self.table_name} WHERE {where};"
-        ret = self.conn.execute(select_sql, [*queries.values()]).fetchone()
+        if self.select_sql is None:
+            where: str = " AND ".join(f"{k} = ?" for k in queries.keys())
+            self.select_sql = (
+                f"SELECT p50, p20, p80 FROM {self.table_name} WHERE {where};"
+            )
+        ret = self.conn.execute(self.select_sql, [*queries.values()]).fetchone()
         if isinstance(ret, tuple):
             ret = [*ret]
         return ret
