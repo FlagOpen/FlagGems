@@ -9,6 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 from functools import lru_cache
+from flag_gems.ops.mm_streamk import streamk_mm
 
 @lru_cache(maxsize=1)
 def get_device_info():
@@ -43,196 +44,6 @@ logger = logging.getLogger(__name__)
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
-
-
-@triton.jit()
-def swizzle_tile(
-    tile_id,
-    M,
-    N,
-    K,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-):
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = tile_id // width
-    group_size = tl.minimum(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (tile_id % group_size)
-    pid_n = (tile_id % width) // group_size
-    return pid_m, pid_n
-
-
-@libentry()
-@triton.heuristics(
-    {
-        "EVEN_K": lambda args: args["K"] % (args["BLOCK_K"]) == 0,
-    }
-)
-@triton.jit
-def first_wave(
-    A,
-    B,
-    C,
-    M,
-    N,
-    K,
-    locks,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    total_full_tiles_streamk,
-    total_partial_tiles_streamk,
-    iters_per_tile,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    EVEN_K: tl.constexpr,
-):
-    pid = tl.program_id(0)  # pid range from 0 to sm_count
-    start_iter = pid * total_full_tiles_streamk + tl.minimum(
-        pid, total_partial_tiles_streamk
-    )
-    last_iter = (pid + 1) * total_full_tiles_streamk + tl.minimum(
-        pid + 1, total_partial_tiles_streamk
-    )
-    while start_iter < last_iter:
-        remain_iters = start_iter % iters_per_tile
-        # Iterate over the K axis. Recalculate end_iter as M/N may change during the iteration.
-        end_iter = tl.minimum(start_iter + (iters_per_tile - remain_iters), last_iter)
-
-        tile_id = start_iter // iters_per_tile
-
-        pid_m, pid_n = swizzle_tile(
-            tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M
-        )
-
-        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        rk = tl.arange(0, BLOCK_K)
-
-        ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-        rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-
-        # pointers
-        A_ptr = (
-            A
-            + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-            + BLOCK_K * stride_ak * remain_iters
-        )
-        B_ptr = (
-            B
-            + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
-            + BLOCK_K * stride_bk * remain_iters
-        )
-        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-
-        for current_iter in range(start_iter, end_iter):
-            if EVEN_K:
-                a = tl.load(A_ptr)
-                b = tl.load(B_ptr)
-            else:
-                k_mask = (current_iter % iters_per_tile) * BLOCK_K + rk < K
-                _0 = tl.zeros((1, 1), dtype=C.dtype.element_ty)
-                a = tl.load(A_ptr, mask=k_mask[None, :], other=_0)
-                b = tl.load(B_ptr, mask=k_mask[:, None], other=_0)
-            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-            A_ptr += BLOCK_K * stride_ak
-            B_ptr += BLOCK_K * stride_bk
-        # last iteration of the tile always happens before its start on another SM
-        if end_iter % iters_per_tile == 0:
-            C_ptr = C + (
-                rm[:, None] * stride_cm + rn[None, :] * stride_cn
-            )  # compute inside the if/else to avoid spilling!
-            mask = (rm < M)[:, None] & (rn < N)[None, :]
-            tl.store(C_ptr, acc, mask=mask)
-            if remain_iters != 0:  # only if tile has been partially processed
-                tl.atomic_xchg(locks + tile_id, 1)
-        else:
-            while tl.atomic_cas(locks + tile_id, 1, 1) != 1:
-                pass
-            C_ptr = C + (
-                rm[:, None] * stride_cm + rn[None, :] * stride_cn
-            )  # compute inside the if/else to avoid spilling!
-            mask = (rm < M)[:, None] & (rn < N)[None, :]
-            tl.atomic_add(C_ptr, acc, mask=mask, sem="relaxed")
-        start_iter = end_iter
-
-
-@libentry()
-@triton.jit
-def classic_tiles_mm(
-    A,
-    B,
-    C,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    total_tiles_streamk,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-):
-    # first wave has done more tiles than there are SMs, we adjust pid
-    tile_id = tl.program_id(0) + total_tiles_streamk
-    pid_m, pid_n = swizzle_tile(tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M)
-
-    # do matrix multiplication
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    # pointers
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    prev_multiple = prev_multiple_of(K, BLOCK_K)
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for start_k in range(0, prev_multiple, BLOCK_K):
-        rk = start_k + tl.arange(0, BLOCK_K)
-        a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
-        b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
-    # loop peeling
-    rk = prev_multiple + tl.arange(0, BLOCK_K)
-    mask_k = rk < K
-    a = tl.load(
-        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :]
-    )
-    b = tl.load(
-        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None]
-    )
-    if a.dtype != b.dtype:
-        a = a.to(C.dtype.element_ty)
-        b = b.to(C.dtype.element_ty)
-    acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
-    acc = acc.to(C.dtype.element_ty)
-    # rematerialize rm and rn to save registers
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-    mask = (rm < M)[:, None] & (rn < N)[None, :]
-    # handles write-back with reduction-splitting
-    tl.store(C, acc, mask=mask)
-
 
 
 # @libentry()
@@ -372,7 +183,6 @@ def classic_tiles_mm(
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm_iobound"),
-    #configs=runtime.get_tuned_config("mm"),
     # Add 'stride_am' and 'stride_bk' to trigger autotune for tensors with the same shape but different strides.
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=["log", "log", "log", "log", "log"],
@@ -398,7 +208,7 @@ def mm_kernel_iobound(
     # column major tile
     pid = tle.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
-    pid_m = pid % grid_m
+    pid_m = pid %  grid_m
     pid_n = pid // grid_m
 
     # do matrix multiplication
@@ -539,84 +349,6 @@ def get_higher_dtype(a, b):
             return a
 
 
-def streamk_mm(a, b, c, M, N, K, sm_count=108):
-    # TODO: profile to different settings for different chip
-    if b.stride(0) == 1:
-        BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 128
-        num_stages = 3
-        num_warps = 8
-    else:
-        BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 64
-        num_stages = 3
-        num_warps = 16
-
-    GROUP_M = 8
-    number_blocks_m = triton.cdiv(M, BLOCK_M)
-    number_blocks_n = triton.cdiv(N, BLOCK_N)
-
-    total_tiles = number_blocks_m * number_blocks_n
-    iters_per_tile = triton.cdiv(K, BLOCK_K)
-    tiles_per_wave = sm_count
-
-    # tiles that would executed in the last wave in general situation.
-    # and this is the tiles that we are going to adopt streamk)
-    total_tiles_streamk = total_tiles % tiles_per_wave
-    # mini wave
-    total_iters_streamk = total_tiles_streamk * iters_per_tile
-    total_full_tiles_streamk = total_iters_streamk // tiles_per_wave
-    total_partial_tiles_streamk = total_iters_streamk % tiles_per_wave
-
-    locks = torch.zeros((total_tiles_streamk,), device=a.device, dtype=torch.int32)
-
-    with torch_device_fn.device(a.device):
-        first_wave[(tiles_per_wave,)](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            locks,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            total_full_tiles_streamk=total_full_tiles_streamk,
-            total_partial_tiles_streamk=total_partial_tiles_streamk,
-            iters_per_tile=iters_per_tile,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            BLOCK_K=BLOCK_K,
-            GROUP_M=GROUP_M,
-            num_stages=num_stages,
-            num_warps=num_warps,
-        )
-
-        classic_tiles_mm[(total_tiles - total_tiles_streamk,)](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            total_tiles_streamk=total_tiles_streamk,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            BLOCK_K=BLOCK_K,
-            GROUP_M=GROUP_M,
-            num_stages=num_stages,
-            num_warps=num_warps,
-        )
-    return c
-
 
 # def splitk_mm(a, b, c, M, N, K, c_dtype):
 #     GROUP_K_LENGTH = 1024
@@ -727,10 +459,8 @@ def streamk_scenario(a, b, M, N, K):
     capability = torch_device_fn.get_device_capability(get_device_info())
     return (
         capability[0] > 7
-        and a.dtype in [torch.float16]
-        and b.dtype in [torch.float16]
-        and M > 1024
-        and N > 1024
+        and a.dtype in [torch.float16, torch.bfloat16]
+        and b.dtype in [torch.float16, torch.bfloat16]
         and K > M * 10
     )
 
@@ -755,15 +485,14 @@ def mm(a, b):
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
-
-    if mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
-        return iobound_mm(a, b, c, M, N, K)
-    elif streamk_scenario(a, b, M, N, K):
+    if streamk_scenario(a, b, M, N, K):
         return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
+    elif mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
+        return iobound_mm(a, b, c, M, N, K)
     # elif two_stages_splitk_mm_scenario(M, N, K):
     #     return splitk_mm(a, b, c, M, N, K, c_dtype)
-    # else:
-    return general_mm(a, b, c, M, N, K)
+    else:
+        return general_mm(a, b, c, M, N, K)
 
 
 def mm_out(a, b, *, out):
@@ -776,15 +505,13 @@ def mm_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    # logger.debug("GEMS MM_OUT, [shape info]: [-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s", M, N, K, a.stride(0) == 1, b.stride(0) == 1)
-    # launch kernel
     l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
-    if mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
-        return iobound_mm(a, b, out, M, N, K)
-    elif streamk_scenario(a, b, M, N, K):
+    if streamk_scenario(a, b, M, N, K):
         return streamk_mm(a, b, out, M, N, K, sm_count=sm_count)
+    elif mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
+        return iobound_mm(a, b, out, M, N, K)
     # elif two_stages_splitk_mm_scenario(M, N, K):
-    #     return splitk_mm(a, b, c, M, N, K, c_dtype)
-    # else:
-    return general_mm(a, b, out, M, N, K)
+    #     return splitk_mm(a, b, out, M, N, K, c_dtype)
+    else:
+        return general_mm(a, b, out, M, N, K)
