@@ -412,72 +412,79 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
     tiles_per_wave = sm_count
 
     number_cooperative_tiles = total_tiles % tiles_per_wave
-    # mini wave
-    total_iters_streamk = number_cooperative_tiles * iters_per_tile
-    tiles_per_pid = total_iters_streamk // tiles_per_wave
-    tile_remaining = total_iters_streamk % tiles_per_wave
+    number_other_tiles = total_tiles - number_cooperative_tiles
+    if number_other_tiles > 0 and number_cooperative_tiles < sm_count * 0.5:
+        number_cooperative_tiles = number_cooperative_tiles + tiles_per_wave
+    elif number_other_tiles > 0 and number_cooperative_tiles > sm_count * 0.8:
+        number_cooperative_tiles = 0
 
-    if a.dtype == torch.bfloat16:
-        locks = torch.zeros((tiles_per_wave,), device=a.device, dtype=torch.int32)
-        P = torch.zeros(
-            (tiles_per_wave, BLOCK_M, BLOCK_N), device=a.device, dtype=torch.float32
-        )
-        # with torch_device_fn.device(a.device):
-        k1 = first_wave_for_bf16[(tiles_per_wave,)](
-            a,
-            b,
-            c,
-            P,
-            M,
-            N,
-            K,
-            locks,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            full=tiles_per_pid,
-            remaining=tile_remaining,
-            iters_per_tile=iters_per_tile,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            BLOCK_K=BLOCK_K,
-            GROUP_M=GROUP_M,
-            num_stages=num_stages,
-            num_warps=num_warps,
-        )
-        # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
-        # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
-    else:
-        locks = torch.zeros((number_cooperative_tiles,), device=a.device, dtype=torch.int32)
-        k1 = first_wave[(tiles_per_wave,)](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            locks,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            total_full_tiles_streamk=tiles_per_pid,
-            total_partial_tiles_streamk=tile_remaining,
-            iters_per_tile=iters_per_tile,
-            BLOCK_M=BLOCK_M,
-            BLOCK_N=BLOCK_N,
-            BLOCK_K=BLOCK_K,
-            GROUP_M=GROUP_M,
-            num_stages=num_stages,
-            num_warps=num_warps,
-        )  
-        # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
-        # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
+    if number_cooperative_tiles > 0:
+        # mini wave
+        total_iters_streamk = number_cooperative_tiles * iters_per_tile
+        tiles_per_pid = total_iters_streamk // tiles_per_wave
+        tile_remaining = total_iters_streamk % tiles_per_wave
+
+        if a.dtype == torch.bfloat16:
+            locks = torch.zeros((tiles_per_wave,), device=a.device, dtype=torch.int32)
+            P = torch.zeros(
+                (tiles_per_wave, BLOCK_M, BLOCK_N), device=a.device, dtype=torch.float32
+            )
+            # with torch_device_fn.device(a.device):
+            k1 = first_wave_for_bf16[(tiles_per_wave,)](
+                a,
+                b,
+                c,
+                P,
+                M,
+                N,
+                K,
+                locks,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                full=tiles_per_pid,
+                remaining=tile_remaining,
+                iters_per_tile=iters_per_tile,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+                BLOCK_K=BLOCK_K,
+                GROUP_M=GROUP_M,
+                num_stages=num_stages,
+                num_warps=num_warps,
+            )
+            # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
+            # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
+        else:
+            locks = torch.zeros((number_cooperative_tiles,), device=a.device, dtype=torch.int32)
+            k1 = first_wave[(tiles_per_wave,)](
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                locks,
+                a.stride(0),
+                a.stride(1),
+                b.stride(0),
+                b.stride(1),
+                c.stride(0),
+                c.stride(1),
+                total_full_tiles_streamk=tiles_per_pid,
+                total_partial_tiles_streamk=tile_remaining,
+                iters_per_tile=iters_per_tile,
+                BLOCK_M=BLOCK_M,
+                BLOCK_N=BLOCK_N,
+                BLOCK_K=BLOCK_K,
+                GROUP_M=GROUP_M,
+                num_stages=num_stages,
+                num_warps=num_warps,
+            )  
+            # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
+            # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
 
     k2 = classic_mm[(total_tiles - number_cooperative_tiles,)](
         a,
