@@ -123,13 +123,14 @@ log_softmax:
     BLOCK_M: 32
     BLOCK_N: 512
   num_warps: 8
-mm:
-- META:  # for largek
-    BLOCK_M: 128
-    BLOCK_N: 128
+mm_iobound:
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 32
     BLOCK_K: 128
   num_stages: 3
-  num_warps: 8
+  num_warps: 4
+mm:
 - META:
     BLOCK_M: 128
     BLOCK_N: 256
