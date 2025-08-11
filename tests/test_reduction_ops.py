@@ -526,7 +526,6 @@ def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
     )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX: CORE DUMPED")
 @pytest.mark.var_mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
@@ -1107,7 +1106,6 @@ SHAPE_CONV2D = [
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])
