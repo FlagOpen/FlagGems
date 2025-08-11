@@ -478,7 +478,8 @@ def streamk_scenario(a, b, M, N, K):
         capability[0] > 7
         and a.dtype in [torch.float16, torch.bfloat16]
         and b.dtype in [torch.float16, torch.bfloat16]
-        and K > M * 10
+        and K > M * 5
+        and K > N * 5
     )
 
 
@@ -502,14 +503,11 @@ def mm(a, b):
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
-    if streamk_scenario(a, b, M, N, K):
-        return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
-    elif mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
-        return iobound_mm(a, b, c, M, N, K)
-    # elif two_stages_splitk_mm_scenario(M, N, K):
-    #     return splitk_mm(a, b, c, M, N, K, c_dtype)
-    else:
-        return general_mm(a, b, c, M, N, K)
+
+    # if streamk_scenario(a, b, M, N, K):
+    #     return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
+    # else:
+    return general_mm(a, b, c, M, N, K)
 
 
 def mm_out(a, b, *, out):
@@ -526,8 +524,8 @@ def mm_out(a, b, *, out):
     sm_count = get_sm_count()
     if streamk_scenario(a, b, M, N, K):
         return streamk_mm(a, b, out, M, N, K, sm_count=sm_count)
-    elif mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
-        return iobound_mm(a, b, out, M, N, K)
+    # elif mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
+    #     return iobound_mm(a, b, out, M, N, K)
     # elif two_stages_splitk_mm_scenario(M, N, K):
     #     return splitk_mm(a, b, out, M, N, K, c_dtype)
     else:
