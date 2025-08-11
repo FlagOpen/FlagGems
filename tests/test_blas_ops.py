@@ -28,9 +28,9 @@ FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_addmm(M, N, K, scalar, dtype):
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    mat1 = torch.randn((M, K), dtype=dtype, device="cpu").to(flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device="cpu").to(flag_gems.device)
+    bias1 = torch.randn((N,), dtype=dtype, device="cpu").to(flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
     ref_bias1 = to_reference(bias1, True)
@@ -43,7 +43,7 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
 
     gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=K)
 
-    bias2 = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    bias2 = torch.randn((M, N), dtype=dtype, device="cpu").to(flag_gems.device)
     ref_bias2 = to_reference(bias2, True)
 
     ref_out2 = torch.addmm(ref_bias2, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
@@ -62,8 +62,8 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
     batch = 4
-    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device="cpu").to(flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device="cpu").to(flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 
@@ -83,8 +83,8 @@ def test_accuracy_bmm(M, N, K, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mm(M, N, K, dtype):
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    mat1 = torch.randn((M, K), dtype=dtype, device="cpu").to(flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device="cpu").to(flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 
@@ -103,8 +103,8 @@ def test_accuracy_mm(M, N, K, dtype):
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_mv(M, N, dtype):
-    matrix = torch.randn((N, M), dtype=dtype, device=flag_gems.device)
-    vector = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    matrix = torch.randn((N, M), dtype=dtype, device="cpu").to(flag_gems.device)
+    vector = torch.randn((M,), dtype=dtype, device="cpu").to(flag_gems.device)
     ref_matrix = to_reference(matrix, True)
     ref_vector = to_reference(vector, True)
 
@@ -121,8 +121,12 @@ def test_accuracy_mv(M, N, dtype):
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_outer(M, N, dtype):
-    inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    inp2 = torch.randn(N, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp1 = torch.randn(M, dtype=dtype, device="cpu", requires_grad=True).to(
+        flag_gems.device
+    )
+    inp2 = torch.randn(N, dtype=dtype, device="cpu", requires_grad=True).to(
+        flag_gems.device
+    )
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
@@ -156,8 +160,8 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
     else:
-        inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
-        inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)
+        inp1 = torch.randn(M, dtype=dtype, device="cpu").to(flag_gems.device)
+        inp2 = torch.randn(M, dtype=dtype, device="cpu").to(flag_gems.device)
 
     inp1 = inp1[::stride]
     inp2 = inp2[::stride]
@@ -189,8 +193,8 @@ def test_accuracy_dot_tensor_tensor(shape, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
 
