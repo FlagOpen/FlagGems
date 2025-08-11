@@ -3,14 +3,17 @@ import logging
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
 
 @triton.jit
 def prev_multiple_of(a, b):
     # the largest x<a that x%b ==0
     return tl.cdiv(a, b) * b - b
+
 
 @triton.jit()
 def swizzle_tile(
@@ -37,13 +40,10 @@ def linear_tile(
     tile_id,
     M,
     N,
-    K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,    
+    GROUP_M: tl.constexpr,
 ):
-    grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
 
     # column first
@@ -51,6 +51,7 @@ def linear_tile(
     pid_m = tile_id // grid_n
 
     return pid_m, pid_n
+
 
 @libentry()
 @triton.heuristics(
@@ -97,9 +98,7 @@ def first_wave(
 
         tile_id = start_iter // iters_per_tile
 
-        pid_m, pid_n = swizzle_tile(
-            tile_id, M, N, BLOCK_M, BLOCK_N, GROUP_M
-        )
+        pid_m, pid_n = swizzle_tile(tile_id, M, N, BLOCK_M, BLOCK_N, GROUP_M)
 
         rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
         rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -230,7 +229,7 @@ def mac_loop(
             B_ptr += BLOCK_K * stride_bk
 
         # handle the last iter
-        rk =  prev_multiple + tl.arange(0, BLOCK_K)
+        rk = prev_multiple + tl.arange(0, BLOCK_K)
         mask_k = rk < K
         a = tl.load(A_ptr, mask=mask_k[None, :])
         b = tl.load(B_ptr, mask=mask_k[:, None])
@@ -268,6 +267,7 @@ def mac_loop(
         C_ = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
         mask = (rm < M)[:, None] & (rn < N)[None, :]
         tl.store(C_, acc, mask=mask)
+
 
 @libentry()
 @triton.jit()
@@ -353,7 +353,7 @@ def classic_mm(
 ):
     # first wave has done more tiles than there are SMs, we adjust pid
     tile_id = tl.program_id(0) + total_tiles_streamk
-    pid_m, pid_n = swizzle_tile(tile_id, M, N, K, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M)
+    pid_m, pid_n = swizzle_tile(tile_id, M, N, BLOCK_M, BLOCK_N, GROUP_M)
 
     # do matrix multiplication
     rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -398,6 +398,15 @@ def classic_mm(
 
 
 def streamk_mm(a, b, c, M, N, K, sm_count=108):
+    logger.debug(
+        "GEMS MM, [mm scenario]: streamk, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s",
+        M,
+        N,
+        K,
+        a.stride(0) == 1,
+        b.stride(0) == 1,
+    )
     # TODO: change the hard code to tuning config
     BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 128
     num_stages = 3
@@ -430,7 +439,7 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
                 (tiles_per_wave, BLOCK_M, BLOCK_N), device=a.device, dtype=torch.float32
             )
             # with torch_device_fn.device(a.device):
-            k1 = first_wave_for_bf16[(tiles_per_wave,)](
+            first_wave_for_bf16[(tiles_per_wave,)](
                 a,
                 b,
                 c,
@@ -458,8 +467,10 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
             # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
             # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
         else:
-            locks = torch.zeros((number_cooperative_tiles,), device=a.device, dtype=torch.int32)
-            k1 = first_wave[(tiles_per_wave,)](
+            locks = torch.zeros(
+                (number_cooperative_tiles,), device=a.device, dtype=torch.int32
+            )
+            first_wave[(tiles_per_wave,)](
                 a,
                 b,
                 c,
@@ -482,11 +493,11 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
                 GROUP_M=GROUP_M,
                 num_stages=num_stages,
                 num_warps=num_warps,
-            )  
+            )
             # logger.debug(f"{k1.n_regs} registers used, {k1.n_spills} spills")
             # logger.debug(f"shared memory: {k1.metadata.shared} bytes")
 
-    k2 = classic_mm[(total_tiles - number_cooperative_tiles,)](
+    classic_mm[(total_tiles - number_cooperative_tiles,)](
         a,
         b,
         c,

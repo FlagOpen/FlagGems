@@ -1,15 +1,16 @@
 import logging
+from functools import lru_cache
 
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.mm_streamk import streamk_mm
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
-from functools import lru_cache
-from flag_gems.ops.mm_streamk import streamk_mm
+
 
 @lru_cache(maxsize=1)
 def get_device_info():
@@ -26,14 +27,18 @@ def get_device_info():
         # L2 cache size is 40MB and SM count is 108 for A100
         return device_id, 40 * 1024 * 1024, 108
 
+
 def get_device_id():
     return get_device_info()[0]
+
 
 def get_l2_cache_size():
     return get_device_info()[1]
 
+
 def get_sm_count():
     return get_device_info()[2]
+
 
 CACHE_USAGE_THRESHOLD = 0.8
 
@@ -208,7 +213,7 @@ def mm_kernel_iobound(
     # column major tile
     pid = tle.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_M)
-    pid_m = pid %  grid_m
+    pid_m = pid % grid_m
     pid_n = pid // grid_m
 
     # do matrix multiplication
@@ -227,7 +232,6 @@ def mm_kernel_iobound(
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
         acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
-
 
     # loop peeling
     rk = prev_multiple + tl.arange(0, BLOCK_K)
@@ -347,7 +351,6 @@ def get_higher_dtype(a, b):
             return a
 
 
-
 # def splitk_mm(a, b, c, M, N, K, c_dtype):
 #     GROUP_K_LENGTH = 1024
 #     SPLIT_K = triton.cdiv(K, GROUP_K_LENGTH)
@@ -395,7 +398,15 @@ def get_higher_dtype(a, b):
 
 
 def iobound_mm(a, b, c, M, N, K):
-    logger.debug("GEMS MM, [mm scenario]: iobound, [shape info]: [-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s", M, N, K, a.stride(0) == 1, b.stride(0) == 1)
+    logger.debug(
+        "GEMS MM, [mm scenario]: iobound, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s",
+        M,
+        N,
+        K,
+        a.stride(0) == 1,
+        b.stride(0) == 1,
+    )
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -413,13 +424,21 @@ def iobound_mm(a, b, c, M, N, K):
             b.stride(0),
             b.stride(1),
             c.stride(0),
-            c.stride(1)
+            c.stride(1),
         )
     return c
 
 
 def general_mm(a, b, c, M, N, K):
-    logger.debug("GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), [A column-major]: %s, [B column-major]: %s", M, N, K, a.stride(0) == 1, b.stride(0) == 1)
+    logger.debug(
+        "GEMS MM, [mm scenario]: general, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+        "[A column-major]: %s, [B column-major]: %s",
+        M,
+        N,
+        K,
+        a.stride(0) == 1,
+        b.stride(0) == 1,
+    )
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
