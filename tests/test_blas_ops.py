@@ -10,7 +10,7 @@ from .accuracy_utils import (
     gems_assert_close,
     to_reference,
 )
-from .conftest import QUICK_MODE, TO_DEVICE
+from .conftest import QUICK_MODE
 
 MN_SHAPES = [(1, 32)] if QUICK_MODE else [(1, 32), (160, 1024), (5333, 497)]
 MNK_SHAPES = (
@@ -43,7 +43,6 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     ref_out1 = torch.addmm(ref_bias1, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
         res_out1 = torch.addmm(bias1, mat1, mat2, alpha=alpha, beta=beta)
-    res_out1 = res_out1.to("cpu") if not TO_DEVICE else res_out1
     gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=K)
 
     bias2 = torch.randn((M, N), dtype=dtype, device="cpu")
@@ -53,7 +52,6 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     ref_out2 = torch.addmm(ref_bias2, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
         res_out2 = torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta)
-    res_out2 = res_out2.to("cpu") if not TO_DEVICE else res_out2
     gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
 
@@ -76,7 +74,6 @@ def test_accuracy_bmm(M, N, K, dtype):
     ref_out = torch.bmm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
         res_out = torch.bmm(mat1, mat2)
-    res_out = res_out.to("cpu") if not TO_DEVICE else res_out
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
@@ -98,7 +95,6 @@ def test_accuracy_mm(M, N, K, dtype):
     ref_out = torch.mm(ref_mat1, ref_mat2)
     with flag_gems.use_gems():
         res_out = torch.mm(mat1, mat2)
-    res_out = res_out.to("cpu") if not TO_DEVICE else res_out
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
@@ -119,7 +115,6 @@ def test_accuracy_mv(M, N, dtype):
     ref_out = torch.mv(ref_matrix, ref_vector)
     with flag_gems.use_gems():
         res_out = torch.mv(matrix, vector)
-    res_out = res_out.to("cpu") if not TO_DEVICE else res_out
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
 
 
@@ -137,7 +132,6 @@ def test_accuracy_outer(M, N, dtype):
     inp2 = inp2.to(flag_gems.device)
     ref_out = torch.outer(ref_inp1, ref_inp2)
     res_out = flag_gems.outer(inp1, inp2)
-    res_out = res_out.to("cpu") if not TO_DEVICE else res_out
     gems_assert_close(res_out, ref_out, dtype)
 
     out_grad = torch.randn_like(res_out, device="cpu")
@@ -147,8 +141,6 @@ def test_accuracy_outer(M, N, dtype):
         ref_out, (ref_inp1, ref_inp2), ref_grad
     )
     res_in1_grad, res_in2_grad = torch.autograd.grad(res_out, (inp1, inp2), out_grad)
-    res_in1_grad = res_in1_grad.to("cpu") if not TO_DEVICE else res_in1_grad
-    res_in2_grad = res_in2_grad.to("cpu") if not TO_DEVICE else res_in2_grad
     gems_assert_close(res_in1_grad, ref_in1_grad, dtype, reduce_dim=N)
     gems_assert_close(res_in2_grad, ref_in2_grad, dtype, reduce_dim=M)
 
@@ -181,7 +173,6 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     ref_out = torch.vdot(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.vdot(inp1, inp2)
-    res_out = res_out.to("cpu") if not TO_DEVICE else res_out
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -202,5 +193,4 @@ def test_accuracy_dot_tensor_tensor(shape, dtype):
     ref_out = torch.dot(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.dot(inp1, inp2)
-    res_out = res_out.to("cpu") if not TO_DEVICE else res_out
     gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
