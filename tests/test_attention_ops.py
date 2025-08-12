@@ -23,9 +23,9 @@ def make_input(
     set_philox_state(1234567890, 0, device)
     q_shape = (batch, num_head, q_seq_len, head_size)
     kv_shape = (batch, num_head_k, kv_seq_len, head_size)
-    q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
-    k = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
-    v = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+    q = torch.empty(q_shape, dtype=dtype, device="cpu").uniform_(-0.05, 0.05)
+    k = torch.empty(kv_shape, dtype=dtype, device="cpu").uniform_(-0.05, 0.05)
+    v = torch.empty(kv_shape, dtype=dtype, device="cpu").uniform_(-0.05, 0.05)
     return q, k, v
 
 
@@ -313,13 +313,15 @@ def test_sdpa_legacy(
     dtype,
     enable_gqa,
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
     torch_result = torch_sdpa(
         ref_q, ref_k, ref_v, scale, is_causal, enable_gqa=enable_gqa
@@ -349,13 +351,15 @@ def test_sdpa_legacy(
 def test_sdpa_square_qk_even_mn(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
     with flag_gems.use_gems():
@@ -378,13 +382,15 @@ def test_sdpa_square_qk_even_mn(
 def test_sdpa_nonsquare_qk(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
     torch_result = torch_sdpa(ref_q, ref_k, ref_v, scale, is_causal)
     with flag_gems.use_gems():
@@ -408,13 +414,15 @@ def test_sdpa_nonsquare_qk(
 def test_flash_fwd_nonsquare_qk(
     batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
 
     torch_out, torch_lse, _, _, _ = torch_flash_fwd(
@@ -452,13 +460,15 @@ def test_flash_fwd_gqa_alibi_softcap(
     alibi,
     dtype,
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
 
     if alibi:
@@ -528,13 +538,15 @@ def test_flash_splitkv(
     alibi,
     dtype,
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head_k, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
 
     if alibi:
@@ -604,13 +616,15 @@ def test_flash_fwd_swa(
     window_size_right,
     dtype,
 ):
-    device = torch_device_fn.current_device()
     q, k, v = make_input(
         batch, num_head, num_head, q_seq_len, kv_seq_len, head_size, dtype, device
     )
     ref_q = to_reference(q, False)
     ref_k = to_reference(k, False)
     ref_v = to_reference(v, False)
+    q = q.to(device)
+    k = k.to(device)
+    v = v.to(device)
     scale = float(1.0 / np.sqrt(head_size))
 
     torch_out, torch_lse, _, _, _ = torch_flash_fwd(

@@ -41,18 +41,22 @@ def test_accuracy_groupnorm(N, C, H, W, num_groups, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=flag_gems.device)
+    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cpu")
     if wb_none:
         res_weight = None
         res_bias = None
     else:
-        res_weight = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
-        res_bias = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+        res_weight = torch.randn(size=(C,), dtype=dtype, device="cpu")
+        res_bias = torch.randn(size=(C,), dtype=dtype, device="cpu")
     eps = 1e-5
 
     ref_inp = to_reference(res_inp, True)
     ref_weight = to_reference(res_weight, True)
     ref_bias = to_reference(res_bias, True)
+    res_inp = res_inp.to(flag_gems.device)
+    if not wb_none:
+        res_weight = res_weight.to(flag_gems.device)
+        res_bias = res_bias.to(flag_gems.device)
 
     ref_out = torch.nn.functional.group_norm(
         ref_inp, num_groups, weight=ref_weight, bias=ref_bias, eps=eps
@@ -86,16 +90,16 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device=flag_gems.device)
+    res_inp = torch.randn(size=(N, C, H, W), dtype=dtype, device="cpu")
     res_grad = torch.randn_like(res_inp)
-    res_mean = torch.randn([N, num_groups], dtype=dtype, device=flag_gems.device)
-    res_rstd = torch.randn([N, num_groups], dtype=dtype, device=flag_gems.device)
+    res_mean = torch.randn([N, num_groups], dtype=dtype, device="cpu")
+    res_rstd = torch.randn([N, num_groups], dtype=dtype, device="cpu")
 
     if wb_none:
         res_weight = None
         output_mask = [True, False, False]
     else:
-        res_weight = torch.randn(C, dtype=dtype, device=flag_gems.device)
+        res_weight = torch.randn(C, dtype=dtype, device="cpu")
         output_mask = [True, True, True]
 
     ref_inp = to_reference(res_inp, True)
@@ -103,6 +107,12 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
     ref_mean = to_reference(res_mean, True)
     ref_rstd = to_reference(res_rstd, True)
     ref_weight = to_reference(res_weight, True)
+    res_inp = res_inp.to(flag_gems.device)
+    res_grad = res_grad.to(flag_gems.device)
+    res_mean = res_mean.to(flag_gems.device)
+    res_rstd = res_rstd.to(flag_gems.device)
+    if not wb_none:
+        res_weight = res_weight.to(flag_gems.device)
 
     group_size = C // num_groups
     HxW = H * W
@@ -168,18 +178,22 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_inp = torch.randn(shape, dtype=dtype, device="cpu")
     if wb_none:
         res_weight = None
         res_bias = None
     else:
-        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
-        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_weight = torch.randn(shape[1:], dtype=dtype, device="cpu")
+        res_bias = torch.randn(shape[1:], dtype=dtype, device="cpu")
     eps = 1e-5
 
     ref_inp = to_reference(res_inp, True)
     ref_weight = to_reference(res_weight, True)
     ref_bias = to_reference(res_bias, True)
+    res_inp = res_inp.to(flag_gems.device)
+    if not wb_none:
+        res_weight = res_weight.to(flag_gems.device)
+        res_bias = res_bias.to(flag_gems.device)
 
     ref_out = torch.layer_norm(
         ref_inp,
@@ -222,17 +236,17 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_inp = torch.randn(shape, dtype=dtype, device="cpu")
     res_grad = torch.randn_like(res_inp)
-    res_mean = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
-    res_rstd = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+    res_mean = torch.randn(shape[0], dtype=dtype, device="cpu")
+    res_rstd = torch.randn(shape[0], dtype=dtype, device="cpu")
     if wb_none:
         res_weight = None
         res_bias = None
         output_mask = [True, False, False]
     else:
-        res_weight = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
-        res_bias = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+        res_weight = torch.randn(shape[1:], dtype=dtype, device="cpu")
+        res_bias = torch.randn(shape[1:], dtype=dtype, device="cpu")
         output_mask = [True, True, True]
 
     normalized_shape = shape[1:]
@@ -243,6 +257,13 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
     ref_rstd = to_reference(res_rstd, True)
     ref_weight = to_reference(res_weight, True)
     ref_bias = to_reference(res_bias, True)
+    res_inp = res_inp.to(flag_gems.device)
+    res_grad = res_grad.to(flag_gems.device)
+    res_mean = res_mean.to(flag_gems.device)
+    res_rstd = res_rstd.to(flag_gems.device)
+    if not wb_none:
+        res_weight = res_weight.to(flag_gems.device)
+        res_bias = res_bias.to(flag_gems.device)
 
     (
         ref_in_grad,
@@ -315,24 +336,19 @@ def test_accuracy_instancenorm(
         return
 
     B, C = shape[:2]
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    inp = torch.randn(shape, dtype=dtype, device="cpu", requires_grad=True)
     if has_weight_bias:
-        weight = torch.randn(
-            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
-        bias = torch.randn(
-            size=(C,), dtype=dtype, device=flag_gems.device, requires_grad=True
-        )
+        weight = torch.randn(size=(C,), dtype=dtype, device="cpu", requires_grad=True)
+        bias = torch.randn(size=(C,), dtype=dtype, device="cpu", requires_grad=True)
     else:
         weight, bias = None, None
     running_mean = (
-        torch.randn(size=(C,), dtype=torch.float32, device=flag_gems.device)
+        torch.randn(size=(C,), dtype=torch.float32, device="cpu")
         if has_running_stats
         else None
     )
     running_var = (
-        torch.randn(size=(C,), dtype=torch.float32, device=flag_gems.device).abs()
-        + 1e-5
+        torch.randn(size=(C,), dtype=torch.float32, device="cpu").abs() + 1e-5
         if has_running_stats
         else None
     )
@@ -348,6 +364,13 @@ def test_accuracy_instancenorm(
     ref_running_var = to_reference(
         running_var.clone() if has_running_stats else None, True
     )
+    inp = inp.to(flag_gems.device)
+    if has_weight_bias:
+        weight = weight.to(flag_gems.device)
+        bias = bias.to(flag_gems.device)
+    if has_running_stats:
+        running_mean = running_mean.to(flag_gems.device)
+        running_var = running_var.to(flag_gems.device)
 
     ref_out = torch.nn.functional.instance_norm(
         ref_inp,
@@ -377,6 +400,7 @@ def test_accuracy_instancenorm(
 
     out_grad = torch.randn_like(inp)
     ref_grad = to_reference(out_grad, True)
+    out_grad = out_grad.to(flag_gems.device)
 
     if has_weight_bias:
         (ref_in_grad, ref_weight_grad, ref_bias_grad) = torch.autograd.grad(
@@ -411,23 +435,26 @@ def test_accuracy_weightnorm(shape, dtype, dim):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
-    v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    v = torch.randn(shape, dtype=dtype, device="cpu", requires_grad=True)
     g = torch.randn(
         [1 if i != dim else shape[i] for i in range(v.ndim)],
         dtype=dtype,
-        device=flag_gems.device,
+        device="cpu",
         requires_grad=True,
     )
     reduce_size = v.numel() // shape[dim]
 
     ref_v = to_reference(v, True)
     ref_g = to_reference(g, True)
+    v = v.to(flag_gems.device)
+    g = g.to(flag_gems.device)
     ref_w_out = torch._weight_norm(ref_v, ref_g, dim)
     res_w_out = flag_gems.weight_norm(v, g, dim)
     gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
-    res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_w_grad = torch.randn(shape, dtype=dtype, device="cpu")
     ref_w_grad = to_reference(res_w_grad, True)
+    res_w_grad = res_w_grad.to(flag_gems.device)
 
     ref_v_grad, ref_g_grad = torch.autograd.grad(
         ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
@@ -456,12 +483,14 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     dim = dim % len(shape)
-    v = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    g = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
+    v = torch.randn(shape, dtype=dtype, device="cpu")
+    g = torch.randn(shape[dim], dtype=dtype, device="cpu")
     reduce_size = v.numel() // shape[dim]
 
     ref_v = to_reference(v, True)
     ref_g = to_reference(g, True)
+    v = v.to(flag_gems.device)
+    g = g.to(flag_gems.device)
 
     ref_w_out, ref_norm_out = torch._weight_norm_interface(ref_v, ref_g, dim)
     with flag_gems.use_gems():
@@ -478,18 +507,22 @@ def test_accuracy_weightnorm_interface(shape, dtype, dim):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_weightnorm_interface_backward(shape, dtype, dim):
     dim = dim % len(shape)
-    res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_w_grad = torch.randn(shape, dtype=dtype, device="cpu")
     res_v = torch.randn_like(res_w_grad)
     if flag_gems.vendor_name == "kunlunxin":
         if shape == (4096, 256):
             res_v = res_v.uniform_(-0.01, 0.01)
-    res_g = torch.randn(shape[dim], dtype=dtype, device=flag_gems.device)
+    res_g = torch.randn(shape[dim], dtype=dtype, device="cpu")
     res_norm = torch.randn_like(res_g)
 
     ref_w_grad = to_reference(res_w_grad, True)
     ref_v = to_reference(res_v, True)
     ref_g = to_reference(res_g, True)
     ref_norm = to_reference(res_norm, True)
+    res_w_grad = res_w_grad.to(flag_gems.device)
+    res_v = res_v.to(flag_gems.device)
+    res_g = res_g.to(flag_gems.device)
+    res_norm = res_norm.to(flag_gems.device)
 
     ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
         ref_w_grad, ref_v, ref_g, ref_norm, dim
@@ -520,15 +553,15 @@ def test_accuracy_rmsnorm(shape, dtype):
     np_grad = np.random.uniform(-0.01, 0.01, shape[:2]).astype(np.float32)
     np_weight = np.random.uniform(-0.1, 0.1, layer_shape).astype(np.float32)
 
-    inp = torch.tensor(np_inp, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    weight = torch.tensor(
-        np_weight, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    inp = torch.tensor(np_inp, dtype=dtype, device="cpu", requires_grad=True)
+    weight = torch.tensor(np_weight, dtype=dtype, device="cpu", requires_grad=True)
 
     eps = 1e-5
 
     ref_inp = to_reference(inp)
     ref_weight = to_reference(weight)
+    inp = inp.to(flag_gems.device)
+    weight = weight.to(flag_gems.device)
 
     def _torch_rms_norm(x, weight, eps):
         upcast_x = x.to(torch.float32)
@@ -540,10 +573,9 @@ def test_accuracy_rmsnorm(shape, dtype):
     ref_out = _torch_rms_norm(ref_inp, weight=ref_weight, eps=eps)
     res_out = flag_gems.rms_norm(inp, list(layer_shape), weight=weight, eps=eps)
 
-    res_grad = torch.tensor(
-        np_grad, dtype=dtype, device=flag_gems.device, requires_grad=True
-    )
+    res_grad = torch.tensor(np_grad, dtype=dtype, device="cpu", requires_grad=True)
     ref_grad = to_reference(res_grad)
+    res_grad = res_grad.to(flag_gems.device)
 
     res_grad, res_weight_grad = torch.autograd.grad(res_out, (inp, weight), res_grad)
     ref_grad, ref_weight_grad = torch.autograd.grad(
@@ -565,16 +597,20 @@ def test_accuracy_skip_layernorm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    residual = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device)
-    bias = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape[:2], dtype=dtype, device="cpu")
+    residual = torch.randn(shape[:2], dtype=dtype, device="cpu")
+    weight = torch.randn(layer_shape, dtype=dtype, device="cpu")
+    bias = torch.randn(layer_shape, dtype=dtype, device="cpu")
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
     ref_residual = to_reference(residual, True)
     ref_weight = to_reference(weight, True)
     ref_bias = to_reference(bias, True)
+    inp = inp.to(flag_gems.device)
+    residual = residual.to(flag_gems.device)
+    weight = weight.to(flag_gems.device)
+    bias = bias.to(flag_gems.device)
 
     ref_out = torch.layer_norm(
         ref_inp + ref_residual,
@@ -598,14 +634,17 @@ def test_accuracy_fused_add_rms_norm(shape, dtype):
     layer_shape = [
         N,
     ]
-    inp = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    residual = torch.randn(shape[:2], dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(layer_shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape[:2], dtype=dtype, device="cpu")
+    residual = torch.randn(shape[:2], dtype=dtype, device="cpu")
+    weight = torch.randn(layer_shape, dtype=dtype, device="cpu")
     eps = 1e-5
 
     ref_inp = to_reference(inp, True)
     ref_residual = to_reference(residual, True)
     ref_weight = to_reference(weight, True)
+    inp = inp.to(flag_gems.device)
+    residual = residual.to(flag_gems.device)
+    weight = weight.to(flag_gems.device)
 
     def _torch_fused_add_rms_norm(x, residual, weight, eps):
         x = x + residual
@@ -640,8 +679,9 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp = torch.randn(shape, dtype=dtype, device="cpu")
     ref_inp = to_reference(inp, True)
+    inp = inp.to(flag_gems.device)
 
     ref_out = torch.linalg.vector_norm(ref_inp, ord, dim, keepdim)
     with flag_gems.use_gems():
@@ -669,16 +709,12 @@ def test_accuracy_batch_norm(shape, dtype, affine):
         torch.manual_seed(23)
         torch.mlu.manual_seed_all(23)
     C = shape[1]
-    inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
-    weight = (
-        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
-    )
-    bias = (
-        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
-    )
+    inp = torch.randn(size=shape, dtype=dtype, device="cpu")
+    weight = torch.randn(size=(C,), dtype=dtype, device="cpu") if affine else None
+    bias = torch.randn(size=(C,), dtype=dtype, device="cpu") if affine else None
 
-    running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
-    running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
+    running_mean = torch.zeros(size=(C,), dtype=dtype, device="cpu")
+    running_var = torch.ones(size=(C,), dtype=dtype, device="cpu")
 
     eps = 1e-5
 
@@ -687,6 +723,12 @@ def test_accuracy_batch_norm(shape, dtype, affine):
     ref_bias = to_reference(bias, True)
     ref_running_mean = to_reference(running_mean, True)
     ref_running_var = to_reference(running_var, True)
+    inp = inp.to(flag_gems.device)
+    if affine:
+        weight = weight.to(flag_gems.device)
+        bias = bias.to(flag_gems.device)
+    running_mean = running_mean.to(flag_gems.device)
+    running_var = running_var.to(flag_gems.device)
 
     ref_out = torch.nn.functional.batch_norm(
         ref_inp,
@@ -727,15 +769,13 @@ def test_accuracy_batch_norm(shape, dtype, affine):
 @pytest.mark.parametrize("affine", [True, False])
 def test_accuracy_batch_norm_backward(shape, dtype, affine):
     C = shape[1]
-    res_grad = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    res_grad = torch.randn(size=shape, dtype=dtype, device="cpu")
     res_inp = torch.randn_like(res_grad)
-    res_weight = (
-        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
-    )
-    res_running_mean = torch.zeros(size=(C,), dtype=dtype, device=flag_gems.device)
-    res_running_var = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
-    res_save_mean = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
-    res_save_invstd = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
+    res_weight = torch.randn(size=(C,), dtype=dtype, device="cpu") if affine else None
+    res_running_mean = torch.zeros(size=(C,), dtype=dtype, device="cpu")
+    res_running_var = torch.ones(size=(C,), dtype=dtype, device="cpu")
+    res_save_mean = torch.randn(C, dtype=torch.float32, device="cpu")
+    res_save_invstd = torch.randn(C, dtype=torch.float32, device="cpu")
 
     ref_grad = to_reference(res_grad, True)
     ref_inp = to_reference(res_inp, True)
@@ -744,6 +784,14 @@ def test_accuracy_batch_norm_backward(shape, dtype, affine):
     ref_running_var = to_reference(res_running_var, True)
     ref_save_mean = to_reference(res_save_mean, True)
     ref_save_invstd = to_reference(res_save_invstd, True)
+    res_grad = res_grad.to(flag_gems.device)
+    res_inp = res_inp.to(flag_gems.device)
+    if affine:
+        res_weight = res_weight.to(flag_gems.device)
+    res_running_mean = res_running_mean.to(flag_gems.device)
+    res_running_var = res_running_var.to(flag_gems.device)
+    res_save_mean = res_save_mean.to(flag_gems.device)
+    res_save_invstd = res_save_invstd.to(flag_gems.device)
 
     train = True
     eps = 1e-05
