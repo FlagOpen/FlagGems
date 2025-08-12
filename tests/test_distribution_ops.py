@@ -21,17 +21,17 @@ def test_accuracy_normal(float, shape, dtype):
     loc = (
         3.0
         if float == "mean"
-        else torch.full(
-            size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device
-        )
+        else torch.full(size=shape, fill_value=3.0, dtype=dtype, device="cpu")
     )
     scale = (
         10.0
         if float == "std"
-        else torch.full(
-            size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
-        )
+        else torch.full(size=shape, fill_value=10.0, dtype=dtype, device="cpu")
     )
+    if torch.is_tensor(loc):
+        loc = loc.to(device)
+    if torch.is_tensor(scale):
+        scale = scale.to(device)
     with flag_gems.use_gems():
         res_out = torch.normal(loc, scale)
     ref_out = to_reference(res_out)
@@ -45,7 +45,8 @@ def test_accuracy_normal(float, shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_uniform(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    x = torch.randn(size=shape, dtype=dtype, device="cpu")
+    x = x.to(device)
     with flag_gems.use_gems():
         x.uniform_(-3, 3)
     assert (x <= 3.0).all()
@@ -56,7 +57,8 @@ def test_accuracy_uniform(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_exponential_(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
+    x = torch.empty(size=shape, dtype=dtype, device="cpu")
+    x = x.to(device)
     with flag_gems.use_gems():
         x.exponential_()
     assert x.min() > 0
