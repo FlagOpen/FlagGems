@@ -189,7 +189,7 @@ def to_reference(inp, upcast=False):
 
 
 def to_cpu(res, ref):
-    if TO_CPU:
+    if TO_CPU or ref.device == torch.device("cpu"):
         res = res.to("cpu")
         assert ref.device == torch.device("cpu")
     return res
