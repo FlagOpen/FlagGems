@@ -180,7 +180,7 @@ class Benchmark:
 
     def set_gems(self, gems_op):
         self.gems_op = gems_op
-        
+
     def record_shapes(self, *args, **kwargs):
         def deep_parse(item):
             if isinstance(item, torch.Tensor):
@@ -198,7 +198,7 @@ class Benchmark:
         if parsed_args and parsed_kwargs:
             return parsed_args, parsed_kwargs
         return parsed_args if parsed_args else parsed_kwargs
-    
+
     def profile(self, op, *args, **kwargs):
         mode = 1
         if args[0].device.type == "cpu":
@@ -277,21 +277,21 @@ class Benchmark:
 
                 args_xla = tuple(xm.send_cpu_data_to_device(arg, xm.xla_device()) for arg in args)
                 torch_perf = self.profile(self.torch_op, *args_xla, **kwargs)
-                
+
                 if self.gems_op:
                     gems_perf = self.profile(self.gems_op, *args, **kwargs)
                 else:
                     with flag_gems.use_gems():
                         gems_perf = self.profile(self.torch_op, *args, **kwargs)
-                metric.latency = gems_perf        
+                metric.latency = gems_perf
                 if hasattr(self, "get_tflops"):
                     metric.tflops = (
                         self.get_tflops(self.torch_op, *args, **kwargs)
                         / metric.latency
                         / 1e12
                         * 1e3
-                    )   
-                                         
+                    )
+
                 metric.shape_detail = self.record_shapes(*args, **kwargs)
                 metric.latency_base = torch_perf
                 metric.speedup = metric.latency_base / metric.latency
@@ -299,11 +299,11 @@ class Benchmark:
                 with open('/root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/kcore_info.json', 'w') as f:
                     json.dump({'op_name': self.op_name, 'dtype': str(dtype), 'mode': 'Tx8', 'level': Config.bench_level.value, 'legacy_shape': metric.legacy_shape, 'shape_detail': metric.shape_detail, 'latency_base': metric.latency_base, 'latency': metric.latency, 'speedup': metric.speedup, 'tflops': metric.tflops}, f)
 
-                os.system(f'mkdir -p /data/baai-benchmark-test-case/{self.op_name}; mv /root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/kcore_info.json /root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/triton_tx8be*/; mv /root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/triton_tx8be* /data/baai-benchmark-test-case/{self.op_name}/')
+                os.system(f'mkdir -p /data/baai-benchmark-test-case/{self.op_name}; mv /root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/kcore_info.json /root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/triton_tx8be*/; mv /root/tx8be-mlir/external/tx8be-oplib/tests/test_codegen/triton_tx8be* /data/baai-benchmark-test-case/{self.op_name}/; rm -rf /root/triton-home/.triton/cache; rm -rf /root/triton-home/codegen_cache')
 
                 metrics.append(metric)
                 print(f"{str(size): <10}{torch_perf: >20.6}{gems_perf: >20.6}")
-                
+
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -313,9 +313,9 @@ class Benchmark:
             )
             print(result)
             logging.info(result.to_json())
-            
-            
-            
+
+
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 
