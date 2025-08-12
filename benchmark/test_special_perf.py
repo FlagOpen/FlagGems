@@ -298,7 +298,7 @@ class ConvBenchmark(GenericBenchmark):
         return None
 
 
-@pytest.mark.skipif(True, reason="Conv2d not registered yet")
+# @pytest.mark.skipif(True, reason="Conv2d not registered yet")
 @pytest.mark.conv2d
 def test_perf_conv2d():
     def conv2d_input_fn(shape, dtype, device):
@@ -334,6 +334,56 @@ def test_perf_conv2d():
         input_fn=conv2d_input_fn,
         op_name="conv2d",
         torch_op=torch.nn.functional.conv2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class Conv3DBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+# @pytest.mark.skipif(True, reason="Conv3d not registered yet")
+@pytest.mark.conv3d
+def test_perf_conv3d():
+    def conv3d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_d,
+            input_h,
+            input_w,
+            out_c,
+            kernel_d,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_d, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_d, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Conv3DBenchmark(
+        input_fn=conv3d_input_fn,
+        op_name="conv3d",
+        torch_op=torch.nn.functional.conv3d,
         dtypes=FLOAT_DTYPES,
     )
     bench.run()
