@@ -173,126 +173,127 @@ int cdiv(int a, int b) {
 }  // namespace flag_gems::utils
 
 namespace flag_gems::pointwise_dynamic {
-using Shape = std::vector<long>;
-using Stride = std::vector<long>;
 void checkIfScalar(const torch::Tensor& tensor1,
                    const torch::Tensor& tensor2,
                    std::array<bool, 2>& is_tensor) {
   is_tensor[0] = (tensor1.dim() == 0);
   is_tensor[1] = (tensor2.dim() == 0);
 }
-/*
-class StridedBuffer {
- public:
-  StridedBuffer(const torch::Tensor& base,
-                c10::optional<c10::IntArrayRef> shape = c10::nullopt,
-                c10::optional<c10::IntArrayRef> strides = c10::nullopt,
-                c10::optional<dType> dtype = c10::nullopt,
-                int64_t offset = 0)
-      : base_(base),
-        dtype_(dtype.has_value() ? dtype.value() : to_custom_dtype(base.dtype())),
-        offset_(offset) {
-    if (offset_ == 0) {
-      data_ptr_ = base_.data_ptr();
-    } else {
-      // TODO kunlunxin case
-      data_ptr_ = static_cast<char*>(base_.data_ptr()) + base_.element_size() * offset_;
+StridedBuffer::StridedBuffer(const torch::Tensor& base,
+                             c10::optional<c10::IntArrayRef> shape,
+                             c10::optional<c10::IntArrayRef> strides,
+                             int64_t offset)
+    : base_(base.contiguous()), offset_(offset) {
+  if (offset_ == 0) {
+    data_ptr_ = base_.data_ptr();
+  } else {
+    data_ptr_ = static_cast<char*>(base_.data_ptr()) + base_.element_size() * offset_;
+  }
+  shape_ = shape.has_value() ? shape.value().vec() : base_.sizes().vec();
+  strides_ = strides.has_value() ? strides.value().vec() : base_.strides().vec();
+  ndim_ = shape_.size();
+}
+
+const c10::IntArrayRef StridedBuffer::strides() const {
+  return strides_;
+}
+
+const c10::IntArrayRef StridedBuffer::sizes() const {
+  return shape_;
+}
+
+long StridedBuffer::numel() const {
+  long num = 1;
+  for (long s : shape_) {
+    num *= s;
+  }
+  return num;
+}
+
+int64_t StridedBuffer::dim() const {
+  return ndim_;
+}
+
+const torch::Tensor& StridedBuffer::unwrap() const {
+  return base_;
+}
+
+void* StridedBuffer::data_ptr() const {
+  return data_ptr_;
+}
+
+torch::Storage StridedBuffer::untyped_storage() const {
+  return base_.storage();
+}
+
+StridedBuffer StridedBuffer::clone() const {
+  torch::Tensor cloned_base = base_.clone();
+  return StridedBuffer(cloned_base, shape_, strides_, offset_);
+}
+
+StridedBuffer& StridedBuffer::copy_(const StridedBuffer& src) {
+  torch::Tensor temp_dst = torch::empty_like(src.unwrap());
+  temp_dst.copy_(src.unwrap());
+
+  base_ = temp_dst;
+  strides_ = src.strides().vec();
+  shape_ = src.sizes().vec();
+  offset_ = src.offset();
+  data_ptr_ = base_.data_ptr();
+
+  return *this;
+}
+
+StridedBuffer& StridedBuffer::copy_(const torch::Tensor& src) {
+  StridedBuffer src_buffer(src);
+  return this->copy_(src_buffer);
+}
+
+long StridedBuffer::offset() const {
+  return offset_;
+}
+
+ShapeW broadcast(const ShapeR& s1, const ShapeR& s2) {
+  long ndim = std::max(s1.size(), s2.size());
+  ShapeW output_shape(ndim);
+  long p1 = s1.size() - 1;
+  long p2 = s2.size() - 1;
+
+  for (long i = ndim - 1; i >= 0; --i) {
+    long d1 = (p1 >= 0) ? s1[p1] : 1;
+    long d2 = (p2 >= 0) ? s2[p2] : 1;
+
+    if (d1 != d2 && d1 != 1 && d2 != 1) {
+      // 抛出异常或返回错误，因为形状不可广播
+      throw std::runtime_error("Shapes are not broadcastable.");
     }
-    shape_ = shape.has_value() ? shape.value().vec() : base_.sizes().vec();
-    strides_ = strides.has_value() ? strides.value().vec() : base_.strides().vec();
-    device_ = base_.device();
-    ndim_ = shape_.size();
+    output_shape[i] = std::max(d1, d2);
+    if (p1 >= 0) p1--;
+    if (p2 >= 0) p2--;
+  }
+  return output_shape;
+}
+
+ShapeW broadcast_shapes(const std::vector<ShapeR>& shapes) {
+  if (shapes.empty()) {
+    return {};
   }
 
-  const c10::IntArrayRef strides() const {
-    return strides_;
+  ShapeW output_shape(shapes[0].begin(), shapes[0].end());
+  for (size_t i = 1; i < shapes.size(); ++i) {
+    output_shape = broadcast(output_shape, shapes[i]);
   }
+  return output_shape;
+}
 
-  const c10::IntArrayRef sizes() const {
-    return shape_;
-  }
-
-  size_t element_size() const {
-    return torch::elementSize(to_torch_dtype(dtype_));
-  }
-
-  long numel() const {
-    long num = 1;
-    for (long s : shape_) {
-      num *= s;
-    }
-    return num;
-  }
-
-  int64_t dim() const {
-    return ndim_;
-  }
-
-  const torch::Tensor& unwrap() const {
-    return base_;
-  }
-
-  void* data_ptr() const {
-    return data_ptr_;
-  }
-
-  torch::Storage untyped_storage() const {
-    return base_.storage();
-  }
-
-  StridedBuffer clone() const {
-    return StridedBuffer(base_.clone(), shape_, strides_, dtype_, offset_);
-  }
-
-  StridedBuffer& copy_(const StridedBuffer& src) {
-    base_.copy_(base_.new_empty(src.sizes(), src.strides())
-                    .as_strided(src.sizes(), src.strides())
-                    .copy_(src.unwrap()));
-    strides_ = src.strides();
-    shape_ = src.sizes();
-    dtype_ = src.dtype();
-    offset_ = src.offset_;
-    data_ptr_ = src.data_ptr();
-
-    return *this;
-  }
-
-  StridedBuffer& copy_(const torch::Tensor& src) {
-    StridedBuffer src_buffer(src);
-    return this->copy_(src_buffer);
-  }
-
-  torch::Device device() const {
-    return device_;
-  }
-
-  dType dtype() const {
-    return dtype_;
-  }
-
-  long offset() const {
-    return offset_;
-  }
-
- private:
-  torch::Tensor base_;
-  dType dtype_;
-  void* data_ptr_;
-  int64_t offset_;
-  std::vector<long> shape_;
-  std::vector<long> strides_;
-  torch::Device device_;
-  int64_t ndim_;
-};
-*/
-Stride broadcasted_stride(const Shape& shape, const Stride& stride, const Shape& new_shape) {
+StrideW broadcasted_stride(const ShapeR& shape, const StrideR& stride, const ShapeR& new_shape) {
   assert(broadcastable_to(shape, new_shape) && "Shapes are not broadcastable.");
 
   int r1 = shape.size();
   int r2 = new_shape.size();
   int d = r2 - r1;
 
-  Stride new_stride(r2, 0);
+  StrideW new_stride(r2, 0);
   for (int i = 0; i < r1; ++i) {
     int new_dim_index = d + i;
     if (shape[i] == 1 && new_shape[new_dim_index] > 1) {
@@ -349,5 +350,21 @@ bool use_fast_path(const std::vector<at::Tensor>& tensors) {
     return true;
   }
   return all_the_same_stride(tensors) && tensors[0].is_non_overlapping_and_dense();
+}
+StrideW stride_order(const StrideR& strides) {
+  // Create a vector of indices from 0 to strides.size() - 1
+  StrideW indices(strides.size());
+  std::iota(indices.begin(), indices.end(), 0);
+
+  // Sort the indices based on the absolute value of the corresponding stride
+  std::sort(indices.begin(), indices.end(), [&](int64_t i, int64_t j) {
+    return std::abs(strides[i]) < std::abs(strides[j]);
+  });
+
+  return indices;
+}
+
+StrideR create_stride_r_view(const StrideW& stride_w) {
+  return StrideR(reinterpret_cast<const int64_t*>(stride_w.data()), stride_w.size());
 }
 };  // namespace flag_gems::pointwise_dynamic

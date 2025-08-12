@@ -57,9 +57,9 @@ at::Tensor sum_dim(const at::Tensor &self,
     }
   }
   out_options = out_options.dtype(out_dtype);
-  at::DimVector dims_ = at::native::make_dim_vector(dim, self.dim());
+  c10::DimVector dims_ = at::native::make_dim_vector(dim, self.dim());
   at::maybe_wrap_dims(dims_, self.dim());
-  at::DimVector shape = at::meta::get_reduction_shape(self, dims_, keepdim, false);
+  c10::IntArrayRef shape = at::meta::get_reduction_shape(self, dims_, keepdim, false);
   at::Tensor out = at::empty(at::IntArrayRef(shape), out_options);
   out = out.contiguous();
 

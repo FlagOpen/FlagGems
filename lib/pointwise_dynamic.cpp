@@ -3,28 +3,39 @@
 
 #include <iostream>
 #include "c10/cuda/CUDAStream.h"
+#include "c10/util/Logging.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
 using namespace triton_jit;
-using Shape = std::vector<long>;
-using Stride = std::vector<long>;
-
+using Shape = c10::IntArrayRef;
+using Stride = c10::IntArrayRef;
 at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   // TODO: parse tensor meta info
+  // LOG(INFO)<< fmt::format("add tensor");
+  std::cout << "add tensor";
   std::vector<void*> kernel_params;
   // 2 input
   void* a_ptr = a_.data_ptr();
   void* b_ptr = b_.data_ptr();
   kernel_params.push_back(&a_ptr);
   kernel_params.push_back(&b_ptr);
+  int64_t val0 = 1;
+  kernel_params.push_back(&val0);
 
-  // 1 output
-  at::Tensor out = at::empty(a_.sizes(), a_.options());
+  // calculate task_space
+  std::vector<pointwise_dynamic::ShapeR> shapes;
+  shapes.push_back(a_.sizes());
+  shapes.push_back(b_.sizes());
+  pointwise_dynamic::ShapeW task_space = pointwise_dynamic::broadcast_shapes(shapes);
+  int ndim = task_space.size();
+  // prepare output with size of task_space
+  at::Tensor out = at::empty(task_space);
   kernel_params.push_back(&out);
   std::vector<at::Tensor> tensors = {a_, b_, out};
   int task_shape;
   if (pointwise_dynamic::use_fast_path(tensors)) {
+    std::cout << "use fast path";
     task_shape = tensors[0].numel();
     void* task_shape_ptr = &task_shape;
     int stride = 1;
@@ -46,10 +57,85 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
     // num_tasks -> num_tasks = out0.numel()
     kernel_params.push_back(task_shape_ptr);
   } else {
-    // TODO
-    //  stride for input/output
-    //  calculate task space
-    //  shapes = tuple(item.shape for item in in_tensors)，
+    std::cout << "else";
+    // broadcast tensor
+    // ndim = len(task_shape)
+    // shapes = tuple(item.shape for item in in_tensors)
+    // task_shape = broadcast_shapes(shapes)
+    // c10::IntArrayRef vs at::DimVector
+
+    // broad tensor and warp with StridedBuffer
+    // TODO：确定copy机制是否高效
+    pointwise_dynamic::StridedBuffer a = pointwise_dynamic::StridedBuffer(
+        a_,
+        task_shape,
+        pointwise_dynamic::broadcasted_stride(a_.sizes(), a_.strides(), task_shape));
+    pointwise_dynamic::StridedBuffer b = pointwise_dynamic::StridedBuffer(
+        b_,
+        task_shape,
+        pointwise_dynamic::broadcasted_stride(b_.sizes(), b_.strides(), task_shape));
+
+    // input stride
+    const c10::IntArrayRef a_strides = a.strides();
+    for (int i = 0; i < ndim; i++) {
+      kernel_params.push_back(const_cast<long*>(&a_strides[i]));
+    }
+    if (ndim >= 2) {
+      const pointwise_dynamic::StrideW a_strides_vec(a_strides.begin(), a_strides.end());
+      std::vector<int64_t> order_vec = pointwise_dynamic::stride_order(a_strides_vec);
+      for (int i = 0; i < ndim; i++) {
+        long order_val = order_vec[i];
+        kernel_params.push_back(const_cast<long*>(&order_val));
+      }
+    } else {
+      pointwise_dynamic::StrideW zero_stride(1, 0);
+      void* zero_stride_ptr = zero_stride.data();
+      kernel_params.push_back(&zero_stride_ptr);
+    }
+
+    const c10::IntArrayRef b_strides = b.strides();
+    for (int i = 0; i < ndim; i++) {
+      kernel_params.push_back(const_cast<long*>(&b_strides[i]));
+    }
+    if (ndim >= 2) {
+      const pointwise_dynamic::StrideW b_strides_vec(b_strides.begin(), b_strides.end());
+      std::vector<int64_t> order_vec = pointwise_dynamic::stride_order(b_strides_vec);
+      for (int i = 0; i < ndim; i++) {
+        long order_val = order_vec[i];
+        kernel_params.push_back(const_cast<long*>(&order_val));
+      }
+    } else {
+      pointwise_dynamic::StrideW zero_stride(1, 0);
+      void* zero_stride_ptr = zero_stride.data();
+      kernel_params.push_back(&zero_stride_ptr);
+    }
+    // output stride
+    // TODO：封装 push 1d tensor metadata的函数
+    const c10::IntArrayRef output_strides = out.strides();
+    for (int i = 0; i < ndim; i++) {
+      kernel_params.push_back(const_cast<long*>(&output_strides[i]));
+    }
+    if (ndim >= 2) {
+      const pointwise_dynamic::StrideW output_strides_vec(output_strides.begin(), output_strides.end());
+      std::vector<int64_t> order_vec = pointwise_dynamic::stride_order(output_strides_vec);
+      for (int i = 0; i < ndim; i++) {
+        long order_val = order_vec[i];
+        kernel_params.push_back(const_cast<long*>(&order_val));
+      }
+    } else {
+      pointwise_dynamic::StrideW zero_stride(1, 0);
+      void* zero_stride_ptr = zero_stride.data();
+      kernel_params.push_back(&zero_stride_ptr);
+    }
+
+    // task space
+    for (int i = 0; i < ndim; i++) {
+      int64_t si = task_space[i];
+      kernel_params.push_back(const_cast<int64_t*>(&si));
+    }
+    // num_task out的
+    int64_t num_task = out.numel();
+    kernel_params.push_back(const_cast<int64_t*>(&num_task));
   }
   void* global_scratch = nullptr;
   kernel_params.push_back(&global_scratch);
@@ -67,6 +153,7 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   std::array<bool, 2> is_tensor;
   pointwise_dynamic::checkIfScalar(a_, b_, is_tensor);
   std::optional<TritonJITFunction> f;
+  // TODO: code gen in c++
   if (is_tensor[0] && is_tensor[1]) {
     f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
                                        "add_func");

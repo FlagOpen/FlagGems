@@ -296,8 +296,6 @@ class KernelGenerator:
 
             # signature: strides, for each tensor arguments
             ndim = self.ndim
-            if ndim == 1:
-                code.writeline("# use fast path or simple linear tensor")
             if ndim > 0:
                 # strides for inputs
                 for i in range(schema.num_input_tensors()):
@@ -875,6 +873,7 @@ class WrapperGenerator:
         with_block_pointer = self.config.prefer_block_pointer
 
         code.writeline("# kernel launch")
+        code.writeline("print('launch with wrapper')")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
             if not with_block_pointer:
@@ -1156,7 +1155,6 @@ class PointwiseDynamicFunction:
                 )
                 for i, item in enumerate(args)
             )
-            print(args)  # 通常是两个tensor
             kwargs = {
                 k: StridedBuffer(item, task_shape, strides)
                 for k, item in kwargs.items()
@@ -1171,7 +1169,6 @@ class PointwiseDynamicFunction:
             # tensor that is not broadcated, no attempts to simplify task, no reordering,
             # no dimenion collapsing
             shapes = tuple(item.shape for item in in_tensors)
-
             task_shape = broadcast_shapes(shapes)
 
             if out_tensors:
@@ -1200,6 +1197,7 @@ class PointwiseDynamicFunction:
                     torch.empty(task_shape, dtype=dtype, device=device)
                     for dtype in outputs_dtypes_for_allocation
                 ]
+            print(args)
             args = tuple(
                 (
                     StridedBuffer(
@@ -1212,11 +1210,12 @@ class PointwiseDynamicFunction:
                 )
                 for i, item in enumerate(args)
             )
+            print(args)
             kwargs = {
                 k: StridedBuffer(
                     item,
                     task_shape,
-                    broadcasted_stride(item.shape, item.stride(), task_shape),
+                    (item.shape, item.stride(), task_shape),
                 )
                 for k, item in kwargs.items()
             }
