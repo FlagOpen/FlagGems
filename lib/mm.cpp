@@ -117,8 +117,8 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
   if (number_cooperative_tiles > 0) {
     // mini wave handling
     int64_t total_iters_streamk = number_cooperative_tiles * iters_per_tile;
-    int64_t tiles_per_pid = total_iters_streamk / tiles_per_wave;  // integer division
-    int64_t tile_remaining = total_iters_streamk % tiles_per_wave;
+    int64_t iters_per_pid = total_iters_streamk / tiles_per_wave;  // integer division
+    int64_t iters_remaining = total_iters_streamk % tiles_per_wave;
     bool even_k = (K % BLOCK_K) == 0;
 
     if (a.dtype() == at::kBFloat16) {
@@ -129,8 +129,8 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
       // call first_wave_for_bf16 kernel: set grid_x = tiles_per_wave
       // The argument order follows the python call:
       // a, b, c, P, M, N, K, locks, a.stride(0), a.stride(1), b.stride(0), b.stride(1),
-      // c.stride(0), c.stride(1), full=tiles_per_pid, remaining=tile_remaining,
-      // iters_per_tile=iters_per_tile, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, num_stages, num_warps
+      // c.stride(0), c.stride(1), iters_per_pid=iters_per_pid, iters_remaining=iters_remaining,
+      // iters_per_tile=iters_per_tile, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, even_k
 
       first_wave_for_bf16(
           /* CUstream */ raw_stream,
@@ -153,8 +153,8 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
           (int64_t)b.stride(1),
           (int64_t)c.stride(0),
           (int64_t)c.stride(1),
-          (int64_t)tiles_per_pid,
-          (int64_t)tile_remaining,
+          (int64_t)iters_per_pid,
+          (int64_t)iters_remaining,
           (int64_t)iters_per_tile,
           /* BLOCK_M */ BLOCK_M,
           /* BLOCK_N */ BLOCK_N,
@@ -168,9 +168,8 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
       // call first_wave kernel: grid_x = tiles_per_wave
       // arg order follows python call (positional):
       // a, b, c, M, N, K, locks, a.stride(0), a.stride(1), b.stride(0), b.stride(1),
-      // c.stride(0), c.stride(1), total_full_tiles_streamk=tiles_per_pid,
-      // total_partial_tiles_streamk=tile_remaining, iters_per_tile, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M,
-      // num_stages, num_warps
+      // c.stride(0), c.stride(1), iters_per_pid=iters_per_pid, iters_remaining=iters_remaining,
+      // iters_per_tile = iters_per_tile, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, even_k
 
       first_wave(
           /* CUstream = */ raw_stream,
@@ -192,8 +191,8 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
           (int64_t)b.stride(1),
           (int64_t)c.stride(0),
           (int64_t)c.stride(1),
-          (int64_t)tiles_per_pid,
-          (int64_t)tile_remaining,
+          (int64_t)iters_per_pid,
+          (int64_t)iters_remaining,
           (int64_t)iters_per_tile,
           BLOCK_M,
           BLOCK_N,
