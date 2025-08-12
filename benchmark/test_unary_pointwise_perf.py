@@ -56,6 +56,7 @@ forward_operations = [
     ("exp2", torch.exp2, FLOAT_DTYPES),
     ("neg", torch.neg, FLOAT_DTYPES),
     ("reciprocal", torch.reciprocal, FLOAT_DTYPES),
+    ("sqrt", torch.sqrt, FLOAT_DTYPES),
     ("rsqrt", torch.rsqrt, FLOAT_DTYPES),
     ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
     ("log", torch.log, FLOAT_DTYPES),
@@ -151,8 +152,11 @@ def test_to_dtype_perf():
 
 
 class GluBenchmark(UnaryPointwiseBenchmark):
+    # Glu test requires even numbers
     def set_more_shapes(self):
-        return
+        special_shapes_2d = [(1024, 2**i) for i in range(1, 20, 4)]
+        sp_shapes_3d = [(64, 64, 2**i) for i in range(1, 15, 4)]
+        return special_shapes_2d + sp_shapes_3d
 
 
 @pytest.mark.glu
@@ -161,5 +165,16 @@ def test_glu_perf():
         op_name="glu",
         torch_op=torch.nn.functional.glu,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.glu_backward
+def test_glu_backward_perf():
+    bench = GluBenchmark(
+        op_name="glu",
+        torch_op=torch.nn.functional.glu,
+        dtypes=FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
