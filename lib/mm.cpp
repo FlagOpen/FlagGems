@@ -68,13 +68,13 @@ bool streamk_scenario(const at::Tensor &a, const at::Tensor &b, int64_t M, int64
   return (a_is_half_or_bf16 && b_is_half_or_bf16 && get_major() > 7 && K > M * 5 && K > N * 5);
 }
 
-at::Tensor streamk_mm_tensor(const at::Tensor &a,
-                             const at::Tensor &b,
-                             at::Tensor c,
-                             int64_t M,
-                             int64_t N,
-                             int64_t K,
-                             int sm_count = 108) {
+void streamk_mm_tensor(const at::Tensor &a,
+                       const at::Tensor &b,
+                       at::Tensor &c,
+                       int64_t M,
+                       int64_t N,
+                       int64_t K,
+                       int sm_count = 108) {
   TORCH_CHECK(a.dim() == 2 && b.dim() == 2, "both the tensors must be 2-D");
   TORCH_CHECK(a.dtype() == b.dtype(), "expected a and b to have the same dtype");
 
@@ -124,14 +124,13 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
     if (a.dtype() == at::kBFloat16) {
       // create locks and P (float32)
       auto locks = at::zeros({(int64_t)tiles_per_wave}, a.options().dtype(at::kInt));
-      auto P = at::zeros({(int64_t)tiles_per_wave, BLOCK_M, BLOCK_N}, a.options().dtype(at::kFloat));
+      auto P = at::empty({(int64_t)tiles_per_wave, BLOCK_M, BLOCK_N}, a.options().dtype(at::kFloat));
 
       // call first_wave_for_bf16 kernel: set grid_x = tiles_per_wave
       // The argument order follows the python call:
       // a, b, c, P, M, N, K, locks, a.stride(0), a.stride(1), b.stride(0), b.stride(1),
       // c.stride(0), c.stride(1), iters_per_pid=iters_per_pid, iters_remaining=iters_remaining,
       // iters_per_tile=iters_per_tile, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, even_k
-
       first_wave_for_bf16(
           /* CUstream */ raw_stream,
           /* grid_x */ (int)tiles_per_wave,
@@ -209,7 +208,6 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
     // order (a,b,c,M,N,K,a.stride(0),a.stride(1),b.stride(0),b.stride(1),c.stride(0),c.stride(1),
     // total_tiles_streamk=number_cooperative_tiles, BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, num_stages,
     // num_warps)
-
     classic_mm(
         /* CUstream = */ raw_stream,
         /* grid_x = */ (int)classic_grid,
@@ -235,8 +233,54 @@ at::Tensor streamk_mm_tensor(const at::Tensor &a,
         BLOCK_K,
         GROUP_M);
   }
+  return;
+}
 
-  return c;
+void general_mm_tensor(
+    const at::Tensor &a, const at::Tensor &b, at::Tensor &c, int64_t M, int64_t N, int64_t K) {
+  TORCH_CHECK(a.dim() == 2 && b.dim() == 2, "both the tensors must be 2-D");
+  TORCH_CHECK(a.dtype() == b.dtype(), "expected a and b to have the same dtype");
+
+  const int BLOCK_M = 64;
+  const int BLOCK_N = 128;
+  const int BLOCK_K = 64;
+  const int num_stages = 2;
+  const int num_warps = 4;
+  const int GROUP_M = 8;
+
+  // general situation
+  const TritonJITFunction &f =
+      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
+                                     "mm_kernel_general");
+
+  c10::DeviceGuard guard(c.device());
+  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+
+  unsigned int grid_x = cdiv(M, BLOCK_M) * cdiv(N, BLOCK_N);
+  f(/* CUstream = */ raw_stream,
+    /* grid_x = */ grid_x,
+    /* grid_y = */ 1,
+    /* grid_z = */ 1,
+    num_warps,
+    num_stages,
+    a,
+    b,
+    c,
+    M,
+    N,
+    K,
+    a.stride(0),
+    a.stride(1),
+    b.stride(0),
+    b.stride(1),
+    c.stride(0),
+    c.stride(1),
+    /* BLOCK_M = */ BLOCK_M,
+    /* BLOCK_N = */ BLOCK_N,
+    /* BLOCK_K = */ BLOCK_K,
+    /* GROUP_M = */ GROUP_M);
+  return;
 }
 
 at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
@@ -254,45 +298,13 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
   at::Tensor out = at::empty({M, N}, mat1.options());
 
   int sm_count = get_sm_count();
+
   if (streamk_scenario(mat1, mat2, M, N, K)) {
-    return streamk_mm_tensor(mat1, mat2, out, M, N, K, sm_count);
+    streamk_mm_tensor(mat1, mat2, out, M, N, K, sm_count);
+    return out;
+  } else {
+    general_mm_tensor(mat1, mat2, out, M, N, K);
+    return out;
   }
-
-  // general situation
-  const TritonJITFunction &f =
-      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
-                                      "mm_kernel_general");
-
-  c10::DeviceGuard guard(out.device());
-  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-  CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  int BLOCK_M = 64;
-  int BLOCK_N = 128;
-  int BLOCK_K = 64;
-  int GROUP_M = 8;
-  unsigned int grid_x = cdiv(M, BLOCK_M) * cdiv(N, BLOCK_N);
-  f(/* CUstream = */ raw_stream,
-    /* grid_x = */ grid_x,
-    /* grid_y = */ 1,
-    /* grid_z = */ 1,
-    /* num_warps = */ 4,
-    /* num_stages = */ 2,
-    mat1,
-    mat2,
-    out,
-    M,
-    N,
-    K,
-    mat1.stride(0),
-    mat1.stride(1),
-    mat2.stride(0),
-    mat2.stride(1),
-    out.stride(0),
-    out.stride(1),
-    /* BLOCK_M = */ BLOCK_M,
-    /* BLOCK_N = */ BLOCK_N,
-    /* BLOCK_K = */ BLOCK_K,
-    /* GROUP_M = */ GROUP_M);
-  return out;
 }
 }  // namespace flag_gems
