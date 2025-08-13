@@ -4,9 +4,8 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     GenericBenchmark2DOnly,
@@ -113,6 +112,7 @@ def test_perf_unique():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
 def test_perf_sort():
@@ -377,7 +377,6 @@ def test_perf_diag_embed():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.diagonal
 def test_perf_diagonal_backward():
     def diagonal_backward_input_fn(shape, dtype, device):

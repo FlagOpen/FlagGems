@@ -61,6 +61,7 @@ from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.eq import eq, eq_scalar
 from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.exp import exp, exp_
+from flag_gems.ops.exp2 import exp2, exp2_
 from flag_gems.ops.exponential_ import exponential_
 from flag_gems.ops.eye import eye
 from flag_gems.ops.eye_m import eye_m
@@ -162,6 +163,7 @@ from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -264,6 +266,8 @@ __all__ = [
     "erf_",
     "exp",
     "exp_",
+    "exp2",
+    "exp2_",
     "exponential_",
     "eye",
     "eye_m",
@@ -384,6 +388,8 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
+    "sqrt",
+    "sqrt_",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",

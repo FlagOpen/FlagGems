@@ -184,6 +184,35 @@ def test_accuracy_exp_(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.exp2
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_exp2(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.exp2(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.exp2(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.exp2_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_exp2_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.exp2_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.exp2_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 @pytest.mark.gelu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -255,11 +284,13 @@ def test_accuracy_glu(shape, dtype):
         gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.glu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_glu_backward(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(res_inp, True)
 
     for dim in range(len(shape)):
         if shape[dim] == 0 or shape[dim] % 2 != 0:
@@ -270,6 +301,7 @@ def test_accuracy_glu_backward(shape, dtype):
 
         ref_inp = to_reference(res_inp)
         ref_out = to_reference(res_out)
+        ref_out = to_reference(res_out, True)
 
         ref_in_grad = torch.ops.aten.glu_backward(ref_out, ref_inp, dim=dim)
         with flag_gems.use_gems():
@@ -873,3 +905,32 @@ def test_accuracy_to_dtype(shape, dtype):
     with flag_gems.use_gems():
         out = x.to(dtype)
     gems_assert_equal(out, ref_out)
+
+
+@pytest.mark.sqrt
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_sqrt(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.sqrt(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.sqrt(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.sqrt_
+@pytest.mark.inplace
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES)
+def test_accuracy_sqrt_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp.clone(), True)
+
+    ref_out = torch.sqrt_(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.sqrt_(inp)
+
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

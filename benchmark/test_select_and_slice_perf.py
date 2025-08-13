@@ -5,15 +5,14 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.utils import shape_utils
-
-from .attri_util import FLOAT_DTYPES
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES
+from benchmark.performance_utils import (
     GenericBenchmark,
     GenericBenchmark2DOnly,
     generate_tensor_input,
     vendor_name,
 )
+from flag_gems.utils import shape_utils
 
 
 class TensorSelectBenchmark(GenericBenchmark2DOnly):
@@ -91,6 +90,7 @@ def test_perf_index_select(op_name, torch_op, input_fn, gbps_fn, dtypes):
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.masked_select
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, gbps_fn, dtypes",

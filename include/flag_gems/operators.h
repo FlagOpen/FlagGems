@@ -3,6 +3,9 @@
 #include "torch/torch.h"
 
 namespace flag_gems {
+at::Tensor &exponential_(at::Tensor &self,
+                         double lambd = 1.0,
+                         c10::optional<at::Generator> gen = c10::nullopt);
 at::Tensor zeros(at::IntArrayRef size,
                  c10::optional<at::ScalarType> dtype = ::std::nullopt,
                  c10::optional<at::Layout> layout = ::std::nullopt,
@@ -14,7 +17,14 @@ at::Tensor sum_dim(const at::Tensor &self,
                    at::OptionalIntArrayRef dim,
                    bool keepdim = false,
                    ::std::optional<at::ScalarType> dtype = ::std::nullopt);
-
+at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype = ::std::nullopt);
+std::tuple<at::Tensor, at::Tensor> max_dim(const at::Tensor &self, int64_t dim, bool keepdim);
+std::tuple<at::Tensor, at::Tensor> max_dim_max(const at::Tensor &self,
+                                               int64_t dim,
+                                               bool keepdim,
+                                               const at::Tensor out_value,
+                                               const at::Tensor out_index);
+at::Tensor max(const at::Tensor &self);
 at::Tensor rms_norm(const at::Tensor &input, const at::Tensor &weight, double epsilon = 1e-5);
 void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
@@ -65,4 +75,11 @@ at::Tensor fill_tensor(const at::Tensor &input, const at::Tensor &value);
 at::Tensor &fill_scalar_(at::Tensor &input, const c10::Scalar &value);
 
 at::Tensor &fill_tensor_(at::Tensor &input, const at::Tensor &value);
+
+at::Tensor softmax(const at::Tensor &input, int64_t dim, bool half_to_float);
+
+at::Tensor softmax_backward(const at::Tensor &grad_output,
+                            const at::Tensor &output,
+                            int64_t dim,
+                            at::ScalarType input_dtype);
 }  // namespace flag_gems

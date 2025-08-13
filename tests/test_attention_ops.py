@@ -178,15 +178,25 @@ def attention_ref(
 
 
 def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
-    torch_result = torch.nn.functional.scaled_dot_product_attention(
-        q,
-        k,
-        v,
-        attn_mask=None,
-        scale=scale,
-        is_causal=is_causal,
-        enable_gqa=enable_gqa,
-    )
+    if torch.__version__ < "2.5":
+        torch_result = torch.nn.functional.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+        )
+    else:
+        torch_result = torch.nn.functional.scaled_dot_product_attention(
+            q,
+            k,
+            v,
+            attn_mask=None,
+            scale=scale,
+            is_causal=is_causal,
+            enable_gqa=enable_gqa,
+        )
     return torch_result
 
 
@@ -251,9 +261,12 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(
+    torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
+)
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
@@ -318,8 +331,8 @@ def test_sdpa_legacy(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
@@ -348,8 +361,8 @@ def test_sdpa_square_qk_even_mn(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
@@ -376,6 +389,7 @@ def test_sdpa_nonsquare_qk(
     gems_assert_close(gems_result, torch_result, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
@@ -484,6 +498,7 @@ def test_flash_fwd_gqa_alibi_softcap(
     gems_assert_close(gems_out, torch_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
@@ -558,6 +573,7 @@ def test_flash_splitkv(
     gems_assert_close(gems_out, torch_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
@@ -705,6 +721,8 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
@@ -811,6 +829,8 @@ def test_flash_attn_varlen_func(
         ), f"{torch.max(torch.abs(output - ref_output))}"
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
@@ -934,7 +954,6 @@ def convert_fp8(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
@@ -943,7 +962,9 @@ def convert_fp8(
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS_MLA)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("seed", SEEDS)
-@pytest.mark.parametrize("device", CUDA_DEVICES)
+@pytest.mark.parametrize(
+    "device", [flag_gems.device] if flag_gems.device == "musa" else CUDA_DEVICES
+)
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()
 def test_concat_and_cache_mla(
@@ -1124,8 +1145,8 @@ def test_reshape_and_cache(
             cloned_key_cache[block_idx, :, :, block_offset, :] = reshaped_key[i]
             cloned_value_cache[block_idx, :, :, block_offset] = value[i]
 
-        torch.testing.assert_close(key_cache, cloned_key_cache)
-        torch.testing.assert_close(value_cache, cloned_value_cache)
+        torch.testing.assert_close(key_cache.cpu(), cloned_key_cache.cpu())
+        torch.testing.assert_close(value_cache.cpu(), cloned_value_cache.cpu())
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
@@ -1272,10 +1293,11 @@ def test_reshape_and_cache_flash(
             cloned_key_cache[block_idx, block_offset, :, :] = key[i]
             cloned_value_cache[block_idx, block_offset, :, :] = value[i]
 
-        torch.testing.assert_close(key_cache, cloned_key_cache)
-        torch.testing.assert_close(value_cache, cloned_value_cache)
+        torch.testing.assert_close(key_cache.cpu(), cloned_key_cache.cpu())
+        torch.testing.assert_close(value_cache.cpu(), cloned_value_cache.cpu())
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")

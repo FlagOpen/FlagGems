@@ -4,6 +4,7 @@ add_library(operators
             utils.cpp
             add.cpp
             sum.cpp
+            max.cpp
             mm.cpp
             rms_norm.cpp
             fused_add_rms_norm.cpp
@@ -17,6 +18,8 @@ add_library(operators
             bmm.cpp
             embedding.cpp
             argmax.cpp
+            softmax.cpp
+	          exponential_.cpp
             fill.cpp)
 target_include_directories(operators
   PUBLIC

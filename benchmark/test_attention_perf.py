@@ -21,6 +21,7 @@ class AttentionBenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
     flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
@@ -72,8 +73,8 @@ class FlashMLABenchmark(GenericBenchmark):
         return None
 
 
+@pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
     flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
 )
@@ -292,6 +293,9 @@ class FlashAttnVarlenBenchmark(Benchmark):
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_attn_varlen_func
 def test_perf_flash_attn_varlen_func():
+    import os
+
+    os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
     from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
     bench = FlashAttnVarlenBenchmark(

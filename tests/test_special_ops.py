@@ -11,6 +11,7 @@ import flag_gems
 
 from .accuracy_utils import (
     ALL_INT_DTYPES,
+    ARANGE_START,
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
@@ -583,7 +584,7 @@ def test_upsample_nearest2d(dtype, shape, scale):
 
 
 @pytest.mark.arange
-@pytest.mark.parametrize("start", [0, 1, 3])
+@pytest.mark.parametrize("start", ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
@@ -592,10 +593,13 @@ def test_upsample_nearest2d(dtype, shape, scale):
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.
 def test_arange(start, step, end, dtype, device, pin_memory):
-    if TO_CPU:
-        return
     ref_out = torch.arange(
-        start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
+        start,
+        end,
+        step,
+        dtype=dtype,
+        device="cpu" if TO_CPU else device,
+        pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
         res_out = torch.arange(
@@ -613,15 +617,13 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 @pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize("pin_memory", [False, None])
 def test_linspace(start, end, steps, dtype, device, pin_memory):
-    if TO_CPU:
-        return
     ref_out = torch.linspace(
         start,
         end,
         steps,
         dtype=dtype,
         layout=None,
-        device=device,
+        device="cpu" if TO_CPU else device,
         pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
@@ -634,7 +636,7 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
             device=device,
             pin_memory=pin_memory,
         )
-    if dtype in [torch.float16, torch.bfloat16]:
+    if dtype in [torch.float16, torch.bfloat16, torch.float32, None]:
         gems_assert_close(res_out, ref_out, dtype=dtype)
     else:
         gems_assert_equal(res_out, ref_out)
@@ -1089,13 +1091,12 @@ def get_diagonal_backward_shape_and_dims():
 
 
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="MUSA error: unknown error")
 @pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
-    torch.empty(1, device="cuda", requires_grad=True).backward()
+    torch.empty(1, device=flag_gems.device, requires_grad=True).backward()
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp)
 
@@ -1113,6 +1114,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     gems_assert_equal(res_in_grad, ref_in_grad)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
