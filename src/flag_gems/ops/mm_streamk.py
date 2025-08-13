@@ -164,7 +164,13 @@ def mac_loop(
 
 
 @libentry()
-@triton.jit()
+@triton.jit(
+    do_not_specialize=[
+        "iters_per_pid",
+        "iters_remaining",
+        "iters_per_tile",
+    ],
+)
 def first_wave(
     A,
     B,
@@ -254,7 +260,13 @@ def first_wave(
 
 
 @libentry()
-@triton.jit()
+@triton.jit(
+    do_not_specialize=[
+        "iters_per_pid",
+        "iters_remaining",
+        "iters_per_tile",
+    ],
+)
 def first_wave_for_bf16(
     A,
     B,
@@ -463,7 +475,7 @@ def streamk_mm(a, b, c, M, N, K, sm_count=108):
 
         if a.dtype == torch.bfloat16:
             locks = torch.zeros((tiles_per_wave,), device=a.device, dtype=torch.int32)
-            P = torch.zeros(
+            P = torch.empty(
                 (tiles_per_wave, BLOCK_M, BLOCK_N), device=a.device, dtype=torch.float32
             )
             # with torch_device_fn.device(a.device):

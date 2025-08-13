@@ -501,13 +501,12 @@ def mm(a, b):
     # allocates output
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
-    l2_cache_size = get_l2_cache_size()
+    # l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
-
-    # if streamk_scenario(a, b, M, N, K):
-    #     return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
-    # else:
-    return general_mm(a, b, c, M, N, K)
+    if streamk_scenario(a, b, M, N, K):
+        return streamk_mm(a, b, c, M, N, K, sm_count=sm_count)
+    else:
+        return general_mm(a, b, c, M, N, K)
 
 
 def mm_out(a, b, *, out):
@@ -520,13 +519,9 @@ def mm_out(a, b, *, out):
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
     M, K = a.shape
     _, N = b.shape
-    l2_cache_size = get_l2_cache_size()
+    # l2_cache_size = get_l2_cache_size()
     sm_count = get_sm_count()
     if streamk_scenario(a, b, M, N, K):
         return streamk_mm(a, b, out, M, N, K, sm_count=sm_count)
-    # elif mini_mm_scenario(a, b, l2_cache_size, CACHE_USAGE_THRESHOLD):
-    #     return iobound_mm(a, b, out, M, N, K)
-    # elif two_stages_splitk_mm_scenario(M, N, K):
-    #     return splitk_mm(a, b, out, M, N, K, c_dtype)
     else:
         return general_mm(a, b, out, M, N, K)
