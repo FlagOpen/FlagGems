@@ -4,6 +4,7 @@ from functools import partial
 import torch
 import triton
 import triton.language as tl
+import math
 
 from flag_gems import runtime
 from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
@@ -11,6 +12,9 @@ from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+# Global holder to reuse forward-computed M in backward when not provided explicitly
+GLOBAL_ATTENTION_M = None
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -425,8 +429,417 @@ def scaled_dot_product_attention(
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
         )
-        return o
 
+    # Temporarily make M global so backward can reuse it without threading M through APIs
+    global GLOBAL_ATTENTION_M
+    GLOBAL_ATTENTION_M = M
+
+    return o
+
+@triton.jit
+def _attn_bwd_preprocess(O, DO,  #
+                         Delta,  #
+                         Z, H, N_CTX,  #
+                         BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr  #
+                         ):
+    off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    mask = off_m < N_CTX
+
+    off_hz = tl.program_id(1)
+    off_n = tl.arange(0, D_HEAD)
+    # load
+    o = tl.load(O + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :], mask=mask[:, None], other=0.0)
+    do = tl.load(DO + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :], mask=mask[:, None], other=0.0).to(tl.float32)
+    delta = tl.sum(o * do, axis=1)
+    # write-back
+    tl.store(Delta + off_hz * N_CTX + off_m, delta, mask=mask)
+
+
+# The main inner-loop logic for computing dK and dV.
+@triton.jit
+def _attn_bwd_dkdv(dk, dv,  #
+                   Q, key, value, sm_scale,  #
+                   DO,  #
+                   M, D,  #
+                   # shared by Q/K/V/DO.
+                   stride_tok, stride_d,  #
+                   H, N_CTX, BLOCK_M1: tl.constexpr,  #
+                   BLOCK_N1: tl.constexpr,  #
+                   BLOCK_DMODEL: tl.constexpr,  #
+                   # Filled in by the wrapper.
+                   start_n, start_m, num_steps,  #
+                   MASK: tl.constexpr):
+    # BLOCK_M1: 32
+    # BLOCK_N1: 128
+    offs_n = start_n + tl.arange(0, BLOCK_N1)
+    offs_n_mask = offs_n < N_CTX    # (BLOCK_N1, )
+
+    offs_k = tl.arange(0, BLOCK_DMODEL) # (BLOCK_DMODEL, )
+
+    # BLOCK_N1 must be a multiple of BLOCK_M1, otherwise the code wouldn't work.
+    tl.static_assert(BLOCK_N1 % BLOCK_M1 == 0)
+    curr_m = start_m
+    step_m = BLOCK_M1
+    for blk_idx in range(num_steps):
+        # 计算当前块的偏移和mask
+        offs_m = curr_m + tl.arange(0, BLOCK_M1)    # (BLOCK_M1, )
+        offs_m_mask = offs_m < N_CTX    # (BLOCK_M1, )
+        
+        qT_ptrs = Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d  # (BLOCK_DMODEL, BLOCK_M1)
+        do_ptrs = DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d # (BLOCK_M1, BLOCK_DMODEL)
+        
+        qT = tl.load(qT_ptrs, mask=offs_m_mask[None, :], other=0.0) # (BLOCK_DMODEL, BLOCK_M1)
+
+        # Load m before computing qk to reduce pipeline stall.
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf")) # (BLOCK_M1, )
+
+        # key: (BLOCK_N1, BLOCK_DMODEL)
+        qkT = tl.dot(key, qT) # (BLOCK_N1, BLOCK_M1)
+        m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
+        m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
+        pT = tl.math.exp2(qkT - m)
+        # pT = tl.math.exp2(qkT - m[None, :])
+
+        mask = (offs_m < N_CTX)[None, :] & (offs_n < N_CTX)[:, None]  # (BLOCK_N1, BLOCK_M1)
+        # Autoregressive masking.
+        if MASK:
+            mask &= (offs_m[None, :] >= offs_n[:, None])
+        pT = tl.where(mask, pT, 0.0) # (BLOCK_N1, BLOCK_M1)
+
+        do = tl.load(do_ptrs)
+        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
+
+        # Compute dV.
+        dv += tl.dot(pT, do.to(tl.float32)) # (BLOCK_N1, BLOCK_DMODEL)
+        # D (= delta) is pre-divided by ds_scale.
+        Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0) # (BLOCK_M1, )
+
+        # Compute dP and dS.
+        dpT = tl.dot(value, tl.trans(do)).to(tl.float32) # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
+        dsT = pT * (dpT - Di[None, :]) # (BLOCK_N1, BLOCK_M1)
+        dsT = dsT.to(tl.float16)
+        qT = tl.where(offs_m_mask[None, :], qT, 0.0) # (BLOCK_DMODEL, BLOCK_M1)
+        dsT = tl.where(offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0)  # (BLOCK_N1, BLOCK_M1)
+        dk += tl.dot(dsT, tl.trans(qT)) # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
+        # Increment pointers.
+        curr_m += step_m
+    return dk, dv
+
+
+# the main inner-loop logic for computing dQ
+@triton.jit
+def _attn_bwd_dq(dq, query, K, V,  #
+                 do, m, D,
+                 # shared by Q/K/V/DO.
+                 stride_tok, stride_d,  #
+                 H, N_CTX,  #
+                 BLOCK_M2: tl.constexpr,  #
+                 BLOCK_N2: tl.constexpr,  #
+                 BLOCK_DMODEL: tl.constexpr,
+                 # Filled in by the wrapper.
+                 start_m, start_n, num_steps,  #
+                 MASK: tl.constexpr):
+    offs_m = start_m + tl.arange(0, BLOCK_M2)
+    offs_m_mask = offs_m < N_CTX
+
+    offs_k = tl.arange(0, BLOCK_DMODEL)
+    # D (= delta) is pre-divided by ds_scale.
+    Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)
+    # BLOCK_M2 must be a multiple of BLOCK_N2, otherwise the code wouldn't work.
+    tl.static_assert(BLOCK_M2 % BLOCK_N2 == 0)
+    curr_n = start_n
+    step_n = BLOCK_N2
+    for blk_idx in range(num_steps):
+        # 计算当前块的偏移和mask
+        offs_n = curr_n + tl.arange(0, BLOCK_N2)
+        offs_n_mask = offs_n < N_CTX
+        
+        # 更新指针位置
+        kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
+        vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
+
+        kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
+        vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
+        qk = tl.dot(query, kT)
+        p = tl.math.exp2(qk - m)
+        # Autoregressive masking.
+        if MASK:
+            # mask = (offs_m[:, None] >= offs_n[None, :])
+            mask = (offs_m[:, None] >= offs_n[None, :]) & (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
+            p = tl.where(mask, p, 0.0)
+        # Compute dP and dS.
+        dp = tl.dot(do, vT).to(tl.float32)
+        ds = p * (dp - Di[:, None])
+        ds = ds.to(tl.float16)
+        # Compute dQ.
+        # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
+        dq += tl.dot(ds, tl.trans(kT))
+        # Increment pointers.
+        curr_n += step_n
+    return dq
+
+@triton.jit
+def _attn_bwd(Q, K, V, sm_scale,  #
+              DO,  #
+              DQ, DK, DV,  #
+              M, D,
+              # shared by Q/K/V/DO.
+              stride_z, stride_h, stride_tok, stride_d,  #
+              kv_stride_z, kv_stride_h,  #
+              H, # query head num
+              N_CTX,  #
+              kv_head_num, # 
+              GROUP_HEAD: tl.constexpr,  #
+              BLOCK_M1: tl.constexpr,  #
+              BLOCK_N1: tl.constexpr,  #
+              BLOCK_M2: tl.constexpr,  #
+              BLOCK_N2: tl.constexpr,  #
+              BLK_SLICE_FACTOR: tl.constexpr,  #
+              BLOCK_DMODEL: tl.constexpr):
+    tl.device_assert(N_CTX % BLOCK_M1 == 0, "N_CTX must be a multiple of BLOCK_M1.")
+
+    LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
+
+    bhid = tl.program_id(2)
+    off_chz = (bhid * N_CTX).to(tl.int64)
+    batch_id = (bhid // H)
+    q_head_id = (bhid % H)
+    kv_head_id = q_head_id // GROUP_HEAD
+    adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
+    kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    
+    pid = tl.program_id(0)
+
+    # offset pointers for batch/head
+    Q += adj
+    K += kv_adj
+    V += kv_adj
+    DO += adj
+    DQ += adj
+    DK += adj
+    DV += adj
+    M += off_chz
+    D += off_chz
+
+    # load scales
+    offs_k = tl.arange(0, BLOCK_DMODEL)
+
+    start_n = pid * BLOCK_N1
+    start_m = start_n
+
+    MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
+    offs_n = start_n + tl.arange(0, BLOCK_N1)
+    offs_n_mask = offs_n < N_CTX
+
+    dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+    dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+
+    # load K and V: they stay in SRAM throughout the inner loop.
+    key = tl.load(K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d, mask=offs_n_mask[:, None], other=0.0)
+    value = tl.load(V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d, mask=offs_n_mask[:, None], other=0.0)
+
+    # 确保num_steps计算正确，处理所有需要的数据
+    num_steps = BLOCK_N1 // MASK_BLOCK_M1
+
+    dk, dv = _attn_bwd_dkdv(dk, dv,  #
+                            Q, key, value, sm_scale,  #
+                            DO,  #
+                            M, D,  #
+                            stride_tok, stride_d,  #
+                            H, N_CTX,  #
+                            MASK_BLOCK_M1, BLOCK_N1, BLOCK_DMODEL,  #
+                            start_n, start_m, num_steps,  #
+                            MASK=True  #
+                            )
+
+    start_m += num_steps * MASK_BLOCK_M1
+
+    # 计算剩余需要处理的步数
+    remaining_m = N_CTX - start_m
+    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1  # 向上取整
+
+    # Compute dK and dV for non-masked blocks.
+    if num_steps > 0 and start_m < N_CTX:
+        dk, dv = _attn_bwd_dkdv(  #
+            dk, dv,  #
+            Q, key, value, sm_scale,  #
+            DO,  #
+            M, D,  #
+            stride_tok, stride_d,  #
+            H, N_CTX,  #
+            BLOCK_M1, BLOCK_N1, BLOCK_DMODEL,  #
+            start_n, start_m, num_steps,  #
+            MASK=False  #
+        )
+    # tl.device_print("dv: ", dv)
+
+
+    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+
+    # Write back dK.
+    dk *= sm_scale
+    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
+    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+
+    # THIS BLOCK DOES DQ:
+    start_m = pid * BLOCK_M2
+    # end_n = start_m + BLOCK_M2
+    end_n = min(start_m + BLOCK_M2, N_CTX)
+
+    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR # 32/2=16
+    offs_m = start_m + tl.arange(0, BLOCK_M2)
+    offs_m_mask = offs_m < N_CTX
+
+    query = tl.load(Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d, mask=offs_m_mask[:, None], other=0.0)
+    dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
+    do = tl.load(DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d, mask=offs_m_mask[:, None], other=0.0)
+
+    m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
+    m = m[:, None]
+
+    # Compute dQ for masked (diagonal) blocks.
+    # NOTE: This code scans each row of QK^T backward (from right to left,
+    # but inside each call to _attn_bwd_dq, from left to right), but that's
+    # not due to anything important.  I just wanted to reuse the loop
+    # structure for dK & dV above as much as possible.
+    # 确保边界计算正确
+    mask_end_n = max(0, min(end_n, N_CTX))
+    mask_start_n = max(0, mask_end_n - ((mask_end_n - start_n) // MASK_BLOCK_N2) * MASK_BLOCK_N2)
+    num_steps = max(0, (mask_end_n - mask_start_n) // MASK_BLOCK_N2)
+    
+    if num_steps > 0:
+        dq = _attn_bwd_dq(dq, query, K, V,  #
+                          do, m, D,  #
+                          stride_tok, stride_d,  #
+                          H, N_CTX,  #
+                          BLOCK_M2, MASK_BLOCK_N2, BLOCK_DMODEL,  #
+                          start_m, mask_start_n, num_steps,  #
+                          MASK=True  #
+                          )
+    
+    # stage 2 - 处理非mask部分
+    stage2_end_n = mask_start_n
+    stage2_num_steps = max(0, stage2_end_n // BLOCK_N2)
+    
+    if stage2_num_steps > 0:
+        dq = _attn_bwd_dq(dq, query, K, V,  #
+                          do, m, D,  #
+                          stride_tok, stride_d,  #
+                          H, N_CTX,  #
+                          BLOCK_M2, BLOCK_N2, BLOCK_DMODEL,  #
+                          start_m, stage2_end_n - stage2_num_steps * BLOCK_N2, stage2_num_steps,  #
+                          MASK=False  #
+                          )
+    # Write back dQ.
+    dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
+    dq *= LN2
+    # tl.store(dq_ptrs, dq)
+
+    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+
+
+def scaled_dot_product_attention_backward(
+    grad_output, query, key, value, o, M,
+    attn_mask=None, dropout_p=0.0, 
+    is_causal=False, scale=None, enable_gqa=False
+):
+    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION BACKWARD")
+    # shape constraints
+    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
+    # when v is in float8_e5m2 it is transposed.
+    HEAD_DIM_V = value.shape[-1]
+    assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
+    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+    assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
+
+    if scale is None:
+        sm_scale = 1.0 / (HEAD_DIM_K**0.5)
+    else:
+        sm_scale = scale
+
+    do = grad_output
+    batch, q_head_num, seq_len, head_size = query.shape
+    kv_head_num = key.shape[1]
+    group_head = q_head_num // kv_head_num
+
+    assert do.is_contiguous()
+    assert query.is_contiguous() and key.is_contiguous() and value.is_contiguous() and o.is_contiguous()
+    assert query.stride() == o.stride() == do.stride()
+
+    assert key.stride() == value.stride()
+    print(f"{query.stride()=}, {key.stride()=}, {value.stride()=}, {o.stride()=}, {do.stride()=}")
+
+    # Use global M if not provided
+    if M is None:
+        global GLOBAL_ATTENTION_M
+        if GLOBAL_ATTENTION_M is None:
+            raise RuntimeError("M is None and GLOBAL_ATTENTION_M is not set. Run forward first or pass M explicitly.")
+        M = GLOBAL_ATTENTION_M
+
+    # NOTE that dk & dv always have the same number of heads as q
+    dq = torch.empty_like(query).contiguous()
+    dk = torch.empty_like(query).contiguous()
+    dv = torch.empty_like(query).contiguous()
+
+    BLOCK_DMODEL = HEAD_DIM_K
+    BATCH, N_HEAD, N_CTX = query.shape[:3]
+
+    NUM_WARPS, NUM_STAGES = 4, 1
+    BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
+    BLK_SLICE_FACTOR = 2
+    # RCP_LN2 = 1.4426950408889634  # = 1.0 / ln(2)
+
+    RCP_LN2 = 1.0 / math.log(2)
+
+
+    arg_k = key
+    arg_k = arg_k * (sm_scale * RCP_LN2)
+    # PRE_BLOCK = 128
+    PRE_BLOCK = 256
+
+    # PRE_BLOCK = 32
+    # assert N_CTX % PRE_BLOCK == 0
+    # pre_grid = (N_CTX // PRE_BLOCK, BATCH * N_HEAD)
+
+    pre_grid = (triton.cdiv(N_CTX, PRE_BLOCK), BATCH * N_HEAD)
+
+    delta = torch.empty_like(M)
+    _attn_bwd_preprocess[pre_grid](
+        o, do,  #
+        delta,  #
+        BATCH, N_HEAD, N_CTX,  #
+        BLOCK_M=PRE_BLOCK, D_HEAD=BLOCK_DMODEL  #
+    )
+
+    grid = (triton.cdiv(N_CTX, BLOCK_N1), 1, BATCH * N_HEAD)
+    logger.info(f"{triton.cdiv(N_CTX, BLOCK_N1)=}")
+    logger.info(f"{M.shape=}")
+
+    _attn_bwd[grid](
+        query, arg_k, value, sm_scale, do, dq, dk, dv,  #
+        M, delta,  #
+        query.stride(0), query.stride(1), query.stride(2), query.stride(3),  #
+        key.stride(0), key.stride(1),  #
+        N_HEAD, N_CTX,  #
+        kv_head_num, # 
+        GROUP_HEAD=group_head,  #
+        BLOCK_M1=BLOCK_M1, BLOCK_N1=BLOCK_N1,  #
+        BLOCK_M2=BLOCK_M2, BLOCK_N2=BLOCK_N2,  #
+        BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
+        BLOCK_DMODEL=BLOCK_DMODEL,  #
+        num_warps=NUM_WARPS,  #
+        num_stages=NUM_STAGES  #
+    )
+
+    print("group_head is: ", group_head)
+    if group_head > 1: 
+        dk = dk.reshape(batch, q_head_num // group_head, group_head, seq_len, head_size)
+        dv = dv.reshape(batch, q_head_num // group_head, group_head, seq_len, head_size)
+        dk = dk.sum(dim=2)
+        dv = dv.sum(dim=2)
+
+    return dq, dk, dv, None, None, None
 
 def flash_attention_forward(
     query,
