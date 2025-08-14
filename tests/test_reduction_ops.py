@@ -303,6 +303,38 @@ def test_accuracy_cummin(shape, dtype):
     gems_assert_equal(res_out.indices, ref_out.indices)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.cummin
+@pytest.mark.parametrize("shape", CUMMIN_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("nan_ratio", [0.1, 0.3, 0.5])
+def test_accuracy_cummin_with_nan(shape, dtype, nan_ratio):
+    """Test cummin with NaN values at different ratios"""
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+
+    # Create tensor with some NaN values
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Randomly set some values to NaN
+    total_elements = inp.numel()
+    nan_count = int(total_elements * nan_ratio)
+    nan_indices = torch.randperm(total_elements)[:nan_count]
+    flat_inp = inp.flatten()
+    flat_inp[nan_indices] = float("nan")
+    inp = flat_inp.view(shape)
+
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummin(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummin(inp, dim=dim)
+
+    gems_assert_close(
+        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
+    )
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
 CUMMAX_SHAPES = (
     [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,), (16, 1025, 255)]
 )
@@ -328,6 +360,38 @@ def test_accuracy_cummax(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.cummax(inp, dim=dim)
     gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
+    gems_assert_equal(res_out.indices, ref_out.indices)
+
+
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.cummax
+@pytest.mark.parametrize("shape", CUMMAX_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("nan_ratio", [0.1, 0.3, 0.5])
+def test_accuracy_cummax_with_nan(shape, dtype, nan_ratio):
+    """Test cummax with NaN values at different ratios"""
+    dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
+
+    # Create tensor with some NaN values
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    # Randomly set some values to NaN
+    total_elements = inp.numel()
+    nan_count = int(total_elements * nan_ratio)
+    nan_indices = torch.randperm(total_elements)[:nan_count]
+    flat_inp = inp.flatten()
+    flat_inp[nan_indices] = float("nan")
+    inp = flat_inp.view(shape)
+
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.cummax(ref_inp, dim=dim)
+    with flag_gems.use_gems():
+        res_out = torch.cummax(inp, dim=dim)
+
+    gems_assert_close(
+        res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
+    )
     gems_assert_equal(res_out.indices, ref_out.indices)
 
 
@@ -464,7 +528,6 @@ def test_accuracy_softmax_backward(shape, dtype, dim, neg_inf):
     )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX: CORE DUMPED")
 @pytest.mark.var_mean
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dim", DIMS_LIST)
@@ -579,7 +642,6 @@ def test_accuracy_scatter_add(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.scatter
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -714,7 +776,6 @@ def test_accuracy_inplace_scatter_add(src_shape, inp_shape, dim, dtype):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.scatter_
 @pytest.mark.parametrize(
     "src_shape", [(32, 8, 4)] if QUICK_MODE else [(128, 16, 4), (256, 32, 8)]
@@ -890,6 +951,12 @@ def test_accuracy_slice_scatter(shape, stride, dim, dtype, start, end, step):
         res_out = kl_ops.slice_scatter(
             inp, dim=dim, src=src, start=start, end=end, step=step
         )
+    elif flag_gems.vendor_name == "cambricon":
+        from flag_gems.runtime.backend._cambricon import ops as cam_ops
+
+        res_out = cam_ops.slice_scatter(
+            inp, dim=dim, src=src, start=start, end=end, step=step
+        )
     else:
         res_out = flag_gems.ops.slice_scatter(
             inp, dim=dim, src=src, start=start, end=end, step=step
@@ -973,6 +1040,7 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -999,7 +1067,8 @@ SHAPE_CONV1D = [
 ]
 
 
-@pytest.mark.skip("conv1d introduces failures, disable it temporarily")
+@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [2])
@@ -1041,7 +1110,6 @@ SHAPE_CONV2D = [
 
 @pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.conv2d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV2D)
 @pytest.mark.parametrize("stride", [1, 2])

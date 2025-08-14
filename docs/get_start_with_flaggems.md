@@ -8,13 +8,13 @@ By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless
 
 ## Quick Installation
 
-FlagGems can be installed either as a pure python package or a package with C-extensions for better runtime performance. By default, it does not build the C extensions, See [build_flaggems_with_c_extensions](./build_flaggems_with_c_extensions.md) for how to use C++ runtime.
+FlagGems can be installed either as a pure python package or a package with C-extensions for better runtime performance. By default, it does not build the C extensions, See [installation](./installation.md) for how to use C++ runtime.
 
-### Requirements
+### Install Build Dependencies
 
-1. Triton >= 2.2.0
-2. PyTorch >= 2.2.0
-3. Transformers >= 4.40.2
+```sh
+pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
+```
 
 ### Installation
 
@@ -27,6 +27,7 @@ pip install --no-build-isolation -e .
 ```
 
 Or build a wheel
+
 ```shell
 pip install -U build
 git clone https://github.com/FlagOpen/FlagGems.git
@@ -49,6 +50,7 @@ with flag_gems.use_gems():
 ```
 
 For example:
+
 ```python
 import torch
 import flag_gems

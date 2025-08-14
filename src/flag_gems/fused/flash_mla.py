@@ -5,9 +5,10 @@ import torch
 import triton
 import triton.language as tl
 
-from ..runtime import device, error, torch_device_fn
-from ..utils import triton_lang_extension as tle
+from flag_gems.runtime import device, error, torch_device_fn
+from flag_gems.utils import triton_lang_extension as tle
 
+vendor_name = device.vendor_name
 device = device.name
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,9 @@ def flash_mla(
     elif major == 8:
         BLOCK_H = 32
         num_stages = 2
+    elif major == 7 and vendor_name == "iluvatar":
+        BLOCK_H = 32
+        num_stages = 1
     else:
         error.backend_not_support(device)
     BLOCK_N = 64

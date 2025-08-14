@@ -207,6 +207,10 @@ def upsample_nearest2d_SAME_W(args):
     return args["OW"] == args["IW"]
 
 
+def upsample_nearest2d_USE_INT32_IDX(args):
+    return args["N"] * args["C"] * args["OH"] * args["OW"] <= (2**31 - 1)  # INT32 MAX
+
+
 def batch_norm_heur_block_m(args):
     return min(2048, triton.next_power_of_2(args["batch_dim"]))
 
@@ -295,6 +299,7 @@ HEURISTICS_CONFIGS = {
     "upsample_nearest2d": {
         "SAME_H": upsample_nearest2d_SAME_H,
         "SAME_W": upsample_nearest2d_SAME_W,
+        "USE_INT32_IDX": upsample_nearest2d_USE_INT32_IDX,
     },
     "var_mean": {
         "BLOCK_N": var_mean_heur_block_n,
@@ -306,9 +311,15 @@ HEURISTICS_CONFIGS = {
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
     },
-    "mha_varlen_fwd": {
+    "mha_varlen_prefill": {
         "BLOCK_M": lambda args: 128,
         "BLOCK_N": lambda args: 32,
+        "num_warps": lambda args: 4,
+        "num_stages": lambda args: 3,
+    },
+    "mha_varlen_decode": {
+        "BLOCK_M": lambda args: 16,
+        "BLOCK_N": lambda args: 64,
         "num_warps": lambda args: 4,
         "num_stages": lambda args: 3,
     },

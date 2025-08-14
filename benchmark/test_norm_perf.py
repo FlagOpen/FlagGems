@@ -2,12 +2,13 @@ import pytest
 import torch
 
 import flag_gems
-
-from .attri_util import FLOAT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import FLOAT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
+    GenericBenchmark2DOnly,
     GenericBenchmarkExcluse1D,
+    SkipVersion,
     unary_input_fn,
     vendor_name,
 )
@@ -108,12 +109,7 @@ def batchnorm_input_fn(shape, dtype, device):
             "layer_norm",
             torch.layer_norm,
             layernorm_input_fn,
-            marks=[
-                pytest.mark.layer_norm,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.layer_norm,
         ),
         pytest.param(
             "instance_norm",
@@ -130,12 +126,7 @@ def batchnorm_input_fn(shape, dtype, device):
             "batch_norm",
             torch.batch_norm,
             batchnorm_input_fn,
-            marks=[
-                pytest.mark.batch_norm,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.batch_norm,
         ),
     ],
 )
@@ -189,4 +180,24 @@ def test_weight_vector_norm_benchmark(op_name, torch_op, input_fn):
     )
     if op_name == "weight_norm":
         bench.set_gems(flag_gems.weight_norm)
+    bench.run()
+
+
+@pytest.mark.rms_norm
+@pytest.mark.skipif(
+    SkipVersion("torch", "<2.4"),
+    reason="The version prior to 2.4 does not include the rms_norm API in torch.",
+)
+def test_perf_rms_norm():
+    def rms_norm_input_fn(shape, dtype, device):
+        M, N = shape
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        weight = torch.randn(N, dtype=dtype, device=device)
+        yield inp, (N,), weight
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=rms_norm_input_fn,
+        op_name="rms_norm",
+        torch_op=torch.nn.functional.rms_norm,
+    )
     bench.run()
