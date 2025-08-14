@@ -298,9 +298,6 @@ def test_accuracy_glu_backward(shape, dtype):
         out_shape = list(shape)
         out_shape[dim] //= 2
         res_out = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
-
-        ref_inp = to_reference(res_inp)
-        ref_out = to_reference(res_out)
         ref_out = to_reference(res_out, True)
 
         ref_in_grad = torch.ops.aten.glu_backward(ref_out, ref_inp, dim=dim)
