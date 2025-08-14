@@ -238,9 +238,11 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writemultiline("# gen import functions")
+        print("# gen import functions")
+        # code.writeline(f'"""Quoted source of {self.fn_name}:')
         code.writemultiline(self.fn.src)
-        code.writeline('"""')
+        # code.writeline('"""')
         code.newline()
 
     def gen_decorators(self, code):

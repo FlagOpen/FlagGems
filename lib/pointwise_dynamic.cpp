@@ -1,62 +1,93 @@
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <iostream>
 #include "c10/cuda/CUDAStream.h"
 #include "c10/util/Logging.h"
+#include "pybind11/embed.h"
+#include "triton_jit/pointwise_generator.h"
 #include "triton_jit/triton_jit_function.h"
 
 namespace flag_gems {
 using namespace triton_jit;
-using Shape = c10::IntArrayRef;
-using Stride = c10::IntArrayRef;
+
+/*
+def add_func(
+    in0_ptr: tl.tensor, # of tl.pointer_type
+    in1_ptr: tl.tensor, # of tl.pointer_type
+    out0_ptr: tl.tensor, # of tl.pointer_type
+    in0_stride0: int, in0_stride1: int, # strides for in0
+    in1_stride0: int, in1_stride1: int, # strides for in1
+    out0_stride0: int, out0_stride1: int, # strides for out0
+    s0: int, s1: int, # task_space
+    num_tasks: int,
+    tiles_per_cta: int,
+    tile_size: tl.constexpr,
+    one_tile_per_cta: tl.constexpr,
+):
+*/
+
+namespace py = pybind11;
 at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   // TODO: parse tensor meta info
   // LOG(INFO)<< fmt::format("add tensor");
-  std::cout << "add tensor";
+  std::string signature;
+  std::cout << "add tensor\n";
   std::vector<void*> kernel_params;
   // 2 input
   void* a_ptr = a_.data_ptr();
   void* b_ptr = b_.data_ptr();
   kernel_params.push_back(&a_ptr);
+  signature.append("*fp32:16,");
   kernel_params.push_back(&b_ptr);
-  int64_t val0 = 1;
-  kernel_params.push_back(&val0);
-
-  // calculate task_space
-  std::vector<pointwise_dynamic::ShapeR> shapes;
-  shapes.push_back(a_.sizes());
-  shapes.push_back(b_.sizes());
-  pointwise_dynamic::ShapeW task_space = pointwise_dynamic::broadcast_shapes(shapes);
-  int ndim = task_space.size();
-  // prepare output with size of task_space
-  at::Tensor out = at::empty(task_space);
+  signature.append("*fp32:16,");
+  // TODO: use fast path没有这个，但
+  // int64_t val0 = 1;
+  // signature.push("1,");
+  // kernel_params.push_back(&val0);
+  int ndim;
+  at::Tensor out = at::empty_like(a_);
   kernel_params.push_back(&out);
+  signature.append("*fp32:16,");
   std::vector<at::Tensor> tensors = {a_, b_, out};
   int task_shape;
   if (pointwise_dynamic::use_fast_path(tensors)) {
-    std::cout << "use fast path";
-    task_shape = tensors[0].numel();
+    // prepare output with size of task_space
+    std::cout << "use fast path\n";
+    task_shape = a_.numel();
     void* task_shape_ptr = &task_shape;
     int stride = 1;
     void* stride_ptr = &stride;
-    int ndim = 1;
+    ndim = 1;
     int fast_path_stride_order = 0;
     void* fast_path_stride_order_ptr = &fast_path_stride_order;
     // push args
     // stride for input
     kernel_params.push_back(stride_ptr);
-    kernel_params.push_back(fast_path_stride_order_ptr);
+    signature.append("i64,");
+    // kernel_params.push_back(fast_path_stride_order_ptr);
     kernel_params.push_back(stride_ptr);
-    kernel_params.push_back(fast_path_stride_order_ptr);
+    signature.append("i64,");
+    // kernel_params.push_back(fast_path_stride_order_ptr);
     // stride for output
     kernel_params.push_back(stride_ptr);
-
+    signature.append("i64,");
     // task_space -> shape_args... shape = out0.shape
     kernel_params.push_back(task_shape_ptr);
+    signature.append("i64,");
     // num_tasks -> num_tasks = out0.numel()
     kernel_params.push_back(task_shape_ptr);
+    signature.append("i64,");
   } else {
+    // calculate task_space
+    std::vector<pointwise_dynamic::ShapeR> shapes;
+    shapes.push_back(a_.sizes());
+    shapes.push_back(b_.sizes());
+    pointwise_dynamic::ShapeW task_space = pointwise_dynamic::broadcast_shapes(shapes);
+    ndim = task_space.size();
+    // prepare output with size of task_space
     std::cout << "else";
     // broadcast tensor
     // ndim = len(task_shape)
@@ -137,33 +168,55 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
     int64_t num_task = out.numel();
     kernel_params.push_back(const_cast<int64_t*>(&num_task));
   }
-  void* global_scratch = nullptr;
-  kernel_params.push_back(&global_scratch);
+  /*
+  tiles_per_cta: int,
+  tile_size: tl.constexpr,
+  one_tile_per_cta: tl.constexpr,
+  */
   // # tile size & tiles_per_cta, gsl style
   // tile_sizes = heuristics_for_tile_size(512, *shape)
   int64_t tile_sizes = 1024;
   int64_t num_tiles = utils::cdiv(task_shape, tile_sizes);  // aka num blocks
+
   // num_ctas = min(65536, num_tiles)
   int64_t num_ctas = std::min(static_cast<int64_t>(65536), num_tiles);
   // tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
   int64_t tiles_per_cta = utils::cdiv(num_tiles, num_ctas);
+  kernel_params.push_back(reinterpret_cast<void*>(tiles_per_cta));
+  signature.append("i64,");
+  signature.append(std::to_string(tile_sizes));
+  signature.append(",");
   // one_tile_per_cta = tiles_per_cta==1
   bool one_tile_per_cta = (tiles_per_cta == 1);
+  signature.append(std::to_string(one_tile_per_cta));
+
+  void* global_scratch = nullptr;
+  kernel_params.push_back(&global_scratch);
   // get function
-  std::array<bool, 2> is_tensor;
-  pointwise_dynamic::checkIfScalar(a_, b_, is_tensor);
+  std::array<bool, 2> is_scalar;
+  pointwise_dynamic::checkIfScalar(a_, b_, is_scalar);
   std::optional<TritonJITFunction> f;
   // TODO: code gen in c++
-  if (is_tensor[0] && is_tensor[1]) {
-    f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
-                                       "add_func");
-  } else if (is_tensor[0] && !is_tensor[1]) {
+
+  auto ans_tuple = gen_add(ndim);
+  std::string kernel_name = std::get<0>(ans_tuple);
+  std::string file_path = std::get<1>(ans_tuple);
+
+  std::cout << "file_path:" << file_path << std::endl;
+
+  // TODO: 四种情况
+  if (!is_scalar[0] && !is_scalar[1]) {
+    f = TritonJITFunction::getInstance(file_path, "add");
+  } else if (!is_scalar[0] && is_scalar[1]) {
+    // TODO
     f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
                                        "add_func_tensor_scalar");
-  } else if (!is_tensor[0] && is_tensor[1]) {
+  } else if (is_scalar[0] && !is_scalar[1]) {
+    // TODO
     f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
                                        "add_func_scalar_tensor");
   } else {
+    std::cout << "else";
     return a_ + b_;
   }
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
@@ -172,7 +225,6 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   const int num_warps = 8;
   const int num_stages = 1;
 
-  std::string signature = "*fp32:16,*fp32:16,*fp32:16,i64,1024";
   f->launch_with_raw_args(raw_stream,
                           num_tiles,
                           1,

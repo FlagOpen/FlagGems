@@ -197,6 +197,8 @@ class FunctionSchema:
             for _ in range(self.num_outputs()):
                 output_types.append("StridedBuffer")
         sig = f'Pointwise: {", ".join(input_types)} -> {", ".join(output_types)}'
+        print("signature function call")
+        print(sig)
         return sig
 
     def _compute_input_id(self):

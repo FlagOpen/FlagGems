@@ -175,9 +175,9 @@ int cdiv(int a, int b) {
 namespace flag_gems::pointwise_dynamic {
 void checkIfScalar(const torch::Tensor& tensor1,
                    const torch::Tensor& tensor2,
-                   std::array<bool, 2>& is_tensor) {
-  is_tensor[0] = (tensor1.dim() == 0);
-  is_tensor[1] = (tensor2.dim() == 0);
+                   std::array<bool, 2>& is_scalar) {
+  is_scalar[0] = (tensor1.dim() == 0);
+  is_scalar[1] = (tensor2.dim() == 0);
 }
 StridedBuffer::StridedBuffer(const torch::Tensor& base,
                              c10::optional<c10::IntArrayRef> shape,
