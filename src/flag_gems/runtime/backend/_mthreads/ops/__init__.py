@@ -1,11 +1,15 @@
 from torch_musa import current_device, get_device_capability
 
-from .isin import isin
-from .unique import _unique2
+from .attention import (
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    scaled_dot_product_attention,
+)
 
 __all__ = [
-    "_unique2",
-    "isin",
+    "flash_attn_varlen_func",
+    "scaled_dot_product_attention",
+    "flash_attention_forward",
 ]
 
 if get_device_capability(current_device())[0] >= 3:
