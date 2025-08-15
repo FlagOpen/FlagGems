@@ -238,11 +238,9 @@ class KernelGenerator:
         self.fn_module = scalar_fn.__module__
 
     def gen_import_function(self, code: IndentedBuffer):
-        code.writemultiline("# gen import functions")
-        print("# gen import functions")
-        # code.writeline(f'"""Quoted source of {self.fn_name}:')
+        code.writeline(f'"""Quoted source of {self.fn_name}:')
         code.writemultiline(self.fn.src)
-        # code.writeline('"""')
+        code.writeline('"""')
         code.newline()
 
     def gen_decorators(self, code):
@@ -875,7 +873,6 @@ class WrapperGenerator:
         with_block_pointer = self.config.prefer_block_pointer
 
         code.writeline("# kernel launch")
-        code.writeline("print('launch with wrapper')")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
             if not with_block_pointer:
@@ -948,6 +945,41 @@ class WrapperGenerator:
         ndim = self.ndim
 
         code.writeline("# kernel launch")
+        for i in range(schema.num_input_tensors()):
+            code.writeline(f"in{i}_strides = in{i}.stride()")
+        for i in range(schema.num_output_tensors()):
+            code.writeline(f"out{i}_strides = out{i}.stride()")
+
+        # ---- 新增的打印参数的 codegen ----
+        code.writeline("print('Kernel parameters:')")
+        # 打印输入张量
+        for i in range(schema.num_input_tensors()):
+            code.writeline(f"print(f'  in{i}: {{in{i}}}')")
+        # 打印输出张量
+        for i in range(schema.num_output_tensors()):
+            code.writeline(f"print(f'  out{i}: {{out{i}}}')")
+
+        # 打印输入张量的 strides
+        if ndim > 0:
+            for i in range(schema.num_input_tensors()):
+                code.writeline(f"print(f'  in{i}_strides: {{in{i}_strides}}')")
+
+        # 打印输出张量的 strides
+        if ndim > 0:
+            for i in range(schema.num_output_tensors()):
+                code.writeline(f"print(f'  out{i}_strides: {{out{i}_strides}}')")
+
+        # 打印其他参数
+        if ndim > 0:
+            shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
+            code.writeline("print(f'  shape: {shape[0]}')")
+            code.writeline("print(f'  num_tasks: {num_tasks}')")
+            code.writeline("print(f'  tiles_per_cta: {tiles_per_cta}')")
+            code.writeline("print(f'  tile_size: {tile_size}')")
+            code.writeline("print(f'  one_tile_per_cta: {one_tile_per_cta}')")
+
+        code.writeline("print(f'  num_warps: {num_warps}')")
+
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
         for i in range(schema.num_output_tensors()):
@@ -1057,8 +1089,6 @@ class ModuleGenerator:
     def codegen(self, code: IndentedBuffer):
         # the only runtime determined factor is the rank of the task space
         code = self.generate_imports(code)
-        print("codegen config")
-        print(self.config)
         if self.config.prefer_1d_tile:
             code = self.wrapper_gen.codegen_1d_tile(code)
             code = self.kernel_gen.codegen_1d_tile(code)
@@ -1113,7 +1143,6 @@ class PointwiseDynamicFunction:
     def prepare_args(self, *args, **kwargs):
         # output allocation(when needed)
         # task simplification & task-rank infernece & input-output reinterpretation
-        print("prepare args")
         schema = self.fx
         outputs_that_need_allocation: List[int] = []
         out_tensors = []
@@ -1161,7 +1190,6 @@ class PointwiseDynamicFunction:
                 k: StridedBuffer(item, task_shape, strides)
                 for k, item in kwargs.items()
             }
-            print(kwargs)
             for seq_id, output_id in enumerate(outputs_that_need_allocation):
                 kwargs[f"out{output_id}"] = StridedBuffer(
                     allocated_outputs[seq_id], task_shape, strides
@@ -1199,7 +1227,6 @@ class PointwiseDynamicFunction:
                     torch.empty(task_shape, dtype=dtype, device=device)
                     for dtype in outputs_dtypes_for_allocation
                 ]
-            print(args)
             args = tuple(
                 (
                     StridedBuffer(
@@ -1212,7 +1239,6 @@ class PointwiseDynamicFunction:
                 )
                 for i, item in enumerate(args)
             )
-            print(args)
             kwargs = {
                 k: StridedBuffer(
                     item,

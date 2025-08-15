@@ -33,6 +33,5 @@ TORCH_LIBRARY_IMPL(aten, CUDA, m) {
   REGISTER_AND_LOG("max.dim", max_dim)
   REGISTER_AND_LOG("max", max)
   REGISTER_AND_LOG("sum", sum)
-  REGISTER_AND_LOG("add", add_tensor)
 }
 }  // namespace flag_gems

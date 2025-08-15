@@ -26,7 +26,9 @@ add_library(operators
             embedding.cpp
             argmax.cpp
             fill.cpp
+            softmax.cpp
             pointwise_dynamic.cpp
+            exponential_.cpp
             )
 target_include_directories(operators
   PUBLIC

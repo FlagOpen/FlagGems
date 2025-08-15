@@ -170,7 +170,7 @@ std::tuple<int64_t, int64_t, int64_t> parse_reduction_axes(const at::Tensor& ten
 int cdiv(int a, int b) {
   return (a + b - 1) / b;
 }
-}  // namespace flag_gems::utils
+};  // namespace flag_gems::utils
 
 namespace flag_gems::pointwise_dynamic {
 void checkIfScalar(const torch::Tensor& tensor1,

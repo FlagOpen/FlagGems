@@ -56,7 +56,7 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
-from flag_gems.ops.elu import elu
+from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.eq import eq, eq_scalar
 from flag_gems.ops.erf import erf, erf_
@@ -72,7 +72,7 @@ from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
-from flag_gems.ops.glu import glu
+from flag_gems.ops.glu import glu, glu_backward
 from flag_gems.ops.groupnorm import group_norm, group_norm_backward
 from flag_gems.ops.gt import gt, gt_scalar
 from flag_gems.ops.hstack import hstack
@@ -163,6 +163,7 @@ from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.softmax import softmax, softmax_backward
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -255,6 +256,8 @@ __all__ = [
     "dropout",
     "dropout_backward",
     "elu",
+    "elu_",
+    "elu_backward",
     "embedding",
     "embedding_backward",
     "eq",
@@ -287,6 +290,7 @@ __all__ = [
     "gelu_",
     "gelu_backward",
     "glu",
+    "glu_backward",
     "group_norm",
     "group_norm_backward",
     "gt",
@@ -384,6 +388,8 @@ __all__ = [
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
+    "sqrt",
+    "sqrt_",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
