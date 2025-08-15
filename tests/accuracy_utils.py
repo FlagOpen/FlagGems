@@ -7,7 +7,7 @@ import torch
 
 import flag_gems
 
-from .conftest import QUICK_MODE, TO_CPU
+from .conftest import QUICK_MODE, TO_CPU, TO_DEVICE
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
@@ -178,6 +178,8 @@ def to_reference(inp, upcast=False):
     ref_inp = inp
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
+    if TO_DEVICE:
+        ref_inp = ref_inp.to(flag_gems.device)
     if upcast:
         if ref_inp.is_complex():
             ref_inp = ref_inp.to(torch.complex128)
@@ -187,7 +189,7 @@ def to_reference(inp, upcast=False):
 
 
 def to_cpu(res, ref):
-    if TO_CPU:
+    if TO_CPU or ref.device == torch.device("cpu"):
         res = res.to("cpu")
         assert ref.device == torch.device("cpu")
     return res
