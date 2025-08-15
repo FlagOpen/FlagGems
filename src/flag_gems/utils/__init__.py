@@ -1,3 +1,4 @@
+from flag_gems.utils.hello import hello, hello_info, hello_world
 from flag_gems.utils.libentry import libentry, libtuner
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import (
@@ -11,6 +12,9 @@ from flag_gems.utils.triton_driver_helper import get_device_properties
 from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 __all__ = [
+    "hello",
+    "hello_info", 
+    "hello_world",
     "libentry",
     "libtuner",
     "pointwise_dynamic",
