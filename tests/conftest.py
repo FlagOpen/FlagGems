@@ -46,6 +46,9 @@ def pytest_configure(config):
     global TO_CPU
     TO_CPU = config.getoption("--ref") == "cpu"
 
+    global TO_DEVICE
+    TO_DEVICE = config.getoption("--ref") == "device"
+
     global QUICK_MODE
     QUICK_MODE = config.getoption("--mode") == "quick"
 
