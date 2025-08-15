@@ -25,6 +25,7 @@ def metax_heuristics_for_num_warps(tile_size):
     else:
         return 16
 
+
 def hygon_heuristics_for_num_warps(tile_size):
     if tile_size <= 1024:
         return 4
@@ -32,6 +33,7 @@ def hygon_heuristics_for_num_warps(tile_size):
         return 8
     else:
         return 16
+
 
 def cambricon_heuristics_for_num_warps(tile_size):
     return 1
