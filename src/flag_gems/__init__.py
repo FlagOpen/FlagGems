@@ -343,8 +343,13 @@ class use_gems:
 def all_ops():
     return current_work_registrar.get_all_ops()
 
+from flag_gems.utils import hello, hello_info, hello_world
+
 
 __all__ = [
     "enable",
     "use_gems",
+    "hello",
+    "hello_info", 
+    "hello_world",
 ]
