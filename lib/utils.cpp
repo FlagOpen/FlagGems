@@ -179,131 +179,6 @@ void checkIfScalar(const torch::Tensor& tensor1,
   is_scalar[0] = (tensor1.dim() == 0);
   is_scalar[1] = (tensor2.dim() == 0);
 }
-StridedBuffer::StridedBuffer(const torch::Tensor& base,
-                             c10::optional<c10::IntArrayRef> shape,
-                             c10::optional<c10::IntArrayRef> strides,
-                             int64_t offset)
-    : base_(base.contiguous()), offset_(offset) {
-  if (offset_ == 0) {
-    data_ptr_ = base_.data_ptr();
-  } else {
-    data_ptr_ = static_cast<char*>(base_.data_ptr()) + base_.element_size() * offset_;
-  }
-  shape_ = shape.has_value() ? shape.value().vec() : base_.sizes().vec();
-  strides_ = strides.has_value() ? strides.value().vec() : base_.strides().vec();
-  ndim_ = shape_.size();
-}
-
-const c10::IntArrayRef StridedBuffer::strides() const {
-  return strides_;
-}
-
-const c10::IntArrayRef StridedBuffer::sizes() const {
-  return shape_;
-}
-
-long StridedBuffer::numel() const {
-  long num = 1;
-  for (long s : shape_) {
-    num *= s;
-  }
-  return num;
-}
-
-int64_t StridedBuffer::dim() const {
-  return ndim_;
-}
-
-const torch::Tensor& StridedBuffer::unwrap() const {
-  return base_;
-}
-
-void* StridedBuffer::data_ptr() const {
-  return data_ptr_;
-}
-
-torch::Storage StridedBuffer::untyped_storage() const {
-  return base_.storage();
-}
-
-StridedBuffer StridedBuffer::clone() const {
-  torch::Tensor cloned_base = base_.clone();
-  return StridedBuffer(cloned_base, shape_, strides_, offset_);
-}
-
-StridedBuffer& StridedBuffer::copy_(const StridedBuffer& src) {
-  torch::Tensor temp_dst = torch::empty_like(src.unwrap());
-  temp_dst.copy_(src.unwrap());
-
-  base_ = temp_dst;
-  strides_ = src.strides().vec();
-  shape_ = src.sizes().vec();
-  offset_ = src.offset();
-  data_ptr_ = base_.data_ptr();
-
-  return *this;
-}
-
-StridedBuffer& StridedBuffer::copy_(const torch::Tensor& src) {
-  StridedBuffer src_buffer(src);
-  return this->copy_(src_buffer);
-}
-
-long StridedBuffer::offset() const {
-  return offset_;
-}
-
-ShapeW broadcast(const ShapeR& s1, const ShapeR& s2) {
-  long ndim = std::max(s1.size(), s2.size());
-  ShapeW output_shape(ndim);
-  long p1 = s1.size() - 1;
-  long p2 = s2.size() - 1;
-
-  for (long i = ndim - 1; i >= 0; --i) {
-    long d1 = (p1 >= 0) ? s1[p1] : 1;
-    long d2 = (p2 >= 0) ? s2[p2] : 1;
-
-    if (d1 != d2 && d1 != 1 && d2 != 1) {
-      // 抛出异常或返回错误，因为形状不可广播
-      throw std::runtime_error("Shapes are not broadcastable.");
-    }
-    output_shape[i] = std::max(d1, d2);
-    if (p1 >= 0) p1--;
-    if (p2 >= 0) p2--;
-  }
-  return output_shape;
-}
-
-ShapeW broadcast_shapes(const std::vector<ShapeR>& shapes) {
-  if (shapes.empty()) {
-    return {};
-  }
-
-  ShapeW output_shape(shapes[0].begin(), shapes[0].end());
-  for (size_t i = 1; i < shapes.size(); ++i) {
-    output_shape = broadcast(output_shape, shapes[i]);
-  }
-  return output_shape;
-}
-
-StrideW broadcasted_stride(const ShapeR& shape, const StrideR& stride, const ShapeR& new_shape) {
-  assert(broadcastable_to(shape, new_shape) && "Shapes are not broadcastable.");
-
-  int r1 = shape.size();
-  int r2 = new_shape.size();
-  int d = r2 - r1;
-
-  StrideW new_stride(r2, 0);
-  for (int i = 0; i < r1; ++i) {
-    int new_dim_index = d + i;
-    if (shape[i] == 1 && new_shape[new_dim_index] > 1) {
-      new_stride[new_dim_index] = 0;
-    } else {
-      new_stride[new_dim_index] = stride[i];
-    }
-  }
-  return new_stride;
-}
 
 bool all_the_same_shape(const std::vector<at::Tensor>& tensors) {
   if (tensors.empty()) {
@@ -351,22 +226,6 @@ bool use_fast_path(const std::vector<at::Tensor>& tensors) {
   }
   return all_the_same_stride(tensors) && tensors[0].is_non_overlapping_and_dense();
 }
-StrideW stride_order(const StrideR& strides) {
-  // Create a vector of indices from 0 to strides.size() - 1
-  StrideW indices(strides.size());
-  std::iota(indices.begin(), indices.end(), 0);
-
-  // Sort the indices based on the absolute value of the corresponding stride
-  std::sort(indices.begin(), indices.end(), [&](int64_t i, int64_t j) {
-    return std::abs(strides[i]) < std::abs(strides[j]);
-  });
-
-  return indices;
-}
-
-StrideR create_stride_r_view(const StrideW& stride_w) {
-  return StrideR(reinterpret_cast<const int64_t*>(stride_w.data()), stride_w.size());
-}
 
 void ParamStack::save_tensor(const at::Tensor& tensor) {
   void* p_item = tensor.data_ptr();
@@ -388,11 +247,6 @@ void ParamStack::save_tensor(const at::Tensor& tensor) {
   }
 }
 
-/*
-void *p_item = item.data_ptr();
-data_pointers.push_back(p_item);
-kernel_args.push_back(&(data_pointers.back()));
-*/
 void ParamStack::save_tensor(at::Tensor& tensor) {
   void* p_item = tensor.data_ptr();
   tensor_ptr.push_back(p_item);
@@ -433,7 +287,11 @@ void** ParamStack::get_params() {
 }
 
 void ParamStack::save_stride(int64_t stride) {
-  strides.push_back(stride);
+  if (stride == 1) {
+    strides.push_back(0);
+  } else {
+    strides.push_back(stride);
+  }
 }
 
 void ParamStack::save_task_shape(int64_t shape) {
@@ -441,13 +299,21 @@ void ParamStack::save_task_shape(int64_t shape) {
 }
 
 void ParamStack::save_task_partition(int64_t partition) {
-  task_partition.push_back(partition);
+  if (partition == 1) {
+    task_partition.push_back(0);
+  } else {
+    task_partition.push_back(partition);
+  }
 }
 
 void ParamStack::push_strides() {
   for (auto& stride : strides) {
-    kernel_params.push_back(static_cast<void*>(&stride));
-    signature.append("i64,");
+    if (stride != 0) {
+      kernel_params.push_back(static_cast<void*>(&stride));
+      signature.append("i64,");
+    } else {
+      signature.append("i64:1,");
+    }
   }
 }
 
@@ -460,14 +326,17 @@ void ParamStack::push_task_shape() {
 
 void ParamStack::push_task_partition() {
   for (auto& partition : task_partition) {
-    kernel_params.push_back(static_cast<void*>(&partition));
-    signature.append("i64,");
+    if (partition != 0) {
+      kernel_params.push_back(static_cast<void*>(&partition));
+      signature.append("i64,");
+    } else {
+      signature.append("i64:1,");
+    }
   }
 }
 
 void ParamStack::add_global_scratch() {
-  void* global_scratch = nullptr;
-  kernel_params.push_back(global_scratch);
+  kernel_params.push_back(&global_scratch);
 }
 
 void ParamStack::build() {
