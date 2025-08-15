@@ -33,8 +33,10 @@ def bmm_heur_divisible_k(args):
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
-    else:
+    elif args["N"] <= 1024:
         return 1024
+    else:
+        return 4096
 
 
 def dropout_heur_num_warps(args):

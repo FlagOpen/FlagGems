@@ -669,18 +669,22 @@ mv:
     num_warps: warps
     num_stages: stages
   warps:
+  - 2
   - 4
   - 8
   block_m:
   - 32
   - 64
   - 128
+  - 256
   block_n:
   - 1
   - 2
   - 4
   - 8
+  - 16
   stages:
+  - 2
   - 3
   - 4
 nonzero:
