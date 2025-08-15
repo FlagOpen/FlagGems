@@ -159,9 +159,7 @@ def ordered_stride(shape: Shape, order: Perm) -> Stride:
 
 def stride_order(strides):
     # we also handle negative strides
-    res = sorted(range(len(strides)), key=lambda i: abs(strides[i]))
-    print("stride_order", res)
-    return res
+    return sorted(range(len(strides)), key=lambda i: abs(strides[i]))
 
 
 def all_the_same_shape(tensors: Sequence[torch.Tensor]) -> bool:

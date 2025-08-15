@@ -950,36 +950,6 @@ class WrapperGenerator:
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
 
-        # ---- 新增的打印参数的 codegen ----
-        code.writeline("print('Kernel parameters:')")
-        # 打印输入张量
-        for i in range(schema.num_input_tensors()):
-            code.writeline(f"print(f'  in{i}: {{in{i}}}')")
-        # 打印输出张量
-        for i in range(schema.num_output_tensors()):
-            code.writeline(f"print(f'  out{i}: {{out{i}}}')")
-
-        # 打印输入张量的 strides
-        if ndim > 0:
-            for i in range(schema.num_input_tensors()):
-                code.writeline(f"print(f'  in{i}_strides: {{in{i}_strides}}')")
-
-        # 打印输出张量的 strides
-        if ndim > 0:
-            for i in range(schema.num_output_tensors()):
-                code.writeline(f"print(f'  out{i}_strides: {{out{i}_strides}}')")
-
-        # 打印其他参数
-        if ndim > 0:
-            shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
-            code.writeline("print(f'  shape: {shape[0]}')")
-            code.writeline("print(f'  num_tasks: {num_tasks}')")
-            code.writeline("print(f'  tiles_per_cta: {tiles_per_cta}')")
-            code.writeline("print(f'  tile_size: {tile_size}')")
-            code.writeline("print(f'  one_tile_per_cta: {one_tile_per_cta}')")
-
-        code.writeline("print(f'  num_warps: {num_warps}')")
-
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
         for i in range(schema.num_output_tensors()):
@@ -1177,7 +1147,6 @@ class PointwiseDynamicFunction:
             task_shape = (tensors[0].numel(),)
             strides = (1,)
             ndim = 1
-            # print(args) # input
             args = tuple(
                 (
                     StridedBuffer(item, task_shape, strides)
@@ -1243,7 +1212,7 @@ class PointwiseDynamicFunction:
                 k: StridedBuffer(
                     item,
                     task_shape,
-                    (item.shape, item.stride(), task_shape),
+                    broadcasted_stride(item.shape, item.stride(), task_shape),
                 )
                 for k, item in kwargs.items()
             }
