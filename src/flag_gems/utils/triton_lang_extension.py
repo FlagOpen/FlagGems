@@ -107,34 +107,29 @@ def trunc(x):
 
 # --- Pointwise Functions ---
 
-# src/flag_gems/ops/add.py
 
-
-def add_func(x, y, alpha):
+# src/flag_gems/ops/add.py for lib/add.cpp
+@triton.jit
+def add_func(x, y, alpha=1):
     return x + y * alpha
 
 
-def add_func_tensor_scalar(x, y, alpha):
+@triton.jit
+def add_func_tensor_scalar(x, y, alpha=1):
     return x + y * alpha
 
 
-def add_func_scalar_tensor(x, y, alpha):
+@triton.jit
+def add_func_scalar_tensor(x, y, alpha=1):
     return x + y * alpha
 
 
 # src/flag_gems/ops/fill.py for lib/fill.cpp
+@triton.jit
 def fill_scalar_func(inp, value_scalar):
     return tl.full(inp.shape, value_scalar, dtype=inp.dtype)
 
 
+@triton.jit
 def fill_tensor_func(inp, value):
     return value
-
-
-# zeros 还不是pointwise dynamic
-
-# src/flag_gems/ops/copy.py for lib/cat.cpp
-
-
-def copy(src):
-    return src

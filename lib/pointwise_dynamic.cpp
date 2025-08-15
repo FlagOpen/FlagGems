@@ -34,8 +34,8 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   // TODO: parse tensor meta info
   // LOG(INFO)<< fmt::format("add tensor");
   std::string signature;
-  std::cout << "add tensor\n";
   std::vector<void*> kernel_params;
+  pointwise_dynamic::ParamStack stk = pointwise_dynamic::ParamStack();
   // 2 input
   void* a_ptr = a_.data_ptr();
   void* b_ptr = b_.data_ptr();
@@ -47,39 +47,63 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   // int64_t val0 = 1;
   // signature.push("1,");
   // kernel_params.push_back(&val0);
-  int ndim;
+  // general args
+  int64_t ndim;
+  int64_t num_ctas;
+  int64_t tiles_per_cta;
+  int64_t tile_sizes;
   at::Tensor out = at::empty_like(a_);
-  kernel_params.push_back(&out);
+  void* out_ptr = out.data_ptr();
+  kernel_params.push_back(&out_ptr);
   signature.append("*fp32:16,");
   std::vector<at::Tensor> tensors = {a_, b_, out};
-  int task_shape;
+  int64_t task_shape;
+  const int num_warps = 4;  // TODO：pointwise codegen 静态指定
+  const int num_stages = 1;
   if (pointwise_dynamic::use_fast_path(tensors)) {
     // prepare output with size of task_space
     std::cout << "use fast path\n";
     task_shape = a_.numel();
     void* task_shape_ptr = &task_shape;
-    int stride = 1;
+    int64_t stride = 1;
     void* stride_ptr = &stride;
     ndim = 1;
-    int fast_path_stride_order = 0;
+    int64_t fast_path_stride_order = 0;
     void* fast_path_stride_order_ptr = &fast_path_stride_order;
     // push args
     // stride for input
-    kernel_params.push_back(stride_ptr);
-    signature.append("i64,");
+    // kernel_params.push_back(stride_ptr);
+    signature.append("i64:1,");
     // kernel_params.push_back(fast_path_stride_order_ptr);
-    kernel_params.push_back(stride_ptr);
-    signature.append("i64,");
+    // kernel_params.push_back(stride_ptr);
+    signature.append("i64:1,");
     // kernel_params.push_back(fast_path_stride_order_ptr);
     // stride for output
-    kernel_params.push_back(stride_ptr);
-    signature.append("i64,");
+    // kernel_params.push_back(stride_ptr);
+    signature.append("i64:1,");
+    stk.save_stride(stride);
+    stk.save_stride(stride);
+    stk.save_stride(stride);
     // task_space -> shape_args... shape = out0.shape
     kernel_params.push_back(task_shape_ptr);
     signature.append("i64,");
+    stk.save_task_shape(task_shape);
     // num_tasks -> num_tasks = out0.numel()
     kernel_params.push_back(task_shape_ptr);
     signature.append("i64,");
+    stk.save_task_shape(task_shape);
+
+    int64_t tile_sizes = num_warps * 32;
+    int64_t num_tiles = utils::cdiv(task_shape, tile_sizes);  // aka num blocks
+
+    // num_ctas = min(65536, num_tiles)
+    num_ctas = std::min(static_cast<int64_t>(65536), num_tiles);
+    // tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+    tiles_per_cta = utils::cdiv(num_tiles, num_ctas);
+    void* tiles_per_cta_ptr = &tiles_per_cta;
+    // kernel_params.push_back(tiles_per_cta_ptr);
+    signature.append("i64:1,");
+    // stk.save_task_partition(tiles_per_cta);
   } else {
     // calculate task_space
     std::vector<pointwise_dynamic::ShapeR> shapes;
@@ -164,34 +188,33 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
       int64_t si = task_space[i];
       kernel_params.push_back(const_cast<int64_t*>(&si));
     }
-    // num_task out的
-    int64_t num_task = out.numel();
-    kernel_params.push_back(const_cast<int64_t*>(&num_task));
+    tile_sizes = num_warps * 32;
+    int64_t num_tiles = utils::cdiv(task_shape, tile_sizes);  // aka num blocks
+    // num_ctas = min(65536, num_tiles)
+    /* TODO，处理tiles_per_cta 这件事
+      num_ctas = std::min(static_cast<int64_t>(65536), num_tiles);
+      // tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+      int64_t tiles_per_cta = utils::cdiv(num_tiles, num_ctas);
+      void* tiles_per_cta_ptr = &tiles_per_cta;
+      kernel_params.push_back(tiles_per_cta_ptr);
+      // num_tasks -> num_tasks = out0.numel()
+      kernel_params.push_back(task_shape_ptr);
+      // num_task out的
+      int64_t num_task = out.numel();
+      kernel_params.push_back(const_cast<int64_t*>(&num_task));
+    */
   }
-  /*
-  tiles_per_cta: int,
-  tile_size: tl.constexpr,
-  one_tile_per_cta: tl.constexpr,
-  */
-  // # tile size & tiles_per_cta, gsl style
-  // tile_sizes = heuristics_for_tile_size(512, *shape)
-  int64_t tile_sizes = 1024;
-  int64_t num_tiles = utils::cdiv(task_shape, tile_sizes);  // aka num blocks
-
-  // num_ctas = min(65536, num_tiles)
-  int64_t num_ctas = std::min(static_cast<int64_t>(65536), num_tiles);
-  // tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
-  int64_t tiles_per_cta = utils::cdiv(num_tiles, num_ctas);
-  kernel_params.push_back(reinterpret_cast<void*>(tiles_per_cta));
-  signature.append("i64,");
   signature.append(std::to_string(tile_sizes));
   signature.append(",");
+  stk.save_constexpr(tile_sizes);
   // one_tile_per_cta = tiles_per_cta==1
   bool one_tile_per_cta = (tiles_per_cta == 1);
   signature.append(std::to_string(one_tile_per_cta));
+  stk.save_constexpr(one_tile_per_cta);
 
   void* global_scratch = nullptr;
   kernel_params.push_back(&global_scratch);
+
   // get function
   std::array<bool, 2> is_scalar;
   pointwise_dynamic::checkIfScalar(a_, b_, is_scalar);
@@ -202,11 +225,9 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   std::string kernel_name = std::get<0>(ans_tuple);
   std::string file_path = std::get<1>(ans_tuple);
 
-  std::cout << "file_path:" << file_path << std::endl;
-
   // TODO: 四种情况
   if (!is_scalar[0] && !is_scalar[1]) {
-    f = TritonJITFunction::getInstance(file_path, "add");
+    f = TritonJITFunction::getInstance(file_path, kernel_name);
   } else if (!is_scalar[0] && is_scalar[1]) {
     // TODO
     f = TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "add.py"),
@@ -222,15 +243,32 @@ at::Tensor add_tensor(const at::Tensor& a_, const at::Tensor& b_) {
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(out.device());
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  const int num_warps = 8;
-  const int num_stages = 1;
 
+  stk.save_tensor(a_);
+  stk.save_tensor(b_);
+  stk.save_tensor(out);
+  // const expr需要在这里...
+  stk.build();
+  std::cout << "size of params" << kernel_params.size() << std::endl;
+
+  std::cout << "file_path:" << file_path << std::endl;
+  std::cout << "signature:" << signature << std::endl;
+
+  std::cout << "--- Launching with raw args ---" << std::endl;
+  std::cout << "raw_stream: " << raw_stream << std::endl;
+  std::cout << "num_ctas: " << num_ctas << std::endl;
+  std::cout << "num_warps: " << num_warps << std::endl;
+  std::cout << "num_stages: " << num_stages << std::endl;
+  std::cout << "signature: " << signature << std::endl;
+  std::cout << "params: " << kernel_params << std::endl;
   f->launch_with_raw_args(raw_stream,
-                          num_tiles,
+                          num_ctas,
                           1,
                           1,
                           num_warps,
                           num_stages,
+                          // stk.get_signature(),
+                          // stk.get_params()
                           signature,
                           kernel_params.data());
   return out;

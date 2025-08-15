@@ -69,4 +69,37 @@ class StridedBuffer {
   std::vector<long> strides_;
   int64_t ndim_;
 };
+class ParamStack {
+ private:
+  std::vector<void*> kernel_params;
+  std::string signature;
+  std::vector<void*> tensor_ptr;
+  std::vector<int64_t> strides;
+  std::vector<int64_t> task_shape;
+  std::vector<int64_t> task_partition;
+  std::string constexp;
+
+ private:
+  void push_strides();
+  void push_task_shape();
+  void push_task_partition();
+  void add_global_scratch();
+
+ public:
+  ParamStack(int max_args = 32) {
+    kernel_params.reserve(max_args);
+    tensor_ptr.reserve(max_args);
+  }
+  void save_tensor(at::Tensor& tensor);
+  void save_tensor(const at::Tensor& tensor);
+  void save_stride(int64_t stride);
+  void save_task_shape(int64_t shape);
+  void save_task_partition(int64_t partition);
+  void save_constexpr(int64_t value);
+  void save_constexpr(bool value);
+  void** get_params();
+  std::string get_signature();
+
+  void build();
+};
 };  // namespace flag_gems::pointwise_dynamic

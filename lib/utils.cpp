@@ -367,4 +367,127 @@ StrideW stride_order(const StrideR& strides) {
 StrideR create_stride_r_view(const StrideW& stride_w) {
   return StrideR(reinterpret_cast<const int64_t*>(stride_w.data()), stride_w.size());
 }
+
+void ParamStack::save_tensor(const at::Tensor& tensor) {
+  void* p_item = tensor.data_ptr();
+  tensor_ptr.push_back(p_item);
+  if (tensor.dtype() == at::kFloat) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*fp32:16,");
+  } else if (tensor.dtype() == at::kInt) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*int32:16,");
+  } else if (tensor.dtype() == at::kDouble) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*fp64:16,");
+  } else if (tensor.dtype() == at::kHalf) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*fp16:16,");
+  } else {
+    std::runtime_error("TypeError: we only support fp64/32/16 and int32 now");
+  }
+}
+
+/*
+void *p_item = item.data_ptr();
+data_pointers.push_back(p_item);
+kernel_args.push_back(&(data_pointers.back()));
+*/
+void ParamStack::save_tensor(at::Tensor& tensor) {
+  void* p_item = tensor.data_ptr();
+  tensor_ptr.push_back(p_item);
+  if (tensor.dtype() == at::kFloat) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*fp32:16,");
+  } else if (tensor.dtype() == at::kInt) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*int32:16,");
+  } else if (tensor.dtype() == at::kDouble) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*fp64:16,");
+  } else if (tensor.dtype() == at::kHalf) {
+    kernel_params.push_back(&(tensor_ptr.back()));
+    signature.append("*fp16:16,");
+  } else {
+    std::runtime_error("TypeError: we only support fp64/32/16 and int32 now");
+  }
+}
+
+std::string ParamStack::get_signature() {
+  if (!signature.empty() && signature.back() == ',') {
+    signature.pop_back();
+  }
+  return signature;
+}
+
+void** ParamStack::get_params() {
+  void** res = kernel_params.empty() ? nullptr : kernel_params.data();
+  if (res == nullptr) {
+    // kernel_params 是空的
+    std::cout << "The parameter stack is empty." << std::endl;
+  } else {
+    // kernel_params 不为空
+    std::cout << "The parameter stack is not empty." << std::endl;
+  }
+  return res;
+}
+
+void ParamStack::save_stride(int64_t stride) {
+  strides.push_back(stride);
+}
+
+void ParamStack::save_task_shape(int64_t shape) {
+  task_shape.push_back(shape);
+}
+
+void ParamStack::save_task_partition(int64_t partition) {
+  task_partition.push_back(partition);
+}
+
+void ParamStack::push_strides() {
+  for (auto& stride : strides) {
+    kernel_params.push_back(static_cast<void*>(&stride));
+    signature.append("i64,");
+  }
+}
+
+void ParamStack::push_task_shape() {
+  for (auto& shape : task_shape) {
+    kernel_params.push_back(static_cast<void*>(&shape));
+    signature.append("i64,");
+  }
+}
+
+void ParamStack::push_task_partition() {
+  for (auto& partition : task_partition) {
+    kernel_params.push_back(static_cast<void*>(&partition));
+    signature.append("i64,");
+  }
+}
+
+void ParamStack::add_global_scratch() {
+  void* global_scratch = nullptr;
+  kernel_params.push_back(global_scratch);
+}
+
+void ParamStack::build() {
+  push_strides();
+  push_task_shape();
+  push_task_partition();
+  signature.append(constexp);
+  add_global_scratch();
+}
+
+void ParamStack::save_constexpr(int64_t value) {
+  constexp.append(std::to_string(value) + ",");
+}
+
+void ParamStack::save_constexpr(bool value) {
+  if (value) {
+    constexp.append("True,");
+  } else {
+    constexp.append("False,");
+  }
+}
+
 };  // namespace flag_gems::pointwise_dynamic
