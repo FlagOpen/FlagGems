@@ -9,7 +9,5 @@ TEST(pointwise_op_simple_test, add) {
 
   torch::Tensor out_torch = a + b;
   torch::Tensor out_triton = flag_gems::add_tensor(a, b);
-  std::cout << "out_torch sizes: " << out_torch.sizes() << std::endl;
-  std::cout << "out_triton sizes: " << out_triton.sizes() << std::endl;
   EXPECT_TRUE(torch::allclose(out_torch, out_triton));
 }
