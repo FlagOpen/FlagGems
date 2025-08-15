@@ -1,6 +1,8 @@
 import torch
 import triton
 
+def simple_elementwise_blocksize_heur(args):
+    return 1024
 
 def argmax_heur_block_m(args):
     return 4 if args["M"] < 4096 else 8
