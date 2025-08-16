@@ -1,8 +1,13 @@
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+if(NOT Python_INCLUDE_DIRS OR NOT Python_LIBRARIES)
+    message(FATAL_ERROR "Python development files not found. Please ensure Python is installed and development headers are available.")
+endif()
+include_directories(${Python_INCLUDE_DIRS})
+
 add_library(operators
             SHARED
             zeros.cpp
             utils.cpp
-            add.cpp
             sum.cpp
             max.cpp
             mm.cpp
@@ -18,9 +23,11 @@ add_library(operators
             bmm.cpp
             embedding.cpp
             argmax.cpp
+            fill.cpp
             softmax.cpp
-	          exponential_.cpp
-            fill.cpp)
+            pointwise_dynamic.cpp
+            exponential_.cpp
+            )
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
