@@ -321,3 +321,19 @@ def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     bench.run()
+
+
+@pytest.mark.diff
+def test_perf_diff():
+    def diff_input_fn(shape, cur_dtype, device):
+        inp = generate_tensor_input(shape, cur_dtype, device)
+        n = 1
+        yield inp, n, 0
+
+    bench = GenericBenchmark(
+        input_fn=diff_input_fn,
+        op_name="diff",
+        torch_op=torch.diff,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
+    )
+    bench.run()
