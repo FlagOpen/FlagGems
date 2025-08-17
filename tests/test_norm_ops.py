@@ -650,7 +650,6 @@ def test_accuracy_vectornorm(shape, ord, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.batch_norm
 @pytest.mark.parametrize(
