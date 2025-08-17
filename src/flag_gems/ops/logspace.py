@@ -25,11 +25,10 @@ def logspace_kernel(
     mask = idx < steps
 
     exponent = start + idx * step_size
-    vals = tl.exp2(tl.log2(base) * exponent)  # 替代 tl.pow
+    vals = tl.exp2(tl.log2(base.to(tl.float32)) * exponent.to(tl.float32))
 
     tl.store(out_ptr + idx * out_stride0, vals, mask=mask)
 
-# ...existing code...
 
 def logspace(
         start, end, steps, base=10.0, *,  dtype=None, layout=None, device=None, pin_memory=None
@@ -37,19 +36,15 @@ def logspace(
     logger.debug("GEMS LOGSPACE")
     assert steps >= 1, "steps must be >= 1"
 
-    # 检查低精度类型
-    low_precision = dtype in [torch.float16, torch.bfloat16]
-    compute_dtype = torch.float32 if low_precision else dtype
-
     out = torch.empty(
         steps,
-        dtype=compute_dtype,
+        dtype=dtype,
         layout=layout,
         device=device,
         pin_memory=pin_memory,
     )
     if steps == 1:
-        result = torch.fill(out, base**start)
+        out = torch.fill(out, base**start)
     else:
         if isinstance(start, torch.Tensor):
             start = start.item()
@@ -61,10 +56,5 @@ def logspace(
         logspace_kernel[grid](
             out, out.stride(0), start, base, step_size, steps, BLOCK_SIZE = BLOCK_SIZE
         )
-        result = out
 
-    # 如果需要，最后转回低精度类型
-    if low_precision:
-        result = result.to(dtype)
-    return result
-
+    return out

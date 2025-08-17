@@ -646,9 +646,9 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 @pytest.mark.logspace
 @pytest.mark.parametrize("start", [-10, -5])
 @pytest.mark.parametrize("end", [5, 15])
-@pytest.mark.parametrize("steps", [5, 10])
-@pytest.mark.parametrize("base", [2])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16] + [None])
+@pytest.mark.parametrize("steps", [6, 11])
+@pytest.mark.parametrize("base", [1.5])
+@pytest.mark.parametrize("dtype",  FLOAT_DTYPES + ALL_INT_DTYPES + [None])
 @pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize("pin_memory", [False])
 def test_logspace(start, end, steps, base, dtype, device, pin_memory):
