@@ -1,0 +1,20 @@
+Collecting scikit-build-core
+  Downloading scikit_build_core-0.11.5-py3-none-any.whl.metadata (18 kB)
+Collecting pybind11
+  Downloading pybind11-3.0.0-py3-none-any.whl.metadata (10.0 kB)
+Collecting ninja
+  Downloading ninja-1.13.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (5.1 kB)
+Collecting cmake
+  Downloading cmake-4.1.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (6.5 kB)
+Requirement already satisfied: packaging>=23.2 in /home/rogers/miniconda3/envs/pytorch/lib/python3.12/site-packages (from scikit-build-core) (25.0)
+Collecting pathspec>=0.10.1 (from scikit-build-core)
+  Using cached pathspec-0.12.1-py3-none-any.whl.metadata (21 kB)
+Downloading scikit_build_core-0.11.5-py3-none-any.whl (185 kB)
+Downloading pybind11-3.0.0-py3-none-any.whl (292 kB)
+Downloading ninja-1.13.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (180 kB)
+Downloading cmake-4.1.0-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (29.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 29.7/29.7 MB 8.0 MB/s eta 0:00:00
+Using cached pathspec-0.12.1-py3-none-any.whl (31 kB)
+Installing collected packages: pybind11, pathspec, ninja, cmake, scikit-build-core
+
+Successfully installed cmake-4.1.0 ninja-1.13.0 pathspec-0.12.1 pybind11-3.0.0 scikit-build-core-0.11.5

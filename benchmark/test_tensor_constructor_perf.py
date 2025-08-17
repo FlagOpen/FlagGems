@@ -67,6 +67,17 @@ def linspace_input_fn(shape, dtype, device):
         "device": device,
     },
 
+def logspace_input_fn(shape, dtype, device):
+    limit = torch.finfo(dtype).max - 1
+    num = int(min(limit, math.prod(shape)))
+    yield {
+        "start": 0,
+        "end": num,
+        "steps": random.randint(1, num),
+        "base": 2.0,
+        "dtype": dtype,
+        "device": device,
+    },
 
 def _2D_input_fn(shape, dtype, device):
     """
@@ -120,6 +131,8 @@ tensor_constructor_operations = [
     ("linspace", torch.linspace, linspace_input_fn),
     # eye
     ("eye", torch.eye, _2D_input_fn),
+    # logspace
+    ("logspace", torch.logspace, logspace_input_fn),
 ]
 
 
