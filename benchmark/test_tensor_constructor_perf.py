@@ -67,6 +67,7 @@ def linspace_input_fn(shape, dtype, device):
         "device": device,
     },
 
+
 def logspace_input_fn(shape, dtype, device):
     limit = torch.finfo(dtype).max - 1
     num = int(min(limit, math.prod(shape)))
@@ -78,6 +79,7 @@ def logspace_input_fn(shape, dtype, device):
         "dtype": dtype,
         "device": device,
     },
+
 
 def _2D_input_fn(shape, dtype, device):
     """

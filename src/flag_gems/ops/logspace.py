@@ -9,6 +9,7 @@ from ..utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+
 @libentry()
 @triton.jit
 def logspace_kernel(
@@ -31,8 +32,16 @@ def logspace_kernel(
 
 
 def logspace(
-        start, end, steps, base=10.0, *,  dtype=None, layout=None, device=None, pin_memory=None
-    ) -> torch.Tensor:
+    start,
+    end,
+    steps,
+    base=10.0,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=None,
+) -> torch.Tensor:
     logger.debug("GEMS LOGSPACE")
     assert steps >= 1, "steps must be >= 1"
 
@@ -54,7 +63,7 @@ def logspace(
         BLOCK_SIZE = 128
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         logspace_kernel[grid](
-            out, out.stride(0), start, base, step_size, steps, BLOCK_SIZE = BLOCK_SIZE
+            out, out.stride(0), start, base, step_size, steps, BLOCK_SIZE=BLOCK_SIZE
         )
 
     return out
