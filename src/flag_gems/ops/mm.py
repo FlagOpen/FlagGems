@@ -1,8 +1,10 @@
 import logging
+from typing import List
 
 import torch
 import triton
 import triton.language as tl
+import triton.runtime
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -18,11 +20,32 @@ def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
 
 
+def early_config_prune(
+    configs: List[triton.Config], named_args, **kwargs
+) -> List[triton.Config]:
+    device = triton.runtime.driver.active.get_current_device()
+    shared_mem: int = triton.runtime.driver.active.utils.get_device_properties(device)[
+        "max_shared_mem"
+    ]
+    return [
+        config
+        for config in configs
+        if (
+            config.kwargs["BLOCK_M"] * config.kwargs["BLOCK_N"]
+            + config.kwargs["BLOCK_M"] * config.kwargs["BLOCK_K"]
+            + config.kwargs["BLOCK_N"] * config.kwargs["BLOCK_K"]
+        )
+        * config.num_stages
+        < shared_mem
+    ]
+
+
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
     strategy=["log", "log", "log"],
+    prune_configs_by={"early_config_prune": early_config_prune},
 )
 @triton.jit
 def mm_kernel(
