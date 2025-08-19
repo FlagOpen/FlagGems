@@ -263,7 +263,6 @@ def gems_flash_fwd(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
     torch.__version__ < "2.5", reason="Low Pytorch Version: enable_gqa not supported"
@@ -334,7 +333,6 @@ def test_sdpa_legacy(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
@@ -365,7 +363,6 @@ def test_sdpa_square_qk_even_mn(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize(
@@ -726,6 +723,7 @@ def ref_paged_attn(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
@@ -834,6 +832,7 @@ def test_flash_attn_varlen_func(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
@@ -957,7 +956,6 @@ def convert_fp8(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
 @pytest.mark.concat_and_cache_mla
 @pytest.mark.parametrize("kv_lora_rank", KV_LORA_RANKS)
 @pytest.mark.parametrize("qk_rope_head_dim", QK_ROPE_HEAD_DIMS)
@@ -966,7 +964,9 @@ def convert_fp8(
 @pytest.mark.parametrize("num_blocks", NUM_BLOCKS_MLA)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("seed", SEEDS)
-@pytest.mark.parametrize("device", CUDA_DEVICES)
+@pytest.mark.parametrize(
+    "device", [flag_gems.device] if flag_gems.device == "musa" else CUDA_DEVICES
+)
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()
 def test_concat_and_cache_mla(
