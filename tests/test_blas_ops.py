@@ -184,12 +184,11 @@ def test_accuracy_dot_tensor_tensor(shape, dtype):
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
 
-    inp1 = torch.randn(shape, dtype=dtype, device="cpu")
-    inp2 = torch.randn(shape, dtype=dtype, device="cpu")
+    inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
-    inp1 = to_reference(inp1, True)
-    inp2 = to_reference(inp2, True)
+
     ref_out = torch.dot(ref_inp1, ref_inp2)
     with flag_gems.use_gems():
         res_out = torch.dot(inp1, inp2)
