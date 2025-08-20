@@ -1,5 +1,6 @@
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.add import add, add_
+from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
@@ -145,7 +146,6 @@ from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.relu import relu, relu_
-from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,

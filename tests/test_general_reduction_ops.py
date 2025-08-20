@@ -433,6 +433,27 @@ def test_accuracy_sum_dim(shape, dim, keepdim, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
+@pytest.mark.addcmul
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addcmul(shape, dtype):
+    res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    t1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    t2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(res_inp, True)
+    ref_t1 = to_reference(t1, True)
+    ref_t2 = to_reference(t2, True)
+
+    value = 0.3
+
+    ref_out = torch.addcmul(ref_inp, ref_t1, ref_t2, value=value)
+    with flag_gems.use_gems():
+        res_out = torch.addcmul(res_inp, t1, t2, value=value)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
 QUANTILE_SHAPES = REDUCTION_SMALL_SHAPES + [(10, 64, 196), (65535, 1)]
 QUANTILE_FLOAT_DTYPES = [torch.float32]
 QUANTILE_Q = (
