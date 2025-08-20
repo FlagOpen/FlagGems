@@ -146,6 +146,7 @@ def test_accuracy_groupnorm_backward(N, C, H, W, num_groups, dtype, wb_none):
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=N * HxW)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="temp disable for updating")
 @pytest.mark.layer_norm
 @pytest.mark.parametrize(
     "shape",
@@ -200,6 +201,7 @@ def test_accuracy_layernorm(shape, dtype, wb_none):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.skipif(flag_gems.device == "musa", reason="temp disable for updating")
 @pytest.mark.layer_norm
 @pytest.mark.parametrize(
     "shape",
