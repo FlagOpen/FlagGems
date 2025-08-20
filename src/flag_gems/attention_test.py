@@ -17,11 +17,11 @@ from flag_gems.ops.attention import (
 
 
 if __name__ == "__main__": 
-    batch = 1
+    batch = 4
     q_num_head = 8
-    kv_num_head = 8
+    kv_num_head = 4
 
-    seq_len = 64
+    seq_len = 32
     head_size = 128
 
     torch.manual_seed(0)
@@ -105,33 +105,33 @@ if __name__ == "__main__":
     torch.testing.assert_close(torch_v_grad, triton_v_grad, atol=2e-3, rtol=2e-3)
 
     # dk
-    # print("torch key grad is: ", torch_k_grad)
-    # print("triton key grad is: ", triton_k_grad)
-    # print("nan in triton key grad: ", torch.isnan(triton_k_grad).any())
-    # print("key grad diff is : ", triton_k_grad - torch_k_grad )
-    # print("torch key grad shape is: ", torch_k_grad.shape)
-    # print("triton key grad shape is: ", triton_k_grad.shape)
-    # print("nan count by head: ", torch.isnan(torch_k_grad - triton_k_grad).sum(dim=(0, 2, 3)))
-    # print("abs error by head: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 2, 3)))
-    # print("abs error by seq: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 1, 3)))
-    # print("abs error by head: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 2, 3)))
-    # print("abs error of head 0: ", torch.abs(torch_k_grad[:,0,:,:] - triton_k_grad[:,0,:,:]))
-    # print("abs error of head 1: ", torch.abs(torch_k_grad[:,1,:,:] - triton_k_grad[:,1,:,:]))
-    # print("abs error by seq: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 1, 3)))
-    # torch.testing.assert_close(torch_k_grad, triton_k_grad, atol=2e-3, rtol=2e-3)
+    print("torch key grad is: ", torch_k_grad)
+    print("triton key grad is: ", triton_k_grad)
+    print("nan in triton key grad: ", torch.isnan(triton_k_grad).any())
+    print("key grad diff is : ", triton_k_grad - torch_k_grad )
+    print("torch key grad shape is: ", torch_k_grad.shape)
+    print("triton key grad shape is: ", triton_k_grad.shape)
+    print("nan count by head: ", torch.isnan(torch_k_grad - triton_k_grad).sum(dim=(0, 2, 3)))
+    print("abs error by head: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 2, 3)))
+    print("abs error by seq: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 1, 3)))
+    print("abs error by head: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 2, 3)))
+    print("abs error of head 0: ", torch.abs(torch_k_grad[:,0,:,:] - triton_k_grad[:,0,:,:]))
+    print("abs error of head 1: ", torch.abs(torch_k_grad[:,1,:,:] - triton_k_grad[:,1,:,:]))
+    print("abs error by seq: ", torch.abs(torch_k_grad - triton_k_grad).sum(dim=(0, 1, 3)))
+    torch.testing.assert_close(torch_k_grad, triton_k_grad, atol=2e-3, rtol=2e-3)
 
 
 
     # dq
-    # print("torch query grad is: ", torch_q_grad)
-    # print("triton query grad is: ", triton_q_grad)
-    # print("nan in triton query grad: ", torch.isnan(triton_q_grad).any())
-    # print("query grad diff is : ", triton_q_grad - torch_q_grad )
-    # print("diff q grad by head: ", (triton_q_grad - torch_q_grad).abs().sum(dim=(0, 2, 3)))
-    # print("diff q grad by seq id: ", (triton_q_grad - torch_q_grad).abs().sum(dim=(0, 1, 3)))
-    # print("nan count by head: ", torch.isnan(triton_q_grad - torch_q_grad).sum(dim=(0, 2, 3)))
-    # print("abs error by head: ", torch.abs(torch_q_grad - triton_q_grad).sum(dim=(0, 2, 3)))
-    # print("abs error of head 0: ", torch.abs(torch_q_grad[:,0,:,:] - triton_q_grad[:,0,:,:]))
-    # print("abs error of head 1: ", torch.abs(torch_q_grad[:,1,:,:] - triton_q_grad[:,1,:,:]))
-    # print("abs error by seq: ", torch.abs(torch_q_grad - triton_q_grad).sum(dim=(0, 1, 3)))
-    # torch.testing.assert_close(torch_q_grad, triton_q_grad, atol=2e-3, rtol=2e-3)
+    print("torch query grad is: ", torch_q_grad)
+    print("triton query grad is: ", triton_q_grad)
+    print("nan in triton query grad: ", torch.isnan(triton_q_grad).any())
+    print("query grad diff is : ", triton_q_grad - torch_q_grad )
+    print("diff q grad by head: ", (triton_q_grad - torch_q_grad).abs().sum(dim=(0, 2, 3)))
+    print("diff q grad by seq id: ", (triton_q_grad - torch_q_grad).abs().sum(dim=(0, 1, 3)))
+    print("nan count by head: ", torch.isnan(triton_q_grad - torch_q_grad).sum(dim=(0, 2, 3)))
+    print("abs error by head: ", torch.abs(torch_q_grad - triton_q_grad).sum(dim=(0, 2, 3)))
+    print("abs error of head 0: ", torch.abs(torch_q_grad[:,0,:,:] - triton_q_grad[:,0,:,:]))
+    print("abs error of head 1: ", torch.abs(torch_q_grad[:,1,:,:] - triton_q_grad[:,1,:,:]))
+    print("abs error by seq: ", torch.abs(torch_q_grad - triton_q_grad).sum(dim=(0, 1, 3)))
+    torch.testing.assert_close(torch_q_grad, triton_q_grad, atol=2e-3, rtol=2e-3)

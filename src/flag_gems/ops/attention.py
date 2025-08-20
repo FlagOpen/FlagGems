@@ -324,7 +324,7 @@ def _attn_fwd(
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
-    tl.store(m_ptrs, m_i)
+    tl.store(m_ptrs, m_i, mask=q_load_mask)
     tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
 
 
@@ -433,7 +433,6 @@ def scaled_dot_product_attention(
     # Temporarily make M global so backward can reuse it without threading M through APIs
     global GLOBAL_ATTENTION_M
     GLOBAL_ATTENTION_M = M
-
     return o
 
 @triton.jit
@@ -481,7 +480,6 @@ def _attn_bwd_dkdv(dk, dv,  #
     curr_m = start_m
     step_m = BLOCK_M1
     for blk_idx in range(num_steps):
-        # 计算当前块的偏移和mask
         offs_m = curr_m + tl.arange(0, BLOCK_M1)    # (BLOCK_M1, )
         offs_m_mask = offs_m < N_CTX    # (BLOCK_M1, )
         
@@ -550,11 +548,9 @@ def _attn_bwd_dq(dq, query, K, V,  #
     curr_n = start_n
     step_n = BLOCK_N2
     for blk_idx in range(num_steps):
-        # 计算当前块的偏移和mask
         offs_n = curr_n + tl.arange(0, BLOCK_N2)
         offs_n_mask = offs_n < N_CTX
         
-        # 更新指针位置
         kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
         vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
 
@@ -562,15 +558,17 @@ def _attn_bwd_dq(dq, query, K, V,  #
         vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         qk = tl.dot(query, kT)
         p = tl.math.exp2(qk - m)
+        mask = (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
         # Autoregressive masking.
         if MASK:
             # mask = (offs_m[:, None] >= offs_n[None, :])
-            mask = (offs_m[:, None] >= offs_n[None, :]) & (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
-            p = tl.where(mask, p, 0.0)
+            # mask = (offs_m[:, None] >= offs_n[None, :]) & (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
+            mask &= (offs_m[:, None] >= offs_n[None, :])
+        p = tl.where(mask, p, 0.0)
         # Compute dP and dS.
         dp = tl.dot(do, vT).to(tl.float32)
         ds = p * (dp - Di[:, None])
-        ds = ds.to(tl.float16)
+        ds = tl.where(mask, ds, 0.0).to(tl.float16)
         # Compute dQ.
         # NOTE: We need to de-scale dq in the end, because kT was pre-scaled.
         dq += tl.dot(ds, tl.trans(kT))
@@ -638,7 +636,6 @@ def _attn_bwd(Q, K, V, sm_scale,  #
     key = tl.load(K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d, mask=offs_n_mask[:, None], other=0.0)
     value = tl.load(V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d, mask=offs_n_mask[:, None], other=0.0)
 
-    # 确保num_steps计算正确，处理所有需要的数据
     num_steps = BLOCK_N1 // MASK_BLOCK_M1
 
     dk, dv = _attn_bwd_dkdv(dk, dv,  #
@@ -652,13 +649,11 @@ def _attn_bwd(Q, K, V, sm_scale,  #
                             MASK=True  #
                             )
 
-    start_m += num_steps * MASK_BLOCK_M1
-
-    # 计算剩余需要处理的步数
-    remaining_m = N_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1  # 向上取整
-
     # Compute dK and dV for non-masked blocks.
+    start_m += num_steps * MASK_BLOCK_M1
+    remaining_m = N_CTX - start_m
+    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
+
     if num_steps > 0 and start_m < N_CTX:
         dk, dv = _attn_bwd_dkdv(  #
             dk, dv,  #
@@ -683,11 +678,11 @@ def _attn_bwd(Q, K, V, sm_scale,  #
     tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
     # THIS BLOCK DOES DQ:
+    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    # end_n = start_m + BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, N_CTX)
+    end_n = min(start_m + BLOCK_M2, N_CTX)  # Ensure end_n does not exceed N_CTX
+    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
-    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR # 32/2=16
     offs_m = start_m + tl.arange(0, BLOCK_M2)
     offs_m_mask = offs_m < N_CTX
 
@@ -698,15 +693,11 @@ def _attn_bwd(Q, K, V, sm_scale,  #
     m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
     m = m[:, None]
 
-    # Compute dQ for masked (diagonal) blocks.
+    # Stage 1 - Compute dQ for masked (diagonal) blocks.
     # NOTE: This code scans each row of QK^T backward (from right to left,
     # but inside each call to _attn_bwd_dq, from left to right), but that's
     # not due to anything important.  I just wanted to reuse the loop
     # structure for dK & dV above as much as possible.
-    # 确保边界计算正确
-    mask_end_n = max(0, min(end_n, N_CTX))
-    mask_start_n = max(0, mask_end_n - ((mask_end_n - start_n) // MASK_BLOCK_N2) * MASK_BLOCK_N2)
-    num_steps = max(0, (mask_end_n - mask_start_n) // MASK_BLOCK_N2)
     
     if num_steps > 0:
         dq = _attn_bwd_dq(dq, query, K, V,  #
@@ -714,13 +705,13 @@ def _attn_bwd(Q, K, V, sm_scale,  #
                           stride_tok, stride_d,  #
                           H, N_CTX,  #
                           BLOCK_M2, MASK_BLOCK_N2, BLOCK_DMODEL,  #
-                          start_m, mask_start_n, num_steps,  #
+                          start_m, start_n, num_steps,  #
                           MASK=True  #
                           )
     
-    # stage 2 - 处理非mask部分
-    stage2_end_n = mask_start_n
-    stage2_num_steps = max(0, stage2_end_n // BLOCK_N2)
+    # Stage 2 - non-masked blocks
+    stage2_end_n = start_n
+    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
     
     if stage2_num_steps > 0:
         dq = _attn_bwd_dq(dq, query, K, V,  #
@@ -768,7 +759,6 @@ def scaled_dot_product_attention_backward(
     assert query.stride() == o.stride() == do.stride()
 
     assert key.stride() == value.stride()
-    print(f"{query.stride()=}, {key.stride()=}, {value.stride()=}, {o.stride()=}, {do.stride()=}")
 
     # Use global M if not provided
     if M is None:
