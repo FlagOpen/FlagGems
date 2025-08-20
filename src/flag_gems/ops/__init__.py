@@ -145,6 +145,7 @@ from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.relu import relu, relu_
+from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.repeat import repeat
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
@@ -380,6 +381,7 @@ __all__ = [
     "reciprocal_",
     "relu",
     "relu_",
+    "addcmul",
     "remainder",
     "remainder_",
     "repeat",
