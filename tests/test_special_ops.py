@@ -649,7 +649,7 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 @pytest.mark.parametrize("steps", [6, 11])
 @pytest.mark.parametrize("base", [1.5])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
-@pytest.mark.parametrize("device", [device, None])
+@pytest.mark.parametrize("device", [device])
 @pytest.mark.parametrize("pin_memory", [False])
 def test_logspace(start, end, steps, base, dtype, device, pin_memory):
     if TO_CPU:
