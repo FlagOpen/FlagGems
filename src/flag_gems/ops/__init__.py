@@ -57,7 +57,7 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
-from flag_gems.ops.elu import elu
+from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.eq import eq, eq_scalar
 from flag_gems.ops.erf import erf, erf_
@@ -258,6 +258,8 @@ __all__ = [
     "dropout",
     "dropout_backward",
     "elu",
+    "elu_",
+    "elu_backward",
     "embedding",
     "embedding_backward",
     "eq",
