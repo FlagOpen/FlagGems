@@ -24,8 +24,8 @@ def swizzle_tile(
     BLOCK_N: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    grid_m = (M + BLOCK_M - 1) // BLOCK_M
-    grid_n = (N + BLOCK_N - 1) // BLOCK_N
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
     # re-order program ID for better L2 performance
     width = GROUP_M * grid_n
     group_id = tile_id // width
@@ -47,8 +47,8 @@ def linear_tile(
     grid_n = tl.cdiv(N, BLOCK_N)
 
     # column first
-    pid_n = tile_id % grid_n
     pid_m = tile_id // grid_n
+    pid_n = tile_id % grid_n
 
     return pid_m, pid_n
 
@@ -215,28 +215,34 @@ def first_wave(
         ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
         rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
-        # pointers
-        A_base = A + ram[:, None] * stride_am
-        B_base = B + rbn[None, :] * stride_bn
+        A_base = (
+            A
+            + ram[:, None] * stride_am
+            + rk[None, :] * stride_ak
+            + BLOCK_K * stride_ak * iter_offset_in_tile
+        )
+        B_base = (
+            B
+            + rk[:, None] * stride_bk
+            + rbn[None, :] * stride_bn
+            + BLOCK_K * stride_bk * iter_offset_in_tile
+        )
+
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
         for current_iter in range(start_iter, end_iter):
-            k_offset_in_tile = (current_iter % iters_per_tile) * BLOCK_K
             if EVEN_K:
-                a = tl.load(A_base + (k_offset_in_tile + rk[None, :]) * stride_ak)
-                b = tl.load(B_base + (k_offset_in_tile + rk[:, None]) * stride_bk)
+                a = tl.load(A_base)
+                b = tl.load(B_base)
             else:
+                k_offset_in_tile = (current_iter % iters_per_tile) * BLOCK_K
                 k_mask = (k_offset_in_tile + rk) < K
-                a = tl.load(
-                    A_base + (k_offset_in_tile + rk[None, :]) * stride_ak,
-                    mask=k_mask[None, :],
-                )
-                b = tl.load(
-                    B_base + (k_offset_in_tile + rk[:, None]) * stride_bk,
-                    mask=k_mask[:, None],
-                )
+                a = tl.load(A_base, mask=k_mask[None, :], other=0.0)
+                b = tl.load(B_base, mask=k_mask[:, None], other=0.0)
 
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            A_base += BLOCK_K * stride_ak
+            B_base += BLOCK_K * stride_bk
 
         # last iteration of the tile always happens before its start on another SM
         if end_iter % iters_per_tile == 0:
@@ -312,29 +318,34 @@ def first_wave_for_bf16(
         ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
         rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
 
-        A_base = A + ram[:, None] * stride_am
-        B_base = B + rbn[None, :] * stride_bn
+        A_base = (
+            A
+            + ram[:, None] * stride_am
+            + rk[None, :] * stride_ak
+            + BLOCK_K * stride_ak * iter_offset_in_tile
+        )
+        B_base = (
+            B
+            + rk[:, None] * stride_bk
+            + rbn[None, :] * stride_bn
+            + BLOCK_K * stride_bk * iter_offset_in_tile
+        )
 
         acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
         for current_iter in range(start_iter, end_iter):
-            k_offset_in_tile = (current_iter % iters_per_tile) * BLOCK_K
-
             if EVEN_K:
-                a = tl.load(A_base + (k_offset_in_tile + rk[None, :]) * stride_ak)
-                b = tl.load(B_base + (k_offset_in_tile + rk[:, None]) * stride_bk)
+                a = tl.load(A_base)
+                b = tl.load(B_base)
             else:
+                k_offset_in_tile = (current_iter % iters_per_tile) * BLOCK_K
                 k_mask = (k_offset_in_tile + rk) < K
-                a = tl.load(
-                    A_base + (k_offset_in_tile + rk[None, :]) * stride_ak,
-                    mask=k_mask[None, :],
-                )
-                b = tl.load(
-                    B_base + (k_offset_in_tile + rk[:, None]) * stride_bk,
-                    mask=k_mask[:, None],
-                )
+                a = tl.load(A_base, mask=k_mask[None, :], other=0.0)
+                b = tl.load(B_base, mask=k_mask[:, None], other=0.0)
 
             acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+            A_base += BLOCK_K * stride_ak
+            B_base += BLOCK_K * stride_bk
 
         rm1 = tl.arange(0, BLOCK_M)
         rn1 = tl.arange(0, BLOCK_N)
