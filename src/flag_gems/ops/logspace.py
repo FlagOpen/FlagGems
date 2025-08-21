@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -16,9 +17,9 @@ def logspace_kernel(
     out_ptr,
     out_stride0,
     start,
-    base,
     step_size,
     steps,
+    log2_base: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
@@ -26,7 +27,7 @@ def logspace_kernel(
     mask = idx < steps
 
     exponent = start + idx * step_size
-    vals = tl.exp2(tl.log2(base.to(tl.float32)) * exponent.to(tl.float32))
+    vals = tl.exp2(log2_base * exponent)
 
     tl.store(out_ptr + idx * out_stride0, vals, mask=mask)
 
@@ -43,7 +44,7 @@ def logspace(
     pin_memory=None,
 ) -> torch.Tensor:
     logger.debug("GEMS LOGSPACE")
-    assert steps >= 1, "steps must be >= 1"
+    assert steps >= 0, "number of steps must be non-negative"
 
     out = torch.empty(
         steps,
@@ -52,7 +53,9 @@ def logspace(
         device=device,
         pin_memory=pin_memory,
     )
-    if steps == 1:
+    if steps == 0:
+        pass
+    elif steps == 1:
         out = torch.fill(out, base**start)
     else:
         if isinstance(start, torch.Tensor):
@@ -60,10 +63,16 @@ def logspace(
         if isinstance(end, torch.Tensor):
             end = end.item()
         step_size = (float(end) - float(start)) / (steps - 1)
-        BLOCK_SIZE = 128
+        BLOCK_SIZE = min(triton.next_power_of_2(steps), 1024)
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         logspace_kernel[grid](
-            out, out.stride(0), start, base, step_size, steps, BLOCK_SIZE=BLOCK_SIZE
+            out,
+            out.stride(0),
+            start,
+            step_size,
+            steps,
+            log2_base=math.log2(base),
+            BLOCK_SIZE=BLOCK_SIZE,
         )
 
     return out
