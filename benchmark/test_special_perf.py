@@ -386,6 +386,7 @@ def test_perf_conv3d():
         torch_op=torch.nn.functional.conv3d,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.conv3d)
     bench.run()
 
 
