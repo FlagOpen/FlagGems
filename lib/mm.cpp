@@ -307,4 +307,28 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
     return out;
   }
 }
+
+at::Tensor mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out) {
+  TORCH_CHECK(mat1.dim() == 2 && mat2.dim() == 2, "both the tensors must be 2-D");
+  TORCH_CHECK(mat1.dtype() == mat2.dtype(),
+              "expected a and b to have the same dtype, but got: ",
+              mat1.dtype(),
+              " != ",
+              mat2.dtype())
+
+  int64_t M = mat1.size(0);
+  int64_t K = mat1.size(1);
+  int64_t N = mat2.size(1);
+
+  int sm_count = get_sm_count();
+
+  if (streamk_scenario(mat1, mat2, M, N, K)) {
+    streamk_mm_tensor(mat1, mat2, out, M, N, K, sm_count);
+    return out;
+  } else {
+    general_mm_tensor(mat1, mat2, out, M, N, K);
+    return out;
+  }
+}
+
 }  // namespace flag_gems
