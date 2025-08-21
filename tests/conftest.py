@@ -119,7 +119,6 @@ def pytest_runtest_protocol(item, nextitem):
         param_values = request.node.callspec.params
 
     test_results[item.nodeid]["params"] = param_values
-    
     # get all mark
     all_marks = [mark.name for mark in item.iter_markers()]
     # exclude marks，such as parametrize、skipif and so on
