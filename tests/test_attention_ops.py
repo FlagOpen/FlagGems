@@ -1578,7 +1578,7 @@ def reference_get_scheduler_metadata(
 
 
 @pytest.mark.get_scheduler_metadata
-@pytest.mark.parametrize("batch_size", [1, 8])
+@pytest.mark.parametrize("batch_size", [1, 8, 256, 512])
 @pytest.mark.parametrize("max_seqlen_k", [512, 2048])
 @pytest.mark.parametrize("headdim", [64, 128])
 @pytest.mark.parametrize("num_splits_static", [0, 4])
