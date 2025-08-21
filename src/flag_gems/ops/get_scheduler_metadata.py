@@ -441,7 +441,7 @@ def get_scheduler_metadata(
     dtype = torch.int32
 
     # check parameters
-    assert batch_size <= 992, "batch > 992 not supported"
+    # assert batch_size <= 992, "batch > 992 not supported"
     supported_dtypes = (torch.half, torch.bfloat16)
     assert (
         qkv_dtype in supported_dtypes
@@ -568,7 +568,8 @@ def get_scheduler_metadata(
 
     total_blocks_val = total_blocks.item()
 
-    use_dynamic_split = (num_splits <= 0) and (batch_size <= 992)
+    # use_dynamic_split = (num_splits <= 0) and (batch_size <= 992)
+    use_dynamic_split = num_splits <= 0
 
     if num_splits <= 0:
         element_size = qkv_dtype.itemsize

@@ -300,7 +300,6 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
-            ("get_scheduler_metadata", get_scheduler_metadata),
         ),
         user_unused_ops_list=list(
             set([] if unused is None else unused) | set(aten_patch_list)
