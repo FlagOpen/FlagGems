@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from flag_gems.fused.topk_softmax import topk_softmax
+import flag_gems
+from flag_gems import topk_softmax
 
 
 def topk_softmax_torch_reference(gating_output: torch.Tensor, topk: int):
@@ -32,7 +33,7 @@ def topk_softmax_torch_reference(gating_output: torch.Tensor, topk: int):
 )
 def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     torch.manual_seed(42)
-    device = "cuda"
+    device = flag_gems.device
 
     gating_output = torch.randn(
         num_tokens, num_experts, dtype=torch.float32, device=device

@@ -4,69 +4,64 @@ import triton.language as tl
 
 
 @triton.jit
-def topkGatingSoftmax(
+def topk_gating_softmax_kernel(
     input_ptr,
-    finished_ptr,
+    finished_ptr,  # interface reserved, not yet used
     output_ptr,
     indices_ptr,
     source_rows_ptr,
     num_rows,
     k,
+    num_experts,
     start_expert,
     end_expert,
-    num_experts,
     INDEX_TY: tl.constexpr,
-    BLOCK_SIZE_E: tl.constexpr,
+    BLOCK_SIZE_ROWS: tl.constexpr,
+    BLOCK_SIZE_EXPERTS: tl.constexpr,
 ):
-    row_id = tl.program_id(0)
-    row_active = True
-    if finished_ptr is not None:
-        row_active = tl.load(finished_ptr + row_id).to(tl.int1)
+    pid = tl.program_id(0)
+    rows = tl.arange(0, BLOCK_SIZE_ROWS) + pid * BLOCK_SIZE_ROWS
+    valid_rows = rows < num_rows
 
-    if (row_id >= num_rows) or (not row_active):
-        for k_idx in range(k):
-            tl.store(output_ptr + row_id * k + k_idx, 0.0)
-            tl.store(indices_ptr + row_id * k + k_idx, num_experts)  # 无效专家号
-            tl.store(
-                source_rows_ptr + row_id * k + k_idx,
-                (k_idx * num_rows + row_id).to(tl.int32),
-            )
-        return
+    cols = start_expert + tl.arange(0, BLOCK_SIZE_EXPERTS)
+    valid_cols = cols < end_expert
 
-    cols = tl.arange(0, BLOCK_SIZE_E) + start_expert
-    mask = (cols < end_expert) & (cols < num_experts)
-    row_ptr = input_ptr + row_id * num_experts
-    logits = tl.load(row_ptr + cols, mask=mask, other=-float("inf"))
+    logits = tl.load(
+        input_ptr + rows[:, None] * num_experts + cols[None, :],
+        mask=valid_rows[:, None] & valid_cols[None, :],
+        other=-float("inf"),
+    )
 
-    row_max = tl.max(logits, axis=0)
-    logits = logits - row_max
-    exp_vals = tl.exp(logits)
-    row_sum = tl.sum(exp_vals, axis=0)
-    probs = exp_vals / (row_sum + 1e-8)
+    row_max = tl.max(logits, axis=1)[:, None]
+    exp_vals = tl.exp(logits - row_max)
+    probs = exp_vals / (tl.sum(exp_vals, axis=1)[:, None] + 1e-8)
 
-    for k_idx in range(k):
-        curr_max = tl.max(probs, axis=0)
-        curr_arg = tl.argmax(probs, axis=0)
+    for ki in range(k):
+        curr_max = tl.max(probs, axis=1)
+        curr_arg = tl.argmax(probs, axis=1) + start_expert
 
-        tl.store(output_ptr + row_id * k + k_idx, curr_max)
-        tl.store(indices_ptr + row_id * k + k_idx, curr_arg.to(INDEX_TY))
+        tl.store(output_ptr + rows * k + ki, curr_max, mask=valid_rows)
+        tl.store(indices_ptr + rows * k + ki, curr_arg.to(INDEX_TY), mask=valid_rows)
         tl.store(
-            source_rows_ptr + row_id * k + k_idx,
-            (k_idx * num_rows + row_id).to(tl.int32),
+            source_rows_ptr + rows * k + ki,
+            (ki * num_rows + rows).to(tl.int32),
+            mask=valid_rows,
         )
 
-        probs = tl.where(cols == curr_arg, -float("inf"), probs)
+        probs = tl.where(
+            cols[None, :] == (curr_arg[:, None] - start_expert), -float("inf"), probs
+        )
 
 
 def topk_softmax(
-    topk_weights: torch.Tensor,  # [num_tokens, topk]
-    topk_indices: torch.Tensor,  # [num_tokens, topk]
-    token_expert_indices: torch.Tensor,  # [num_tokens, topk]
-    gating_output: torch.Tensor,  # [num_tokens, num_experts]
+    topk_weights: torch.Tensor,
+    topk_indices: torch.Tensor,
+    token_expert_indices: torch.Tensor,
+    gating_output: torch.Tensor,
 ) -> None:
-    assert gating_output.is_cuda and gating_output.dtype == torch.float32
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.size(-1)
+    assert topk <= 32
 
     if topk_indices.dtype == torch.int32:
         index_ty = tl.int32
@@ -75,22 +70,28 @@ def topk_softmax(
     elif topk_indices.dtype == torch.int64:
         index_ty = tl.int64
     else:
-        raise TypeError("topk_indices must be int32/uint32/int64")
+        raise TypeError("topk_indices must be int32/int64/uint32")
 
-    BLOCK_SIZE_E = min(triton.next_power_of_2(num_experts), 4096)
-    grid = (num_tokens,)
+    max_total_threads = 1024
+    BLOCK_SIZE_EXPERTS = ((triton.next_power_of_2(num_experts) + 31) // 32) * 32
+    BLOCK_SIZE_EXPERTS = min(BLOCK_SIZE_EXPERTS, 1024)
+    BLOCK_SIZE_ROWS = max_total_threads // BLOCK_SIZE_EXPERTS
+    BLOCK_SIZE_ROWS = max(BLOCK_SIZE_ROWS, 1)
 
-    topkGatingSoftmax[grid](
-        gating_output,
-        None,
-        topk_weights,
-        topk_indices,
-        token_expert_indices,
-        num_tokens,
-        topk,
-        0,
-        num_experts,
-        num_experts,
+    grid = (triton.cdiv(num_tokens, BLOCK_SIZE_ROWS),)
+
+    topk_gating_softmax_kernel[grid](
+        input_ptr=gating_output,
+        finished_ptr=None,
+        output_ptr=topk_weights,
+        indices_ptr=topk_indices,
+        source_rows_ptr=token_expert_indices,
+        num_rows=num_tokens,
+        k=topk,
+        num_experts=num_experts,
+        start_expert=0,
+        end_expert=num_experts,
         INDEX_TY=index_ty,
-        BLOCK_SIZE_E=BLOCK_SIZE_E,
+        BLOCK_SIZE_ROWS=BLOCK_SIZE_ROWS,
+        BLOCK_SIZE_EXPERTS=BLOCK_SIZE_EXPERTS,
     )
