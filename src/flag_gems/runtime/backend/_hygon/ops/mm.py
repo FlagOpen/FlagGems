@@ -12,23 +12,17 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
-def prev_multiple_of(a, b):
-    # the largest x<a that x%b ==0
-    return tl.cdiv(a, b) * b - b
-
-
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm"),
     key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
+    strategy=["log", "log", "log"],
 )
 @triton.jit
 def mm_kernel(
-    A,
-    B,
-    C,
+    a_ptr,
+    b_ptr,
+    c_ptr,
     M,
     N,
     K,
@@ -43,55 +37,40 @@ def mm_kernel(
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    # matrix multiplication
-    pid = tle.program_id(0)
-    grid_m = tl.cdiv(M, BLOCK_M)
-    grid_n = tl.cdiv(N, BLOCK_N)
-    # re-order program ID for better L2 performance
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // (group_size)
-    # do matrix multiplication
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M)
-    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N)
-    prev_multiple = prev_multiple_of(K, BLOCK_K)
+    pid = tle.program_id(axis=0)
+    num_pid_m = tl.cdiv(M, BLOCK_M)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    num_pid_in_group = GROUP_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
+    pid_m = first_pid_m + (pid % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for start_k in range(0, prev_multiple, BLOCK_K):
-        rk = start_k + tl.arange(0, BLOCK_K)
-        a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
-        b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+    offs_k = tl.arange(0, BLOCK_K)
 
-    # loop peeling
-    rk = prev_multiple + tl.arange(0, BLOCK_K)
-    mask_k = rk < K
-    a = tl.load(
-        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak), mask=mask_k[None, :]
-    )
-    b = tl.load(
-        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn), mask=mask_k[:, None]
-    )
-    if a.dtype != b.dtype:
-        a = a.to(C.dtype.element_ty)
-        b = b.to(C.dtype.element_ty)
-    acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+    offs_am = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    a_ptrs = a_ptr + offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn
 
-    acc = acc.to(C.dtype.element_ty)
-    # rematerialize rm and rn to save registers
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-    mask = (rm < M)[:, None] & (rn < N)[None, :]
-    # handles write-back with reduction-splitting
-    tl.store(C, acc, mask=mask)
+    accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for k in range(0, tl.cdiv(K, BLOCK_K)):
+        a = tl.load(a_ptrs, mask=offs_k[None, :] < K - k * BLOCK_K, other=0.0)
+        b = tl.load(b_ptrs, mask=offs_k[:, None] < K - k * BLOCK_K, other=0.0)
+        # We accumulate along the K dimension.
+        accumulator += tl.dot(a, b)
+        # Advance the ptrs to the next K block.
+        a_ptrs += BLOCK_K * stride_ak
+        b_ptrs += BLOCK_K * stride_bk
+
+    c = accumulator.to(c_ptr.dtype.element_ty)
+
+    offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    c_ptrs = c_ptr + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
+    tl.store(c_ptrs, c, mask=c_mask)
 
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
