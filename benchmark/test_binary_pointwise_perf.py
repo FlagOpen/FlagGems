@@ -48,15 +48,9 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
             ("pow", torch.pow, FLOAT_DTYPES),
-            *(
-                [
-                    ("polar", torch.polar, [torch.float32]),
-                    ("floor_divide", torch.floor_divide, INT_DTYPES),
-                    ("remainder", torch.remainder, INT_DTYPES),
-                ]
-                if flag_gems.device != "musa"
-                else []
-            ),
+            ("polar", torch.polar, [torch.float32]),
+            ("floor_divide", torch.floor_divide, INT_DTYPES),
+            ("remainder", torch.remainder, INT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
             ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
             ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
@@ -80,5 +74,7 @@ class BinaryPointwiseBenchmark(Benchmark):
     ],
 )
 def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
+    if flag_gems.vendor_name == "mthreads" and op_name in ["polar", "floor_divide"]:
+        pytest.skip("torch does not support")
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()

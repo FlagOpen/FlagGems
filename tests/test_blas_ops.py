@@ -164,7 +164,7 @@ def test_accuracy_outer(M, N, dtype):
 def test_accuracy_vdot(M, is_conj, dtype, stride):
     inp1_is_conj, inp2_is_conj = is_conj
 
-    if flag_gems.device == "musa":
+    if flag_gems.vendor_name == "mthreads":
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
     else:
@@ -183,7 +183,7 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     ref_inp2 = to_reference(inp2, True)
 
     with flag_gems.use_gems():
-        if flag_gems.device == "musa":
+        if flag_gems.vendor_name == "mthreads":
             res_out = torch.vdot(
                 inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
             )
