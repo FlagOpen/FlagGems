@@ -659,7 +659,7 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         base,
         dtype=dtype,
         layout=None,
-        device=device,
+        device="cpu" if TO_CPU else device,
         pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
