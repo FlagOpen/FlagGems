@@ -45,10 +45,10 @@ def logspace(
 ) -> torch.Tensor:
     logger.debug("GEMS LOGSPACE")
     assert steps >= 0, "number of steps must be non-negative"
-
+    out_dtype = dtype if dtype is not None else torch.get_default_dtype()
     out = torch.empty(
         steps,
-        dtype=dtype,
+        dtype=out_dtype,
         layout=layout,
         device=device,
         pin_memory=pin_memory,
@@ -56,13 +56,15 @@ def logspace(
     if steps == 0:
         pass
     elif steps == 1:
-        out = torch.fill(out, base**start)
+        base_cast = torch.tensor(base, dtype=out_dtype).item()
++       out = torch.fill(out, base_cast**start)
     else:
         if isinstance(start, torch.Tensor):
             start = start.item()
         if isinstance(end, torch.Tensor):
             end = end.item()
         step_size = (float(end) - float(start)) / (steps - 1)
+        base_cast = torch.tensor(base, dtype=out_dtype).item()
         BLOCK_SIZE = min(triton.next_power_of_2(steps), 1024)
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         logspace_kernel[grid](
@@ -71,7 +73,7 @@ def logspace(
             start,
             step_size,
             steps,
-            log2_base=math.log2(base),
+            log2_base=math.log2(base_cast),
             BLOCK_SIZE=BLOCK_SIZE,
         )
 
