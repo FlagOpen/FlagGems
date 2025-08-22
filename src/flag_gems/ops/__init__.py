@@ -163,6 +163,7 @@ from flag_gems.ops.silu import silu, silu_, silu_backward
 from flag_gems.ops.sin import sin, sin_
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.softmax import softmax, softmax_backward
+from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
@@ -382,6 +383,7 @@ __all__ = [
     "relu",
     "relu_",
     "addcmul",
+    "softplus",
     "remainder",
     "remainder_",
     "repeat",
