@@ -1586,6 +1586,8 @@ def reference_get_scheduler_metadata(
 def test_scheduler_metadata_correctness(
     batch_size, max_seqlen_k, headdim, num_splits_static, seed
 ):
+    if TO_CPU:
+        pytest.skip("Skipping correctness test in CPU mode.")
     device = torch_device_fn.current_device()
     init_seed(seed)
 
