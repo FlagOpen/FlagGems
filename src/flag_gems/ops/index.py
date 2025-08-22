@@ -55,7 +55,7 @@ def generate_index_kernel(
         code.writeline('key=["M", "N"],')
         code.writeline('restore_value=["input_ptr"],')
         code.writeline('strategy=["align32", "align32"],')
-        code.writeline("warpup=5,")
+        code.writeline("warmup=5,")
         code.writeline("rep=10,")
     code.writeline(")")
     code.writeline("@triton.jit")
