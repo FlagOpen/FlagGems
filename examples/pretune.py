@@ -39,10 +39,24 @@ QWEN_SHAPES = {
     ],
 }
 
+QWEN3_06B_SHAPES = {
+    "mm": [
+        [4096, 1024],
+        [1024, 2048],
+        [6144, 1024],
+        [1024, 3072],
+        [151936, 1024],
+    ],
+    "index": [
+        1024,
+    ],
+}
+
 
 MODEL_SHAPES = {
     "llama": LLAMA_SHAPES,
     "qwen": QWEN_SHAPES,
+    "qwen3_0.6b": QWEN3_06B_SHAPES,
 }
 
 
@@ -65,9 +79,26 @@ def pretune_addmm(max_tokens, shapes):
                 flag_gems.addmm(bias, tensor_a, tensor_b)
 
 
+def pretune_index(max_tokens, shapes):
+    for dtype in DTYPES:
+        for M in range(1, max_tokens + 1, 32):
+            for N in shapes:
+                import numpy as np
+
+                inp = torch.randn([M, N], dtype=dtype, device=device)
+                index = np.random.choice(np.arange(N), size=M, replace=True)
+                indices = [
+                    torch.tensor(index, device=device),
+                ]
+                flag_gems.index(inp, indices)
+                indices[0] = indices[0].to(torch.int32)
+                flag_gems.index(inp, indices)
+
+
 OPERATORS = {
     "mm": pretune_mm,
     "addmm": pretune_addmm,
+    "index": pretune_index,
 }
 
 
