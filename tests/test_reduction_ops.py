@@ -1477,6 +1477,7 @@ def topk_softmax_torch_reference(gating_output: torch.Tensor, topk: int):
     return topk_values, topk_indices, source_rows
 
 
+@pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64, torch.uint32])
 @pytest.mark.parametrize(
     "num_tokens, num_experts, topk",
