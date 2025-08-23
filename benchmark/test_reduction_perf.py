@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Generator
 
@@ -211,14 +212,19 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
         elif op_name in ["cummin", "cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     if vendor_name == "mthreads":
-        if op_name in ["cumsum", "cummin", "cummax", "nonzero", "nll_loss", "mse_loss"]:
-            pytest.skip("RuntimeError")
+        if op_name in ["nonzero", "nll_loss", "mse_loss"]:
+            pytest.skip("Torch Unsupport Perf")
+        if op_name in ["cummin", "cummax"]:
+            # Compatible with older versions of LLVM
+            os.environ["DISABLE_LLVM_OPT"] = "1"
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
     if op_name == "cross_entropy_loss":
         bench.set_gems(flag_gems.cross_entropy_loss)
     bench.run()
+    if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
+        del os.environ["DISABLE_LLVM_OPT"]
 
 
 @pytest.mark.skipif(
