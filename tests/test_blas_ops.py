@@ -23,10 +23,6 @@ FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="temp disable for updating",
-)
 @pytest.mark.addmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -61,10 +57,6 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="temp disable for updating",
-)
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -84,10 +76,6 @@ def test_accuracy_bmm(M, N, K, dtype):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
     reason="temp disable for updating",
 )
 # TODO: failed at (1, 1, 2)
