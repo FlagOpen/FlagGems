@@ -1,4 +1,5 @@
 import math
+import os
 
 import numpy as np
 import pytest
@@ -282,7 +283,6 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
 @pytest.mark.parametrize(
@@ -313,6 +313,10 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
 def test_accuracy_instancenorm(
     shape, dtype, has_weight_bias, use_input_stats, has_running_stats
 ):
+    if flag_gems.vendor_name == "mthreads":
+        # Compatible with older versions of LLVM
+        os.environ["DISABLE_LLVM_OPT"] = "1"
+
     if use_input_stats is False and has_running_stats is False:
         return
 
@@ -397,6 +401,10 @@ def test_accuracy_instancenorm(
         if has_weight_bias:
             gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=B * N)
             gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N)
+
+    if flag_gems.vendor_name == "mthreads":
+        # Compatible with older versions of LLVM
+        del os.environ["DISABLE_LLVM_OPT"]
 
 
 WEIGHT_NORM_SHAPE_DIM = list(zip(REDUCTION_SHAPES, [-1] if QUICK_MODE else [0, -1, 1]))
