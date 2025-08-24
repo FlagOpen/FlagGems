@@ -64,8 +64,7 @@ def logspace(
         if isinstance(end, torch.Tensor):
             end = end.item()
         step_size = (float(end) - float(start)) / (steps - 1)
-        BLOCK_SIZE = min(triton.next_power_of_2(steps), 1024)
-        #BLOCK_SIZE = 128
+        BLOCK_SIZE = 256  # according to benchmark, 256 is the best block size
         grid = (triton.cdiv(steps, BLOCK_SIZE),)
         logspace_kernel[grid](
             out,
@@ -73,7 +72,7 @@ def logspace(
             start,
             step_size,
             steps,
-            log2_base=math.log2(float(base)), # math.log2 require float input
+            log2_base=math.log2(float(base)),  # math.log2 require float input
             BLOCK_SIZE=BLOCK_SIZE,
         )
 

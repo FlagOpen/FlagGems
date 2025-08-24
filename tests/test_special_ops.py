@@ -652,10 +652,11 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 @pytest.mark.parametrize("device", [device])
 @pytest.mark.parametrize("pin_memory", [False])
 def test_logspace(start, end, steps, base, dtype, device, pin_memory):
-
     # construct reference output since pytorch original accuracy is pool
-    def constructed_test(start, end, steps, base, dtype, layout, device, pin_memory):  
-        out = torch.empty(steps, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory)
+    def constructed_test(start, end, steps, base, dtype, layout, device, pin_memory):
+        out = torch.empty(
+            steps, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
+        )
         step_size = (float(end) - float(start)) / (steps - 1)
         for i in range(steps):
             out[i] = base ** (start + i * step_size)
