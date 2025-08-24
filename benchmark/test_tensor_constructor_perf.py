@@ -70,14 +70,12 @@ def linspace_input_fn(shape, dtype, device):
 
 def logspace_input_fn(shape, dtype, device):
     base = 1.05
-    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(
-        base
-    )  # calculate the max limit according to dtype
+    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(base)  # calculate the max limit according to dtype
     num = int(limit)
     yield {
         "start": 0,
         "end": num,
-        "steps": random.randint(1, num),
+        "steps": random.randint(1, 8192),
         "base": base,
         "dtype": dtype,
         "device": device,
