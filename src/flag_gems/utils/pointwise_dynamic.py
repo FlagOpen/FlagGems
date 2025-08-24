@@ -950,6 +950,11 @@ class WrapperGenerator:
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
 
+        for i in range(schema.num_input_tensors()):
+            code.writeline(f"in{i}_strides = in{i}.stride()")
+        for i in range(schema.num_output_tensors()):
+            code.writeline(f"out{i}_strides = out{i}.stride()")
+
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
             code.writeline(f"{self.jit_fn_name}[grid](")
@@ -1163,7 +1168,6 @@ class PointwiseDynamicFunction:
             # tensor that is not broadcated, no attempts to simplify task, no reordering,
             # no dimenion collapsing
             shapes = tuple(item.shape for item in in_tensors)
-
             task_shape = broadcast_shapes(shapes)
 
             if out_tensors:
