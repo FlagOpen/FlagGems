@@ -68,6 +68,23 @@ def linspace_input_fn(shape, dtype, device):
     },
 
 
+def logspace_input_fn(shape, dtype, device):
+    base = 1.05
+    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(
+        base
+    )  # calculate the max limit according to dtype
+    end = int(limit)
+    num = int(min(torch.finfo(dtype).max - 1, math.prod(shape)))
+    yield {
+        "start": 0,
+        "end": end,
+        "steps": random.randint(1, num),  # steps influence speed up a lot
+        "base": base,
+        "dtype": dtype,
+        "device": device,
+    },
+
+
 def _2D_input_fn(shape, dtype, device):
     """
     Generate input for 2D input
@@ -120,6 +137,8 @@ tensor_constructor_operations = [
     ("linspace", torch.linspace, linspace_input_fn),
     # eye
     ("eye", torch.eye, _2D_input_fn),
+    # logspace
+    ("logspace", torch.logspace, logspace_input_fn),
 ]
 
 
