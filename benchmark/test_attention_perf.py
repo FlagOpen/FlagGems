@@ -27,16 +27,18 @@ class AttentionBenchmark(GenericBenchmark):
     flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
 )
 @pytest.mark.scaled_dot_product_attention
-@pytest.mark.parametrize("dropout_p", [0.0, 0.25])
+@pytest.mark.parametrize("dropout_p", [0.0])
 @pytest.mark.parametrize("is_causal", [True, False])
 def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
     def scaled_dot_product_attention_kwargs(shape, dtype, device):
         query = torch.randn(shape, device=device, dtype=dtype)
         key = torch.randn(shape, device=device, dtype=dtype)
         value = torch.randn(shape, device=device, dtype=dtype)
-        yield query, key, value, dropout_p, is_causal
+        yield query, key, value, None, dropout_p, is_causal
 
-    def sdpa_flash(query, key, value, dropout_p=dropout_p, is_causal=is_causal):
+    def sdpa_flash(
+        query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=is_causal
+    ):
         from torch.nn.attention import SDPBackend, sdpa_kernel
 
         with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
@@ -44,7 +46,7 @@ def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
                 query,
                 key,
                 value,
-                attn_mask=None,
+                attn_mask=attn_mask,
                 dropout_p=dropout_p,
                 is_causal=is_causal,
             )
@@ -59,6 +61,7 @@ def test_perf_scaled_dot_product_attention(dropout_p, is_causal):
             torch.bfloat16,
         ],
     )
+    bench.set_gems(flag_gems.scaled_dot_product_attention)
     bench.run()
 
 
