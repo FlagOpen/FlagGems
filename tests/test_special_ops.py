@@ -662,7 +662,7 @@ def test_logspace(start, end, steps, base, dtype, device, pin_memory):
         device="cpu",
         pin_memory=pin_memory,
     ).to(
-        device
+        "cpu" if TO_CPU else device
     )  # compute on cpu and move back to device
     with flag_gems.use_gems():
         res_out = torch.logspace(
