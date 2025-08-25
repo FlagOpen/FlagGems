@@ -646,32 +646,24 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
 @pytest.mark.logspace
 @pytest.mark.parametrize("start", [0, 2, 4])
 @pytest.mark.parametrize("end", [32, 40])
-@pytest.mark.parametrize("steps", [0, 8, 17])
+@pytest.mark.parametrize("steps", [0, 1, 8, 17])
 @pytest.mark.parametrize("base", [1.2])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
 @pytest.mark.parametrize("device", [device])
 @pytest.mark.parametrize("pin_memory", [False])
 def test_logspace(start, end, steps, base, dtype, device, pin_memory):
-    # construct reference output since pytorch original accuracy is pool
-    def constructed_test(start, end, steps, base, dtype, layout, device, pin_memory):
-        out = torch.empty(
-            steps, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
-        )
-        step_size = (float(end) - float(start)) / (steps - 1)
-        for i in range(steps):
-            out[i] = base ** (start + i * step_size)
-        return out
-
-    ref_out = constructed_test(
+    ref_out = torch.logspace(
         start,
         end,
         steps,
         base,
-        dtype,
+        dtype=dtype,
         layout=None,
-        device="cpu" if TO_CPU else device,
+        device="cpu",
         pin_memory=pin_memory,
-    )
+    ).to(
+        device
+    )  # compute on cpu and move back to device
     with flag_gems.use_gems():
         res_out = torch.logspace(
             start,

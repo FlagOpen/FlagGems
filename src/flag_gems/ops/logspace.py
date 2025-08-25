@@ -56,8 +56,9 @@ def logspace(
     if steps == 0:
         pass
     elif steps == 1:
-        base_cast = torch.tensor(base, dtype=out_dtype).item()
-        out = torch.fill(out, base_cast**start)
+        if isinstance(start, torch.Tensor):
+            start = start.item()
+        out = torch.fill(out, base**start)
     else:
         if isinstance(start, torch.Tensor):
             start = start.item()
