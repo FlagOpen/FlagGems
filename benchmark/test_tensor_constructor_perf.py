@@ -74,11 +74,10 @@ def logspace_input_fn(shape, dtype, device):
         base
     )  # calculate the max limit according to dtype
     end = int(limit)
-    num = int(min(torch.finfo(dtype).max - 1, math.prod(shape)))
     yield {
         "start": 0,
         "end": end,
-        "steps": num,  # steps influence speed up a lot
+        "steps": math.prod(shape),  # steps influence speed up a lot
         "base": base,
         "dtype": dtype,
         "device": device,
