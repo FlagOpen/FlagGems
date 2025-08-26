@@ -139,134 +139,7 @@ def custom_gems_flash_mla_forward(
     return o
 
 
-def merge_attn_states(
-    output: torch.Tensor,
-    prefix_output: torch.Tensor,
-    prefix_lse: torch.Tensor,
-    suffix_output: torch.Tensor,
-    suffix_lse: torch.Tensor,
-    output_lse: Optional[torch.Tensor] = None,
-) -> None:
-    # NOTE(DefTruth): Currently, custom merge_attn_states CUDA kernel
-    # is not support for FP8 dtype, fallback to use Triton kernel.
-    def supported_dtypes(o: torch.Tensor) -> bool:
-        return o.dtype in [torch.float32, torch.half, torch.bfloat16]
-
-    # NOTE(DefTruth): Currently, custom merge_attn_states CUDA
-    # kernel load/store 128b(16 bytes) per memory issue within
-    # thread. Namely, the headsize(headdim) must be multiple of
-    # pack_size (float32 -> 4, half/bfloat16 -> 8).
-    def supported_headdim(o: torch.Tensor) -> bool:
-        headdim = o.shape[2]  # [NUM_TOKENS, NUM_HEADS, HEAD_SIZE]
-        if o.dtype == torch.float32:
-            return headdim % 4 == 0
-        return headdim % 8 == 0
-
-    # if (current_platform.is_cuda() and supported_dtypes(output)
-    #         and supported_headdim(output)):
-    #     from vllm._custom_ops import merge_attn_states
-    #     return merge_attn_states(output, prefix_output, prefix_lse,
-    #                              suffix_output, suffix_lse, output_lse)
-    # else:
-
-    from vllm.attention.ops.triton_merge_attn_states import merge_attn_states
-
-    return merge_attn_states(
-        output, prefix_output, prefix_lse, suffix_output, suffix_lse, output_lse
-    )
-
-
-def cascade_attention(
-    output: torch.Tensor,
-    query: torch.Tensor,
-    key_cache: torch.Tensor,
-    value_cache: torch.Tensor,
-    cu_query_lens: torch.Tensor,
-    max_query_len: int,
-    cu_prefix_query_lens: torch.Tensor,
-    prefix_kv_lens: torch.Tensor,
-    suffix_kv_lens: torch.Tensor,
-    max_kv_len: int,
-    softmax_scale: float,
-    alibi_slopes: Optional[torch.Tensor],
-    sliding_window: tuple[int, int],
-    logits_soft_cap: float,
-    block_table: torch.Tensor,
-    common_prefix_len: int,
-    fa_version: int,
-    prefix_scheduler_metadata: Optional[torch.Tensor] = None,
-    suffix_scheduler_metadata: Optional[torch.Tensor] = None,
-    q_descale: Optional[torch.Tensor] = None,
-    k_descale: Optional[torch.Tensor] = None,
-    v_descale: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    from flag_gems import flash_attn_varlen_func
-
-    assert alibi_slopes is None, "Cascade attention does not support ALiBi."
-    # TODO: Support sliding window.
-    assert sliding_window == (
-        -1,
-        -1,
-    ), "Cascade attention does not support sliding window."
-
-    num_tokens = query.shape[0]
-    block_size = key_cache.shape[-3]
-    assert common_prefix_len % block_size == 0
-    num_common_kv_blocks = common_prefix_len // block_size
-    assert num_common_kv_blocks > 0
-    descale_shape = (cu_prefix_query_lens.shape[0] - 1, key_cache.shape[-2])
-
-    # Process shared prefix.
-    prefix_output, prefix_lse = flash_attn_varlen_func(
-        q=query,
-        k=key_cache,
-        v=value_cache,
-        cu_seqlens_q=cu_prefix_query_lens,
-        seqused_k=prefix_kv_lens,
-        max_seqlen_q=num_tokens,
-        max_seqlen_k=common_prefix_len,
-        softmax_scale=softmax_scale,
-        causal=False,
-        window_size=sliding_window,
-        block_table=block_table[:1],
-        softcap=logits_soft_cap,
-        return_softmax_lse=True,
-        scheduler_metadata=prefix_scheduler_metadata,
-        fa_version=fa_version,
-        q_descale=q_descale.expand(descale_shape) if q_descale is not None else None,
-        k_descale=k_descale.expand(descale_shape) if k_descale is not None else None,
-        v_descale=v_descale.expand(descale_shape) if v_descale is not None else None,
-    )
-
-    descale_shape = (cu_query_lens.shape[0] - 1, key_cache.shape[-2])
-
-    # Process suffix per query.
-    suffix_output, suffix_lse = flash_attn_varlen_func(
-        q=query,
-        k=key_cache,
-        v=value_cache,
-        cu_seqlens_q=cu_query_lens,
-        seqused_k=suffix_kv_lens,
-        max_seqlen_q=max_query_len,
-        max_seqlen_k=max_kv_len - common_prefix_len,
-        softmax_scale=softmax_scale,
-        causal=True,
-        window_size=sliding_window,
-        block_table=block_table[:, num_common_kv_blocks:],
-        softcap=logits_soft_cap,
-        return_softmax_lse=True,
-        scheduler_metadata=suffix_scheduler_metadata,
-        fa_version=fa_version,
-        q_descale=q_descale.expand(descale_shape) if q_descale is not None else None,
-        k_descale=k_descale.expand(descale_shape) if k_descale is not None else None,
-        v_descale=v_descale.expand(descale_shape) if v_descale is not None else None,
-    )
-
-    # Merge prefix and suffix outputs, and store the result in output.
-    merge_attn_states(output, prefix_output, prefix_lse, suffix_output, suffix_lse)
-
-
-def custom_gems_flash_attention_impl_forwad(
+def custom_gems_flash_attention_impl_forward(
     self,
     layer: torch.nn.Module,
     query: torch.Tensor,
@@ -277,7 +150,11 @@ def custom_gems_flash_attention_impl_forwad(
     output: Optional[torch.Tensor] = None,
     output_scale: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    from flag_gems import flash_attn_varlen_func, reshape_and_cache_flash
+    from flag_gems import (
+        cascade_attention,
+        flash_attn_varlen_func,
+        reshape_and_cache_flash,
+    )
 
     assert output is not None, "Output tensor must be provided."
 
@@ -330,16 +207,16 @@ def custom_gems_flash_attention_impl_forwad(
             max_seqlen_q = local_metadata.local_max_query_len
             max_seqlen_k = local_metadata.local_max_seq_len
             block_table = local_metadata.local_block_table
-            # scheduler_metadata = local_metadata.local_scheduler_metadata
+            scheduler_metadata = local_metadata.local_scheduler_metadata
         else:
             cu_seqlens_q = attn_metadata.query_start_loc
             seqused_k = attn_metadata.seq_lens
             max_seqlen_q = attn_metadata.max_query_len
             max_seqlen_k = attn_metadata.max_seq_len
             block_table = attn_metadata.block_table
-            # scheduler_metadata = attn_metadata.scheduler_metadata
+            scheduler_metadata = attn_metadata.scheduler_metadata
 
-        # descale_shape = (cu_seqlens_q.shape[0] - 1, key.shape[1])
+        descale_shape = (cu_seqlens_q.shape[0] - 1, key.shape[1])
 
         flash_attn_varlen_func(
             q=query[:num_actual_tokens],
@@ -356,11 +233,11 @@ def custom_gems_flash_attention_impl_forwad(
             window_size=self.sliding_window,
             block_table=block_table,
             softcap=self.logits_soft_cap,
-            # scheduler_metadata=scheduler_metadata,
-            # fa_version=self.vllm_flash_attn_version,
-            # q_descale=layer._q_scale.expand(descale_shape),
-            # k_descale=layer._k_scale.expand(descale_shape),
-            # v_descale=layer._v_scale.expand(descale_shape),
+            scheduler_metadata=scheduler_metadata,
+            fa_version=2,
+            q_descale=layer._q_scale.expand(descale_shape),
+            k_descale=layer._k_scale.expand(descale_shape),
+            v_descale=layer._v_scale.expand(descale_shape),
         )
         return output
 
@@ -383,7 +260,7 @@ def custom_gems_flash_attention_impl_forwad(
         logits_soft_cap=self.logits_soft_cap,
         block_table=attn_metadata.block_table,
         common_prefix_len=attn_metadata.common_prefix_len,
-        fa_version=self.vllm_flash_attn_version,
+        fa_version=2,
         prefix_scheduler_metadata=attn_metadata.prefix_scheduler_metadata,
         suffix_scheduler_metadata=attn_metadata.scheduler_metadata,
         q_descale=layer._q_scale,
@@ -504,7 +381,7 @@ def apply_gems_patches_to_vllm(verbose=True):
         TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward, verbose
     )
     patch_module_method(
-        FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
+        FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
     )
     patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
     patch_vllm_lib(
