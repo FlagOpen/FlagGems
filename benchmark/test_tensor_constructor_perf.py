@@ -78,7 +78,7 @@ def logspace_input_fn(shape, dtype, device):
     yield {
         "start": 0,
         "end": end,
-        "steps": random.randint(1, num),  # steps influence speed up a lot
+        "steps": num,  # steps influence speed up a lot
         "base": base,
         "dtype": dtype,
         "device": device,
