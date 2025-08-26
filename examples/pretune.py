@@ -45,6 +45,8 @@ QWEN3_06B_SHAPES = {
         [1024, 2048],
         [6144, 1024],
         [1024, 3072],
+    ],
+    "mm_logits": [
         [151936, 1024],
     ],
     "index": [
@@ -58,6 +60,8 @@ QWEN3_30B_A3B_SHAPES = {
         [5120, 2048],
         [2048, 4096],
         [128, 2048],
+    ],
+    "mm_logits": [
         [151936, 2048],
     ],
     "index": [
@@ -74,7 +78,7 @@ MODEL_SHAPES = {
 }
 
 
-def pretune_mm(max_tokens, shapes, dtype):
+def pretune_mm(max_tokens, max_reqs, shapes, dtype):
     for M in range(1, max_tokens + 1, 32):
         for N, K in shapes:
             tensor_a = torch.randn([M, K], dtype=dtype, device=device)
@@ -82,7 +86,15 @@ def pretune_mm(max_tokens, shapes, dtype):
             flag_gems.mm(tensor_a, tensor_b)
 
 
-def pretune_addmm(max_tokens, shapes, dtype):
+def pretune_mm_logits(max_tokens, max_reqs, shapes, dtype):
+    for M in range(1, max_reqs + 1, 32):
+        for N, K in shapes:
+            tensor_a = torch.randn([M, K], dtype=dtype, device=device)
+            tensor_b = torch.randn([K, N], dtype=dtype, device=device)
+            flag_gems.mm(tensor_a, tensor_b)
+
+
+def pretune_addmm(max_tokens, max_reqs, shapes, dtype):
     for M in range(1, max_tokens + 1):
         for N, K in shapes:
             tensor_a = torch.randn([M, K], dtype=dtype, device=device)
@@ -91,7 +103,7 @@ def pretune_addmm(max_tokens, shapes, dtype):
             flag_gems.addmm(bias, tensor_a, tensor_b)
 
 
-def pretune_index(max_tokens, shapes, dtype):
+def pretune_index(max_tokens, max_reqs, shapes, dtype):
     for M in range(1, max_tokens + 1, 32):
         for N in shapes:
             import numpy as np
@@ -108,6 +120,7 @@ def pretune_index(max_tokens, shapes, dtype):
 
 OPERATORS = {
     "mm": pretune_mm,
+    "mm_logits": pretune_mm_logits,
     "addmm": pretune_addmm,
     "index": pretune_index,
 }
@@ -126,18 +139,25 @@ def args_parser():
         help="model name",
     )
     parser.add_argument(
-        "--max_tokens",
-        type=int,
-        required=False,
-        default=100,
-        help="max tokens",
-    )
-    parser.add_argument(
         "--dtype",
         type=str,
         required=False,
         default="bfloat16",
         help="model data type",
+    )
+    parser.add_argument(
+        "--max_tokens",
+        type=int,
+        required=False,
+        default=16384,
+        help="max tokens",
+    )
+    parser.add_argument(
+        "--max_reqs",
+        type=int,
+        required=False,
+        default=1024,
+        help="max requests",
     )
     args = parser.parse_args()
     return args
@@ -146,12 +166,13 @@ def args_parser():
 if __name__ == "__main__":
     args = args_parser()
     model = MODEL_SHAPES.get(args.model)
-    max_tokens = args.max_tokens
     dtype = DTYPES.get(args.dtype)
+    max_tokens = args.max_tokens
+    max_reqs = args.max_reqs
     if not model:
         exit(0)
     for op, func in OPERATORS.items():
         shapes = model.get(op)
         if not shapes:
             continue
-        func(max_tokens, shapes, dtype)
+        func(max_tokens, max_reqs, shapes, dtype)
