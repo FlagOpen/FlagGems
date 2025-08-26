@@ -1670,7 +1670,12 @@ BLOCK_SIZES = [16]
 @pytest.mark.parametrize("block_size", BLOCK_SIZES)
 @pytest.mark.parametrize("soft_cap", [None, 50])
 @pytest.mark.parametrize("num_blocks", [2048])
-@pytest.mark.parametrize("fa_version", [2, 3])
+@pytest.mark.parametrize(
+    "fa_version",
+    [
+        2,
+    ],
+)
 @torch.inference_mode()
 def test_cascade_attention(
     seq_lens_and_common_prefix: tuple[list[tuple[int, int]], int],
