@@ -6,11 +6,11 @@ import flag_gems
 
 device = flag_gems.device
 
-DTYPES = [
-    torch.float16,
-    torch.bfloat16,
-    torch.float32,
-]
+DTYPES = {
+    "float16": torch.float16,
+    "bfloat16": torch.bfloat16,
+    "float32": torch.float32,
+}
 
 LLAMA_SHAPES = {
     "mm": [
@@ -53,46 +53,57 @@ QWEN3_06B_SHAPES = {
 }
 
 
+QWEN3_30B_A3B_SHAPES = {
+    "mm": [
+        [5120, 2048],
+        [2048, 4096],
+        [128, 2048],
+        [151936, 2048],
+    ],
+    "index": [
+        2048,
+    ],
+}
+
+
 MODEL_SHAPES = {
     "llama": LLAMA_SHAPES,
     "qwen": QWEN_SHAPES,
     "qwen3_0.6b": QWEN3_06B_SHAPES,
+    "qwen3_30b_a3b": QWEN3_30B_A3B_SHAPES,
 }
 
 
-def pretune_mm(max_tokens, shapes):
-    for dtype in DTYPES:
-        for M in range(1, max_tokens + 1):
-            for N, K in shapes:
-                tensor_a = torch.randn([M, K], dtype=dtype, device=device)
-                tensor_b = torch.randn([K, N], dtype=dtype, device=device)
-                flag_gems.mm(tensor_a, tensor_b)
+def pretune_mm(max_tokens, shapes, dtype):
+    for M in range(1, max_tokens + 1, 32):
+        for N, K in shapes:
+            tensor_a = torch.randn([M, K], dtype=dtype, device=device)
+            tensor_b = torch.randn([K, N], dtype=dtype, device=device)
+            flag_gems.mm(tensor_a, tensor_b)
 
 
-def pretune_addmm(max_tokens, shapes):
-    for dtype in DTYPES:
-        for M in range(1, max_tokens + 1):
-            for N, K in shapes:
-                tensor_a = torch.randn([M, K], dtype=dtype, device=device)
-                tensor_b = torch.randn([K, N], dtype=dtype, device=device)
-                bias = torch.randn([M, N], dtype=dtype, device=device)
-                flag_gems.addmm(bias, tensor_a, tensor_b)
+def pretune_addmm(max_tokens, shapes, dtype):
+    for M in range(1, max_tokens + 1):
+        for N, K in shapes:
+            tensor_a = torch.randn([M, K], dtype=dtype, device=device)
+            tensor_b = torch.randn([K, N], dtype=dtype, device=device)
+            bias = torch.randn([M, N], dtype=dtype, device=device)
+            flag_gems.addmm(bias, tensor_a, tensor_b)
 
 
-def pretune_index(max_tokens, shapes):
-    for dtype in DTYPES:
-        for M in range(1, max_tokens + 1, 32):
-            for N in shapes:
-                import numpy as np
+def pretune_index(max_tokens, shapes, dtype):
+    for M in range(1, max_tokens + 1, 32):
+        for N in shapes:
+            import numpy as np
 
-                inp = torch.randn([M, N], dtype=dtype, device=device)
-                index = np.random.choice(np.arange(N), size=M, replace=True)
-                indices = [
-                    torch.tensor(index, device=device),
-                ]
-                flag_gems.index(inp, indices)
-                indices[0] = indices[0].to(torch.int32)
-                flag_gems.index(inp, indices)
+            inp = torch.randn([M, N], dtype=dtype, device=device)
+            index = np.random.choice(np.arange(N), size=M, replace=True)
+            indices = [
+                torch.tensor(index, device=device),
+            ]
+            flag_gems.index(inp, indices)
+            indices[0] = indices[0].to(torch.int32)
+            flag_gems.index(inp, indices)
 
 
 OPERATORS = {
@@ -121,6 +132,13 @@ def args_parser():
         default=100,
         help="max tokens",
     )
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        required=False,
+        default="bfloat16",
+        help="model data type",
+    )
     args = parser.parse_args()
     return args
 
@@ -129,10 +147,11 @@ if __name__ == "__main__":
     args = args_parser()
     model = MODEL_SHAPES.get(args.model)
     max_tokens = args.max_tokens
+    dtype = DTYPES.get(args.dtype)
     if not model:
         exit(0)
     for op, func in OPERATORS.items():
         shapes = model.get(op)
         if not shapes:
             continue
-        func(max_tokens, shapes)
+        func(max_tokens, shapes, dtype)
