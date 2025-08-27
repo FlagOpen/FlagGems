@@ -857,7 +857,8 @@ class FlashAttnVarlenBenchmark(Benchmark):
 )
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_attn_varlen_func
-def test_perf_flash_attn_varlen_func():
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_perf_flash_attn_varlen_func(dtype):
     import os
 
     os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
@@ -866,10 +867,7 @@ def test_perf_flash_attn_varlen_func():
     bench = FlashAttnVarlenBenchmark(
         op_name="flash_attn_varlen_func",
         torch_op=flash_attn_varlen_func,
-        dtypes=[
-            torch.float16,
-            torch.bfloat16,
-        ],
+        dtypes=[dtype],
     )
     bench.set_gems(flag_gems.ops.flash_attn_varlen_func)
     bench.run()
