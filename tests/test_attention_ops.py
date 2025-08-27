@@ -1606,25 +1606,53 @@ def test_scheduler_metadata_correctness(
     qkv_dtype = torch.float16
     num_sm = torch.cuda.get_device_properties(device).multi_processor_count
 
-    ref_metadata = reference_get_scheduler_metadata(
+    # ref_metadata = reference_get_scheduler_metadata(
+    #     batch_size=batch_size,
+    #     max_seqlen_q=1,
+    #     max_seqlen_k=max_seqlen_k,
+    #     max_seqlen_k_new=0,
+    #     num_heads=num_heads,
+    #     num_heads_k=num_heads_k,
+    #     headdim=headdim,
+    #     headdim_v=headdim_v,
+    #     qkv_dtype=qkv_dtype,
+    #     seqused_k=seqused_k,
+    #     num_sm=num_sm,
+    #     num_splits_static=num_splits_static,
+    #     is_causal=False,
+    #     window_size_left=-1,
+    #     window_size_right=-1,
+    #     page_size=None,
+    #     has_softcap=False,
+    #     pack_gqa=True,
+    # )
+
+    import vllm.vllm_flash_attn.flash_attn_interface
+
+    ref_metadata = torch.ops._vllm_fa3_C.get_scheduler_metadata(
         batch_size=batch_size,
         max_seqlen_q=1,
         max_seqlen_k=max_seqlen_k,
-        max_seqlen_k_new=0,
         num_heads=num_heads,
         num_heads_k=num_heads_k,
         headdim=headdim,
         headdim_v=headdim_v,
         qkv_dtype=qkv_dtype,
         seqused_k=seqused_k,
-        num_sm=num_sm,
-        num_splits_static=num_splits_static,
+        cu_seqlens_q=None,
+        cu_seqlens_k=None,
+        cu_seqlens_k_new=None,
+        seqused_q=None,
+        leftpad_k=None,
+        page_size=None,
+        max_seqlen_k_new=0,
         is_causal=False,
         window_size_left=-1,
         window_size_right=-1,
-        page_size=None,
         has_softcap=False,
+        num_splits=num_splits_static,
         pack_gqa=True,
+        sm_margin=0,
     )
 
     with flag_gems.use_gems():
@@ -1638,14 +1666,20 @@ def test_scheduler_metadata_correctness(
             headdim_v=headdim_v,
             qkv_dtype=qkv_dtype,
             seqused_k=seqused_k,
-            num_splits=num_splits_static,
+            cu_seqlens_q=None,
+            cu_seqlens_k=None,
+            cu_seqlens_k_new=None,
+            seqused_q=None,
+            leftpad_k=None,
+            page_size=None,
+            max_seqlen_k_new=0,
             is_causal=False,
             window_size_left=-1,
             window_size_right=-1,
-            page_size=None,
             has_softcap=False,
+            num_splits=num_splits_static,
             pack_gqa=True,
-            max_seqlen_k_new=0,
+            sm_margin=0,
         )
 
     gems_assert_close(gems_metadata, ref_metadata, dtype=torch.int32)
