@@ -74,8 +74,6 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "mthreads" and op_name == "any":
-        pytest.skip("torch does not support any")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -211,12 +209,9 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
             pytest.skip("RUNTIME TODOFIX")
         elif op_name in ["cummin", "cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
-    if vendor_name == "mthreads":
-        if op_name in ["nonzero", "nll_loss", "mse_loss"]:
-            pytest.skip("Torch Unsupport Perf")
-        if op_name in ["cummin", "cummax"]:
-            # Compatible with older versions of LLVM
-            os.environ["DISABLE_LLVM_OPT"] = "1"
+    if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
+        # Compatible with older versions of LLVM
+        os.environ["DISABLE_LLVM_OPT"] = "1"
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
@@ -230,7 +225,6 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
 @pytest.mark.skipif(
     vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
 )
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):

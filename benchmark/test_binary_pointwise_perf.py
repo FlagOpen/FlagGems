@@ -1,10 +1,8 @@
-import os
 from typing import Generator
 
 import pytest
 import torch
 
-import flag_gems
 from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
 from benchmark.performance_utils import Benchmark, generate_tensor_input
 
@@ -75,12 +73,5 @@ class BinaryPointwiseBenchmark(Benchmark):
     ],
 )
 def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
-    if flag_gems.vendor_name == "mthreads":
-        if op_name in ["polar", "floor_divide"]:
-            pytest.skip("RuntimeError")
-        if op_name == "remainder":
-            os.environ["DISABLE_LLVM_OPT"] = "1"
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
-    if flag_gems.vendor_name == "mthreads" and op_name == "remainder":
-        del os.environ["DISABLE_LLVM_OPT"]
