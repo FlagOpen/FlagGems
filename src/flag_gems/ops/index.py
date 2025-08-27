@@ -52,7 +52,26 @@ def generate_index_kernel(
     code.writeline(
         '@libtuner(configs=runtime.get_tuned_config("index"), key=["M", "N"], restore_value=["input_ptr"])'
     )
-    code.writeline("@triton.jit")
+    code.writeline("@triton.jit(")
+    with code.indent():
+        code.writeline("do_not_specialize=[")
+        with code.indent():
+            args = ['"input_ptr",']
+            args += [f'"indices{i}_ptr",' for i in range(indices_len)]
+            args += ['"out_ptr",']
+            args += [f'"input_shape{i}",' for i in range(inp_rank)]
+            for i in range(indices_len):
+                args += [f'"indices{i}_shape{j}",' for j in range(index_rank)]
+            args += [f'"input_stride{i}",' for i in range(inp_rank)]
+            for i in range(indices_len):
+                args += [f'"indices{i}_stride{j}",' for j in range(index_rank)]
+            args += [
+                f'"out_stride{i}",' for i in range(index_rank + inp_rank - indices_len)
+            ]
+            args += ['"M",' '"N",']
+            code.writelines(args)
+        code.writeline("]")
+    code.writeline(")")
     code.writeline(f"def {kernel_name}(")
     with code.indent():
         args = ["input_ptr,"]
