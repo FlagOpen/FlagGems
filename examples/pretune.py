@@ -55,6 +55,22 @@ QWEN3_06B_SHAPES = {
 }
 
 
+QWEN3_8B_SHAPES = {
+    "mm": [
+        [6144, 4096],
+        [4096, 4096],
+        [24576, 4096],
+        [4096, 12288],
+    ],
+    "mm_logits": [
+        [151936, 4096],
+    ],
+    "index": [
+        4096,
+    ],
+}
+
+
 QWEN3_30B_A3B_SHAPES = {
     "mm": [
         [5120, 2048],
@@ -74,6 +90,7 @@ MODEL_SHAPES = {
     "llama": LLAMA_SHAPES,
     "qwen": QWEN_SHAPES,
     "qwen3_0.6b": QWEN3_06B_SHAPES,
+    "qwen3_8b": QWEN3_8B_SHAPES,
     "qwen3_30b_a3b": QWEN3_30B_A3B_SHAPES,
 }
 
