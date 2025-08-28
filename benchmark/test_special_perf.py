@@ -347,6 +347,7 @@ class Conv3DBenchmark(GenericBenchmark):
 
 
 # @pytest.mark.skipif(True, reason="Conv3d not registered yet")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.conv3d
 def test_perf_conv3d():
     def conv3d_input_fn(shape, dtype, device):
