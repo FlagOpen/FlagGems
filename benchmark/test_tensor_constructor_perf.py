@@ -152,6 +152,8 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
         "linspace",
     ]:
         pytest.skip("RUNTIME TODOFIX.")
+    if vendor_name == "mthreads" and op_name == "logspace":
+        pytest.skip("Torch MUSA Unsupported Now")
     bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
     bench.run()
 
