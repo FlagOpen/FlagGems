@@ -1254,7 +1254,7 @@ SHAPE_CONV3D = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv3d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV3D)
