@@ -32,6 +32,7 @@ from flag_gems.ops.bitwise_or import (
 )
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
+from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
@@ -59,7 +60,6 @@ from flag_gems.ops.div import (
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
-from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.eq import eq, eq_scalar
 from flag_gems.ops.erf import erf, erf_
