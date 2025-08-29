@@ -86,12 +86,31 @@ QWEN3_30B_A3B_SHAPES = {
 }
 
 
+QWEN25_7B_INSTRUCT_SHAPES = {
+    "mm": [
+        [3584, 3584],
+        [37888, 3584],
+        [3584, 18944],
+    ],
+    "mm_logits": [
+        [152064, 3584],
+    ],
+    "addmm": [
+        [4608, 3584],
+    ],
+    "index": [
+        3584,
+    ],
+}
+
+
 MODEL_SHAPES = {
     "llama": LLAMA_SHAPES,
     "qwen": QWEN_SHAPES,
     "qwen3_0.6b": QWEN3_06B_SHAPES,
     "qwen3_8b": QWEN3_8B_SHAPES,
     "qwen3_30b_a3b": QWEN3_30B_A3B_SHAPES,
+    "qwen2.5_7b_instruct": QWEN25_7B_INSTRUCT_SHAPES,
 }
 
 
@@ -112,7 +131,7 @@ def pretune_mm_logits(max_tokens, max_reqs, shapes, dtype):
 
 
 def pretune_addmm(max_tokens, max_reqs, shapes, dtype):
-    for M in range(1, max_tokens + 1):
+    for M in range(1, max_tokens + 1, 32):
         for N, K in shapes:
             tensor_a = torch.randn([M, K], dtype=dtype, device=device)
             tensor_b = torch.randn([K, N], dtype=dtype, device=device)
