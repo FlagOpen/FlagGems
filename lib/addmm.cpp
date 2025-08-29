@@ -19,9 +19,9 @@ at::Tensor addmm(const at::Tensor &self,
   TORCH_CHECK(utils::broadcastable_to(self.sizes(), at::IntArrayRef({mat1_sizes[0], mat2_sizes[1]})),
               "Incompatible input shape");
   at::Tensor mat1_c = mat1.contiguous();
-  at::Tensor mat2_c = mat2.contiguous();
+  // at::Tensor mat2_c = mat2.contiguous();
   at::Tensor out = at::empty({mat1_sizes[0], mat2_sizes[1]}, mat1.options());
-  at::Tensor self_c = self.broadcast_to(out.sizes()).contiguous();
+  at::Tensor self_b = self.broadcast_to(out.sizes());
   float alpha_val = alpha.to<float>();
   float beta_val = beta.to<float>();
 
@@ -43,8 +43,8 @@ at::Tensor addmm(const at::Tensor &self,
     /* num_warps = */ 2,
     /* num_stages = */ 5,
     mat1_c,
-    mat2_c,
-    self_c,
+    mat2,
+    self_b,
     out,
     alpha_val,
     beta_val,
@@ -53,10 +53,10 @@ at::Tensor addmm(const at::Tensor &self,
     mat1_sizes[1],
     mat1_c.stride(0),
     mat1_c.stride(1),
-    mat2_c.stride(0),
-    mat2_c.stride(1),
-    self_c.stride(0),
-    self_c.stride(1),
+    mat2.stride(0),
+    mat2.stride(1),
+    self_b.stride(0),
+    self_b.stride(1),
     out.stride(0),
     out.stride(1),
     /* BLOCK_M = */ BLOCK_M,
