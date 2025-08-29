@@ -1,5 +1,6 @@
 import logging
 
+from src.flag_gems.ops import addcdiv
 import torch
 
 from flag_gems import testing  # noqa: F401
@@ -45,6 +46,7 @@ def enable(
             ("abs_", abs_),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
+            ('addcdiv', addcdiv)
             ("addmm", addmm),
             ("all", all),
             ("all.dim", all_dim),
