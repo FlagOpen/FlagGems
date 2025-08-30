@@ -429,10 +429,36 @@ def test_accuracy_elu_(shape, dtype):
     gems_assert_close(res_inp, ref_inp, dtype)
 
 
+# @pytest.mark.elu_backward
+# @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+# @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+# def test_accuracy_elu_backward(shape, dtype):
+#     alpha = torch.rand(1).item()
+#     scale = 1.0
+#     input_scale = 1.0
+
+#     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+#     res_grad_out = torch.randn_like(res_inp)
+
+#     ref_inp = to_reference(res_inp, True)
+#     ref_grad_out = to_reference(res_grad_out, True)
+
+#     ref_in_grad = torch.ops.aten.elu_backward(
+#         ref_grad_out, alpha, scale, input_scale, False, ref_inp
+#     )
+#     with flag_gems.use_gems():
+#         res_in_grad = torch.ops.aten.elu_backward(
+#             res_grad_out, alpha, scale, input_scale, False, res_inp
+#         )
+
+#     gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 @pytest.mark.elu_backward
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_elu_backward(shape, dtype):
+@pytest.mark.parametrize("is_result", [True, False])
+def test_accuracy_elu_backward(shape, dtype, is_result):
     alpha = torch.rand(1).item()
     scale = 1.0
     input_scale = 1.0
@@ -440,16 +466,20 @@ def test_accuracy_elu_backward(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_grad_out = torch.randn_like(res_inp)
 
-    ref_inp = to_reference(res_inp, True)
+    if is_result:
+        res_self_or_result = torch.ops.aten.elu(res_inp, alpha, scale, input_scale)
+    else:
+        res_self_or_result = res_inp
+
     ref_grad_out = to_reference(res_grad_out, True)
+    ref_self_or_result = to_reference(res_self_or_result, True)
 
     ref_in_grad = torch.ops.aten.elu_backward(
-        ref_grad_out, alpha, scale, input_scale, False, ref_inp
+        ref_grad_out, alpha, scale, input_scale, is_result, ref_self_or_result
     )
+    
     with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.elu_backward(
-            res_grad_out, alpha, scale, input_scale, False, res_inp
-        )
+        res_in_grad = torch.ops.aten.elu_backward(res_grad_out, alpha, scale, input_scale, is_result, res_self_or_result)
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
