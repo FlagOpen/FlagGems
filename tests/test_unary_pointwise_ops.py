@@ -477,9 +477,11 @@ def test_accuracy_elu_backward(shape, dtype, is_result):
     ref_in_grad = torch.ops.aten.elu_backward(
         ref_grad_out, alpha, scale, input_scale, is_result, ref_self_or_result
     )
-    
+
     with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.elu_backward(res_grad_out, alpha, scale, input_scale, is_result, res_self_or_result)
+        res_in_grad = torch.ops.aten.elu_backward(
+            res_grad_out, alpha, scale, input_scale, is_result, res_self_or_result
+        )
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
