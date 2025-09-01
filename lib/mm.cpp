@@ -308,7 +308,7 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
   }
 }
 
-at::Tensor mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out) {
+at::Tensor &mm_out_tensor(const at::Tensor &mat1, const at::Tensor &mat2, at::Tensor &out) {
   TORCH_CHECK(mat1.dim() == 2 && mat2.dim() == 2, "both the tensors must be 2-D");
   TORCH_CHECK(mat1.dtype() == mat2.dtype(),
               "expected a and b to have the same dtype, but got: ",
