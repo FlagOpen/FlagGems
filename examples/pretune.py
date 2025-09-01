@@ -140,10 +140,10 @@ def pretune_addmm(max_tokens, max_reqs, shapes, dtype):
 
 
 def pretune_index(max_tokens, max_reqs, shapes, dtype):
+    import numpy as np
+
     for M in range(1, max_tokens + 1, 32):
         for N in shapes:
-            import numpy as np
-
             inp = torch.randn([M, N], dtype=dtype, device=device)
             index = np.random.choice(np.arange(N), size=M, replace=True)
             indices = [
