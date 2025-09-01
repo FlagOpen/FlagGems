@@ -37,6 +37,7 @@ from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
+from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -100,6 +101,7 @@ from flag_gems.ops.logical_and import logical_and
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or
 from flag_gems.ops.logical_xor import logical_xor
+from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_select import masked_select
@@ -245,6 +247,7 @@ __all__ = [
     "contiguous",
     "conv1d",
     "conv2d",
+    "conv3d",
     "cos",
     "cos_",
     "count_nonzero",
@@ -330,6 +333,7 @@ __all__ = [
     "logical_not",
     "logical_or",
     "logical_xor",
+    "logspace",
     "lt",
     "lt_scalar",
     "masked_fill",
