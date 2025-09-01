@@ -46,6 +46,7 @@ def enable(
             ("add.Tensor", add),
             ("add_.Tensor", add_),
             ("addmm", addmm),
+            ("addmm.out", addmm_out),
             ("all", all),
             ("all.dim", all_dim),
             ("all.dims", all_dims),
