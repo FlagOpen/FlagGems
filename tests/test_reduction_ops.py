@@ -1567,10 +1567,15 @@ def topk_softmax_torch_reference(gating_output: torch.Tensor, topk: int):
     ) * num_tokens + torch.arange(num_tokens, device=gating_output.device).view(-1, 1)
     return topk_values, topk_indices, source_rows
 
+def generate_test_params():
+    params = [torch.int32, torch.int64]
+    if SkipVersion("torch",">2.2"):
+        params.append(torch.uint32)
+    return params
 
 @pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.topk_softmax
-@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64, torch.uint32])
+@pytest.mark.parametrize("index_dtype", generate_test_params())
 @pytest.mark.parametrize(
     "num_tokens, num_experts, topk",
     [
