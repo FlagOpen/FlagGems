@@ -41,14 +41,8 @@ special_operations = [
     # Sorting Operations
     ("topk", torch.topk, FLOAT_DTYPES, topk_input_fn),
     # Complex Operations
-    *(
-        [
-            ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
-            ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
-        ]
-        if flag_gems.device != "musa"
-        else []
-    ),
+    ("resolve_neg", torch.resolve_neg, [torch.cfloat], resolve_neg_input_fn),
+    ("resolve_conj", torch.resolve_conj, [torch.cfloat], resolve_conj_input_fn),
 ]
 
 
@@ -66,13 +60,15 @@ special_operations = [
     ],
 )
 def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
+    if vendor_name == "mthreads" and op_name in ["resolve_neg", "resolve_conj"]:
+        pytest.skip("Torch not supported complex")
     bench = GenericBenchmarkExcluse1D(
         input_fn=input_fn, op_name=op_name, dtypes=dtypes, torch_op=torch_op
     )
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.isin
 def test_isin_perf():
@@ -97,7 +93,7 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
@@ -114,7 +110,7 @@ def test_perf_unique():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
@@ -343,6 +339,58 @@ def test_perf_conv2d():
     bench.run()
 
 
+class Conv3DBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        # self.shapes is a list of tuples, each containing three elements:
+        # (N, C, H, W).
+        return None
+
+
+# @pytest.mark.skipif(True, reason="Conv3d not registered yet")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
+@pytest.mark.conv3d
+def test_perf_conv3d():
+    def conv3d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_d,
+            input_h,
+            input_w,
+            out_c,
+            kernel_d,
+            kernel_h,
+            kernel_w,
+            stride,
+            padding,
+            groups,
+        ) = shape
+        input_shape = (batch, input_c, input_d, input_h, input_w)
+        weight_shape = (out_c, input_c // groups, kernel_d, kernel_h, kernel_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "weight": weight,
+            "bias": None,
+            "groups": groups,
+            "stride": stride,
+            "padding": padding,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Conv3DBenchmark(
+        input_fn=conv3d_input_fn,
+        op_name="conv3d",
+        torch_op=torch.nn.functional.conv3d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.conv3d)
+    bench.run()
+
+
 @pytest.mark.diag
 def test_perf_diag():
     def diag_input_fn(shape, dtype, device):
@@ -400,7 +448,7 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
