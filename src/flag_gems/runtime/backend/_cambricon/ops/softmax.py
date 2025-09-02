@@ -160,8 +160,10 @@ def softmax_kernel_non_inner(
                     tl.float32
                 )
                 m_new = tl.maximum(m, inp)
-                alpha = tl.exp(m - m_new)
-                z = z * alpha + tl.exp(inp - m_new)
+                all_neg_inf = m_new == float("-inf")
+                z = tl.where(
+                    all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new)
+                )
                 m = m_new
             m_reduced = tl.max(m, 0)  # (TILE_K,)
             z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)  # (TILE_K, )
@@ -319,8 +321,12 @@ def softmax_kernel_inner(
                     tl.float32
                 )
                 cur_max = tl.maximum(block_max, inp)
-                alpha = tl.exp(block_max - cur_max)
-                block_sum = block_sum * alpha + tl.exp(inp - cur_max)
+                all_neg_inf = cur_max == float("-inf")
+                block_sum = tl.where(
+                    all_neg_inf,
+                    block_sum,
+                    block_sum * tl.exp(block_max - cur_max) + tl.exp(inp - cur_max),
+                )
                 block_max = cur_max
 
             trans_block_max = tl.trans(block_max)
