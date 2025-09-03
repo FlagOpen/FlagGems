@@ -22,6 +22,6 @@ def addcdiv(inp, tensor1, tensor2, value=1.0, out=None):
     if out is None:
         out = torch.empty_like(inp)
 
-    addcdiv_kernel(inp, tensor1, tensor2, value, out, out0=out)
+    addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)
 
     return out
