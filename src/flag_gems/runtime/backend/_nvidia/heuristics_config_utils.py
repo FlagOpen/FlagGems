@@ -6,12 +6,32 @@ def simple_elementwise_blocksize_heur(args):
     return 1024
 
 
-def argmax_heur_block_m(args):
-    return 4 if args["M"] < 4096 else 8
+def argmax_heur_block_k(args):
+    MAX_BLOCK_K = 8192
+    NUM_SMS = torch.cuda.get_device_properties(
+        torch.cuda.current_device()
+    ).multi_processor_count
+    block_k = 1
+    upper_bound = min(args["K"], MAX_BLOCK_K)
+    while block_k <= upper_bound:
+        num_blocks = args["M"] * triton.cdiv(args["K"], block_k)
+        num_waves = num_blocks / NUM_SMS
+        if (num_waves > 1) and (block_k * 2 <= upper_bound):
+            block_k *= 2
+        else:
+            break
+    return block_k
 
 
 def argmax_heur_block_n(args):
-    return min(4096, triton.next_power_of_2(args["N"]))
+    return triton.cdiv(8192, args["BLOCK_K"])
+
+
+def argmax_heur_block_n_inner(args):
+    if args["N"] <= (32 * 1024):
+        return triton.next_power_of_2(args["N"])
+    else:
+        return 4096
 
 
 def argmin_heur_block_m(args):
@@ -233,13 +253,12 @@ def vdot_heur_block_size(args):
 
 
 HEURISTICS_CONFIGS = {
-    "argmax": {
-        "BLOCK_M": argmax_heur_block_m,
+    "argmax_non_inner": {
+        "BLOCK_K": argmax_heur_block_k,
         "BLOCK_N": argmax_heur_block_n,
     },
-    "argmin": {
-        "BLOCK_M": argmin_heur_block_m,
-        "BLOCK_N": argmin_heur_block_n,
+    "argmax_inner": {
+        "BLOCK_N": argmax_heur_block_n_inner,
     },
     "bmm": {
         "DIVISIBLE_M": bmm_heur_divisible_m,
