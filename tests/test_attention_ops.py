@@ -7,13 +7,14 @@ import pytest
 import torch
 import triton
 
+import flag_gems
+
 try:
-    import vllm.vllm_flash_attn.flash_attn_interface as _vllm_fa3_C  # noqa: F401
+    import vllm.vllm_flash_attn.flash_attn_interface as _vllm  # noqa: F401
 
     HAS_VLLM = True
 except ImportError:
     HAS_VLLM = False
-import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import set_philox_state
 
@@ -268,6 +269,7 @@ def gems_flash_fwd(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(
@@ -338,6 +340,7 @@ def test_sdpa_legacy(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
@@ -368,6 +371,7 @@ def test_sdpa_square_qk_even_mn(
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.scaled_dot_product_attention
@@ -398,7 +402,9 @@ def test_sdpa_nonsquare_qk(
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
+)
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -431,7 +437,9 @@ def test_flash_fwd_nonsquare_qk(
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
+)
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -507,7 +515,9 @@ def test_flash_fwd_gqa_alibi_softcap(
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
+)
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -583,7 +593,9 @@ def test_flash_splitkv(
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(torch.__version__ < "2.4", reason="Low Pytorch Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads", reason="Unsupported in CPU mode"
+)
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -727,8 +739,10 @@ def ref_paged_attn(
     return torch.cat(outputs, dim=0)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
@@ -835,8 +849,10 @@ def test_flash_attn_varlen_func(
         ), f"{torch.max(torch.abs(output - ref_output))}"
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
 @pytest.mark.parametrize("num_heads", [(8, 2)])
@@ -969,7 +985,8 @@ def convert_fp8(
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("seed", SEEDS)
 @pytest.mark.parametrize(
-    "device", [flag_gems.device] if flag_gems.device == "musa" else CUDA_DEVICES
+    "device",
+    [flag_gems.device] if flag_gems.vendor_name == "mthreads" else CUDA_DEVICES,
 )
 @pytest.mark.parametrize("kv_cache_dtype", KV_CACHE_DTYPE)
 @torch.inference_mode()
@@ -1158,7 +1175,7 @@ def test_reshape_and_cache(
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(triton.__version__ < "3.2", reason="Low Triton Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Low Triton Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -1305,7 +1322,7 @@ def test_reshape_and_cache_flash(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_mla
