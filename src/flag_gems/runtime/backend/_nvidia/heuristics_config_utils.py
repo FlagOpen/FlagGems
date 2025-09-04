@@ -260,6 +260,10 @@ HEURISTICS_CONFIGS = {
     "argmax_inner": {
         "BLOCK_N": argmax_heur_block_n_inner,
     },
+    "argmin": {
+        "BLOCK_M": argmin_heur_block_m,
+        "BLOCK_N": argmin_heur_block_n,
+    },
     "bmm": {
         "DIVISIBLE_M": bmm_heur_divisible_m,
         "DIVISIBLE_N": bmm_heur_divisible_n,
