@@ -1,0 +1,23 @@
+name: ci-temp-model-test
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  ci-temp-model-test:
+    runs-on: ci-temp-model-test
+    concurrency:
+      group: ci-temp-model-test-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout flaggems
+        uses: actions/checkout@v4
+
+      - name: Checkout benchmark
+        uses: actions/checkout@v4
+        with:
+          repository: pytorch/benchmark
+          path: benchmark
