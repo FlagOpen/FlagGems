@@ -13,6 +13,7 @@ from flag_gems.ops.attention import (
     cascade_attention,
     flash_attention_forward,
     flash_attn_varlen_func,
+    merge_attn_states,
     scaled_dot_product_attention,
 )
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
@@ -282,6 +283,7 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "cascade_attention",
+    "merge_attn_states",
     "flip",
     "floor_divide",
     "floor_divide_",

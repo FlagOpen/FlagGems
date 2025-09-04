@@ -820,8 +820,6 @@ def cascade_attention(
     k_descale: Optional[torch.Tensor] = None,
     v_descale: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    from flag_gems import flash_attn_varlen_func
-
     assert alibi_slopes is None, "Cascade attention does not support ALiBi."
     # TODO: Support sliding window.
     assert sliding_window == (
