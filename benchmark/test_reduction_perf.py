@@ -155,7 +155,7 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             torch.nonzero,
             unary_input_fn,
             FLOAT_DTYPES
-            + ([torch.int32] if vendor_name == "kunlunxin" else INT_DTYPES)
+            + INT_DTYPES
             + BOOL_DTYPES,
             marks=pytest.mark.nonzero,
         ),
