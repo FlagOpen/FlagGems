@@ -66,6 +66,9 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
   m.def("softmax(Tensor input, int dim, bool half_to_float=False) -> Tensor");
   m.def("softmax_backward(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor");
+  m.def(
+      "reshape_and_cache_flash(Tensor key, Tensor value, Tensor(a!) key_cache, Tensor(b!) value_cache, "
+      "Tensor slot_mapping, Tensor k_scale, Tensor v_scale) -> ()");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -102,5 +105,6 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
   m.impl("softmax", TORCH_FN(softmax));
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
+  m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));
 }
 }  // namespace flag_gems
