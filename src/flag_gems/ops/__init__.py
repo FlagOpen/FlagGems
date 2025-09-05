@@ -1,5 +1,6 @@
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.add import add, add_
+from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm
 from flag_gems.ops.all import all, all_dim, all_dims
@@ -32,6 +33,7 @@ from flag_gems.ops.bitwise_or import (
 )
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
+from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
@@ -207,6 +209,7 @@ __all__ = [
     "abs_",
     "add",
     "add_",
+    "addcdiv",
     "addmm",
     "all",
     "all_dim",
@@ -237,6 +240,8 @@ __all__ = [
     "bitwise_or_tensor_",
     "bmm",
     "cat",
+    "celu",
+    "celu_",
     "clamp",
     "clamp_",
     "clamp_tensor",
