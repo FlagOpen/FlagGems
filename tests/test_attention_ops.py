@@ -1654,13 +1654,11 @@ def test_scheduler_metadata_correctness(
 CASES = [
     # Case 1. A general case.
     ([(129, 871), (18, 280), (37, 988), (1023, 2304), (1, 257)], 256),
+    # Case 2. Flash-decoding case.
+    ([(1, 1023), (1, 879), (1, 778), (1, 1777)] * 100, 512),
 ]
-NUM_HEADS = [
-    (4, 4),
-]
-HEAD_SIZES = [
-    128,
-]
+NUM_HEADS = [(4, 4), (8, 2), (16, 2)]
+HEAD_SIZES = [128, 192, 256]
 BLOCK_SIZES = [16]
 
 
@@ -1735,52 +1733,27 @@ def test_cascade_attention(
     # Make sure the first `num_common_kv_blocks` blocks are the same.
     block_tables[:, :num_common_kv_blocks] = block_tables[0, :num_common_kv_blocks]
 
-    # # Run the regular attention.
-    # ref_output = flag_gems.ops.flash_attn_varlen_func(
-    #     q=query,
-    #     k=key_cache,
-    #     v=value_cache,
-    #     cu_seqlens_q=cu_query_lens,
-    #     seqused_k=kv_lens_tensor,
-    #     max_seqlen_q=max_query_len,
-    #     max_seqlen_k=max_kv_len,
-    #     softmax_scale=scale,
-    #     causal=True,
-    #     window_size=window_size,
-    #     block_table=block_tables,
-    #     softcap=soft_cap if soft_cap is not None else 0,
-    # )
+    # Run the regular attention.
+    ref_output = flag_gems.ops.flash_attn_varlen_func(
+        q=query,
+        k=key_cache,
+        v=value_cache,
+        cu_seqlens_q=cu_query_lens,
+        seqused_k=kv_lens_tensor,
+        max_seqlen_q=max_query_len,
+        max_seqlen_k=max_kv_len,
+        softmax_scale=scale,
+        causal=True,
+        window_size=window_size,
+        block_table=block_tables,
+        softcap=soft_cap if soft_cap is not None else 0,
+    )
 
+    # Run cascade attention.
     assert all(common_prefix_len < kv_len for kv_len in kv_lens)
     cu_prefix_query_lens = torch.tensor([0, total_num_query_tokens], dtype=torch.int32)
     prefix_kv_lens = torch.tensor([common_prefix_len], dtype=torch.int32)
     suffix_kv_lens = kv_lens_tensor - common_prefix_len
-    ref_output = torch.empty_like(query)
-
-    from vllm.v1.attention.backends.flash_attn import cascade_attention
-
-    cascade_attention(
-        output=ref_output,
-        query=query,
-        key_cache=key_cache,
-        value_cache=value_cache,
-        cu_query_lens=cu_query_lens,
-        max_query_len=max_query_len,
-        cu_prefix_query_lens=cu_prefix_query_lens,
-        prefix_kv_lens=prefix_kv_lens,
-        suffix_kv_lens=suffix_kv_lens,
-        max_kv_len=max_kv_len,
-        softmax_scale=scale,
-        alibi_slopes=None,
-        sliding_window=window_size,
-        logits_soft_cap=soft_cap if soft_cap is not None else 0,
-        block_table=block_tables,
-        common_prefix_len=common_prefix_len,
-        fa_version=fa_version,
-    )
-
-    # Run cascade attention.
-
     output = torch.empty_like(query)
     flag_gems.ops.cascade_attention(
         output=output,
