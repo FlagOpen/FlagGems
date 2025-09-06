@@ -12,7 +12,9 @@ from flag_gems.utils import triton_lang_extension as tle
 
 from .utils import create_tma_device_descriptor, should_enable_sqmma
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 @triton.jit
@@ -115,7 +117,7 @@ def get_higher_dtype(a, b):
 
 
 def mm_fma(a, b):
-    logger.debug("GEMS MM")
+    logger.debug("GEMS_MTHREADS MM(FMA)")
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
@@ -153,7 +155,7 @@ def mm_fma(a, b):
 
 
 def mm_out(a, b, *, out):
-    logger.debug("GEMS MM_OUT")
+    logger.debug("GEMS_MTHREADS MM_OUT")
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
@@ -244,6 +246,7 @@ def get_triton_type(elem_type):
 def mm_sqmma(
     A, B, elem_type, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
 ):
+    logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = "musa"
     ab_type = elem_type
     c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16

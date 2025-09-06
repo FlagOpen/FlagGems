@@ -10,7 +10,9 @@ from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
 from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(
+    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
+)
 
 
 # Modified from Triton tutorial: https://triton-lang.org/main/getting-started/tutorials/06-fused-attention.html
@@ -334,7 +336,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
-    logger.debug("GEMS SCALED DOT PRODUCT ATTENTION")
+    logger.debug("GEMS_MTHREADS SCALED DOT PRODUCT ATTENTION")
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
@@ -448,7 +450,7 @@ def flash_attention_forward(
     alibi_slopes=None,
     disable_splitkv=False,
 ):
-    logger.debug("GEMS FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS_MTHREADS FLASH_ATTENTION_FORWARD")
     assert (
         cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
     ), "varlen is not supported yet."
