@@ -6,32 +6,53 @@ def simple_elementwise_blocksize_heur(args):
     return 1024
 
 
-def argmax_heur_block_k(args):
-    MAX_BLOCK_K = 8192
+def argmax_heur_tile_k(args):
+    MAX_TILE_K = 8192
     NUM_SMS = torch.cuda.get_device_properties(
         torch.cuda.current_device()
     ).multi_processor_count
-    block_k = 1
-    upper_bound = min(args["K"], MAX_BLOCK_K)
-    while block_k <= upper_bound:
-        num_blocks = args["M"] * triton.cdiv(args["K"], block_k)
+    tile_k = 1
+    upper_bound = min(args["K"], MAX_TILE_K)
+    while tile_k <= upper_bound:
+        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
         num_waves = num_blocks / NUM_SMS
-        if (num_waves > 1) and (block_k * 2 <= upper_bound):
-            block_k *= 2
+        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+            tile_k *= 2
         else:
             break
-    return block_k
+    return tile_k
 
 
-def argmax_heur_block_n(args):
-    return triton.cdiv(8192, args["BLOCK_K"])
+def argmax_heur_tile_n_non_inner(args):
+    return triton.cdiv(8192, args["TILE_K"])
 
 
-def argmax_heur_block_n_inner(args):
+def argmax_heur_one_tile_per_cta(args):
+    return args["TILE_N"] >= args["N"]
+
+
+def argmax_heur_num_warps_non_inner(args):
+    if args["N"] <= 1024:
+        return 4
+    else:
+        return 8
+
+
+def argmax_heur_tile_n_inner(args):
     if args["N"] <= (32 * 1024):
         return triton.next_power_of_2(args["N"])
     else:
         return 4096
+
+
+def argmax_heur_num_warps_inner(args):
+    tile_size = args["TILE_N"]
+    if tile_size < 2048:
+        return 4
+    elif tile_size < 4096:
+        return 8
+    else:
+        return 16
 
 
 def argmin_heur_block_m(args):
@@ -254,11 +275,15 @@ def vdot_heur_block_size(args):
 
 HEURISTICS_CONFIGS = {
     "argmax_non_inner": {
-        "BLOCK_K": argmax_heur_block_k,
-        "BLOCK_N": argmax_heur_block_n,
+        "TILE_K": argmax_heur_tile_k,
+        "TILE_N": argmax_heur_tile_n_non_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_non_inner,
     },
     "argmax_inner": {
-        "BLOCK_N": argmax_heur_block_n_inner,
+        "TILE_N": argmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": argmax_heur_one_tile_per_cta,
+        "num_warps": argmax_heur_num_warps_inner,
     },
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,
