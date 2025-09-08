@@ -214,8 +214,8 @@ def sweep(
             flag_offset_i = pid_m * (r * OUT_N) + bin_index * OUT_N + i_lookback
             pack1 = 0
             while pack1 == 0:
-                pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
-                # pack1 = tl.atomic_cas(status_ptr + flag_offset_i, 0, 0, sem="acquire")
+                # pack1 = tl.load(status_ptr + flag_offset_i, volatile=True)  # uin32
+                pack1 = tl.atomic_cas(status_ptr + flag_offset_i, 0, 0, sem="acquire")
             exclusive_prefix += pack1 & v_mask
             if (pack1 & aggregate_mask) == aggregate_mask:
                 i_lookback -= 1
