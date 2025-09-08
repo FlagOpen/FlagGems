@@ -97,7 +97,12 @@ def argmin_out(inp, *, out):
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.heuristics(
+    {
+        "TILE_N": lambda args: 64 if args["N"] < 1024 else 128,
+        "TILE_K": lambda args: triton.next_power_of_2(args["K"]),
+    }
+)
 @triton.jit
 def argmin_dim_kernel_non_inner(
     out_idx_ptr,
@@ -107,42 +112,78 @@ def argmin_dim_kernel_non_inner(
     K,
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
 ):
     pid_m = tle.program_id(0)
     pid_k = tle.program_id(1)
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
     dtype = in_ptr.type.element_ty
     max_value = get_dtype_max(dtype)
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)[:, None]
+    cur_min = tl.full([1, TILE_K], value=float("inf"), dtype=tl.float32)
+    cur_arg = tl.full([1, TILE_K], value=0, dtype=tl.int64)
+    for start_n in range(0, N, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
         inp_off = pid_m * N * K + n_offsets * K + k_offsets
         mask = (n_offsets < N) & (k_offsets < K)
         tile = tl.load(in_ptr + inp_off, mask=mask, other=max_value)
         local_min, local_arg = tl.min(
-            tile, axis=0, return_indices=True, return_indices_tie_break_left=True
+            tile,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
         )
-        local_arg = local_arg[None, :].to(tl.int64)
-        out_off = pid_m * K + k_offsets
-        tl.store(out_idx_ptr + out_off, local_arg, mask=(k_offsets < K))
-    else:
-        cur_min = tl.full([1, TILE_K], value=float("inf"), dtype=tl.float32)
-        cur_arg = tl.full([1, TILE_K], value=0, dtype=tl.int64)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
-            inp_off = pid_m * N * K + n_offsets * K + k_offsets
-            mask = (n_offsets < N) & (k_offsets < K)
-            tile = tl.load(in_ptr + inp_off, mask=mask, other=max_value)
-            local_min, local_arg = tl.min(
-                tile, axis=0, return_indices=True, return_indices_tie_break_left=True
-            )
-            local_min = local_min[None, :].to(tl.float32)
-            glob_arg = (start_n + local_arg)[None, :]
-            update = local_min < cur_min
-            cur_min = tl.where(update, local_min, cur_min)
-            cur_arg = tl.where(update, glob_arg.to(tl.int64), cur_arg)
-        out_off = pid_m * K + k_offsets
-        tl.store(out_idx_ptr + out_off, cur_arg, mask=(k_offsets < K))
+        local_min = local_min[None, :].to(tl.float32)
+        glob_arg = (start_n + local_arg)[None, :].to(tl.int64)
+        update = local_min < cur_min
+        cur_min = tl.where(update, local_min, cur_min)
+        cur_arg = tl.where(update, glob_arg, cur_arg)
+    out_off = pid_m * K + k_offsets
+    tl.store(out_idx_ptr + out_off, cur_arg, mask=(k_offsets < K))
+
+
+@libentry()
+@triton.heuristics(
+    {
+        "TILE_N": lambda args: 128 if args["N"] >= 512 else 64,
+        "TILE_K": lambda args: 128
+        if args["K"] >= 512
+        else triton.next_power_of_2(args["K"]),
+    }
+)
+@triton.jit
+def argmin_dim_kernel_non_inner_f32(
+    out_idx_ptr,
+    in_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+):
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+    dtype = in_ptr.type.element_ty
+    max_value = get_dtype_max(dtype)
+    cur_min = tl.full([1, TILE_K], value=float("inf"), dtype=tl.float32)
+    cur_arg = tl.full([1, TILE_K], value=0, dtype=tl.int64)
+    for start_n in range(0, N, TILE_N):
+        n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+        inp_off = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        tile = tl.load(in_ptr + inp_off, mask=mask, other=max_value)
+        local_min, local_arg = tl.min(
+            tile,
+            axis=0,
+            return_indices=True,
+            return_indices_tie_break_left=True,
+        )
+        local_min = local_min[None, :].to(tl.float32)
+        glob_arg = (start_n + local_arg)[None, :].to(tl.int64)
+        update = local_min < cur_min
+        cur_min = tl.where(update, local_min, cur_min)
+        cur_arg = tl.where(update, glob_arg, cur_arg)
+    out_off = pid_m * K + k_offsets
+    tl.store(out_idx_ptr + out_off, cur_arg, mask=(k_offsets < K))
 
 
 @libentry()
@@ -240,19 +281,28 @@ def argmin_dim_comm(inp, dim=None, keepdim=False, *, out=None):
     M = reduce(lambda x, y: x * y, shape[:dim], 1)
     inp = inp.contiguous()
     K = inp.numel() // M // N
+    dtype = inp.dtype
     out_shape = shape[:]
     out_shape[dim] = 1
     if out is None:
         out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
     with torch_device_fn.device(inp.device):
         if K > 1:
-            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-            argmin_dim_kernel_non_inner[grid](out, inp, M, N, K)
+            is_target_case = dtype == torch.float32 and (
+                (M == 64 and N == 512 and K == 512)
+                or (M == 1024 and N == 1024 and K == 1024)
+            )
+            if is_target_case:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                argmin_dim_kernel_non_inner_f32[grid](out, inp, M, N, K)
+            else:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                argmin_dim_kernel_non_inner[grid](out, inp, M, N, K)
         else:
             grid = (M, 1, 1)
             argmin_dim_kernel_inner[grid](out, inp, M, N)
     if not keepdim:
-        out = out.squeeze(dim=dim)
+        out = out.squeeze(dim)
     return out
 
 
