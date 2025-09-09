@@ -44,7 +44,7 @@ def test_accuracy_acosh(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.acosh(inp)
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.inplace
