@@ -255,7 +255,7 @@ class BenchmarkCache(Cache):
             queries: Dict[str, Union[int, float, str]] = self.build_query(config)
             values: List[str] = [*queries.values(), *benchmark]
             if not self.insert_sql:
-                self.insert_sql = "INSERT INTO {} VALUES ({});".format(
+                self.insert_sql = "INSERT OR REPLACE INTO {} VALUES ({});".format(
                     self.table_name, ", ".join("?" for _ in values)
                 )
             self.conn.execute(self.insert_sql, values)
