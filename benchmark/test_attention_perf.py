@@ -1,4 +1,5 @@
 import math
+import os
 from typing import Any, List, Optional
 
 import pytest
@@ -23,9 +24,8 @@ class AttentionBenchmark(GenericBenchmark):
 
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(
-    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.scaled_dot_product_attention
 @pytest.mark.parametrize("dropout_p", [0.0, 0.25])
 @pytest.mark.parametrize("is_causal", [True, False])
@@ -75,9 +75,8 @@ class FlashMLABenchmark(GenericBenchmark):
 
 @pytest.mark.skipif(vendor_name == "metax", reason="TODOFIX")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(
-    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_mla
 def test_perf_flash_mla():
@@ -852,15 +851,11 @@ class FlashAttnVarlenBenchmark(Benchmark):
 )
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "iluvatar", reason="RESULT TODOFIX")
-@pytest.mark.skipif(
-    flag_gems.device == "musa" or vendor_name == "hygon", reason="RuntimeError"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RuntimeError")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Torch < 2.7")
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="TypeError")
 @pytest.mark.flash_attn_varlen_func
-@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
-def test_perf_flash_attn_varlen_func(dtype):
-    import os
-
+def test_perf_flash_attn_varlen_func():
     os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
     from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
@@ -880,6 +875,8 @@ class GetSchedulerMetadataBenchmark(GenericBenchmark):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
+            (8, 8, 1024, 16, 4, 128, 128),
+            (32, 32, 512, 8, 8, 64, 64),
             (256, 256, 2048, 32, 32, 128, 128),
             (512, 512, 4096, 32, 8, 128, 128),
             (1024, 1024, 8192, 64, 16, 128, 128),
@@ -892,6 +889,7 @@ class GetSchedulerMetadataBenchmark(GenericBenchmark):
 @pytest.mark.get_scheduler_metadata
 def test_perf_get_scheduler_metadata():
     try:
+        os.environ["VLLM_CONFIGURE_LOGGING"] = "0"
         from vllm.vllm_flash_attn.flash_attn_interface import (
             get_scheduler_metadata as vllm_get_scheduler_metadata,
         )

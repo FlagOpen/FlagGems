@@ -40,17 +40,7 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 forward_operations = [
     ("abs", torch.abs, FLOAT_DTYPES),
-    *(
-        []
-        if flag_gems.device == "musa"  # angle is not supported on musa
-        else [
-            (
-                "angle",
-                torch.angle,
-                COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES,
-            )
-        ]
-    ),
+    ("angle", torch.angle, COMPLEX_DTYPES + [torch.float32] + INT_DTYPES + BOOL_DTYPES),
     ("erf", torch.erf, FLOAT_DTYPES),
     ("exp", torch.exp, FLOAT_DTYPES),
     ("exp2", torch.exp2, FLOAT_DTYPES),
@@ -64,6 +54,8 @@ forward_operations = [
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
+    ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
@@ -104,6 +96,8 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "mthreads" and op_name == "angle":
+        pytest.skip(" Unsupport complex dtype")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 

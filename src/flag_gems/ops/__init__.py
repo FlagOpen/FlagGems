@@ -1,7 +1,8 @@
 from flag_gems.ops.abs import abs, abs_
 from flag_gems.ops.add import add, add_
+from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
-from flag_gems.ops.addmm import addmm
+from flag_gems.ops.addmm import addmm, addmm_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
 from flag_gems.ops.angle import angle
@@ -32,10 +33,12 @@ from flag_gems.ops.bitwise_or import (
 )
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
+from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
+from flag_gems.ops.conv3d import conv3d
 from flag_gems.ops.conv_depthwise2d import _conv_depthwise2d
 from flag_gems.ops.cos import cos, cos_
 from flag_gems.ops.count_nonzero import count_nonzero
@@ -99,6 +102,7 @@ from flag_gems.ops.logical_and import logical_and
 from flag_gems.ops.logical_not import logical_not
 from flag_gems.ops.logical_or import logical_or
 from flag_gems.ops.logical_xor import logical_xor
+from flag_gems.ops.logspace import logspace
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_select import masked_select
@@ -205,7 +209,9 @@ __all__ = [
     "abs_",
     "add",
     "add_",
+    "addcdiv",
     "addmm",
+    "addmm_out",
     "all",
     "all_dim",
     "all_dims",
@@ -235,6 +241,8 @@ __all__ = [
     "bitwise_or_tensor_",
     "bmm",
     "cat",
+    "celu",
+    "celu_",
     "clamp",
     "clamp_",
     "clamp_tensor",
@@ -243,6 +251,7 @@ __all__ = [
     "contiguous",
     "conv1d",
     "conv2d",
+    "conv3d",
     "cos",
     "cos_",
     "count_nonzero",
@@ -328,6 +337,7 @@ __all__ = [
     "logical_not",
     "logical_or",
     "logical_xor",
+    "logspace",
     "lt",
     "lt_scalar",
     "masked_fill",
