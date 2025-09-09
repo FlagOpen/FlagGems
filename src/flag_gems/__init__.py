@@ -45,7 +45,6 @@ def enable(
             ("abs_", abs_),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
-            ("addcdiv", addcdiv),
             ("addmm", addmm),
             ("addmm.out", addmm_out),
             ("all", all),
@@ -76,8 +75,6 @@ def enable(
             ("bitwise_or_.Tensor", bitwise_or_tensor_),
             ("bmm", bmm),
             ("cat", cat),
-            ("celu", celu),
-            ("celu_", celu_),
             ("clamp", clamp),
             ("clamp.Tensor", clamp_tensor),
             ("clamp_", clamp_),
@@ -178,7 +175,6 @@ def enable(
             ("logical_not", logical_not),
             ("logical_or", logical_or),
             ("logical_xor", logical_xor),
-            ("logspace", logspace),
             ("lt.Scalar", lt_scalar),
             ("lt.Tensor", lt),
             ("masked_fill.Scalar", masked_fill),
@@ -243,8 +239,6 @@ def enable(
             ("reciprocal_", reciprocal_),
             ("relu", relu),
             ("relu_", relu_),
-            ("addcmul", addcmul),
-            ("softplus", softplus),
             ("remainder.Scalar", remainder),
             ("remainder.Scalar_Tensor", remainder),
             ("remainder.Tensor", remainder),
@@ -309,9 +303,8 @@ def enable(
             ("zeros", zeros),
             ("zeros_like", zeros_like),
         ),
-        user_unused_ops_list=list(
-            set([] if unused is None else unused) | set(aten_patch_list)
-        ),
+        user_unused_ops_list=list(set([] if unused is None else unused)),
+        cpp_patched_ops_list=list(set(aten_patch_list)),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
