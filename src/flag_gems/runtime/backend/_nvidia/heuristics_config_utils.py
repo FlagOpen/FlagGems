@@ -11,20 +11,53 @@ def argmax_heur_tile_k(args):
     NUM_SMS = torch.cuda.get_device_properties(
         torch.cuda.current_device()
     ).multi_processor_count
-    tile_k = 1
-    upper_bound = min(args["K"], MAX_TILE_K)
+
+    K = args["K"]
+    M = args["M"]
+    dtype = args.get("dtype", "fp16")
+
+    if M == 64 and K == 512:
+        return 64 if dtype == "fp32" else 128
+
+    if K <= 128:
+        tile_k = 1
+        while tile_k * 2 <= K:
+            tile_k *= 2
+        return tile_k
+
+    tile_k = 64
+    upper_bound = min(K, MAX_TILE_K)
+
+    if dtype == "fp32":
+        upper_bound = min(upper_bound, 1024)
+
     while tile_k <= upper_bound:
-        num_blocks = args["M"] * triton.cdiv(args["K"], tile_k)
+        num_blocks = M * triton.cdiv(K, tile_k)
         num_waves = num_blocks / NUM_SMS
-        if (num_waves > 1) and (tile_k * 2 <= upper_bound):
+
+        if num_waves < 2 and (tile_k * 2 <= upper_bound):
             tile_k *= 2
         else:
             break
+
     return tile_k
 
 
 def argmax_heur_tile_n_non_inner(args):
-    return triton.cdiv(8192, args["TILE_K"])
+    n = args["N"]
+    tile_k = args["TILE_K"]
+
+    if n <= 128:
+        return n
+
+    target_tile = min(8192, n)
+    tile_n = triton.next_power_of_2(target_tile)
+    tile_n = max(64, min(tile_n, 4096))
+
+    if tile_n * tile_k > 32768:
+        tile_n = max(64, 32768 // tile_k)
+
+    return tile_n
 
 
 def argmax_heur_one_tile_per_cta(args):
@@ -32,10 +65,22 @@ def argmax_heur_one_tile_per_cta(args):
 
 
 def argmax_heur_num_warps_non_inner(args):
-    if args["N"] <= 1024:
-        return 4
+    tile_n = args["TILE_N"]
+    dtype = args.get("dtype", "fp16")
+
+    if tile_n <= 32:
+        num_warps = 2
+    elif tile_n <= 64:
+        num_warps = 4
+    elif tile_n <= 128:
+        num_warps = 4
     else:
-        return 8
+        num_warps = 8
+
+    if dtype == "fp32":
+        num_warps = min(num_warps, 4)
+
+    return num_warps
 
 
 def argmax_heur_tile_n_inner(args):
