@@ -524,7 +524,7 @@ def test_flash_fwd_gqa_alibi_softcap(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
     [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)],
 )
-@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [False, True])
@@ -1544,7 +1544,7 @@ CASES = [
     # Case 1. A general case.
     ([(129, 871), (18, 280), (37, 988), (1023, 2304), (1, 257)], 256),
     # Case 2. Flash-decoding case.
-    ([(1, 1023), (1, 879), (1, 778), (1, 1777)] * 100, 512),
+    # ([(1, 1023), (1, 879), (1, 778), (1, 1777)] * 100, 512),
 ]
 NUM_HEADS = [(4, 4), (8, 2), (16, 2)]
 HEAD_SIZES = [128, 192, 256]

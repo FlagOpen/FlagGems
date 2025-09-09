@@ -366,7 +366,7 @@ def mha_varlan_fwd(
         assert p_dropout == 0, "dropout is not supported if softcap is used."
 
     round_multiple = lambda x, m: (x + m - 1) // m * m
-    head_size_rounded = round_multiple(head_size, 32) if head_size < 192 else 256
+    head_size_rounded = round_multiple(head_size, 32) if head_size <= 192 else 256
     seqlen_q_rounded = round_multiple(max_seqlen_q, 128)
     seqlen_k_rounded = round_multiple(max_seqlen_k, 32)
 
@@ -529,6 +529,7 @@ def mha_varlan_fwd(
         cfg_params = {
             "BLOCK_M": cfg["BLOCK_M"](args),
             "BLOCK_N": cfg["BLOCK_N"](args),
+            "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
             "num_stages": cfg["num_stages"](args),
         }
@@ -628,6 +629,9 @@ def mha_fwd(
     head_size_rounded = round_multiple(head_size, 32)
     seqlen_q_rounded = round_multiple(seqlen_q, 128)
     seqlen_k_rounded = round_multiple(seqlen_k, 32)
+
+    assert head_size <= 256, "FlashAttention forward only supports head dimension at most 256"
+    assert head_size == head_size_rounded, "head_size must be rounded to 32"
 
     def splits_heuristic(num_tasks, num_sms, n_blocks):
         # splits when wave efficiency is low
@@ -769,6 +773,7 @@ def mha_fwd(
                         BLOCK_M = 8
                     else:
                         BLOCK_M = 16
+                    BLOCK_K = triton.next_power_of_2(D)
                     grid = lambda args: (triton.cdiv(B * H * Q, BLOCK_M),)
                     combine_kernel = flash_fwd_splitkv_combine_kernel[grid]
                     combine_args = {
@@ -782,6 +787,7 @@ def mha_fwd(
                         "lse_splits_ptr": lse_splits,
                         "n_splits": n_splits,
                         "BLOCK_M": BLOCK_M,
+                        "BLOCK_K": BLOCK_K,
                         "q_total": B * H * Q,
                         "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
                     }
