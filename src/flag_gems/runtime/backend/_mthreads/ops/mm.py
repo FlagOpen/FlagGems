@@ -267,8 +267,8 @@ def mm_sqmma(
         BLOCK_K,
         get_triton_type(ab_type),
         get_triton_type(c_type),
-        num_warps=num_warps,
-        num_stages=num_stages,
+        # num_warps=num_warps,
+        # num_stages=num_stages,
     )
     return C
 
@@ -278,6 +278,9 @@ def mm(a, b):
     b_dtype = b.dtype
     M, K = a.shape
     _, N = b.shape
+    if a_dtype != b_dtype:
+        a = a.to(b_dtype)
+        a_dtype = a.dtype
     use_sqmma = should_enable_sqmma(a_dtype, b_dtype, M, N, K)
     if use_sqmma:
         GROUP_M = 8

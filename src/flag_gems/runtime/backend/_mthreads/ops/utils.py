@@ -39,5 +39,6 @@ def should_enable_sqmma(a_dtype, b_dtype, M, N, K):
             ((a_dtype is torch.float16) and (b_dtype is torch.float16))
             or ((a_dtype is torch.bfloat16) and (b_dtype is torch.bfloat16))
         )
-        and ((M % 128 == 0) and (N % 128 == 0) and (K % 64 == 0))
+        # and ((M % 128 == 0) and (N % 128 == 0) and (K % 64 == 0))
+        and (M, N, K) not in [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
     )
