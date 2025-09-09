@@ -191,7 +191,10 @@ def test_accuracy_exp2(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.exp2(ref_inp)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_out = torch.exp2(ref_inp.cpu()).to(flag_gems.device)
+    else:
+        ref_out = torch.exp2(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2(inp)
 
@@ -206,7 +209,10 @@ def test_accuracy_exp2_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.exp2_(ref_inp)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_out = torch.exp2_(ref_inp.cpu()).to(flag_gems.device)
+    else:
+        ref_out = torch.exp2_(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2_(inp)
 
@@ -452,6 +458,41 @@ def test_accuracy_elu_backward(shape, dtype):
         )
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.celu
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_celu(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    alpha = torch.rand(1).item()
+
+    ref_inp = to_reference(inp, True)
+    ref_out = torch.nn.functional.celu(ref_inp, alpha)
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.celu(inp, alpha)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.inplace
+@pytest.mark.celu_
+@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_celu_(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    alpha = torch.rand(1).item()
+
+    res_inp = inp.clone().to(flag_gems.device)
+    inp_clone = inp.clone()
+    ref_inp = to_reference(inp_clone, True)
+    torch.nn.functional.celu_(ref_inp, alpha)
+
+    with flag_gems.use_gems():
+        torch.nn.functional.celu_(res_inp, alpha)
+
+    gems_assert_close(res_inp, ref_inp, dtype)
 
 
 @pytest.mark.relu
