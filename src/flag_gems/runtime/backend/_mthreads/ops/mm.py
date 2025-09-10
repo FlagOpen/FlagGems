@@ -254,9 +254,7 @@ def get_triton_type(elem_type):
     return type_map.get(elem_type, None)
 
 
-def mm_sqmma(
-    A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages
-):
+def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages):
     logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = "musa"
     a_type = A.dtype
