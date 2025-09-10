@@ -202,7 +202,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
             shape = list(inp.shape)
-            for i in range(inp.ndim):
+            for i in range(0, inp.dim()):
                 shape[i] = 1
             out = torch.empty(shape, dtype=torch.int64, device=inp.device)
         else:
