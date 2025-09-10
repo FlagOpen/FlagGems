@@ -33,6 +33,7 @@ def make_input(
     q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
     k = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
     v = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
+
     return q, k, v
 
 

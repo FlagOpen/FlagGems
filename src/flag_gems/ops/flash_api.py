@@ -767,9 +767,9 @@ def mha_fwd(
                     extra_args = {"blocks_per_split": triton.cdiv(n_blocks, n_splits)}
                     kernel = splitkv_kernel(*params.args(), **extra_args)
 
-                    if D % 128 == 0:
+                    if D >= 128:
                         BLOCK_M = 4
-                    elif D % 64 == 0:
+                    elif D >= 64:
                         BLOCK_M = 8
                     else:
                         BLOCK_M = 16
@@ -780,6 +780,8 @@ def mha_fwd(
                         "out_ptr": out,
                         "lse_ptr": lse,
                         "head_size": head_size,
+                        "out_split_stride": out_splits.stride(0),
+                        "lse_split_stride": lse_splits.stride(0),
                         "out_b_stride": out.stride(0),
                         "out_s_stride": out.stride(-3),
                         "out_h_stride": out.stride(-1),

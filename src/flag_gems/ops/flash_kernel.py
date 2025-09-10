@@ -884,9 +884,22 @@ def flash_fwd_splitkv_kernel(
             if d == BLOCK_K:
                 K = tl.load(p_k0 + kv_off, cache_modifier=".cg")
             else:
-                K = tl.load(p_k0 + kv_off, mask=dmask[:, None], cache_modifier=".cg")
+                K = tl.load(
+                    p_k0 + kv_off,
+                    mask=dmask[:, None],
+                    cache_modifier=".cg",
+                    other=0.0
+                )
             if PRE_LOAD_V:
-                V = tl.load(p_v0 + kv_off, cache_modifier=".cg")
+                if d == BLOCK_K:
+                    V = tl.load(p_v0 + kv_off, cache_modifier=".cg")
+                else:
+                    V = tl.load(
+                        p_v0 + kv_off,
+                        mask=dmask[None, :],
+                        cache_modifier=".cg",
+                        other=0.0
+                    )
             S = tl.dot(Q, K)
             S = apply_softcap(S, softcap, is_softcap)
             col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
@@ -911,7 +924,15 @@ def flash_fwd_splitkv_kernel(
             )
 
             if not PRE_LOAD_V:
-                V = tl.load(p_v0 + kv_off, cache_modifier=".cg")
+                if d == BLOCK_K:
+                    V = tl.load(p_v0 + kv_off, cache_modifier=".cg")
+                else:
+                    V = tl.load(
+                        p_v0 + kv_off,
+                        mask=dmask[None, :],
+                        cache_modifier=".cg",
+                        other=0.0
+                    )
             P = P.to(v_ptr.type.element_ty)
             acc_ = tl.dot(P, V, acc_)
     else:
@@ -933,13 +954,17 @@ def flash_fwd_splitkv_kernel(
             else:
                 kvmask = col_idx < seqlen_k
                 K = tl.load(
-                    p_k0 + kv_off, mask=dmask[:, None] & kvmask[None, :], cache_modifier=".cg"
+                    p_k0 + kv_off,
+                    mask=dmask[:, None] & kvmask[None, :],
+                    cache_modifier=".cg",
+                    other=0.0,
                 )
                 if PRE_LOAD_V:
                     V = tl.load(
                         p_v0 + kv_off,
                         mask=dmask[None, :] & kvmask[:, None],
                         cache_modifier=".cg",
+                        other=0.0,
                     )
 
             S = tl.dot(Q, K)
@@ -988,6 +1013,7 @@ def flash_fwd_splitkv_kernel(
                         p_v0 + kv_off,
                         mask=dmask[None, :] & kvmask[:, None],
                         cache_modifier=".cg",
+                        other=0.0,
                     )
             P = P.to(v_ptr.type.element_ty)
             acc_ = tl.dot(P, V, acc_)
@@ -1045,6 +1071,8 @@ def flash_fwd_splitkv_combine_kernel(
     out_splits_ptr,
     lse_splits_ptr,
     head_size: tl.constexpr,
+    out_split_stride,
+    lse_split_stride,
     out_b_stride,
     out_s_stride,
     out_h_stride,
@@ -1059,8 +1087,6 @@ def flash_fwd_splitkv_combine_kernel(
     lse_ptr += pid * BLOCK_M
     out_splits_ptr += pid * BLOCK_M * head_size
     out_ptr += pid * BLOCK_M * head_size
-    lse_split_stride = tl.num_programs(0) * BLOCK_M
-    out_split_stride = tl.num_programs(0) * BLOCK_M * head_size
 
     # Subtracting maximum from each of the split lse's for better numerical stability
     lse_split_offset = (
@@ -1069,7 +1095,7 @@ def flash_fwd_splitkv_combine_kernel(
     )
     lse_split_mask = (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None] < q_total) & (
         tl.arange(0, MAX_N_SPLITS)[None, :] < n_splits
-    )
+    ) 
     lse_splits = tl.load(
         lse_splits_ptr + lse_split_offset, mask=lse_split_mask, other=float("-inf")
     )
@@ -1096,7 +1122,7 @@ def flash_fwd_splitkv_combine_kernel(
         tl.arange(0, BLOCK_K)[None, None, :] < head_size
     )
     out_splits = tl.load(
-        out_splits_ptr + out_split_offset, mask=out_split_mask, other=0
+        out_splits_ptr + out_split_offset, mask=out_split_mask, other=0.0
     )
     out = tl.sum(Zi_Z[:, :, None] * out_splits, 1)
     out = out.to(out_ptr.type.element_ty)
