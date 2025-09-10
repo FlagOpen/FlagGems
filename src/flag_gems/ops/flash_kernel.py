@@ -428,7 +428,7 @@ def flash_fwd_kernel(
     row_idx = row_start + tl.arange(0, BLOCK_M)
     q_off = row_idx[:, None] * q_row_stride + tl.arange(0, BLOCK_K)[None, :]
     dmask = tl.arange(0, BLOCK_K) < d
-    qmask = dmask[None, :] & row_idx[:, None] < seqlen_q
+    qmask = dmask[None, :] & (row_idx[:, None] < seqlen_q)
     if IS_EVEN_MN & d == BLOCK_K:
         Q = tl.load(q_ptr + q_off, cache_modifier=".cg")
     else:

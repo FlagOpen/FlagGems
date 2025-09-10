@@ -33,7 +33,9 @@ def make_input(
     q = torch.empty(q_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
     k = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
     v = torch.empty(kv_shape, dtype=dtype, device=device).uniform_(-0.05, 0.05)
-
+    # q = torch.ones(q_shape, dtype=dtype, device=device)
+    # k = torch.rand(kv_shape, dtype=dtype, device=device)
+    # v = torch.ones(kv_shape, dtype=dtype, device=device)
     return q, k, v
 
 
@@ -351,7 +353,7 @@ def test_sdpa_legacy(
         (4, 8, 1024, 1024),
     ],
 )
-@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_sdpa_square_qk_even_mn(
@@ -380,7 +382,7 @@ def test_sdpa_square_qk_even_mn(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_sdpa_nonsquare_qk(
@@ -412,7 +414,7 @@ def test_sdpa_nonsquare_qk(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_fwd_nonsquare_qk(
@@ -447,7 +449,7 @@ def test_flash_fwd_nonsquare_qk(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
     [(4, 8, 2, 1024, 1024), (4, 4, 4, 1, 519)],
 )
-@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [True])
@@ -603,7 +605,7 @@ def test_flash_splitkv(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (8, 32, 1024, 1024), (8, 32, 1024, 128), (8, 32, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize(
     ["window_size_left", "window_size_right"], [(256, 0), (128, 128)]
 )
@@ -747,7 +749,7 @@ def ref_paged_attn(
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
-@pytest.mark.parametrize("head_size", [128, 256])
+@pytest.mark.parametrize("head_size", [128, 192, 256])
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -1545,7 +1547,7 @@ CASES = [
     # Case 1. A general case.
     ([(129, 871), (18, 280), (37, 988), (1023, 2304), (1, 257)], 256),
     # Case 2. Flash-decoding case.
-    # ([(1, 1023), (1, 879), (1, 778), (1, 1777)] * 100, 512),
+    ([(1, 1023), (1, 879), (1, 778), (1, 1777)] * 100, 512),
 ]
 NUM_HEADS = [(4, 4), (8, 2), (16, 2)]
 HEAD_SIZES = [128, 192, 256]
