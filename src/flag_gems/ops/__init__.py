@@ -393,6 +393,8 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
+    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "select_scatter",

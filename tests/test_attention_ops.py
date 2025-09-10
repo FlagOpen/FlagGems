@@ -363,32 +363,31 @@ def test_sdpa_legacy(
 @pytest.mark.parametrize(
     "batch, num_q_head, num_kv_head, q_seq_len, kv_seq_len, head_size, enable_gqa",
     [
-        # Note: Currently, only q_seq_len == kv_seq_len is supported for bwd
         (4, 8, 8, 1024, 1024, 64, False),
         (4, 8, 8, 1024, 1024, 128, False),
-        # (4, 8, 8, 2048, 256, 64, False),
-        # (4, 8, 8, 2048, 256, 128, False),
-        # (4, 8, 8, 17, 1030, 64, False),
-        # (4, 8, 8, 17, 1030, 128, False),
+        (4, 8, 8, 2048, 256, 64, False),
+        (4, 8, 8, 2048, 256, 128, False),
+        (4, 8, 8, 17, 1030, 64, False),
+        (4, 8, 8, 17, 1030, 128, False),
         # adopted from FlagAttention `test_attention_fwd`:
-        # (2, 4, 4, 512, 612, 128, False),
-        # (2, 4, 4, 1024, 1034, 64, False),
+        (2, 4, 4, 512, 612, 128, False),
+        (2, 4, 4, 1024, 1034, 64, False),
         (2, 4, 4, 2048, 2048, 32, False),
         (2, 4, 4, 4096, 4096, 16, False),
         (2, 4, 4, 4001, 4001, 32, False),
-        # (2, 4, 4, 4001, 4096, 64, False),
-        # (2, 4, 4, 4096, 4000, 128, False),
-        # (1, 2, 2, 8192, 8202, 16, False),
+        (2, 4, 4, 4001, 4096, 64, False),
+        (2, 4, 4, 4096, 4000, 128, False),
+        (1, 2, 2, 8192, 8202, 16, False),
         (1, 2, 2, 8192, 8192, 32, False),
         # test for mqa/gqa
-        # (2, 4, 2, 512, 612, 128, True),
-        # (2, 4, 1, 1024, 1034, 64, True),
+        (2, 4, 2, 512, 612, 128, True),
+        (2, 4, 1, 1024, 1034, 64, True),
         (2, 4, 2, 2048, 2048, 32, True),
         (2, 4, 1, 4096, 4096, 16, True),
         (2, 4, 2, 4001, 4001, 32, True),
-        # (2, 4, 1, 4001, 4096, 64, True),
-        # (2, 4, 2, 4096, 4000, 128, True),
-        # (1, 2, 1, 8192, 8202, 16, True),
+        (2, 4, 1, 4001, 4096, 64, True),
+        (2, 4, 2, 4096, 4000, 128, True),
+        (1, 2, 1, 8192, 8202, 16, True),
         (1, 2, 1, 8192, 8192, 32, True),
     ],
 )
@@ -443,9 +442,11 @@ def test_sdpa_legacy_backward(
     gems_q_grad = q.grad.clone() if q.grad is not None else None
     gems_k_grad = k.grad.clone() if k.grad is not None else None
     gems_v_grad = v.grad.clone() if v.grad is not None else None
-    gems_assert_close(gems_q_grad, torch_q_grad, dtype)
-    gems_assert_close(gems_k_grad, torch_k_grad, dtype)
-    gems_assert_close(gems_v_grad, torch_v_grad, dtype)
+
+    # NOTE: NaN may arise in the gradients, this behavior aligns with PyTorch's SDPA
+    gems_assert_close(gems_q_grad, torch_q_grad, dtype, equal_nan=True)
+    gems_assert_close(gems_k_grad, torch_k_grad, dtype, equal_nan=True)
+    gems_assert_close(gems_v_grad, torch_v_grad, dtype, equal_nan=True)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="TODOFIX")

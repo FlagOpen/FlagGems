@@ -327,27 +327,27 @@ def _attn_fwd(
 
 @triton.jit
 def _attn_bwd_preprocess(
-    O, DO, Delta, Z, H, N_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
+    O, DO, Delta, Z, H, Q_CTX, BLOCK_M: tl.constexpr, D_HEAD: tl.constexpr
 ):
     off_m = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
-    mask = off_m < N_CTX
+    mask = off_m < Q_CTX
 
     off_hz = tl.program_id(1)
     off_n = tl.arange(0, D_HEAD)
     # load
     o = tl.load(
-        O + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
+        O + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     )
     do = tl.load(
-        DO + off_hz * D_HEAD * N_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
+        DO + off_hz * D_HEAD * Q_CTX + off_m[:, None] * D_HEAD + off_n[None, :],
         mask=mask[:, None],
         other=0.0,
     ).to(tl.float32)
     delta = tl.sum(o * do, axis=1)
     # write-back
-    tl.store(Delta + off_hz * N_CTX + off_m, delta, mask=mask)
+    tl.store(Delta + off_hz * Q_CTX + off_m, delta, mask=mask)
 
 
 # The main inner-loop logic for computing dK and dV.
@@ -366,7 +366,8 @@ def _attn_bwd_dkdv(
     stride_tok,
     stride_d,  #
     H,
-    N_CTX,
+    Q_CTX,
+    KV_CTX,
     BLOCK_M1: tl.constexpr,  #
     BLOCK_N1: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,  #
@@ -379,7 +380,7 @@ def _attn_bwd_dkdv(
     # BLOCK_M1: 32
     # BLOCK_N1: 128
     offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < N_CTX  # (BLOCK_N1, )
+    offs_n_mask = offs_n < KV_CTX  # (BLOCK_N1, )
 
     offs_k = tl.arange(0, BLOCK_DMODEL)  # (BLOCK_DMODEL, )
 
@@ -389,7 +390,7 @@ def _attn_bwd_dkdv(
     step_m = BLOCK_M1
     for blk_idx in range(num_steps):
         offs_m = curr_m + tl.arange(0, BLOCK_M1)  # (BLOCK_M1, )
-        offs_m_mask = offs_m < N_CTX  # (BLOCK_M1, )
+        offs_m_mask = offs_m < Q_CTX  # (BLOCK_M1, )
 
         qT_ptrs = (
             Q + offs_m[None, :] * stride_tok + offs_k[:, None] * stride_d
@@ -412,7 +413,7 @@ def _attn_bwd_dkdv(
         pT = tl.math.exp2(qkT - m)
         # pT = tl.math.exp2(qkT - m[None, :])
 
-        mask = (offs_m < N_CTX)[None, :] & (offs_n < N_CTX)[
+        mask = (offs_m < Q_CTX)[None, :] & (offs_n < KV_CTX)[
             :, None
         ]  # (BLOCK_N1, BLOCK_M1)
         # Autoregressive masking.
@@ -460,7 +461,8 @@ def _attn_bwd_dq(
     stride_tok,
     stride_d,  #
     H,
-    N_CTX,  #
+    Q_CTX,  #
+    KV_CTX,  #
     BLOCK_M2: tl.constexpr,  #
     BLOCK_N2: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
@@ -471,7 +473,7 @@ def _attn_bwd_dq(
     MASK: tl.constexpr,
 ):
     offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < N_CTX
+    offs_m_mask = offs_m < Q_CTX
 
     offs_k = tl.arange(0, BLOCK_DMODEL)
     # D (= delta) is pre-divided by ds_scale.
@@ -482,7 +484,7 @@ def _attn_bwd_dq(
     step_n = BLOCK_N2
     for blk_idx in range(num_steps):
         offs_n = curr_n + tl.arange(0, BLOCK_N2)
-        offs_n_mask = offs_n < N_CTX
+        offs_n_mask = offs_n < KV_CTX
 
         kT_ptrs = K + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
         vT_ptrs = V + offs_n[None, :] * stride_tok + offs_k[:, None] * stride_d
@@ -491,7 +493,7 @@ def _attn_bwd_dq(
         vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         qk = tl.dot(query, kT)
         p = tl.math.exp2(qk - m)
-        mask = (offs_m < N_CTX)[:, None] & (offs_n < N_CTX)[None, :]
+        mask = (offs_m < Q_CTX)[:, None] & (offs_n < KV_CTX)[None, :]
         # Autoregressive masking.
         if MASK:
             # mask = (offs_m[:, None] >= offs_n[None, :])
@@ -530,7 +532,8 @@ def _attn_bwd(
     kv_stride_z,
     kv_stride_h,  #
     H,  # query head num
-    N_CTX,  #
+    Q_CTX,  #
+    KV_CTX,  #
     kv_head_num,  #
     GROUP_HEAD: tl.constexpr,  #
     BLOCK_M1: tl.constexpr,  #
@@ -540,12 +543,12 @@ def _attn_bwd(
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
 ):
-    tl.device_assert(N_CTX % BLOCK_M1 == 0, "N_CTX must be a multiple of BLOCK_M1.")
+    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
 
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
     bhid = tl.program_id(2)
-    off_chz = (bhid * N_CTX).to(tl.int64)
+    off_chz = (bhid * Q_CTX).to(tl.int64)
     batch_id = bhid // H
     q_head_id = bhid % H
     kv_head_id = q_head_id // GROUP_HEAD
@@ -573,7 +576,7 @@ def _attn_bwd(
 
     MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
     offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < N_CTX
+    offs_n_mask = offs_n < KV_CTX
 
     dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
     dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
@@ -605,7 +608,8 @@ def _attn_bwd(
         stride_tok,
         stride_d,  #
         H,
-        N_CTX,  #
+        Q_CTX,  #
+        KV_CTX,  #
         MASK_BLOCK_M1,
         BLOCK_N1,
         BLOCK_DMODEL,  #
@@ -617,10 +621,10 @@ def _attn_bwd(
 
     # Compute dK and dV for non-masked blocks.
     start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = N_CTX - start_m
+    remaining_m = Q_CTX - start_m
     num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
 
-    if num_steps > 0 and start_m < N_CTX:
+    if num_steps > 0 and start_m < Q_CTX:
         dk, dv = _attn_bwd_dkdv(  #
             dk,
             dv,  #
@@ -634,7 +638,8 @@ def _attn_bwd(
             stride_tok,
             stride_d,  #
             H,
-            N_CTX,  #
+            Q_CTX,  #
+            KV_CTX,  #
             BLOCK_M1,
             BLOCK_N1,
             BLOCK_DMODEL,  #
@@ -656,11 +661,11 @@ def _attn_bwd(
     # THIS BLOCK DOES DQ:
     MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
     start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, N_CTX)  # Ensure end_n does not exceed N_CTX
+    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
     num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
     offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < N_CTX
+    offs_m_mask = offs_m < Q_CTX
 
     query = tl.load(
         Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
@@ -695,7 +700,8 @@ def _attn_bwd(
             stride_tok,
             stride_d,  #
             H,
-            N_CTX,  #
+            Q_CTX,  #
+            KV_CTX,  #
             BLOCK_M2,
             MASK_BLOCK_N2,
             BLOCK_DMODEL,  #
@@ -721,7 +727,8 @@ def _attn_bwd(
             stride_tok,
             stride_d,  #
             H,
-            N_CTX,  #
+            Q_CTX,  #
+            KV_CTX,  #
             BLOCK_M2,
             BLOCK_N2,
             BLOCK_DMODEL,  #
@@ -761,7 +768,7 @@ def scaled_dot_product_attention(
 
 
 def scaled_dot_product_attention_backward(
-    grad_output,
+    do,
     query,
     key,
     value,
@@ -787,11 +794,6 @@ def scaled_dot_product_attention_backward(
     else:
         sm_scale = scale
 
-    do = grad_output
-    batch, q_head_num, seq_len, head_size = query.shape
-    kv_head_num = key.shape[1]
-    group_head = q_head_num // kv_head_num
-
     assert do.is_contiguous()
     assert (
         query.is_contiguous()
@@ -802,13 +804,10 @@ def scaled_dot_product_attention_backward(
     assert query.stride() == o.stride() == do.stride()
     assert key.stride() == value.stride()
 
-    # NOTE that dk & dv always have the same number of heads as q
-    dq = torch.empty_like(query).contiguous()
-    dk = torch.empty_like(query).contiguous()
-    dv = torch.empty_like(query).contiguous()
-
     BLOCK_DMODEL = HEAD_DIM_K
-    BATCH, N_HEAD, N_CTX = query.shape[:3]
+    BATCH, Q_HEAD, Q_CTX = query.shape[:3]
+    _, KV_HEAD, KV_CTX = key.shape[:3]
+    group_head = Q_HEAD // KV_HEAD
 
     NUM_WARPS, NUM_STAGES = 4, 1
     BLOCK_M1, BLOCK_N1, BLOCK_M2, BLOCK_N2 = 32, 128, 128, 32
@@ -824,24 +823,29 @@ def scaled_dot_product_attention_backward(
 
     # PRE_BLOCK = 32
     # assert N_CTX % PRE_BLOCK == 0
-    # pre_grid = (N_CTX // PRE_BLOCK, BATCH * N_HEAD)
-
-    pre_grid = (triton.cdiv(N_CTX, PRE_BLOCK), BATCH * N_HEAD)
+    # pre_grid = (N_CTX // PRE_BLOCK, BATCH * Q_HEAD)
+    pre_grid = (triton.cdiv(Q_CTX, PRE_BLOCK), BATCH * Q_HEAD)
 
     delta = torch.empty_like(M)
+
+    # NOTE that dk & dv always have the same number of heads as q
+    dq = torch.empty_like(query).contiguous()
+    dk = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_K)).to(key.device).contiguous()
+    dv = torch.empty((BATCH, Q_HEAD, KV_CTX, HEAD_DIM_V)).to(value.device).contiguous()
+
     _attn_bwd_preprocess[pre_grid](
         o,
         do,  #
         delta,  #
         BATCH,
-        N_HEAD,
-        N_CTX,  #
+        Q_HEAD,
+        Q_CTX,  #
         BLOCK_M=PRE_BLOCK,
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    grid = (triton.cdiv(N_CTX, BLOCK_N1), 1, BATCH * N_HEAD)
-    logger.info(f"{triton.cdiv(N_CTX, BLOCK_N1)=}")
+    grid = (triton.cdiv(Q_CTX, BLOCK_N1), 1, BATCH * Q_HEAD)
+    logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
     logger.info(f"{M.shape=}")
 
     _attn_bwd[grid](
@@ -861,9 +865,10 @@ def scaled_dot_product_attention_backward(
         query.stride(3),  #
         key.stride(0),
         key.stride(1),  #
-        N_HEAD,
-        N_CTX,  #
-        kv_head_num,  #
+        Q_HEAD,
+        Q_CTX,  #
+        KV_CTX,  #
+        KV_HEAD,  #
         GROUP_HEAD=group_head,  #
         BLOCK_M1=BLOCK_M1,
         BLOCK_N1=BLOCK_N1,  #
@@ -876,8 +881,8 @@ def scaled_dot_product_attention_backward(
     )
 
     if group_head > 1:
-        dk = dk.reshape(batch, q_head_num // group_head, group_head, seq_len, head_size)
-        dv = dv.reshape(batch, q_head_num // group_head, group_head, seq_len, head_size)
+        dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
+        dv = dv.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_V)
         dk = dk.sum(dim=2)
         dv = dv.sum(dim=2)
 
