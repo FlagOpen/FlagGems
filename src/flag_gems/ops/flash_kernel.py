@@ -482,7 +482,7 @@ def flash_fwd_kernel(
                 kvmask = col_idx < seqlen_k
                 K = tl.load(p_bk0 + off, mask=kvmask[None, :] & dmask[:, None], cache_modifier=".cg")
                 if PRE_LOAD_V:
-                    V = tl.load(p_bv0 + off, mask=kvmask[None, :] & dmask[:, None], cache_modifier=".cg")
+                    V = tl.load(p_bv0 + off, mask=kvmask[:, None] & dmask[None, :], cache_modifier=".cg")
             S = tl.dot(Q, K, allow_tf32=False)
             S = apply_softcap(S, softcap, is_softcap)
             col_idx = col_start + tl.arange(0, BLOCK_N)
