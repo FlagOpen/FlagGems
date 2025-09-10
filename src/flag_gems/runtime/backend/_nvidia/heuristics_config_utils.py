@@ -78,8 +78,6 @@ def argmin_heur_num_warps_non_inner(args):
 
     if tile_n <= 32:
         num_warps = 2
-    elif tile_n <= 64:
-        num_warps = 4
     elif tile_n <= 128:
         num_warps = 4
     else:
