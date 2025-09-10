@@ -11,8 +11,10 @@ from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.attention import (
+    cascade_attention,
     flash_attention_forward,
     flash_attn_varlen_func,
+    merge_attn_states,
     scaled_dot_product_attention,
 )
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
@@ -289,6 +291,8 @@ __all__ = [
     "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "cascade_attention",
+    "merge_attn_states",
     "flip",
     "floor_divide",
     "floor_divide_",
