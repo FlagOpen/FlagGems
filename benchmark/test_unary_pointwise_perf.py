@@ -54,6 +54,8 @@ forward_operations = [
     # Dropout
     ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
+    ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
+    ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
@@ -63,14 +65,8 @@ forward_operations = [
     ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu", torch.nn.functional.silu, FLOAT_DTYPES),
     # Trigonometric operations
-    *(
-        []
-        if vendor_name == "iluvatar"  # FIXME(iluvatar): large shapes not support now.
-        else [
-            ("cos", torch.cos, FLOAT_DTYPES),
-            ("sin", torch.sin, FLOAT_DTYPES),
-        ]
-    ),
+    ("cos", torch.cos, FLOAT_DTYPES),
+    ("sin", torch.sin, FLOAT_DTYPES),
     ("tanh", torch.tanh, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not", torch.bitwise_not, INT_DTYPES),
