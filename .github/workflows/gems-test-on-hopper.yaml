@@ -30,9 +30,9 @@ on:
       - 'Makefile'
       - '**.yaml'
 
-env:
-  http_proxy: ${{ secrets.HTTP_PROXY }}
-  https_proxy: ${{ secrets.HTTPS_PROXY }}
+# env:
+#   http_proxy: ${{ secrets.HTTP_PROXY }}
+#   https_proxy: ${{ secrets.HTTPS_PROXY }}
 
 jobs:
   op-test-on-hopper:
@@ -43,6 +43,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        runs: |
+          export http_proxy=${{ secrets.HTTP_PROXY }}
+          export https_proxy=${{ secrets.HTTPS_PROXY }}
+
 
       - name: FlagGems reduction ops on hopper
         shell: bash
