@@ -28,6 +28,10 @@ on:
       - '**/*.mk'
       - 'Makefile'
 
+env:
+  HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+  HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+
 jobs:
   op-test-on-hopper:
     runs-on: hopper
