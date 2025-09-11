@@ -469,10 +469,10 @@ def test_accuracy_clamp_tensor_(shape, isnone, dtype):
 
 @pytest.mark.clamp
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("mini", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_clamp_min(shape, mini, dtype):
+def test_accuracy_clamp_min(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mini = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
     ref_mini = to_reference(mini)
 
@@ -486,10 +486,10 @@ def test_accuracy_clamp_min(shape, mini, dtype):
 @pytest.mark.inplace
 @pytest.mark.clamp_
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("mini", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_clamp_min_(shape, mini, dtype):
+def test_accuracy_clamp_min_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    mini = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone())
     ref_mini = to_reference(mini)
 
