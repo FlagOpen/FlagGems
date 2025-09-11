@@ -999,8 +999,6 @@ index:
     block_size1:
       - 1024
       - 2048
-      - 4096
-
 avg_pool2d:
   - gen: true
     param_map:
