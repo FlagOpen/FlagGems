@@ -534,5 +534,4 @@ def test_perf_avg_pool2d():
         torch_op=torch.nn.functional.avg_pool2d,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.avg_pool2d)
     bench.run()
