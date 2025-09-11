@@ -51,6 +51,7 @@ def enable(
             ("all.dim", all_dim),
             ("all.dims", all_dims),
             ("allclose", allclose),
+            ("avg_pool2d", avg_pool2d),
             ("amax", amax),
             ("angle", angle),
             ("any", any),
