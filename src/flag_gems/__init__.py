@@ -47,6 +47,7 @@ def enable(
             ("add_.Tensor", add_),
             ("addcdiv", addcdiv),
             ("addmm", addmm),
+            ("addmm.out", addmm_out),
             ("all", all),
             ("all.dim", all_dim),
             ("all.dims", all_dims),
@@ -300,6 +301,7 @@ def enable(
             ("upsample_nearest2d", upsample_nearest2d),
             ("var_mean.correction", var_mean),
             ("vdot", vdot),
+            ("addr", addr),
             ("vstack", vstack),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),
@@ -308,9 +310,8 @@ def enable(
             ("zeros", zeros),
             ("zeros_like", zeros_like),
         ),
-        user_unused_ops_list=list(
-            set([] if unused is None else unused) | set(aten_patch_list)
-        ),
+        user_unused_ops_list=list(set(unused or [])),
+        cpp_patched_ops_list=list(set(aten_patch_list)),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
