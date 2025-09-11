@@ -202,9 +202,7 @@ def mm_sqmma_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
-    a_type: tl.constexpr,
-    b_type: tl.constexpr,
-    d_type: tl.constexpr,
+    ab_dtype: tl.constexpr,
 ):
     pid = tle.program_id(0)
     grid_m = tl.cdiv(M, BLOCK_SIZE_M)
@@ -221,27 +219,23 @@ def mm_sqmma_kernel(
     offs_bn = offs_bn.to(tl.int32)
     offs_k = offs_k.to(tl.int32)
     accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    tme_load_a_dtype = a_type
-    tme_load_b_dtype = b_type
+    tme_load_ab_dtype = ab_dtype
     for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
         a = tl._experimental_descriptor_load(
             a_desc_ptr,
             [offs_am, offs_k],
             [BLOCK_SIZE_M, BLOCK_SIZE_K],
-            tme_load_a_dtype,
+            tme_load_ab_dtype,
         )
         b = tl._experimental_descriptor_load(
             b_desc_ptr,
             [offs_k, offs_bn],
             [BLOCK_SIZE_K, BLOCK_SIZE_N],
-            tme_load_b_dtype,
+            tme_load_ab_dtype,
         )
-        if a.dtype != b.dtype:
-            a = a.to(d_type)
-            b = b.to(d_type)
         accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
         offs_k += BLOCK_SIZE_K
-    accumulator = accumulator.to(d_type)
+    accumulator = accumulator.to(tl.float16)
     tl._experimental_descriptor_store(c_desc_ptr, accumulator, [offs_am, offs_bn])
 
 
@@ -259,8 +253,8 @@ def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_s
     device = "musa"
     a_type = A.dtype
     b_type = B.dtype
-    c_type = get_higher_dtype(a_type, b_type)
-    C = torch.empty((M, N), dtype=c_type, device=device)
+    assert a_type == b_type, "Mat A and Mat B should have the same dtype"
+    C = torch.empty((M, N), dtype=torch.float16, device=device)
     desc_a = create_tma_device_descriptor(A, BLOCK_M, BLOCK_K, device)
     desc_b = create_tma_device_descriptor(B, BLOCK_K, BLOCK_N, device)
     desc_c = create_tma_device_descriptor(C, BLOCK_M, BLOCK_N, device)
@@ -276,11 +270,12 @@ def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_s
         BLOCK_N,
         BLOCK_K,
         get_triton_type(a_type),
-        get_triton_type(b_type),
-        get_triton_type(c_type),
         num_warps=num_warps,
         num_stages=num_stages,
     )
+
+    if a_type == torch.bfloat16:
+        C = C.to(torch.bfloat16)
     return C
 
 
