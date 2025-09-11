@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["beta", "alpha"])
 def addr_kernel(
     input_ptr,
     vec1_ptr,
@@ -62,7 +62,7 @@ def addr_kernel(
     tl.store(output_ptrs, result, mask=mask_2d)
 
 
-def addr(input, vec1, vec2, beta=1, alpha=1, out=None):
+def addr(input, vec1, vec2, *, beta=1, alpha=1):
     logger.debug("GEMS ADDR")
     if vec1.dim() != 1 or vec2.dim() != 1:
         raise ValueError("addr: expected 1-D vectors")
@@ -71,10 +71,14 @@ def addr(input, vec1, vec2, beta=1, alpha=1, out=None):
     N = vec2.shape[0]
     output_shape = (M, N)
 
+    try:
+        input_broadcasted = torch.broadcast_to(input, output_shape)
+    except RuntimeError:
+        raise ValueError(
+            f"addr: input tensor of shape {input.shape} cannot be broadcast to output shape {output_shape}"
+        )
     out = torch.empty(output_shape, device=input.device, dtype=input.dtype)
 
-    vec1_c = vec1.contiguous()
-    vec2_c = vec2.contiguous()
     BLOCK_SIZE_M = 32
     BLOCK_SIZE_N = 32
     grid = lambda META: (
@@ -83,18 +87,18 @@ def addr(input, vec1, vec2, beta=1, alpha=1, out=None):
     )
     with torch_device_fn.device(input.device):
         addr_kernel[grid](
-            input,
-            vec1_c,
-            vec2_c,
+            input_broadcasted,
+            vec1,
+            vec2,
             out,
             beta,
             alpha,
             M,
             N,
-            input.stride(0),
-            input.stride(1),
-            vec1_c.stride(0),
-            vec2_c.stride(0),
+            input_broadcasted.stride(0),
+            input_broadcasted.stride(1),
+            vec1.stride(0),
+            vec2.stride(0),
             out.stride(0),
             out.stride(1),
             BLOCK_SIZE_M=BLOCK_SIZE_M,

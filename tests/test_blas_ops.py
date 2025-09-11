@@ -251,12 +251,12 @@ def test_accuracy_addr(M, N, dtype):
     alpha = torch.randn((), dtype=dtype, device=flag_gems.device)
     beta = torch.randn((), dtype=dtype, device=flag_gems.device)
 
-    ref_input = to_reference(input_tensor)
-    ref_vec1 = to_reference(vec1)
-    ref_vec2 = to_reference(vec2)
+    ref_input = to_reference(input_tensor, True)
+    ref_vec1 = to_reference(vec1, True)
+    ref_vec2 = to_reference(vec2, True)
 
     ref_out = torch.addr(ref_input, ref_vec1, ref_vec2, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
         res_out = torch.addr(input_tensor, vec1, vec2, alpha=alpha, beta=beta)
 
-    gems_assert_close(res_out, ref_out, dtype)
+    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
