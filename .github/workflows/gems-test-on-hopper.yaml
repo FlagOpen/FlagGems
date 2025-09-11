@@ -3,32 +3,9 @@ name: flag-gems-test-on-hopper
 on:
   push:
     branches: [ "master" ]
-    paths:
-      - '**.py'
-      - '**.cpp'
-      - '**.cu'
-      - '**.h'
-      - '**.hpp'
-      - '**.cc'
-      - 'CMakeLists.txt'
-      - '**/*.cmake'
-      - '**/*.mk'
-      - 'Makefile'
-      - '**.yaml'
   pull_request:
     branches: [ "master" ]
-    paths:
-      - '**.py'
-      - '**.cpp'
-      - '**.cu'
-      - '**.h'
-      - '**.hpp'
-      - '**.cc'
-      - 'CMakeLists.txt'
-      - '**/*.cmake'
-      - '**/*.mk'
-      - 'Makefile'
-      - '**.yaml'
+
 
 # env:
 #   http_proxy: ${{ secrets.HTTP_PROXY }}
