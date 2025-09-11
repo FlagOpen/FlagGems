@@ -492,3 +492,47 @@ def test_perf_contiguous():
     )
 
     bench.run()
+
+
+class Pool2DBenchmark(GenericBenchmark):
+    def set_more_shapes(self):
+        return None
+
+
+@pytest.mark.avg_pool2d
+def test_perf_avg_pool2d():
+    def avg_pool2d_input_fn(shape, dtype, device):
+        (
+            batch,
+            input_c,
+            input_h,
+            input_w,
+            kernel_size,
+            stride,
+            padding,
+            # ceil_mode,
+            # count_include_pad,
+            # divisor_override,
+        ) = shape
+        input_shape = (batch, input_c, input_h, input_w)
+        input = torch.randn(size=input_shape, device=device, dtype=dtype)
+
+        yield {
+            "input": input,
+            "kernel_size": kernel_size,
+            "stride": stride,
+            "padding": padding,
+            # "ceil_mode": ceil_mode,
+            # "count_include_pad": count_include_pad,
+            # "divisor_override": divisor_override,
+        },
+
+    torch.backends.cudnn.allow_tf32 = False
+    bench = Pool2DBenchmark(
+        input_fn=avg_pool2d_input_fn,
+        op_name="avg_pool2d",
+        torch_op=torch.nn.functional.avg_pool2d,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.avg_pool2d)
+    bench.run()
