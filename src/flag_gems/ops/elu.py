@@ -42,7 +42,7 @@ def elu_backward_kernel_with_result(grad_output, alpha, scale, input_scale, y):
     grad_input = tl.where(
         y > 0,
         grad_output * scale * input_scale,
-        grad_output * (y * input_scale + scale * alpha * input_scale),
+        grad_output * ((y + scale * alpha) * input_scale),
     )
     return grad_input
 
