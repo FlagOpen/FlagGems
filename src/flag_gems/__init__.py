@@ -190,6 +190,7 @@ def enable(
             ("max", max),
             ("max.dim", max_dim),
             ("maximum", maximum),
+            ("max_pool2d", max_pool2d),
             ("mean", mean),
             ("mean.dim", mean_dim),
             ("min", min),
