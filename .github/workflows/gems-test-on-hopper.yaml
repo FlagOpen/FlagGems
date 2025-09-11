@@ -3,9 +3,32 @@ name: flag-gems-test-on-hopper
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.cu'
+      - '**.h'
+      - '**.hpp'
+      - '**.cc'
+      - 'CMakeLists.txt'
+      - '**/*.cmake'
+      - '**/*.mk'
+      - 'Makefile'
+      - '**.yaml'
   pull_request:
     branches: [ "master" ]
-
+    paths:
+      - '**.py'
+      - '**.cpp'
+      - '**.cu'
+      - '**.h'
+      - '**.hpp'
+      - '**.cc'
+      - 'CMakeLists.txt'
+      - '**/*.cmake'
+      - '**/*.mk'
+      - 'Makefile'
+      - '**.yaml'
 
 # env:
 #   http_proxy: ${{ secrets.HTTP_PROXY }}
@@ -20,7 +43,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        runs: |
+        run: |
           export http_proxy=${{ secrets.HTTP_PROXY }}
           export https_proxy=${{ secrets.HTTPS_PROXY }}
 
