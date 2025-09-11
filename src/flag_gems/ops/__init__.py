@@ -105,6 +105,7 @@ from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
+from flag_gems.ops.max_pool2d import max_pool2d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
@@ -340,6 +341,7 @@ __all__ = [
     "max",
     "max_dim",
     "maximum",
+    "max_pool2d",
     "mean",
     "mean_dim",
     "min",
