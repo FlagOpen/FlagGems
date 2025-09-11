@@ -31,8 +31,8 @@ on:
       - '**.yaml'
 
 env:
-  HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-  HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+  http_proxy: ${{ secrets.HTTP_PROXY }}
+  https_proxy: ${{ secrets.HTTPS_PROXY }}
 
 jobs:
   op-test-on-hopper:
