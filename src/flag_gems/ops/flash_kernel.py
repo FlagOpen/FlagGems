@@ -454,8 +454,12 @@ def flash_fwd_kernel(
     v_ptr += bid * k_batch_stride
     v_ptr += (hid // h_hk_ratio) * k_head_stride
 
-    k_offset = tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
-    v_offset = tl.arange(0, BLOCK_N)[:, None] * k_row_stride + tl.arange(0, BLOCK_K)[None, :]
+    k_offset = (
+        tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
+    )
+    v_offset = (
+        tl.arange(0, BLOCK_N)[:, None] * k_row_stride + tl.arange(0, BLOCK_K)[None, :]
+    )
 
     p_bk0 = k_ptr + k_offset
     p_bv0 = v_ptr + v_offset
@@ -480,9 +484,17 @@ def flash_fwd_kernel(
             else:
                 col_idx = col_start + tl.arange(0, BLOCK_N)
                 kvmask = col_idx < seqlen_k
-                K = tl.load(p_bk0 + off, mask=kvmask[None, :] & dmask[:, None], cache_modifier=".cg")
+                K = tl.load(
+                    p_bk0 + off,
+                    mask=kvmask[None, :] & dmask[:, None],
+                    cache_modifier=".cg",
+                )
                 if PRE_LOAD_V:
-                    V = tl.load(p_bv0 + off, mask=kvmask[:, None] & dmask[None, :], cache_modifier=".cg")
+                    V = tl.load(
+                        p_bv0 + off,
+                        mask=kvmask[:, None] & dmask[None, :],
+                        cache_modifier=".cg",
+                    )
             S = tl.dot(Q, K, allow_tf32=False)
             S = apply_softcap(S, softcap, is_softcap)
             col_idx = col_start + tl.arange(0, BLOCK_N)
@@ -575,7 +587,11 @@ def flash_fwd_kernel(
                     V = tl.load(p_bv0 + off, mask=kvmask[:, None], cache_modifier=".cg")
                 else:
                     kvmask = col_idx < seqlen_k
-                    V = tl.load(p_bv0 + off, mask=kvmask[:, None] & dmask[None, :], cache_modifier=".cg")
+                    V = tl.load(
+                        p_bv0 + off,
+                        mask=kvmask[:, None] & dmask[None, :],
+                        cache_modifier=".cg",
+                    )
             acc_ = tl.dot(P, V, acc_, allow_tf32=False)
 
     for col_start in tl.range(
@@ -865,10 +881,14 @@ def flash_fwd_splitkv_kernel(
     v_ptr += bid * k_batch_stride
     v_ptr += (hid // h_hk_ratio) * k_head_stride
 
-    k_offset = tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
+    k_offset = (
+        tl.arange(0, BLOCK_N)[None, :] * k_row_stride + tl.arange(0, BLOCK_K)[:, None]
+    )
     p_k0 = k_ptr + k_offset
 
-    v_offset = tl.arange(0, BLOCK_N)[:, None] * k_row_stride + tl.arange(0, BLOCK_K)[None, :]
+    v_offset = (
+        tl.arange(0, BLOCK_N)[:, None] * k_row_stride + tl.arange(0, BLOCK_K)[None, :]
+    )
     p_v0 = v_ptr + v_offset
 
     acc_ = tl.zeros((BLOCK_M, BLOCK_K), dtype=tl.float32)
@@ -885,10 +905,7 @@ def flash_fwd_splitkv_kernel(
                 K = tl.load(p_k0 + kv_off, cache_modifier=".cg")
             else:
                 K = tl.load(
-                    p_k0 + kv_off,
-                    mask=dmask[:, None],
-                    cache_modifier=".cg",
-                    other=0.0
+                    p_k0 + kv_off, mask=dmask[:, None], cache_modifier=".cg", other=0.0
                 )
             if PRE_LOAD_V:
                 if d == BLOCK_K:
@@ -898,7 +915,7 @@ def flash_fwd_splitkv_kernel(
                         p_v0 + kv_off,
                         mask=dmask[None, :],
                         cache_modifier=".cg",
-                        other=0.0
+                        other=0.0,
                     )
             S = tl.dot(Q, K)
             S = apply_softcap(S, softcap, is_softcap)
@@ -931,7 +948,7 @@ def flash_fwd_splitkv_kernel(
                         p_v0 + kv_off,
                         mask=dmask[None, :],
                         cache_modifier=".cg",
-                        other=0.0
+                        other=0.0,
                     )
             P = P.to(v_ptr.type.element_ty)
             acc_ = tl.dot(P, V, acc_)
@@ -1095,7 +1112,7 @@ def flash_fwd_splitkv_combine_kernel(
     )
     lse_split_mask = (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None] < q_total) & (
         tl.arange(0, MAX_N_SPLITS)[None, :] < n_splits
-    ) 
+    )
     lse_splits = tl.load(
         lse_splits_ptr + lse_split_offset, mask=lse_split_mask, other=float("-inf")
     )
@@ -1117,9 +1134,9 @@ def flash_fwd_splitkv_combine_kernel(
         + tl.arange(0, BLOCK_K)[None, None, :]
     )
     out_split_mask = (
-        pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None, None] < q_total
-    ) & (tl.arange(0, MAX_N_SPLITS)[None, :, None] < n_splits) & (
-        tl.arange(0, BLOCK_K)[None, None, :] < head_size
+        (pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None, None] < q_total)
+        & (tl.arange(0, MAX_N_SPLITS)[None, :, None] < n_splits)
+        & (tl.arange(0, BLOCK_K)[None, None, :] < head_size)
     )
     out_splits = tl.load(
         out_splits_ptr + out_split_offset, mask=out_split_mask, other=0.0
@@ -1146,13 +1163,24 @@ def virtual_to_cache(virtual_index, page_table_ptr, block_size):
 
 @triton.jit
 def load_from_kvcache(
-    i, page_table_ptr, k_ptr_base, v_ptr_base, block_size, d, k_row_stride, BLOCK_K: tl.constexpr
+    i,
+    page_table_ptr,
+    k_ptr_base,
+    v_ptr_base,
+    block_size,
+    d,
+    k_row_stride,
+    BLOCK_K: tl.constexpr,
 ):
     kvcache_idx = virtual_to_cache(i, page_table_ptr, block_size)
     k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
     v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
-    bK = tl.load(k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0)
-    bV = tl.load(v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0)
+    bK = tl.load(
+        k_ptr_base + k_offset, mask=tl.arange(0, BLOCK_K)[:, None] < d, other=0.0
+    )
+    bV = tl.load(
+        v_ptr_base + v_offset, mask=tl.arange(0, BLOCK_K)[None, :] < d, other=0.0
+    )
     return bK, bV
 
 
@@ -1270,8 +1298,6 @@ def flash_varlen_fwd_kernel(
     else:
         k_len_cache = seqlen_k
         # k_offset = bid * k_batch_stride
-
-    # v_head_offset = (hid / h_hk_ratio) * k_head_stride
 
     if is_seqused_k:
         k_len = tl.load(seqused_k_ptr + bid).to(tl.int32)

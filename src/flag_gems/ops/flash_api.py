@@ -630,7 +630,9 @@ def mha_fwd(
     seqlen_q_rounded = round_multiple(seqlen_q, 128)
     seqlen_k_rounded = round_multiple(seqlen_k, 32)
 
-    assert head_size <= 256, "FlashAttention forward only supports head dimension at most 256"
+    assert (
+        head_size <= 256
+    ), "FlashAttention forward only supports head dimension at most 256"
     assert head_size == head_size_rounded, "head_size must be rounded to 32"
 
     def splits_heuristic(num_tasks, num_sms, n_blocks):
@@ -739,14 +741,6 @@ def mha_fwd(
                 BN = block_n_splitkv_heuristic(D)
                 n_blocks = triton.cdiv(seqlen_k, BN)
                 n_splits = splits_heuristic(n_tasks, num_sms, n_blocks)
-
-                # if _debug:
-                #     n_splits = 32
-                #     n_blocks = triton.cdiv(K, BN)
-                #     blocks_per_split = triton.cdiv(n_blocks, n_splits)
-                #     print("block_n:", BN)
-                #     print("n_splits:", n_splits)
-                #     print("blocks_per_split", blocks_per_split)
 
                 if n_splits > 1:
                     logger.debug("kernel: flash_fwd_splitkv")
