@@ -22,16 +22,13 @@ def argmin_heur_tile_k(args):
 
     K = args["K"]
     M = args["M"]
-    dtype = args.get("dtype", "fp16")
+    dtype = "fp32" if args["inp"].dtype == torch.float32 else "fp16"
 
     if M == 64 and K == 512:
         return 64 if dtype == "fp32" else 128
 
     if K <= 128:
-        tile_k = 1
-        while tile_k * 2 <= K:
-            tile_k *= 2
-        return tile_k
+        return 1 << (K.bit_length() - 1) if K > 0 else 1
 
     tile_k = 64
     upper_bound = min(K, MAX_TILE_K)
@@ -74,7 +71,7 @@ def argmin_heur_one_tile_per_cta(args):
 
 def argmin_heur_num_warps_non_inner(args):
     tile_n = args["TILE_N"]
-    dtype = args.get("dtype", "fp16")
+    dtype = "fp32" if args["inp"].dtype == torch.float32 else "fp16"
 
     if tile_n <= 32:
         num_warps = 2
