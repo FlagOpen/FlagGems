@@ -1151,16 +1151,26 @@ def flash_fwd_splitkv_combine_kernel(
 
 
 @triton.jit
-def virtual_to_cache(virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check: tl.constexpr=False):
+def virtual_to_cache(
+    virtual_index,
+    max_virtual_index,
+    page_table_ptr,
+    block_size,
+    boundary_check: tl.constexpr = False,
+):
     # virtual_index is the kv sequence index in the current batch element
     # page_table_ptr is already pointed at current batch element's block table entry
     # block_size is the size of each block in the page table
-    if boundary_check:
-        mask = virtual_index < max_virtual_index
-        virtual_index = tl.where(mask, virtual_index, 0)
     virtual_page_index = virtual_index // block_size
     page_offset = virtual_index % block_size
-    page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
+    if boundary_check:
+        page_block_index = tl.load(
+            page_table_ptr + virtual_page_index,
+            mask=virtual_index < max_virtual_index,
+            other=0,
+        ).to(tl.int32)
+    else:
+        page_block_index = tl.load(page_table_ptr + virtual_page_index).to(tl.int32)
     return page_block_index * block_size + page_offset
 
 
@@ -1172,16 +1182,16 @@ def load_from_kvcache(
     k_ptr_base,
     v_ptr_base,
     block_size,
-    d,
+    d: tl.constexpr,
     k_row_stride,
     BLOCK_K: tl.constexpr,
-    boundary_check: tl.constexpr=False
+    boundary_check: tl.constexpr = False,
 ):
-    kvcache_idx = virtual_to_cache(virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check)
+    kvcache_idx = virtual_to_cache(
+        virtual_index, max_virtual_index, page_table_ptr, block_size, boundary_check
+    )
     k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * k_row_stride
     v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * k_row_stride
-    k_offset = tl.arange(0, BLOCK_K)[:, None] + kvcache_idx[None, :] * 0
-    v_offset = tl.arange(0, BLOCK_K)[None, :] + kvcache_idx[:, None] * 0
     if d == BLOCK_K:
         bK = tl.load(k_ptr_base + k_offset)
         bV = tl.load(v_ptr_base + v_offset)
@@ -1396,7 +1406,7 @@ def flash_varlen_fwd_kernel(
             d,
             k_row_stride,
             BLOCK_K=BLOCK_K,
-            boundary_check=False
+            boundary_check=True,
         )
         S = tl.dot(bQ, bK, out_dtype=tl.float32)
         S = apply_softcap(S, softcap, is_softcap)
