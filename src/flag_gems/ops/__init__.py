@@ -16,6 +16,7 @@ from flag_gems.ops.attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
 )
+from flag_gems.ops.avg_pool2d import avg_pool2d
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -108,6 +109,7 @@ from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
+from flag_gems.ops.max_pool2d import max_pool2d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
@@ -226,6 +228,7 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "avg_pool2d",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",
@@ -347,6 +350,7 @@ __all__ = [
     "max",
     "max_dim",
     "maximum",
+    "max_pool2d",
     "mean",
     "mean_dim",
     "min",
