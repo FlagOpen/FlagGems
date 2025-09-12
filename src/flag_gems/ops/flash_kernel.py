@@ -1470,7 +1470,7 @@ def flash_varlen_fwd_kernel(
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(
             col_idx,
-            q_len,
+            k_len,
             page_table_ptr,
             k_ptr_base,
             v_ptr_base,
