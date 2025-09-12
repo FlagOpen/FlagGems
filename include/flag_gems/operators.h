@@ -85,5 +85,6 @@ void reshape_and_cache_flash(const at::Tensor &key,
                              at::Tensor &value_cache,
                              const at::Tensor &slot_mapping,
                              const at::Tensor &k_scale,
-                             const at::Tensor &v_scale);
+                             const at::Tensor &v_scale,
+                             c10::optional<at::ScalarType> kv_cache_dtype = c10::nullopt);
 }  // namespace flag_gems

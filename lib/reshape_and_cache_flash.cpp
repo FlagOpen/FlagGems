@@ -1,3 +1,4 @@
+#include <torch/torch.h>
 #include <iostream>
 #include "c10/cuda/CUDAStream.h"
 #include "flag_gems/operators.h"
@@ -13,7 +14,8 @@ void reshape_and_cache_flash(const at::Tensor& key,
                              at::Tensor& value_cache,
                              const at::Tensor& slot_mapping,
                              const at::Tensor& k_scale,
-                             const at::Tensor& v_scale) {
+                             const at::Tensor& v_scale,
+                             c10::optional<at::ScalarType> kv_cache_dtype) {
   const auto num_tokens = slot_mapping.size(0);
   const auto num_heads = key.size(1);
   const auto head_size = key.size(2);

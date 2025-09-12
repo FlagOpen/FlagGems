@@ -3,11 +3,11 @@
 #include <tuple>
 #include "flag_gems/operators.h"
 
-void reference_reshape_and_cache(const torch::Tensor& key,
-                                 const torch::Tensor& value,
-                                 torch::Tensor& key_cache,
-                                 torch::Tensor& value_cache,
-                                 const torch::Tensor& slot_mapping) {
+void reference_reshape_and_cache_flash(const torch::Tensor& key,
+                                       const torch::Tensor& value,
+                                       torch::Tensor& key_cache,
+                                       torch::Tensor& value_cache,
+                                       const torch::Tensor& slot_mapping) {
   auto block_size = key_cache.size(1);
   auto num_tokens = key.size(0);
 
@@ -45,8 +45,10 @@ TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
   auto slots = torch::randperm(num_blocks * block_size, long_options);
   auto slot_mapping = slots.slice(0, 0, num_tokens);
 
-  auto k_scale = torch::tensor({1.0}, options);
-  auto v_scale = torch::tensor({1.0}, options);
+  // auto k_scale = torch::tensor({1.0}, options);
+  // auto v_scale = torch::tensor({1.0}, options);
+  auto k_scale = (key.amax() / 64.0).to(torch::kFloat32);
+  auto v_scale = (value.amax() / 64.0).to(torch::kFloat32);
 
   auto key_cache_initial = torch::randn({num_blocks, block_size, num_heads, head_size}, options);
   auto value_cache_initial = torch::randn({num_blocks, block_size, num_heads, head_size}, options);
@@ -56,7 +58,9 @@ TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
   auto key_cache_test = key_cache_initial.clone();
   auto value_cache_test = value_cache_initial.clone();
 
-  reference_reshape_and_cache(key, value, key_cache_ref, value_cache_ref, slot_mapping);
+  reference_reshape_and_cache_flash(key, value, key_cache_ref, value_cache_ref, slot_mapping);
+
+  c10::optional<at::ScalarType> kv_cache_dtype = c10::nullopt;
 
   flag_gems::reshape_and_cache_flash(key,
                                      value,
@@ -64,7 +68,8 @@ TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
                                      value_cache_test,
                                      slot_mapping,
                                      k_scale,
-                                     v_scale);
+                                     v_scale,
+                                     kv_cache_dtype);
 
   double atol = (dtype == torch::kFloat16 || dtype == torch::kBFloat16) ? 1e-2 : 1e-5;
   double rtol = (dtype == torch::kFloat16 || dtype == torch::kBFloat16) ? 1e-2 : 1e-3;

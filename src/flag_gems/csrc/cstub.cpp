@@ -68,7 +68,7 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("softmax_backward(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor");
   m.def(
       "reshape_and_cache_flash(Tensor key, Tensor value, Tensor(a!) key_cache, Tensor(b!) value_cache, "
-      "Tensor slot_mapping, Tensor k_scale, Tensor v_scale) -> ()");
+      "Tensor slot_mapping, Tensor k_scale, Tensor v_scale, ScalarType? kv_cache_dtype=None) -> ()");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
