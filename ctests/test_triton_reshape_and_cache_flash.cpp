@@ -67,9 +67,9 @@ TEST_P(ReshapeAndCacheFlashTest, CompareWithPureTorchReference) {
                                      key_cache_test,
                                      value_cache_test,
                                      slot_mapping,
+                                     kv_cache_dtype,
                                      k_scale,
-                                     v_scale,
-                                     kv_cache_dtype);
+                                     v_scale);
 
   double atol = (dtype == torch::kFloat16 || dtype == torch::kBFloat16) ? 1e-2 : 1e-5;
   double rtol = (dtype == torch::kFloat16 || dtype == torch::kBFloat16) ? 1e-2 : 1e-3;
