@@ -1255,3 +1255,57 @@ def test_accuracy_contiguous(shape, dtype):
     assert res_out.is_contiguous() is True
     assert res_out.stride() == ref_out.stride()
     gems_assert_equal(res_out, ref_out)
+
+
+SHAPE_POOL2D = [
+    (1, 2, 5, 5),
+    (32, 8, 256, 256),
+]
+
+
+@pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError")
+@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize("shape", SHAPE_POOL2D)
+@pytest.mark.parametrize("kernel_size", [3, 5])
+@pytest.mark.parametrize("stride", [None, 2])
+@pytest.mark.parametrize("padding", [0, 1])
+@pytest.mark.parametrize("ceil_mode", [True, False])
+@pytest.mark.parametrize("count_include_pad", [True, False])
+@pytest.mark.parametrize("divisor_override", [None, 2])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
+def test_accuracy_avg_pool2d(
+    shape,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
+    dtype,
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
+    ref_inp = to_reference(inp, True)
+    torch.backends.cudnn.allow_tf32 = False
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_inp,
+        kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    ).to(dtype)
+
+    res_out = flag_gems.avg_pool2d(
+        inp,
+        kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
