@@ -1129,9 +1129,21 @@ AVGPOOL2D_CONFIGS = [
 
 
 @pytest.mark.avg_pool2d
-@pytest.mark.parametrize("shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override", AVGPOOL2D_CONFIGS)
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
+    AVGPOOL2D_CONFIGS,
+)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_avg_pool2d(shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override, dtype):
+def test_accuracy_avg_pool2d(
+    shape,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
+    dtype,
+):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
@@ -1161,7 +1173,7 @@ def test_accuracy_avg_pool2d(shape, kernel_size, stride, padding, ceil_mode, cou
     (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
-    
+
 SHAPE_CONV1D = [
     ((32, 2, 4), (17, 2, 2)),
     ((32, 15, 6), (17, 15, 2)),

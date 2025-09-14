@@ -281,14 +281,15 @@ def avg_pool2d_input_fn(shape, dtype, device):
                 "divisor_override": 3,
             }
 
+
 class AvgPool2dBenchmark(GenericBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         shapes_4d = [
-            (4, 3, 224, 224),    # Typical input image size
-            (16, 64, 56, 56),    # Early ResNet layer output
-            (32, 128, 28, 28),   # Mid ResNet layer output
-            (64, 256, 14, 14),   # Later ResNet layer output
-            (128, 512, 7, 7),    # Final ResNet layer output
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
         ]
 
         for shape in shapes_4d:
@@ -319,7 +320,7 @@ def test_perf_avg_pool2d_backward():
     bench.set_gems(flag_gems.avg_pool2d)
     bench.run()
 
-    
+
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):
