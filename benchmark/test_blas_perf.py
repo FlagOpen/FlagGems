@@ -126,10 +126,6 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     flag_gems.vendor_name == "kunlunxin",
     reason="temp disable for updating",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="temp disable for updating",
-)
 def test_blas_benchmark(op_name, torch_op, input_fn):
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
@@ -204,7 +200,7 @@ class VdotBenchmark(BlasBenchmark):
 
 
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="Segmentation fault")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Segmentation fault")
 @pytest.mark.vdot
 def test_vdot_benchmark():
     def vdot_input_fn(m, cur_dtype, device):
@@ -217,5 +213,36 @@ def test_vdot_benchmark():
         op_name="vdot",
         torch_op=torch.Tensor.vdot,
         dtypes=COMPLEX_DTYPES + FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class AddrBenchmark(BlasBenchmark):
+    """
+    benchmark for addr
+    """
+
+    def set_more_shapes(self):
+        return None
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            m, n = shape[0], shape[1]
+            yield from self.input_fn(m, n, cur_dtype, self.device)
+
+
+@pytest.mark.addr
+def test_addr_benchmark():
+    def addr_input_fn(m, n, cur_dtype, device):
+        inp1 = torch.randn([m, n], dtype=cur_dtype, device=device)
+        inp2 = torch.randn([m], dtype=cur_dtype, device=device)
+        inp3 = torch.randn([n], dtype=cur_dtype, device=device)
+        yield inp1, inp2, inp3, {"alpha": 0.5, "beta": 0.5}
+
+    bench = AddrBenchmark(
+        input_fn=addr_input_fn,
+        op_name="addr",
+        torch_op=torch.Tensor.addr,
+        dtypes=FLOAT_DTYPES,
     )
     bench.run()
