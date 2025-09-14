@@ -16,6 +16,7 @@ from flag_gems.ops.attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
 )
+from flag_gems.ops.avg_pool2d import avg_pool2d
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -226,6 +227,7 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "avg_pool2d",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",
