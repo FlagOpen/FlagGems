@@ -42,7 +42,7 @@ def max_pool2d_output_size(
     key=["out_h", "out_w", "kernel_h", "kernel_w", "stride_h", "stride_w"],
 )
 @triton.jit
-def max_pool2d_forward_kernel_optimized(
+def max_pool2d_forward_kernel(
     input_ptr,
     output_ptr,
     indices_ptr,
@@ -217,7 +217,7 @@ class MaxPool2d(torch.autograd.Function):
                 * triton.cdiv(out_w, meta["BLOCK_W"]),
             )
 
-            max_pool2d_forward_kernel_optimized[grid](
+            max_pool2d_forward_kernel[grid](
                 input,
                 output,
                 indices,
