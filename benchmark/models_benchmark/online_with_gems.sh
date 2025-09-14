@@ -7,6 +7,11 @@ PURE_MODEL_NAME=$(basename "$MODEL")
 TP=1
 GPUS=(0)                                                                                 # GPU IDs to use, can be modified as needed
 
+unset http_proxy
+unset https_proxy
+unset HTTP_PROXY
+unset HTTPS_PROXY
+
 INPUT_LEN_LIST="128 512 1024 2048 6144 14336 30720"
 OUTPUT_LEN_LIST="128 512 1024 2048"
 NUM_PROMPT_LIST="1 100 1000 2000"
@@ -47,13 +52,13 @@ start_scale_server_on_gpu() {
     # Enable FlagGems integration
     export USE_FLAGGEMS=1
     echo "USE_FLAGGEMS=$USE_FLAGGEMS"
-    flagscale serve qwen3 $YAML_CONF
+    USE_FLAGGEMS=1 flagscale serve qwen3 $YAML_CONF
 }
 
 wait_for_server() {
     local port=$1
     for ((i=1; i<=300; i++)); do   # 300*5s=25分钟
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}/v1/models")
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --noproxy '*'  "http://localhost:${port}/v1/models")
         if [[ "$STATUS" -eq 200 ]]; then
             echo "✅ Server on port $port is healthy"
             return 0
