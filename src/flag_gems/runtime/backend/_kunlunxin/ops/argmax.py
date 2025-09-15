@@ -111,7 +111,6 @@ def argmax_kernel(
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    # import pudb; pudb.set_trace()
     logger.debug("GEMS ARGMAX")
     if dim is None:
         M = inp.numel()
