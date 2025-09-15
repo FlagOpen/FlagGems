@@ -6,11 +6,25 @@ def simple_elementwise_blocksize_heur(args):
 
 
 def argmax_heur_block_m(args):
-    return 16
+    return 16 if args["M"] < 4096 and args["K"] == 1 else 32
 
 
 def argmax_heur_block_n(args):
-    return 100
+    if args["N"] >= 4096:
+            return 512
+    elif args["N"] >= 512 and args["N"] < 4096:
+        return 128
+    else:
+        return 64
+
+
+def argmax_heur_need_mask(args):
+  divisible = args["M"] % args["BLOCK_M"] == 0 and args["N"] % args["BLOCK_N"] == 0
+  return not divisible
+
+
+def argmax_heur_has_k_dim(args):
+  return args["K"] != 1
 
 
 def argmin_heur_block_m(args):
@@ -232,6 +246,8 @@ HEURISTICS_CONFIGS = {
     "argmax": {
         "BLOCK_M": argmax_heur_block_m,
         "BLOCK_N": argmax_heur_block_n,
+        "NEED_MASK": argmax_heur_need_mask,
+        "HAS_K_DIM": argmax_heur_has_k_dim,
     },
     "argmin": {
         "BLOCK_M": argmin_heur_block_m,

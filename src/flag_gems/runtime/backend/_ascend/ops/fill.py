@@ -19,14 +19,18 @@ def fill_scalar_kernel(
     value_scalar,
     BLOCK_SIZE: tl.constexpr,
     SUBBLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
-    pid = tle.program_id(0)
+    pid = tl.program_id(0)
     pid_offset = pid * BLOCK_SIZE
     cols = tl.arange(0, SUBBLOCK_SIZE)
     num_loop = triton.cdiv(BLOCK_SIZE, SUBBLOCK_SIZE)
     for iloop in tl.range(num_loop):
         offset = pid_offset + iloop * SUBBLOCK_SIZE + cols
-        tl.store(out_ptr + offset, value_scalar, mask=offset < N)
+        if NEED_MASK:
+            tl.store(out_ptr + offset, value_scalar, mask=offset < N)
+        else:
+            tl.store(out_ptr + offset, value_scalar)
 
 
 @libentry()
@@ -73,12 +77,20 @@ def fill_scalar(input, value):
     out = torch.empty_like(input)
     N = out.numel()
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
-    grid = min(40, N)
+    grid = min(48, N)
     BLOCK_SIZE = (N + grid - 1) // grid
-    SUBBLOCK_SIZE = min(8192, BLOCK_SIZE)
-
+    if input.dtype == torch.float32:
+        SUBBLOCK_SIZE = min(49152, BLOCK_SIZE)
+    elif input.dtype in [torch.bfloat16, torch.float16]:
+        SUBBLOCK_SIZE = min(98304, BLOCK_SIZE)
+    else:
+        raise ValueError(f"Unsupported dtype: {input.dtype}")
+    if N % BLOCK_SIZE == 0 and BLOCK_SIZE % SUBBLOCK_SIZE == 0:
+        NEED_MASK = False
+    else:
+        NEED_MASK = True
     with torch_device_fn.device(input.device):
-        fill_scalar_kernel[grid,](out, N, value, BLOCK_SIZE, SUBBLOCK_SIZE)
+        fill_scalar_kernel[grid,](out, N, value, BLOCK_SIZE, SUBBLOCK_SIZE, NEED_MASK)
     return out
 
 
