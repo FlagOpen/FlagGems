@@ -104,10 +104,10 @@ void streamk_mm_tensor(const at::Tensor &a,
 
   // Prepare Triton kernels
   const auto triton_src = (utils::get_flag_gems_src_path() / "ops" / "mm_streamk.py").string();
-  const TritonJITFunction &first_wave = TritonJITFunction::getInstance(triton_src, "first_wave");
+  const TritonJITFunction &first_wave = TritonJITFunction::get_instance(triton_src, "first_wave");
   const TritonJITFunction &first_wave_for_bf16 =
-      TritonJITFunction::getInstance(triton_src, "first_wave_for_bf16");
-  const TritonJITFunction &classic_mm = TritonJITFunction::getInstance(triton_src, "classic_mm");
+      TritonJITFunction::get_instance(triton_src, "first_wave_for_bf16");
+  const TritonJITFunction &classic_mm = TritonJITFunction::get_instance(triton_src, "classic_mm");
 
   // device / stream
   c10::DeviceGuard guard(c.device());
@@ -250,7 +250,7 @@ void general_mm_tensor(
 
   // general situation
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
                                      "mm_kernel_general");
 
   c10::DeviceGuard guard(c.device());

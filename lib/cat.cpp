@@ -57,8 +57,8 @@ at::Tensor cat(const at::TensorList& tensors, int64_t dim) {
     storage_offsets.push_back(current_storage_offset);
   }
 
-  const TritonJITFunction copy_kernel_func =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "cat_copy.py"),
+  const TritonJITFunction& copy_kernel_func =
+      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "cat_copy.py"),
                                      "strided_copy_kernel");
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

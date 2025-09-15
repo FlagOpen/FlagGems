@@ -53,8 +53,8 @@ if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
 else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git
-    # SOURCE_DIR /home/clement/projects/libtorch_example    # use local source dir in development
+    GIT_REPOSITORY https://github.com/iclementine/libtriton_jit.git
+    # SOURCE_DIR <local_source_dir to libtriton_jit>    # use local source dir in development
   )
   FetchContent_MakeAvailable(TritonJIT)
 endif()
