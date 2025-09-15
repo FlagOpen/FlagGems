@@ -510,9 +510,6 @@ def test_perf_avg_pool2d():
             kernel_size,
             stride,
             padding,
-            # ceil_mode,
-            # count_include_pad,
-            # divisor_override,
         ) = shape
         input_shape = (batch, input_c, input_h, input_w)
         input = torch.randn(size=input_shape, device=device, dtype=dtype)
@@ -522,10 +519,41 @@ def test_perf_avg_pool2d():
             "kernel_size": kernel_size,
             "stride": stride,
             "padding": padding,
-            # "ceil_mode": ceil_mode,
-            # "count_include_pad": count_include_pad,
-            # "divisor_override": divisor_override,
+            "ceil_mode": False,
+            "count_include_pad": True,
+            "divisor_override": None,
         },
+
+        if Config.bench_level == BenchLevel.COMPREHENSIVE:
+            yield {
+                "input": input,
+                "kernel_size": kernel_size,
+                "stride": stride,
+                "padding": padding,
+                "ceil_mode": True,
+                "count_include_pad": True,
+                "divisor_override": None,
+            },
+
+            yield {
+                "input": input,
+                "kernel_size": kernel_size,
+                "stride": stride,
+                "padding": padding,
+                "ceil_mode": False,
+                "count_include_pad": True,
+                "divisor_override": None,
+            },
+
+            yield {
+                "input": input,
+                "kernel_size": kernel_size,
+                "stride": stride,
+                "padding": padding,
+                "ceil_mode": False,
+                "count_include_pad": True,
+                "divisor_override": 5,
+            },
 
     torch.backends.cudnn.allow_tf32 = False
     bench = Pool2DBenchmark(
@@ -534,4 +562,5 @@ def test_perf_avg_pool2d():
         torch_op=torch.nn.functional.avg_pool2d,
         dtypes=FLOAT_DTYPES,
     )
+    bench.set_gems(flag_gems.avg_pool2d)
     bench.run()
