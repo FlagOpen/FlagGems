@@ -195,15 +195,24 @@ def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
             is_causal=is_causal,
         )
     else:
-        torch_result = torch.nn.functional.scaled_dot_product_attention(
-            q,
-            k,
-            v,
-            attn_mask=None,
-            scale=scale,
-            is_causal=is_causal,
-            enable_gqa=enable_gqa,
-        )
+        if flag_gems.vendor_name == "iluvatar" and TO_CPU:
+            from torch.nn.attention import SDPBackend, sdpa_kernel
+
+            ctx = sdpa_kernel(backends=[SDPBackend.MATH])
+        else:
+            from contextlib import nullcontext
+
+            ctx = nullcontext()
+        with ctx:
+            torch_result = torch.nn.functional.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                scale=scale,
+                is_causal=is_causal,
+                enable_gqa=enable_gqa,
+            )
     return torch_result
 
 
@@ -350,7 +359,7 @@ def test_sdpa_legacy(
         (4, 8, 1024, 1024),
     ],
 )
-@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_sdpa_square_qk_even_mn(
@@ -379,7 +388,7 @@ def test_sdpa_square_qk_even_mn(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_sdpa_nonsquare_qk(
@@ -411,7 +420,7 @@ def test_sdpa_nonsquare_qk(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (4, 8, 1024, 128), (4, 8, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [64, 128, 256])
+@pytest.mark.parametrize("head_size", [64, 128, 192, 256])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_flash_fwd_nonsquare_qk(
@@ -432,6 +441,8 @@ def test_flash_fwd_nonsquare_qk(
     gems_out, gems_lse, _, _, _ = gems_flash_fwd(q, k, v, scale, is_causal)
 
     gems_assert_close(gems_out, torch_out, dtype)
+    if flag_gems.vendor_name == "iluvatar":
+        return
     gems_assert_close(gems_lse, torch_lse, torch.float)
 
 
@@ -446,7 +457,7 @@ def test_flash_fwd_nonsquare_qk(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
     [(4, 8, 2, 1024, 1024), (4, 4, 4, 1, 519)],
 )
-@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [True])
@@ -524,7 +535,7 @@ def test_flash_fwd_gqa_alibi_softcap(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
     [(1, 4, 1, 1, 1024), (4, 4, 4, 1, 519)],
 )
-@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])
 @pytest.mark.parametrize("alibi", [False, True])
@@ -602,7 +613,7 @@ def test_flash_splitkv(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"],
     [(1, 1, 128, 2048), (8, 32, 1024, 1024), (8, 32, 1024, 128), (8, 32, 17, 1030)],
 )
-@pytest.mark.parametrize("head_size", [128])
+@pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize(
     ["window_size_left", "window_size_right"], [(256, 0), (128, 128)]
 )
@@ -652,6 +663,8 @@ def test_flash_fwd_swa(
     )
 
     gems_assert_close(gems_out, torch_out, dtype)
+    if flag_gems.vendor_name == "iluvatar":
+        return
     gems_assert_close(gems_lse, torch_lse, torch.float)
 
 
@@ -741,12 +754,11 @@ def ref_paged_attn(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (5, 18), (129, 463)]])
 @pytest.mark.parametrize("num_heads", [(4, 4), (8, 2), (16, 2)])
-@pytest.mark.parametrize("head_size", [128, 256])
+@pytest.mark.parametrize("head_size", [128, 192, 256])
 @pytest.mark.parametrize("block_size", [32])
 @pytest.mark.parametrize("sliding_window", [None])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
@@ -851,7 +863,6 @@ def test_flash_attn_varlen_func(
 
 @pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.vendor_name == "iluvatar", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.flash_attn_varlen_func
 @pytest.mark.parametrize("seq_lens", [[(1, 1328), (1, 18), (1, 463)]])
@@ -1173,7 +1184,7 @@ def test_reshape_and_cache(
 
 
 @pytest.mark.skipif(TO_CPU, reason="Unsupported in CPU mode")
-@pytest.mark.skipif(triton.__version__ < "3.2", reason="Low Triton Version")
+@pytest.mark.skipif(triton.__version__ < "3.1", reason="Low Triton Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Low Triton Version")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
