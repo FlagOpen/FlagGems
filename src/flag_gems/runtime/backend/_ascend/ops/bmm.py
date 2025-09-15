@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # avoid
 @libentry()
-@triton.autotune(
+@libtuner(
     configs=runtime.get_tuned_config("bmm"),
     key=["M", "N", "K"],
 )
@@ -65,6 +65,11 @@ def bmm_kernel(
     offs_n = pid_n * TILE_N + tl.arange(0, TILE_N)
     offs_k = tl.arange(0, TILE_K)
 
+    if not DIVISIBLE_M:
+        mask_m = offs_m < M
+    if not DIVISIBLE_N:
+        mask_n = offs_n < N
+
     a_ptrs = A + offs_m[:, None] * K + offs_k[None, :]
     b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
     o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
@@ -72,8 +77,26 @@ def bmm_kernel(
     num_iters = tl.cdiv(K, TILE_K)
     o = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     for i in range(num_iters):
-        mask_a = offs_k[None, :] < K - i * TILE_K
-        mask_b = offs_k[:, None] < K - i * TILE_K
+        if DIVISIBLE_K:
+            if DIVISIBLE_M:
+                mask_a = None
+            else:
+                mask_a = mask_m[:, None]
+            if DIVISIBLE_N:
+                mask_b = None
+            else:
+                mask_b = mask_n[None, :]
+        else:
+            mask_k = offs_k < K - i * TILE_K
+            if DIVISIBLE_M:
+                mask_a = mask_k[None, :]
+            else:
+                mask_a = mask_m[:, None] & mask_k[None, :]
+            if DIVISIBLE_N:
+                mask_b = mask_k[:, None]
+            else:
+                mask_b = mask_k[:, None] & mask_n[None, :]
+
         a = tl.load(a_ptrs, mask=mask_a)
         b = tl.load(b_ptrs, mask=mask_b)
 
