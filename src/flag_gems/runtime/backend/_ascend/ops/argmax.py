@@ -62,38 +62,44 @@ def argmax_kernel(
     K,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    HAS_K_DIM: tl.constexpr,
 ):
     # set offset
     pid_m = tle.program_id(0)
-    # pid_k = tle.program_id(1)
-    for pid_k in range(K):
-        m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    pid_k = tle.program_id(1)
+    m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
 
-        dtype = inp.type.element_ty
-        acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
-        min_value = get_dtype_min(dtype)
-        max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
-        argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
-        for start_n in range(0, N, BLOCK_N):
-            n_offset = start_n + tl.arange(0, BLOCK_N)
+    dtype = inp.type.element_ty
+    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    min_value = get_dtype_min(dtype)
+    max_values = tl.full([BLOCK_M], dtype=acc_type, value=min_value)
+    argmax_values = tl.full([BLOCK_M], dtype=tl.int64, value=0)
+    for start_n in range(0, N, BLOCK_N):
+        n_offset = start_n + tl.arange(0, BLOCK_N)
+        if not HAS_K_DIM:
             offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-            mask = m_offset[:, None] < M and n_offset[None, :] < N
-            inp_ptrs = inp + offset
-            inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
-            )
-            # if return indices is not supported, call a tl.argmax in addition
-            # local_argmax = tl.argmax(inp_vals, 1)
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+        else:
+            offset = pid_k * (M * N) + m_offset[:, None] * N + n_offset[None, :]
+        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        inp_ptrs = inp + offset
+        if NEED_MASK:
+            inp_vals = tl.load(inp_ptrs,  mask=mask, other=min_value, mask_opt=True)
+        else:
+            inp_vals = tl.load(inp_ptrs)
+        local_max, local_argmax = tl.max(
+            inp_vals, 1, return_indices=True, return_indices_tie_break_left=True
+        )
+        # if return indices is not supported, call a tl.argmax in addition
+        #local_argmax = tl.argmax(inp_vals, 1)
+        update = local_max > max_values
+        max_values = tl.where(update, local_max, max_values)
+        argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
 
-        offset_index = m_offset * K + pid_k
-        out_index_ptrs = out_index + offset_index
-        mask1 = m_offset < M
-        tl.store(out_index_ptrs, argmax_values, mask=mask1)
-
+    offset_index = m_offset * K + pid_k
+    out_index_ptrs = out_index + offset_index
+    mask1 = m_offset < M
+    tl.store(out_index_ptrs, argmax_values, mask=mask1)
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS ARGMAX")
@@ -140,17 +146,30 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
+
         grid = lambda meta: (
-            triton.cdiv(M, meta["BLOCK_M"]),
-            # K,
-        )
-        with torch_device_fn.device(inp.device):
-            argmax_kernel[grid](
-                inp,
-                out_index,
-                M,
-                N,
+                triton.cdiv(M, meta["BLOCK_M"]),
                 K,
             )
+        if K == 1:
+            with torch_device_fn.device(inp.device):
+                argmax_kernel[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                    K,
+                )
+        else:
+            inp_reshaped = inp.view(M, N, K).permute(2, 0, 1).contiguous()
+
+            with torch_device_fn.device(inp.device):
+                argmax_kernel[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                    K,
+                )
 
         return out_index
