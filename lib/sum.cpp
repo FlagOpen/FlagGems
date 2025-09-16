@@ -24,10 +24,10 @@ at::Tensor sum(const at::Tensor &self, ::std::optional<at::ScalarType> dtype) {
   at::Tensor out = torch::empty({}, self.options());
   const TritonJITFunction &sum_kernel_1 =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                     "sum_kernel_1");
+                                      "sum_kernel_1");
   const TritonJITFunction &sum_kernel_2 =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                     "sum_kernel_2");
+                                      "sum_kernel_2");
   const int num_warps = 8;
   const int num_stages = 2;
   c10::DeviceGuard guard(out.device());
@@ -88,7 +88,7 @@ at::Tensor sum_dim(const at::Tensor &self,
     if (remain_size > 1) {
       const TritonJITFunction &f =
           TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                         "sum_dim_kernel_non_inner");
+                                          "sum_dim_kernel_non_inner");
       f(raw_stream,
         non_reduction_size,
         utils::cdiv(remain_size, tile_k),
@@ -108,7 +108,7 @@ at::Tensor sum_dim(const at::Tensor &self,
           utils::parse_reduction_axes(self, selected_dim);
       const TritonJITFunction &f =
           TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                         "sum_dim_kernel_inner");
+                                          "sum_dim_kernel_inner");
       f(raw_stream,
         non_reduction_size,
         1,
@@ -141,7 +141,7 @@ at::Tensor sum_dim(const at::Tensor &self,
     */
     const TritonJITFunction &f =
         TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "sum.py"),
-                                       "sum_dim_kernel");
+                                        "sum_dim_kernel");
     c10::DeviceGuard guard(out.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
     CUstream raw_stream = static_cast<CUstream>(stream.stream());

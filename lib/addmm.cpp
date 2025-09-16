@@ -27,7 +27,7 @@ at::Tensor addmm(const at::Tensor &self,
 
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
-                                     "addmm_kernel");
+                                      "addmm_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

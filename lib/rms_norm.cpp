@@ -29,7 +29,7 @@ at::Tensor rms_norm(const at::Tensor& input,   // [..., hidden_size]
 
   const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "rms_norm.py"),
-                                     "rms_norm_kernel");
+                                      "rms_norm_kernel");
 
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::DeviceGuard guard(out.device());

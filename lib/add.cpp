@@ -20,7 +20,7 @@ at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_) {
 
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "binary_add.py"),
-                                     "binary_pointwise_kernel");
+                                      "binary_pointwise_kernel");
 
   // add utility to build this automatically
   int64_t tile_size = 1024;

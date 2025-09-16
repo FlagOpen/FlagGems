@@ -22,7 +22,7 @@ using namespace triton_jit;
   permuted_self = permuted_self.contiguous();
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
-                                     "max_kernel");
+                                      "max_kernel");
   int64_t tile_m = 4;
   int64_t tile_n = 512;
   const int num_warps = 8;
@@ -69,7 +69,7 @@ using namespace triton_jit;
   permuted_self = permuted_self.contiguous();
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
-                                     "max_kernel");
+                                      "max_kernel");
   int64_t tile_m = 4;
   int64_t tile_n = 512;
   const int num_warps = 8;
@@ -119,10 +119,10 @@ at::Tensor max(const at::Tensor &self) {
 
   const TritonJITFunction &max_kernel_1 =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
-                                     "max_kernel_1");
+                                      "max_kernel_1");
   const TritonJITFunction &max_kernel_2 =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "max.py"),
-                                     "max_kernel_2");
+                                      "max_kernel_2");
   const int num_warps = 8;
   const int num_stages = 2;
   c10::DeviceGuard guard(out.device());

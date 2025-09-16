@@ -22,7 +22,7 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
 
   const TritonJITFunction &f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
-                                     "mm_kernel");
+                                      "mm_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
