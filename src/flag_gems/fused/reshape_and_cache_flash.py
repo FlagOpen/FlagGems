@@ -3,6 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
+import torch
 import flag_gems
 from flag_gems.config import use_c_extension
 from flag_gems.runtime import torch_device_fn
@@ -70,7 +71,7 @@ def reshape_and_cache_flash(
 ):
     if use_c_extension:
         logger.debug("GEMS RESHAPE_AND_CACHE_FLASH(C EXTENSION)")
-        flag_gems.c_operators.reshape_and_cache_flash(
+        torch.ops.flag_gems.reshape_and_cache_flash(
             key,
             value,
             key_cache,

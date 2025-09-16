@@ -120,7 +120,7 @@ at::Tensor &exponential_(at::Tensor &self, double lambd, c10::optional<at::Gener
   unsigned grid_x = (N + BLOCK * UNROLL - 1) / (BLOCK * UNROLL);
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "exponential_.py"),
                                      "fused_exponential_kernel");
 
   c10::DeviceGuard guard(x_.device());

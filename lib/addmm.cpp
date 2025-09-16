@@ -26,7 +26,7 @@ at::Tensor addmm(const at::Tensor &self,
   float beta_val = beta.to<float>();
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
                                      "addmm_kernel");
 
   c10::DeviceGuard guard(out.device());

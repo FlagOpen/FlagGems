@@ -19,7 +19,7 @@ at::Tensor add_tensor(const at::Tensor &a_, const at::Tensor &b_) {
   at::Tensor out = at::empty(a.sizes(), at::TensorOptions().dtype(out_dtype).device(a.device()));
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "binary_add.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "binary_add.py"),
                                      "binary_pointwise_kernel");
 
   // add utility to build this automatically

@@ -21,7 +21,7 @@ at::Tensor mm_tensor(const at::Tensor &mat1, const at::Tensor &mat2) {
   at::Tensor out = at::empty({mat1_sizes[0], mat2_sizes[1]}, mat1.options());
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
                                      "mm_kernel");
 
   c10::DeviceGuard guard(out.device());
