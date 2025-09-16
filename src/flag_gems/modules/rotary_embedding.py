@@ -45,7 +45,7 @@ def gems_rope_forward(
     if use_c_extension:
         logger.debug("GEMS CUSTOM ROPE FORWARD(C EXTENSION)")
         if inplace:
-            torch.os.flag_gems.rotary_embedding_inplace(
+            torch.ops.flag_gems.rotary_embedding_inplace(
                 query, key, cos, sin, position_ids, rotary_interleaved
             )
             return query, key
