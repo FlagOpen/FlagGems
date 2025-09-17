@@ -98,9 +98,19 @@ def stack(
     if dim < 0:
         dim = dim + len(inp0_shape) + 1
 
-    dtype, device = tensors[0].dtype, tensors[0].device
+    # Determine the result dtype through type promotion
+    result_dtype = tensors[0].dtype
+    for tensor in tensors[1:]:
+        result_dtype = torch.result_type(
+            torch.tensor(0, dtype=result_dtype), torch.tensor(0, dtype=tensor.dtype)
+        )
+
+    device = tensors[0].device
     out_shape = inp0_shape[:dim] + [len(tensors)] + inp0_shape[dim:]
-    out = torch.empty(out_shape, dtype=dtype, device=device)
+    out = torch.empty(out_shape, dtype=result_dtype, device=device)
+
+    # Convert all tensors to the result dtype if needed
+    tensors = [t.to(result_dtype) if t.dtype != result_dtype else t for t in tensors]
 
     dim_prod_post = 1
     for s in inp0_shape[dim:]:
