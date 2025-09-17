@@ -276,7 +276,7 @@ def prune_fwd_configs(configs, nargs, **kwargs):
 
 
 def flash_fwd_kernel_heur_block_k(args):
-    triton.next_power_of_2(args["d"])
+    return triton.next_power_of_2(args["d"])
 
 
 @libentry()
