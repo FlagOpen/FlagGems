@@ -7,7 +7,7 @@ def simple_elementwise_blocksize_heur(args):
 
 
 def argmax_heur_tile_k(args):
-    MAX_TILE_K = 8192
+    MAX_TILE_K = 512
     NUM_SMS = torch.cuda.get_device_properties(
         torch.cuda.current_device()
     ).multi_processor_count
@@ -25,14 +25,11 @@ def argmax_heur_tile_k(args):
     tile_k = 64
     upper_bound = min(K, MAX_TILE_K)
 
-    if dtype == "fp32":
-        upper_bound = min(upper_bound, 1024)
-
     while tile_k <= upper_bound:
         num_blocks = M * triton.cdiv(K, tile_k)
         num_waves = num_blocks / NUM_SMS
 
-        if num_waves < 2 and (tile_k * 2 <= upper_bound):
+        if num_waves > 1 and (tile_k * 2 <= upper_bound):
             tile_k *= 2
         else:
             break
