@@ -190,8 +190,6 @@ def argmin_kernel_inner(
 
 def argmin(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS ARGMIN")
-    inp = inp.contiguous()
-
     if dim is None:
         M = inp.numel()
         if dtype is None:
@@ -199,92 +197,68 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
+
         mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
         mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
         if keepdim:
-            out_shape = (1,) * inp.dim()
-            out = torch.empty(out_shape, dtype=torch.int64, device=inp.device)
+            shape = list(inp.shape)
+            for i in range(inp.ndim):
+                shape[i] = 1
+            out = torch.empty(shape, dtype=torch.int64, device=inp.device)
         else:
-            out = torch.empty((), dtype=torch.int64, device=inp.device)
+            out = torch.empty([], dtype=torch.int64, device=inp.device)
+
         with torch_device_fn.device(inp.device):
             argmin_kernel_1[(mid_size, 1, 1)](
-                inp.view(-1), mid_value, mid_index, M, block_size
+                inp,
+                mid_value,
+                mid_index,
+                M,
+                block_size,
             )
             argmin_kernel_2[(1, 1, 1)](
-                mid_value, mid_index, out.view(-1), mid_size, block_mid
+                mid_value,
+                mid_index,
+                out,
+                mid_size,
+                block_mid,
             )
         return out
+    else:
+        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+        shape = inp.shape
+        dim = dim % inp.ndim
+        N = shape[dim]
+        M = math.prod(shape[:dim])
+        K = inp.numel() // M // N
 
-    assert -inp.ndim <= dim < inp.ndim
-    dim = dim % inp.ndim
-    shape = inp.shape
-    N = shape[dim]
-    M = math.prod(shape[:dim])
-    K = inp.numel() // M // N
-    shape_list = list(shape)
-    shape_list[dim] = 1
-    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+        inp = inp.contiguous()
 
-    with torch_device_fn.device(inp.device):
-        if dim == 0:
-            if shape == (1024, 4096):
-                inp_2d = inp.view(1024, 4096)
-                mid_size = 32
-                mid_value = torch.empty(
-                    (1024, mid_size),
-                    dtype=inp.dtype if dtype is None else dtype,
-                    device=inp.device,
-                )
-                mid_index = torch.empty(
-                    (1024, mid_size), dtype=torch.int64, device=inp.device
-                )
-                grid_phase1 = lambda meta: (1024, 1)
-                argmin_kernel_1[grid_phase1](
-                    inp_2d, mid_value, mid_index, 4096, 128, num_warps=8
-                )
-                grid_phase2 = lambda meta: (1024, 1)
-                argmin_kernel_2[grid_phase2](
-                    mid_value, mid_index, out_index.view(-1), mid_size, 32, num_warps=8
-                )
-            elif shape == (1024, 256):
-                grid = lambda meta: (min(256, M), 1)
-                argmin_kernel_inner[grid](inp, out_index, M, N, num_warps=8, TILE_N=256)
-            elif shape == (64, 16, 64):
-                grid = lambda meta: (64, 1)
-                argmin_kernel_inner[grid](inp, out_index, M, N, num_warps=4, TILE_N=64)
-            elif N >= 4096 and (M >= 1024 or K >= 1024):
-                total = inp.numel()
-                if dtype is None:
-                    dtype = inp.dtype
-                block_size = triton.next_power_of_2(math.ceil(math.sqrt(total)))
-                mid_size = triton.cdiv(total, block_size)
-                block_mid = triton.next_power_of_2(mid_size)
-                mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-                mid_index = torch.empty(
-                    (mid_size,), dtype=torch.int64, device=inp.device
-                )
-                argmin_kernel_1[(mid_size, 1, 1)](
-                    inp.view(-1), mid_value, mid_index, total, block_size
-                )
-                argmin_kernel_2[(1, 1, 1)](
-                    mid_value, mid_index, out_index.view(-1), mid_size, block_mid
-                )
-            else:
-                if K > 1:
-                    grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]))
-                    argmin_kernel_non_inner[grid](inp, out_index, M, N, K)
-                else:
-                    grid = lambda meta: (M, 1, 1)
-                    argmin_kernel_inner[grid](inp, out_index, M, N)
-        else:
+        shape_list = list(shape)
+        shape_list[dim] = 1
+        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+        if not keepdim:
+            out_index = torch.squeeze(out_index, dim)
+
+        with torch_device_fn.device(inp.device):
             if K > 1:
-                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]))
-                argmin_kernel_non_inner[grid](inp, out_index, M, N, K)
+                grid = lambda meta: (
+                    M,
+                    triton.cdiv(K, meta["TILE_K"]),
+                )
+                argmin_kernel_non_inner[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                    K,
+                )
             else:
                 grid = lambda meta: (M, 1, 1)
-                argmin_kernel_inner[grid](inp, out_index, M, N)
-
-    if not keepdim:
-        out_index = out_index.squeeze(dim)
-
-    return out_index
+                argmin_kernel_inner[grid](
+                    inp,
+                    out_index,
+                    M,
+                    N,
+                )
+        return out_index

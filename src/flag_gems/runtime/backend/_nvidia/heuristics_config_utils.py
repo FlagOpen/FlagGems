@@ -15,7 +15,7 @@ def argmax_heur_block_n(args):
 
 
 def argmin_heur_tile_k(args):
-    MAX_TILE_K = 8192
+    MAX_TILE_K = 512
     NUM_SMS = torch.cuda.get_device_properties(
         torch.cuda.current_device()
     ).multi_processor_count
@@ -40,7 +40,7 @@ def argmin_heur_tile_k(args):
         num_blocks = M * triton.cdiv(K, tile_k)
         num_waves = num_blocks / NUM_SMS
 
-        if num_waves < 2 and (tile_k * 2 <= upper_bound):
+        if num_waves > 1 and (tile_k * 2 <= upper_bound):
             tile_k *= 2
         else:
             break
