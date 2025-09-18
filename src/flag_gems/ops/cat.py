@@ -110,7 +110,6 @@ def cat(
     dtype = dtypes[0]
     for dt in dtypes[1:]:
         dtype = torch.promote_types(dtype, dt)
-
     # Convert all tensors to the common dtype if needed
     A = [t.to(dtype) if t.dtype != dtype else t for t in A]
 
