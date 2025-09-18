@@ -123,13 +123,7 @@ def hstack(
         dtype = torch.promote_types(dtype, dt)
 
     # Convert all tensors to the common dtype if needed
-    tensors_converted = []
-    for tensor in tensors:
-        if tensor.dtype != dtype:
-            tensors_converted.append(tensor.to(dtype))
-        else:
-            tensors_converted.append(tensor)
-    tensors = tensors_converted
+    tensors = [t.to(dtype) if t.dtype != dtype else t for t in tensors]
     device = tensors[0].device
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
     out = torch.empty(out_shape, dtype=dtype, device=device)
