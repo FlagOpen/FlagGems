@@ -98,19 +98,18 @@ def stack(
     if dim < 0:
         dim = dim + len(inp0_shape) + 1
 
-    # Determine the result dtype through type promotion
-    result_dtype = tensors[0].dtype
-    for tensor in tensors[1:]:
-        result_dtype = torch.result_type(
-            torch.tensor(0, dtype=result_dtype), torch.tensor(0, dtype=tensor.dtype)
-        )
+    # Type promotion: find the common dtype for all tensors
+    dtypes = [t.dtype for t in tensors]
+    dtype = dtypes[0]
+    for dt in dtypes[1:]:
+        dtype = torch.promote_types(dtype, dt)
 
     device = tensors[0].device
     out_shape = inp0_shape[:dim] + [len(tensors)] + inp0_shape[dim:]
-    out = torch.empty(out_shape, dtype=result_dtype, device=device)
+    out = torch.empty(out_shape, dtype=dtype, device=device)
 
     # Convert all tensors to the result dtype if needed
-    tensors = [t.to(result_dtype) if t.dtype != result_dtype else t for t in tensors]
+    tensors = [t.to(dtype) if t.dtype != dtype else t for t in tensors]
 
     dim_prod_post = 1
     for s in inp0_shape[dim:]:

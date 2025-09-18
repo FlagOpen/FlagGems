@@ -116,19 +116,23 @@ def hstack(
     inp_shapes = [list(_.shape) for _ in tensors]
     inp0_shape = inp_shapes[0]
 
-    # Determine the result dtype through type promotion
-    result_dtype = tensors[0].dtype
-    for tensor in tensors[1:]:
-        result_dtype = torch.result_type(
-            torch.tensor(0, dtype=result_dtype), torch.tensor(0, dtype=tensor.dtype)
-        )
+    # Type promotion: find the common dtype for all tensors
+    dtypes = [t.dtype for t in tensors]
+    dtype = dtypes[0]
+    for dt in dtypes[1:]:
+        dtype = torch.promote_types(dtype, dt)
 
+    # Convert all tensors to the common dtype if needed
+    tensors_converted = []
+    for tensor in tensors:
+        if tensor.dtype != dtype:
+            tensors_converted.append(tensor.to(dtype))
+        else:
+            tensors_converted.append(tensor)
+    tensors = tensors_converted
     device = tensors[0].device
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
-    out = torch.empty(out_shape, dtype=result_dtype, device=device)
-
-    # Convert all tensors to the result dtype if needed
-    tensors = [t.to(result_dtype) if t.dtype != result_dtype else t for t in tensors]
+    out = torch.empty(out_shape, dtype=dtype, device=device)
 
     dim_prod_post = 1
     for s in inp0_shape[dim:]:
