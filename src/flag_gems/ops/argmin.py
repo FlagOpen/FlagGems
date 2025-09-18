@@ -79,12 +79,12 @@ def argmin_kernel_non_inner(
     pid_k = tle.program_id(1)
     k_offset = pid_k * TILE_K + tl.arange(0, TILE_K)
 
-    if tl.constexpr(inp.dtype.element_ty == tl.float16) or tl.constexpr(
-        inp.dtype.element_ty == tl.bfloat16
+    if tl.constexpr(inp.type.element_ty == tl.float16) or tl.constexpr(
+        inp.type.element_ty == tl.bfloat16
     ):
         cdtype = tl.float32
     else:
-        cdtype = inp.dtype.element_ty
+        cdtype = inp.type.element_ty
 
     max_value = get_dtype_max(cdtype)
 
