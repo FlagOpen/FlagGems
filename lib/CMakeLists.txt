@@ -21,7 +21,8 @@ add_library(operators
             softmax.cpp
 	          exponential_.cpp
             fill.cpp
-            reshape_and_cache_flash.cpp)
+            reshape_and_cache_flash.cpp
+            flash_attn_varlen_func.cpp)
 target_include_directories(operators
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
