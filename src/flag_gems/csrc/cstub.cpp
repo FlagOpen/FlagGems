@@ -14,6 +14,8 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("max_dim_max", &flag_gems::max_dim_max);
   m.def("rms_norm", &flag_gems::rms_norm);
   m.def("fused_add_rms_norm", &flag_gems::fused_add_rms_norm);
+  m.def("silu_and_mul", &flag_gems::silu_and_mul);
+  m.def("silu_and_mul_out", &flag_gems::silu_and_mul_out);
   m.def("nonzero", &flag_gems::nonzero);
   // Rotary embedding
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
@@ -42,6 +44,8 @@ TORCH_LIBRARY(flag_gems, m) {
   // Norm
   m.def("rms_norm(Tensor input, Tensor weight, float epsilon) -> Tensor");
   m.def("fused_add_rms_norm(Tensor! input, Tensor! residual, Tensor weight, float epsilon) -> ()");
+  m.def("silu_and_mul(Tensor x, Tensor y) -> Tensor");
+  m.def("silu_and_mul_out(Tensor x, Tensor y, Tensor(a!) out) -> Tensor(a!)");
   m.def("nonzero(Tensor self) -> Tensor");
   // rotary_embedding
   m.def(
@@ -89,6 +93,8 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   // Norm
   m.impl("rms_norm", TORCH_FN(rms_norm));
   m.impl("fused_add_rms_norm", TORCH_FN(fused_add_rms_norm));
+  m.impl("silu_and_mul", TORCH_FN(silu_and_mul));
+  m.impl("silu_and_mul_out", TORCH_FN(silu_and_mul_out));
   m.impl("nonzero", TORCH_FN(nonzero));
   // Rotary embedding
   m.impl("rotary_embedding", TORCH_FN(rotary_embedding));

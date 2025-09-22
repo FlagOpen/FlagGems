@@ -76,3 +76,8 @@ add_executable(test_triton_reshape_and_cache_flash test_triton_reshape_and_cache
 target_link_libraries(test_triton_reshape_and_cache_flash
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_reshape_and_cache_flash COMMAND test_triton_reshape_and_cache_flash)
+
+add_executable(test_triton_silu_and_mul test_triton_silu_and_mul.cpp)
+target_link_libraries(test_triton_silu_and_mul
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_silu_and_mul COMMAND test_triton_silu_and_mul)
