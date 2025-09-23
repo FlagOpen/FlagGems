@@ -84,7 +84,7 @@ def argmax_kernel(
         mask = m_offset[:, None] < M and n_offset[None, :] < N
         inp_ptrs = inp + offset
         if NEED_MASK:
-            inp_vals = tl.load(inp_ptrs,  mask=mask, other=min_value, mask_opt=True)
+            inp_vals = tl.load(inp_ptrs,  mask=mask, other=min_value)  # @hint: mask_opt
         else:
             inp_vals = tl.load(inp_ptrs)
         local_max, local_argmax = tl.max(
