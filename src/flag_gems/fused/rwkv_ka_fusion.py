@@ -17,7 +17,6 @@ def rwkv_ka_fusion_kernel(
     H,
     N,
     N_size: tl.constexpr,
-    C_size: tl.constexpr,
     block_size: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -60,10 +59,9 @@ def rwkv_ka_fusion(
 
     BLOCK_SIZE = 1 * C
     grid = lambda meta: (triton.cdiv(T * C, BLOCK_SIZE),)
-    C_size = triton.next_power_of_2(C)
     N_size = triton.next_power_of_2(N)
     rwkv_ka_fusion_kernel[grid](
-        k, kk, a, ka, o_k, o_kk, o_kka, T, C, H, N, N_size, C_size, BLOCK_SIZE
+        k, kk, a, ka, o_k, o_kk, o_kka, T, C, H, N, N_size, BLOCK_SIZE
     )
 
     return o_k, o_kk, o_kka

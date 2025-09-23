@@ -1,7 +1,6 @@
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
-#include <iostream>
 #include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
@@ -14,15 +13,16 @@ at::Tensor rwkv_mm_sparsity(const at::Tensor &k, const at::Tensor &v) {
 
   at::Tensor out = at::empty({v_sizes[1]}, k.options());
 
-  const TritonJITFunction &f = TritonJITFunction::getInstance(
-      std::string(utils::get_flag_gems_src_path() / "ops" / "rwkv_mm_sparsity.py"),
+  const TritonJITFunction &f = TritonJITFunction::get_instance(
+      std::string(utils::get_flag_gems_src_path() / "fused" / "rwkv_mm_sparsity.py"),
       "rwkv_mm_sparsity_kernel");
 
   // add utility to build this automatically
   int64_t blk_size = 512;
-  int64_t block_size = 32;
+  int64_t block_size = 16;
   const int num_warps = 4;
   const int num_stages = 8;
+  int64_t k_size = utils::next_power_of_2(k_sizes[0]);
 
   const unsigned int num_blocks = (v_sizes[1] + block_size - 1) / block_size;
 
@@ -30,19 +30,7 @@ at::Tensor rwkv_mm_sparsity(const at::Tensor &k, const at::Tensor &v) {
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(out.device());
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
-  f(raw_stream,
-    num_blocks,
-    1,
-    1,
-    num_warps,
-    num_stages,
-    k,
-    v,
-    out,
-    v_sizes[1],
-    blk_size,
-    k_sizes[0],
-    block_size);
+  f(raw_stream, num_blocks, 1, 1, num_warps, num_stages, k, v, out, v_sizes[1], blk_size, k_size, block_size);
   return out;
 }
 

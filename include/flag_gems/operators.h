@@ -79,7 +79,7 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             const at::Tensor &output,
                             int64_t dim,
                             at::ScalarType input_dtype);
-                            
+
 void reshape_and_cache_flash(const at::Tensor &key,
                              const at::Tensor &value,
                              at::Tensor &key_cache,

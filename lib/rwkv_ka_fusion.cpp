@@ -1,7 +1,6 @@
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 
-#include <iostream>
 #include "c10/cuda/CUDAStream.h"
 #include "triton_jit/triton_jit_function.h"
 
@@ -20,29 +19,26 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &
   if (k.dim() == 1) {
     T = 1;
     C = k_sizes[0];
-    o_k = at::empty({k_sizes[0]}, k.options());
-    o_kk = at::empty({k_sizes[0]}, k.options());
-    o_kka = at::empty({k_sizes[0]}, k.options());
   } else {
     T = k.sizes()[0];
     C = k.sizes()[1];
-    o_k = at::empty({k_sizes[0], k_sizes[1]}, k.options());
-    o_kk = at::empty({k_sizes[0], k_sizes[1]}, k.options());
-    o_kka = at::empty({k_sizes[0], k_sizes[1]}, k.options());
   }
+  o_k = at::empty_like(k, k.options());
+  o_kk = at::empty_like(k, k.options());
+  o_kka = at::empty_like(k, k.options());
 
-  const TritonJITFunction &f = TritonJITFunction::getInstance(
-      std::string(utils::get_flag_gems_src_path() / "ops" / "rwkv_ka_fusion.py"),
+  const TritonJITFunction &f = TritonJITFunction::get_instance(
+      std::string(utils::get_flag_gems_src_path() / "fused" / "rwkv_ka_fusion.py"),
       "rwkv_ka_fusion_kernel");
 
   // add utility to build this automatically
   int64_t block_size = C;
   const int num_warps = 4;
   const int num_stages = 8;
+  int64_t N_size = utils::next_power_of_2(N);
 
   const unsigned int num_blocks = (T * C + block_size - 1) / block_size;
 
-  // TODO:have not make sure N_size, C_szie is the multiple of 2
   // getCurrentCUDAStream ensures that the stream is initialized, a default stream for each device
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   c10::DeviceGuard guard(o_k.device());
@@ -64,8 +60,7 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &
     C,
     H,
     N,
-    N,
-    C,
+    N_size,
     block_size);
   return std::make_tuple(o_k, o_kk, o_kka);
 }
