@@ -418,6 +418,8 @@ __all__ = [
     "sqrt_",
     "rsqrt",
     "rsqrt_",
+    "rwkv_ka_fusion",
+    "rwkv_mm_sparsity",
     "scaled_dot_product_attention",
     "scatter",
     "scatter_",
