@@ -433,7 +433,7 @@ def test_sdpa_legacy_backward(
     gems_assert_close(gems_result, torch_result, dtype)
 
     # backward
-    dout = torch.randn_like(q)
+    dout = torch.randn_like(ref_q)
     torch_result.backward(dout)
     gems_result.backward(dout)
     torch_q_grad = ref_q.grad.clone() if ref_q.grad is not None else None
