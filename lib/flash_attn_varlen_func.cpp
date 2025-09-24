@@ -1,8 +1,10 @@
 #include <ATen/ATen.h>
+#include <cuda_runtime_api.h>
 #include <cmath>
 #include <limits>
 #include <tuple>
 #include "c10/cuda/CUDAStream.h"
+#include "c10/util/Optional.h"
 #include "flag_gems/operators.h"
 #include "flag_gems/utils.h"
 #include "torch/torch.h"
@@ -31,7 +33,6 @@ mha_varlan_fwd_internal(const at::Tensor& q,
                         double softcap,
                         bool return_softmax,
                         const at::Tensor& gen) {
-  // 253-301
   TORCH_CHECK(q.device() == k.device() && k.device() == v.device(), "q, k, v must be on the same device");
   auto q_device = q.device();
   auto q_dtype = q.scalar_type();
@@ -194,13 +195,12 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     alibi_slopes_batch_stride = 0;
     is_alibi = false;
   }
-  // Prepare params to kernel
   at::Tensor out_final = out;
   at::Tensor out_ = at::Tensor();
   at::Tensor lse;
   at::Tensor philox_args;
   at::Tensor p;
-  at::Tensor unused;  // optional, may remain undefined when not used
+  at::Tensor unused;
   {
     const c10::DeviceGuard guard(q_device);
     if (out.defined()) {
@@ -217,7 +217,6 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     bool is_dropout = false;
     int64_t increment = 0, philox_seed = 0, philox_offset = 0;
     philox_args = at::Tensor();
-    // Inference
     if (p_dropout > 0) {
       is_dropout = true;
       increment = batch_size * num_heads_final * 32;
@@ -259,7 +258,6 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     const int64_t o_row_stride = out_final.stride(out_final.dim() - 3);
     const int64_t o_head_stride = out_final.stride(out_final.dim() - 2);
 
-    // Prepare safe placeholders for optional tensors to ensure they have storage
     const bool is_cu_seqlens_q_flag = cu_seqlens_q_final.defined();
     const bool is_seqused_k_flag = seqused_k.defined();
     const bool is_cu_seqlens_k_flag = !is_seqused_k_flag;
@@ -338,9 +336,33 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     params.page_table_batch_stride = page_table_batch_stride;
     params.block_size = block_size;
 
-    const double avg_seqlen_q = static_cast<double>(total_q_final) / static_cast<double>(batch_size);
-    int64_t BLOCK_M = (avg_seqlen_q >= 256) ? 128 : 32;  // prefill or decode
-    int64_t BLOCK_N = 32;
+    int dev_id = 0;
+    cudaGetDevice(&dev_id);
+    cudaDeviceProp prop {};
+    cudaGetDeviceProperties(&prop, dev_id);
+    int num_sms = prop.multiProcessorCount > 0 ? prop.multiProcessorCount : 1;
+    // We assess which phase the requests are likely to be in and set the config accordingly.
+    const double total_rows = static_cast<double>(total_q_final) * static_cast<double>(num_heads_final);
+    const double avg_rows_per_sm = total_rows / static_cast<double>(num_sms);
+    const double avg_rows_per_batch = static_cast<double>(total_q_final) / static_cast<double>(batch_size);
+    const double avg_rows_per_cta = std::min(avg_rows_per_batch, avg_rows_per_sm);
+    // Heuristic: if avg_rows_per_sm >= 128, we are likely in prefill phase.
+    // This is a rough heuristic and may not be accurate for all scenarios.
+    int64_t BLOCK_M = 16;
+    int64_t BLOCK_N = 64;
+    if (avg_rows_per_cta > 64.0) {
+      BLOCK_M = 128;
+      BLOCK_N = 32;
+    } else if (avg_rows_per_cta > 32.0) {
+      BLOCK_M = 64;
+      BLOCK_N = 64;
+    } else if (avg_rows_per_cta > 16.0) {
+      BLOCK_M = 32;
+      BLOCK_N = 64;
+    } else {
+      BLOCK_M = 16;
+      BLOCK_N = 64;
+    }
     int64_t num_warps = 4;
     int64_t num_stages = 3;
 
@@ -352,7 +374,7 @@ mha_varlan_fwd_internal(const at::Tensor& q,
         (flag_gems::utils::get_flag_gems_src_path() / "ops" / "flash_kernel.py").string(),
         "flash_varlen_fwd_kernel");
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    CUstream raw_stream = stream.stream();
 
     f(raw_stream,
       grid_x,
@@ -442,7 +464,6 @@ mha_varlan_fwd_internal(const at::Tensor& q,
       }
       lse = lse.reshape({num_heads_k, batch_size, max_seqlen_q})
                 .reshape({num_heads_k * max_seqlen_q, batch_size});
-      // mark unused only when swap path is taken (optional)
       unused = at::empty({}, at::TensorOptions().dtype(at::kLong).device(q_device));
     }
   }
@@ -465,20 +486,18 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(const at::Tensor& q,
                                                           double dropout_p,
                                                           const std::optional<double>& softmax_scale,
                                                           bool causal,
-                                                          int64_t window_size_left,
-                                                          int64_t window_size_right,
+                                                          c10::optional<at::IntArrayRef> window_size,
                                                           double softcap,
                                                           const std::optional<at::Tensor>& alibi_slopes,
                                                           bool deterministic,
                                                           bool return_attn_probs,
                                                           const std::optional<at::Tensor>& block_table,
                                                           bool return_softmax_lse,
-                                                          const std::optional<at::Tensor>& out,
+                                                          std::optional<at::Tensor> out,
                                                           const std::optional<at::Tensor>& scheduler_metadata,
                                                           const std::optional<double>& q_descale,
                                                           const std::optional<double>& k_descale,
                                                           const std::optional<double>& v_descale,
-                                                          int64_t num_splits,
                                                           int64_t fa_version) {
   TORCH_CHECK(cu_seqlens_k.has_value() || seqused_k.has_value(),
               "cu_seqlens_k or seqused_k must be provided");
@@ -487,13 +506,20 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(const at::Tensor& q,
   TORCH_CHECK(!block_table.has_value() || seqused_k.has_value(),
               "seqused_k must be provided if block_table is provided");
 
+  int64_t window_size_left = -1;
+  int64_t window_size_right = -1;
+  if (window_size.has_value()) {
+    TORCH_CHECK(window_size.value().size() == 2, "window_size must be a list of 2 elements");
+    window_size_left = window_size.value()[0];
+    window_size_right = window_size.value()[1];
+  }
+
   double softmax_scale_val;
   if (!softmax_scale.has_value()) {
     softmax_scale_val = 1.0 / std::sqrt(q.size(q.dim() - 1));
   } else {
     softmax_scale_val = softmax_scale.value();
   }
-  // window_size has handled by direct parameters
   auto q_cont = q.contiguous();
   auto k_cont = k.contiguous();
   auto v_cont = v.contiguous();
@@ -505,7 +531,7 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(const at::Tensor& q,
   const at::Tensor& cu_seqlens_k_ref = cu_seqlens_k.has_value() ? cu_seqlens_k.value() : dummy_cu_seqlens_k;
 
   TORCH_CHECK(fa_version == 2, "Only FA2 is implemented");
-  TORCH_CHECK(num_splits == 0, "num_splits > 0 is not implemented in GEMS.");
+  // TORCH_CHECK(num_splits == 0, "num_splits > 0 is not implemented in GEMS.");
 
   const at::Tensor empty_undefined = at::Tensor();
   const at::Tensor& seqused_k_ref = seqused_k.has_value() ? seqused_k.value() : empty_undefined;

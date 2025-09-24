@@ -22,7 +22,6 @@ at::Tensor ref_paged_attn_cpp(const at::Tensor& query,
                               std::optional<at::Tensor> attn_bias_opt,
                               std::optional<int64_t> sliding_window_opt,
                               std::optional<double> soft_cap_opt) {
-  // Basic checks (device / dims)
   TORCH_CHECK(query.device() == key_cache.device() && query.device() == value_cache.device(),
               "All tensors must be on the same device");
   TORCH_CHECK(block_tables.dim() == 2, "block_tables must be 2-D");
@@ -34,7 +33,6 @@ at::Tensor ref_paged_attn_cpp(const at::Tensor& query,
   int64_t num_seqs = static_cast<int64_t>(query_lens.size());
   int64_t start_idx = 0;
 
-  // Extract shapes
   int64_t num_blocks = key_cache.size(0);
   int64_t block_size = key_cache.size(1);
   int64_t num_kv_heads = key_cache.size(2);
@@ -137,7 +135,6 @@ at::Tensor ref_paged_attn_cpp(const at::Tensor& query,
   return result;
 }
 
-// Helper: build attention bias from alibi slopes (parity with Python tests)
 at::Tensor attn_bias_from_alibi_slopes_cpp(const at::Tensor& slopes,  // (batch, nheads), float32
                                            int64_t seqlen_q,
                                            int64_t seqlen_k,
@@ -253,8 +250,7 @@ TEST_P(FlashAttnVarlenParamTest, MatchesReference) {
                                                    /*dropout_p*/ 0.0,
                                                    /*softmax_scale*/ scale,
                                                    /*causal*/ true,
-                                                   /*window_size_left*/ -1,
-                                                   /*window_size_right*/ -1,
+                                                   /*window_size*/ c10::nullopt,
                                                    /*softcap*/ soft_cap_opt.value_or(0.0),
                                                    /*alibi_slopes*/ alibi_slopes_opt,
                                                    /*deterministic*/ false,
@@ -263,7 +259,6 @@ TEST_P(FlashAttnVarlenParamTest, MatchesReference) {
                                                    /*return_softmax_lse*/ false);
   at::Tensor op_output = std::get<0>(out_lse);
 
-  // 参考实现
   at::Tensor ref_output = ref_paged_attn_cpp(q,
                                              k_cache,
                                              v_cache,
@@ -329,7 +324,6 @@ TEST_P(FlashAttnVarlenSwapQGParamTest, MatchesReference) {
   auto opts = torch::TensorOptions().dtype(dtype).device(device);
   auto opts_int = torch::TensorOptions().dtype(torch::kInt32).device(device);
 
-  // 构造输入
   const int64_t total_q_tokens = std::accumulate(query_lens.begin(), query_lens.end(), 0LL);
   at::Tensor q = torch::randn({total_q_tokens, num_query_heads, head_size}, opts);
   at::Tensor k_cache = torch::randn({num_blocks, block_size, num_kv_heads, head_size}, opts);
@@ -357,8 +351,7 @@ TEST_P(FlashAttnVarlenSwapQGParamTest, MatchesReference) {
                                                    /*dropout_p*/ 0.0,
                                                    /*softmax_scale*/ scale,
                                                    /*causal*/ true,
-                                                   /*window_size_left*/ -1,
-                                                   /*window_size_right*/ -1,
+                                                   /*window_size*/ c10::nullopt,
                                                    /*softcap*/ soft_cap_opt.value_or(0.0),
                                                    /*alibi_slopes*/ std::nullopt,
                                                    /*deterministic*/ false,

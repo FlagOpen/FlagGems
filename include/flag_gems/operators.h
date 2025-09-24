@@ -101,21 +101,18 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(
     double dropout_p = 0.0,
     const std::optional<double> &softmax_scale = std::nullopt,
     bool causal = false,
-    // CHANGE: window_size is now two separate integers
-    int64_t window_size_left = -1,
-    int64_t window_size_right = -1,
+    c10::optional<at::IntArrayRef> window_size = std::nullopt,
     double softcap = 0.0,
     const std::optional<at::Tensor> &alibi_slopes = std::nullopt,
     bool deterministic = false,
     bool return_attn_probs = false,
     const std::optional<at::Tensor> &block_table = std::nullopt,
     bool return_softmax_lse = false,
-    const std::optional<at::Tensor> &out = std::nullopt,
+    std::optional<at::Tensor> out = std::nullopt,
     const std::optional<at::Tensor> &scheduler_metadata = std::nullopt,
     const std::optional<double> &q_descale = std::nullopt,
     const std::optional<double> &k_descale = std::nullopt,
     const std::optional<double> &v_descale = std::nullopt,
-    int64_t num_splits = 0,
     int64_t fa_version = 2);
 
 struct FlashFwdParams {
