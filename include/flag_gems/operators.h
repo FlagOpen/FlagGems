@@ -34,11 +34,11 @@ at::Tensor addmm(const at::Tensor &self,
                  const at::Scalar &beta = 1,
                  const at::Scalar &alpha = 1);
 at::Tensor &addmm_out(const at::Tensor &self,
-                 const at::Tensor &mat1,
-                 const at::Tensor &mat2,
-                 const at::Scalar &beta,
-                 const at::Scalar &alpha,
-                 at::Tensor &out);
+                      const at::Tensor &mat1,
+                      const at::Tensor &mat2,
+                      const at::Scalar &beta,
+                      const at::Scalar &alpha,
+                      at::Tensor &out);
 at::Tensor nonzero(const at::Tensor &inp);
 // Rotary embedding
 void rotary_embedding_inplace(at::Tensor &q,
