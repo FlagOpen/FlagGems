@@ -65,7 +65,7 @@ static inline int64_t cdiv(int64_t x, int64_t y) {
 bool streamk_scenario(const at::Tensor &a, const at::Tensor &b, int64_t M, int64_t N, int64_t K) {
   bool a_is_half_or_bf16 = (a.scalar_type() == at::kHalf) || (a.scalar_type() == at::kBFloat16);
   bool b_is_half_or_bf16 = (b.scalar_type() == at::kHalf) || (b.scalar_type() == at::kBFloat16);
-  return (a_is_half_or_bf16 && b_is_half_or_bf16 && get_major() > 7 && K > M * 5 && K > N * 5);
+  return (a_is_half_or_bf16 && b_is_half_or_bf16 && get_major() == 8 && K > M * 5 && K > N * 5);
 }
 
 void streamk_mm_tensor(const at::Tensor &a,
@@ -250,8 +250,8 @@ void general_mm_tensor(
 
   // general situation
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
-                                     "mm_kernel_general");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "mm.py"),
+                                      "mm_kernel_general");
 
   c10::DeviceGuard guard(c.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

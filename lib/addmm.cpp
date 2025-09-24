@@ -8,11 +8,11 @@
 namespace flag_gems {
 using namespace triton_jit;
 
-at::Tensor addmm(const at::Tensor &self,
-                 const at::Tensor &mat1,
-                 const at::Tensor &mat2,
-                 const at::Scalar &beta,
-                 const at::Scalar &alpha) {
+at::Tensor addmm(const at::Tensor& self,
+                 const at::Tensor& mat1,
+                 const at::Tensor& mat2,
+                 const at::Scalar& beta,
+                 const at::Scalar& alpha) {
   at::IntArrayRef mat1_sizes = mat1.sizes();
   at::IntArrayRef mat2_sizes = mat2.sizes();
   TORCH_CHECK(mat1_sizes[1] == mat2_sizes[0], "Incompatible dimensions");
@@ -25,7 +25,7 @@ at::Tensor addmm(const at::Tensor &self,
   float alpha_val = alpha.to<float>();
   float beta_val = beta.to<float>();
 
-  const TritonJITFunction &f =
+  const TritonJITFunction& f =
       TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
                                       "addmm_kernel");
 
@@ -70,7 +70,7 @@ at::Tensor& addmm_out(const at::Tensor& self,
                       const at::Tensor& mat2,
                       const at::Scalar& beta,
                       const at::Scalar& alpha,
-                      at::Tensor& out){
+                      at::Tensor& out) {
   at::IntArrayRef mat1_sizes = mat1.sizes();
   at::IntArrayRef mat2_sizes = mat2.sizes();
   TORCH_CHECK(mat1_sizes[1] == mat2_sizes[0], "Incompatible dimensions");
@@ -82,9 +82,9 @@ at::Tensor& addmm_out(const at::Tensor& self,
   float alpha_val = alpha.to<float>();
   float beta_val = beta.to<float>();
 
-  const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
-                                     "addmm_kernel");
+  const TritonJITFunction& f =
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "addmm.py"),
+                                      "addmm_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();

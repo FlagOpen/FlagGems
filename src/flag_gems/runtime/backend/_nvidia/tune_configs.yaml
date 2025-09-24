@@ -123,13 +123,6 @@ log_softmax:
       BLOCK_M: 32
       BLOCK_N: 512
     num_warps: 8
-mm_iobound:
-  - META:
-      BLOCK_M: 32
-      BLOCK_N: 32
-      BLOCK_K: 128
-    num_stages: 5
-    num_warps: 4
 mm:
   - META:
       BLOCK_M: 64
