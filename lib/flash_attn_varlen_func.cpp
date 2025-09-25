@@ -205,13 +205,18 @@ mha_varlan_fwd_internal(const at::Tensor& q,
     const c10::DeviceGuard guard(q_device);
     if (out.defined()) {
       out_ = out;
-      if (seqlenq_ngroups_swapped)
-        out_final = at::empty_like(q_final, q_final.options().dtype(v.scalar_type()));
+      if (seqlenq_ngroups_swapped) {
+        out_final = out_.view({batch_size, num_heads_k, max_seqlen_q, head_size}).transpose(1, 2);
+      } else {
+        out_final = out_;
+      }
     } else {
       out_ = at::Tensor();
       out_final = at::empty_like(q_final, q_final.options().dtype(v.scalar_type()));
     }
-    if (seqlenq_ngroups_swapped) o_batch_stride = out_final.stride(0) * max_seqlen_q;
+    if (seqlenq_ngroups_swapped) {
+      o_batch_stride = out.defined() ? out_.stride(0) : (out_final.stride(0) * max_seqlen_q);
+    }
     lse = at::empty({num_heads_final, total_q_final}, at::TensorOptions().dtype(at::kFloat).device(q_device));
 
     bool is_dropout = false;
@@ -453,13 +458,11 @@ mha_varlan_fwd_internal(const at::Tensor& q,
       num_stages);
 
     if (seqlenq_ngroups_swapped) {
-      at::Tensor out_swapped =
-          out_final.reshape({batch_size, max_seqlen_q, num_heads_k, head_size}).transpose(1, 2);
       if (out_.defined()) {
-        at::Tensor out_view = out_.view({batch_size, num_heads_k, max_seqlen_q, head_size});
-        out_view.copy_(out_swapped);
         out_final = out_;
       } else {
+        at::Tensor out_swapped =
+            out_final.reshape({batch_size, max_seqlen_q, num_heads_k, head_size}).transpose(1, 2);
         out_final = out_swapped.reshape({batch_size, num_heads_k * max_seqlen_q, head_size});
       }
       lse = lse.reshape({num_heads_k, batch_size, max_seqlen_q})
