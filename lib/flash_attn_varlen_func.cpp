@@ -467,7 +467,14 @@ mha_varlan_fwd_internal(const at::Tensor& q,
       unused = at::empty({}, at::TensorOptions().dtype(at::kLong).device(q_device));
     }
   }
-  return std::make_tuple(out_final, q_final, k, v, lse, philox_args, unused, p);
+  return std::make_tuple(std::move(out_final),
+                         std::move(q_final),
+                         std::move(k),
+                         std::move(v),
+                         std::move(lse),
+                         std::move(philox_args),
+                         std::move(unused),
+                         std::move(p));
 }
 }  // namespace
 
@@ -564,7 +571,7 @@ std::tuple<at::Tensor, at::Tensor> flash_attn_varlen_func(const at::Tensor& q,
 
   auto out_tensor = std::get<0>(outputs);
   auto softmax_lse = std::get<4>(outputs);
-  return std::make_tuple(out_tensor, softmax_lse);
+  return std::make_tuple(std::move(out_tensor), std::move(softmax_lse));
 }
 
 }  // namespace flag_gems
