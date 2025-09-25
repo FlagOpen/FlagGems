@@ -60,7 +60,10 @@ def convert_fp8(
     dst: torch.Tensor, src: torch.Tensor, scale: float, kv_dtype: str
 ) -> None:
     if kv_dtype == "fp8":
-        dst_ = (src / scale).to(torch.float8_e4m3fn).view(dst.dtype)
+        if flag_gems.vendor_name == "amd":
+            dst_ = (src / scale).to(torch.float8_e4m3fnuz).view(dst.dtype)
+        else:
+            dst_ = (src / scale).to(torch.float8_e4m3fn).view(dst.dtype)
         dst.copy_(dst_)
     else:
         dst.copy_(src)
@@ -147,7 +150,11 @@ def test_concat_and_cache_mla(
             convert_fp8(
                 expected_temp, ref_kv_cache, scale.item(), kv_dtype=kv_cache_dtype
             )
-            dtype = torch.float8_e4m3fn
+            dtype = (
+                torch.float8_e4m3fn
+                if flag_gems.vendor_name != "amd"
+                else torch.float8_e4m3fnuz
+            )
             if flag_gems.vendor_name == "mthreads":
                 result_temp = to_reference(result_temp)
             # TODO: RuntimeError: Comparing
