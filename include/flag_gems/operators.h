@@ -28,6 +28,8 @@ void fused_add_rms_norm(at::Tensor &input,
                         at::Tensor &residual,
                         const at::Tensor &weight,
                         double epsilon = 1e-5);
+at::Tensor silu_and_mul(const at::Tensor &x, const at::Tensor &y);
+at::Tensor &silu_and_mul_out(at::Tensor &out, const at::Tensor &x, const at::Tensor &y);
 at::Tensor addmm(const at::Tensor &self,
                  const at::Tensor &mat1,
                  const at::Tensor &mat2,
