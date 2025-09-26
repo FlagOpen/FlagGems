@@ -29,27 +29,27 @@ bmm:
     TILE_M: 64
     TILE_N: 64
     TILE_K: 64
-    GROUP_M: 1
+    GROUP_M: 4
 - META:
     TILE_M: 128
     TILE_N: 128
     TILE_K: 128
-    GROUP_M: 1
+    GROUP_M: 4
 - META:
-    TILE_M: 256
+    TILE_M: 128
+    TILE_N: 256
+    TILE_K: 64
+    GROUP_M: 4
+- META:
+    TILE_M: 128
     TILE_N: 256
     TILE_K: 256
-    GROUP_M: 1
+    GROUP_M: 4
 - META:
-    TILE_M: 512
-    TILE_N: 512
-    TILE_K: 512
-    GROUP_M: 1
-- META:
-    TILE_M: 1024
-    TILE_N: 1024
-    TILE_K: 1024
-    GROUP_M: 1
+    TILE_M: 256
+    TILE_N: 128
+    TILE_K: 256
+    GROUP_M: 4
 argmax:
 - META:
     BLOCK_M: 8
@@ -77,9 +77,21 @@ log_softmax:
   num_warps: 8
 mm:
 - META:
-    BLOCK_M: 16
-    BLOCK_N: 32
-    BLOCK_K: 32
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 64
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 256
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 256
   num_stages: 3
   num_warps: 8
 softmax_non_inner:
