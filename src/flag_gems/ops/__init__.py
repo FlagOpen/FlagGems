@@ -180,6 +180,7 @@ from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_dtype
 from flag_gems.ops.topk import topk
+from flag_gems.ops.trace import trace
 from flag_gems.ops.triu import triu
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -441,6 +442,7 @@ __all__ = [
     "tile",
     "to_dtype",
     "topk",
+    "trace",
     "triu",
     "true_divide",
     "true_divide_",
