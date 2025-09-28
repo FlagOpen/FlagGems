@@ -4,10 +4,19 @@ import torch
 import torch.nn as nn
 
 import flag_gems
+from flag_gems.config import use_c_extension
 
 logger = logging.getLogger(__name__)
 
-has_c_extension = False  # Disable C extension for now, as we have not implemented c++ wrapper for silu_and_mul yet.
+
+def _c_extension_available() -> bool:
+    return bool(
+        use_c_extension
+        and hasattr(torch.ops, "flag_gems")
+        and hasattr(torch.ops.flag_gems, "silu_and_mul")
+        and hasattr(torch.ops.flag_gems, "silu_and_mul_out")
+    )
+
 
 __all__ = [
     "gems_silu_and_mul",
@@ -19,8 +28,10 @@ def gems_silu_and_mul(
     x: torch.Tensor,
     y: torch.Tensor,
 ) -> torch.Tensor:
+    if _c_extension_available():
+        logger.debug("GEMS CUSTOM SILU_AND_MUL FORWARD(C EXTENSION)")
+        return torch.ops.flag_gems.silu_and_mul(x, y)
     logger.debug("GEMS CUSTOM SILU_AND_MUL FORWARD")
-    # TODO: Implement C++ wrapper for silu_and_mul
     return flag_gems.silu_and_mul(x, y)
 
 
