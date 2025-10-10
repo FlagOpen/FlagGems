@@ -1,6 +1,6 @@
+import functools
 import logging
 import math
-import functools
 
 import torch
 import triton
@@ -18,14 +18,16 @@ logger = logging.getLogger(__name__)
 def get_num_sms(idx: int) -> int:
     return get_device_properties(idx).multi_processor_count
 
+
 @tl.constexpr
 def get_accum_type(inp_dtype: tl.dtype) -> tl.dtype:
     if inp_dtype.is_bf16() or inp_dtype.is_bf16():
         return tl.float32
-    if inp_dtype.is_int(): # signed or not(including bool)
+    if inp_dtype.is_int():  # signed or not(including bool)
         return tl.int64
     else:
         return inp_dtype
+
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
@@ -228,11 +230,11 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
-    if M == 1 and K == 1: # single vector
+    if M == 1 and K == 1:  # single vector
         reduce_then_scan_row(inp, out, M, N, compute_dtype)
     elif K == 1:  # row scan
         reduce_then_scan_row(inp, out, M, N, compute_dtype)
-    else: # col scan
+    else:  # col scan
         scan_then_fan(inp, out, M, N, K, compute_dtype)
 
     return out
@@ -339,7 +341,9 @@ def reduce_then_scan_block_scan_kernel_row(
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
     acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
 
-    prefix = tl.load(previous_sum_ptr + pid_n - 1, mask=pid_n > 0, other=0).to(acc_dtype)
+    prefix = tl.load(previous_sum_ptr + pid_n - 1, mask=pid_n > 0, other=0).to(
+        acc_dtype
+    )
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
@@ -349,6 +353,7 @@ def reduce_then_scan_block_scan_kernel_row(
         tl.store(
             out_ptr + pid_m * N + offsets, tile_scan, mask=mask, cache_modifier=".cg"
         )
+
 
 def cumsum(inp, dim=1, *, dtype=None):
     logger.debug("GEMS CUMSUM")
