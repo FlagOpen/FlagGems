@@ -47,15 +47,14 @@ find_package(CUDAToolkit REQUIRED)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 # torch
 find_package(Torch MODULE REQUIRED) # This is the FindTorch.cmake
-
 # dependencies: json
 if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
   find_package(TritonJIT 0.1.0 CONFIG REQUIRED)
 else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/iclementine/libtorch_example.git
-    # SOURCE_DIR /home/clement/projects/libtorch_example    # use local source dir in development
+    GIT_REPOSITORY https://github.com/FlagTree/libtriton_jit.git
+    # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)
 endif()

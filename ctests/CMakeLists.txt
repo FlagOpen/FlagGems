@@ -58,7 +58,31 @@ target_link_libraries(test_triton_argmax
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_argmax COMMAND test_triton_argmax)
 
+add_executable(test_triton_exponential_ test_triton_exponential_.cpp)
+target_link_libraries(test_triton_exponential_
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_exponential_ COMMAND test_triton_exponential_)
 add_executable(test_triton_fill  test_triton_fill.cpp)
 target_link_libraries(test_triton_fill
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_fill COMMAND test_triton_fill)
+
+add_executable(test_triton_softmax test_triton_softmax.cpp)
+target_link_libraries(test_triton_softmax
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main ${Python_LIBRARIES} pybind11::embed)
+add_test(NAME test_triton_softmax COMMAND test_triton_softmax)
+
+add_executable(test_triton_reshape_and_cache_flash test_triton_reshape_and_cache_flash.cpp)
+target_link_libraries(test_triton_reshape_and_cache_flash
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_reshape_and_cache_flash COMMAND test_triton_reshape_and_cache_flash)
+
+add_executable(test_triton_rwkv_ka_fusion test_triton_rwkv_ka_fusion.cpp)
+target_link_libraries(test_triton_rwkv_ka_fusion
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_rwkv_ka_fusion COMMAND test_triton_rwkv_ka_fusion)
+
+add_executable(test_triton_rwkv_mm_sparsity test_triton_rwkv_mm_sparsity.cpp)
+target_link_libraries(test_triton_rwkv_mm_sparsity
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_rwkv_mm_sparsity COMMAND test_triton_rwkv_mm_sparsity)

@@ -29,16 +29,16 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
     }
 
     const TritonJITFunction &f1 =
-        TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
-                                       "argmax_kernel_1");
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
+                                        "argmax_kernel_1");
     const TritonJITFunction &f2 =
-        TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
-                                       "argmax_kernel_2");
+        TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
+                                        "argmax_kernel_2");
 
     c10::DeviceGuard guard(self.device());
     c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
-
-    f1(stream,
+    CUstream raw_stream = static_cast<CUstream>(stream.stream());
+    f1(raw_stream,
        mid_size,
        1,
        1,
@@ -50,7 +50,7 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
        M,
        block_size);
 
-    f2(stream,
+    f2(raw_stream,
        1,
        1,
        1,
@@ -93,8 +93,8 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
   at::Tensor contiguous_self = self.contiguous();
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
-                                     "argmax_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_flag_gems_src_path() / "ops" / "argmax.py"),
+                                      "argmax_kernel");
 
   int64_t tile_m = 32;
   int64_t tile_n = 512;
@@ -105,8 +105,9 @@ at::Tensor argmax(const at::Tensor &self, std::optional<int64_t> dim, bool keepd
 
   c10::DeviceGuard guard(self.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+  CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
-  f(stream, grid_x, grid_y, 1, num_warps, num_stages, contiguous_self, out, M, N, K, tile_m, tile_n);
+  f(raw_stream, grid_x, grid_y, 1, num_warps, num_stages, contiguous_self, out, M, N, K, tile_m, tile_n);
 
   return out;
 }

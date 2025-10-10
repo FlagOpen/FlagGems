@@ -53,6 +53,20 @@ def threshold_input_fn(shape, cur_dtype, device):
     yield inp1, 3.14, 2.71
 
 
+def addcmul_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    inp3 = generate_tensor_input(shape, cur_dtype, device)
+    yield inp1, inp2, inp3, {"value": 0.5}
+
+
+def addcdiv_input_fn(shape, cur_dtype, device):
+    inp1 = generate_tensor_input(shape, cur_dtype, device)
+    inp2 = generate_tensor_input(shape, cur_dtype, device)
+    inp3 = generate_tensor_input(shape, cur_dtype, device)
+    yield inp1, inp2, inp3, {"value": 0.5}
+
+
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [
@@ -86,6 +100,20 @@ def threshold_input_fn(shape, cur_dtype, device):
             threshold_input_fn,
             FLOAT_DTYPES,
             marks=pytest.mark.threshold,
+        ),
+        pytest.param(
+            "addcmul",
+            torch.addcmul,
+            addcmul_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.addcmul,
+        ),
+        pytest.param(
+            "addcdiv",
+            torch.addcdiv,
+            addcmul_input_fn,
+            FLOAT_DTYPES,
+            marks=pytest.mark.addcdiv,
         ),
     ],
 )

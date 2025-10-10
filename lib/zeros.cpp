@@ -40,13 +40,13 @@ at::Tensor zeros(at::IntArrayRef size,
   const uint64_t num_blocks = (static_cast<uint64_t>(n_elements) + tile_size - 1) / tile_size;
 
   const TritonJITFunction &f =
-      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "zeros.py"), "zeros_kernel");
+      TritonJITFunction::get_instance(std::string(utils::get_triton_src_path() / "zeros.py"), "zeros_kernel");
 
   c10::DeviceGuard guard(out.device());
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
 
-  f(stream,
+  f(raw_stream,
     num_blocks,
     /* grid_y = */ 1,
     /* grid_z = */ 1,
