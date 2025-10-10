@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 def get_num_sms(idx: int) -> int:
     return get_device_properties(idx).multi_processor_count
 
+@tl.constexpr
+def get_accum_type(inp_dtype: tl.dtype) -> tl.dtype:
+    if inp_dtype.is_bf16() or inp_dtype.is_bf16():
+        return tl.float32
+    if inp_dtype.is_int(): # signed or not(including bool)
+        return tl.int64
+    else:
+        return inp_dtype
+
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "part_num"])
 def scan_part_sum_kernel(
@@ -295,10 +304,12 @@ def reduce_then_scan_block_sum_kernel_row(
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
     # inp_dtype = in_ptr.type.element_ty
     # acc_dtype = tl.float32 if (inp_dtype == tl.bfloat16 or inp_dtype == tl.float16) else inp_dtype
-    acc = tl.zeros((TILE_SIZE,), dtype=in_ptr.type.element_ty)
+
+    acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
+    acc = tl.zeros((TILE_SIZE,), dtype=acc_dtype)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N)
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=offsets < N).to(acc_dtype)
         acc += x
     block_sum = tl.sum(acc, 0)
     tl.store(
@@ -312,7 +323,8 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
     pid = tl.program_id(0).to(tl.int64)
     offsets = tl.arange(0, TILE_SIZE)
     mask = offsets < N
-    x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=0).to(tl.float32)
+    acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
+    x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=0).to(acc_dtype)
     out = tl.cumsum(x, 0)
     tl.store(out_ptr + pid * N + offsets, out, mask=mask)
 
@@ -325,12 +337,13 @@ def reduce_then_scan_block_scan_kernel_row(
     pid_n = tl.program_id(1).to(tl.int64)
     block_offset = pid_n * (tiles_per_cta * TILE_SIZE)
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
+    acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
 
-    prefix = tl.load(previous_sum_ptr + pid_n - 1, mask=pid_n > 0, other=0)
+    prefix = tl.load(previous_sum_ptr + pid_n - 1, mask=pid_n > 0, other=0).to(acc_dtype)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
-        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask)
+        x = tl.load(in_ptr + pid_m * N + offsets, mask=mask).to(acc_dtype)
         tile_scan = prefix + tl.cumsum(x, 0)
         prefix += tl.sum(x, 0)
         tl.store(
