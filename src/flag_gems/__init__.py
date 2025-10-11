@@ -64,7 +64,7 @@ def enable(
             ("arange.start_step", arange_start),
             ("argmax", argmax),
             ("argmin", argmin),
-            ("atan",atan),
+            ("atan", atan),
             ("atan_", atan_),
             ("bitwise_and.Scalar", bitwise_and_scalar),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
