@@ -287,7 +287,14 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
         num_warps=num_warps,
     )
     reduce_then_scan_block_scan_kernel_row[(M, num_ctas, 1)](
-        x, block_inclusive_prefix, out, N, tiles_per_cta, TILE_SIZE, num_warps=num_warps
+        x,
+        block_inclusive_prefix,
+        out,
+        N,
+        num_ctas,
+        tiles_per_cta,
+        TILE_SIZE,
+        num_warps=num_warps,
     )
     return out
 
@@ -333,7 +340,13 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
 
 @triton.jit
 def reduce_then_scan_block_scan_kernel_row(
-    in_ptr, previous_sum_ptr, out_ptr, N, tiles_per_cta, TILE_SIZE: tl.constexpr
+    in_ptr,
+    previous_sum_ptr,
+    out_ptr,
+    N,
+    num_tiles_n,
+    tiles_per_cta,
+    TILE_SIZE: tl.constexpr,
 ):
     pid_m = tl.program_id(0).to(tl.int64)
     pid_n = tl.program_id(1).to(tl.int64)
@@ -341,9 +354,9 @@ def reduce_then_scan_block_scan_kernel_row(
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
     acc_dtype: tl.constexpr = get_scan_accum_type(in_ptr.type.element_ty)
 
-    prefix = tl.load(previous_sum_ptr + pid_n - 1, mask=pid_n > 0, other=0).to(
-        acc_dtype
-    )
+    prefix = tl.load(
+        previous_sum_ptr + pid_m * num_tiles_n + pid_n - 1, mask=pid_n > 0, other=0
+    ).to(acc_dtype)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
         mask = offsets < N
