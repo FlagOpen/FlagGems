@@ -5,6 +5,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import get_device_properties, libentry
@@ -20,8 +21,8 @@ def get_num_sms(idx: int) -> int:
 
 
 @tl.constexpr
-def get_accum_type(inp_dtype: tl.dtype) -> tl.dtype:
-    if inp_dtype.is_bf16() or inp_dtype.is_bf16():
+def get_scan_accum_type(inp_dtype: tl.dtype) -> tl.dtype:
+    if inp_dtype.is_bf16() or inp_dtype.is_fp16():
         return tl.float32
     if inp_dtype.is_int():  # signed or not(including bool)
         return tl.int64
@@ -221,7 +222,7 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
 
     if dtype is None:
         dtype = inp.dtype
-        if dtype is torch.bool:
+        if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
             dtype = torch.int64
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
@@ -230,10 +231,11 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
-    if M == 1 and K == 1:  # single vector
+    # if M == 1 and K == 1:  # single vector
+    #      reduce_then_scan_row(inp, out, M, N, compute_dtype)
+    if K == 1:  # row scan
         reduce_then_scan_row(inp, out, M, N, compute_dtype)
-    elif K == 1:  # row scan
-        reduce_then_scan_row(inp, out, M, N, compute_dtype)
+        # scan_then_fan(inp, out, M, N, K, compute_dtype)
     else:  # col scan
         scan_then_fan(inp, out, M, N, K, compute_dtype)
 
@@ -304,10 +306,8 @@ def reduce_then_scan_block_sum_kernel_row(
     num_programs_n = tl.num_programs(1)
     block_offset = pid_n * (tiles_per_cta * TILE_SIZE)
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
-    # inp_dtype = in_ptr.type.element_ty
-    # acc_dtype = tl.float32 if (inp_dtype == tl.bfloat16 or inp_dtype == tl.float16) else inp_dtype
 
-    acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
+    acc_dtype: tl.constexpr = get_scan_accum_type(in_ptr.type.element_ty)
     acc = tl.zeros((TILE_SIZE,), dtype=acc_dtype)
     for start in range(block_offset, block_end, TILE_SIZE):
         offsets = start + tl.arange(0, TILE_SIZE)
@@ -325,7 +325,7 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
     pid = tl.program_id(0).to(tl.int64)
     offsets = tl.arange(0, TILE_SIZE)
     mask = offsets < N
-    acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
+    acc_dtype: tl.constexpr = get_scan_accum_type(in_ptr.type.element_ty)
     x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=0).to(acc_dtype)
     out = tl.cumsum(x, 0)
     tl.store(out_ptr + pid * N + offsets, out, mask=mask)
@@ -339,7 +339,7 @@ def reduce_then_scan_block_scan_kernel_row(
     pid_n = tl.program_id(1).to(tl.int64)
     block_offset = pid_n * (tiles_per_cta * TILE_SIZE)
     block_end = min(block_offset + tiles_per_cta * TILE_SIZE, N)
-    acc_dtype: tl.constexpr = get_accum_type(in_ptr.type.element_ty)
+    acc_dtype: tl.constexpr = get_scan_accum_type(in_ptr.type.element_ty)
 
     prefix = tl.load(previous_sum_ptr + pid_n - 1, mask=pid_n > 0, other=0).to(
         acc_dtype
