@@ -231,11 +231,8 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
         compute_dtype = torch.float32
 
-    # if M == 1 and K == 1:  # single vector
-    #      reduce_then_scan_row(inp, out, M, N, compute_dtype)
     if K == 1:  # row scan
         reduce_then_scan_row(inp, out, M, N, compute_dtype)
-        # scan_then_fan(inp, out, M, N, K, compute_dtype)
     else:  # col scan
         scan_then_fan(inp, out, M, N, K, compute_dtype)
 
@@ -275,7 +272,7 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
         device=x.device,
     )
 
-    # 3-kernel implementartion
+    # 3-kernel implementation
     reduce_then_scan_block_sum_kernel_row[(M, num_ctas, 1, 1)](
         x, block_sums, N, tiles_per_cta, TILE_SIZE, num_warps=num_warps
     )
