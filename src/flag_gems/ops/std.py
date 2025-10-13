@@ -1,6 +1,8 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
 from .sqrt import sqrt
 from .var_mean import var_mean
@@ -22,42 +24,69 @@ def std(x, dim=None, unbiased=True, keepdim=False):
     return std_dev, mean
 
 
+@triton.jit
+def _std_backward_kernel(
+    grad_x_ptr,
+    grad_output_ptr,
+    x_ptr,
+    mean_ptr,
+    std_dev_ptr,
+    divisor,
+    num_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < num_elements
+
+    grad_output = tl.load(grad_output_ptr + offset, mask=mask, other=0.0)
+    x = tl.load(x_ptr + offset, mask=mask, other=0.0)
+    mean = tl.load(mean_ptr + offset, mask=mask, other=0.0)
+    std_dev = tl.load(std_dev_ptr + offset, mask=mask, other=0.0)
+
+    std_dev_safe = tl.where(std_dev > 0, std_dev, 1.0)
+
+    grad_output_f32 = grad_output.to(tl.float32)
+    x_f32 = x.to(tl.float32)
+    mean_f32 = mean.to(tl.float32)
+    std_dev_safe_f32 = std_dev_safe.to(tl.float32)
+
+    divisor_f32 = divisor.to(tl.float32)
+
+    grad_x = grad_output_f32 * (x_f32 - mean_f32) / (std_dev_safe_f32 * divisor_f32)
+
+    tl.store(grad_x_ptr + offset, grad_x, mask=mask)
+
+
 def std_backward(grad_output, std_dev, x, mean, dim, unbiased):
     logger.debug("GEMS STD Backward")
 
-    dim_list = dim
-    if isinstance(dim, int):
-        dim_list = [dim]
-
+    dim_list = [dim] if isinstance(dim, int) else dim
     if dim_list is None:
-        num_elements = x.numel()
+        num_elements_reduced = x.numel()
     else:
-        num_elements = 1
+        num_elements_reduced = 1
         for d in dim_list:
-            num_elements *= x.shape[d]
+            num_elements_reduced *= x.shape[d]
+    divisor = num_elements_reduced - 1.0 if unbiased else num_elements_reduced
 
-    divisor = num_elements - 1.0 if unbiased else num_elements
+    shape = x.shape
+    grad_output_b = grad_output.expand(shape)
+    std_dev_b = std_dev.expand(shape)
+    mean_b = mean.expand(shape)
 
-    std_dev_safe = std_dev.where(std_dev > 0, torch.ones_like(std_dev))
+    grad_x = torch.empty_like(x)
 
-    if grad_output.dim() < x.dim():
-        if dim_list is None:
-            grad_output = grad_output.reshape([1] * x.dim())
-        else:
-            grad_output = grad_output.unsqueeze(dim_list)
+    grid = lambda META: (triton.cdiv(x.numel(), META["BLOCK_SIZE"]),)
 
-    if std_dev.dim() < x.dim():
-        if dim_list is None:
-            std_dev_safe = std_dev_safe.reshape([1] * x.dim())
-        else:
-            std_dev_safe = std_dev_safe.unsqueeze(dim_list)
-
-    if mean.dim() < x.dim():
-        if dim_list is None:
-            mean = mean.reshape([1] * x.dim())
-        else:
-            mean = mean.unsqueeze(dim_list)
-
-    grad_x = grad_output * (1.0 / std_dev_safe) * (x - mean) / divisor
+    _std_backward_kernel[grid](
+        grad_x,
+        grad_output_b,
+        x,
+        mean_b,
+        std_dev_b,
+        divisor,
+        x.numel(),
+    )
 
     return grad_x
