@@ -184,7 +184,7 @@ from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
-from flag_gems.ops.std import std
+from flag_gems.ops.std import std, std_backward
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -448,6 +448,7 @@ __all__ = [
     "sort_stable",
     "stack",
     "std",
+    "std_backward",
     "sub",
     "sub_",
     "sum",

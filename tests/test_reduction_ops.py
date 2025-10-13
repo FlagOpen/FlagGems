@@ -1638,7 +1638,7 @@ def test_accuracy_std(shape, dim, unbiased, keepdim, dtype):
             pytest.skip("Dimension out of range for the given shape.")
 
     if unbiased:
-        if dim is None and torch.tensor(shape).prod() < 2:
+        if dim is None and np.prod(shape) < 2:
             pytest.skip("Unbiased std of a tensor with less than 2 elements is NaN.")
         if dim is not None:
             dims_to_check_for_nan = dim if isinstance(dim, (list, tuple)) else [dim]
@@ -1654,3 +1654,36 @@ def test_accuracy_std(shape, dim, unbiased, keepdim, dtype):
     ref_out = torch.std(ref_inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.std
+@pytest.mark.parametrize("shape", [(16, 32), (8, 64, 128)])
+@pytest.mark.parametrize("dim", DIMS_LIST)
+@pytest.mark.parametrize("unbiased", [True, False])
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_accuracy_std_backward(shape, dim, unbiased, keepdim, dtype):
+    if dim is not None:
+        dims_to_check = dim if isinstance(dim, (list, tuple)) else [dim]
+        if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
+            pytest.skip("Dimension out of range for the given shape.")
+
+    if dtype == torch.bfloat16:
+        pytest.skip(
+            "Gradient check not supported for bfloat16 due to precision issues."
+        )
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    with flag_gems.use_gems():
+        res_out = torch.std(inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
+    ref_out = torch.std(ref_inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
+
+    grad_output = torch.randn_like(res_out)
+    ref_grad_output = to_reference(grad_output, True)
+
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, grad_output)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad_output)
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
