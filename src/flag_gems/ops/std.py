@@ -17,11 +17,11 @@ def std(x, dim=None, unbiased=True, keepdim=False):
     if isinstance(dim, int):
         dim_list = [dim]
 
-    variance, mean = var_mean(x, dim=dim_list, unbiased=unbiased, keepdim=keepdim)
+    variance, _ = var_mean(x, dim=dim_list, unbiased=unbiased, keepdim=keepdim)
 
     std_dev = sqrt(variance)
 
-    return std_dev, mean
+    return std_dev
 
 
 @triton.jit
