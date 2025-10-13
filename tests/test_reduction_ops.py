@@ -1622,3 +1622,35 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
     assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
     assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
+
+
+@pytest.mark.std
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIMS_LIST)
+@pytest.mark.parametrize("unbiased", [True] if QUICK_MODE else [True, False])
+@pytest.mark.parametrize("keepdim", [True] if QUICK_MODE else [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_std(shape, dim, unbiased, keepdim, dtype):
+    if dim is not None:
+        dims_to_check = dim if isinstance(dim, (list, tuple)) else [dim]
+
+        if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
+            pytest.skip("Dimension out of range for the given shape.")
+
+    if unbiased:
+        if dim is None and torch.tensor(shape).prod() < 2:
+            pytest.skip("Unbiased std of a tensor with less than 2 elements is NaN.")
+        if dim is not None:
+            dims_to_check_for_nan = dim if isinstance(dim, (list, tuple)) else [dim]
+            if any(shape[d] < 2 for d in dims_to_check_for_nan):
+                pytest.skip("Unbiased std along a dimension of size < 2 is NaN.")
+
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.std(inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
+
+    ref_out = torch.std(ref_inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)
