@@ -1667,23 +1667,26 @@ def test_accuracy_std_backward(shape, dim, unbiased, keepdim, dtype):
         dims_to_check = dim if isinstance(dim, (list, tuple)) else [dim]
         if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
             pytest.skip("Dimension out of range for the given shape.")
-
     if dtype == torch.bfloat16:
         pytest.skip(
             "Gradient check not supported for bfloat16 due to precision issues."
         )
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    inp.requires_grad_(True)
+
+    ref_inp = to_reference(inp)
+    ref_inp.requires_grad_(True)
 
     with flag_gems.use_gems():
         res_out = torch.std(inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
     ref_out = torch.std(ref_inp, dim=dim, unbiased=unbiased, keepdim=keepdim)
 
     grad_output = torch.randn_like(res_out)
-    ref_grad_output = to_reference(grad_output, True)
+    ref_grad_output = to_reference(grad_output)
 
     (res_in_grad,) = torch.autograd.grad(res_out, inp, grad_output)
+
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad_output)
 
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
