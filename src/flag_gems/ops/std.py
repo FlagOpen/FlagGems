@@ -13,7 +13,9 @@ def std(x, dim=None, unbiased=True, keepdim=False):
         dim if isinstance(dim, (list, tuple)) else ([dim] if dim is not None else None)
     )
 
-    variance, _ = var_mean(x, dim=dim_list, unbiased=unbiased, keepdim=keepdim)
+    correction = int(unbiased)
+
+    variance, _ = var_mean(x, dim=dim_list, correction=correction, keepdim=keepdim)
 
     std_dev = gems_sqrt(variance)
 

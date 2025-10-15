@@ -1631,19 +1631,14 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
 @pytest.mark.parametrize("keepdim", [True] if QUICK_MODE else [True, False])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_std(shape, dim, unbiased, keepdim, dtype):
-    if dim is not None:
-        dims_to_check = dim if isinstance(dim, (list, tuple)) else [dim]
-
-        if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
-            pytest.skip("Dimension out of range for the given shape.")
+    dims_to_check = dim if isinstance(dim, (list, tuple)) else [dim]
+    if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
+        pytest.skip("Dimension out of range for the given shape.")
 
     if unbiased:
-        if dim is None and np.prod(shape) < 2:
-            pytest.skip("Unbiased std of a tensor with less than 2 elements is NaN.")
-        if dim is not None:
-            dims_to_check_for_nan = dim if isinstance(dim, (list, tuple)) else [dim]
-            if any(shape[d] < 2 for d in dims_to_check_for_nan):
-                pytest.skip("Unbiased std along a dimension of size < 2 is NaN.")
+        positive_dims = [d if d >= 0 else len(shape) + d for d in dims_to_check]
+        if any(shape[d] < 2 for d in positive_dims):
+            pytest.skip("Unbiased std along a dimension of size < 2 is NaN.")
 
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp)
