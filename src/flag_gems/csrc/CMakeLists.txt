@@ -1,16 +1,39 @@
+find_package(TritonJIT REQUIRED CONFIG)
+
+set(LIB_DIR "$ORIGIN/lib")
+
+# -------------------- c_operators --------------------
 pybind11_add_module(c_operators cstub.cpp)
-target_link_libraries(c_operators PUBLIC Torch::Torch_Python PRIVATE operators)
+target_link_libraries(c_operators
+    PUBLIC
+        Torch::Torch_Python
+    PRIVATE
+        operators
+        ${TritonJIT_LIBRARIES}
+)
 set_target_properties(c_operators PROPERTIES
-  INSTALL_RPATH "${_rpath_portable_origin}/${CMAKE_INSTALL_LIBDIR}")
+    INSTALL_RPATH "${LIB_DIR}"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+)
 
-
+# -------------------- aten_patch --------------------
 pybind11_add_module(aten_patch aten_patch.cpp)
-target_link_libraries(aten_patch PUBLIC Torch::Torch_Python PRIVATE operators)
+target_link_libraries(aten_patch
+    PUBLIC
+        Torch::Torch_Python
+    PRIVATE
+        operators
+        ${TritonJIT_LIBRARIES}
+)
 set_target_properties(aten_patch PROPERTIES
-  INSTALL_RPATH "${_rpath_portable_origin}/${CMAKE_INSTALL_LIBDIR}")
+    INSTALL_RPATH "${LIB_DIR}"
+    BUILD_WITH_INSTALL_RPATH TRUE
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
+)
 
+# -------------------- Install --------------------
 if (FLAGGEMS_INSTALL)
-  # Installing the extension module to the root of the package
-  install(TARGETS c_operators aten_patch
-          LIBRARY DESTINATION ".")
+    install(TARGETS c_operators aten_patch
+            LIBRARY DESTINATION ".")
 endif()

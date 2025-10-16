@@ -50,6 +50,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "flag_gems.runtime" = ["*/**/*.yaml"]
+"flag_gems" = ["*.so", "lib/*.so"]
 
 [tool.scikit-build]
 build.verbose = true

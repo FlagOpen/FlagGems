@@ -17,6 +17,8 @@ else()
   set(_rpath_portable_origin $ORIGIN)
 endif(APPLE)
 
+option(FLAGGEMS_BUILD_WHEEL "Whether to build a wheel" OFF)
+
 # default Use separate rpaths during build and install phases
 set(CMAKE_SKIP_BUILD_RPATH  FALSE)
 # Don't use the install-rpath during the build phase
@@ -24,7 +26,11 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set(CMAKE_INSTALL_RPATH "${_rpath_portable_origin}")
 # Automatically add all linked folders that are NOT in the build directory to
 # the rpath (per library?)
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+if(FLAGGEMS_BUILD_WHEEL)
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+else()
+  set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+endif(FLAGGEMS_BUILD_WHEEL)
 
 
 # --------------------------- project options ---------------------------
@@ -53,7 +59,7 @@ if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
 else()
   set(TRITON_JIT_INSTALL ON) # install triton jit
   FetchContent_Declare(TritonJIT
-    GIT_REPOSITORY https://github.com/FlagTree/libtriton_jit.git
+    GIT_REPOSITORY https://github.com/wlxjhyf/libtriton_jit.git
     # SOURCE_DIR <your local source dir of libtriton_jit>
   )
   FetchContent_MakeAvailable(TritonJIT)
@@ -111,4 +117,9 @@ if(FLAGGEMS_INSTALL)
   # install the FindTorch
   install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindTorch.cmake
           DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/FlagGems)
+endif()
+
+if(TARGET TritonJIT)
+  install(TARGETS TritonJIT
+          LIBRARY DESTINATION lib)
 endif()

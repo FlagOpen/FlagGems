@@ -1,9 +1,20 @@
 import os
 import warnings
+from pathlib import Path
 
 has_c_extension = False
 use_c_extension = False
 aten_patch_list = []
+
+def _find_flaggems_source_dir():
+    import flag_gems
+
+    python_pkg_path = str(Path(flag_gems.__file__).parent)
+    return python_pkg_path
+
+# set FLAGGEMS_SOURCE_DIR for cpp extension to find
+os.environ["FLAGGEMS_SOURCE_DIR"] = _find_flaggems_source_dir()
+
 
 try:
     from flag_gems import c_operators
