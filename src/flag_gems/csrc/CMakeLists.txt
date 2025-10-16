@@ -1,4 +1,13 @@
-find_package(TritonJIT REQUIRED CONFIG)
+if(FLAGGEMS_USE_EXTERNAL_TRITON_JIT)
+    find_package(TritonJIT REQUIRED CONFIG)
+else()
+    FetchContent_Declare(
+        TritonJIT
+        GIT_REPOSITORY https://github.com/wlxjhyf/libtriton_jit.git
+        GIT_TAG main
+    )
+    FetchContent_MakeAvailable(TritonJIT)
+endif()
 
 set(LIB_DIR "$ORIGIN/lib")
 
