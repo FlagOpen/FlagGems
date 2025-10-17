@@ -9,13 +9,9 @@ logger = logging.getLogger(__name__)
 def std(x, dim=None, unbiased=True, keepdim=False):
     logger.debug("GEMS STD Forward")
 
-    dim_list = (
-        dim if isinstance(dim, (list, tuple)) else ([dim] if dim is not None else None)
-    )
-
     correction = int(unbiased)
 
-    variance, _ = var_mean(x, dim=dim_list, correction=correction, keepdim=keepdim)
+    variance, _ = var_mean(x, dim=dim, correction=correction, keepdim=keepdim)
 
     std_dev = gems_sqrt(variance)
 
