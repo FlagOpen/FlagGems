@@ -19,10 +19,14 @@ endif(APPLE)
 
 option(FLAGGEMS_BUILD_WHEEL "Whether to build a wheel" OFF)
 
+#get_filename_component(PYTHON_LIB_DIR "${Python_LIBRARY}" DIRECTORY)
+#message(STATUS "Python library dir: ${PYTHON_LIB_DIR}")
+
 # default Use separate rpaths during build and install phases
 set(CMAKE_SKIP_BUILD_RPATH  FALSE)
 # Don't use the install-rpath during the build phase
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+#set(CMAKE_INSTALL_RPATH "${_rpath_portable_origin}:${PYTHON_LIB_DIR}")
 set(CMAKE_INSTALL_RPATH "${_rpath_portable_origin}")
 # Automatically add all linked folders that are NOT in the build directory to
 # the rpath (per library?)

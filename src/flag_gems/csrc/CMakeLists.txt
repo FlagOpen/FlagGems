@@ -20,8 +20,8 @@ target_link_libraries(c_operators
         operators
         ${TritonJIT_LIBRARIES}
 )
-set_target_properties(c_operators PROPERTIES
-    INSTALL_RPATH "${LIB_DIR}"
+set_target_properties(c_operators PROPERTIES 
+    INSTALL_RPATH "${LIB_DIR}:$ORIGIN/../../../"
     BUILD_WITH_INSTALL_RPATH TRUE
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
@@ -36,7 +36,7 @@ target_link_libraries(aten_patch
         ${TritonJIT_LIBRARIES}
 )
 set_target_properties(aten_patch PROPERTIES
-    INSTALL_RPATH "${LIB_DIR}"
+    INSTALL_RPATH "${LIB_DIR}:$ORIGIN/../../../"
     BUILD_WITH_INSTALL_RPATH TRUE
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
 )
