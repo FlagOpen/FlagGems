@@ -1136,7 +1136,7 @@ def test_accuracy_index_reduce_(shape, dim, reduce, include_self, dtype):
     ref_index = to_reference(index)
     ref_inp.index_reduce_(dim, ref_index, ref_src, reduce, include_self=include_self)
     with flag_gems.use_gems():
-        inp.index_reduce_(dim, index, ref_src, reduce, include_self=include_self)
+        inp.index_reduce_(dim, index, src, reduce, include_self=include_self)
 
     gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)
 
