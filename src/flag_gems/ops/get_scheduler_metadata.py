@@ -715,33 +715,6 @@ def get_scheduler_metadata(
     BLOCK_SIZE_B = 128
     grid = (triton.cdiv(batch_size, BLOCK_SIZE_B),)
 
-    _prepare_pass1_kernel[grid](
-        num_m_blocks,
-        num_n_blocks,
-        total_blocks,
-        seqlen_k,
-        cu_seqlens_q,
-        cu_seqlens_k,
-        cu_seqlens_k_new,
-        seqused_q,
-        seqused_k,
-        leftpad_k,
-        batch_size,
-        qhead_per_khead,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_k_new=max_seqlen_k_new,
-        BLOCK_M=blockM,
-        BLOCK_N=blockN,
-        BLOCK_SIZE_B=BLOCK_SIZE_B,
-        HAS_CU_SEQLENS_Q=cu_seqlens_q is not None,
-        HAS_CU_SEQLENS_K=cu_seqlens_k is not None,
-        HAS_SEQUSED_Q=seqused_q is not None,
-        HAS_SEQUSED_K=True,
-        HAS_LEFT_PAD=leftpad_k is not None,
-        HAS_K_NEW=seqlen_knew is not None,
-        HAS_CU_SEQLENS_K_NEW=cu_seqlens_k_new is not None,
-    )
-
     total_blocks_val = total_blocks.item()
 
     use_dynamic_split = batch_size <= 992
