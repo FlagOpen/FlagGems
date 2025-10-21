@@ -286,7 +286,7 @@ def enable(
             ("sort", sort),
             ("sort.stable", sort_stable),
             ("stack", stack),
-            ("std", std),
+            ("std.correction", std),
             ("sub.Tensor", sub),
             ("sub_.Tensor", sub_),
             ("sum", sum),
