@@ -1309,7 +1309,7 @@ def test_accuracy_rwkv_mmsparsity(dtype):
 
 @pytest.mark.istft
 @pytest.mark.parametrize("n_fft, n_frames", [(512, 10), (256, 20), (1024, 8)])
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_accuracy_istft(n_fft, n_frames, dtype):
     # initialize the input data
     n_freqs = n_fft // 2 + 1  # for onesided=True

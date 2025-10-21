@@ -9,129 +9,188 @@ import triton.language as tl
 def _ifft_onesided_kernel(
     spec_real_ptr,
     spec_imag_ptr,
-    frame_real_ptr,
+    output_ptr,
+    stride_batch,
     stride_freq,
     stride_frame,
+    stride_output,
     scale,
-    frame_idx,
     n_fft,
+    n_frames,
+    batch_size,
     BLOCK_T: tl.constexpr,
     N_FREQS: tl.constexpr,
 ):
-    # 在 kernel 内定义常量
-    TWO_PI = 6.283185307179586  # 2 * pi
+    TWO_PI = 6.283185307179586
 
     pid = tl.program_id(0)
-    time_idx = pid * BLOCK_T + tl.arange(0, BLOCK_T)
+    batch_idx = pid // n_frames
+    frame_idx = pid % n_frames
+
+    if batch_idx >= batch_size:
+        return
+
+    time_pid = tl.program_id(1)
+    time_idx = time_pid * BLOCK_T + tl.arange(0, BLOCK_T)
     mask = time_idx < n_fft
     acc = tl.zeros((BLOCK_T,), dtype=tl.float32)
 
     t_float = time_idx.to(tl.float32)
     n_fft_inv = 1.0 / n_fft
+    base_offset = batch_idx * stride_batch + frame_idx * stride_frame
 
+    freq_base = TWO_PI * n_fft_inv
     for freq in range(N_FREQS):
-        offset = freq * stride_freq + frame_idx * stride_frame
+        offset = base_offset + freq * stride_freq
         real_val = tl.load(spec_real_ptr + offset)
         imag_val = tl.load(spec_imag_ptr + offset)
-        angle = (TWO_PI * freq) * t_float * n_fft_inv
+
+        angle = freq_base * freq * t_float
         cos_val = tl.cos(angle)
         sin_val = tl.sin(angle)
+
         contrib = real_val * cos_val - imag_val * sin_val
-        if (freq == 0) or (freq == N_FREQS - 1):
-            acc += contrib
-        else:
-            acc += 2.0 * contrib
+        symmetry_factor = 2.0 if (freq > 0 and freq < N_FREQS - 1) else 1.0
+        acc += contrib * symmetry_factor
 
     acc = acc * scale
-    # 转换回原始 dtype
     output_dtype = spec_real_ptr.dtype.element_ty
     acc = acc.to(output_dtype)
-    tl.store(frame_real_ptr + time_idx, acc, mask=mask)
+
+    output_offset = batch_idx * stride_output + frame_idx * n_fft
+    tl.store(output_ptr + output_offset + time_idx, acc, mask=mask)
 
 
 @triton.jit
 def _ifft_full_kernel(
     spec_real_ptr,
     spec_imag_ptr,
-    frame_real_ptr,
-    frame_imag_ptr,
+    output_real_ptr,
+    output_imag_ptr,
+    stride_batch,
     stride_freq,
     stride_frame,
+    stride_output,
     scale,
-    frame_idx,
     n_fft,
+    n_frames,
+    batch_size,
     BLOCK_T: tl.constexpr,
     N_FREQS: tl.constexpr,
 ):
-    # 在 kernel 内定义常量
-    TWO_PI = 6.283185307179586  # 2 * pi
+    TWO_PI = 6.283185307179586
 
     pid = tl.program_id(0)
-    time_idx = pid * BLOCK_T + tl.arange(0, BLOCK_T)
+    batch_idx = pid // n_frames
+    frame_idx = pid % n_frames
+
+    if batch_idx >= batch_size:
+        return
+
+    time_pid = tl.program_id(1)
+    time_idx = time_pid * BLOCK_T + tl.arange(0, BLOCK_T)
     mask = time_idx < n_fft
     acc_real = tl.zeros((BLOCK_T,), dtype=tl.float32)
     acc_imag = tl.zeros((BLOCK_T,), dtype=tl.float32)
 
     t_float = time_idx.to(tl.float32)
     n_fft_inv = 1.0 / n_fft
+    base_offset = batch_idx * stride_batch + frame_idx * stride_frame
 
+    freq_base = TWO_PI * n_fft_inv
     for freq in range(N_FREQS):
-        offset = freq * stride_freq + frame_idx * stride_frame
+        offset = base_offset + freq * stride_freq
         real_val = tl.load(spec_real_ptr + offset)
         imag_val = tl.load(spec_imag_ptr + offset)
-        angle = (TWO_PI * freq) * t_float * n_fft_inv
+
+        angle = freq_base * freq * t_float
         cos_val = tl.cos(angle)
         sin_val = tl.sin(angle)
+
         acc_real += real_val * cos_val - imag_val * sin_val
         acc_imag += real_val * sin_val + imag_val * cos_val
 
     acc_real = acc_real * scale
     acc_imag = acc_imag * scale
-    # 转换回原始 dtype
     output_dtype = spec_real_ptr.dtype.element_ty
     acc_real = acc_real.to(output_dtype)
     acc_imag = acc_imag.to(output_dtype)
-    tl.store(frame_real_ptr + time_idx, acc_real, mask=mask)
-    tl.store(frame_imag_ptr + time_idx, acc_imag, mask=mask)
+
+    output_offset = batch_idx * stride_output + frame_idx * n_fft
+    tl.store(output_real_ptr + output_offset + time_idx, acc_real, mask=mask)
+    tl.store(output_imag_ptr + output_offset + time_idx, acc_imag, mask=mask)
 
 
 @triton.jit
 def _overlap_add_kernel(
-    frame_real_ptr,
-    frame_imag_ptr,
+    frame_buffer_real_ptr,
+    frame_buffer_imag_ptr,
     output_real_ptr,
     output_imag_ptr,
     envelope_ptr,
     window_ptr,
-    frame_offset,
+    stride_batch,
+    stride_frame_buffer,
+    stride_output,
+    hop_length,
+    n_fft,
     win_length,
-    output_length,
+    full_length,
+    n_frames,
+    batch_size,
     BLOCK_T: tl.constexpr,
     APPLY_WINDOW: tl.constexpr,
     HAS_IMAG: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    local_idx = pid * BLOCK_T + tl.arange(0, BLOCK_T)
+    batch_idx = pid // n_frames
+    frame_idx = pid % n_frames
+
+    if batch_idx >= batch_size:
+        return
+
+    local_pid = tl.program_id(1)
+    local_idx = local_pid * BLOCK_T + tl.arange(0, BLOCK_T)
     mask = local_idx < win_length
+
+    frame_offset = frame_idx * hop_length
     output_idx = frame_offset + local_idx
-    mask = mask & (output_idx < output_length)
-    # 注意：Triton 没有 tl.all()，删除这个优化检查
-    # if tl.all(~mask):
-    #     return
+    output_mask = mask & (output_idx < full_length)
 
-    frame_real = tl.load(frame_real_ptr + local_idx, mask=mask, other=0.0)
-    window_vals = tl.zeros((BLOCK_T,), dtype=frame_real.dtype) + 1.0
+    buffer_offset = batch_idx * stride_frame_buffer + frame_idx * n_fft
+
+    frame_real = tl.load(
+        frame_buffer_real_ptr + buffer_offset + local_idx, mask=mask, other=0.0
+    )
+    frame_imag = (
+        tl.load(frame_buffer_imag_ptr + buffer_offset + local_idx, mask=mask, other=0.0)
+        if HAS_IMAG
+        else 0.0
+    )
+
+    window_vals = (
+        tl.load(window_ptr + local_idx, mask=mask, other=1.0) if APPLY_WINDOW else 1.0
+    )
+
     if APPLY_WINDOW:
-        window_vals = tl.load(window_ptr + local_idx, mask=mask, other=0.0)
+        frame_real = frame_real * window_vals
+        if HAS_IMAG:
+            frame_imag = frame_imag * window_vals
 
-    frame_real = frame_real * window_vals
-    tl.atomic_add(output_real_ptr + output_idx, frame_real, mask=mask)
-    tl.atomic_add(envelope_ptr + output_idx, window_vals * window_vals, mask=mask)
+    output_offset = batch_idx * stride_output
 
+    tl.atomic_add(
+        output_real_ptr + output_offset + output_idx, frame_real, mask=output_mask
+    )
     if HAS_IMAG:
-        frame_imag = tl.load(frame_imag_ptr + local_idx, mask=mask, other=0.0)
-        frame_imag = frame_imag * window_vals
-        tl.atomic_add(output_imag_ptr + output_idx, frame_imag, mask=mask)
+        tl.atomic_add(
+            output_imag_ptr + output_offset + output_idx, frame_imag, mask=output_mask
+        )
+
+    if APPLY_WINDOW:
+        tl.atomic_add(
+            envelope_ptr + output_offset + output_idx, window_vals, mask=output_mask
+        )
 
 
 @triton.jit
@@ -139,31 +198,40 @@ def _normalize_kernel(
     output_real_ptr,
     output_imag_ptr,
     envelope_ptr,
+    stride_batch,
     length,
+    batch_size,
     BLOCK_T: tl.constexpr,
     HAS_IMAG: tl.constexpr,
 ):
-    # 在 kernel 内定义常量
-    ENVELOPE_EPS = 1e-8
+    batch_idx = tl.program_id(0)
 
-    pid = tl.program_id(0)
+    if batch_idx >= batch_size:
+        return
+
+    pid = tl.program_id(1)
     idx = pid * BLOCK_T + tl.arange(0, BLOCK_T)
     mask = idx < length
-    env = tl.load(envelope_ptr + idx, mask=mask, other=0.0)
-    inv = tl.where(env > ENVELOPE_EPS, 1.0 / env, 0.0)
-    real_val = tl.load(output_real_ptr + idx, mask=mask, other=0.0)
-    real_val = real_val * inv
-    tl.store(output_real_ptr + idx, real_val, mask=mask)
+
+    batch_offset = batch_idx * stride_batch
+
+    output_real = tl.load(output_real_ptr + batch_offset + idx, mask=mask)
+    output_imag = (
+        tl.load(output_imag_ptr + batch_offset + idx, mask=mask) if HAS_IMAG else 0.0
+    )
+    envelope = tl.load(envelope_ptr + batch_offset + idx, mask=mask)
+
+    ENVELOPE_EPS = 1e-8
+    envelope_safe = tl.where(envelope > ENVELOPE_EPS, envelope, 1.0)
+    envelope_inv = 1.0 / envelope_safe
+
+    output_real = output_real * envelope_inv
     if HAS_IMAG:
-        imag_val = tl.load(output_imag_ptr + idx, mask=mask, other=0.0)
-        imag_val = imag_val * inv
-        tl.store(output_imag_ptr + idx, imag_val, mask=mask)
+        output_imag = output_imag * envelope_inv
 
-
-def _make_hann_window(length, *, device, dtype):
-    TWO_PI = 6.283185307179586  # 2 * pi
-    n = torch.arange(length, device=device, dtype=dtype)
-    return 0.5 - 0.5 * torch.cos(TWO_PI * n / length)
+    tl.store(output_real_ptr + batch_offset + idx, output_real, mask=mask)
+    if HAS_IMAG:
+        tl.store(output_imag_ptr + batch_offset + idx, output_imag, mask=mask)
 
 
 def istft(
@@ -210,10 +278,15 @@ def istft(
 
     device = spectrum.device
     real_dtype = spectrum.real.dtype
-    # 支持所有 FLOAT_DTYPES (float32, float16, bfloat16)
+
+    use_intermediate_precision = real_dtype == torch.float16
+    if use_intermediate_precision:
+        spectrum = torch.complex(
+            spectrum.real.to(torch.float32), spectrum.imag.to(torch.float32)
+        )
+        real_dtype = torch.float32
 
     if window is None:
-        # PyTorch 默认使用 rectangular window (全1窗口)
         window = torch.ones(win_length, device=device, dtype=real_dtype)
     else:
         if window.numel() != win_length:
@@ -230,13 +303,16 @@ def istft(
     stride_frame = spec_real.stride(-1)
 
     if center:
-        full_length = hop_length * (n_frames - 1) + n_fft
         pad = n_fft // 2
+        full_length = n_frames * hop_length + n_fft - hop_length
     else:
-        full_length = hop_length * (n_frames - 1) + win_length
         pad = 0
+        full_length = n_frames * hop_length + n_fft - hop_length
 
-    needs_imag = (not onesided) or return_complex
+    if length is not None:
+        full_length = length
+
+    needs_imag = not onesided or return_complex
 
     output_real = torch.zeros(
         (batch_size, full_length), dtype=real_dtype, device=device
@@ -248,110 +324,116 @@ def istft(
     )
     envelope = torch.zeros((batch_size, full_length), dtype=real_dtype, device=device)
 
-    frame_real = torch.empty(n_fft, dtype=real_dtype, device=device)
-    frame_imag = (
-        torch.empty(n_fft, dtype=real_dtype, device=device) if needs_imag else None
+    ifft_buffer_real = torch.empty(
+        (batch_size, n_frames * n_fft), dtype=real_dtype, device=device
+    )
+    ifft_buffer_imag = (
+        torch.empty((batch_size, n_frames * n_fft), dtype=real_dtype, device=device)
+        if needs_imag
+        else ifft_buffer_real
     )
 
-    grid_ifft = lambda meta: (triton.cdiv(n_fft, meta["BLOCK_T"]),)
-    grid_overlap = lambda meta: (triton.cdiv(win_length, meta["BLOCK_T"]),)
+    stride_batch = spec_real.stride(0)
+    stride_output = ifft_buffer_real.stride(0)
 
-    for b in range(batch_size):
-        real_ptr = spec_real[b]
-        imag_ptr = spec_imag[b]
-        for frame_idx in range(n_frames):
-            if onesided:
-                _ifft_onesided_kernel[grid_ifft](
-                    real_ptr,
-                    imag_ptr,
-                    frame_real,
-                    stride_freq,
-                    stride_frame,
-                    scale,
-                    frame_idx,
-                    n_fft,
-                    BLOCK_T=256,
-                    N_FREQS=n_freqs,
-                )
-                if needs_imag:
-                    frame_imag.zero_()
-            else:
-                _ifft_full_kernel[grid_ifft](
-                    real_ptr,
-                    imag_ptr,
-                    frame_real,
-                    frame_imag,
-                    stride_freq,
-                    stride_frame,
-                    scale,
-                    frame_idx,
-                    n_fft,
-                    BLOCK_T=256,
-                    N_FREQS=n_freqs,
-                )
+    grid_ifft = lambda meta: (
+        batch_size * n_frames,
+        triton.cdiv(n_fft, meta["BLOCK_T"]),
+    )
 
-            frame_offset = frame_idx * hop_length
-            _overlap_add_kernel[grid_overlap](
-                frame_real,
-                frame_imag if needs_imag else frame_real,
-                output_real[b],
-                output_imag[b] if needs_imag else output_real[b],
-                envelope[b],
-                window,
-                frame_offset,
-                win_length,
-                full_length,
-                BLOCK_T=256,
-                APPLY_WINDOW=True,
-                HAS_IMAG=needs_imag,
-            )
-
-    grid_norm = lambda meta: (triton.cdiv(full_length, meta["BLOCK_T"]),)
-    for b in range(batch_size):
-        _normalize_kernel[grid_norm](
-            output_real[b],
-            output_imag[b] if needs_imag else output_real[b],
-            envelope[b],
-            full_length,
+    if onesided:
+        _ifft_onesided_kernel[grid_ifft](
+            spec_real,
+            spec_imag,
+            ifft_buffer_real,
+            stride_batch,
+            stride_freq,
+            stride_frame,
+            stride_output,
+            scale,
+            n_fft,
+            n_frames,
+            batch_size,
             BLOCK_T=256,
-            HAS_IMAG=needs_imag,
+            N_FREQS=n_freqs,
         )
+    else:
+        _ifft_full_kernel[grid_ifft](
+            spec_real,
+            spec_imag,
+            ifft_buffer_real,
+            ifft_buffer_imag,
+            stride_batch,
+            stride_freq,
+            stride_frame,
+            stride_output,
+            scale,
+            n_fft,
+            n_frames,
+            batch_size,
+            BLOCK_T=256,
+            N_FREQS=n_freqs,
+        )
+
+    grid_overlap = lambda meta: (
+        batch_size * n_frames,
+        triton.cdiv(win_length, meta["BLOCK_T"]),
+    )
+    stride_frame_buffer = ifft_buffer_real.stride(0)
+    stride_output_batch = output_real.stride(0)
+
+    _overlap_add_kernel[grid_overlap](
+        ifft_buffer_real,
+        ifft_buffer_imag if needs_imag else ifft_buffer_real,
+        output_real,
+        output_imag if needs_imag else output_real,
+        envelope,
+        window,
+        stride_batch,
+        stride_frame_buffer,
+        stride_output_batch,
+        hop_length,
+        n_fft,
+        win_length,
+        full_length,
+        n_frames,
+        batch_size,
+        BLOCK_T=256,
+        APPLY_WINDOW=True,
+        HAS_IMAG=needs_imag,
+    )
+
+    grid_norm = lambda meta: (batch_size, triton.cdiv(full_length, meta["BLOCK_T"]))
+    _normalize_kernel[grid_norm](
+        output_real,
+        output_imag if needs_imag else output_real,
+        envelope,
+        stride_output_batch,
+        full_length,
+        batch_size,
+        BLOCK_T=256,
+        HAS_IMAG=needs_imag,
+    )
 
     if pad:
         output_real = output_real[..., pad:-pad]
         if needs_imag:
             output_imag = output_imag[..., pad:-pad]
-        full_length = output_real.shape[-1]
 
-    if length is not None:
-        if full_length > length:
-            output_real = output_real[..., :length]
-            if needs_imag:
-                output_imag = output_imag[..., :length]
-        elif full_length < length:
-            pad_size = length - full_length
-            pad_shape = list(output_real.shape)
-            pad_shape[-1] = pad_size
-            pad_tensor = torch.zeros(pad_shape, dtype=real_dtype, device=device)
-            output_real = torch.cat([output_real, pad_tensor], dim=-1)
-            if needs_imag:
-                output_imag = torch.cat([output_imag, pad_tensor], dim=-1)
-
-    if batch_shape:
-        output_real = output_real.reshape(*batch_shape, output_real.shape[-1])
-        if needs_imag:
-            output_imag = output_imag.reshape(*batch_shape, output_imag.shape[-1])
-    else:
+    if batch_size == 1:
         output_real = output_real.squeeze(0)
         if needs_imag:
             output_imag = output_imag.squeeze(0)
 
+    if use_intermediate_precision:
+        output_real = output_real.to(torch.float16)
+        if needs_imag:
+            output_imag = output_imag.to(torch.float16)
+
     if return_complex:
         if needs_imag:
             return torch.complex(output_real, output_imag)
-        return torch.complex(output_real, torch.zeros_like(output_real))
-
-    if needs_imag and not onesided:
+        else:
+            return output_real
+    else:
         return output_real
-
-    return output_real
