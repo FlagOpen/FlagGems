@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 
@@ -27,9 +29,15 @@ FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_addmm(M, N, K, scalar, dtype):
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
@@ -51,6 +59,9 @@ def test_accuracy_addmm(M, N, K, scalar, dtype):
         res_out2 = torch.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta)
 
     gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
+
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 @pytest.mark.skipif(
@@ -101,6 +112,9 @@ def test_accuracy_addmm_out(M, N, K, scalar, dtype):
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_bmm(M, N, K, dtype):
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
@@ -113,6 +127,9 @@ def test_accuracy_bmm(M, N, K, dtype):
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
@@ -122,9 +139,15 @@ def test_accuracy_bmm(M, N, K, dtype):
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_accuracy_mm(M, N, K, dtype):
+@pytest.mark.parametrize("b_column_major", [True, False])
+def test_accuracy_mm(M, N, K, dtype, b_column_major):
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    if b_column_major:
+        mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
+    else:
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     ref_mat1 = to_reference(mat1, True)
     ref_mat2 = to_reference(mat2, True)
 
@@ -133,6 +156,9 @@ def test_accuracy_mm(M, N, K, dtype):
         res_out = torch.mm(mat1, mat2)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 @pytest.mark.skipif(
@@ -153,6 +179,63 @@ def test_accuracy_mv(M, N, dtype):
         res_out = torch.mv(matrix, vector)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
+
+
+@pytest.mark.addmv
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addmv(M, N, scalar, dtype):
+    mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    bias1 = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    ref_mat = to_reference(mat, True)
+    ref_vec = to_reference(vec, True)
+    ref_bias1 = to_reference(bias1, True)
+
+    alpha = beta = scalar
+
+    ref_out1 = torch.addmv(ref_bias1, ref_mat, ref_vec, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out1 = torch.addmv(bias1, mat, vec, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=N)
+
+    # broadcast bias scalar
+    bias2 = torch.randn((), dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_bias2 = to_reference(bias2, True)
+    else:
+        ref_bias2 = to_reference(bias2)
+
+    ref_out2 = torch.addmv(ref_bias2, ref_mat, ref_vec, alpha=alpha, beta=beta)
+    with flag_gems.use_gems():
+        res_out2 = torch.addmv(bias2, mat, vec, alpha=alpha, beta=beta)
+
+    gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=N)
+
+
+@pytest.mark.addmv_out
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_addmv_out(M, N, scalar, dtype):
+    mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+    vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((M,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((M,), dtype=dtype, device=flag_gems.device)
+    ref_mat = to_reference(mat, True)
+    ref_vec = to_reference(vec, True)
+    ref_bias = to_reference(bias, True)
+    ref_out = to_reference(out, True)
+
+    alpha = beta = scalar
+
+    torch.addmv(ref_bias, ref_mat, ref_vec, alpha=alpha, beta=beta, out=ref_out)
+    with flag_gems.use_gems():
+        torch.addmv(bias, mat, vec, alpha=alpha, beta=beta, out=out)
+
+    gems_assert_close(out, ref_out, dtype, reduce_dim=N)
 
 
 @pytest.mark.outer

@@ -274,7 +274,9 @@ def test_accuracy_cumsum(shape, dtype):
         with flag_gems.use_gems():
             res_out = torch.cumsum(inp, dim=dim)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
+    # we should use ref's output type, since cumsum of int dtype results in int64
+    check_dtype = ref_out.dtype if dtype in INT_DTYPES else dtype
+    gems_assert_close(res_out, ref_out, check_dtype, reduce_dim=shape[dim])
 
 
 CUMMIN_SHAPES = (
@@ -1643,7 +1645,7 @@ def generate_test_params():
     return params
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RESULT TODOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="RunetimeError")
 @pytest.mark.topk_softmax
 @pytest.mark.parametrize("index_dtype", generate_test_params())
 @pytest.mark.parametrize(
@@ -1660,6 +1662,10 @@ def generate_test_params():
     ],
 )
 def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
+    if flag_gems.vendor_name == "mthreads" and index_dtype == torch.uint32:
+        # torch musa unsupport uint32
+        index_dtype = torch.int64
+
     torch.manual_seed(42)
     device = flag_gems.device
 

@@ -3,6 +3,7 @@ from flag_gems.ops.add import add, add_
 from flag_gems.ops.addcdiv import addcdiv
 from flag_gems.ops.addcmul import addcmul
 from flag_gems.ops.addmm import addmm, addmm_out
+from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addr import addr
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.amax import amax
@@ -11,6 +12,7 @@ from flag_gems.ops.any import any, any_dim, any_dims
 from flag_gems.ops.arange import arange, arange_start
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
+from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
     flash_attention_forward,
     flash_attn_varlen_func,
@@ -25,6 +27,7 @@ from flag_gems.ops.bitwise_and import (
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
+from flag_gems.ops.bitwise_left_shift import bitwise_left_shift
 from flag_gems.ops.bitwise_not import bitwise_not, bitwise_not_
 from flag_gems.ops.bitwise_or import (
     bitwise_or_scalar,
@@ -33,10 +36,18 @@ from flag_gems.ops.bitwise_or import (
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
+from flag_gems.ops.bitwise_right_shift import bitwise_right_shift
 from flag_gems.ops.bmm import bmm
 from flag_gems.ops.cat import cat
 from flag_gems.ops.celu import celu, celu_
-from flag_gems.ops.clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from flag_gems.ops.clamp import (
+    clamp,
+    clamp_,
+    clamp_min,
+    clamp_min_,
+    clamp_tensor,
+    clamp_tensor_,
+)
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.ops.conv1d import conv1d
 from flag_gems.ops.conv2d import conv2d
@@ -214,6 +225,8 @@ __all__ = [
     "addcdiv",
     "addmm",
     "addmm_out",
+    "addmv",
+    "addmv_out",
     "all",
     "all_dim",
     "all_dims",
@@ -229,6 +242,8 @@ __all__ = [
     "argmin",
     "avg_pool2d",
     "avg_pool2d_backward",
+    "atan",
+    "atan_",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",
@@ -236,6 +251,8 @@ __all__ = [
     "bitwise_and_scalar_tensor",
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
+    "bitwise_left_shift",
+    "bitwise_right_shift",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
@@ -251,6 +268,8 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clamp_min",
+    "clamp_min_",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
