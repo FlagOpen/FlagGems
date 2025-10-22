@@ -63,6 +63,7 @@ def enable(
             ("argmax", argmax),
             ("argmin", argmin),
             ("avg_pool2d", avg_pool2d),
+            ("avg_pool2d_backward", avg_pool2d_backward),
             ("bitwise_and.Scalar", bitwise_and_scalar),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
             ("bitwise_and.Tensor", bitwise_and_tensor),

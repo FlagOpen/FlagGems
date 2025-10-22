@@ -20,9 +20,13 @@ def pool2d_output_size(
     effective_kernel_size = (kernel_size - 1) * dilation + 1
     numerator = in_size + 2 * padding - effective_kernel_size
     if ceil_mode:
-        return (numerator + stride - 1) // stride + 1
+        output_size = (numerator + stride - 1) // stride + 1
+        if (output_size - 1) * stride >= in_size + padding:
+            output_size -= 1
     else:
-        return numerator // stride + 1
+        output_size = numerator // stride + 1
+
+    return output_size
 
 
 @libentry()
@@ -66,7 +70,7 @@ def avg_pool2d_forward_kernel(
     dilation_w: tl.constexpr,
     # AvgPool specific parameters
     COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override: tl.constexpr,
+    divisor_override,
     # Tiling meta-parameters
     BLOCK_H: tl.constexpr,
     BLOCK_W: tl.constexpr,
@@ -101,12 +105,12 @@ def avg_pool2d_forward_kernel(
             sum_acc += tl.where(in_mask, current_val, 0.0)
             count_acc += in_mask.to(tl.int32)
 
-    if divisor_override > 0:
-        divisor = divisor_override
+    if divisor_override != 0:
+        divisor = tl.full((BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32)
     elif COUNT_INCLUDE_PAD:
-        divisor = kernel_h * kernel_w
+        divisor = tl.full((BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32)
     else:
-        divisor = count_acc
+        divisor = count_acc.to(tl.float32)
 
     output_vals = tl.where(divisor != 0, sum_acc / divisor, 0.0)
 
@@ -165,12 +169,11 @@ def avg_pool2d_backward_kernel(
     dilation_w: tl.constexpr,
     # AvgPool specific parameters
     COUNT_INCLUDE_PAD: tl.constexpr,
-    divisor_override: tl.constexpr,
+    divisor_override,
     # Tiling meta-parameters
     BLOCK_H: tl.constexpr,
     BLOCK_W: tl.constexpr,
 ):
-    # Each program computes a block of grad_input.
     pid_nc = tl.program_id(0)
     pid_hw = tl.program_id(1)
 
@@ -204,7 +207,7 @@ def avg_pool2d_backward_kernel(
             w_out_mask = w_valid_map & (w_out < out_w)
             out_mask = h_out_mask & w_out_mask
 
-            if divisor_override > 0:
+            if divisor_override != 0:
                 divisor = tl.full(
                     (BLOCK_H, BLOCK_W), divisor_override, dtype=tl.float32
                 )
@@ -213,7 +216,6 @@ def avg_pool2d_backward_kernel(
                     (BLOCK_H, BLOCK_W), kernel_h * kernel_w, dtype=tl.float32
                 )
             else:
-                # Re-compute count for the divisor when padding is not included.
                 h_start = h_out * stride_h - padding_h
                 w_start = w_out * stride_w - padding_w
                 count = tl.zeros((BLOCK_H, BLOCK_W), dtype=tl.int32)
@@ -236,8 +238,9 @@ def avg_pool2d_backward_kernel(
                 grad_output_base_ptr + h_out * out_stride_h + w_out * out_stride_w
             )
             grad_out_val = tl.load(grad_out_ptr, mask=out_mask, other=0.0)
-            grad_to_add = grad_out_val / divisor
-            grad_acc += tl.where(out_mask, grad_to_add, 0.0)
+            grad_acc += tl.where(out_mask, grad_out_val / divisor, 0.0)
+            # grad_to_add = grad_out_val.to(tl.float32) / divisor.to(tl.float32)
+            # grad_acc += tl.where(out_mask, grad_to_add, 0.0)
 
     grad_input_store_ptr = (
         grad_input_block_ptr
@@ -252,162 +255,38 @@ def avg_pool2d_backward_kernel(
     )
 
 
-class AvgPool2d(torch.autograd.Function):
-    @staticmethod
-    def forward(
-        ctx,
-        input,
-        kernel_size,
-        stride,
-        padding,
-        ceil_mode,
-        count_include_pad,
-        divisor_override,
-    ):
-        logger.debug("GEMS AVG_POOL2D FORWARD")
-        input = input.contiguous()
+def _parse_pool_params(kernel_size, stride, padding):
+    if isinstance(kernel_size, int):
+        kernel_h = kernel_w = kernel_size
+    else:
+        kernel_h, kernel_w = kernel_size
 
-        if isinstance(kernel_size, int):
-            kernel_h = kernel_w = kernel_size
-        else:
-            kernel_h, kernel_w = kernel_size
-        if stride is None or (isinstance(stride, (list, tuple)) and not stride):
-            stride_h, stride_w = kernel_h, kernel_w
-        elif isinstance(stride, int):
-            stride_h = stride_w = stride
-        else:
-            stride_h, stride_w = stride
-        if isinstance(padding, int):
-            padding_h = padding_w = padding
-        else:
-            padding_h, padding_w = padding
+    if stride is None or (isinstance(stride, (list, tuple)) and not stride):
+        stride_h, stride_w = kernel_h, kernel_w
+    elif isinstance(stride, int):
+        stride_h = stride_w = stride
+    else:
+        stride_h, stride_w = stride
 
-        dilation_h, dilation_w = 1, 1
+    if isinstance(padding, int):
+        padding_h = padding_w = padding
+    else:
+        padding_h, padding_w = padding
 
-        in_n, in_c, in_h, in_w = input.shape
-        out_h = pool2d_output_size(
-            in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode
-        )
-        out_w = pool2d_output_size(
-            in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode
-        )
+    if stride_h <= 0 or stride_w <= 0:
+        raise ValueError("stride must be greater than zero")
 
-        output = torch.empty(
-            (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
-        )
+    if padding_h < 0 or padding_w < 0:
+        raise ValueError("padding must be non-negative")
 
-        if output.numel() > 0:
-            grid = lambda meta: (
-                in_n * in_c,
-                triton.cdiv(out_h, meta["BLOCK_H"])
-                * triton.cdiv(out_w, meta["BLOCK_W"]),
-            )
+    if padding_h > kernel_h // 2 or padding_w > kernel_w // 2:
+        raise ValueError("pad should be smaller than or equal to half of kernel size")
 
-            avg_pool2d_forward_kernel[grid](
-                input,
-                output,
-                input.stride(0),
-                input.stride(1),
-                input.stride(2),
-                input.stride(3),
-                in_c,
-                in_h,
-                in_w,
-                out_h,
-                out_w,
-                kernel_h,
-                kernel_w,
-                stride_h,
-                stride_w,
-                padding_h,
-                padding_w,
-                dilation_h,
-                dilation_w,
-                COUNT_INCLUDE_PAD=count_include_pad,
-                divisor_override=divisor_override or 0,
-            )
-
-        ctx.in_shape = input.shape
-        ctx.params = (
-            kernel_h,
-            kernel_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            dilation_h,
-            dilation_w,
-            count_include_pad,
-            divisor_override,
-        )
-        return output
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        logger.debug("GEMS AVG_POOL2D BACKWARD")
-        grad_output = grad_output.contiguous()
-        in_shape = ctx.in_shape
-        (
-            kernel_h,
-            kernel_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-            dilation_h,
-            dilation_w,
-            count_include_pad,
-            divisor_override,
-        ) = ctx.params
-
-        in_n, in_c, in_h, in_w = in_shape
-        out_h, out_w = grad_output.shape[2], grad_output.shape[3]
-
-        original_dtype = grad_output.dtype
-        # grad_input must be initialized to zeros as the kernel is not atomic.
-        grad_input = torch.zeros(
-            in_shape, device=grad_output.device, dtype=torch.float32
-        )
-
-        if grad_output.numel() > 0:
-            grid = lambda meta: (
-                in_n * in_c,
-                triton.cdiv(in_h, meta["BLOCK_H"]) * triton.cdiv(in_w, meta["BLOCK_W"]),
-            )
-
-            avg_pool2d_backward_kernel[grid](
-                grad_output,
-                grad_input,
-                in_c,
-                in_h,
-                in_w,
-                out_h,
-                out_w,
-                grad_input.stride(0),
-                grad_input.stride(1),
-                grad_input.stride(2),
-                grad_input.stride(3),
-                grad_output.stride(0),
-                grad_output.stride(1),
-                grad_output.stride(2),
-                grad_output.stride(3),
-                kernel_h,
-                kernel_w,
-                stride_h,
-                stride_w,
-                padding_h,
-                padding_w,
-                dilation_h,
-                dilation_w,
-                COUNT_INCLUDE_PAD=count_include_pad,
-                divisor_override=divisor_override or 0,
-            )
-
-        return grad_input.to(original_dtype), None, None, None, None, None, None
+    return kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w
 
 
 def avg_pool2d(
-    self,
+    input: torch.Tensor,
     kernel_size,
     stride=None,
     padding=0,
@@ -415,12 +294,127 @@ def avg_pool2d(
     count_include_pad=True,
     divisor_override=None,
 ):
-    return AvgPool2d.apply(
-        self,
-        kernel_size,
-        stride,
-        padding,
-        ceil_mode,
-        count_include_pad,
-        divisor_override,
+    logger.debug("GEMS AVG_POOL2D FORWARD")
+
+    if divisor_override is not None and divisor_override == 0:
+        raise ValueError("divisor_override cannot be zero")
+
+    input = input.contiguous()
+
+    kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
+        kernel_size, stride, padding
     )
+    dilation_h, dilation_w = 1, 1
+
+    in_n, in_c, in_h, in_w = input.shape
+
+    out_h = pool2d_output_size(
+        in_h, kernel_h, stride_h, padding_h, dilation_h, ceil_mode
+    )
+    out_w = pool2d_output_size(
+        in_w, kernel_w, stride_w, padding_w, dilation_w, ceil_mode
+    )
+
+    output = torch.empty(
+        (in_n, in_c, out_h, out_w), device=input.device, dtype=input.dtype
+    )
+
+    if output.numel() == 0:
+        return output
+
+    grid = lambda meta: (
+        in_n * in_c,
+        triton.cdiv(out_h, meta["BLOCK_H"]) * triton.cdiv(out_w, meta["BLOCK_W"]),
+    )
+
+    avg_pool2d_forward_kernel[grid](
+        input,
+        output,
+        input.stride(0),
+        input.stride(1),
+        input.stride(2),
+        input.stride(3),
+        in_c,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        dilation_h,
+        dilation_w,
+        COUNT_INCLUDE_PAD=count_include_pad,
+        divisor_override=divisor_override if divisor_override is not None else 0.0,
+    )
+
+    return output
+
+
+def avg_pool2d_backward(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
+):
+    logger.debug("GEMS AVG_POOL2D BACKWARD")
+
+    if divisor_override is not None and divisor_override == 0:
+        raise ValueError("divisor_override cannot be zero")
+
+    grad_output = grad_output.contiguous()
+
+    kernel_h, kernel_w, stride_h, stride_w, padding_h, padding_w = _parse_pool_params(
+        kernel_size, stride, padding
+    )
+    dilation_h, dilation_w = 1, 1
+
+    in_n, in_c, in_h, in_w = input.shape
+    out_h, out_w = grad_output.shape[2], grad_output.shape[3]
+
+    grad_input = torch.zeros_like(input, dtype=torch.float32)
+
+    if grad_output.numel() == 0:
+        return grad_input.to(grad_output.dtype)
+
+    grid = lambda meta: (
+        in_n * in_c,
+        triton.cdiv(in_h, meta["BLOCK_H"]) * triton.cdiv(in_w, meta["BLOCK_W"]),
+    )
+
+    avg_pool2d_backward_kernel[grid](
+        grad_output,
+        grad_input,
+        in_c,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        grad_input.stride(0),
+        grad_input.stride(1),
+        grad_input.stride(2),
+        grad_input.stride(3),
+        grad_output.stride(0),
+        grad_output.stride(1),
+        grad_output.stride(2),
+        grad_output.stride(3),
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        padding_h,
+        padding_w,
+        dilation_h,
+        dilation_w,
+        COUNT_INCLUDE_PAD=count_include_pad,
+        divisor_override=divisor_override if divisor_override is not None else 0.0,
+    )
+
+    return grad_input.to(grad_output.dtype)

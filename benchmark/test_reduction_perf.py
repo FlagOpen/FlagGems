@@ -310,14 +310,30 @@ def test_perf_avg_pool2d():
 
 @pytest.mark.avg_pool2d_backward
 def test_perf_avg_pool2d_backward():
+    def avg_pool2d_backward_input_fn(shape, dtype, device):
+        for forward_args in avg_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            output = torch.nn.functional.avg_pool2d(inp, **params)
+            grad_output = torch.randn_like(output)
+            inp.requires_grad_(True)
+            yield grad_output, inp, params
+
+    def torch_avg_pool2d_backward_wrapper(grad_output, input, **kwargs):
+        output = torch.nn.functional.avg_pool2d(input, **kwargs)
+        grad_input = torch.autograd.grad(
+            outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
+        )
+        return grad_input[0]
+
     bench = AvgPool2dBenchmark(
-        input_fn=avg_pool2d_input_fn,
-        op_name="avg_pool2d",
-        torch_op=torch.nn.functional.avg_pool2d,
+        input_fn=avg_pool2d_backward_input_fn,
+        op_name="avg_pool2d_backward",
+        torch_op=torch_avg_pool2d_backward_wrapper,
         dtypes=FLOAT_DTYPES,
-        is_backward=True,
+        is_backward=False,
     )
-    bench.set_gems(flag_gems.avg_pool2d)
+
+    bench.set_gems(flag_gems.avg_pool2d_backward)
     bench.run()
 
 
