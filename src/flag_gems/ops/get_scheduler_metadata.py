@@ -592,6 +592,7 @@ def get_scheduler_metadata(
     device = seqused_k.device
     dtype = torch.int32
 
+    # check parameters
     supported_dtypes = (torch.half, torch.bfloat16)
     assert (
         qkv_dtype in supported_dtypes
@@ -717,6 +718,7 @@ def get_scheduler_metadata(
 
     total_blocks_val = total_blocks.item()
 
+    # dynamic split depends ONLY on batch_size, regardless of num_splits_static
     use_dynamic_split = batch_size <= 992
 
     if num_splits <= 0:
@@ -761,6 +763,7 @@ def get_scheduler_metadata(
 
     eff_num_splits = min(eff_num_splits, 256, num_sm)
 
+    #  Always enable PackGQA for Split
     pack_gqa = True if eff_num_splits > 1 else pack_gqa
 
     # Recompute qhead_per_khead/num_head_k for the kernels
