@@ -1146,8 +1146,8 @@ def test_forward_avg_pool2d(
     divisor_override,
     dtype,
 ):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = to_reference(inp)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
 
     ref_out = torch.nn.functional.avg_pool2d(
         ref_inp,
