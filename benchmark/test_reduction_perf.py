@@ -295,24 +295,40 @@ class MaxPool2dBenchmark(GenericBenchmark):
 def test_perf_max_pool2d():
     bench = MaxPool2dBenchmark(
         input_fn=max_pool2d_input_fn,
-        op_name="max_pool2d",
-        torch_op=torch.nn.functional.max_pool2d,
+        op_name="max_pool2d_with_indices",
+        torch_op=torch.nn.functional.max_pool2d_with_indices,
         dtypes=FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.max_pool2d)
+    bench.set_gems(flag_gems.max_pool2d_with_indices)
     bench.run()
 
 
 @pytest.mark.max_pool2d_backward
 def test_perf_max_pool2d_backward():
+    def max_pool2d_backward_input_fn(shape, dtype, device):
+        for forward_args in max_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            inp.requires_grad_(True)
+            output, indices = torch.nn.functional.max_pool2d_with_indices(inp, **params)
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, indices, params
+
+    def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
+        output, _ = torch.nn.functional.max_pool2d_with_indices(input, **kwargs)
+        grad_input = torch.autograd.grad(
+            outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
+        )
+        return grad_input[0]
+
     bench = MaxPool2dBenchmark(
-        input_fn=max_pool2d_input_fn,
-        op_name="max_pool2d",
-        torch_op=torch.nn.functional.max_pool2d,
+        input_fn=max_pool2d_backward_input_fn,
+        op_name="max_pool2d_backward",
+        torch_op=torch_max_pool2d_backward_wrapper,
         dtypes=FLOAT_DTYPES,
-        is_backward=True,
+        is_backward=False,
     )
-    bench.set_gems(flag_gems.max_pool2d)
+
+    bench.set_gems(flag_gems.max_pool2d_backward)
     bench.run()
 
 
