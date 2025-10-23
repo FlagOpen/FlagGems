@@ -253,6 +253,12 @@ def get_triton_type(elem_type):
 def mm_sqmma(A, B, M, N, K, GROUP_M, BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages):
     logger.debug("GEMS_MTHREADS MM(SQMMA)")
     device = "musa"
+    # handle non-contiguous inputs if necessary
+    # TODO(mthreads): support transpose with A/B to remove this contiguous func.
+    if not A.is_contiguous():
+        A = A.contiguous()
+    if not B.is_contiguous():
+        B = B.contiguous()
     a_type = A.dtype
     b_type = B.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
