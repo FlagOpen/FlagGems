@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
@@ -38,6 +38,10 @@ def true_div_func_scalar_tensor(x, y):
 def true_divide(A, B):
     logger.debug("GEMS_CAMBRICON TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if A.shape != B.shape:
+            A, B = torch.broadcast_tensors(A, B)
+            A = A.clone()
+            B = B.clone()
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
         return true_div_func_tensor_scalar(A, B)
@@ -51,6 +55,10 @@ def true_divide(A, B):
 def true_divide_(A, B):
     logger.debug("GEMS_CAMBRICON TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
+        if A.shape != B.shape:
+            A, B = torch.broadcast_tensors(A, B)
+            A = A.clone()
+            B = B.clone()
         return true_div_func(A, B, out0=A)
     else:
         return true_div_func_tensor_scalar(A, B, out0=A)

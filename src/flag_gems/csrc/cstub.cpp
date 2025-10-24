@@ -19,6 +19,8 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
+  m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
+  m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
@@ -66,6 +68,12 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def("fill_.Tensor(Tensor(a!) self, Tensor value) -> Tensor(a!)");
   m.def("softmax(Tensor input, int dim, bool half_to_float=False) -> Tensor");
   m.def("softmax_backward(Tensor grad_output, Tensor output, int dim, ScalarType input_dtype) -> Tensor");
+  m.def(
+      "reshape_and_cache_flash(Tensor key, Tensor value, Tensor(a!) key_cache, Tensor(b!) value_cache, "
+      "Tensor slot_mapping, str kv_cache_dtype, Tensor? k_scale=None, Tensor? v_scale=None) -> "
+      "()");
+  m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
+  m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -102,5 +110,8 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("fill_.Tensor", TORCH_FN(fill_tensor_));
   m.impl("softmax", TORCH_FN(softmax));
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
+  m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));
+  m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
+  m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
 }
 }  // namespace flag_gems

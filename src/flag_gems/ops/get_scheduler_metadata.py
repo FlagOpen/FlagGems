@@ -88,6 +88,60 @@ def tile_size_fwd_sm8x(
     return kBlockM, kBlockN, kNWarps, kStages, Q_in_regs
 
 
+def tile_size_fwd_sm90(
+    headdim: int,
+    headdim_v: int,
+    is_causal: bool,
+    is_local: bool,
+    element_size: int = 2,
+    v_colmajor: bool = False,
+    paged_kv_non_TMA: bool = False,
+    softcap: bool = False,
+    use_one_mma_wg: bool = False,
+):
+    if element_size == 2:
+        if headdim <= 64:
+            if headdim_v == 512:
+                return 64, 64
+            elif headdim_v == 256:
+                return 128, 112
+            else:
+                use_blockN_128 = is_causal or is_local
+                return 192, (128 if use_blockN_128 else 192)
+        elif headdim <= 96:
+            return 192, (128 if (is_local or paged_kv_non_TMA) else 144)
+        elif headdim <= 128:
+            if use_one_mma_wg:
+                return 64, (128 if (is_causal or is_local or paged_kv_non_TMA) else 176)
+            else:
+                return 128, (
+                    128 if (is_causal or is_local or paged_kv_non_TMA) else 176
+                )
+        elif headdim <= 192:
+            return 128, (
+                96
+                if (paged_kv_non_TMA or is_local)
+                else (128 if headdim_v <= 128 else 112)
+            )
+        else:
+            return 128, (64 if is_local else 80)
+    else:
+        if headdim <= 64:
+            return 192, 160
+        elif headdim <= 96:
+            return 192, 128
+        elif headdim <= 128:
+            return 128, (
+                160
+                if paged_kv_non_TMA
+                else (192 if (v_colmajor or (softcap and is_local)) else 224)
+            )
+        elif headdim <= 192:
+            return 128, (128 if ((paged_kv_non_TMA or softcap) and is_local) else 160)
+        else:
+            return 128, (64 if is_local else 128)
+
+
 def get_optimal_block_mn(
     device,
     headdim,
@@ -97,27 +151,41 @@ def get_optimal_block_mn(
     has_softcap,
     element_size=2,
     paged_kv=False,
+    pagedkv_tma: bool = False,
     varlen_and_split=False,
     append_kv=False,
 ):
     arch_cap = torch.cuda.get_device_capability(device)
     arch = arch_cap[0] * 10 + arch_cap[1]
-    sm86_or_89 = arch == 86 or arch == 89
 
-    kBlockM, kBlockN, kNWarps, kStages, Q_in_regs = tile_size_fwd_sm8x(
-        sm86_or_89=sm86_or_89,
-        headdim=headdim,
-        headdim_v=headdim_v,
-        is_causal=is_causal,
-        is_local=is_local,
-        element_size=element_size,
-        paged_kv=paged_kv,
-        varlen_and_split=varlen_and_split,
-        softcap=has_softcap,
-        append_kv=append_kv,
-    )
-
-    return kBlockM, kBlockN
+    if arch >= 90:
+        paged_kv_non_TMA = bool(paged_kv and (not pagedkv_tma))
+        kBlockM, kBlockN = tile_size_fwd_sm90(
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=is_causal,
+            is_local=is_local,
+            element_size=element_size,
+            v_colmajor=False,
+            paged_kv_non_TMA=paged_kv_non_TMA,
+            softcap=has_softcap,
+            use_one_mma_wg=False,
+        )
+        return kBlockM, kBlockN
+    else:
+        kBlockM, kBlockN, kNWarps, kStages, Q_in_regs = tile_size_fwd_sm8x(
+            sm86_or_89=arch == 86 or arch == 89,
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=is_causal,
+            is_local=is_local,
+            element_size=element_size,
+            paged_kv=paged_kv,
+            varlen_and_split=varlen_and_split,
+            softcap=has_softcap,
+            append_kv=append_kv,
+        )
+        return kBlockM, kBlockN
 
 
 def round_up_headdim(headdim: int) -> int:
@@ -148,6 +216,46 @@ def round_up_headdimv(headdim_v: int) -> int:
     return 512
 
 
+def get_pagedkv_tma(
+    arch: int,
+    page_size: int,
+    has_page_table: bool,
+    leftpad_k: Optional[torch.Tensor],
+    max_seqlen_q: int,
+    max_seqlen_k_new: int,
+    num_heads: int,
+    num_heads_k: int,
+    d_rounded: int,
+    dv_rounded: int,
+    is_causal: bool,
+    is_local: bool,
+    element_size: int,
+    softcap: bool,
+):
+    if (
+        arch < 90
+        or (not has_page_table)
+        or (leftpad_k is not None)
+        or (max_seqlen_k_new > 0)
+    ):
+        return False
+    kBlockM, kBlockN = tile_size_fwd_sm90(
+        headdim=d_rounded,
+        headdim_v=dv_rounded,
+        is_causal=is_causal,
+        is_local=is_local,
+        element_size=element_size,
+        v_colmajor=False,
+        paged_kv_non_TMA=False,
+        softcap=softcap,
+        use_one_mma_wg=False,
+    )
+    if page_size % kBlockN != 0:
+        return False
+    seqlen_q_packgqa = max_seqlen_q * (num_heads // num_heads_k)
+    return seqlen_q_packgqa > kBlockM
+
+
 def use_one_mma_wg(
     arch: int,
     headdim: int,
@@ -163,6 +271,25 @@ def use_one_mma_wg(
     effective_seqlen_q = seqlen_q * qhead_per_khead
 
     return effective_seqlen_q <= 64
+
+
+def should_pack_gqa(
+    varlen_q: bool,
+    seqlen_q: int,
+    qhead_per_khead: int,
+    blockM: int,
+) -> bool:
+    if varlen_q:
+        return True
+
+    def round_up(a: int, b: int) -> int:
+        return (a + b - 1) // b * b
+
+    nopack_eff = float(seqlen_q) / float(round_up(seqlen_q, blockM))
+    pack_eff = float(seqlen_q * qhead_per_khead) / float(
+        round_up(seqlen_q * qhead_per_khead, blockM)
+    )
+    return nopack_eff < 0.9 * pack_eff
 
 
 def get_num_splits(
@@ -183,6 +310,9 @@ def get_num_splits(
     has_softcap: float,
     is_varlen: bool,
     has_page_table: bool,
+    pack_gqa: bool,
+    window_size_left: int,
+    window_size_right: int,
     element_size: int = 2,  # fp16/bf16 = 2, fp8 = 1
     max_splits: int = 128,
     use_dynamic_split: bool = False,
@@ -191,18 +321,24 @@ def get_num_splits(
     append_kv = max_seqlen_k_new > 0
 
     if arch >= 90:
-        # TODO: tile_size_fwd_sm90
-        kBlockM, kBlockN = get_optimal_block_mn(
-            device=0,
+        uomw = use_one_mma_wg(
+            arch=arch,
+            headdim=headdim,
+            seqlen_q=max_seqlen_q,
+            pack_gqa=pack_gqa,
+            num_heads=num_heads,
+            num_heads_k=num_heads_k,
+        )
+        kBlockM, kBlockN = tile_size_fwd_sm90(
             headdim=d_rounded,
             headdim_v=dv_rounded,
             is_causal=is_causal,
             is_local=is_local,
-            has_softcap=has_softcap,
             element_size=element_size,
-            paged_kv=has_page_table and not pagedkv_tma,
-            varlen_and_split=is_varlen,
-            append_kv=append_kv,
+            v_colmajor=False,
+            paged_kv_non_TMA=(has_page_table and not pagedkv_tma),
+            softcap=(has_softcap > 0.0),
+            use_one_mma_wg=uomw,
         )
     else:
         sm86_or_89 = arch == 86 or arch == 89
@@ -222,7 +358,10 @@ def get_num_splits(
     seqlen_q_packgqa = max_seqlen_q * (num_heads // num_heads_k)
 
     if is_local:
-        seqlen_k_loaded = max(0, min(max_seqlen_k, kBlockM + max_seqlen_q))
+        seqlen_k_loaded = max(
+            0,
+            min(max_seqlen_k, window_size_left + window_size_right + 1 + kBlockM),
+        )
     else:
         seqlen_k_loaded = max_seqlen_k
 
@@ -370,11 +509,6 @@ def _prepare_pass2_kernel(
     num_splits_static,
     BLOCK_SIZE_B: tl.constexpr,
 ):
-    """
-    Triton Kernel: Pass 2
-    - Calculates the dynamic number of splits for the Split-K optimization,
-      based on the total number of blocks computed in Pass 1.
-    """
     pid = tl.program_id(axis=0)
     b_start = pid * BLOCK_SIZE_B
     b_offsets = b_start + tl.arange(0, BLOCK_SIZE_B)
@@ -401,15 +535,33 @@ def get_pack_gqa(
     num_splits: int,
     num_heads: int,
     num_heads_k: int,
+    # SM90-specific params for heuristic
+    varlen_q: bool,
+    seqlen_q: int,
+    d_rounded: int,
+    dv_rounded: int,
+    is_causal: bool,
+    is_local: bool,
+    element_size: int,
+    softcap: bool,
 ) -> bool:
     if arch < 90 or (has_page_table and not pagedkv_tma) or num_splits > 1:
         return True
-
     if num_heads == num_heads_k:
         return False
-
-    # TODO: implement tile_size_fwd_sm90 and should_pack_gqa (Hopper+ only)
-    return False
+    kBlockM, _ = tile_size_fwd_sm90(
+        headdim=d_rounded,
+        headdim_v=dv_rounded,
+        is_causal=is_causal,
+        is_local=is_local,
+        element_size=element_size,
+        v_colmajor=False,
+        paged_kv_non_TMA=(has_page_table and not pagedkv_tma),
+        softcap=softcap,
+        use_one_mma_wg=False,
+    )
+    qhead_per_khead = num_heads // num_heads_k
+    return should_pack_gqa(varlen_q, seqlen_q, qhead_per_khead, kBlockM)
 
 
 def get_scheduler_metadata(
@@ -485,8 +637,25 @@ def get_scheduler_metadata(
 
     has_page_table = page_size is not None
 
-    # TODO implement get_pagedkv_tma function (Hopper+ only)
-    pagedkv_tma = False
+    d_rounded = round_up_headdim(headdim)
+    dv_rounded = round_up_headdimv(headdim_v)
+
+    pagedkv_tma = get_pagedkv_tma(
+        arch=arch,
+        page_size=page_size if page_size is not None else 1,
+        has_page_table=has_page_table,
+        leftpad_k=leftpad_k,
+        max_seqlen_q=max_seqlen_q,
+        max_seqlen_k_new=max_seqlen_k_new,
+        num_heads=num_heads,
+        num_heads_k=num_heads_k,
+        d_rounded=d_rounded,
+        dv_rounded=dv_rounded,
+        is_causal=final_is_causal,
+        is_local=final_is_local,
+        element_size=element_size,
+        softcap=has_softcap,
+    )
 
     blockM, blockN = get_optimal_block_mn(
         device=device,
@@ -496,9 +665,12 @@ def get_scheduler_metadata(
         is_local=final_is_local,
         has_softcap=has_softcap,
         element_size=element_size,
+        paged_kv=has_page_table,
+        pagedkv_tma=pagedkv_tma,
     )
 
     # GQA
+    varlen_q_flag = cu_seqlens_q is not None or seqused_q is not None
     pack_gqa = (
         pack_gqa
         if pack_gqa is not None
@@ -506,17 +678,23 @@ def get_scheduler_metadata(
             arch=arch,
             has_page_table=has_page_table,
             pagedkv_tma=pagedkv_tma,
-            num_splits=num_splits,  # Note: user-provided num_splits, not eff_num_splits
+            num_splits=num_splits,
             num_heads=num_heads,
             num_heads_k=num_heads_k,
+            varlen_q=varlen_q_flag,
+            seqlen_q=max_seqlen_q,
+            d_rounded=d_rounded,
+            dv_rounded=dv_rounded,
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            element_size=element_size,
+            softcap=has_softcap,
         )
     )
     qhead_per_khead = (
         1 if not pack_gqa else (num_heads + num_heads_k - 1) // num_heads_k
     )
     num_head_k = num_heads_k if pack_gqa else num_heads
-
-    # TODO: implement use_one_mma_wg (Hopper+ only)
 
     seqlen_q = (
         seqused_q
@@ -537,6 +715,103 @@ def get_scheduler_metadata(
 
     BLOCK_SIZE_B = 128
     grid = (triton.cdiv(batch_size, BLOCK_SIZE_B),)
+
+    total_blocks_val = total_blocks.item()
+
+    # dynamic split depends ONLY on batch_size, regardless of num_splits_static
+    use_dynamic_split = batch_size <= 992
+
+    if num_splits <= 0:
+        element_size = qkv_dtype.itemsize
+        is_fp16 = qkv_dtype == torch.float16
+        is_bf16 = qkv_dtype == torch.bfloat16
+
+        if not (is_fp16 or is_bf16):
+            raise ValueError(
+                f"不支持的数据类型: {qkv_dtype}. FlashAttention只支持: torch.float16, torch.bfloat16"
+            )
+
+        d_rounded = d_rounded
+        dv_rounded = dv_rounded
+
+        eff_num_splits = get_num_splits(
+            batch_size=batch_size,
+            num_heads=num_heads,
+            num_heads_k=num_heads_k,
+            headdim=headdim,
+            headdim_v=headdim_v,
+            d_rounded=d_rounded,
+            dv_rounded=dv_rounded,
+            max_seqlen_q=max_seqlen_q,
+            max_seqlen_k=max_seqlen_k,
+            max_seqlen_k_new=max_seqlen_k_new,
+            arch=arch,
+            num_sm=num_sm,
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            has_softcap=softcap,
+            is_varlen=True,
+            has_page_table=has_page_table,
+            pack_gqa=pack_gqa,
+            window_size_left=effective_window_left,
+            window_size_right=effective_window_right,
+            element_size=element_size,
+            use_dynamic_split=use_dynamic_split,
+        )
+    else:
+        eff_num_splits = num_splits
+
+    eff_num_splits = min(eff_num_splits, 256, num_sm)
+
+    #  Always enable PackGQA for Split
+    pack_gqa = True if eff_num_splits > 1 else pack_gqa
+
+    # Recompute qhead_per_khead/num_head_k for the kernels
+    qhead_per_khead = (
+        1 if not pack_gqa else (num_heads + num_heads_k - 1) // num_heads_k
+    )
+    num_head_k = num_heads_k if pack_gqa else num_heads
+
+    is_varlen = True
+    if arch >= 90:
+        uomw = use_one_mma_wg(
+            arch=arch,
+            headdim=headdim,
+            seqlen_q=max_seqlen_q,
+            pack_gqa=pack_gqa,
+            num_heads=num_heads,
+            num_heads_k=num_heads_k,
+        )
+        blockM, blockN = tile_size_fwd_sm90(
+            headdim=round_up_headdim(headdim),
+            headdim_v=round_up_headdimv(headdim_v),
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            element_size=element_size,
+            v_colmajor=False,
+            paged_kv_non_TMA=(has_page_table and not pagedkv_tma),
+            softcap=has_softcap,
+            use_one_mma_wg=uomw,
+        )
+    else:
+        blockM, blockN = get_optimal_block_mn(
+            device=device,
+            headdim=headdim,
+            headdim_v=headdim_v,
+            is_causal=final_is_causal,
+            is_local=final_is_local,
+            has_softcap=has_softcap,
+            element_size=element_size,
+            paged_kv=has_page_table,
+            pagedkv_tma=pagedkv_tma,
+            varlen_and_split=is_varlen and (eff_num_splits > 1),
+            append_kv=(max_seqlen_k_new > 0),
+        )
+
+    num_m_blocks = torch.empty_like(seqlen_q)
+    num_n_blocks = torch.empty_like(seqlen_k)
+    total_blocks = torch.zeros((1,), dtype=dtype, device=device)
+    num_splits_dynamic = torch.empty_like(seqlen_q)
 
     _prepare_pass1_kernel[grid](
         num_m_blocks,
@@ -566,56 +841,6 @@ def get_scheduler_metadata(
     )
 
     total_blocks_val = total_blocks.item()
-
-    use_dynamic_split = (num_splits <= 0) and (batch_size <= 992)
-
-    if num_splits <= 0:
-        element_size = qkv_dtype.itemsize
-        is_fp16 = qkv_dtype == torch.float16
-        is_bf16 = qkv_dtype == torch.bfloat16
-
-        if not (is_fp16 or is_bf16):
-            raise ValueError(
-                f"不支持的数据类型: {qkv_dtype}. FlashAttention只支持: torch.float16, torch.bfloat16"
-            )
-
-        d_rounded = round_up_headdim(headdim)
-        dv_rounded = round_up_headdimv(headdim_v)
-
-        eff_num_splits = get_num_splits(
-            batch_size=batch_size,
-            num_heads=num_heads,
-            num_heads_k=num_heads_k,
-            headdim=headdim,
-            headdim_v=headdim_v,
-            d_rounded=d_rounded,
-            dv_rounded=dv_rounded,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_k=max_seqlen_k,
-            max_seqlen_k_new=max_seqlen_k_new,
-            arch=arch,
-            num_sm=num_sm,
-            is_causal=final_is_causal,
-            is_local=final_is_local,
-            has_softcap=softcap,
-            is_varlen=True,
-            has_page_table=has_page_table,
-            element_size=element_size,
-            use_dynamic_split=use_dynamic_split,
-        )
-    else:
-        eff_num_splits = num_splits
-
-    eff_num_splits = min(eff_num_splits, 256, num_sm)
-
-    pack_gqa = eff_num_splits > 1
-
-    if pack_gqa:
-        qhead_per_khead = (num_heads + num_heads_k - 1) // num_heads_k
-        num_head_k = num_heads_k
-    else:
-        qhead_per_khead = 1
-        num_head_k = num_heads
 
     if use_dynamic_split:
         _prepare_pass2_kernel[grid](
@@ -657,7 +882,7 @@ def get_scheduler_metadata(
         scheduler_metadata = torch.empty(alloc_size, dtype=torch.int32, device=device)
         offset = 0
         if scheduler_needs_semaphore:
-            scheduler_metadata[offset] = total_blocks_val
+            scheduler_metadata[offset] = 0
             offset += 1
 
         if use_dynamic_split:
