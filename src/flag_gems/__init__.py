@@ -66,6 +66,7 @@ def enable(
             ("argmin", argmin),
             ("atan", atan),
             ("atan_", atan_),
+            ("avg_pool2d", avg_pool2d),
             ("bitwise_and.Scalar", bitwise_and_scalar),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
             ("bitwise_and.Tensor", bitwise_and_tensor),
