@@ -1625,6 +1625,7 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
     assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
 
+
 @pytest.mark.index_fill
 @pytest.mark.parametrize("N", [64, 256, 1024])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
@@ -1632,14 +1633,16 @@ def test_accuracy_index_fill_1d(N, dtype):
     input = torch.randn(N, dtype=dtype, device=flag_gems.device)
     dim = 0
     num_indices = min(5, N)
-    index = torch.randint(0, N, (num_indices,), dtype=torch.long, device=flag_gems.device)
+    index = torch.randint(
+        0, N, (num_indices,), dtype=torch.long, device=flag_gems.device
+    )
     value = 3.14
-    
+
     ref_input = to_reference(input, True)
     ref_out = torch.index_fill(ref_input, dim, index, value)
     with flag_gems.use_gems():
         res_out = torch.index_fill(input, dim, index, value)
-    
+
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=1)
 
 
@@ -1651,16 +1654,18 @@ def test_accuracy_index_fill_2d(M, N, dim, dtype):
     input = torch.randn(M, N, dtype=dtype, device=flag_gems.device)
     normalized_dim = dim if dim >= 0 else input.ndim + dim
     dim_size = input.shape[normalized_dim]
-    
+
     num_indices = min(5, dim_size)
-    index = torch.randint(0, dim_size, (num_indices,), dtype=torch.long, device=flag_gems.device)
+    index = torch.randint(
+        0, dim_size, (num_indices,), dtype=torch.long, device=flag_gems.device
+    )
     value = 3.14
-    
+
     ref_input = to_reference(input, True)
     ref_out = torch.index_fill(ref_input, dim, index, value)
     with flag_gems.use_gems():
         res_out = torch.index_fill(input, dim, index, value)
-    
+
     reduce_dim = M if normalized_dim == 0 else N
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
@@ -1673,16 +1678,17 @@ def test_accuracy_index_fill_3d(B, S, H, dim, dtype):
     input = torch.randn(B, S, H, dtype=dtype, device=flag_gems.device)
     normalized_dim = dim if dim >= 0 else input.ndim + dim
     dim_size = input.shape[normalized_dim]
-    
+
     num_indices = min(3, dim_size)
-    index = torch.randint(0, dim_size, (num_indices,), dtype=torch.long, device=flag_gems.device)
+    index = torch.randint(
+        0, dim_size, (num_indices,), dtype=torch.long, device=flag_gems.device
+    )
     value = 0.0
-    
+
     ref_input = to_reference(input, True)
     ref_out = torch.index_fill(ref_input, dim, index, value)
     with flag_gems.use_gems():
         res_out = torch.index_fill(input, dim, index, value)
-    
+
     reduce_dim = [B, S, H][normalized_dim]
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
-
