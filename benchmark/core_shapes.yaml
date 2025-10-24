@@ -269,3 +269,21 @@ RWKVBenchmark:
 RWKVSparsityBenchmark:
   shapes:
     - [1]
+
+AvgPool2dBenchmark:
+  shapes:
+    # (batch, channels, height, width, kernel_size, stride, padding)
+    # ResNet-like feature maps
+    - [4, 64, 112, 112, 3, 2, 1]
+    - [8, 128, 56, 56, 3, 2, 1]
+    - [16, 256, 28, 28, 2, 2, 0]
+    # VGG-like
+    - [2, 64, 224, 224, 2, 2, 0]
+    - [4, 512, 14, 14, 2, 2, 0]
+    # MobileNet-like
+    - [8, 32, 112, 112, 7, 2, 3]
+    # ImageNet standard input
+    - [1, 3, 224, 224, 3, 2, 1]
+    # Large batch
+    - [32, 64, 56, 56, 2, 2, 0]
+  shape_desc: "batch, channels, height, width, kernel_size, stride, padding"

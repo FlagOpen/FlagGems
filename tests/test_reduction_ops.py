@@ -1624,3 +1624,207 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
     assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
     assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
+
+
+# Test 1: Basic functionality with different input sizes
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize(
+    "N, C, H, W",
+    [
+        (1, 3, 8, 8),  # Small
+        (2, 16, 32, 32),  # Medium
+        (4, 64, 56, 56),  # Large (ResNet feature map size)
+        (1, 3, 224, 224),  # ImageNet size
+        (2, 8, 28, 56),  # Non-square (H != W)
+    ],
+)
+@pytest.mark.parametrize("kernel_size", [2, 3, 7])
+@pytest.mark.parametrize("stride", [1, 2, None])  # None means stride=kernel_size
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.bfloat16])
+def test_accuracy_avg_pool2d_basic(N, C, H, W, kernel_size, stride, dtype):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input, kernel_size=kernel_size, stride=stride, padding=0
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input, kernel_size=kernel_size, stride=stride, padding=0
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
+
+
+# Test 2: Non-square kernel and stride
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize("N, C, H, W", [(2, 16, 64, 64), (1, 3, 32, 48)])
+@pytest.mark.parametrize(
+    "kernel_size, stride",
+    [
+        ((2, 3), (1, 2)),  # Non-square kernel and stride
+        ((3, 5), (2, 3)),
+        ((2, 2), (1, 1)),  # Square for comparison
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_avg_pool2d_nonsquare(N, C, H, W, kernel_size, stride, dtype):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input, kernel_size=kernel_size, stride=stride, padding=0
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input, kernel_size=kernel_size, stride=stride, padding=0
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
+
+
+# Test 3: Different padding values
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize("N, C, H, W", [(2, 16, 32, 32)])
+@pytest.mark.parametrize(
+    "kernel_size, padding", [(3, 0), (3, 1), (5, 0), (5, 1), (5, 2)]
+)
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_avg_pool2d_padding(N, C, H, W, kernel_size, padding, dtype):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input, kernel_size=kernel_size, stride=2, padding=padding
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input, kernel_size=kernel_size, stride=2, padding=padding
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
+
+
+# Test 4: Non-square padding
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize("N, C, H, W", [(2, 16, 32, 32)])
+@pytest.mark.parametrize("kernel_size", [3])
+@pytest.mark.parametrize("padding", [(0, 1), (1, 0)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_avg_pool2d_nonsquare_padding(N, C, H, W, kernel_size, padding, dtype):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input, kernel_size=kernel_size, stride=1, padding=padding
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input, kernel_size=kernel_size, stride=1, padding=padding
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
+
+
+# Test 5: ceil_mode
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize(
+    "N, C, H, W", [(2, 16, 31, 31)]
+)  # Odd size to test ceil_mode effect
+@pytest.mark.parametrize("kernel_size", [2, 3])
+@pytest.mark.parametrize("stride", [2])
+@pytest.mark.parametrize("ceil_mode", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_avg_pool2d_ceil_mode(
+    N, C, H, W, kernel_size, stride, ceil_mode, dtype
+):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=0,
+        ceil_mode=ceil_mode,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=0,
+            ceil_mode=ceil_mode,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
+
+
+# Test 6: count_include_pad
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize("N, C, H, W", [(2, 16, 32, 32)])
+@pytest.mark.parametrize("kernel_size", [3])
+@pytest.mark.parametrize("padding", [1])
+@pytest.mark.parametrize("count_include_pad", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_avg_pool2d_count_include_pad(
+    N, C, H, W, kernel_size, padding, count_include_pad, dtype
+):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input,
+        kernel_size=kernel_size,
+        stride=1,
+        padding=padding,
+        count_include_pad=count_include_pad,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+            count_include_pad=count_include_pad,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
+
+
+# Test 7: divisor_override
+@pytest.mark.avg_pool2d
+@pytest.mark.parametrize("N, C, H, W", [(2, 16, 32, 32)])
+@pytest.mark.parametrize("kernel_size", [3])
+@pytest.mark.parametrize("divisor_override", [None, 5, 10])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_accuracy_avg_pool2d_divisor_override(
+    N, C, H, W, kernel_size, divisor_override, dtype
+):
+    input = torch.randn(N, C, H, W, dtype=dtype, device=flag_gems.device)
+    ref_input = to_reference(input, True)
+
+    ref_out = torch.nn.functional.avg_pool2d(
+        ref_input,
+        kernel_size=kernel_size,
+        stride=2,
+        padding=0,
+        divisor_override=divisor_override,
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.avg_pool2d(
+            input,
+            kernel_size=kernel_size,
+            stride=2,
+            padding=0,
+            divisor_override=divisor_override,
+        )
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
