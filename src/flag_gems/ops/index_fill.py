@@ -216,6 +216,23 @@ _index_fill_func = IndexFillFunction()
 
 
 def index_fill(input, dim, index, value):
+    """
+    Fill elements of input tensor along a dimension with a scalar value.
+
+    Args:
+        input: Input tensor
+        dim: Dimension along which to fill
+        index: 1-D tensor containing indices to fill
+        value: Scalar value (Python number or 0-dim tensor) to fill with
+
+    Returns:
+        New tensor with filled values
+
+    Raises:
+        ValueError: If input/index not on CUDA or value is not a scalar
+        RuntimeError: If index is not 1-D
+        IndexError: If dim is out of range
+    """
     logger.debug("GEMS INDEX FILL")
 
     # Validate inputs
