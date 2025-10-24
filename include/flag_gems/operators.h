@@ -86,6 +86,7 @@ at::Tensor softmax_backward(const at::Tensor &grad_output,
                             const at::Tensor &output,
                             int64_t dim,
                             at::ScalarType input_dtype);
+
 void reshape_and_cache_flash(const at::Tensor &key,
                              const at::Tensor &value,
                              at::Tensor &key_cache,
@@ -191,4 +192,13 @@ struct FlashFwdParams {
   int64_t page_table_batch_stride;
   int64_t block_size;
 };
+at::Tensor rwkv_mm_sparsity(const at::Tensor &k, const at::Tensor &v);
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv_ka_fusion(const at::Tensor &k,
+                                                              const at::Tensor &kk,
+                                                              const at::Tensor &a,
+                                                              const at::Tensor &ka,
+                                                              int64_t H,
+                                                              int64_t N);
+
 }  // namespace flag_gems

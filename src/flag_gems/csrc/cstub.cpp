@@ -19,6 +19,8 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("rotary_embedding", &flag_gems::rotary_embedding);
   m.def("rotary_embedding_inplace", &flag_gems::rotary_embedding_inplace);
   m.def("bmm", &flag_gems::bmm);
+  m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
+  m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
 }
 namespace flag_gems {
 TORCH_LIBRARY(flag_gems, m) {
@@ -82,6 +84,8 @@ TORCH_LIBRARY(flag_gems, m) {
       "Tensor? out=None, Tensor? scheduler_metadata=None, float? q_descale=None, float? k_descale=None, "
       "float? v_descale=None, "
       "SymInt fa_version=2) -> (Tensor, Tensor)");
+  m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
+  m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
 }
 
 TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
@@ -120,5 +124,7 @@ TORCH_LIBRARY_IMPL(flag_gems, CUDA, m) {
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
   m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));
   m.impl("flash_attn_varlen_func", TORCH_FN(flash_attn_varlen_func));
+  m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
+  m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
 }
 }  // namespace flag_gems
