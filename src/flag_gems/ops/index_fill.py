@@ -22,7 +22,6 @@ def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
 
 
 def generate_index_fill_kernel(
-    rank: int,
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
@@ -33,30 +32,47 @@ def generate_index_fill_kernel(
         code.writeline("configs=[")
         with code.indent():
             # Small indices, large elements per index
-            code.writeline("triton.Config({'BLOCK_M': 16, 'BLOCK_N': 1024}, num_warps=4, num_stages=2),")
-            code.writeline("triton.Config({'BLOCK_M': 16, 'BLOCK_N': 512}, num_warps=4, num_stages=2),")
+            code.writeline(
+                "triton.Config({'BLOCK_M': 16, 'BLOCK_N': 1024}, num_warps=4, num_stages=2),"
+            )
+            code.writeline(
+                "triton.Config({'BLOCK_M': 16, 'BLOCK_N': 512}, num_warps=4, num_stages=2),"
+            )
             # Balanced
-            code.writeline("triton.Config({'BLOCK_M': 32, 'BLOCK_N': 512}, num_warps=4, num_stages=2),")
-            code.writeline("triton.Config({'BLOCK_M': 32, 'BLOCK_N': 256}, num_warps=4, num_stages=2),")
-            code.writeline("triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256}, num_warps=4, num_stages=2),")
+            code.writeline(
+                "triton.Config({'BLOCK_M': 32, 'BLOCK_N': 512}, num_warps=4, num_stages=2),"
+            )
+            code.writeline(
+                "triton.Config({'BLOCK_M': 32, 'BLOCK_N': 256}, num_warps=4, num_stages=2),"
+            )
+            code.writeline(
+                "triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256}, num_warps=4, num_stages=2),"
+            )
             # Large indices, small elements per index
-            code.writeline("triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64}, num_warps=4, num_stages=1),")
-            code.writeline("triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128}, num_warps=4, num_stages=1),")
+            code.writeline(
+                "triton.Config({'BLOCK_M': 128, 'BLOCK_N': 64}, num_warps=4, num_stages=1),"
+            )
+            code.writeline(
+                "triton.Config({'BLOCK_M': 64, 'BLOCK_N': 128}, num_warps=4, num_stages=1),"
+            )
             # High warps for large tensors
-            code.writeline("triton.Config({'BLOCK_M': 32, 'BLOCK_N': 512}, num_warps=8, num_stages=3),")
-            code.writeline("triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256}, num_warps=8, num_stages=2),")
+            code.writeline(
+                "triton.Config({'BLOCK_M': 32, 'BLOCK_N': 512}, num_warps=8, num_stages=3),"
+            )
+            code.writeline(
+                "triton.Config({'BLOCK_M': 64, 'BLOCK_N': 256}, num_warps=8, num_stages=2),"
+            )
         code.writeline("],")
         code.writeline("key=['M', 'N', 'dim_stride'],")
     code.writeline(")")
     code.writeline("@triton.jit")
-    
+
     # Signature
     code.writeline(f"def {kernel_name}(")
     with code.indent():
         code.writeline("output_ptr,")
         code.writeline("index_ptr,")
         code.writeline("value,")
-        code.writeline("n_indices,")
         code.writeline("dim_stride,")
         code.writeline("dim_size,")
         code.writeline("M,")
@@ -64,7 +80,7 @@ def generate_index_fill_kernel(
         code.writeline("BLOCK_M: tl.constexpr,")
         code.writeline("BLOCK_N: tl.constexpr,")
     code.writeline("):")
-    
+
     # Kernel body with 2D grid
     with code.indent():
         code.writeline("# 2D grid: M for indices, N for elements per index")
@@ -82,7 +98,7 @@ def generate_index_fill_kernel(
         code.writeline("offset_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)")
         code.writeline("mask_n = offset_n < N")
         code.writeline("")
-        
+
         # Optimized position calculation
         code.writeline("# Broadcast to 2D")
         code.writeline("idx_2d = idx[:, None]")
@@ -91,29 +107,32 @@ def generate_index_fill_kernel(
         code.writeline("# Calculate position: (outer * size + idx) * stride + inner")
         code.writeline("outer_offset = offset_n_2d // dim_stride")
         code.writeline("inner_offset = offset_n_2d % dim_stride")
-        code.writeline("positions = (outer_offset * dim_size + idx_2d) * dim_stride + inner_offset")
+        code.writeline(
+            "positions = (outer_offset * dim_size + idx_2d) * dim_stride + inner_offset"
+        )
         code.writeline("")
         code.writeline("# Combined mask")
         code.writeline("mask_2d = mask_m[:, None] & mask_n[None, :]")
         code.writeline("mask_2d = mask_2d & (idx_2d >= 0) & (idx_2d < dim_size)")
         code.writeline("")
-        
+
         # Store the value
         code.writeline("tl.store(output_ptr + positions, value, mask=mask_2d)")
-    
+
     code.newline()
     code.newline()
     return code
 
 
 def generate_index_fill_wrapper(
-    rank: int,
     wrapper_name: str,
     kernel_name: str,
     code: IndentedBuffer,
 ) -> IndentedBuffer:
-    code.writeline(f"def {wrapper_name}(output, index, value, dim_stride, dim_size, M, N):")
-    
+    code.writeline(
+        f"def {wrapper_name}(output, index, value, dim_stride, dim_size, M, N):"
+    )
+
     with code.indent():
         code.writeline("grid = lambda meta: (")
         with code.indent():
@@ -126,14 +145,13 @@ def generate_index_fill_wrapper(
             code.writeline("output,")
             code.writeline("index,")
             code.writeline("value,")
-            code.writeline("index.numel(),")
             code.writeline("dim_stride,")
             code.writeline("dim_size,")
             code.writeline("M,")
             code.writeline("N,")
         code.writeline(")")
         code.writeline("return output")
-    
+
     code.newline()
     code.newline()
     return code
@@ -146,11 +164,9 @@ def generate_code(
     code: IndentedBuffer,
 ) -> IndentedBuffer:
     # inputs: [output, index, value, dim_stride, dim_size, M, N]
-    rank = inputs[0].ndim
-    
     code = generate_imports(code)
-    code = generate_index_fill_kernel(rank, kernel_name, code)
-    code = generate_index_fill_wrapper(rank, wrapper_name, kernel_name, code)
+    code = generate_index_fill_kernel(kernel_name, code)
+    code = generate_index_fill_wrapper(wrapper_name, kernel_name, code)
     return code
 
 
@@ -158,7 +174,7 @@ class IndexFillFunction:
     def __init__(self):
         self.pid = os.getpid()
         self.overloads: Mapping[str, Callable] = {}
-    
+
     def __call__(self, *args, **kwargs):
         key = self.arg_key(*args)
         if key in self.overloads:
@@ -171,24 +187,24 @@ class IndexFillFunction:
                 "_index_fill_kernel",
                 code,
             )
-            
+
             file_name = f"index_fill_rank_{key}_pid_{self.pid}.py"
             file_path = code_cache_dir() / file_name
             write_atomic(file_path, code.getvalue())
-            
+
             # Load the generated module
             spec = importlib.util.spec_from_file_location(
                 f"_gen_index_fill_rank_{key}_pid_{self.pid}",
                 file_path,
             )
-            
+
             m = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(m)
             overload = getattr(m, "_index_fill_wrapper")
             self.overloads[key] = overload
-        
+
         return overload(*args, **kwargs)
-    
+
     def arg_key(self, *args):
         # Key based on output tensor rank
         return args[0].ndim
@@ -199,13 +215,13 @@ _index_fill_func = IndexFillFunction()
 
 def index_fill(input, dim, index, value):
     logger.debug("GEMS INDEX FILL")
-    
+
     # Validate inputs
     if not input.is_cuda:
         raise ValueError("input must be on CUDA device")
     if not index.is_cuda:
         raise ValueError("index must be on CUDA device")
-    
+
     # Convert negative dim to positive
     ndim = input.ndim
     original_dim = dim
@@ -215,36 +231,34 @@ def index_fill(input, dim, index, value):
         raise IndexError(
             f"Dimension out of range (expected to be in range of [{-ndim}, {ndim-1}], but got {original_dim})"
         )
-    
+
     # Early return for empty index
     if index.numel() == 0:
         return input.clone()
-    
+
     # Ensure index is int64
     if index.dtype != torch.int64:
         index = index.to(torch.int64)
-    
+
     # Convert value to scalar if it's a tensor
     if isinstance(value, torch.Tensor):
         if value.numel() == 1:
             value = value.item()
         else:
             raise ValueError("Value tensor must be a scalar (0-dim tensor or number)")
-    
-    # Clone and ensure contiguous
-    output = input.clone()
-    if not output.is_contiguous():
-        output = output.contiguous()
-    
+
+    # Clone and ensure contiguous in a single operation
+    output = input.clone(memory_format=torch.contiguous_format)
+
     # Pre-compute dim-related information
     dim_stride = output.stride()[dim]
     dim_size = output.shape[dim]
-    
+
     # Calculate M and N for 2D grid
     M = index.numel()  # Number of indices
     N = output.numel() // dim_size  # Elements to fill per index
-    
+
     # Call the code-generated function
     _index_fill_func(output, index, value, dim_stride, dim_size, M, N)
-    
+
     return output
