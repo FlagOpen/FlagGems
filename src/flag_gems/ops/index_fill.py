@@ -93,6 +93,8 @@ def generate_index_fill_kernel(
         code.writeline("")
         code.writeline("# Load indices")
         code.writeline("idx = tl.load(index_ptr + offset_m, mask=mask_m, other=0)")
+        code.writeline("# Handle negative indices (wrap to positive)")
+        code.writeline("idx = tl.where(idx < 0, idx + dim_size, idx)")
         code.writeline("")
         code.writeline("# Elements dimension offsets")
         code.writeline("offset_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)")
@@ -173,7 +175,7 @@ def generate_code(
 class IndexFillFunction:
     def __init__(self):
         self.pid = os.getpid()
-        self.overloads: Mapping[str, Callable] = {}
+        self.overloads: Mapping[int, Callable] = {}
 
     def __call__(self, *args, **kwargs):
         key = self.arg_key(*args)
@@ -221,6 +223,8 @@ def index_fill(input, dim, index, value):
         raise ValueError("input must be on CUDA device")
     if not index.is_cuda:
         raise ValueError("index must be on CUDA device")
+    if index.ndim != 1:
+        raise RuntimeError("index_fill(): Expected a 1-D tensor for index")
 
     # Convert negative dim to positive
     ndim = input.ndim
@@ -254,9 +258,9 @@ def index_fill(input, dim, index, value):
     dim_stride = output.stride()[dim]
     dim_size = output.shape[dim]
 
-    # Calculate M and N for 2D grid
-    M = index.numel()  # Number of indices
-    N = output.numel() // dim_size  # Elements to fill per index
+    # Calculate grid dimensions for 2D parallelization
+    M = index.numel()  # Number of indices to process
+    N = output.numel() // dim_size  # Elements per index (contiguous tensor assumed)
 
     # Call the code-generated function
     _index_fill_func(output, index, value, dim_stride, dim_size, M, N)

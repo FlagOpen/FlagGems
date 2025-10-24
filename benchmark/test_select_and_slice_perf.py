@@ -507,10 +507,10 @@ def test_index_acc_perf():
 
 class IndexFillBenchmark(GenericBenchmark2DOnly):
     """Benchmark for index_fill operation"""
-    
+
     def set_more_metrics(self):
         return ["gbps"]
-    
+
     def set_more_shapes(self):
         return None
 
@@ -518,15 +518,15 @@ class IndexFillBenchmark(GenericBenchmark2DOnly):
 def index_fill_input_fn(shape, cur_dtype, device):
     """
     Generate input for index_fill benchmark
-    
+
     torch.index_fill(input, dim, index, value) -> Tensor
     """
     inp = generate_tensor_input(shape, cur_dtype, device)
-    
+
     # Test both dimensions
     for dim in [0, 1]:
         dim_size = inp.size(dim)
-        
+
         # Test sparse indices (10% of dimension size)
         num_sparse = max(1, dim_size // 10)
         index_sparse = torch.randint(0, dim_size, [num_sparse], device=device)
@@ -537,25 +537,25 @@ def index_fill_input_fn(shape, cur_dtype, device):
 def index_fill_gbps(bench_fn_args, latency):
     """
     Calculate GBPS for index_fill operation
-    
+
     bench_fn_args = (input, dim, index, value)
-    
+
     Memory operations:
     - Read input tensor: size_in_bytes(input)
     - Read index tensor: size_in_bytes(index)
     - Write output tensor: size_in_bytes(input) (same size as input)
-    
+
     Total I/O = 2 * input_size + index_size
     """
     inp = bench_fn_args[0]
     index = bench_fn_args[2]
-    
+
     input_bytes = shape_utils.size_in_bytes(inp)
     index_bytes = index.numel() * index.element_size()
-    
+
     # Read input + read index + write output
     io_amount = 2 * input_bytes + index_bytes
-    
+
     # Convert to GBPS
     return io_amount * 1e-9 / (latency * 1e-3)
 
