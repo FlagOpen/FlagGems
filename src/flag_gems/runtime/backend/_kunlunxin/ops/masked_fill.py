@@ -91,10 +91,6 @@ def masked_fill(inp, mask, value):
     grid = 12
     BLOCK_SIZE = triton.next_power_of_2(triton.cdiv(N, grid))
 
-    import os
-
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
-    os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
     masked_fill_kernel[grid,](
         inp,
         expand_mask.to(torch.int),
@@ -104,12 +100,9 @@ def masked_fill(inp, mask, value):
         BLOCK_SIZE,
         isCloseUnrollControl=True,
         buffer_size_limit=2048,
+        is_use_mask_zero=True,
     )
 
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
-    if "TRITONXPU_STORE_MASK_SIM" in os.environ:
-        del os.environ["TRITONXPU_STORE_MASK_SIM"]
     return out
 
 
