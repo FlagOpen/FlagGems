@@ -3,7 +3,6 @@ from typing import Generator
 import pytest
 import torch
 
-
 from benchmark.attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
