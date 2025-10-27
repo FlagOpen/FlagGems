@@ -3,7 +3,7 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
+
 from benchmark.attri_util import (
     COMPLEX_DTYPES,
     DEFAULT_METRICS,
@@ -122,10 +122,7 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         ),
     ],
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
+
 def test_blas_benchmark(op_name, torch_op, input_fn):
     bench = BlasBenchmark(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=FLOAT_DTYPES
