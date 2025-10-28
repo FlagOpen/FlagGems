@@ -11,6 +11,7 @@ from abc import abstractmethod
 from collections import OrderedDict
 from functools import cached_property
 from itertools import starmap
+from pathlib import Path
 from typing import (
     Any,
     Callable,
@@ -31,7 +32,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend import vendor_module
 from flag_gems.utils.code_cache import config_cache_dir
-from flag_gems.utils.models import PersistantModel, SQLite3PersistantModel
+from flag_gems.utils.models import PersistantModel, SQLPersistantModel
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ if major_version == 2:
 
     setattr(triton.Config, "all_kwargs", all_kwargs)
 
-FLAGGEMS_ENABLE_DISK_CACHE = os.getenv("FLAGGEMS_ENABLE_DISK_CACHE", "1") == "1"
+FLAGGEMS_DB_URL = os.getenv("FLAGGEMS_DB_URL", None)
 
 
 class Cache(object):
@@ -153,22 +154,25 @@ class LibCache(object):
             cls._instance = super(LibCache, cls).__new__(cls)
         return cls._instance
 
-    def __init__(self, enable_disk_cache: bool):
+    def __init__(self, db_url: Optional[str] = None):
         self.global_cache: Dict = {}
         self.volumn: Dict = {}
-        cache_file_name = (
-            f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
-            if vendor_module.vendor_info.vendor_name == "nvidia"
-            else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
-        )
-        self.cache_path = (
-            (config_cache_dir() / cache_file_name) if enable_disk_cache else ":memory:"
-        )
+        if db_url is None:
+            device_name: str = torch.cuda.get_device_name().replace(" ", "_")
+            cache_file_name: str = (
+                f"TunedConfig_{device_name}_triton_{major_version}_{minor_version}.db"
+                if vendor_module.vendor_info.vendor_name == "nvidia"
+                else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+            )
+            cache_path: Path = config_cache_dir() / cache_file_name
+            self.db_url: str = f"sqlite:///{cache_path}"
+        else:
+            self.db_url: str = db_url
         self.config_cache_pool: Dict[str, ConfigCache] = {}
         self.benchmark_cache_pool: Dict[
             Tuple[str, Tuple[Union[int, float, str], ...]], BenchmarkCache
         ] = {}
-        self.model: PersistantModel = SQLite3PersistantModel(self.cache_path)
+        self.model: PersistantModel = SQLPersistantModel(self.db_url)
 
     def __getitem__(
         self, key: Union[str, Tuple[Union[int, float, str], ...]]
@@ -197,7 +201,7 @@ class LibCache(object):
         return ret
 
 
-libcache = LibCache(FLAGGEMS_ENABLE_DISK_CACHE)
+libcache = LibCache(FLAGGEMS_DB_URL)
 
 
 class LibTuner(triton.runtime.Autotuner):
@@ -283,23 +287,23 @@ class LibTuner(triton.runtime.Autotuner):
         self.cache: BenchmarkCache = libcache[self.config_table_name]
 
     @cached_property
-    def cache_key(self):
+    def cache_key(self) -> str:
         jit_fn = self.fn
         while not isinstance(jit_fn, triton.runtime.JITFunction):
             jit_fn = jit_fn.fn
-        return jit_fn.cache_key
+        return jit_fn.cache_key[:32]
 
     @cached_property
-    def kernel_hash(self):
+    def kernel_hash(self) -> int:
         return hashlib.md5(
             f"{self.cache_key}{self.configs_hash}".encode("utf-8")
-        ).hexdigest()
+        ).hexdigest()[:32]
 
     @cached_property
     def configs_hash(self):
         return hashlib.md5(
             ",".join(map(lambda config: str(config), self.configs)).encode("utf-8")
-        ).hexdigest()
+        ).hexdigest()[:32]
 
     def get_key(self, args):
         if self.strategy is None:
