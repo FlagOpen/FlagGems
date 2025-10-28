@@ -15,9 +15,9 @@ class Base(sqlalchemy.orm.DeclarativeBase):
 
 
 class SQLPersistantModel(PersistantModel):
-    def __init__(self, engine: sqlalchemy.engine.Engine, *args, **kwargs) -> None:
+    def __init__(self, db_url: str, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.engine: Final[sqlalchemy.engine.Engine] = engine
+        self.engine: Final[sqlalchemy.engine.Engine] = sqlalchemy.create_engine(db_url)
         self.sql_model_pool: Dict[str, type[Base]] = {}
 
     @staticmethod
@@ -49,7 +49,9 @@ class SQLPersistantModel(PersistantModel):
         name: str,
         engine: sqlalchemy.engine.Engine,
     ) -> Optional[type[Base]]:
-        AutoBase = sqlalchemy.ext.automap.automap_base(Base)
+        AutoBase: sqlalchemy.ext.automap.AutomapBase = (
+            sqlalchemy.ext.automap.automap_base(Base)
+        )
         AutoBase.prepare(engine)
         ModelCls: Optional[type[Base]] = AutoBase.classes.get(name)
         return ModelCls
@@ -200,11 +202,3 @@ class SQLPersistantModel(PersistantModel):
                 obj: Base = BenchmarkCls(**key_dict, **config, **benchmark)
                 session.add(obj)
                 session.commit()
-
-
-class SQLite3PersistantModel(SQLPersistantModel):
-    def __init__(self, db_path: str, *args, **kwargs) -> None:
-        engine: sqlalchemy.engine.Engine = sqlalchemy.create_engine(
-            f"sqlite:///{db_path}"
-        )
-        super().__init__(engine, *args, **kwargs)
