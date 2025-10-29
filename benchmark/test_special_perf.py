@@ -570,3 +570,58 @@ def test_perf_rwkv_ka_fusion():
     )
     bench.set_gems(gems_op)
     bench.run()
+
+
+class AvgPool2dBenchmark(GenericBenchmark):
+    """
+    Benchmark for avg_pool2d
+    Shape format: (batch, channels, height, width, kernel_size, stride, padding)
+    """
+
+    def set_more_shapes(self):
+        # Most shapes are defined in benchmark/core_shapes.yaml
+        # This method adds shapes not present in the YAML file
+        return None
+
+
+def avg_pool2d_input_fn(shape, dtype, device):
+    """
+    Generate input for avg_pool2d benchmark
+    Shape: (batch, channels, height, width, kernel_size, stride, padding)
+    """
+    batch, channels, height, width, kernel_size, stride, padding = shape
+
+    input_tensor = torch.randn(
+        [batch, channels, height, width], dtype=dtype, device=device
+    )
+
+    # torch.nn.functional.avg_pool2d(input, kernel_size, stride, padding)
+    yield (
+        input_tensor,
+        {
+            "kernel_size": kernel_size,
+            "stride": stride,
+            "padding": padding,
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(
+            "avg_pool2d",
+            torch.nn.functional.avg_pool2d,
+            avg_pool2d_input_fn,
+            marks=pytest.mark.avg_pool2d,
+        ),
+    ],
+)
+def test_perf_avg_pool2d(op_name, torch_op, input_fn):
+    bench = AvgPool2dBenchmark(
+        input_fn=input_fn,
+        op_name=op_name,
+        torch_op=torch_op,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.run()

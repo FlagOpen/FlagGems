@@ -18,6 +18,7 @@ from flag_gems.ops.attention import (
     flash_attn_varlen_func,
     scaled_dot_product_attention,
 )
+from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_out
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -231,6 +232,8 @@ __all__ = [
     "addmm_out",
     "addmv",
     "addmv_out",
+    "avg_pool2d",
+    "avg_pool2d_out",
     "all",
     "all_dim",
     "all_dims",
