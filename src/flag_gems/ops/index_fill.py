@@ -229,17 +229,13 @@ def index_fill(input, dim, index, value):
         New tensor with filled values
 
     Raises:
-        ValueError: If input/index not on CUDA or value is not a scalar
+        ValueError: If value is not a scalar
         RuntimeError: If index is not 1-D
         IndexError: If dim is out of range
     """
     logger.debug("GEMS INDEX FILL")
 
     # Validate inputs
-    if not input.is_cuda:
-        raise ValueError("input must be on CUDA device")
-    if not index.is_cuda:
-        raise ValueError("index must be on CUDA device")
     if index.ndim != 1:
         raise RuntimeError("index_fill(): Expected a 1-D tensor for index")
 
