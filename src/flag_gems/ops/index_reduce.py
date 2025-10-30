@@ -452,7 +452,7 @@ def index_reduce_(
     assert (
         inp.ndim == src.ndim
     ), "Self and source should have the same number of dimensions"
-    assert (
+    assert all(
         ((inp.size(i) == src.size(i)) or i == dim) for i in range(0, inp.ndim)
     ), "src.size(d) == self.size(d) for all dimensions d != dim"
     assert reduce in [
