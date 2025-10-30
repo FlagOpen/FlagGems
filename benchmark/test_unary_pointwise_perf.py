@@ -105,31 +105,19 @@ forward_inplace_operations = [
     ("reciprocal_", torch.reciprocal_, FLOAT_DTYPES),
     ("sqrt_", torch.sqrt_, FLOAT_DTYPES),
     ("rsqrt_", torch.rsqrt_, FLOAT_DTYPES),
-    # ("logical_not", torch.logical_not, INT_DTYPES + BOOL_DTYPES),
-    # ("log", torch.log, FLOAT_DTYPES),
-    # # ("triu", torch.triu, FLOAT_DTYPES),  # do not support 1d shapes
-    # # Dropout
-    # ("dropout", torch.nn.Dropout(p=0.5), FLOAT_DTYPES),
     # Activation operations
     ("celu_", torch.nn.functional.celu_, FLOAT_DTYPES),
     ("elu_", torch.nn.functional.elu_, FLOAT_DTYPES),
     ("gelu_", torch.ops.aten.gelu_.default, FLOAT_DTYPES),
     ("relu_", torch.relu_, FLOAT_DTYPES),
-    # ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
     ("sigmoid_", torch.sigmoid_, FLOAT_DTYPES),
-    # ("log_sigmoid", torch.nn.functional.logsigmoid, FLOAT_DTYPES),
     ("silu_", lambda a: torch.nn.functional.silu(a, inplace=True), FLOAT_DTYPES),
     # Trigonometric operations
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
-    # ("atan", torch.atan, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
-    # # Numerical Checks
-    # ("isinf", torch.isinf, FLOAT_DTYPES),
-    # ("isnan", torch.isnan, FLOAT_DTYPES),
-    # ("isfinite", torch.isfinite, FLOAT_DTYPES),
 ]
 
 
