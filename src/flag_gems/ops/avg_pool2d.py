@@ -38,21 +38,17 @@ def generate_avg_pool2d_kernel_code(kernel_h, kernel_w, count_include_pad, code)
     # Write imports
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
+    code.writeline("from flag_gems import runtime")
     code.newline()
 
     # Determine if this is a large kernel
     is_large_kernel = (kernel_h * kernel_w) > 16  # More than 4x4
 
     # Write kernel decorator and signature
-    code.writeline("@triton.autotune(")
-    code.writeline("    configs=[")
-    code.writeline('        triton.Config({"BLOCK_SIZE": 128}, num_warps=4),')
-    code.writeline('        triton.Config({"BLOCK_SIZE": 256}, num_warps=4),')
-    code.writeline('        triton.Config({"BLOCK_SIZE": 512}, num_warps=8),')
-    code.writeline('        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8),')
-    code.writeline("    ],")
-    code.writeline('    key=["N", "C", "H_out", "W_out"],')
-    code.writeline(")")
+    code.writeline(
+        '@triton.autotune(configs=runtime.get_tuned_config("avg_pool2d"), '
+        'key=["N", "C", "H_out", "W_out"])'
+    )
     code.writeline("@triton.jit")
     kernel_name = f"avg_pool2d_kernel_{kernel_h}x{kernel_w}_pad{int(count_include_pad)}"
     code.writeline(f"def {kernel_name}(")
