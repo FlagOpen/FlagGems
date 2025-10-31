@@ -15,7 +15,6 @@ config_ = CodeGenConfig(
     32,
     True,
     prefer_1d_tile=True,
-    isCloseVectorization=True,
 )
 
 
