@@ -105,7 +105,7 @@ def cat(
                 )
 
     # Type promotion: find the common dtype for all tensors
-    device = A[0].device
+    device = A[0].place
     dtypes = [t.dtype for t in A]
     dtype = dtypes[0]
     for dt in dtypes[1:]:

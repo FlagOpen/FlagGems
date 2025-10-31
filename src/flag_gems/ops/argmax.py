@@ -97,24 +97,24 @@ def argmax_kernel(
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS ARGMAX")
     if dim is None:
-        M = inp.numel()
+        M = inp.numel().item()
         if dtype is None:
             dtype = inp.dtype
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
 
-        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.device)
+        mid_value = torch.empty((mid_size,), dtype=dtype, device=inp.place)
+        mid_index = torch.empty((mid_size,), dtype=torch.int64, device=inp.place)
         if keepdim:
             shape = list(inp.shape)
             for i in range(0, inp.dim()):
                 shape[i] = 1
-            out = torch.empty(shape, dtype=torch.int64, device=inp.device)
+            out = torch.empty(shape, dtype=torch.int64, device=inp.place)
         else:
-            out = torch.empty([], dtype=torch.int64, device=inp.device)
+            out = torch.empty([], dtype=torch.int64, device=inp.place)
 
-        with torch_device_fn.device(inp.device):
+        with torch_device_fn.device(inp.place):
             argmax_kernel_1[(mid_size, 1, 1)](
                 inp,
                 mid_value,
@@ -130,13 +130,13 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         dim = dim % inp.ndim
         N = shape[dim]
         M = math.prod(shape[:dim])
-        K = inp.numel() // M // N
+        K = inp.numel().item() // M // N
 
         inp = inp.contiguous()
 
         shape_list = list(shape)
         shape_list[dim] = 1
-        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+        out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.place)
         if not keepdim:
             out_index = torch.squeeze(out_index, dim)
 
@@ -144,7 +144,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             triton.cdiv(M, meta["BLOCK_M"]),
             K,
         )
-        with torch_device_fn.device(inp.device):
+        with torch_device_fn.device(inp.place):
             argmax_kernel[grid](
                 inp,
                 out_index,

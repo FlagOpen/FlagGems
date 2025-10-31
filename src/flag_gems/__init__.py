@@ -1,25 +1,54 @@
 import logging
+import os
 
-import torch
-
-from flag_gems import testing  # noqa: F401
+# from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
 from flag_gems.config import aten_patch_list
-from flag_gems.fused import *  # noqa: F403
+# from flag_gems.fused import *  # noqa: F403
 from flag_gems.logging_utils import setup_flaggems_logging
-from flag_gems.modules import *  # noqa: F403
+# from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
-from flag_gems.patches import *  # noqa: F403
+# from flag_gems.patches import *  # noqa: F403
 from flag_gems.runtime.register import Register
+from flag_gems.runtime.register_paddle import RegisterPaddle
 
+setup_flaggems_logging(record=True, once=False)
 __version__ = "3.0"
-device = runtime.device.name
-vendor_name = runtime.device.vendor_name
-aten_lib = torch.library.Library("aten", "IMPL")
-registrar = Register
+# device = runtime.device.name
+# vendor_name = runtime.device.vendor_name
+
+def _get_framework():
+    framework_env = os.environ.get("FLAGGEMS_FRAMEWORK", "paddle").lower()
+    
+    if framework_env == "paddle":
+        try:
+            import paddle
+            return paddle, "paddle"
+        except ImportError:
+            print("Warning: Paddle not found, falling back to torch")
+            framework_env = "torch"
+    
+    if framework_env == "torch":
+        try:
+            import torch
+            return torch, "torch"
+        except ImportError:
+            raise ImportError("Neither torch nor paddle is available")
+    
+    raise ValueError(f"Unsupported framework: {framework_env}")
+
+
+dl_framework, framework_name = _get_framework()
+
+if framework_name == "torch":
+    aten_lib = dl_framework.library.Library("aten", "IMPL")
+    registrar = Register
+elif framework_name == "paddle":
+    aten_lib = None
+    registrar = RegisterPaddle
+
 current_work_registrar = None
 runtime.replace_customized_ops(globals())
-
 
 def enable(
     lib=aten_lib,
@@ -30,8 +59,15 @@ def enable(
     path=None,
 ):
     global current_work_registrar
-    current_work_registrar = registrar(
-        (
+
+   
+    
+    
+    user_unused_ops_list = list(set(unused or []))
+    cpp_patched_ops_list = list(set(aten_patch_list))
+
+    if framework_name == "torch":
+        op_config = (
             ("_flash_attention_forward", flash_attention_forward),
             ("_log_softmax", log_softmax),
             ("_log_softmax_backward_data", log_softmax_backward),
@@ -315,19 +351,52 @@ def enable(
             ("where.self_out", where_self_out),
             ("zeros", zeros),
             ("zeros_like", zeros_like),
-        ),
-        user_unused_ops_list=list(set(unused or [])),
-        cpp_patched_ops_list=list(set(aten_patch_list)),
-        lib=lib,
-    )
+        )
+        current_work_registrar = registrar(
+            op_config,
+            user_unused_ops_list=user_unused_ops_list,
+            cpp_patched_ops_list=cpp_patched_ops_list,
+            lib=lib,
+        )
+    elif framework_name == "paddle":
+        op_config = (
+            ("_C_ops.softmax", softmax),
+            ("bmm", bmm),
+            ("sum", sum),
+            ("mean", mean),
+            ("triu", triu),
+            ("addmm",addmm),
+            ("all", all),
+            ("amax", amax),
+            ("any", any),
+            ("arange", arange),
+            ("argmax", argmax),
+            ("argmin", argmin),
+            ("_C_ops.batch_norm", batch_norm),
+            ("bmm", bmm),
+            ("count_nonzero", count_nonzero),
+            ("diag", diag),
+            ("dot", dot),
+            ("_C_ops.embedding", embedding),
+            ("index_add", index_add),
+            ("ones", ones)
+        )
+        current_work_registrar = registrar(
+            op_config,
+            user_unused_ops_list=user_unused_ops_list
+        )
     setup_flaggems_logging(path=path, record=record, once=once)
 
 
 class use_gems:
     def __init__(self, unused=None, record=False, once=False, path=None):
-        self.lib = torch.library.Library("aten", "IMPL")
+        if framework_name == "torch":
+            self.lib = dl_framework.library.Library("aten", "IMPL")
+        else:
+            self.lib = None  
+        
         self.unused = [] if unused is None else unused
-        self.registrar = Register
+        self.registrar = registrar
         self.record = record
         self.once = once
         self.path = path
@@ -347,6 +416,8 @@ class use_gems:
         del self.lib
         del self.unused
         del self.registrar
+        if framework_name == "paddle":
+            current_work_registrar.restore_all()
         del current_work_registrar
         if self.record:
             for handler in logging.root.handlers[:]:

@@ -219,11 +219,12 @@ _index_add_func = IndexAddFunction()
 
 def index_add(inp, dim, index, src, alpha=1):
     logger.debug("GEMS INDEX ADD")
-    assert ((0 <= index) * (index < inp.size(dim))).equal(
-        torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
-    ), "0 <= index < self.size(dim)"
+    # assert ((0 <= index) * (index < inp.size(dim))).equal(
+    #     torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.place)
+    # ), "0 <= index < self.size(dim)"
+    assert ((0 <= index) * (index < inp.size(dim))).all().item(), "0 <= index < self.size(dim)"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    assert index.numel() == src.size(
+    assert index.numel().item() == src.size(
         dim
     ), "The dimth dimension of source must have the same size as the length of index"
     assert (
@@ -240,7 +241,7 @@ def index_add(inp, dim, index, src, alpha=1):
     src_shape_dim = src.size(dim)
     inp_shape_dim = inp.size(dim)
     delta = inp.size(dim) - src_shape_dim
-    N = src.numel()
+    N = src.numel().item()
 
     _index_add_func(
         out,
@@ -252,7 +253,7 @@ def index_add(inp, dim, index, src, alpha=1):
         src_shape_dim,
         delta,
         N,
-        inp.numel(),
+        inp.numel().item(),
         alpha,
     )
     return out

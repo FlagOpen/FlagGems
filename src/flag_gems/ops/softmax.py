@@ -8,6 +8,8 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
+import paddle
+from paddle.autograd import PyLayer
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +282,7 @@ def softmax_backward_kernel_inner(
             offsets += TILE_N
 
 
-def softmax(self, dim, half_to_float=False):
+def softmax(self, dim, out, half_to_float=False):
     logger.debug("GEMS SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
@@ -297,7 +299,7 @@ def softmax(self, dim, half_to_float=False):
     out = torch.empty_like(self, dtype=dtype)
     K = self.numel() // M // N  # post_dim
 
-    with torch_device_fn.device(self.device):
+    with torch_device_fn.device(self.place):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_kernel_non_inner[grid](
@@ -332,7 +334,7 @@ def softmax_backward(grad_output, output, dim, input_dtype):
     in_grad = torch.empty_like(output, dtype=input_dtype)
     K = output.numel() // M // N
 
-    with torch_device_fn.device(in_grad.device):
+    with torch_device_fn.device(in_grad.place):
         if K > 1:
             grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
             softmax_backward_kernel_non_inner[grid](
@@ -353,3 +355,27 @@ def softmax_backward(grad_output, output, dim, input_dtype):
                 N,
             )
     return in_grad
+
+class Softmax(PyLayer):
+    @staticmethod
+    def forward(ctx, input, dim=-1, out = None, half_to_float=False):
+        ctx.dim = dim
+        ctx.input_dtype = input.dtype
+
+        output = softmax(input, dim, half_to_float)
+        ctx.save_for_backward(output)
+        
+        return output
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        output, = ctx.saved_tensor()
+        dim = ctx.dim
+        input_dtype = ctx.input_dtype
+
+        grad_input = softmax_backward(grad_output, output, dim, input_dtype)
+        
+        return grad_input
+
+softmax_paddle = Softmax.apply

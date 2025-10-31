@@ -124,13 +124,13 @@ def bmm(A, B):
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.place)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
         triton.cdiv(meta["N"], meta["TILE_N"]),
         batch,
     )
-    with torch_device_fn.device(A.device):
+    with torch_device_fn.device(A.place):
         bmm_kernel[grid_fn](A, B, out, M, N, K)
     return out
