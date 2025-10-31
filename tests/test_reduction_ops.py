@@ -1639,7 +1639,8 @@ def test_accuracy_index_fill_1d(N, dtype):
     value = 3.14
 
     ref_input = to_reference(input, True)
-    ref_out = torch.index_fill(ref_input, dim, index, value)
+    ref_index = to_reference(index, True)
+    ref_out = torch.index_fill(ref_input, dim, ref_index, value)
     with flag_gems.use_gems():
         res_out = torch.index_fill(input, dim, index, value)
 
@@ -1662,7 +1663,8 @@ def test_accuracy_index_fill_2d(M, N, dim, dtype):
     value = 3.14
 
     ref_input = to_reference(input, True)
-    ref_out = torch.index_fill(ref_input, dim, index, value)
+    ref_index = to_reference(index, True)
+    ref_out = torch.index_fill(ref_input, dim, ref_index, value)
     with flag_gems.use_gems():
         res_out = torch.index_fill(input, dim, index, value)
 
@@ -1686,7 +1688,8 @@ def test_accuracy_index_fill_3d(B, S, H, dim, dtype):
     value = 0.0
 
     ref_input = to_reference(input, True)
-    ref_out = torch.index_fill(ref_input, dim, index, value)
+    ref_index = to_reference(index, True)
+    ref_out = torch.index_fill(ref_input, dim, ref_index, value)
     with flag_gems.use_gems():
         res_out = torch.index_fill(input, dim, index, value)
 
