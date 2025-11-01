@@ -31,13 +31,13 @@ TORCH_LIBRARY_IMPL(aten, CUDA, m) {
   // REGISTER_AND_LOG("bmm", bmm);
   // REGISTER_AND_LOG("mm", mm_tensor);
   // REGISTER_AND_LOG("mm.out", mm_out_tensor);
-  REGISTER_AND_LOG("max.dim_max", max_dim_max);
-  REGISTER_AND_LOG("max.dim", max_dim);
-  REGISTER_AND_LOG("max", max);
-  REGISTER_AND_LOG("sum", sum);
-  REGISTER_AND_LOG("zeros", zeros);
-  REGISTER_AND_LOG("fill.Scalar", fill_scalar);
-  REGISTER_AND_LOG("fill_.Scalar", fill_scalar_);
+  // REGISTER_AND_LOG("max.dim_max", max_dim_max);
+  // REGISTER_AND_LOG("max.dim", max_dim);
+  // REGISTER_AND_LOG("max", max);
+  // REGISTER_AND_LOG("sum", sum);
+  // REGISTER_AND_LOG("zeros", zeros);
+  // REGISTER_AND_LOG("fill.Scalar", fill_scalar);
+  // REGISTER_AND_LOG("fill_.Scalar", fill_scalar_);
 }
 
 }  // namespace flag_gems
