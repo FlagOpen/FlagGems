@@ -496,6 +496,7 @@ from flag_gems.ops.dot import dot
 from flag_gems.ops.embedding import  embedding_paddle as embedding
 from flag_gems.ops.index_add import index_add
 from flag_gems.ops.ones import ones
+from flag_gems.ops.vstack import vstack
 
 __all__ = [
     "softmax",
@@ -523,4 +524,5 @@ __all__ = [
     "embedding",
     "index_add",
     "ones",
+    "vstack",
 ]

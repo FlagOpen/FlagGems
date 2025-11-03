@@ -245,6 +245,16 @@ class TestPaddleOps:
             b = paddle.ones(shape, dtype=dtype)
         np.testing.assert_allclose(a.numpy(), b.numpy(), rtol=1e-5, atol=1e-6)
 
+    def test_vstack(self):
+        a = paddle.randn([2, 3])
+        b = paddle.randn([2, 3])
+        
+        c = paddle.vstack([a, b])
+        
+        with flag_gems.use_gems():
+            d = paddle.vstack([a, b])
+        
+        np.testing.assert_allclose(c.numpy(), d.numpy(), rtol=1e-5, atol=1e-6)
 
 if __name__ == "__main__":
     pytest.main(["-svx", __file__, "--noconftest"])

@@ -373,13 +373,13 @@ def enable(
             ("argmax", argmax),
             ("argmin", argmin),
             ("_C_ops.batch_norm", batch_norm),
-            ("bmm", bmm),
             ("count_nonzero", count_nonzero),
             ("diag", diag),
             ("dot", dot),
             ("_C_ops.embedding", embedding),
             ("index_add", index_add),
-            ("ones", ones)
+            ("ones", ones),
+            ("vstack", vstack),
         )
         current_work_registrar = registrar(
             op_config,
