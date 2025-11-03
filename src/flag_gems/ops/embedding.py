@@ -3,9 +3,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
-import paddle
 from paddle.autograd import PyLayer
+
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
@@ -142,7 +141,6 @@ def embedding_backward(
 ):
     logger.debug("GEMS EMBEDDING BACKWARD")
     assert not sparse, "Currently do not support sparse format"
-    print("反向")
 
     M = indices.numel()
     N = grad_outputs.shape[-1]
@@ -198,32 +196,36 @@ def embedding_backward(
         else grad_inputs
     )
 
+
 class Embedding(PyLayer):
     @staticmethod
-    def forward(ctx, indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-        # 保存反向传播需要的参数
+    def forward(
+        ctx, indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=False
+    ):
         ctx.save_for_backward(indices, weight)
         ctx.padding_idx = padding_idx
         ctx.scale_grad_by_freq = scale_grad_by_freq
         ctx.sparse = sparse
-        
-        # 直接调用现有的前向函数
+
         return embedding(indices, weight, padding_idx, scale_grad_by_freq, sparse)
-    
+
     @staticmethod
     def backward(ctx, grad_outputs):
-        # 获取保存的参数
         indices, weight = ctx.saved_tensor()
         padding_idx = ctx.padding_idx
         scale_grad_by_freq = ctx.scale_grad_by_freq
         sparse = ctx.sparse
-        
-        # 直接调用现有的反向函数
+
         grad_weight = embedding_backward(
-            grad_outputs, indices, weight.shape[0], 
-            padding_idx, scale_grad_by_freq, sparse
+            grad_outputs,
+            indices,
+            weight.shape[0],
+            padding_idx,
+            scale_grad_by_freq,
+            sparse,
         )
-        
-        # 返回梯度：indices, weight, padding_idx, scale_grad_by_freq, sparse
-        return  None, grad_weight
-embedding_paddle= Embedding.apply
+
+        return None, grad_weight
+
+
+embedding_paddle = Embedding.apply
