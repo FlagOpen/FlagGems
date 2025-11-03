@@ -53,21 +53,17 @@ run_op_test() {
     # 提取 pytest 汇总
     local summary_line
     summary_line=$(grep -E "={3,8} .* in .*s.*={3,8}" "$acc_log" | tail -n 1)
-    local passed=0 failed=0 skipped=0 total=0 deselected=0 warnings=0
+    local passed=0 failed=0 skipped=0 total=0
     if [[ -n "$summary_line" ]]; then
         [[ "$summary_line" =~ ([0-9]+)[[:space:]]+passed ]] && passed=${BASH_REMATCH[1]}
         [[ "$summary_line" =~ ([0-9]+)[[:space:]]+failed ]] && failed=${BASH_REMATCH[1]}
         [[ "$summary_line" =~ ([0-9]+)[[:space:]]+skipped ]] && skipped=${BASH_REMATCH[1]}
-        [[ "$summary_line" =~ ([0-9]+)[[:space:]]+deselected ]] && deselected=${BASH_REMATCH[1]}
-        [[ "$summary_line" =~ ([0-9]+)[[:space:]]+warnings ]] && warnings=${BASH_REMATCH[1]}
         total=$((passed + failed + skipped))
     fi
     # ---------------- 性能测试 ----------------
     local perf_log="${op_dir}/perf.log"
     # 注意，这里需要根据 gpu 来调整
     CUDA_VISIBLE_DEVICES=$gpu_id bash -c "cd ${FLAGGEMS_PATH}/benchmark && pytest -m '$op' --level core --record log" > "$perf_log" 2>&1
-    local perf_exit=$?
-    [ $perf_exit -eq 0 ] && perf_res="PASS" || perf_res="FAIL"
 
     # 查找性能结果文件
     local perf_result_file
@@ -80,7 +76,6 @@ run_op_test() {
     fi
 
     # ---------------- 解析性能结果 ----------------
-    local parsed_summary="N/A"
     local avg_speedup="0"
     local float16_speedup="0"
     local float32_speedup="0"
@@ -95,7 +90,6 @@ run_op_test() {
         rm -f "$parsed_summary_log"
         # 将 summary_for_plot.py 的 stdout/stderr 都捕获到 parsed_summary.log
         python "${FLAGGEMS_PATH}/benchmark/summary_for_plot.py" "$perf_result_file" > "$parsed_summary_log" 2>&1
-        parsed_summary="$parsed_summary_log"
 
         if [ -s "$parsed_summary_log" ]; then
             # 用 awk 解析：读取 header -> 查找与 $op 匹配的行 -> 根据 header 索引提取列
@@ -236,4 +230,3 @@ echo "所有算子测试完成"
 echo "结果目录: ${RESULTS_DIR}"
 echo "汇总文件: ${SUMMARY_FILE}"
 echo "-------------------------------------------"
-
