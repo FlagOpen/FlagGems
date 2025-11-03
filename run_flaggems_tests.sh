@@ -65,17 +65,15 @@ run_op_test() {
     fi
     # ---------------- 性能测试 ----------------
     local perf_log="${op_dir}/perf.log"
-    # 注意，这里需要根据 gpu 来调整
-    CUDA_VISIBLE_DEVICES="$gpu_id" \
-    bash -c "cd \"$FLAGGEMS_PATH/benchmark\" && pytest -m \"$op\" --level core --record log" \
-    >"$perf_log" 2>&1
 
     # 删除之前残留的性能日志文件（匹配当前 $op）
     find "${FLAGGEMS_PATH}/benchmark" -maxdepth 1 \
     -type f -name "result-m_*${op}*--level_core--record_log.log" \
     -exec rm -f {} +
-
-    CUDA_VISIBLE_DEVICES=$gpu_id bash -c "cd ${FLAGGEMS_PATH}/benchmark && pytest -m '$op' --level core --record log" > "$perf_log" 2>&1
+    # 注意，这里需要根据 gpu 来调整
+    CUDA_VISIBLE_DEVICES="$gpu_id" \
+    bash -c "cd \"$FLAGGEMS_PATH/benchmark\" && pytest -m \"$op\" --level core --record log" \
+    >"$perf_log" 2>&1
 
     # 查找性能结果文件
     local perf_result_file
