@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from paddle.autograd import PyLayer
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -28,7 +29,7 @@ def embedding_kernel(
     cols = tl.arange(0, BLOCK_SIZE)
 
     row_idx = tl.load(in_ptr)
-    weight_ptr += row_idx * N
+    weight_ptr += row_idx.to(tl.int32) * N
     embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
     tl.store(out_ptr + cols, embedding_weight, mask)
 
@@ -110,20 +111,20 @@ def embedding_grad_scale_kernel(
         tl.store(grad_out + row_idx * N + cols, scaled_embedding_grad, mask=mask)
 
 
-def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
+def embedding(indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
     logger.debug("GEMS EMBEDDING FORWARD")
     assert not sparse, "Currently do not support sparse format"
 
-    M = indices.numel()
+    M = indices.size
     N = weight.shape[-1]
 
     BLOCK_SIZE = triton.next_power_of_2(N)
     # TODO: remove contiguous enforcement
     indices = indices.contiguous()
     weight = weight.contiguous()
-    output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
+    output = torch.empty((*indices.shape, N), device=indices.place, dtype=weight.dtype)
 
-    with torch_device_fn.device(weight.device):
+    with torch_device_fn.device(weight.place):
         embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
 
     return output
@@ -145,7 +146,7 @@ def embedding_backward(
 
     grad_inputs = torch.zeros(
         (num_weights, grad_outputs.shape[-1]),
-        device=grad_outputs.device,
+        device=grad_outputs.place,
         dtype=(
             torch.float32
             if grad_outputs.dtype is torch.bfloat16
@@ -157,13 +158,13 @@ def embedding_backward(
         indice_freq = torch.zeros(
             (num_weights,),
             requires_grad=False,
-            device=grad_outputs.device,
+            device=grad_outputs.place,
             dtype=torch.int32,
         )
         INDICE_BLOCK_SIZE = 256
         indice_grid = (triton.cdiv(M, INDICE_BLOCK_SIZE),)
 
-        with torch_device_fn.device(grad_outputs.device):
+        with torch_device_fn.device(grad_outputs.place):
             indice_freq_kernel[indice_grid](indice_freq, indices, M, INDICE_BLOCK_SIZE)
     else:
         indice_freq = None
@@ -172,7 +173,7 @@ def embedding_backward(
 
     HAS_PADDING_IDX = padding_idx is not None
 
-    with torch_device_fn.device(grad_outputs.device):
+    with torch_device_fn.device(grad_outputs.place):
         embedding_backward_kernel[M,](
             grad_inputs,
             grad_outputs,
@@ -184,7 +185,7 @@ def embedding_backward(
         )
 
     if scale_grad_by_freq:
-        with torch_device_fn.device(grad_outputs.device):
+        with torch_device_fn.device(grad_outputs.place):
             embedding_grad_scale_kernel[M,](
                 grad_inputs, indice_freq, num_weights, N, BLOCK_SIZE
             )
@@ -193,3 +194,37 @@ def embedding_backward(
         if grad_outputs.dtype is torch.bfloat16
         else grad_inputs
     )
+
+
+class Embedding(PyLayer):
+    @staticmethod
+    def forward(
+        ctx, indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=False
+    ):
+        ctx.save_for_backward(indices, weight)
+        ctx.padding_idx = padding_idx
+        ctx.scale_grad_by_freq = scale_grad_by_freq
+        ctx.sparse = sparse
+
+        return embedding(indices, weight, padding_idx, scale_grad_by_freq, sparse)
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        indices, weight = ctx.saved_tensor()
+        padding_idx = ctx.padding_idx
+        scale_grad_by_freq = ctx.scale_grad_by_freq
+        sparse = ctx.sparse
+
+        grad_weight = embedding_backward(
+            grad_outputs,
+            indices,
+            weight.shape[0],
+            padding_idx,
+            scale_grad_by_freq,
+            sparse,
+        )
+
+        return None, grad_weight
+
+
+embedding_paddle = Embedding.apply

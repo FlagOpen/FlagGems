@@ -85,7 +85,7 @@ def get_tl_extra_backend_module():
 def set_torch_backend_device_fn(vendor_name=None):
     global device_name, torch_device_fn_device
     device_name = device_name or get_vendor_info(vendor_name).device_name
-    module_str = f"torch.backends.{device_name}"
+    module_str = f"torch.device.{device_name}"
     if device_name in ("musa", "aipu", "npu"):
         torch_device_fn_device = None
     else:

@@ -79,37 +79,37 @@ def count_nonzero(x, dim=None):
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape
         BLOCK_SIZE = 2048
-        numel = x.numel()
+        numel = x.size
         x = dim_compress(x, dim)
         x = x.contiguous().flatten()
         combin_shape = list(shape)
         combin_shape[dim] = triton.cdiv(combin_shape[dim], BLOCK_SIZE)
         if combin_shape[dim] != 1:
-            combin = torch.zeros(combin_shape, dtype=torch.int64, device=x.device)
+            combin = torch.zeros(combin_shape, dtype=torch.int64, device=x.place)
             grid = (triton.cdiv(numel, shape[dim]), combin_shape[dim], 1)
             count_nonzero_combin_kernel[grid](
                 x, combin, shape[dim], combin_shape[dim], numel, BLOCK_SIZE
             )
             x = combin
             shape = x.shape
-            numel = x.numel()
+            numel = x.size
             out_shape = list(shape)
             del out_shape[dim]
-            out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
+            out = torch.zeros(out_shape, dtype=torch.int64, device=x.place)
             grid = lambda meta: (triton.cdiv(numel, shape[dim]),)
             count_nonzero_combin_kernel_1[grid](x, out, shape[dim], numel)
             return out
         out_shape = list(shape)
         del out_shape[dim]
-        out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
+        out = torch.zeros(out_shape, dtype=torch.int64, device=x.place)
         grid = lambda meta: (triton.cdiv(numel, shape[dim]),)
         count_nonzero_kernel[grid](x, out, shape[dim], numel)
         return out
     else:
         x = x.contiguous().flatten()
-        numel = x.numel()
+        numel = x.size
 
-        out = torch.zeros(1, dtype=torch.int64, device=x.device)
+        out = torch.zeros(1, dtype=torch.int64, device=x.place)
 
         BLOCK_SIZE = 1024
         grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)

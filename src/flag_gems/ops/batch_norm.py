@@ -9,6 +9,9 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
+import paddle
+from paddle.autograd import PyLayer
+
 logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
@@ -329,14 +332,14 @@ def batch_norm(
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     output = torch.empty_like(input_3d)
 
-    mean = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
-    inv_std = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+    mean = torch.empty(feat_dim, device=input.place, dtype=input.dtype)
+    inv_std = torch.empty(feat_dim, device=input.place, dtype=input.dtype)
 
     running_mean = input if running_mean is None else running_mean
     running_var = input if running_var is None else running_var
 
     # Launches 1D grid where each program operates over one feature.
-    with torch_device_fn.device(input.device):
+    with torch_device_fn.device(input.place):
         batch_norm_forward_kernel[(feat_dim,)](
             input_3d,
             weight,
@@ -358,7 +361,7 @@ def batch_norm(
     return output.view_as(input), mean, inv_std
 
 
-def batch_norm_backward(
+def  batch_norm_backward(
     grad_out,
     input,
     weight=None,
@@ -369,7 +372,7 @@ def batch_norm_backward(
     train=False,
     eps=1e-05,
     output_mask=None,
-):
+):  
     logger.debug("GEMS BATCHNORM BACKWARD")
     input_3d = make_3d_for_bn(input)
     output_grad_3d = make_3d_for_bn(grad_out)
@@ -381,16 +384,16 @@ def batch_norm_backward(
     else:
         input_grad = None
     if output_mask[1]:
-        weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
+        weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.place)
     else:
         weight_grad = None
     if output_mask[2]:
-        bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
+        bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.place)
     else:
         bias_grad = None
 
     # Launches 1D grid where each program operates over one feature.
-    with torch_device_fn.device(input.device):
+    with torch_device_fn.device(input.place):
         batch_norm_backward_kernel[(feat_dim,)](
             output_grad_3d,
             input_3d,
@@ -415,3 +418,44 @@ def batch_norm_backward(
         weight_grad,
         bias_grad,
     )
+
+class BatchNorm(PyLayer):
+    @staticmethod
+    def forward(ctx, input, running_mean=None, running_var=None, weight=None, bias=None, 
+                training=False, momentum=0.1, eps=1e-05, data_format = None,use_global_stats = None,trainable_statistics = None,):
+        
+        ctx.save_for_backward(input, weight, running_mean, running_var)
+        ctx.training = training
+        ctx.momentum = momentum
+        ctx.eps = eps
+       
+        output, save_mean, save_invstd = batch_norm(
+            input = input, weight=weight, bias=bias, running_mean=running_mean, running_var=running_var, 
+            training = not training, momentum=momentum, eps=eps
+        )
+
+        ctx.save_mean = save_mean
+        ctx.save_invstd = save_invstd
+        
+        return output, None, None , None, None , None
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+
+        input, weight, running_mean, running_var = ctx.saved_tensor()
+        training = ctx.training
+        momentum = ctx.momentum
+        eps = ctx.eps
+        save_mean = ctx.save_mean
+        save_invstd = ctx.save_invstd
+        
+        output_mask = [True, True, True]
+
+        grad_input, grad_weight, grad_bias = batch_norm_backward(
+            grad_output, input, weight, running_mean, running_var,
+            save_mean, save_invstd, training, eps, output_mask
+        )
+        
+        return grad_input, None, None, None, None
+
+batch_norm_paddle = BatchNorm.apply

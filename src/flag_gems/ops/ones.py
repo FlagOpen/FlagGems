@@ -32,7 +32,7 @@ def ones(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
-        device = torch.device(device_.name)
+        device = device_.name
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)

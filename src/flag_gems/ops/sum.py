@@ -60,7 +60,7 @@ def sum_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 def sum(inp, *, dtype=None):
     logger.debug("GEMS SUM")
-    M = inp.numel()
+    M = inp.numel().item()
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
@@ -70,10 +70,10 @@ def sum(inp, *, dtype=None):
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
-    out = torch.empty([], dtype=dtype, device=inp.device)
+    mid = torch.empty((mid_size,), dtype=dtype, device=inp.place)
+    out = torch.empty([], dtype=dtype, device=inp.place)
 
-    with torch_device_fn.device(inp.device):
+    with torch_device_fn.device(inp.place):
         sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
         sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
     return out

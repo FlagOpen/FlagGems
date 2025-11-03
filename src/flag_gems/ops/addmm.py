@@ -100,14 +100,14 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     )
     mat1 = mat1.contiguous()
     # mat2 = mat2.contiguous()
-    out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+    out = torch.empty((M, N), device=mat1.place, dtype=mat1.dtype)
     bias = bias.broadcast_to(out.shape)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch_device_fn.device(mat1.device):
+    with torch_device_fn.device(mat1.place):
         addmm_kernel[grid](
             mat1,
             mat2,
@@ -138,7 +138,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
     M, K = mat1.shape
     _, N = mat2.shape
     if out is None:
-        out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
+        out = torch.empty((M, N), device=mat1.place, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
     logger.debug(
@@ -158,7 +158,7 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
         triton.cdiv(M, META["BLOCK_SIZE_M"]),
         triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
-    with torch_device_fn.device(mat1.device):
+    with torch_device_fn.device(mat1.place):
         addmm_kernel[grid](
             mat1,
             mat2,
