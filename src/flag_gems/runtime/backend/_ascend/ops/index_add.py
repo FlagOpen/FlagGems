@@ -154,7 +154,7 @@ def generate_destination_passing_wrapper(
 
                 s = ", ".join(f"src_shapes[{i}]" for i in range(rank))
                 code.writeline(f"{s},")
-            #code.writeline("BLOCK_SIZE=BLOCK_SIZE")
+            # code.writeline("BLOCK_SIZE=BLOCK_SIZE")
         code.writeline(")")
         code.writeline("return out")
 

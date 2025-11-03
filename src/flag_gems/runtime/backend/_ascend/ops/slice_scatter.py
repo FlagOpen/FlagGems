@@ -3,9 +3,9 @@ import logging
 import torch
 import triton
 
+from flag_gems.utils.codegen_config_utils import CodeGenConfig
 from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import has_internal_overlapping
-from flag_gems.utils.codegen_config_utils import CodeGenConfig
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -17,6 +17,7 @@ config_ = CodeGenConfig(
     False,
     prefer_1d_tile=int(triton.__version__[0]) < 3,
 )
+
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit

@@ -17,7 +17,16 @@ config_ = CodeGenConfig(
     False,
     prefer_1d_tile=int(triton.__version__[0]) < 3,
 )
-@pointwise_dynamic(promotion_methods=[((0, 1), "DEFAULT"),((0, 1), "DEFAULT"),], num_outputs=2, config=config_)
+
+
+@pointwise_dynamic(
+    promotion_methods=[
+        ((0, 1), "DEFAULT"),
+        ((0, 1), "DEFAULT"),
+    ],
+    num_outputs=2,
+    config=config_,
+)
 @triton.jit
 def polar_kernel(abs, angle):
     real = abs * tl.cos(angle)

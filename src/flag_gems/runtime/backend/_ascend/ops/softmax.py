@@ -319,6 +319,7 @@ def softmax(self, dim, half_to_float=False):
             )
     return out
 
+
 def softmax_backward(grad_output, output, dim, input_dtype):
     logger.debug("GEMS_ASCEND SOFTMAX VJP")
 

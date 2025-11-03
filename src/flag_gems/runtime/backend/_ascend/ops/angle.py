@@ -13,6 +13,7 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 
 try:
     import torch_npu  # noqa: F401
+
     atan2 = tl_extra_shim.atan2
 except ImportError:  # noqa: E722
     atan2 = tl_extra_shim.atan2
@@ -25,7 +26,10 @@ config_ = CodeGenConfig(
     prefer_1d_tile=int(triton.__version__[0]) < 3,
 )
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")], config=config_)
+
+@pointwise_dynamic(
+    is_tensor=[True, True], promotion_methods=[(0, "DEFAULT")], config=config_
+)
 @triton.jit
 def angle_func(real, imag):
     real_last, imag_last = (

@@ -6,8 +6,8 @@ import torch
 import triton
 
 from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
+from flag_gems.utils.tensor_wrapper import StridedBuffer
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 

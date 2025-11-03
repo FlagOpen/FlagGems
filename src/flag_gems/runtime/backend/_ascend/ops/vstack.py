@@ -42,43 +42,47 @@ def vstack_kernel(
     pid_x = tle.program_id(axis=0)
     tensor_idx = tle.program_id(axis=1)
     col_idx = tl.arange(0, BLOCK_SIZE)
-    
+
     # create a mask to select a corresponding tensor
     mask0 = tensor_idx == 0
     mask1 = tensor_idx == 1
     mask2 = tensor_idx == 2
     mask3 = tensor_idx == 3
-    
+
     # using mask and mathematical operations to select parameters
-    base_exc_row_idx = (mask0 * exc_row_offset0 + 
-                       mask1 * exc_row_offset1 + 
-                       mask2 * exc_row_offset2 + 
-                       mask3 * exc_row_offset3)
-    
-    local_row = (mask0 * local_row0 + 
-                mask1 * local_row1 + 
-                mask2 * local_row2 + 
-                mask3 * local_row3)
-    
+    base_exc_row_idx = (
+        mask0 * exc_row_offset0
+        + mask1 * exc_row_offset1
+        + mask2 * exc_row_offset2
+        + mask3 * exc_row_offset3
+    )
+
+    local_row = (
+        mask0 * local_row0
+        + mask1 * local_row1
+        + mask2 * local_row2
+        + mask3 * local_row3
+    )
+
     end_idx = local_row * row_stride.to(tl.int64)
     idx = (pid_x * BLOCK_SIZE + col_idx).to(tl.int64)
     offset_mask = idx < end_idx
-    
+
     # calculate input offset for each tensor separately
     in_offset0 = itensor_ptr0 + idx
     in_offset1 = itensor_ptr1 + idx
     in_offset2 = itensor_ptr2 + idx
     in_offset3 = itensor_ptr3 + idx
-    
+
     # load data from the corresponding tensor
     out0 = tl.load(in_offset0, mask=offset_mask & mask0, other=0.0)
     out1 = tl.load(in_offset1, mask=offset_mask & mask1, other=0.0)
     out2 = tl.load(in_offset2, mask=offset_mask & mask2, other=0.0)
     out3 = tl.load(in_offset3, mask=offset_mask & mask3, other=0.0)
-    
+
     # consolidation result
     out = out0 + out1 + out2 + out3
-    
+
     row_stride_offset = (total_row_offset + base_exc_row_idx) * row_stride.to(tl.int64)
     out_offset = output_ptr + row_stride_offset + idx
     tl.store(out_offset, out, mask=offset_mask)
@@ -124,7 +128,7 @@ def vstack(tensors: list):
                 scheduled_num_tensors += 1
                 itensors.append(c_tensors[tensor_idx])
                 local_row.append(c_tensors[tensor_idx].shape[0])
-                exclusive_row.append(array_row_offset) 
+                exclusive_row.append(array_row_offset)
                 array_row_offset += c_tensors[tensor_idx].shape[0]
                 max_rows = max(max_rows, c_tensors[tensor_idx].shape[0])
             else:
@@ -134,7 +138,7 @@ def vstack(tensors: list):
                 itensors.append(empty_tensor)
                 local_row.append(local_row[-1])
                 exclusive_row.append(exclusive_row[-1])
-        max_tile_elems = max_rows * row_stride # 最大的tiling size
+        max_tile_elems = max_rows * row_stride  # 最大的tiling size
         grid = lambda META: (
             triton.cdiv(max_tile_elems, META["BLOCK_SIZE"]),
             scheduled_num_tensors,
@@ -147,16 +151,18 @@ def vstack(tensors: list):
                 itensors[2],
                 itensors[3],
                 output,
-                local_row[0], # tensor[0]的shape(0)
-                local_row[1], # tensor[1]的shape(0)
-                local_row[2], # tensor[2]的shape(0)
-                local_row[3], # tensor[3]的shape(0)
-                exclusive_row[0], # 0
-                exclusive_row[1], # 0 + tensor[0]的shape[0]
-                exclusive_row[2], # 0 + tensor[0]的shape[0] + tensor[1]的shape[0]
-                exclusive_row[3], # 0 + tensor[0]的shape[0] + tensor[1]的shape[0] + tensor[2]的shape[0]
+                local_row[0],  # tensor[0]的shape(0)
+                local_row[1],  # tensor[1]的shape(0)
+                local_row[2],  # tensor[2]的shape(0)
+                local_row[3],  # tensor[3]的shape(0)
+                exclusive_row[0],  # 0
+                exclusive_row[1],  # 0 + tensor[0]的shape[0]
+                exclusive_row[2],  # 0 + tensor[0]的shape[0] + tensor[1]的shape[0]
+                exclusive_row[
+                    3
+                ],  # 0 + tensor[0]的shape[0] + tensor[1]的shape[0] + tensor[2]的shape[0]
                 total_row_offset,
-                row_stride, # stride(0)
+                row_stride,  # stride(0)
                 max_tile_elems,
             )
             total_row_offset += array_row_offset

@@ -4,13 +4,12 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import (
     philox_backend_seed_offset,
     uint_to_uniform_float,
 )
-
-from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -100,10 +99,12 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     is_double = dtype in (torch.float64,)
     UNROLL = 2 if is_double else 4
     N = x.numel()
+
     def grid_fn(meta):
-            grid = triton.cdiv(N, meta["BLOCK"] * UNROLL)
-            grid = grid if grid < 240 else 240
-            return (grid,)
+        grid = triton.cdiv(N, meta["BLOCK"] * UNROLL)
+        grid = grid if grid < 240 else 240
+        return (grid,)
+
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)

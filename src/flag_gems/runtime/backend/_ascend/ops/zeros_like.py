@@ -4,6 +4,7 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
+
 from .zeros import zeros_kernel
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')

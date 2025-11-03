@@ -17,11 +17,11 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 @libentry()
 @triton.jit
 def argmin_kernel_1(
-        inp,
-        mid_value,
-        mid_index,
-        M,
-        BLOCK_SIZE: tl.constexpr,
+    inp,
+    mid_value,
+    mid_index,
+    M,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -41,11 +41,11 @@ def argmin_kernel_1(
 @libentry()
 @triton.jit
 def argmin_kernel_2(
-        mid_value,
-        mid_index,
-        out,
-        mid_size,
-        BLOCK_MID: tl.constexpr,
+    mid_value,
+    mid_index,
+    out,
+    mid_size,
+    BLOCK_MID: tl.constexpr,
 ):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid_value + offset
@@ -62,13 +62,13 @@ def argmin_kernel_2(
 @triton.heuristics(runtime.get_heuristic_config("argmin"))
 @triton.jit
 def argmin_kernel(
-        inp,
-        out_index,
-        M,
-        N,
-        K,
-        BLOCK_M: tl.constexpr,
-        BLOCK_N: tl.constexpr,
+    inp,
+    out_index,
+    M,
+    N,
+    K,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     # set offset
     pid_m = tle.program_id(0)

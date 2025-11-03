@@ -98,7 +98,7 @@ def rotary_embedding_rw_kernel(
 @libentry()
 @triton.jit
 def rotary_embedding_siso_kernel(
-    state_out, # [num_tokens, head_num, head_dim]
+    state_out,  # [num_tokens, head_num, head_dim]
     state,  # [num_tokens, head_num, head_dim]
     cos,  # [num_tokens, 1, head_dim // 2]
     sin,  # [num_tokens, 1, head_dim // 2]
@@ -118,7 +118,7 @@ def rotary_embedding_siso_kernel(
     token_range = token_index * BLOCK_N + tl.arange(0, BLOCK_N)
     head_index = tl.program_id(1)
     head_range = head_index * BLOCK_H + tl.arange(0, BLOCK_H)
-    
+
     if rotary_interleaved:
         for d in range(0, BLOCK_D // 2):
             dim_range_x = d * 2
@@ -163,6 +163,7 @@ def rotary_embedding_siso_kernel(
             dim_range_y,
             rotary_interleaved,
         )
+
 
 def apply_rotary_pos_emb(
     q,
@@ -268,7 +269,7 @@ def apply_rotary_pos_emb(
                 BLOCK_D=head_dim,
                 rotary_interleaved=rotary_interleaved,
             )
-    
+
     torch_rotary_embedding(q_embed, q, cos, sin)
     torch_rotary_embedding(k_embed, k, cos, sin)
 

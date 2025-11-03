@@ -27,12 +27,12 @@ def reduce_any(a, b):
 @triton.autotune(configs=runtime.get_tuned_config("any"), key=["M", "N"])
 @triton.jit
 def any_kernel_dim(
-        inp,
-        out,
-        M,
-        N,
-        BLOCK_M: tl.constexpr,
-        BLOCK_N: tl.constexpr,
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
@@ -56,11 +56,11 @@ def any_kernel_dim(
 @libentry()
 @triton.jit
 def any_kernel_1(
-        inp,
-        mid,
-        n_elements,
-        mid_size,
-        BLOCK_SIZE: tl.constexpr,
+    inp,
+    mid,
+    n_elements,
+    mid_size,
+    BLOCK_SIZE: tl.constexpr,
 ):
     pid = tle.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)

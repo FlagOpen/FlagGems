@@ -108,10 +108,12 @@ def count_nonzero(x, dim=None):
         out_shape = list(shape)
         del out_shape[dim]
         out = torch.zeros(out_shape, dtype=torch.int64, device=x.device)
+
         def grid(meta):
             axis0 = triton.cdiv(numel, shape[dim])
             axis0 = axis0 if axis0 < 240 else 240
             return (axis0,)
+
         count_nonzero_kernel[grid](x, out, shape[dim], numel)
         return out
     else:

@@ -5,11 +5,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.libentry import libentry
-
+from flag_gems.ops.all import reduce_all
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as tle
-from flag_gems.ops.all import reduce_all
+from flag_gems.utils.libentry import libentry
+
 from .any import reduce_any
 from .unique import _unique2
 
@@ -28,45 +28,49 @@ def isin_by_comparation_impl(
     out_ptr: tl.tensor,
     M: int,
     N: int,
-    BLOCK_M: tl.constexpr, # tile_size
-    BLOCK_N: tl.constexpr, # tile_size_1
+    BLOCK_M: tl.constexpr,  # tile_size
+    BLOCK_N: tl.constexpr,  # tile_size_1
     invert: tl.constexpr,
 ):
     row_off = global_pid * BLOCK_M
     rows = row_off + tl.arange(0, BLOCK_M)
     row_mask = rows < M
-    
+
     # 为 in0 创建 [BLOCK_M, 1] 形状的索引
     in0_offsets = rows[:, None]  # [BLOCK_M, 1]
-    
+
     # 初始化结果块
     block = tl.full([BLOCK_M, BLOCK_N], value=(1 if invert else 0), dtype=tl.int1)
-    
+
     # 加载 in0，每行一个元素
-    in0 = tl.load(in0_ravel_ptr + in0_offsets, row_mask[:, None], other=0)  # [BLOCK_M, 1]
-    
+    in0 = tl.load(
+        in0_ravel_ptr + in0_offsets, row_mask[:, None], other=0
+    )  # [BLOCK_M, 1]
+
     # 遍历 in1 的列
     for col_off in range(0, N, BLOCK_N):
         cols = col_off + tl.arange(0, BLOCK_N)
         col_mask = cols < N
-        
+
         # 创建 2D mask
         mask = row_mask[:, None] & col_mask[None, :]
-        
+
         # 加载 in1 的一块
-        in1 = tl.load(in1_ravel_ptr + cols[None, :], col_mask[None, :], other=0)  # [1, BLOCK_N]
-        
+        in1 = tl.load(
+            in1_ravel_ptr + cols[None, :], col_mask[None, :], other=0
+        )  # [1, BLOCK_N]
+
         if invert:
             block = tl.where(mask, block & (in0 != in1), block)
         else:
             block = tl.where(mask, block | (in0 == in1), block)
-    
+
     # 沿列方向规约
     if invert:
         out = tl.reduce(block, axis=1, combine_fn=reduce_all)
     else:
         out = tl.reduce(block, axis=1, combine_fn=reduce_any)
-    
+
     # 存储结果
     tl.store(out_ptr + rows, out, row_mask)
 

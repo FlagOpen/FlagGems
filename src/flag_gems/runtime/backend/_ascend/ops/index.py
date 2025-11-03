@@ -1,9 +1,9 @@
 import logging
+from typing import List
 
+import torch
 import triton
 import triton.language as tl
-from typing import List
-import torch
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -31,8 +31,12 @@ def index_kernel_func(
             for loop_idx in range(0, loop_num):
                 inner_offset = loop_idx * MAX_DATA_SIZE + tl.arange(0, MAX_DATA_SIZE)
                 mask = inner_offset < stride
-                cur_value = tl.load(input_ptr + in_start_index + inner_offset, mask=mask)
-                tl.store(out_ptr + out_start_offset + inner_offset, cur_value, mask=mask)
+                cur_value = tl.load(
+                    input_ptr + in_start_index + inner_offset, mask=mask
+                )
+                tl.store(
+                    out_ptr + out_start_offset + inner_offset, cur_value, mask=mask
+                )
 
 
 def index_wrapper(input, indices, out):
@@ -53,7 +57,7 @@ def index_wrapper(input, indices, out):
     BLOCK_SIZE = 32
     MAX_DATA_SIZE = 16 * 1024
 
-    grid = lambda meta: (triton.cdiv(index_len, meta['BLOCK_SIZE']),)
+    grid = lambda meta: (triton.cdiv(index_len, meta["BLOCK_SIZE"]),)
 
     index_kernel_func[grid](
         input,

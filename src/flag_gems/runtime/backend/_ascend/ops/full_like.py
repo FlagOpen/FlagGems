@@ -5,6 +5,7 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
+
 from .full import check_dtype, full_kernel
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')

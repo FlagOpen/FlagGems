@@ -15,6 +15,7 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 
 try:
     import torch_npu  # noqa: F401
+
     pow = tl.extra.ascend.libdevice.pow
 except:  # noqa: E722
     pow = tl_extra_shim.pow
@@ -47,7 +48,7 @@ def l2_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
 @triton.jit
 def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr):
     pid = tl.program_id(0).to(tl.int64)
-    
+
     total_sum = 0.0
 
     for off in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
@@ -55,13 +56,15 @@ def l2_norm_kernel_1(X, Mid, M, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.con
         mask = offsets < M
         x = tl.load(X + offsets, mask=mask, other=0.0).to(tl.float32)
         total_sum += tl.sum(x * x)
-    
+
     tl.store(Mid + pid, total_sum)
 
 
 @libentry()
 @triton.jit
-def l2_norm_kernel_2(Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr, BLOCK_MID_SUB: tl.constexpr):
+def l2_norm_kernel_2(
+    Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr, BLOCK_MID_SUB: tl.constexpr
+):
     pid = tl.program_id(0).to(tl.int64)
 
     total_sum = 0.0
@@ -283,7 +286,9 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             M = x.numel()
 
             MAX_BLOCK_SIZE = 32768
-            BLOCK_SIZE = min(triton.next_power_of_2(math.ceil(math.sqrt(M))), MAX_BLOCK_SIZE)
+            BLOCK_SIZE = min(
+                triton.next_power_of_2(math.ceil(math.sqrt(M))), MAX_BLOCK_SIZE
+            )
             MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
             BLOCK_MID = triton.next_power_of_2(MID_SIZE)
             if BLOCK_MID >= 512:

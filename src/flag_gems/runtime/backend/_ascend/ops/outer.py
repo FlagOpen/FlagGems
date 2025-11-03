@@ -1,16 +1,15 @@
 import logging
- 
+
 import torch
 import triton
 from triton import language as tl
- 
-from flag_gems.utils import libentry
- 
+
 from flag_gems.ops.mv import mv
- 
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
- 
- 
+
+
 # The outer kernel requires 3 parameters to determine the splitting method,
 # but during actual tuning, you only need to determine the total size of the split blocks.
 # Based on the second input length N and the total size of the split blocks,
@@ -21,7 +20,7 @@ def early_config_prune(configs, named_args, **kwargs):
         N = kwargs["N"]
     else:
         N = named_args["N"]
- 
+
     new_configs = []
     for config in configs:
         tile_size = config.kwargs["tile_size"]
@@ -33,10 +32,10 @@ def early_config_prune(configs, named_args, **kwargs):
             num_warps=config.num_warps,
         )
         new_configs.append(new_config)
- 
+
     return new_configs
- 
- 
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -64,24 +63,24 @@ def outer_kernel(
 ):
     pid = tl.program_id(0)
     num_jobs = tl.num_programs(axis=0)
- 
+
     m_tasks_num = tl.cdiv(M, BLOCK_M)
     n_tasks_num = tl.cdiv(N, BLOCK_N)
     total_tasks_num = m_tasks_num * n_tasks_num
- 
+
     if NEED_LOOP_N:
         for task_id in range(pid, total_tasks_num, num_jobs):
             start_m = task_id // n_tasks_num
             start_n = task_id % n_tasks_num
- 
+
             offset_m = tl.arange(0, BLOCK_M) + start_m * BLOCK_M
             lhs_val = tl.load(lhs + offset_m, mask=offset_m < M)
- 
+
             offset_n = tl.arange(0, BLOCK_N) + start_n * BLOCK_N
             rhs_val = tl.load(rhs + offset_n, mask=offset_n < N)
- 
+
             res_val = lhs_val[:, None] * rhs_val[None, :]
- 
+
             offset_r = offset_m[:, None] * N + offset_n[None, :]
             tl.store(
                 res + offset_r,
@@ -93,20 +92,20 @@ def outer_kernel(
         rhs_val = tl.load(rhs + offset_n)
         for task_id in range(pid, total_tasks_num, num_jobs):
             start_m = task_id // n_tasks_num
- 
+
             offset_m = tl.arange(0, BLOCK_M) + start_m * BLOCK_M
             lhs_val = tl.load(lhs + offset_m, mask=offset_m < M)
- 
+
             res_val = lhs_val[:, None] * rhs_val[None, :]
- 
+
             offset_r = offset_m[:, None] * N + offset_n[None, :]
             tl.store(
                 res + offset_r,
                 res_val,
                 mask=(offset_m[:, None] < M) & (offset_n[None, :] < N),
             )
- 
- 
+
+
 def outer_(lhs, rhs):
     m = lhs.shape[0]
     n = rhs.shape[0]
@@ -120,8 +119,8 @@ def outer_(lhs, rhs):
     )
     outer_kernel[grid](lhs, rhs, res, m, n)
     return res
- 
- 
+
+
 class Outer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, weight):
@@ -130,19 +129,19 @@ class Outer(torch.autograd.Function):
         out = outer_(inp, weight)
         ctx.save_for_backward(inp, weight)
         return out
- 
+
     @staticmethod
     def backward(ctx, out_grad):
         logger.debug("GEMS_ASCEND OUTER VJP")
         assert out_grad.ndim == 2, "invalide out_grad shape"
- 
+
         inp, weight = ctx.saved_tensors
- 
+
         inp_grad = mv(out_grad, weight)
         weight_grad = mv(out_grad.t(), inp)
- 
+
         return inp_grad, weight_grad
- 
- 
+
+
 def outer(inp, weight):
     return Outer.apply(inp, weight)

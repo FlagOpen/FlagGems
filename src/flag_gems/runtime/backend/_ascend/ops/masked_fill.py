@@ -8,21 +8,27 @@ from flag_gems import runtime
 from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-import logging
-
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
-def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr):
+def masked_fill_kernel(
+    inp,
+    expand_mask,
+    value,
+    out,
+    N,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCK_SIZE_SUB: tl.constexpr,
+):
     pid = tle.program_id(axis=0)
     base_offset = pid * BLOCK_SIZE
-    
+
     # 计算需要处理的总块数
     num_sub_blocks = BLOCK_SIZE // BLOCK_SIZE_SUB
-    
+
     # 循环处理每个子块
     for sub_block_idx in range(num_sub_blocks):
         # 计算当前子块的偏移量
@@ -39,20 +45,24 @@ def masked_fill_kernel(inp, expand_mask, value, out, N, BLOCK_SIZE: tl.constexpr
 
         # 再在需要填充的位置覆盖写入 value
         value_to_write = tl.full([BLOCK_SIZE_SUB], value, dtype=input_vals.dtype)
-        overwrite_vals = tl.where(fill_mask_vals, value_to_write, tl.load(out + offsets, mask=mask, other=0))
+        overwrite_vals = tl.where(
+            fill_mask_vals, value_to_write, tl.load(out + offsets, mask=mask, other=0)
+        )
         tl.store(out + offsets, overwrite_vals, mask=mask)
 
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("masked_fill"), key=["N"])
 @triton.jit
-def masked_fill_kernel_self(inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr):
+def masked_fill_kernel_self(
+    inp, expand_mask, value, N, BLOCK_SIZE: tl.constexpr, BLOCK_SIZE_SUB: tl.constexpr
+):
     pid = tle.program_id(axis=0)
     base_offset = pid * BLOCK_SIZE
-    
+
     # 计算需要处理的总块数
     num_sub_blocks = BLOCK_SIZE // BLOCK_SIZE_SUB
-    
+
     # 循环处理每个子块
     for sub_block_idx in range(num_sub_blocks):
         # 计算当前子块的偏移量

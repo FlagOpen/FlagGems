@@ -3,11 +3,10 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from flag_gems.utils import libentry
 
-from flag_gems.utils.shape_utils import restride_dim
 from flag_gems.ops.scatter import scatter_
 from flag_gems.utils import libentry
+from flag_gems.utils.shape_utils import restride_dim
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -15,8 +14,8 @@ logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[
 def compute_base_offset(shape, strides, dim):
     # Given shape/strides and a dimension, output a tensor with the size of 'shape',
     # where each position is the offset of the input (excluding the 'dim' dimension)
-    idx = torch.arange(int(torch.prod(torch.tensor(shape))), device='cpu')
-    coord = torch.empty((len(shape), idx.numel()), dtype=torch.long, device='cpu')
+    idx = torch.arange(int(torch.prod(torch.tensor(shape))), device="cpu")
+    coord = torch.empty((len(shape), idx.numel()), dtype=torch.long, device="cpu")
     for i in reversed(range(len(shape))):
         coord[i] = idx % shape[i]
         idx = idx // shape[i]
@@ -28,9 +27,8 @@ def compute_base_offset(shape, strides, dim):
     return offset
 
 
-
 @libentry()
-@triton.heuristics({'BLOCK_SIZE': lambda args: 4096})
+@triton.heuristics({"BLOCK_SIZE": lambda args: 4096})
 @triton.jit
 def _gather_flat_kernel_fixed(
     inp,
@@ -47,7 +45,7 @@ def _gather_flat_kernel_fixed(
 
     cur_index = tl.load(index + offset, mask=mask, other=0)
     base = tl.load(base_offset + offset, mask=mask, other=0)
-    
+
     inp_offset = base + cur_index * inp_dim_stride
 
     val = tl.load(inp + inp_offset, mask=mask, other=0)
@@ -65,7 +63,9 @@ def gather_flat_fixed(inp: torch.Tensor, dim: int, index: torch.Tensor, out=None
     inp_strided = restride_dim(inp, dim, index.shape)
     if dim == -1:
         dim = inp_strided.dim() - 1
-    base_offset = compute_base_offset(index.shape, inp_strided.stride(), dim).to(torch.int64)
+    base_offset = compute_base_offset(index.shape, inp_strided.stride(), dim).to(
+        torch.int64
+    )
     base_offset = base_offset.npu()
     grid = lambda META: (triton.cdiv(N, META["BLOCK_SIZE"]),)
     _gather_flat_kernel_fixed[grid](

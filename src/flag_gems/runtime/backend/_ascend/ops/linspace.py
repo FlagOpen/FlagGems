@@ -60,11 +60,13 @@ def linspace(
         mid = steps // 2
         step_size = (float(end) - float(start)) / (steps - 1)
         BLOCK_SIZE = 128
+
         def grid(meta):
             dim0 = triton.cdiv(steps, BLOCK_SIZE)
             while dim0 >= 65536:
                 dim0 = triton.cdiv(dim0, 2)
             return (dim0,)
+
         linspace_kernel[grid](
             out, out.stride(0), start, mid, end, step_size, steps, BLOCK_SIZE=BLOCK_SIZE
         )

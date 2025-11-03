@@ -5,9 +5,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import libentry
-
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
@@ -384,6 +383,7 @@ def normed_cumsum(inp, dim=-1):
     with torch_device_fn.device(inp.device.index):
         # Pass one, scan a (batch, n_tiles * TILE) sized block within each cta
         import acl
+
         num_sms = acl.rt.get_device_info(acl.rt.get_device()[0], 201)[0]
         TILE = 2048
         # Each row is split into n_chunks of chunks where each chunk is compised of

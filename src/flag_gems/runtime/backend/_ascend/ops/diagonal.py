@@ -17,6 +17,7 @@ config_ = CodeGenConfig(
     prefer_1d_tile=int(triton.__version__[0]) < 3,
 )
 
+
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")], config=config_)
 @triton.jit
 def copy_func(x):

@@ -708,7 +708,7 @@ index_add:
       BLOCK_SIZE: block_size
   block_size:
   - 512
-  
+
 index_put:
 - gen: true
   param_map:

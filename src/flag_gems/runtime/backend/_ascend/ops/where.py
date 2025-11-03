@@ -22,7 +22,7 @@ config_ = CodeGenConfig(
 @pointwise_dynamic(
     is_tensor=[True, True, True],
     promotion_methods=[(1, 2, "NO_OPMATH")],
-    config=config_
+    config=config_,
 )
 @triton.jit
 def where_inner(condition, self, other):
@@ -34,7 +34,7 @@ def where_self_out(condition, self, other, out=None):
     result_type = torch.result_type(self, other)
     if out is not None:
         assert (
-                out.dtype == result_type
+            out.dtype == result_type
         ), f"Expected out type to be {result_type}, but got {out.dtype}."
 
     c, a, b = list(
@@ -63,10 +63,10 @@ def where_self_out(condition, self, other, out=None):
         b = b.to(device)
 
     assert (
-            len(set(devices)) == 1
+        len(set(devices)) == 1
     ), f"Expected all tensors to be on the same device, but found at least two devices, {devices}"
     assert (
-            c.dtype == torch.bool
+        c.dtype == torch.bool
     ), f"where expected condition to be a boolean tensor, but got a tensor with dtype {condition.dtype}"
 
     if out is None:

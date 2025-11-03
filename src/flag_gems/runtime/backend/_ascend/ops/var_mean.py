@@ -27,8 +27,14 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 @triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
 @triton.jit(do_not_specialize=["correction"])
 def var_mean_welford_kernel(
-    X, Var, Mean, M, N, correction,
-    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
+    X,
+    Var,
+    Mean,
+    M,
+    N,
+    correction,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     # Map the program id to the row of X it should compute.
     pid = tle.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -36,51 +42,53 @@ def var_mean_welford_kernel(
     Var = Var + pid
     Mean = Mean + pid
     row_mask = pid < M
-    
+
     _mean = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     _acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     _count = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    
+
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
         mask = row_mask and col_mask
         x = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        
+
         count = _count + mask
         cnt = tl.maximum(count, 1)
         cur_mean = (_mean * _count + x) / cnt
         _acc += (x - cur_mean) * (x - _mean) * mask
         _mean = cur_mean
         _count = count
-    
+
     # 手动实现 tl.reduce 的功能，沿着 axis=1 进行归约
     # 使用 tl.sum 来进行归约，这等价于 welford 算法在这种情况下的行为
-    
+
     # 计算每行的总计数
     total_count = tl.sum(_count, axis=1)  # shape: (BLOCK_M,)
-    
+
     # 计算加权平均值
     weighted_sum = tl.sum(_mean * _count, axis=1)  # shape: (BLOCK_M,)
     mean = weighted_sum / tl.maximum(total_count, 1)  # shape: (BLOCK_M,)
-    
+
     # 计算方差累积值
     # 对于每个元素，计算其对总体方差的贡献
     mean_expanded = mean[:, None]  # shape: (BLOCK_M, 1)
-    
+
     # 计算每个局部统计量对总体方差的贡献
     # 这是 Welford 算法的并行化版本
-    local_var_contrib = _acc + _count * (_mean - mean_expanded) * (_mean - mean_expanded)
+    local_var_contrib = _acc + _count * (_mean - mean_expanded) * (
+        _mean - mean_expanded
+    )
     acc = tl.sum(local_var_contrib, axis=1)  # shape: (BLOCK_M,)
-    
+
     var = acc / (N - correction)
     mean = mean[:, None]
     var = var[:, None]
-    
+
     # Write mean / var
     tl.store(Mean, mean, row_mask)
     tl.store(Var, var, row_mask)
-    
+
 
 @libentry()
 @triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
@@ -106,35 +114,37 @@ def var_mean_welford_kernel_simple(
     for row in range(BLOCK_M):
         if row < BLOCK_M:
             current_row_mask = (tl.arange(0, BLOCK_M) == row)[:, None] & row_mask
-            
+
             if tl.sum(current_row_mask.to(tl.int32)) > 0:
                 # 初始化当前行的统计量
                 running_mean = 0.0
                 running_M = 0.0
                 count = 0
-                
+
                 # 按块处理当前行
                 for off in range(0, N, BLOCK_N):
                     cols = off + tl.arange(0, BLOCK_N)
                     col_mask = cols < N
-                    
+
                     # 加载数据
-                    x_vals = tl.load(X + row * N + cols, col_mask, other=0.0).to(tl.float32)
-                    
+                    x_vals = tl.load(X + row * N + cols, col_mask, other=0.0).to(
+                        tl.float32
+                    )
+
                     # 对块内每个有效元素进行在线更新
                     for i in range(BLOCK_N):
                         if i < BLOCK_N and (off + i) < N:
                             count += 1
                             x = x_vals[i]
-                            
+
                             delta = x - running_mean
                             running_mean += delta / count
                             delta2 = x - running_mean
                             running_M += delta * delta2
-                
+
                 # 计算方差
                 variance = running_M / (N - correction) if N > correction else 0.0
-                
+
                 # 存储结果
                 tl.store(Mean + row, running_mean, current_row_mask[:, 0])
                 tl.store(Var + row, variance, current_row_mask[:, 0])
@@ -198,11 +208,11 @@ def var_mean_kernel_2(
     # 手动实现 tl.reduce 的功能，沿着 axis=0 进行归约
     # 计算总计数
     total_count = tl.sum(count)
-    
+
     # 计算加权平均值
     weighted_sum = tl.sum(average * count)
     mean = weighted_sum / tl.maximum(total_count, 1)
-    
+
     # 计算方差累积值
     # 对于每个块，计算其对总体方差的贡献
     # 这是 Welford 算法的并行化版本

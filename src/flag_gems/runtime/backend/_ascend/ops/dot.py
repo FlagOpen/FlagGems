@@ -55,7 +55,7 @@ def dot_kernel_1(x_ptr, y_ptr, mid_ptr, N, BLOCK_SIZE: tl.constexpr):
 @triton.jit
 def dot_kernel_2(mid_ptr, out_ptr, M, BLOCK_MID: tl.constexpr):
     n_tasks = tl.cdiv(M, BLOCK_MID)
-    for task_index in range(n_tasks): 
+    for task_index in range(n_tasks):
         offset = task_index * BLOCK_MID + tl.arange(0, BLOCK_MID)
         mid = mid_ptr + offset
         mask = offset < M

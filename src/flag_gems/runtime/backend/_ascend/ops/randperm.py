@@ -4,11 +4,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems import runtime
-from flag_gems.runtime import  device,torch_device_fn
-from flag_gems.utils import libentry
 from flag_gems.ops.topk import argsort
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 logger = logging.getLogger(f'flag_gems.runtime._ascend.ops.{__name__.split(".")[-1]}')
 
@@ -223,7 +223,7 @@ def radix_sortbykey_scatter_kernel(
             digit_hist + bin_offset + portion_id * passes * (bins + 1)
         )
         bk = pid0 - 1
-        
+
         inc_sum = bin_of_bucket
 
         while bk >= 0:
@@ -263,10 +263,11 @@ def radix_sortbykey_scatter_kernel(
         tl.store(key_out + global_offsets, key_data, mask=key_digit_mask)
         tl.store(value_out + global_offsets, value_data, mask=key_digit_mask)
 
+
 @libentry()
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def duplicate_keys_shuffle_kernel(
-    value_in, n_elements, philox_seed, philox_offset, BLOCK_SIZE:tl.constexpr
+    value_in, n_elements, philox_seed, philox_offset, BLOCK_SIZE: tl.constexpr
 ):
     pid0 = tl.program_id(0)
     offset_range = tl.arange(0, BLOCK_SIZE)
@@ -283,7 +284,7 @@ def duplicate_keys_shuffle_kernel(
     i4 = pid0 * BLOCK_SIZE + offset_range
     c0 = c0 + i4
     _O = c0 * 0
-    
+
     r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
 
     r0_int = r0.to(tl.int32)
@@ -298,9 +299,7 @@ def duplicate_keys_shuffle_kernel(
     tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
-
 def sort_by_key(key, value, valid_bits):
-
     n_elements = key.numel()
     if n_elements > 4:
         # radix method
@@ -311,7 +310,7 @@ def sort_by_key(key, value, valid_bits):
         bins = 2**bits_per_pass
         bins_per_sgement = 2**bits_per_segment
         bit_mask = bins - 1
-  
+
         portion_size = 2**30  # 2 bits reserved for mask
         num_portions = triton.cdiv(n_elements, portion_size)
         max_portion_items = portion_size if num_portions > 1 else n_elements
@@ -351,15 +350,14 @@ def sort_by_key(key, value, valid_bits):
                 bins_per_sgement,
                 BLOCK_SIZE,
             )
-            
-        
+
         # step2
         digit_hist_slice = torch.sum(digit_hist_slice, dim=2, keepdim=False)
         digit_hist_slice = digit_hist_slice.cumsum(dim=1)  # shape of [passes, bins + 1]
         digit_hist.copy_(digit_hist_slice)
 
         bit_offset = 0
-        
+
         for p in range(passes):
             k_in = (key if p == 0 else key_out_p) if p % 2 == 0 else key_out_q
             v_in = (value if p == 0 else value_out_p) if p % 2 == 0 else value_out_q
@@ -414,7 +412,7 @@ def sort_by_key(key, value, valid_bits):
         # bitonic method
         BLOCK_SIZE = triton.next_power_of_2(n_elements)
         logger.debug(n_elements)
-        
+
         grid = (1,)
         k_out = torch.empty_like(key)
         v_out = torch.empty_like(value)
