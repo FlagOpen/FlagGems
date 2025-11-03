@@ -1,4 +1,5 @@
 import logging
+import os
 
 import triton
 import triton.language as tl
@@ -16,7 +17,9 @@ def gt_func(x, y):
 
 def gt(A, B):
     logger.debug("GEMS GT")
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     res = gt_func(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
     return res
 
 
@@ -28,4 +31,7 @@ def gt_func_scalar(x, y):
 
 def gt_scalar(A, B):
     logger.debug("GEMS GT SCALAR")
-    return gt_func_scalar(A, B)
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    res = gt_func_scalar(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    return res

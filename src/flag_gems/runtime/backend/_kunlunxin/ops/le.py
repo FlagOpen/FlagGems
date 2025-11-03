@@ -1,4 +1,5 @@
 import logging
+import os
 
 import triton
 import triton.language as tl
@@ -16,7 +17,9 @@ def le_func(x, y):
 
 def le(A, B):
     logger.debug("GEMS LE")
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     res = le_func(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
     return res
 
 
@@ -28,4 +31,7 @@ def le_func_scalar(x, y):
 
 def le_scalar(A, B):
     logger.debug("GEMS LE SCALAR")
-    return le_func_scalar(A, B)
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    res = le_func_scalar(A, B)
+    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    return res
