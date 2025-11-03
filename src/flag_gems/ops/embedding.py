@@ -112,11 +112,10 @@ def embedding_grad_scale_kernel(
 
 
 def embedding(indices, weight, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-    print("前向")
     logger.debug("GEMS EMBEDDING FORWARD")
     assert not sparse, "Currently do not support sparse format"
 
-    M = indices.numel().item()
+    M = indices.size
     N = weight.shape[-1]
 
     BLOCK_SIZE = triton.next_power_of_2(N)

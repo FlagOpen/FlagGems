@@ -79,7 +79,7 @@ def count_nonzero(x, dim=None):
         assert dim >= -x.ndim and dim < x.ndim, "Invalid dim"
         shape = x.shape
         BLOCK_SIZE = 2048
-        numel = x.numel().item()
+        numel = x.size
         x = dim_compress(x, dim)
         x = x.contiguous().flatten()
         combin_shape = list(shape)
@@ -92,7 +92,7 @@ def count_nonzero(x, dim=None):
             )
             x = combin
             shape = x.shape
-            numel = x.numel().item()
+            numel = x.size
             out_shape = list(shape)
             del out_shape[dim]
             out = torch.zeros(out_shape, dtype=torch.int64, device=x.place)
@@ -107,7 +107,7 @@ def count_nonzero(x, dim=None):
         return out
     else:
         x = x.contiguous().flatten()
-        numel = x.numel().item()
+        numel = x.size
 
         out = torch.zeros(1, dtype=torch.int64, device=x.place)
 

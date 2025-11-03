@@ -97,7 +97,7 @@ def argmax_kernel(
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS ARGMAX")
     if dim is None:
-        M = inp.numel().item()
+        M = inp.size
         if dtype is None:
             dtype = inp.dtype
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
@@ -130,7 +130,7 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         dim = dim % inp.ndim
         N = shape[dim]
         M = math.prod(shape[:dim])
-        K = inp.numel().item() // M // N
+        K = inp.size // M // N
 
         inp = inp.contiguous()
 
