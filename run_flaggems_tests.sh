@@ -46,7 +46,10 @@ run_op_test() {
     # ---------------- 精度测试 ----------------
     local acc_log="${op_dir}/accuracy.log"
     # 注意这里需要根据 gpu 的不同来调整
-    CUDA_VISIBLE_DEVICES=$gpu_id bash -c "cd ${FLAGGEMS_PATH}/tests && pytest -m '$op' --ref cpu" > "$acc_log" 2>&1
+    CUDA_VISIBLE_DEVICES="$gpu_id" \
+    bash -c "cd \"$FLAGGEMS_PATH/tests\" && pytest -m \"$op\" --ref cpu" \
+    >"$acc_log" 2>&1
+
     local acc_exit=$?
     [ $acc_exit -eq 0 ] && acc_res="PASS" || acc_res="FAIL"
 
@@ -63,6 +66,10 @@ run_op_test() {
     # ---------------- 性能测试 ----------------
     local perf_log="${op_dir}/perf.log"
     # 注意，这里需要根据 gpu 来调整
+    CUDA_VISIBLE_DEVICES="$gpu_id" \
+    bash -c "cd \"$FLAGGEMS_PATH/benchmark\" && pytest -m \"$op\" --level core --record log" \
+    >"$perf_log" 2>&1
+
     CUDA_VISIBLE_DEVICES=$gpu_id bash -c "cd ${FLAGGEMS_PATH}/benchmark && pytest -m '$op' --level core --record log" > "$perf_log" 2>&1
 
     # 查找性能结果文件
