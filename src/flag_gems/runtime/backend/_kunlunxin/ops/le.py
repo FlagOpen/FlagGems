@@ -18,8 +18,10 @@ def le_func(x, y):
 def le(A, B):
     logger.debug("GEMS LE")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = le_func(A, B)
     del os.environ["TRITONXPU_COMPARE_FUSION"]
+    del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
 
