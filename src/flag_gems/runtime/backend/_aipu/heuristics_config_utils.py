@@ -172,7 +172,7 @@ def softmax_heur_tile_n_bwd_non_inner(args):
     return max(1, 1024 // args["TILE_K"])
 
 
-def softmax_heu r_tile_m(args):
+def softmax_heur_tile_m(args):
     return max(1, 1024 // args["TILE_N"])
 
 
