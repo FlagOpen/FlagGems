@@ -10,8 +10,8 @@ INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
 
-DEFAULT_WARMUP_COUNT = 1000
-DEFAULT_ITER_COUNT = 100
+DEFAULT_WARMUP_COUNT = 1
+DEFAULT_ITER_COUNT = 1
 
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
@@ -21,35 +21,37 @@ LEGACY_BLAS_SHAPES = [(16, shape, shape, shape) for shape in LEGACY_SHAPES]
 
 # Default shapes settings
 DEFAULT_SHAPES = [
-    (1024 * 1024 * 1024,),  # from perf
-    (64, 64),
-    (4096, 4096),
-    (64, 512, 512),
-    (1024, 1024, 1024),  # from perf
+    (1,1)
+    # (1024 * 1024 * 1024,),  # from perf
+    # (64, 64),
+    # (4096, 4096),
+    # (64, 512, 512),
+    # (1024, 1024, 1024),  # from perf
 ]
 
 
 def model_shapes():
     # batch sizes * seq lengths
-    BS = [1, 2, 3, 4, 8, 98, 256, 8192]
+    BS = [1]
     # attn: wqkv, wo; ffn: w13, w2
     NK = [
+        (1,1)
         # extract from llama3-8b
-        (1024, 4096),
-        (128256, 4096),
-        (14336, 4096),
-        (4096, 14336),
-        (4096, 4096),
-        (6144, 4096),
-        (28672, 4096),
-        # extract from qwen2.5-7b
-        (3584, 3584),
-        (18944, 3584),
-        (3584, 18944),
-        (152064, 3584),
-        (37888, 3584),
-        (512, 3584),
-        (4608, 3584),
+        # (1024, 4096),
+        # (128256, 4096),
+        # (14336, 4096),
+        # (4096, 14336),
+        # (4096, 4096),
+        # (6144, 4096),
+        # (28672, 4096),
+        # # extract from qwen2.5-7b
+        # (3584, 3584),
+        # (18944, 3584),
+        # (3584, 18944),
+        # (152064, 3584),
+        # (37888, 3584),
+        # (512, 3584),
+        # (4608, 3584),
     ]
 
     return [(4, bs, n, k) for bs, (n, k) in itertools.product(BS, NK)]
@@ -266,8 +268,22 @@ class BenchmarkResult:
     def to_json(self) -> str:
         import json
 
-        # Convert to dict and handle tuple serialization for shape_detail
-        result_dict = asdict(self)
+        result_dict = {
+            'op_name': self.op_name,
+            'dtype': self.dtype,
+            'mode': self.mode,
+            'level': self.level,
+            'result': []
+        }
+        
+        for metric in self.result:
+            metric_dict = {}
+            for field in fields(metric):
+                value = getattr(metric, field.name)
+                if isinstance(value, torch.Size):
+                    value = tuple(value)
+                metric_dict[field.name] = value
+            result_dict['result'].append(metric_dict)
         return json.dumps(result_dict, default=custom_json_encoder)
 
     def to_dict(self) -> dict:

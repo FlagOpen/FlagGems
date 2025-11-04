@@ -79,6 +79,8 @@ def addmm_kernel(
     c = accumulator.to(bias.dtype)
     tl.store(c_ptrs, c, mask=c_mask)
 
+def addmm_paddle(bias, mat1, mat2, beta=1, alpha=1):# To maintain consistency in the number of parameters for custom operators and _C_ops.func
+    return addmm(bias, mat1, mat2, beta=beta, alpha=alpha)
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"

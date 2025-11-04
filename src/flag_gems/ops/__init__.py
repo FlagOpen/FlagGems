@@ -481,7 +481,7 @@ from flag_gems.ops.bmm import bmm
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.triu import triu
-from flag_gems.ops.addmm import addmm, addmm_out
+from flag_gems.ops.addmm import addmm_paddle as addmm, addmm_out
 from flag_gems.ops.all import all
 from flag_gems.ops.amax import amax
 from flag_gems.ops.any import any

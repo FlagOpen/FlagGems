@@ -3,9 +3,9 @@ import logging
 import os
 
 import pytest
+import flag_gems
 import torch
 
-import flag_gems
 from benchmark.attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,

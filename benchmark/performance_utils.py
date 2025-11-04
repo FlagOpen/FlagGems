@@ -38,7 +38,8 @@ elif device == "npu":
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
 else:
-    torch_backend_device.matmul.allow_tf32 = False
+    # torch_backend_device.matmul.allow_tf32 = False
+    pass
 
 
 def SkipVersion(module_name, skip_pattern):

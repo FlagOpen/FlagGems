@@ -1,22 +1,5 @@
 import logging
 import os
-
-# from flag_gems import testing  # noqa: F401
-from flag_gems import runtime
-from flag_gems.config import aten_patch_list
-# from flag_gems.fused import *  # noqa: F403
-from flag_gems.logging_utils import setup_flaggems_logging
-# from flag_gems.modules import *  # noqa: F403
-from flag_gems.ops import *  # noqa: F403
-# from flag_gems.patches import *  # noqa: F403
-from flag_gems.runtime.register import Register
-from flag_gems.runtime.register_paddle import RegisterPaddle
-
-setup_flaggems_logging(record=True, once=False)
-__version__ = "3.0"
-# device = runtime.device.name
-# vendor_name = runtime.device.vendor_name
-
 def _get_framework():
     framework_env = os.environ.get("FLAGGEMS_FRAMEWORK", "paddle").lower()
     
@@ -37,8 +20,28 @@ def _get_framework():
     
     raise ValueError(f"Unsupported framework: {framework_env}")
 
-
 dl_framework, framework_name = _get_framework()
+
+if framework_name == "paddle":
+    import paddle
+    paddle.compat.enable_torch_proxy()
+
+
+# from flag_gems import testing  # noqa: F401
+from flag_gems import runtime
+from flag_gems.config import aten_patch_list
+# from flag_gems.fused import *  # noqa: F403
+from flag_gems.logging_utils import setup_flaggems_logging
+# from flag_gems.modules import *  # noqa: F403
+from flag_gems.ops import *  # noqa: F403
+# from flag_gems.patches import *  # noqa: F403
+from flag_gems.runtime.register import Register
+from flag_gems.runtime.register_paddle import RegisterPaddle
+
+setup_flaggems_logging(record=True, once=False)
+__version__ = "3.0"
+device = runtime.device.name
+vendor_name = runtime.device.vendor_name
 
 if framework_name == "torch":
     aten_lib = dl_framework.library.Library("aten", "IMPL")
@@ -60,9 +63,6 @@ def enable(
 ):
     global current_work_registrar
 
-   
-    
-    
     user_unused_ops_list = list(set(unused or []))
     cpp_patched_ops_list = list(set(aten_patch_list))
 
@@ -359,13 +359,14 @@ def enable(
             lib=lib,
         )
     elif framework_name == "paddle":
-        op_config = (
+        op_config = (# When replacing _C_ops.func, it is necessary to maintain consistency between the custom operator and the input parameters of _C_ops.func. 
+        #When directly replacing the function of paddle.xxx, after flag_gems.enable, it needs to be re added to the function of paddle.xxx
             ("_C_ops.softmax", softmax),
-            ("bmm", bmm),
+            ("_C_ops.bmm", bmm),
             ("sum", sum),
             ("mean", mean),
             ("triu", triu),
-            ("addmm",addmm),
+            ("_C_ops.addmm",addmm),
             ("all", all),
             ("amax", amax),
             ("any", any),

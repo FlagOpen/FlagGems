@@ -1,9 +1,6 @@
 import numpy as np
 import paddle
 import pytest
-
-paddle.compat.enable_torch_proxy()
-
 import flag_gems
 
 
