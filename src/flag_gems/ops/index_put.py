@@ -265,11 +265,9 @@ def index_put(inp, indices, values, accumulate=False):
 
         K = indices[0].numel()
 
-        if values.numel() == 1 and values.shape == torch.Size([]):
+        if values.numel() == 1:
             values = torch.full((K,), values.item(), dtype=inp.dtype, device=inp.device)
-        else:
-            if values.numel() != K:
-                pass
+        elif values.numel() == K:
             values = values.reshape((K,))
 
     indices = [
@@ -302,11 +300,9 @@ def index_put_(inp, indices, values, accumulate=False):
 
         K = indices[0].numel()
 
-        if values.numel() == 1 and values.shape == torch.Size([]):
+        if values.numel() == 1:
             values = torch.full((K,), values.item(), dtype=inp.dtype, device=inp.device)
-        else:
-            if values.numel() != K:
-                pass
+        elif values.numel() == K:
             values = values.reshape((K,))
 
     indices = [
