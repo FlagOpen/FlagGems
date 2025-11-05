@@ -68,7 +68,6 @@ def test_special_operations_benchmark(op_name, torch_op, dtypes, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.isin
 def test_isin_perf():
@@ -93,7 +92,6 @@ def test_isin_perf():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.unique
 def test_perf_unique():
@@ -205,6 +203,13 @@ def test_perf_embedding():
     bench.run()
 
 
+def lerp_input_fn(shape, dtype, device):
+    input = torch.randn(*shape, device=device, dtype=dtype)
+    end = input + 10
+    weight = torch.randn(*shape, device=device, dtype=dtype)
+    yield {"input": input, "end": end, "weight": weight},
+
+
 class LerpBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:
@@ -214,17 +219,23 @@ class LerpBenchmark(GenericBenchmark):
 
 @pytest.mark.lerp
 def test_perf_lerp():
-    def lerp_input_fn(shape, dtype, device):
-        input = torch.randn(*shape, device=device, dtype=dtype)
-        end = input + 10
-        weight = torch.randn(*shape, device=device, dtype=dtype)
-        yield {"input": input, "end": end, "weight": weight},
-
     bench = LerpBenchmark(
         input_fn=lerp_input_fn,
         op_name="lerp",
         torch_op=torch.lerp,
         dtypes=FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.lerp_
+def test_perf_lerp_inplace():
+    bench = LerpBenchmark(
+        input_fn=lerp_input_fn,
+        op_name="lerp_",
+        torch_op=lambda input, end, weight: input.lerp_(end, weight),
+        dtypes=FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()
 
@@ -346,7 +357,6 @@ class Conv3DBenchmark(GenericBenchmark):
 
 
 # @pytest.mark.skipif(True, reason="Conv3d not registered yet")
-@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.conv3d
 def test_perf_conv3d():
     def conv3d_input_fn(shape, dtype, device):
@@ -447,7 +457,6 @@ def test_perf_diagonal_backward():
     bench.run()
 
 
-@pytest.mark.skipif(vendor_name == "mthreads", reason="ZeroDivisionError")
 @pytest.mark.skipif(vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="TODOFIX")
 @pytest.mark.kron
