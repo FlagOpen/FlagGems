@@ -1527,13 +1527,15 @@ INDEX_ACC_SHAPE = (
 
 def gen_indices(input_shape, indices_shape, accumulate, is_bool):
     indices = []
-    
+
     if is_bool:
         mask_shape = indices_shape[0]
 
-        mask = torch.randint(0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device)
+        mask = torch.randint(
+            0, 2, size=mask_shape, dtype=torch.bool, device=flag_gems.device
+        )
         return [mask]
-        
+
     else:
         for i, shape in enumerate(indices_shape):
             index = np.random.choice(
@@ -1555,10 +1557,12 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
     )
 
     indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
-    
+
     if is_bool:
         K = indices[0].sum().item()
-        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
     else:
         values = torch.randn(
             values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -1577,7 +1581,7 @@ INDEX_PUT_SHAPE_ACC_TRUE = (
     ((32, 32), ((8,), (8,)), (8,), False),
     ((512, 512, 512), ((128,), (128,), (128,)), (128,), False),
     ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8), False),
-    ((32, 32), ((32, 32),), (32 * 32,), True), 
+    ((32, 32), ((32, 32),), (32 * 32,), True),
 )
 
 
@@ -1597,10 +1601,12 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
     )
 
     indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
-    
+
     if is_bool:
         K = indices[0].sum().item()
-        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
     else:
         values = torch.randn(
             values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -1626,10 +1632,12 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
     )
 
     indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
-    
+
     if is_bool:
         K = indices[0].sum().item()
-        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
     else:
         values = torch.randn(
             values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -1664,10 +1672,12 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
     )
 
     indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
-    
+
     if is_bool:
         K = indices[0].sum().item()
-        values = torch.randn((K,), dtype=dtype, device=flag_gems.device, requires_grad=False)
+        values = torch.randn(
+            (K,), dtype=dtype, device=flag_gems.device, requires_grad=False
+        )
     else:
         values = torch.randn(
             values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
