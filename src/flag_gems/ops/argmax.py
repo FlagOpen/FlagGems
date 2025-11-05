@@ -128,6 +128,14 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         shape = inp.shape
         dim = dim % inp.ndim
+        if inp.numel() == 0:
+            shape_list = list(shape)
+            shape_list[dim] = 1
+            out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+
+            if not keepdim:
+                out_index = torch.squeeze(out_index, dim)
+            return out_index
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
