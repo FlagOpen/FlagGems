@@ -203,8 +203,8 @@ def test_perf_embedding():
     bench.run()
 
 
-@pytest.mark.embedding_bwd
-def test_perf_embedding_bwd():
+@pytest.mark.embedding_backward
+def test_perf_embedding_backward():
     def embedding_input_fn(shape, dtype, device):
         num_embeddings, embedding_dim = shape
         indices = torch.randint(0, num_embeddings, (num_embeddings,), device=device)
