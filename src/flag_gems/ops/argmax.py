@@ -129,13 +129,12 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
         shape = inp.shape
         dim = dim % inp.ndim
         if inp.numel() == 0:
-            shape_list = list(shape)
-            shape_list[dim] = 1
-            out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
-
-            if not keepdim:
-                out_index = torch.squeeze(out_index, dim)
-            return out_index
+            out_shape = list(shape)
+            if keepdim:
+                out_shape[dim] = 1
+            else:
+                del out_shape[dim]
+            return torch.zeros(out_shape, dtype=torch.int64, device=inp.device)
         N = shape[dim]
         M = math.prod(shape[:dim])
         K = inp.numel() // M // N
