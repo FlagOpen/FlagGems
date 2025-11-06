@@ -1525,7 +1525,7 @@ INDEX_ACC_SHAPE = (
 )
 
 
-def gen_indices(input_shape, indices_shape, accumulate, is_bool):
+def gen_indices_bool(input_shape, indices_shape, accumulate, is_bool):
     indices = []
 
     if is_bool:
@@ -1556,7 +1556,7 @@ def test_index_put_acc_false(input_shape, indices_shape, values_shape, is_bool, 
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
 
-    indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
+    indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
         K = indices[0].sum().item()
@@ -1600,7 +1600,7 @@ def test_index_put_acc_true(input_shape, indices_shape, values_shape, is_bool, d
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
 
-    indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
+    indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
         K = indices[0].sum().item()
@@ -1631,7 +1631,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
 
-    indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
+    indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
         K = indices[0].sum().item()
@@ -1671,7 +1671,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
         input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
 
-    indices = gen_indices(input_shape, indices_shape, accumulate, is_bool)
+    indices = gen_indices_bool(input_shape, indices_shape, accumulate, is_bool)
 
     if is_bool:
         K = indices[0].sum().item()
@@ -1696,6 +1696,16 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
         torch.testing.assert_close(inp, ref_inp, atol=3e-3, rtol=3e-2)
     else:
         gems_assert_close(inp, ref_inp, dtype)
+
+
+def gen_indices(input_shape, indices_shape, accumulate):
+    indices = []
+    for i, shape in enumerate(indices_shape):
+        index = np.random.choice(
+            np.arange(input_shape[i]), size=shape, replace=accumulate
+        )
+        indices.append(torch.tensor(index, device=flag_gems.device))
+    return indices
 
 
 @pytest.mark.index
