@@ -13,7 +13,7 @@ SUMMARY_FILE="${RESULTS_DIR}/summary.csv"
 mkdir -p "$RESULTS_DIR"
 chmod u+rwx "$RESULTS_DIR"
 
-echo "Operator,Passed,Failed,Skipped,Total,Avg_Speedup,float16_speedup,float32_speedup,bfloat16_speedup,int16_speedup,int32_speedup,bool_speedup,cfloat_speedup" >> "$SUMMARY_FILE"
+echo "operator,accurancy_passed,accurancy_failed,accurancy_skipped,accurancy_total,avg_speedup,float16_speedup,float32_speedup,bfloat16_speedup,int16_speedup,int32_speedup,bool_speedup,cfloat_speedup" >> "$SUMMARY_FILE"
 
 GPU_COUNT=${#GPUS[@]}
 echo "result dir: $RESULTS_DIR"
