@@ -13,11 +13,7 @@ SUMMARY_FILE="${RESULTS_DIR}/summary.csv"
 mkdir -p "$RESULTS_DIR"
 chmod u+rwx "$RESULTS_DIR"
 
-echo "# FlagGems test summary" > "$SUMMARY_FILE"
-echo "# time: $(date '+%Y-%m-%d %H:%M:%S')" >> "$SUMMARY_FILE"
-echo >> "$SUMMARY_FILE"
 echo "Operator,Passed,Failed,Skipped,Total,Avg_Speedup,float16_speedup,float32_speedup,bfloat16_speedup,int16_speedup,int32_speedup,bool_speedup,cfloat_speedup" >> "$SUMMARY_FILE"
-
 
 GPU_COUNT=${#GPUS[@]}
 echo "result dir: $RESULTS_DIR"
