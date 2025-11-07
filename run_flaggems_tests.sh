@@ -27,7 +27,7 @@ run_op_test() {
     local op="$1"
     local gpu_id="$2"
 
-    
+
     op=$(echo "$op" | tr -d '\r' | xargs)
     if [ -z "$op" ]; then
         return
@@ -63,7 +63,7 @@ run_op_test() {
     local perf_log="${op_dir}/perf.log"
 
     find "${FLAGGEMS_PATH}/benchmark" -maxdepth 1 \
-    -type f -name "result-m_*${op}*--level_core--record_log.log" \
+    -type f -name "result-m_${op}--level_core--record_log.log" \
     -exec rm -f {} +
     # Note: adjustments are required based on different GPUs.
     CUDA_VISIBLE_DEVICES="$gpu_id" \
@@ -71,7 +71,7 @@ run_op_test() {
     >"$perf_log" 2>&1
 
     local perf_result_file
-    perf_result_file=$(find "${FLAGGEMS_PATH}/benchmark" -maxdepth 1 -type f -name "result-m_*${op}*--level_core--record_log.log" | head -n 1)
+    perf_result_file=$(find "${FLAGGEMS_PATH}/benchmark" -maxdepth 1 -type f -name "result-m_${op}--level_core--record_log.log" | head -n 1)
     if [ -n "$perf_result_file" ]; then
         mv "$perf_result_file" "$op_dir/"
         perf_result_file="${op_dir}/$(basename "$perf_result_file")"
@@ -120,7 +120,7 @@ run_op_test() {
                     matched = 0
                     if (opname == tt) matched = 1
                     else if (opname == tt "_") matched = 1
-                    else if (index(opname, tt) == 1) matched = 1  
+                    else if (index(opname, tt) == 1) matched = 1
                     if (!matched) next
 
 
@@ -137,12 +137,12 @@ run_op_test() {
                         else if (h == "cfloat_speedup") cf = val
                         else if (h == "avg_speedup" || h == "average_speedup" || h == "avg") avg = val
                     }
-                   
+
                     printf "%s %s %s %s %s %s %s %s\n", f16, f32, bf16, i16, i32, bl, cf, avg
                     exit
                 }
                 END {
-                    
+
                     printf "0 0 0 0 0 0 0 0\n"
                 }' "$parsed_summary_log"
             )
