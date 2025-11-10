@@ -798,6 +798,7 @@ def test_accuracy_sin_(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
+
 @pytest.mark.tan
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
