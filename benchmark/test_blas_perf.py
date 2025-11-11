@@ -41,7 +41,18 @@ class BlasBenchmark(Benchmark):
         ]
 
         model_shaps = model_shapes()
-        return large_k_shapes + model_shaps
+        if self.op_name == "baddbmm":
+            skip_shapes = [
+                (4, 8192, 128256, 4096),
+                (4, 8192, 152064, 3584),
+            ]
+            filtered_model_shaps = []
+            for shape in model_shaps:
+                if shape not in skip_shapes:
+                    filtered_model_shaps.append(shape)
+            return filtered_model_shaps
+        else:
+            return large_k_shapes + model_shaps
 
     def get_tflops(self, op, *args, **kwargs):
         total_flops = 0
@@ -63,6 +74,15 @@ class BlasBenchmark(Benchmark):
                 * args[1].shape[2]
                 * 2
                 * args[0].shape[2]
+            )
+        # shape(b,m,n)(b,n,p)
+        # total_flops bxmxpx(2n+1)
+        elif self.op_name == "baddbmm":
+            total_flops = (
+                args[0].shape[0]
+                * args[0].shape[1]
+                * args[1].shape[2]
+                * (args[1].shape[1] * 2 + 1)
             )
         return total_flops
 
@@ -86,6 +106,24 @@ def bmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     else:
         inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=device)
         yield inp1, inp2
+
+
+def baddbmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
+    inp1 = torch.randn([b, m, k], dtype=cur_dtype, device=device, requires_grad=True)
+
+    if b_column_major:
+        inp2 = torch.randn(
+            [b, n, k], dtype=cur_dtype, device=device, requires_grad=True
+        )
+        inp2 = inp2.transpose(1, 2).contiguous()
+    else:
+        inp2 = torch.randn(
+            [b, k, n], dtype=cur_dtype, device=device, requires_grad=True
+        )
+
+    bias = torch.randn([b, m, n], dtype=cur_dtype, device=device, requires_grad=True)
+
+    yield bias, inp1, inp2
 
 
 def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
@@ -118,6 +156,12 @@ def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
             torch.Tensor.mm,
             mm_input_fn,
             marks=pytest.mark.mm,
+        ),
+        pytest.param(
+            "baddbmm",
+            torch.baddbmm,
+            baddbmm_input_fn,
+            marks=pytest.mark.baddbmm,
         ),
     ],
 )
