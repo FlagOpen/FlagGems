@@ -447,7 +447,6 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -875,10 +874,14 @@ def test_accuracy_trace(shape, dtype):
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = to_reference(inp)
-    if dtype == torch.bool and ref_inp.device.type == "cpu":
-        pytest.skip("skipping bool on CPU reference.")
-
-    ref_out = torch.trace(ref_inp)
+    if ref_inp.device.type == "cpu" and dtype in [
+        torch.half,
+        torch.bfloat16,
+        torch.bool,
+    ]:
+        ref_out = torch.sum(torch.diagonal(ref_inp))
+    else:
+        ref_out = torch.trace(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.trace(inp)
 
@@ -1208,7 +1211,7 @@ def test_accuracy_max_pool2d_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp)
+    ref_inp = to_reference(inp, upcast=True)
     ref_out, _ = torch.nn.functional.max_pool2d_with_indices(
         ref_inp,
         kernel_size=kernel_size,
@@ -1217,10 +1220,7 @@ def test_accuracy_max_pool2d_backward(
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
-    out_grad = torch.randn_like(ref_out, device=flag_gems.device)
-    ref_grad = to_reference(out_grad)
-    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    _, res_indices = flag_gems.max_pool2d_with_indices(
+    res_out, res_indices = flag_gems.max_pool2d_with_indices(
         inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -1228,6 +1228,9 @@ def test_accuracy_max_pool2d_backward(
         dilation=dilation,
         ceil_mode=ceil_mode,
     )
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     res_in_grad = flag_gems.max_pool2d_backward(
         out_grad,
         inp,
@@ -1755,3 +1758,42 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
     assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
     assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
+
+
+@pytest.mark.std
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIMS_LIST + [None])
+@pytest.mark.parametrize("correction", [1] if QUICK_MODE else [0, 1])
+@pytest.mark.parametrize("keepdim", [True] if QUICK_MODE else [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_std(shape, dim, correction, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    dims_to_check = []
+    if isinstance(dim, int):
+        dims_to_check = [dim]
+    elif isinstance(dim, (list, tuple)):
+        dims_to_check = dim
+
+    if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
+        pytest.skip("Dimension out of range for the given shape.")
+
+    if correction == 1:
+        if dim is not None:
+            positive_dims = [d % len(shape) for d in dims_to_check]
+            reduction_size = 1
+            for d in positive_dims:
+                reduction_size *= shape[d]
+            if reduction_size < 2:
+                pytest.skip("Correction=1 requires reduction size of at least 2.")
+        elif inp.numel() < 2:
+            pytest.skip("Correction=1 requires numel >= 2 for global reduction.")
+
+    ref_inp = to_reference(inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.std(inp, dim=dim, correction=correction, keepdim=keepdim)
+
+    ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)

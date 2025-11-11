@@ -61,6 +61,7 @@ forward_operations = [
     ("min", torch.min, FLOAT_DTYPES),
     ("prod", torch.prod, FLOAT_DTYPES),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+    ("std", torch.std, FLOAT_DTYPES),
     ("sum", torch.sum, FLOAT_DTYPES),
     ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
@@ -220,9 +221,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
