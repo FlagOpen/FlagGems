@@ -8,10 +8,10 @@ import triton
 from typing_extensions import override
 
 from .model import PersistantModel
+from .session import RollbackSession
 
 
-class Base(sqlalchemy.orm.DeclarativeBase):
-    ...
+class Base(sqlalchemy.orm.DeclarativeBase): ...
 
 
 class SQLPersistantModel(PersistantModel):
@@ -92,7 +92,10 @@ class SQLPersistantModel(PersistantModel):
         ModelCls: type[Base] = SQLPersistantModel.build_sql_model_by_py(
             name, keys, values
         )
-        ModelCls.metadata.create_all(self.engine)
+        with self.engine.begin() as conn:
+            conn.execute(
+                sqlalchemy.schema.CreateTable(ModelCls.__table__, if_not_exists=True)
+            )
         self.sql_model_pool[name] = ModelCls
         return ModelCls
 
@@ -100,13 +103,13 @@ class SQLPersistantModel(PersistantModel):
     def get_config(
         self, name: str, keys: Sequence[Union[bool, int, float, str]]
     ) -> Optional[triton.Config]:
-        key_dict: Dict[
-            str, Union[bool, int, float, str]
-        ] = SQLPersistantModel.get_key_dict(keys)
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys)
+        )
         ConfigCls: Optional[type[Base]] = self.get_sql_model(name, key_dict)
         if ConfigCls is None:
             return None
-        with sqlalchemy.orm.Session(self.engine) as session:
+        with RollbackSession(self.engine) as session:
             obj: Optional[Base] = session.get(
                 ConfigCls,
                 key_dict,
@@ -140,7 +143,7 @@ class SQLPersistantModel(PersistantModel):
         BenchmarkCls: Optional[type[Base]] = self.get_sql_model(name, key_dict)
         if BenchmarkCls is None:
             return None
-        with sqlalchemy.orm.Session(self.engine) as session:
+        with RollbackSession(self.engine) as session:
             obj: Optional[Base] = session.get(
                 BenchmarkCls,
                 key_dict,
@@ -159,21 +162,21 @@ class SQLPersistantModel(PersistantModel):
         config: Union[triton.Config, Dict[str, Union[bool, int, float, str]]],
     ) -> None:
         if isinstance(config, triton.Config):
-            config: Dict[
-                str, Union[bool, int, float, str]
-            ] = SQLPersistantModel.get_config_dict(config)
-        key_dict: Dict[
-            str, Union[bool, int, float, str]
-        ] = SQLPersistantModel.get_key_dict(keys)
+            config: Dict[str, Union[bool, int, float, str]] = (
+                SQLPersistantModel.get_config_dict(config)
+            )
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys)
+        )
         ConfigCls: Optional[type[Base]] = self.get_sql_model(
             name,
             {k: type(v) for k, v in key_dict.items()},
             {k: type(v) for k, v in config.items()},
         )
         if ConfigCls is not None:
-            with sqlalchemy.orm.Session(self.engine) as session:
+            with RollbackSession(self.engine) as session:
                 obj: Base = ConfigCls(**key_dict, **config)
-                session.add(obj)
+                session.merge(obj)
                 session.commit()
 
     def put_benchmark(
@@ -183,13 +186,13 @@ class SQLPersistantModel(PersistantModel):
         config: Union[triton.Config, Dict[str, Union[bool, int, float, str]]],
         benchmark: Tuple[float, float, float],
     ) -> None:
-        key_dict: Dict[
-            str, Union[bool, int, float, str]
-        ] = SQLPersistantModel.get_key_dict(keys)
+        key_dict: Dict[str, Union[bool, int, float, str]] = (
+            SQLPersistantModel.get_key_dict(keys)
+        )
         if isinstance(config, triton.Config):
-            config: Dict[
-                str, Union[bool, int, float, str]
-            ] = SQLPersistantModel.get_config_dict(config)
+            config: Dict[str, Union[bool, int, float, str]] = (
+                SQLPersistantModel.get_config_dict(config)
+            )
         p50, p20, p80 = benchmark
         benchmark: Dict[str, float] = {"p50": p50, "p20": p20, "p80": p80}
         BenchmarkCls: Optional[type[Base]] = self.get_sql_model(
@@ -198,7 +201,7 @@ class SQLPersistantModel(PersistantModel):
             benchmark,
         )
         if BenchmarkCls is not None:
-            with sqlalchemy.orm.Session(self.engine) as session:
+            with RollbackSession(self.engine) as session:
                 obj: Base = BenchmarkCls(**key_dict, **config, **benchmark)
-                session.add(obj)
+                session.merge(obj)
                 session.commit()
