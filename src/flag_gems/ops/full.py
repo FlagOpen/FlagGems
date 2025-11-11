@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 import triton
@@ -17,18 +18,26 @@ def check_dtype(fill_value, dtype, device):
     if isinstance(fill_value, bool):
         if dtype != torch.bool:
             fill_value = int(fill_value)
-    elif (
-        dtype in ALL_INT_DTYPES
-        and (fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max)
-    ) or (
-        dtype in ALL_FLOAT_DTYPES
-        and (fill_value < torch.finfo(dtype).min or fill_value > torch.finfo(dtype).max)
-    ):
-        raise RuntimeError(
-            f"value cannot be converted to type {dtype} without overflow"
-        )
-    if dtype == torch.float64:
+    elif dtype in ALL_INT_DTYPES:
+        if fill_value < torch.iinfo(dtype).min or fill_value > torch.iinfo(dtype).max:
+            raise RuntimeError(
+                f"value cannot be converted to type {dtype} without overflow"
+            )
+
+    elif dtype in ALL_FLOAT_DTYPES:
+        is_float = isinstance(fill_value, float)
+
+        if is_float and not (math.isinf(fill_value) or math.isnan(fill_value)):
+            if (
+                fill_value < -torch.finfo(dtype).max
+                or fill_value > torch.finfo(dtype).max
+            ):
+                raise RuntimeError(
+                    f"value cannot be converted to type {dtype} without overflow"
+                )
+
         fill_value = torch.tensor(fill_value, dtype=dtype, device=device)
+
     return fill_value
 
 
