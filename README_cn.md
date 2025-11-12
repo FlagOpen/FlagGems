@@ -1,6 +1,7 @@
 [English](./README.md)
 
-![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
+[<img width="4750" height="958" alt="github+banner__2025-11-11+13_27_10" src="https://github.com/user-attachments/assets/10a072db-bbe1-463c-993e-a9e09f948a12" />](https://www.flagopen.ac.cn/)
+
 
 ## 介绍
 
@@ -11,7 +12,7 @@ FlagGems 通过对 PyTorch 的后端 aten 算子进行覆盖重写，实现算�
 我们为 FlagGems 创建了微信群。扫描二维码即可加入群聊！第一时间了解我们的动态和信息和新版本发布，或者有任何问题或想法，请立即加入我们！
 
 <p align="center">
- <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
+<img width="204" height="180" alt="开源小助手" src="https://github.com/user-attachments/assets/4e9a8566-c91e-4120-a011-6b5577c1a53d" />
 </p>
 
 ## 特性
@@ -128,7 +129,7 @@ FlagGems 相比 Torch Eager 模式下 ATen 算子库的加速比如下图所示�
 
 ## 联系我们
 
-如有疑问，请提交 issue，或发送邮件至<a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>。
+如有疑问，请提交 issue，或发送邮件至<a href="mailto:contact@flagos.io">contact@flagos.io</a>。
 
 ## 证书
 
