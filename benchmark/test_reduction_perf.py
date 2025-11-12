@@ -401,7 +401,7 @@ def test_quantile_benchmark(op_name, torch_op, input_fn, dtypes):
 
 class ScaledSoftmaxBenchmark(GenericBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
-        # 形状: [batch, heads, query_len, key_len]
+        # shape: [batch, heads, query_len, key_len]
         shapes_small = [
             (1, 4, 64, 64),
             (2, 8, 128, 128),
@@ -415,7 +415,7 @@ class ScaledSoftmaxBenchmark(GenericBenchmark):
         shapes_large = [
             (1, 32, 2048, 2048),
             (2, 40, 4096, 4096),
-            # (4, 32, 8192, 8192),  # 尺寸太大, out of memory
+            # (4, 32, 8192, 8192),  # too big shape, out of memory
         ]
         shapes_4d = shapes_small + shapes_medium + shapes_large
         for shape in shapes_4d:
