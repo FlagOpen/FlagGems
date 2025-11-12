@@ -217,6 +217,7 @@ def test_perf_scatter_add_inplace():
     bench.run()
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RuntimeError")
 @pytest.mark.scatter_
 def test_perf_scatter_multiply_inplace():
     bench = TensorSelectBenchmark(
