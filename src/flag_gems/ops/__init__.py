@@ -57,6 +57,7 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cummax import cummax
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
+
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
@@ -71,6 +72,7 @@ from flag_gems.ops.div import (
     true_divide_,
 )
 from flag_gems.ops.dot import dot
+from flag_gems.ops.dreglu import dreglu
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
@@ -87,6 +89,7 @@ from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.ge import ge, ge_scalar
+from flag_gems.ops.geglu import geglu
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
@@ -291,6 +294,7 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "dot",
+    "dreglu",
     "dropout",
     "dropout_backward",
     "elu",
@@ -324,6 +328,7 @@ __all__ = [
     "gather_backward",
     "ge",
     "ge_scalar",
+    "geglu",
     "gelu",
     "gelu_",
     "gelu_backward",
