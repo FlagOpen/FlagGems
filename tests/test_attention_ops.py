@@ -872,6 +872,9 @@ def test_flash_attn_varlen_func(
             output, ref_output, atol=2e-2, rtol=1e-2
         ), f"{torch.max(torch.abs(output - ref_output))}"
 
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
 
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
