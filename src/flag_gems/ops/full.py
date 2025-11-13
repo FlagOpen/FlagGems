@@ -25,16 +25,13 @@ def check_dtype(fill_value, dtype, device):
             )
 
     elif dtype in ALL_FLOAT_DTYPES:
-        is_float = isinstance(fill_value, float)
-
-        if is_float and not (math.isinf(fill_value) or math.isnan(fill_value)):
-            if (
-                fill_value < -torch.finfo(dtype).max
-                or fill_value > torch.finfo(dtype).max
-            ):
-                raise RuntimeError(
-                    f"value cannot be converted to type {dtype} without overflow"
-                )
+        finfo = torch.finfo(dtype)
+        if not (math.isinf(fill_value) or math.isnan(fill_value)) and (
+            fill_value < finfo.min or fill_value > finfo.max
+        ):
+            raise RuntimeError(
+                f"value cannot be converted to type {dtype} without overflow"
+            )
 
         fill_value = torch.tensor(fill_value, dtype=dtype, device=device)
 
