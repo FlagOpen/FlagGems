@@ -14,9 +14,11 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
+    ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
 )
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
@@ -120,6 +122,10 @@ from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.masked_fill import masked_fill, masked_fill_
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.max import max, max_dim
+from flag_gems.ops.max_pool2d_with_indices import (
+    max_pool2d_backward,
+    max_pool2d_with_indices,
+)
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.min import min, min_dim
@@ -185,6 +191,7 @@ from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
+from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -192,6 +199,7 @@ from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_dtype
 from flag_gems.ops.topk import topk
+from flag_gems.ops.trace import trace
 from flag_gems.ops.triu import triu
 from flag_gems.ops.uniform import uniform_
 from flag_gems.ops.unique import _unique2
@@ -369,6 +377,8 @@ __all__ = [
     "max",
     "max_dim",
     "maximum",
+    "max_pool2d_with_indices",
+    "max_pool2d_backward",
     "mean",
     "mean_dim",
     "min",
@@ -432,6 +442,8 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
+    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "select_scatter",
@@ -449,6 +461,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "stack",
+    "std",
     "sub",
     "sub_",
     "sum",
@@ -463,6 +476,7 @@ __all__ = [
     "tile",
     "to_dtype",
     "topk",
+    "trace",
     "triu",
     "true_divide",
     "true_divide_",
