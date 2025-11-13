@@ -447,7 +447,6 @@ def test_accuracy_nonzero(shape, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 @pytest.mark.parametrize("shape", REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
@@ -848,6 +847,50 @@ def test_accuracy_inplace_scatter_mul(src_shape, inp_shape, dim, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
+TRACE_SHAPES = [
+    (1, 1),
+    (5, 5),
+    (10, 20),
+    (30, 15),
+    (1, 100),
+    (100, 1),
+    (128, 256),
+    (256, 128),
+    (0, 10),  # empty diagonal
+    (10, 0),  # empty diagonal
+    (1500, 1200),  # Larger shape
+]
+
+
+@pytest.mark.trace
+@pytest.mark.parametrize("shape", TRACE_SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + [torch.bool])
+def test_accuracy_trace(shape, dtype):
+    if dtype == torch.bool:
+        inp = torch.randint(0, 2, size=shape, device=flag_gems.device).to(dtype)
+    elif dtype in INT_DTYPES:
+        inp = torch.randint(-100, 100, size=shape, device=flag_gems.device).to(dtype)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = to_reference(inp)
+    if ref_inp.device.type == "cpu" and dtype in [
+        torch.half,
+        torch.bfloat16,
+        torch.bool,
+    ]:
+        ref_out = torch.sum(torch.diagonal(ref_inp))
+    else:
+        ref_out = torch.trace(ref_inp)
+    with flag_gems.use_gems():
+        res_out = torch.trace(inp)
+
+    if dtype in FLOAT_DTYPES:
+        gems_assert_close(res_out, ref_out, dtype)
+    else:
+        gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.gather
 @pytest.mark.parametrize(
     "inp_shape",
@@ -1093,7 +1136,6 @@ def test_accuracy_index_select(shape, dim, dtype):
     gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 @pytest.mark.masked_select
 @pytest.mark.parametrize("threshold, shape", THRESHOLD_SHAPE)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -1227,6 +1269,99 @@ def test_accuracy_avg_pool2d_backward(
     gems_assert_close(res_inp_grad, ref_inp_grad, dtype)
 
 
+MAXPOOL2D_CONFIGS = [
+    # Classic case: 3x3 kernel, stride 2, padding 1
+    ((4, 3, 32, 32), 3, 2, 1, 1, False),
+    # Non-square kernel and stride
+    ((8, 16, 28, 28), (3, 5), (1, 2), 1, 1, False),
+    # Test ceil_mode
+    ((2, 4, 15, 15), 3, 2, 1, 1, True),
+    # Test dilation
+    ((1, 1, 7, 7), 2, 1, 0, 2, False),
+    # Larger case from ResNet
+    ((1, 64, 56, 56), 3, 2, 1, 1, False),
+    # No padding
+    ((2, 8, 16, 16), 2, 2, 0, 1, False),
+    # Non-square padding
+    ((2, 8, 16, 20), 2, 2, (1, 0), 1, False),
+]
+
+
+@pytest.mark.max_pool2d
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool2d(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, True)
+
+    ref_out, ref_indices = torch.nn.functional.max_pool2d_with_indices(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    res_out, res_indices = flag_gems.max_pool2d_with_indices(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.max_pool2d_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL2D_CONFIGS
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool2d_backward(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_inp = to_reference(inp, upcast=True)
+    ref_out, _ = torch.nn.functional.max_pool2d_with_indices(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    res_out, res_indices = flag_gems.max_pool2d_with_indices(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    ref_grad = to_reference(out_grad, upcast=True)
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+    res_in_grad = flag_gems.max_pool2d_backward(
+        out_grad,
+        inp,
+        res_indices,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
 SHAPE_CONV1D = [
     ((32, 2, 4), (17, 2, 2)),
     ((32, 15, 6), (17, 15, 2)),
@@ -1237,7 +1372,6 @@ SHAPE_CONV1D = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv1d
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
@@ -1741,3 +1875,42 @@ def test_topk_softmax(num_tokens, num_experts, topk, index_dtype):
     assert torch.allclose(topk_weights, ref_weights, atol=1e-5)
     assert torch.equal(topk_indices.cpu(), ref_indices.to(index_dtype).cpu())
     assert torch.equal(token_expert_indices.cpu(), ref_source_rows.cpu())
+
+
+@pytest.mark.std
+@pytest.mark.parametrize("shape", REDUCTION_SHAPES)
+@pytest.mark.parametrize("dim", DIMS_LIST + [None])
+@pytest.mark.parametrize("correction", [1] if QUICK_MODE else [0, 1])
+@pytest.mark.parametrize("keepdim", [True] if QUICK_MODE else [True, False])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_std(shape, dim, correction, keepdim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    dims_to_check = []
+    if isinstance(dim, int):
+        dims_to_check = [dim]
+    elif isinstance(dim, (list, tuple)):
+        dims_to_check = dim
+
+    if any(d >= len(shape) or d < -len(shape) for d in dims_to_check):
+        pytest.skip("Dimension out of range for the given shape.")
+
+    if correction == 1:
+        if dim is not None:
+            positive_dims = [d % len(shape) for d in dims_to_check]
+            reduction_size = 1
+            for d in positive_dims:
+                reduction_size *= shape[d]
+            if reduction_size < 2:
+                pytest.skip("Correction=1 requires reduction size of at least 2.")
+        elif inp.numel() < 2:
+            pytest.skip("Correction=1 requires numel >= 2 for global reduction.")
+
+    ref_inp = to_reference(inp)
+
+    with flag_gems.use_gems():
+        res_out = torch.std(inp, dim=dim, correction=correction, keepdim=keepdim)
+
+    ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
+
+    gems_assert_close(res_out, ref_out, dtype)
