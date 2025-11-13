@@ -292,10 +292,6 @@ CUMMIN_SHAPES = (
 @pytest.mark.parametrize("shape", CUMMIN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cummin(shape, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        os.environ["DISABLE_LLVM_OPT"] = "1"
-
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
         inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
@@ -309,9 +305,6 @@ def test_accuracy_cummin(shape, dtype):
     gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
     gems_assert_equal(res_out.indices, ref_out.indices)
 
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["DISABLE_LLVM_OPT"]
-
 
 @pytest.mark.cummin
 @pytest.mark.parametrize("shape", CUMMIN_SHAPES)
@@ -319,10 +312,6 @@ def test_accuracy_cummin(shape, dtype):
 @pytest.mark.parametrize("nan_ratio", [0.1, 0.3, 0.5])
 def test_accuracy_cummin_with_nan(shape, dtype, nan_ratio):
     """Test cummin with NaN values at different ratios"""
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        os.environ["DISABLE_LLVM_OPT"] = "1"
-
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
 
     # Create tensor with some NaN values
@@ -346,9 +335,6 @@ def test_accuracy_cummin_with_nan(shape, dtype, nan_ratio):
         res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
     )
     gems_assert_equal(res_out.indices, ref_out.indices)
-
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["DISABLE_LLVM_OPT"]
 
 
 CUMMAX_SHAPES = (
@@ -364,10 +350,6 @@ CUMMAX_SHAPES = (
 @pytest.mark.parametrize("shape", CUMMAX_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES)
 def test_accuracy_cummax(shape, dtype):
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        os.environ["DISABLE_LLVM_OPT"] = "1"
-
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
     if dtype in INT_DTYPES:
         inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
@@ -381,9 +363,6 @@ def test_accuracy_cummax(shape, dtype):
     gems_assert_close(res_out.values, ref_out.values, dtype, reduce_dim=shape[dim])
     gems_assert_equal(res_out.indices, ref_out.indices)
 
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["DISABLE_LLVM_OPT"]
-
 
 @pytest.mark.cummax
 @pytest.mark.parametrize("shape", CUMMAX_SHAPES)
@@ -391,10 +370,6 @@ def test_accuracy_cummax(shape, dtype):
 @pytest.mark.parametrize("nan_ratio", [0.1, 0.3, 0.5])
 def test_accuracy_cummax_with_nan(shape, dtype, nan_ratio):
     """Test cummax with NaN values at different ratios"""
-    if flag_gems.vendor_name == "mthreads":
-        # Compatible with older versions of LLVM
-        os.environ["DISABLE_LLVM_OPT"] = "1"
-
     dim = 1 if shape == REDUCTION_SHAPES[-1] else -1
 
     # Create tensor with some NaN values
@@ -418,9 +393,6 @@ def test_accuracy_cummax_with_nan(shape, dtype, nan_ratio):
         res_out.values, ref_out.values, dtype, reduce_dim=shape[dim], equal_nan=True
     )
     gems_assert_equal(res_out.indices, ref_out.indices)
-
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["DISABLE_LLVM_OPT"]
 
 
 NONZERO_SHAPES = [(2, 32)] if QUICK_MODE else REDUCTION_SHAPES + [(2637,)]
@@ -1262,6 +1234,9 @@ SHAPE_CONV1D = [
 @pytest.mark.parametrize("padding", [1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -1274,6 +1249,9 @@ def test_accuracy_conv1d(shape, kernel, stride, padding, dtype):
         inp, weight, bias=None, stride=stride, padding=padding, dilation=1
     )
     gems_assert_close(res_out, ref_out, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 SHAPE_CONV2D = [
@@ -1295,7 +1273,6 @@ SHAPE_CONV2D = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv2d
@@ -1306,6 +1283,9 @@ SHAPE_CONV2D = [
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
 def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation, bias):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
@@ -1370,6 +1350,9 @@ def test_accuracy_conv2d(shape, kernel, stride, padding, groups, dtype, dilation
     if bias is not None:
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype)
 
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
+
 
 SHAPE_CONV3D = [
     ((1, 2, 5, 5, 5), (1, 2, 3, 3, 3), 1),
@@ -1390,7 +1373,6 @@ SHAPE_CONV3D = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.conv3d
 @pytest.mark.parametrize("shape, kernel,groups", SHAPE_CONV3D)
@@ -1400,6 +1382,9 @@ SHAPE_CONV3D = [
 @pytest.mark.parametrize("dilation", [1, 2])
 @pytest.mark.parametrize("bias", [True, False])
 def test_accuracy_conv3d(shape, kernel, stride, padding, groups, dtype, dilation, bias):
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        os.environ["MUSA_ENABLE_SQMMA"] = "1"
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
@@ -1437,6 +1422,9 @@ def test_accuracy_conv3d(shape, kernel, stride, padding, groups, dtype, dilation
     )
 
     gems_assert_close(res_out, ref_out, dtype)
+
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
+        del os.environ["MUSA_ENABLE_SQMMA"]
 
 
 SHAPE_DEPTHWISE = [
