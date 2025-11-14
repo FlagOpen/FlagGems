@@ -1,6 +1,6 @@
-from typing import Generator
 import gc
 import logging
+from typing import Generator
 
 import pytest
 import torch
@@ -15,10 +15,16 @@ from benchmark.attri_util import (
     BenchmarkMetrics,
     BenchmarkResult,
 )
+from benchmark.performance_utils import (
+    Benchmark,
+    Config,
+    generate_tensor_input,
+    vendor_name,
+)
 
-from benchmark.performance_utils import Benchmark, generate_tensor_input, vendor_name, Config
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
+
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
@@ -297,7 +303,7 @@ class TEBenchmarkResult(BenchmarkResult):
             f"{'Gems GBPS':>20}",
             "          Size Detail",
         ]
-        
+
         header_col_names = "".join(col_names)
         header_break = "\n" + "-" * (len(header_col_names) + 10)
         header = header_title + header_col_names + header_break
@@ -307,10 +313,14 @@ class TEBenchmarkResult(BenchmarkResult):
 
     def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
-        latency_base_str = f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
+        latency_base_str = (
+            f"{metrics.latency_base:.6f}" if metrics.latency_base is not None else "N/A"
+        )
         latency_str = f"{metrics.latency:.6f}" if metrics.latency is not None else "N/A"
         speedup_str = f"{metrics.speedup:.3f}" if metrics.speedup is not None else "N/A"
-        gbps_base_str = f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
+        gbps_base_str = (
+            f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
+        )
         gbps_str = f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
         shape_detail_str = f"{metrics.shape_detail}"
 
@@ -327,7 +337,6 @@ class TEBenchmarkResult(BenchmarkResult):
 
 
 class DregluBenchmark(Benchmark):
-    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.metrics = DEFAULT_METRICS + ["gbps"]
@@ -335,21 +344,21 @@ class DregluBenchmark(Benchmark):
 
     def set_shapes(self, shape_file_path: str = None):
         core_shapes = [
-            (1024*1024,),
+            (1024 * 1024,),
             (4096, 2048),
             (16, 1024, 4096),
             (8, 512, 8192),
             (4, 128, 8, 2048),
         ]
         self.shapes = core_shapes
-        
-        if Config.bench_level.value == 'comprehensive':
+
+        if Config.bench_level.value == "comprehensive":
             additional_shapes = self.set_more_shapes()
             if additional_shapes:
                 self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
 
     def set_more_shapes(self):
-        special_shapes_2d = [(4096, 2**i) for i in range(8, 14, 2)] 
+        special_shapes_2d = [(4096, 2**i) for i in range(8, 14, 2)]
         sp_shapes_3d = [(16, 1024, 2**i) for i in range(10, 15, 2)]
         return special_shapes_2d + sp_shapes_3d
 
@@ -360,12 +369,14 @@ class DregluBenchmark(Benchmark):
             input_tensor = generate_tensor_input(input_shape, cur_dtype, self.device)
             grad_output_shape = list(input_shape)
             grad_output_shape[-1] //= 2
-            grad_output = generate_tensor_input(tuple(grad_output_shape), cur_dtype, self.device)
+            grad_output = generate_tensor_input(
+                tuple(grad_output_shape), cur_dtype, self.device
+            )
             yield grad_output, input_tensor
 
     def get_gbps(self, args: tuple, latency: float) -> float:
         if not latency or latency == 0:
-             return 0.0
+            return 0.0
         grad_output, input_tensor = args
         element_size = grad_output.element_size()
         total_bytes = (grad_output.numel() + 2 * input_tensor.numel()) * element_size
@@ -375,10 +386,12 @@ class DregluBenchmark(Benchmark):
         if Config.query:
             super().run()
             return
-            
+
         self.init_user_config()
-        if 'gbps' not in self.to_bench_metrics and any(m in self.to_bench_metrics for m in ['latency', 'latency_base']):
-            self.to_bench_metrics.append('gbps')
+        if "gbps" not in self.to_bench_metrics and any(
+            m in self.to_bench_metrics for m in ["latency", "latency_base"]
+        ):
+            self.to_bench_metrics.append("gbps")
 
         for dtype in self.to_bench_dtypes:
             metrics_list = []
@@ -388,15 +401,25 @@ class DregluBenchmark(Benchmark):
                     args, kwargs = self.unpack_to_args_kwargs(input_data)
                     metric.shape_detail = self.record_shapes(*args, **kwargs)
                     if "latency_base" in self.to_bench_metrics:
-                        metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
                     if "latency" in self.to_bench_metrics:
                         if not self.gems_op:
-                            raise ValueError("GEMS operator not set. Use bench.set_gems().")
+                            raise ValueError(
+                                "GEMS operator not set. Use bench.set_gems()."
+                            )
                         metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
-                    if "speedup" in self.to_bench_metrics and metric.latency is not None and metric.latency > 0:
+                    if (
+                        "speedup" in self.to_bench_metrics
+                        and metric.latency is not None
+                        and metric.latency > 0
+                    ):
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
                         metric.gbps = self.get_gbps(args, latency=metric.latency)
                 except Exception as e:
                     metric.error_msg = str(e)
@@ -407,7 +430,7 @@ class DregluBenchmark(Benchmark):
 
             if not metrics_list:
                 continue
-                
+
             result_formatter = TEBenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -418,7 +441,11 @@ class DregluBenchmark(Benchmark):
             print(result_formatter)
             logging.info(result_formatter.to_json())
 
-@pytest.mark.skipif(not TE_AVAILABLE, reason="Transformer Engine backend is not available for reference.")
+
+@pytest.mark.skipif(
+    not TE_AVAILABLE,
+    reason="Transformer Engine backend is not available for reference.",
+)
 @pytest.mark.dreglu
 def test_dreglu_perf():
     bench = DregluBenchmark(
@@ -428,10 +455,9 @@ def test_dreglu_perf():
     )
     bench.set_gems(flag_gems.dreglu)
     bench.run()
-    
+
 
 class RegluBenchmark(Benchmark):
-    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.metrics = DEFAULT_METRICS + ["gbps"]
@@ -445,14 +471,14 @@ class RegluBenchmark(Benchmark):
             (4, 128, 8, 2048),
         ]
         self.shapes = core_shapes
-        
-        if Config.bench_level.value == 'comprehensive':
+
+        if Config.bench_level.value == "comprehensive":
             additional_shapes = self.set_more_shapes()
             if additional_shapes:
                 self.shapes = list(dict.fromkeys(self.shapes + additional_shapes))
 
     def set_more_shapes(self):
-        special_shapes_2d = [(4096, 2**i) for i in range(8, 14, 2)] 
+        special_shapes_2d = [(4096, 2**i) for i in range(8, 14, 2)]
         sp_shapes_3d = [(16, 1024, 2**i) for i in range(10, 15, 2)]
         return special_shapes_2d + sp_shapes_3d
 
@@ -465,8 +491,8 @@ class RegluBenchmark(Benchmark):
 
     def get_gbps(self, args: tuple, latency: float) -> float:
         if not latency or latency == 0:
-             return 0.0
-        input_tensor, = args
+            return 0.0
+        (input_tensor,) = args
         element_size = input_tensor.element_size()
         total_bytes = (input_tensor.numel() + 0.5 * input_tensor.numel()) * element_size
         return total_bytes / (latency * 1e6)
@@ -475,10 +501,12 @@ class RegluBenchmark(Benchmark):
         if Config.query:
             super().run()
             return
-            
+
         self.init_user_config()
-        if 'gbps' not in self.to_bench_metrics and any(m in self.to_bench_metrics for m in ['latency', 'latency_base']):
-            self.to_bench_metrics.append('gbps')
+        if "gbps" not in self.to_bench_metrics and any(
+            m in self.to_bench_metrics for m in ["latency", "latency_base"]
+        ):
+            self.to_bench_metrics.append("gbps")
 
         for dtype in self.to_bench_dtypes:
             metrics_list = []
@@ -488,15 +516,25 @@ class RegluBenchmark(Benchmark):
                     args, kwargs = self.unpack_to_args_kwargs(input_data)
                     metric.shape_detail = self.record_shapes(*args, **kwargs)
                     if "latency_base" in self.to_bench_metrics:
-                        metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
+                        metric.latency_base = self.get_latency(
+                            self.torch_op, *args, **kwargs
+                        )
                     if "latency" in self.to_bench_metrics:
                         if not self.gems_op:
-                            raise ValueError("GEMS operator not set. Use bench.set_gems().")
+                            raise ValueError(
+                                "GEMS operator not set. Use bench.set_gems()."
+                            )
                         metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
-                    if "speedup" in self.to_bench_metrics and metric.latency is not None and metric.latency > 0:
+                    if (
+                        "speedup" in self.to_bench_metrics
+                        and metric.latency is not None
+                        and metric.latency > 0
+                    ):
                         metric.speedup = metric.latency_base / metric.latency
                     if "gbps" in self.to_bench_metrics:
-                        metric.gbps_base = self.get_gbps(args, latency=metric.latency_base)
+                        metric.gbps_base = self.get_gbps(
+                            args, latency=metric.latency_base
+                        )
                         metric.gbps = self.get_gbps(args, latency=metric.latency)
                 except Exception as e:
                     metric.error_msg = str(e)
@@ -507,7 +545,7 @@ class RegluBenchmark(Benchmark):
 
             if not metrics_list:
                 continue
-                
+
             result_formatter = TEBenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -519,8 +557,11 @@ class RegluBenchmark(Benchmark):
             logging.info(result_formatter.to_json())
 
 
-@pytest.mark.skipif(not TE_AVAILABLE, reason="Transformer Engine backend is not available for reference.")
-@pytest.mark.reglu  
+@pytest.mark.skipif(
+    not TE_AVAILABLE,
+    reason="Transformer Engine backend is not available for reference.",
+)
+@pytest.mark.reglu
 def test_reglu_perf():
     bench = RegluBenchmark(
         op_name="reglu_forward",
