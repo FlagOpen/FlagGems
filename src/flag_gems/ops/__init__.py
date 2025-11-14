@@ -220,7 +220,6 @@ from flag_gems.ops.where import (
 )
 from flag_gems.ops.zeros import zeros
 from flag_gems.ops.zeros_like import zeros_like
-from flag_gems.ops.reglu import dreglu, reglu
 
 __all__ = [
     "_conv_depthwise2d",
@@ -494,6 +493,4 @@ __all__ = [
     "zeros",
     "zeros_like",
     "get_scheduler_metadata",
-    "dreglu",
-    "reglu",
 ]
