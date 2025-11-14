@@ -20,6 +20,7 @@ from flag_gems.ops.attention import (
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
 )
+from flag_gems.ops.baddbmm import baddbmm
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -249,6 +250,7 @@ __all__ = [
     "argmin",
     "atan",
     "atan_",
+    "baddbmm",
     "batch_norm",
     "batch_norm_backward",
     "bitwise_and_scalar",
