@@ -15,10 +15,11 @@ from benchmark.performance_utils import Benchmark, generate_tensor_input, vendor
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
+
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
-    
+
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
 
@@ -277,6 +278,7 @@ def test_bitwise_right_shift_perf():
         dtypes=INT_DTYPES,
     )
     bench.run()
+
 
 class GeGLUForwardBenchmark(Benchmark):
     DEFAULT_METRICS = DEFAULT_METRICS[:] + ["tflops"]

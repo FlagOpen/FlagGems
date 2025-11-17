@@ -5,6 +5,7 @@ import flag_gems
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
+
     TE_AVAILABLE = True
 except ImportError:
     TE_AVAILABLE = False
@@ -307,12 +308,15 @@ def test_accuracy_exp2_(shape, dtype):
 
     gems_assert_close(res_out, ref_out, dtype)
 
+
 @pytest.mark.geglu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_geglu(shape, dtype):
     if not TE_AVAILABLE:
-        pytest.skip("Transformer Engine backend (cpp_extensions) not available for reference.")
+        pytest.skip(
+            "Transformer Engine backend (cpp_extensions) not available for reference."
+        )
 
     if len(shape) == 0:
         pytest.skip("GEGLU does not support 0-dim scalar tensors.")
@@ -330,31 +334,37 @@ def test_accuracy_geglu(shape, dtype):
         res_out = flag_gems.geglu(input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
 
+
 @pytest.mark.dreglu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_dreglu(shape, dtype):
     if not TE_AVAILABLE:
-        pytest.skip("Transformer Engine backend (cpp_extensions) not available for reference.")
+        pytest.skip(
+            "Transformer Engine backend (cpp_extensions) not available for reference."
+        )
 
     if len(shape) == 0:
         pytest.skip("dreglu does not support 0-dim scalar tensors.")
-    
+
     if shape[-1] % 2 != 0:
         shape = list(shape)
         shape[-1] += 1
         shape = tuple(shape)
 
     input_tensor = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    
+
     grad_output_shape = list(shape)
     grad_output_shape[-1] //= 2
-    grad_output = torch.randn(tuple(grad_output_shape), dtype=dtype, device=flag_gems.device)
+    grad_output = torch.randn(
+        tuple(grad_output_shape), dtype=dtype, device=flag_gems.device
+    )
     ref_out = tex.dgeglu(grad_output, input_tensor, None)
     with flag_gems.use_gems():
         res_out = flag_gems.dgeglu(grad_output, input_tensor)
     gems_assert_close(res_out, ref_out, dtype)
-    
+
+
 @pytest.mark.gelu
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

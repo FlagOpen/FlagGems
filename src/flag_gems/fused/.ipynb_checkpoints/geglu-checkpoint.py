@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import  tl_extra_shim
 
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp

@@ -2,7 +2,7 @@ from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.flash_mla import flash_mla
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
-from flag_gems.fused.geglu import geglu, dgeglu
+from flag_gems.fused.geglu import dgeglu, geglu
 from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.moe_align_block_size import (
