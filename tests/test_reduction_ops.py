@@ -1214,7 +1214,7 @@ def test_accuracy_avg_pool2d_forward(
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.avg_pool2d
+@pytest.mark.avg_pool2d_bwd
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
     AVGPOOL2D_CONFIGS,
@@ -1242,7 +1242,7 @@ def test_accuracy_avg_pool2d_backward(
         count_include_pad=count_include_pad,
         divisor_override=divisor_override,
     )
-    out_grad = torch.randn_like(ref_out, dtype=inp.dtype)
+    out_grad = torch.randn_like(ref_out, dtype=inp.dtype, device=flag_gems.device)
     ref_out_grad = to_reference(out_grad, True)
     ref_inp_grad = torch.ops.aten.avg_pool2d_backward(
         ref_out_grad,
