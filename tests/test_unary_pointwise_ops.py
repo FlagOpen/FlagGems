@@ -1,7 +1,14 @@
 import pytest
 import torch
-from transformer_engine.pytorch import cpp_extensions as tex
+
 import flag_gems
+
+try:
+    from transformer_engine.pytorch import cpp_extensions as tex
+
+    TE_AVAILABLE = True
+except ImportError:
+    TE_AVAILABLE = False
 
 from .accuracy_utils import (
     ALL_FLOAT_DTYPES,
@@ -394,10 +401,9 @@ def test_accuracy_glu_backward(shape, dtype):
 
         gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
+
 def generate_input(
-    shape: tuple[int, ...],
-    dtype: torch.dtype,
-    device: torch.device
+    shape: tuple[int, ...], dtype: torch.dtype, device: torch.device
 ) -> torch.Tensor:
     return torch.randn(shape, dtype=dtype, device=device).contiguous()
 
@@ -405,13 +411,15 @@ def generate_input(
 def filter_valid_shapes(shapes: list[tuple[int, ...]]) -> list[tuple[int, ...]]:
     valid_shapes = []
     for shape in shapes:
-        if not shape:  
+        if not shape:
             continue
-        if shape[-1] % 2 == 0: 
+        if shape[-1] % 2 == 0:
             valid_shapes.append(shape)
     return valid_shapes
 
+
 VALID_POINTWISE_SHAPES = filter_valid_shapes(POINTWISE_SHAPES)
+
 
 @pytest.mark.swiglu
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)

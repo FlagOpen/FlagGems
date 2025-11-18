@@ -15,8 +15,8 @@ from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
 from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
-from flag_gems.fused.swiglu import swiglu, dswiglu, SwiGLU
 from flag_gems.fused.skip_layernorm import skip_layer_norm
+from flag_gems.fused.swiglu import SwiGLU, dswiglu, swiglu
 from flag_gems.fused.topk_softmax import topk_softmax
 from flag_gems.fused.weight_norm import weight_norm
 

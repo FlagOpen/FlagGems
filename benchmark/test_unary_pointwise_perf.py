@@ -7,13 +7,6 @@ import torch
 from pytest import mark
 
 import flag_gems
-from benchmark.performance_utils import (
-    Benchmark,
-    BenchmarkMetrics,
-    BenchmarkResult,
-    Config,
-    generate_tensor_input,
-)
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
@@ -31,6 +24,9 @@ from benchmark.attri_util import (
 )
 from benchmark.performance_utils import (  # noqa
     Benchmark,
+    BenchmarkMetrics,
+    BenchmarkResult,
+    Config,
     generate_tensor_input,
     vendor_name,
 )
@@ -493,6 +489,10 @@ class SwigluBackwardBenchmark(Benchmark):
             )
 
             yield (grad_output, input_tensor)
+
+    def record_shapes(self, *args, **kwargs):
+        input_tensor = args[1]
+        return str(input_tensor.shape)
 
     def get_gbps(self, args: tuple, latency: float) -> float:
         if not latency or latency == 0:
