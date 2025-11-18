@@ -425,6 +425,11 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(POINTWISE_SHAPES)
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_swiglu_forward(shape: tuple[int, ...], dtype: torch.dtype):
+    if not TE_AVAILABLE:
+        pytest.skip(
+            "Transformer Engine backend (cpp_extensions) not available for reference."
+        )
+
     torch.manual_seed(42)
     device = flag_gems.device
 
@@ -442,6 +447,11 @@ def test_accuracy_swiglu_forward(shape: tuple[int, ...], dtype: torch.dtype):
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_swiglu_backward(shape: tuple[int, ...], dtype: torch.dtype):
+    if not TE_AVAILABLE:
+        pytest.skip(
+            "Transformer Engine backend (cpp_extensions) not available for reference."
+        )
+
     torch.manual_seed(42)
     device = flag_gems.device
 
