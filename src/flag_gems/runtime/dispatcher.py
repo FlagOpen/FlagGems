@@ -1,7 +1,6 @@
 import argparse
-import os
 
-import backend
+from . import backend
 
 
 class OpDispatcher:
@@ -10,7 +9,11 @@ class OpDispatcher:
     def __init__(self, attrs=None):
         self.attrs = attrs or {}
         self.is_dispatch = False
+        self.is_dispatch_configs = False
+        self.is_dispatch_operators = False
         self.is_debug = False
+        self.operator_vendor = None
+        self.config_vendor = None
         self.configurations = None
         self.operators = None
 
@@ -25,9 +28,9 @@ class OpDispatcher:
         """Detect whether user provided command-line args."""
 
         args = self.get_cmd_args()
-        vendor = self._get_env_vendor() or args.vendor
+        vendor = args.vendor
         self.is_debug = args.debug or self.is_debug
-        if args.ops or args.configs:
+        if args.ops or args.configs or vendor:
             self.is_user_dispatch = True
             self.attrs = {
                 "operators": vendor or args.ops,
@@ -50,7 +53,10 @@ class OpDispatcher:
                 "heuristic": backend.get_heuristic_config(vendor_name=vendor),
                 "autotune": backend.get_tune_config(vendor_name=vendor),
             }
-            print(f"[INFO] : configurations of {vendor} vendor has been loaded")
+            self.is_dispatch_configs = True
+            print(
+                f"\033[92m[INFO]\033[0m : \033[93m configurations of {vendor} vendor has been loaded\033[0m"
+            )
 
     def _load_operators(self, operator_vendor=None):
         """Load operator implementations for vendor."""
@@ -58,7 +64,10 @@ class OpDispatcher:
         vendor = self.operator_vendor or operator_vendor
         if vendor:
             self.operators = backend.get_current_device_extend_op(vendor_name=vendor)
-            print(f"[INFO] : Operators of {vendor} vendor has been loaded")
+            self.is_dispatch_operators = True
+            print(
+                f"\033[92m[INFO]\033[0m :  \033[93mOperators of {vendor} vendor has been loaded\033[0m"
+            )
 
     def get_cmd_args(self):
         parser = argparse.ArgumentParser(description="...")
@@ -69,11 +78,5 @@ class OpDispatcher:
         args = parser.parse_args()
         return args
 
-    def _get_env_vendor(self):
-        """Get vendor name from environment variables."""
-
-        return os.getenv("GEMS_VENDOR", "")
-
 
 op_dispatcher = OpDispatcher()
-print(op_dispatcher.is_dispatch)
