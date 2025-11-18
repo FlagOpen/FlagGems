@@ -14,10 +14,13 @@ from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.attention import (
+    ScaleDotProductAttention,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
 )
+from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.bitwise_and import (
     bitwise_and_scalar,
@@ -188,6 +191,7 @@ from flag_gems.ops.softplus import softplus
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.stack import stack
+from flag_gems.ops.std import std
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
@@ -244,6 +248,8 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "avg_pool2d",
+    "avg_pool2d_backward",
     "atan",
     "atan_",
     "batch_norm",
@@ -436,6 +442,8 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
+    "ScaleDotProductAttention",
     "scatter",
     "scatter_",
     "select_scatter",
@@ -453,6 +461,7 @@ __all__ = [
     "sort",
     "sort_stable",
     "stack",
+    "std",
     "sub",
     "sub_",
     "sum",
