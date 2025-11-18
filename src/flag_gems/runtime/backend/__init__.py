@@ -20,6 +20,8 @@ vendor_extra_lib_imported = False
 device_fn_cache = {}
 customized_ops = None
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 
 def import_vendor_extra_lib(vendor_name=None):
     global vendor_extra_lib_imported
@@ -28,10 +30,11 @@ def import_vendor_extra_lib(vendor_name=None):
     global ops_module, fused_module
     try:
         ops_module = importlib.import_module(f"_{vendor_name}.ops")
-    except ModuleNotFoundError:
+    except Exception as e:
         print(
-            f"[Note] No specialized common operators were found in"
-            f"the {vendor_name} implementation, and general common operators are used by default."
+            e,
+            f"\033[93m[Note]\033[0m :   No specialized common operators were found in"
+            f" the {vendor_name} implementation, and general common operators are used by default.",
         )
     except Exception as e:
         raise RuntimeError(f"Import vendor extra lib failed: {e}")
@@ -40,8 +43,8 @@ def import_vendor_extra_lib(vendor_name=None):
         fused_module = importlib.import_module(f"_{vendor_name}.fused")
     except ModuleNotFoundError:
         print(
-            f"[Note] No specialized fused operators were found in"
-            f"the {vendor_name} implementation, and general fused operators are used by default."
+            f"\033[93m[Note]\033[0m : No specialized fused operators were found in"
+            f" the {vendor_name} implementation, and general fused operators are used by default."
         )
     except Exception as e:
         raise RuntimeError(f"Import vendor extra lib failed: {e}")
