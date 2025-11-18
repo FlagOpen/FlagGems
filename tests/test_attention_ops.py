@@ -454,6 +454,7 @@ def test_flash_fwd_nonsquare_qk(
     ["batch", "num_head", "num_head_k", "q_seq_len", "kv_seq_len"],
     [(4, 8, 2, 1024, 1024), (4, 4, 4, 1, 519)],
 )
+
 @pytest.mark.parametrize("head_size", [128, 192])
 @pytest.mark.parametrize("is_causal", [False, True])
 @pytest.mark.parametrize("soft_cap", [None, 10.0, 50.0])

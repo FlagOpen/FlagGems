@@ -2,9 +2,10 @@ import json
 import logging
 import os
 from datetime import datetime
+import pathlib
 
 import pytest
-
+import torch
 import flag_gems
 
 device = flag_gems.device
@@ -40,7 +41,30 @@ def pytest_addoption(parser):
         choices=["none", "log"],
         help="tests function param recorded in log files or not",
     )
+    parser.addoption(
+        "--compiler_mode",
+        action="store",
+        default="none",
+        required=False,
+        choices=["none", "flagtree"],
+        help="use flagtree as the operator compiler.",
+    )
+    parser.addoption(
+        "--limit-cases",
+        type=int,
+        default=None,
+        help="only run first N parametrized cases",
+    )
 
+def _load_plan():
+    path = os.path.join(os.path.dirname(__file__), "flagtreetest.json")
+    data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    by_name = {}
+    for it in data:
+        key = it["id"]
+        params = it.get("params")
+        by_name[key] = params
+    return by_name
 
 def pytest_configure(config):
     global TO_CPU
@@ -51,6 +75,13 @@ def pytest_configure(config):
 
     global RECORD_LOG
     RECORD_LOG = config.getoption("--record") == "log"
+
+    global COMPILER_MODE
+    COMPILER_MODE = config.getoption("--compiler_mode") == "flagtree"
+
+    if COMPILER_MODE:
+        _load_plan()
+
     if RECORD_LOG:
         global RUNTEST_INFO, BUILTIN_MARKS, REGISTERED_MARKERS
         RUNTEST_INFO = {}
@@ -69,6 +100,8 @@ def pytest_configure(config):
             marker.split(":")[0].strip() for marker in config.getini("markers")
         }
         cmd_args = [
+
+
             arg.replace(".py", "").replace("=", "_").replace("/", "_")
             for arg in config.invocation_params.args
         ]
@@ -110,6 +143,117 @@ def pytest_sessionfinish(session, exitstatus):
 test_results = {}
 
 
+@pytest.hookimpl
+def pytest_collection_modifyitems(config, items):
+    limit = config.getoption("--limit-cases")
+    if not limit:
+        return
+
+    counter = {}
+
+    selected = []
+    deselected = []
+
+    for item in items:
+        if not hasattr(item, "callspec"):
+            selected.append(item)
+            continue
+
+        func_name = item.function.__name__
+
+        # 初始化每个函数的计数器
+        counter.setdefault(func_name, 0)
+
+        if counter[func_name] < limit:
+            selected.append(item)
+            counter[func_name] += 1
+        else:
+            deselected.append(item)
+
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = selected
+
+@pytest.hookimpl
+def pytest_generate_tests(metafunc):
+    if not COMPILER_MODE:
+        return
+
+    plan = _load_plan()
+
+    params = plan.get(metafunc.function.__name__)
+    if not params:
+        
+        return
+
+
+    cases = [params] if isinstance(params, dict) else list(params)
+    if not cases:
+        return
+
+    json_keys_union = set().union(*(c.keys() for c in cases if isinstance(c, dict)))
+
+    # 从 fixture names 里挑出和 json key 重合的（比如 shape / p / dtype）
+    wanted = [a for a in metafunc.fixturenames if a in json_keys_union]
+
+    def _canon(name, v):
+        # 1) 形状参数：list -> tuple
+        if name == "shape" or name.endswith("_shape"):
+            if isinstance(v, (list, tuple)):
+                return tuple(v)
+
+        # 2) dtype 参数：字符串 -> torch.dtype
+        if name == "dtype":
+            if isinstance(v, str):
+                mapping = {
+                    "float32": torch.float32,
+                    "float": torch.float32,
+                    "fp32": torch.float32,
+                    "float16": torch.float16,
+                    "fp16": torch.float16,
+                    "bfloat16": torch.bfloat16,
+                    "bf16": torch.bfloat16,
+                }
+                if v in mapping:
+                    return mapping[v]
+                else:
+                    raise ValueError(f"Unknown dtype string in plan.json: {v!r}")
+
+            # 如果本来就已经是 torch.dtype，就直接返回
+            if isinstance(v, torch.dtype):
+                return v
+
+        # 3) 其他参数原样返回
+        return v
+
+
+    # 如果测试函数参数里没有这些字段，就退化成单参数 "param"
+    if not wanted:
+        metafunc.parametrize("param", cases)
+        return
+
+    argvals, ids = [], []
+    for c in cases:
+        if not isinstance(c, dict):
+            argvals.append(tuple(c for _ in wanted))
+            ids.append(f"param={c}")
+            continue
+
+        vals = tuple(_canon(name, c[name]) for name in wanted)
+        argvals.append(vals)
+        ids.append("-".join(f"{name}={_canon(name, c[name])}" for name in wanted))
+
+    print("argvals=", argvals)
+    print(
+        "[gen]", metafunc.function.__name__,
+        "wanted=", wanted,
+        "n_cases=", len(cases),
+        "n_argvals=", len(argvals),
+        "ids=", ids,
+    )
+    metafunc.parametrize(wanted, argvals, ids=ids)
+
+    
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
     test_results[item.nodeid] = {"params": None, "result": None, "opname": None}
