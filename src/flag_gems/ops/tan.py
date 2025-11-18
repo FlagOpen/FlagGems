@@ -3,7 +3,7 @@ import logging
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -11,10 +11,8 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tan_func(x):
-    xf = x.to(tl.float32)
-    s = tl.sin(xf)
-    c = tl.cos(xf)
-    return s / c
+    y = tl_extra_shim.atan(x.to(tl.float32))
+    return y
 
 
 def tan(A):
