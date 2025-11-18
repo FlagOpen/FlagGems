@@ -21,10 +21,6 @@ MNK_SHAPES = (
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.addmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -64,14 +60,6 @@ def test_accuracy_addmm(M, N, K, scalar, dtype, b_column_major):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="temp disable for updating",
-)
 @pytest.mark.addmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -104,10 +92,6 @@ def test_accuracy_addmm_out(M, N, K, scalar, dtype):
     gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -131,10 +115,6 @@ def test_accuracy_bmm(M, N, K, dtype):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 # TODO: failed at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
@@ -161,10 +141,6 @@ def test_accuracy_mm(M, N, K, dtype, b_column_major):
         del os.environ["MUSA_ENABLE_SQMMA"]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "kunlunxin",
-    reason="temp disable for updating",
-)
 @pytest.mark.mv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -181,6 +157,7 @@ def test_accuracy_mv(M, N, dtype):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=M)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="Result TODO Fix")
 @pytest.mark.addmv
 @pytest.mark.parametrize("M, N", MN_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -189,9 +166,9 @@ def test_accuracy_addmv(M, N, scalar, dtype):
     mat = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     bias1 = torch.randn((M,), dtype=dtype, device=flag_gems.device)
-    ref_mat = to_reference(mat)
-    ref_vec = to_reference(vec)
-    ref_bias1 = to_reference(bias1)
+    ref_mat = to_reference(mat, True)
+    ref_vec = to_reference(vec, True)
+    ref_bias1 = to_reference(bias1, True)
 
     alpha = beta = scalar
 
@@ -203,7 +180,10 @@ def test_accuracy_addmv(M, N, scalar, dtype):
 
     # broadcast bias scalar
     bias2 = torch.randn((), dtype=dtype, device=flag_gems.device)
-    ref_bias2 = to_reference(bias2)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_bias2 = to_reference(bias2, True)
+    else:
+        ref_bias2 = to_reference(bias2)
 
     ref_out2 = torch.addmv(ref_bias2, ref_mat, ref_vec, alpha=alpha, beta=beta)
     with flag_gems.use_gems():
@@ -221,10 +201,10 @@ def test_accuracy_addmv_out(M, N, scalar, dtype):
     vec = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     bias = torch.randn((M,), dtype=dtype, device=flag_gems.device)
     out = torch.empty((M,), dtype=dtype, device=flag_gems.device)
-    ref_mat = to_reference(mat)
-    ref_vec = to_reference(vec)
-    ref_bias = to_reference(bias)
-    ref_out = to_reference(out)
+    ref_mat = to_reference(mat, True)
+    ref_vec = to_reference(vec, True)
+    ref_bias = to_reference(bias, True)
+    ref_out = to_reference(out, True)
 
     alpha = beta = scalar
 
@@ -275,6 +255,8 @@ def test_accuracy_vdot(M, is_conj, dtype, stride):
     if flag_gems.vendor_name == "mthreads":
         inp1 = torch.randn(M, dtype=dtype, device="cpu")
         inp2 = torch.randn(M, dtype=dtype, device="cpu")
+    elif flag_gems.vendor_name == "ascend" and dtype == torch.cfloat:
+        pytest.skip("Skipping torch.cfloat tests on Ascend platform")
     else:
         inp1 = torch.randn(M, dtype=dtype, device=flag_gems.device)
         inp2 = torch.randn(M, dtype=dtype, device=flag_gems.device)

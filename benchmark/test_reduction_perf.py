@@ -61,6 +61,7 @@ forward_operations = [
     ("min", torch.min, FLOAT_DTYPES),
     ("prod", torch.prod, FLOAT_DTYPES),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+    ("std", torch.std, FLOAT_DTYPES),
     ("sum", torch.sum, FLOAT_DTYPES),
     ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
@@ -205,7 +206,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
         if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummin", "cummax"]:
+        elif op_name in ["cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
     if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
         # Compatible with older versions of LLVM
@@ -220,9 +221,7 @@ def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
-)
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
@@ -240,6 +239,154 @@ def test_perf_count_nonzero():
     bench.run()
 
 
+def avg_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    # Common case
+    yield inp, {
+        "kernel_size": 3,
+        "stride": 2,
+        "padding": 1,
+        "ceil_mode": False,
+        "count_include_pad": True,
+        "divisor_override": None,
+    }
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # With count_include_pad=False
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "ceil_mode": False,
+            "count_include_pad": False,
+            "divisor_override": None,
+        }
+        # With ceil_mode
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "ceil_mode": True,
+            "count_include_pad": True,
+            "divisor_override": None,
+        }
+        # With divisor_override
+        if shape[-2] >= 2 and shape[-1] >= 2:
+            yield inp, {
+                "kernel_size": 2,
+                "stride": 1,
+                "padding": 0,
+                "ceil_mode": False,
+                "count_include_pad": True,
+                "divisor_override": 3,
+            }
+
+
+class AvgPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+def max_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    yield inp, {
+        "kernel_size": 3,
+        "stride": 2,
+        "padding": 1,
+        "dilation": 1,
+        "ceil_mode": False,
+    }
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # Non-square kernel/stride/padding
+        if shape[-2] > 5 and shape[-1] > 5:
+            yield inp, {
+                "kernel_size": (3, 5),
+                "stride": (2, 1),
+                "padding": (1, 2),
+                "dilation": 1,
+                "ceil_mode": False,
+            }
+        # With dilation
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 1,
+            "padding": 1,
+            "dilation": 2,
+            "ceil_mode": False,
+        }
+        # With ceil_mode
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": True,
+        }
+
+
+class MaxPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.max_pool2d
+def test_perf_max_pool2d():
+    bench = MaxPool2dBenchmark(
+        input_fn=max_pool2d_input_fn,
+        op_name="max_pool2d_with_indices",
+        torch_op=torch.nn.functional.max_pool2d_with_indices,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.max_pool2d_with_indices)
+    bench.run()
+
+
+@pytest.mark.max_pool2d_backward
+def test_perf_max_pool2d_backward():
+    def max_pool2d_backward_input_fn(shape, dtype, device):
+        for forward_args in max_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            inp.requires_grad_(True)
+            output, indices = torch.nn.functional.max_pool2d_with_indices(inp, **params)
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, indices, params
+
+    def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
+        output, _ = torch.nn.functional.max_pool2d_with_indices(input, **kwargs)
+        grad_input = torch.autograd.grad(
+            outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
+        )
+        return grad_input[0]
+
+    bench = MaxPool2dBenchmark(
+        input_fn=max_pool2d_backward_input_fn,
+        op_name="max_pool2d_backward",
+        torch_op=torch_max_pool2d_backward_wrapper,
+        dtypes=FLOAT_DTYPES,
+        is_backward=False,
+    )
+
+    bench.set_gems(flag_gems.max_pool2d_backward)
+    bench.run()
+
+
 @pytest.mark.dot
 def test_perf_dot():
     def dot_input_fn(shape, dtype, device):
@@ -253,6 +400,22 @@ def test_perf_dot():
         op_name="dot",
         torch_op=torch.dot,
         dtypes=FLOAT_DTYPES,
+    )
+
+    bench.run()
+
+
+@pytest.mark.trace
+def test_perf_trace():
+    def trace_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        yield inp,
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=trace_input_fn,
+        op_name="trace",
+        torch_op=torch.trace,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
     )
 
     bench.run()
