@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import pytest
 
@@ -25,7 +26,18 @@ class OpDispatcher:
             self.is_dispatch = True
             self.set_init_attr()
             self._load_configs()
-            self._load_operators()
+            self._load_device_info()
+
+        if self.is_debug:
+            self.debug_action()
+
+    def debug_action(self):
+        print(
+            f"\033[93m[BEGUG]\033[0m: operator_vendor : {self.operator_vendor}\n",
+            f"operators : {self.operators}\n",
+            f"config_vendor: {self.config_vendor}\n"
+            f" configurations : {self.configurations}",
+        )
 
     def _detect_user_action(self):
         """Detect whether user provided command-line args."""
@@ -47,6 +59,18 @@ class OpDispatcher:
         self.operator_vendor = attrs["operators"]
         self.config_vendor = attrs["configurations"]
 
+    def _load_device_info(self):
+        if self.operator_vendor is not None:
+            all_info, failed_reasons = backend.get_vendor_infos(return_type="dict")
+            if self.operator_vendor in failed_reasons:
+                print(
+                    f"\033[31m[Warning]\033[0m : \033[31mfailed to load vendor device info,"
+                    f"the reason is {failed_reasons[self.operator_vendor]}\033[0m"
+                )
+                self.operator_vendor = None
+            else:
+                self.device_info = all_info[self.operator_vendor]
+
     def _load_configs(self, config_vendor=None):
         """Load configuration sets for vendor."""
 
@@ -54,11 +78,11 @@ class OpDispatcher:
         if vendor:
             self.configurations = {
                 "heuristic": backend.get_heuristic_config(vendor_name=vendor),
-                "autotune": backend.get_tune_config(vendor_name=vendor),
+                "autotune": backend.get_tune_config(vendor_name=vendor, query=True),
             }
             self.is_dispatch_configs = True
             print(
-                f"\033[92m[INFO]\033[0m : \033[93m configurations of {vendor} vendor has been loaded\033[0m"
+                f"\033[92m[INFO]\033[0m : \033[92m configurations of {vendor} vendor has been loaded\033[0m"
             )
 
     def _load_operators(self, operator_vendor=None):
@@ -75,6 +99,7 @@ class OpDispatcher:
     def get_cmd_args(self):
         parser = argparse.ArgumentParser(description="...")
         _vendors = list(vendors.get_all_vendors().keys())
+        IS_PYTEST = "PYTEST_CURRENT_TEST" in os.environ
         parser.add_argument(
             "--ops",
             type=str,
@@ -108,11 +133,12 @@ class OpDispatcher:
             action="store",
             default=None,
             required=False,
-            choices=[False, True],
-            help="device to run reference tests on",
+            choices=["False", "True"],
+            help="debug for OpDispatcher",
         )
         args, remaining = parser.parse_known_args()
-        pytest.main(remaining)
+        if IS_PYTEST:
+            pytest.main(remaining)
         return args
 
 

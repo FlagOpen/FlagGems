@@ -27,9 +27,14 @@ def get_heuristic_config(op_name):
 
 
 def replace_customized_ops(_globals):
-    vendor = op_dispatcher.operator_vendor or device.vendor
+    vendor = device.vendor
+    user_get = False
+    if op_dispatcher.operator_vendor is not None:
+        vendor = op_dispatcher.operator_vendor
+        user_get = True
+
     if vendor != commom_utils.vendors.NVIDIA:
-        customized_op_infos = backend.get_current_device_extend_op(vendor)
+        customized_op_infos = backend.get_current_device_extend_op(vendor, user_get)
         try:
             for fn_name, fn in customized_op_infos:
                 _globals[fn_name] = fn
