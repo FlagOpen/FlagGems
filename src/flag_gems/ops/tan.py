@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def tan_func(x):
-    y = tl_extra_shim.atan(x.to(tl.float32))
+    y = tl_extra_shim.tan(x.to(tl.float32))
     return y
 
 
