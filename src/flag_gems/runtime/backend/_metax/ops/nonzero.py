@@ -8,11 +8,13 @@ import torch
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
+logger = logging.getLogger(__name__)
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
     code.writeline("import triton.language as tl")
-    code.writeline("from flag_gems.utils import libentry")
+    code.writeline("from flag_gems.utils import libentry, libtuner")
     code.writeline("from flag_gems.utils import triton_lang_extension as tle")
     code.writeline("from flag_gems import runtime")
     code.writeline("from flag_gems.runtime import torch_device_fn")
@@ -30,7 +32,7 @@ def generate_nonzero_kernel(
 ) -> IndentedBuffer:
     # the decorators
     code.writeline("@libentry()")
-    code.writeline("@triton.autotune(")
+    code.writeline("@libtuner(")
     with code.indent():
         code.writeline("configs=runtime.get_tuned_config('nonzero'),")
         code.writeline("key=['n_elements',],)")
@@ -180,7 +182,7 @@ _nonzero_func = NonzeroFunction()
 
 
 def nonzero(inp, *, as_tuple=False):
-    logging.debug("METAX GEMS NONZERO")
+    logger.debug("METAX GEMS NONZERO")
 
     assert len(inp.shape) > 0, "Invalid input shape, input dimension must > 0"
     inp_ndim = inp.ndim

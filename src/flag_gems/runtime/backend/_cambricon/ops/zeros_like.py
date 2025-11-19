@@ -8,13 +8,13 @@ from flag_gems.runtime import torch_device_fn
 from ..utils import TOTAL_CORE_NUM
 from .zeros import zeros_kernel
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def zeros_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logger.debug("GEMS_CAMBRICON FULL_LIKE")
+    logger.debug("GEMS_CAMBRICON ZEROS_LIKE")
     if device is None:
         device = x.device
     if dtype is None:

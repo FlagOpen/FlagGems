@@ -12,7 +12,7 @@
 
 import logging
 import numbers
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -20,16 +20,9 @@ from torch import Size
 from torch.nn import Parameter, init
 
 import flag_gems
+from flag_gems.config import use_c_extension
 
 logger = logging.getLogger(__name__)
-
-try:
-    from flag_gems import ext_ops  # noqa: F401
-
-    has_c_extension = True
-except ImportError:
-    has_c_extension = False
-
 
 __all__ = [
     "gems_rms_forward",
@@ -39,24 +32,24 @@ __all__ = [
 
 def gems_rms_forward(
     x: torch.Tensor, residual: Optional[torch.Tensor], weight: torch.Tensor, eps: float
-) -> Union[torch.Tensor, tuple[torch.Tensor, torch.Tensor]]:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     add_residual = residual is not None
     if add_residual:
-        logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
-        if has_c_extension:
+        if use_c_extension:
+            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM(C EXTENSION)")
             torch.ops.flag_gems.fused_add_rms_norm(x, residual, weight, eps)
             return x, residual
         else:
-            residual = x + residual
-            return (
-                flag_gems.rms_norm(residual, list(weight.size()), weight, eps),
-                residual,
+            logger.debug("GEMS CUSTOM FUSED_ADD_RMS_NORM")
+            return flag_gems.fused_add_rms_norm(
+                x, residual, list(weight.size()), weight, eps
             )
     else:
-        logger.debug("GEMS CUSTOM RMS_NORM")
-        if has_c_extension:
+        if use_c_extension:
+            logger.debug("GEMS CUSTOM RMS_NORM(C EXTENSION)")
             return torch.ops.flag_gems.rms_norm(x, weight, eps)
         else:
+            logger.debug("GEMS CUSTOM RMS_NORM")
             return flag_gems.rms_norm(x, list(weight.size()), weight, eps)
 
 
@@ -72,7 +65,7 @@ class GemsRMSNorm(nn.Module):
     """
 
     __constants__ = ["normalized_shape", "eps", "elementwise_affine"]
-    normalized_shape: Union[int, list[int], Size]
+    normalized_shape: Union[int, List[int], Size]
     eps: Optional[float]
     elementwise_affine: bool
 

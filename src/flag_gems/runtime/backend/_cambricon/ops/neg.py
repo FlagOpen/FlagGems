@@ -4,7 +4,7 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -16,3 +16,8 @@ def neg_func(x):
 def neg(A):
     logger.debug("GEMS_CAMBRICON NEG")
     return neg_func(A)
+
+
+def neg_(A):
+    logger.debug("GEMS_CAMBRICON NEG_")
+    return neg_func(A, out0=A)

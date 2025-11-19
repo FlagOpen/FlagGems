@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def nonzero_kernel_heur_block_size(args):
@@ -71,7 +71,7 @@ def nonzero(inp, *, as_tuple=False):
 
     inp_bool = inp_view
     if inp_view.dtype != torch.bool:
-        inp_bool = inp_view.bool()
+        inp_bool = inp_view != 0
 
     prefix_sum = inp_bool.cumsum(axis=0)
 

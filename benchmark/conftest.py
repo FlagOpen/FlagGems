@@ -6,9 +6,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
-
-from .attri_util import (
+from benchmark.attri_util import (
     ALL_AVAILABLE_METRICS,
     BOOL_DTYPES,
     DEFAULT_ITER_COUNT,
@@ -16,9 +14,11 @@ from .attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
     BenchLevel,
+    BenchMode,
     OperationAttribute,
     get_recommended_shapes,
 )
+from flag_gems.runtime import torch_device_fn
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
@@ -26,7 +26,7 @@ vendor_name = flag_gems.vendor_name
 
 class BenchConfig:
     def __init__(self):
-        self.cpu_mode = False
+        self.mode = BenchMode.KERNEL
         self.bench_level = BenchLevel.COMPREHENSIVE
         self.warm_up = DEFAULT_WARMUP_COUNT
         self.repetition = DEFAULT_ITER_COUNT
@@ -47,16 +47,16 @@ Config = BenchConfig()
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--mode"
-        if vendor_name != "kunlunxin"
-        else "--fg_mode",  # TODO: fix pytest-* common --mode args
+        (
+            "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+        ),  # TODO: fix pytest-* common --mode args
         action="store",
-        default=device,
+        default="kernel",
         required=False,
-        choices=[device, "cpu"],
+        choices=["kernel", "operator", "wrapper"],
         help=(
-            "Specify how to measure latency, "
-            f"'cpu' for CPU-side measurement or {device} for GPU-side measurement."
+            "Specify how to measure latency, 'kernel' for device kernel, ",
+            "'operator' for end2end operator or 'wrapper' for runtime wrapper.",
         ),
     )
 
@@ -132,8 +132,10 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     global Config  # noqa: F824
-    mode_value = config.getoption("--mode")
-    Config.cpu_mode = mode_value == "cpu"
+    mode_value = config.getoption(
+        "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
+    )
+    Config.mode = BenchMode(mode_value)
 
     Config.query = config.getoption("--query")
 

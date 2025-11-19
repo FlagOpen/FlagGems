@@ -1,6 +1,6 @@
 # Add A C++ wrapper
 
-To add a c++ wrapper, you need [Build FlagGems with C extensions](./build_flaggems_with_c_extensions.md) first.
+To add a c++ wrapper, you need to build FlagGems with C extensions first. Please refer to [Installation](./installation.md).
 
 ## Write the Wrapper
 
@@ -15,6 +15,7 @@ Add python bindings in `src/flag_gems/csrc/cstub.cpp`
 Add the triton_jit function in `triton_src`, currently we use a new dir to store the triton_jit functions and later will reuse the triton_jit functions in flag_gems python code.
 
 ## Write the Test
+
 FlagGems uses ctest and googletest for c++ unnit test.
 After finish the c++ wrapper, a corresponding c++ test should be added as well.
 Add your test in `ctests/test_triton_xxx.cpp` and `ctests/CMakeLists.txt`

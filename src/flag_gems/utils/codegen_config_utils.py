@@ -26,6 +26,15 @@ def metax_heuristics_for_num_warps(tile_size):
         return 16
 
 
+def hygon_heuristics_for_num_warps(tile_size):
+    if tile_size <= 1024:
+        return 4
+    elif tile_size <= 2048:
+        return 8
+    else:
+        return 16
+
+
 def cambricon_heuristics_for_num_warps(tile_size):
     return 1
 
@@ -54,15 +63,17 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
-    vendors.CAMBRICON: CodeGenConfig(
-        8192,
-        tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
-        32,
-        False,
-        prefer_1d_tile=int(triton.__version__[0]) < 3,
-    )
-    if vendor_module.vendor_info.vendor_name == "cambricon"
-    else None,
+    vendors.CAMBRICON: (
+        CodeGenConfig(
+            8192,
+            tuple([vendor_module.TOTAL_CORE_NUM, 1, 1]),
+            32,
+            False,
+            prefer_1d_tile=int(triton.__version__[0]) < 3,
+        )
+        if vendor_module.vendor_info.vendor_name == "cambricon"
+        else None
+    ),
     vendors.METAX: CodeGenConfig(
         2048,
         (65536, 65536, 65536),
@@ -84,12 +95,27 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=True,
     ),
+    vendors.ASCEND: CodeGenConfig(
+        512,
+        tuple([48, 1, 1]),
+        32,
+        False,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
+    vendors.HYGON: CodeGenConfig(
+        2048,
+        (65536, 65536, 65536),
+        16,
+        True,
+        prefer_1d_tile=int(triton.__version__[0]) < 3,
+    ),
 }
 
 HEURISTICS_CONFIG = {
     vendors.NVIDIA: default_heuristics_for_num_warps,
     vendors.METAX: metax_heuristics_for_num_warps,
     vendors.CAMBRICON: cambricon_heuristics_for_num_warps,
+    vendors.HYGON: hygon_heuristics_for_num_warps,
 }
 
 

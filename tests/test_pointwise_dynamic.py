@@ -6,7 +6,7 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import get_device_properties
 from flag_gems.utils.pointwise_dynamic import (
     CodeGenConfig,
     FunctionSchema,
@@ -781,7 +781,7 @@ def test_dynamic_function_gsl(use_block_pointer):
 
 
 @pytest.mark.skipif(
-    torch_device_fn.get_device_properties(0).total_memory < (80 * 1024**3),
+    get_device_properties(0).total_memory < (80 * 1024**3),
     reason="This test requires a lot of memory.",
 )
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
@@ -832,7 +832,7 @@ def test_dynamic_function_0d_task(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-@pytest.mark.skipif(flag_gems.device == "musa", reason="TOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,
@@ -855,7 +855,7 @@ def test_dynamic_function_zero_sized_task_unary(use_1d_tile, use_block_pointer):
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
-@pytest.mark.skipif(flag_gems.device == "musa", reason="TOFIX")
+@pytest.mark.skipif(flag_gems.vendor_name == "mthreads", reason="AssertionError")
 def test_dynamic_function_zero_sized_task_binary(use_1d_tile, use_block_pointer):
     config = CodeGenConfig(
         max_tile_size=1024,

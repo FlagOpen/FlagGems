@@ -4,12 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
-try:
-    import torch_npu  # noqa: F401
-except:  # noqa: E722
-    _isnan = tl_extra_shim.isnan
+_isnan = tl_extra_shim.isnan
 
 logger = logging.getLogger(__name__)
 

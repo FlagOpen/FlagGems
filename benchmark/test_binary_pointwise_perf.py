@@ -3,10 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
-
-from .attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
-from .performance_utils import Benchmark, generate_tensor_input
+from benchmark.attri_util import BOOL_DTYPES, DEFAULT_METRICS, FLOAT_DTYPES, INT_DTYPES
+from benchmark.performance_utils import Benchmark, generate_tensor_input
 
 
 class BinaryPointwiseBenchmark(Benchmark):
@@ -48,23 +46,10 @@ class BinaryPointwiseBenchmark(Benchmark):
             ("div", torch.div, FLOAT_DTYPES),
             ("mul", torch.mul, FLOAT_DTYPES),
             ("sub", torch.sub, FLOAT_DTYPES),
-            *(
-                [
-                    ("polar", torch.polar, [torch.float32]),
-                    ("floor_divide", torch.floor_divide, INT_DTYPES),
-                    ("remainder", torch.remainder, INT_DTYPES),
-                ]
-                if flag_gems.device != "musa"
-                else []
-            ),
-            *(
-                [
-                    ("pow", torch.pow, FLOAT_DTYPES),
-                    ("rsub", torch.rsub, FLOAT_DTYPES),
-                ]
-                if flag_gems.device != "npu"
-                else []
-            ),
+            ("pow", torch.pow, FLOAT_DTYPES),
+            ("polar", torch.polar, [torch.float32]),
+            ("floor_divide", torch.floor_divide, INT_DTYPES),
+            ("remainder", torch.remainder, INT_DTYPES),
             ("logical_or", torch.logical_or, INT_DTYPES + BOOL_DTYPES),
             ("logical_and", torch.logical_and, INT_DTYPES + BOOL_DTYPES),
             ("logical_xor", torch.logical_xor, INT_DTYPES + BOOL_DTYPES),
@@ -81,7 +66,6 @@ class BinaryPointwiseBenchmark(Benchmark):
             # Bitwise operations
             ("bitwise_and", torch.bitwise_and, INT_DTYPES + BOOL_DTYPES),
             ("bitwise_or", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
-            ("or_", torch.bitwise_or, INT_DTYPES + BOOL_DTYPES),
             # Numerical Checks
             ("isclose", torch.isclose, FLOAT_DTYPES + INT_DTYPES),
             ("allclose", torch.allclose, FLOAT_DTYPES + INT_DTYPES),
@@ -90,4 +74,35 @@ class BinaryPointwiseBenchmark(Benchmark):
 )
 def test_general_binary_pointwise_perf(op_name, torch_op, dtypes):
     bench = BinaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+    bench.run()
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, dtypes",
+    [
+        pytest.param(
+            name,
+            op,
+            dtype,
+            marks=getattr(pytest.mark, name, None),
+        )
+        for name, op, dtype in [
+            # Arithmetic operations
+            ("add_", lambda a, b: a.add_(b), FLOAT_DTYPES),
+            ("div_", lambda a, b: a.div_(b), FLOAT_DTYPES),
+            ("mul_", lambda a, b: a.mul_(b), FLOAT_DTYPES),
+            ("sub_", lambda a, b: a.sub_(b), FLOAT_DTYPES),
+            ("pow_", lambda a, b: a.pow_(b), FLOAT_DTYPES),
+            ("floor_divide_", lambda a, b: a.floor_divide_(b), INT_DTYPES),
+            ("remainder_", lambda a, b: a.remainder_(b), INT_DTYPES),
+            # Bitwise operations
+            ("bitwise_and_", lambda a, b: a.bitwise_and_(b), INT_DTYPES + BOOL_DTYPES),
+            ("bitwise_or_", lambda a, b: a.bitwise_or_(b), INT_DTYPES + BOOL_DTYPES),
+        ]
+    ],
+)
+def test_general_inplace_binary_pointwise_perf(op_name, torch_op, dtypes):
+    bench = BinaryPointwiseBenchmark(
+        op_name=op_name, torch_op=torch_op, dtypes=dtypes, is_inplace=True
+    )
     bench.run()

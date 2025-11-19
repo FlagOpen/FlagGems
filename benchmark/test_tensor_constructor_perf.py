@@ -4,10 +4,8 @@ import random
 import pytest
 import torch
 
-import flag_gems
-
-from .attri_util import BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BenchLevel
+from benchmark.performance_utils import (
     Config,
     GenericBenchmark,
     generate_tensor_input,
@@ -69,6 +67,50 @@ def linspace_input_fn(shape, dtype, device):
     },
 
 
+def logspace_input_fn(shape, dtype, device):
+    base = 1.05
+    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(
+        base
+    )  # calculate the max limit according to dtype
+    end = int(limit)
+    yield {
+        "start": 0,
+        "end": end,
+        "steps": math.prod(shape),  # steps influence speed up a lot
+        "base": base,
+        "dtype": dtype,
+        "device": device,
+    },
+
+
+def _2D_input_fn(shape, dtype, device):
+    """
+    Generate input for 2D input
+    """
+    if shape[0] >= 819200:
+        # Skip large shapes for performance testing
+        return
+    elif isinstance(shape, int):
+        yield {"n": shape, "dtype": dtype, "device": device},
+
+    elif isinstance(shape, tuple) and len(shape) == 1:
+        n = shape[0]
+        yield {"n": n, "dtype": dtype, "device": device},
+
+    elif isinstance(shape, tuple) and len(shape) == 2:
+        n, m = shape
+        yield {"n": n, "m": m, "dtype": dtype, "device": device},
+
+    elif isinstance(shape, tuple) and len(shape) > 2:
+        n, m = shape[:2]
+        yield {"n": n, "m": m, "dtype": dtype, "device": device},
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        for i in range(8, 13):
+            n = 2**i
+            m = 2**i
+            yield {"n": n, "m": m, "dtype": dtype, "device": device},
+
+
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
     # generic tensor constructor
@@ -90,6 +132,10 @@ tensor_constructor_operations = [
     ("arange", torch.arange, arange_input_fn),
     # linspace
     ("linspace", torch.linspace, linspace_input_fn),
+    # eye
+    ("eye", torch.eye, _2D_input_fn),
+    # logspace
+    ("logspace", torch.logspace, logspace_input_fn),
 ]
 
 
@@ -105,14 +151,35 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
         "linspace",
     ]:
         pytest.skip("RUNTIME TODOFIX.")
+    if vendor_name == "mthreads" and op_name == "logspace":
+        pytest.skip("Torch MUSA Unsupported Now")
     bench = GenericBenchmark(input_fn=input_fn, op_name=op_name, torch_op=torch_op)
     bench.run()
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
+tensor_constructor_inplace_operations = [
+    # tensor constructor with given value
+    ("fill_", torch.fill_, fill_input_fn),
+    ("masked_fill_", lambda a, b, c: a.masked_fill_(b, c), masked_fill_input_fn),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        for op, fn, input_fn in tensor_constructor_inplace_operations
+    ],
 )
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+def test_tensor_constructor_inplace_benchmark(op_name, torch_op, input_fn):
+    bench = GenericBenchmark(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
+@pytest.mark.skipif(vendor_name == "mthreads", reason="RuntimeError")
 @pytest.mark.randperm
 def test_perf_randperm():
     def randperm_input_fn(shape, dtype, device):

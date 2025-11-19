@@ -696,6 +696,7 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
                 return_counts=return_counts,
                 num_warps=num_warps,
                 isCloseVectorization=True,
+                buffer_size_limit=128,
             )
             if "TRITONXPU_OTHER_SIM" in os.environ:
                 del os.environ["TRITONXPU_OTHER_SIM"]
@@ -1519,9 +1520,6 @@ def _unique2(
     return_inverse: bool = False,
     return_counts: bool = False,
 ):
-    # print(f'in0 = {in0.cpu()}')
-    # print(f'in0.shape = {in0.shape}')
-    # import pudb; pudb.set_trace()
     if in0.numel() <= 8192:
         # print("simple_unique_flat")
         sorted_data, sorted_indices = torch.sort(in0.ravel())

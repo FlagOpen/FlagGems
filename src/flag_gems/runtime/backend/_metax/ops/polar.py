@@ -5,11 +5,13 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("polar"), key=["abs", "angle"])
+@libtuner(configs=runtime.get_tuned_config("polar"), key=["n_input"])
 @triton.jit
 def polar_kernel_kernel(
     abs,
@@ -37,7 +39,7 @@ def polar_kernel_kernel(
 
 
 def polar(abs, angle):
-    logging.debug("METAX GEMS polar")
+    logger.debug("METAX GEMS polar")
     output = torch.empty((*abs.shape, 2), dtype=abs.dtype, device=abs.device)
     n_input = abs.numel()
     n_output = output.numel()

@@ -10,6 +10,7 @@ from triton.runtime.jit import JITFunction
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import (
+    MemOverlap,
     all_c_contiguous,
     all_the_same_shape,
     all_the_same_stride,
@@ -963,8 +964,18 @@ class WrapperGenerator:
                     code.writeline("isCloseOffsetAnalysis=True,")
                 elif self.config.is_cat:
                     code.writeline("buffer_size_limit=512,")
+                elif self.config.buffer_size_limit:
+                    code.writeline(
+                        f"buffer_size_limit={self.config.buffer_size_limit},"
+                    )
                 else:
                     code.writeline("buffer_size_limit=2048,")
+                if self.config.isCloseVectorization:
+                    code.writeline("isCloseVectorization=True,")
+                if self.config.isCloseDtypeConvert:
+                    code.writeline("isCloseDtypeConvert=True,")
+                if not self.config.isCloseMemoryAsync:
+                    code.writeline("isCloseMemoryAsync=False,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
@@ -1018,8 +1029,18 @@ class WrapperGenerator:
                     code.writeline("isCloseOffsetAnalysis=True,")
                 elif self.config.is_cat:
                     code.writeline("buffer_size_limit=512,")
+                elif self.config.buffer_size_limit:
+                    code.writeline(
+                        f"buffer_size_limit={self.config.buffer_size_limit},"
+                    )
                 else:
                     code.writeline("buffer_size_limit=2048,")
+                if self.config.isCloseVectorization:
+                    code.writeline("isCloseVectorization=True,")
+                if self.config.isCloseDtypeConvert:
+                    code.writeline("isCloseDtypeConvert=True,")
+                if not self.config.isCloseMemoryAsync:
+                    code.writeline("isCloseMemoryAsync=False,")
                 if os.getenv("XPU_cmp_nan") == "1":
                     code.writeline("isOpenCmpNan=True,")
             code.writeline(")")
@@ -1211,15 +1232,13 @@ class PointwiseDynamicFunction:
             if out_tensors:
                 for index, item in enumerate(out_tensors):
                     if list(item.shape) != list(task_shape):
-                        raise ValueError(
+                        raise RuntimeError(
                             f"out tensor at index {index} shape is invalid, should be {task_shape} but is {item.shape}!"
                         )
-                    # output arguments must be dense and no overlapping for pointwise operation
-                    if has_internal_overlapping(item) and any(
-                        item is t for t in in_tensors
-                    ):
-                        raise ValueError(
-                            "Pointwise Input arguments must be dense and no overlapping."
+                    # output arguments must not have internal overlapping for pointwise operation
+                    if has_internal_overlapping(item) == MemOverlap.Yes:
+                        raise RuntimeError(
+                            "Pointwise Input arguments should not have internal overlapping."
                         )
 
             ndim = len(task_shape)

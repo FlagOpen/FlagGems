@@ -121,7 +121,6 @@ UPSAMPLE_SHAPES = [
     (3, 7, 1023, 1025),
 ]
 
-
 KRON_SHAPES = [
     [(), (2, 3)],
     [(2, 3), ()],
@@ -170,6 +169,8 @@ COMPLEX_DTYPES = [torch.complex32, torch.complex64]
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-2, -1, 0, 1]
 
+ARANGE_START = [0] if TO_CPU else [0, 1, 3]
+
 
 def to_reference(inp, upcast=False):
     if inp is None:
@@ -192,10 +193,10 @@ def to_cpu(res, ref):
     return res
 
 
-def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1):
+def gems_assert_close(res, ref, dtype, equal_nan=False, reduce_dim=1, atol=1e-4):
     res = to_cpu(res, ref)
     flag_gems.testing.assert_close(
-        res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim
+        res, ref, dtype, equal_nan=equal_nan, reduce_dim=reduce_dim, atol=atol
     )
 
 

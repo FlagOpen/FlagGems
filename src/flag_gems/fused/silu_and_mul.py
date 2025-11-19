@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -46,3 +46,8 @@ class SiluAndMul(torch.autograd.Function):
 
 def silu_and_mul(A, B):
     return SiluAndMul.apply(A, B)
+
+
+def silu_and_mul_out(A, B, out):
+    silu_and_mul_kernel(A, B, out0=out)
+    return out

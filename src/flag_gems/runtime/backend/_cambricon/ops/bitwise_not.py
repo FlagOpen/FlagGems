@@ -4,7 +4,7 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
@@ -16,3 +16,9 @@ def bitwise_not_func(x):
 def bitwise_not(A):
     logger.debug("GEMS_CAMBRICON BITWISE NOT")
     return bitwise_not_func(A)
+
+
+def bitwise_not_(A):
+    logger.debug("GEMS_CAMBRICON BITWISE NOT_")
+    bitwise_not_func(A, out0=A)
+    return A

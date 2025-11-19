@@ -8,7 +8,7 @@ from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 div_rn = tl_extra_shim.div_rn
 div_rz = tl_extra_shim.div_rz
 fmod = tl_extra_shim.fmod
@@ -38,6 +38,10 @@ def true_div_func_scalar_tensor(x, y):
 def true_divide(A, B):
     logger.debug("GEMS_CAMBRICON TRUE_DIVIDE")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        if A.shape != B.shape:
+            A, B = torch.broadcast_tensors(A, B)
+            A = A.clone()
+            B = B.clone()
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
         return true_div_func_tensor_scalar(A, B)
@@ -46,6 +50,18 @@ def true_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def true_divide_(A, B):
+    logger.debug("GEMS_CAMBRICON TRUE_DIVIDE_")
+    if isinstance(B, torch.Tensor):
+        if A.shape != B.shape:
+            A, B = torch.broadcast_tensors(A, B)
+            A = A.clone()
+            B = B.clone()
+        return true_div_func(A, B, out0=A)
+    else:
+        return true_div_func_tensor_scalar(A, B, out0=A)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -77,6 +93,14 @@ def trunc_divide(A, B):
     else:
         # Both scalar
         return torch.tensor(A / B)
+
+
+def trunc_divide_(A, B):
+    logger.debug("GEMS_CAMBRICON TRUNC_DIVIDE_")
+    if isinstance(B, torch.Tensor):
+        return trunc_div_func(A, B, out0=A)
+    else:
+        return trunc_div_func_tensor_scalar(A, B, out0=A)
 
 
 @triton.jit
@@ -174,6 +198,14 @@ def floor_divide(A, B):
         return torch.tensor(A // B)
 
 
+def floor_divide_(A, B):
+    logger.debug("GEMS_CAMBRICON FLOOR_DIVIDE_")
+    if isinstance(B, torch.Tensor):
+        return floor_div_func(A, B, out0=A)
+    else:
+        return floor_div_func_tensor_scalar(A, B, out0=A)
+
+
 def div_mode(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide(A, B)
@@ -181,6 +213,18 @@ def div_mode(A, B, rounding_mode=None):
         return trunc_divide(A, B)
     elif rounding_mode == "floor":
         return floor_divide(A, B)
+    else:
+        msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
+        raise ValueError(msg)
+
+
+def div_mode_(A, B, rounding_mode=None):
+    if rounding_mode is None:
+        return true_divide_(A, B)
+    elif rounding_mode == "trunc":
+        return trunc_divide_(A, B)
+    elif rounding_mode == "floor":
+        return floor_divide_(A, B)
     else:
         msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
         raise ValueError(msg)
@@ -223,3 +267,11 @@ def remainder(A, B):
     else:
         # Both scalar
         return torch.tensor(A % B)
+
+
+def remainder_(A, B):
+    logger.debug("GEMS_CAMBRICON REMAINDER_")
+    if isinstance(B, torch.Tensor):
+        return rem_tt(A, B, out0=A)
+    else:
+        return rem_ts(A, B, out0=A)

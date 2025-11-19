@@ -11,21 +11,21 @@ from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 from .topk import argsort
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 device_ = device
 
-_MIN_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).min
-_MAX_INT8_VAL: tl.constexpr = torch.iinfo(torch.int8).max
-_MIN_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).min
-_MAX_INT16_VAL: tl.constexpr = torch.iinfo(torch.int16).max
-_MIN_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).min
-_MAX_INT32_VAL: tl.constexpr = torch.iinfo(torch.int32).max
-_MIN_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).min
-_MAX_INT64_VAL: tl.constexpr = torch.iinfo(torch.int64).max
-_MAX_UINT32_VAL: tl.constexpr = (1 << 32) - 1
-_MIN_UINT32_VAL: tl.constexpr = 0
-_MIN_INT24_VAL: tl.constexpr = -(2**23)
-_MAX_INT24_VAL: tl.constexpr = 2**23 - 1
+_MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
+_MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)
+_MIN_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).min)
+_MAX_INT16_VAL = tl.constexpr(torch.iinfo(torch.int16).max)
+_MIN_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).min)
+_MAX_INT32_VAL = tl.constexpr(torch.iinfo(torch.int32).max)
+_MIN_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).min)
+_MAX_INT64_VAL = tl.constexpr(torch.iinfo(torch.int64).max)
+_MAX_UINT32_VAL = tl.constexpr((1 << 32) - 1)
+_MIN_UINT32_VAL = tl.constexpr(0)
+_MIN_INT24_VAL = tl.constexpr(-(2**23))
+_MAX_INT24_VAL = tl.constexpr(2**23 - 1)
 
 
 @triton.jit
@@ -288,7 +288,7 @@ def duplicate_keys_shuffle_kernel(
     tl.store(value_in + store_offset, value_data, mask=store_offset < n_elements)
 
 
-def sort_by_key(key, value, valid_bits):
+def sort_by_key(key, value, valid_bits, generator=None):
     n_elements = key.numel()
     if n_elements > 2 * 1024:
         # radix method
@@ -385,7 +385,9 @@ def sort_by_key(key, value, valid_bits):
         # last step, shuffle inner-block data
         BLOCK_SIZE_SHUFFLE = 512
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
-        philox_seed, philox_offset = philox_backend_seed_offset(n_elements)
+        philox_seed, philox_offset = philox_backend_seed_offset(
+            n_elements, generator=generator
+        )
         with torch_device_fn.device(key.device):
             duplicate_keys_shuffle_kernel[grid_shuffle](
                 v_out,
@@ -462,5 +464,5 @@ def randperm(
     rand_key = torch.randint(
         low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
     )
-    perm_range = sort_by_key(rand_key, in_range, valid_bits)
+    perm_range = sort_by_key(rand_key, in_range, valid_bits, generator=generator)
     return perm_range

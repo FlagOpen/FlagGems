@@ -1,5 +1,6 @@
 import pytest
 import torch
+from packaging import version
 
 import flag_gems
 
@@ -24,8 +25,9 @@ device = flag_gems.device
 def test_accuracy_rand(shape, dtype):
     with flag_gems.use_gems():
         res_out = torch.rand(shape, dtype=dtype, device=device)
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
+    ref_out = to_reference(res_out)
+    assert (ref_out <= 1.0).all()
+    assert (ref_out >= 0.0).all()
 
 
 @pytest.mark.randn
@@ -36,8 +38,9 @@ def test_accuracy_randn(shape, dtype):
         torch.manual_seed(42)
     with flag_gems.use_gems():
         res_out = torch.randn(shape, dtype=dtype, device=device)
-    mean = torch.mean(res_out)
-    std = torch.std(res_out)
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
 
@@ -49,8 +52,9 @@ def test_accuracy_rand_like(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     with flag_gems.use_gems():
         res_out = torch.rand_like(x)
-    assert (res_out <= 1.0).all()
-    assert (res_out >= 0.0).all()
+    ref_out = to_reference(res_out)
+    assert (ref_out <= 1.0).all()
+    assert (ref_out >= 0.0).all()
 
 
 @pytest.mark.randn_like
@@ -60,8 +64,9 @@ def test_accuracy_randn_like(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=device)
     with flag_gems.use_gems():
         res_out = torch.randn_like(x)
-    mean = torch.mean(res_out.to("cpu"))
-    std = torch.std(res_out.to("cpu"))
+    ref_out = to_reference(res_out)
+    mean = torch.mean(ref_out)
+    std = torch.std(ref_out)
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
 
@@ -124,11 +129,11 @@ def test_accuracy_full(shape, dtype, fill_value):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_zeros_like(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cpu" if TO_CPU else device)
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.zeros_like(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.zeros_like(x)
-    out = torch.zeros_like(x)
-    ref_out = to_reference(out)
+        res_out = torch.zeros_like(inp)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -136,11 +141,11 @@ def test_accuracy_zeros_like(shape, dtype):
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_ones_like(shape, dtype):
-    x = torch.empty(size=shape, dtype=dtype, device="cpu" if TO_CPU else device)
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
+    ref_out = torch.ones_like(ref_inp)
     with flag_gems.use_gems():
-        res_out = torch.ones_like(x)
-    out = torch.ones_like(x)
-    ref_out = to_reference(out)
+        res_out = torch.ones_like(inp)
     gems_assert_equal(res_out, ref_out)
 
 
@@ -150,21 +155,23 @@ def test_accuracy_ones_like(shape, dtype):
 @pytest.mark.parametrize("xdtype", BOOL_TYPES + ALL_INT_DTYPES + ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("fill_value", [3.1415926, 2, False])
 def test_accuracy_full_like(shape, dtype, xdtype, fill_value):
-    x = torch.empty(size=shape, dtype=xdtype, device="cpu" if TO_CPU else device)
+    inp = torch.empty(size=shape, dtype=dtype, device=device)
+    ref_inp = to_reference(inp)
 
     # without dtype
+    ref_out = torch.full_like(ref_inp, fill_value)
     with flag_gems.use_gems():
-        res_out = torch.full_like(x, fill_value)
-    gems_assert_equal(res_out, torch.full_like(x, fill_value))
+        res_out = torch.full_like(inp, fill_value)
+    gems_assert_equal(res_out, ref_out)
 
     # with dtype
+    ref_out = torch.full_like(ref_inp, fill_value, dtype=dtype)
     with flag_gems.use_gems():
-        res_out = torch.full_like(x, fill_value, dtype=dtype)
-    gems_assert_equal(res_out, torch.full_like(x, fill_value, dtype=dtype))
+        res_out = torch.full_like(inp, fill_value, dtype=dtype)
+    gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.randperm
 @pytest.mark.parametrize("n", [123, 12345, 123456])
@@ -179,3 +186,51 @@ def test_accuracy_randperm(n, dtype):
     sorted_ref, _ = torch.sort(ref_out)
     sorted_res, _ = torch.sort(res_out)
     gems_assert_equal(sorted_res, sorted_ref)
+
+
+@pytest.mark.eye
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (256, 1024),
+        (1024, 256),
+        (8192, 4096),
+        (4096, 8192),
+    ]
+    + [(2**d, 2**d) for d in range(7, 13)],
+)
+@pytest.mark.parametrize("dtype", ALL_INT_DTYPES + ALL_FLOAT_DTYPES + BOOL_TYPES)
+def test_accuracy_eye(shape, dtype):
+    if (
+        TO_CPU
+        and dtype == torch.bfloat16
+        and version.parse(torch.__version__) < version.parse("2.5.0")
+    ):
+        pytest.skip("BFloat16 not supported on CPU in torch<2.5.0")
+    n, m = shape
+
+    # test eye(n, m) without dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, m, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(n, m, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(n, m, dtype=dtype, device="cpu" if TO_CPU else device),
+    )
+
+    # test eye(n)
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, device=flag_gems.device)
+    gems_assert_equal(res_out, torch.eye(n, device="cpu" if TO_CPU else device))
+
+    # with dtype
+    with flag_gems.use_gems():
+        res_out = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    gems_assert_equal(
+        res_out,
+        torch.eye(n, dtype=dtype, device="cpu" if TO_CPU else device),
+    )

@@ -7,7 +7,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset, uniform
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 @libentry()
@@ -91,7 +91,7 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
     # The CTA level parallelism is framed in a 2d grid of blocks with grid.y
     # indexing into distributions and grid.x output sample batches
     increment = n_dist * n_samples
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
     grid = lambda META: (triton.cdiv(n_samples, META["NBLOCK"]), n_dist)
     multinomial_with_replacement[grid](
         cum_prob, out, n_categories, n_samples, philox_seed, philox_offset

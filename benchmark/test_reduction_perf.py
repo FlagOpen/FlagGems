@@ -1,3 +1,4 @@
+import os
 import random
 from typing import Generator
 
@@ -5,10 +6,8 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.utils import shape_utils
-
-from .attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
-from .performance_utils import (
+from benchmark.attri_util import BOOL_DTYPES, FLOAT_DTYPES, INT_DTYPES, BenchLevel
+from benchmark.performance_utils import (
     Benchmark,
     Config,
     GenericBenchmark,
@@ -17,6 +16,7 @@ from .performance_utils import (
     unary_input_fn,
     vendor_name,
 )
+from flag_gems.utils import shape_utils
 
 
 class UnaryReductionBenchmark(Benchmark):
@@ -52,13 +52,7 @@ class UnaryReductionBenchmark(Benchmark):
 
 forward_operations = [
     ("all", torch.all, FLOAT_DTYPES),
-    *(
-        [
-            ("any", torch.any, FLOAT_DTYPES),
-        ]
-        if flag_gems.device != "musa"
-        else []
-    ),
+    ("any", torch.any, FLOAT_DTYPES),
     ("amax", torch.amax, FLOAT_DTYPES),
     ("argmax", torch.argmax, FLOAT_DTYPES),
     ("argmin", torch.argmin, FLOAT_DTYPES),
@@ -67,6 +61,7 @@ forward_operations = [
     ("min", torch.min, FLOAT_DTYPES),
     ("prod", torch.prod, FLOAT_DTYPES),
     ("softmax", torch.nn.functional.softmax, FLOAT_DTYPES),
+    ("std", torch.std, FLOAT_DTYPES),
     ("sum", torch.sum, FLOAT_DTYPES),
     ("var_mean", torch.var_mean, FLOAT_DTYPES),
 ]
@@ -80,8 +75,6 @@ forward_operations = [
     ],
 )
 def test_general_reduction_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name in ["softmax"]:
-        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -101,8 +94,6 @@ backward_operations = [
     ],
 )
 def test_general_reduction_backward_perf(op_name, torch_op, dtypes):
-    if vendor_name == "kunlunxin" and op_name == "softmax":
-        pytest.skip("RUNTIME TODOFIX.")
     bench = UnaryReductionBenchmark(
         op_name=op_name,
         torch_op=torch_op,
@@ -164,85 +155,73 @@ def mse_loss_input_fn(shape, cur_dtype, device):
             "nonzero",
             torch.nonzero,
             unary_input_fn,
-            FLOAT_DTYPES
-            + ([torch.int32] if vendor_name == "kunlunxin" else INT_DTYPES)
-            + BOOL_DTYPES,
-            marks=[
-                pytest.mark.nonzero,
-                pytest.mark.skipif(flag_gems.device == "musa", reason="RuntimeError"),
-            ],
+            FLOAT_DTYPES + INT_DTYPES + BOOL_DTYPES,
+            marks=pytest.mark.nonzero,
         ),
         pytest.param(
-            "CrossEntropyLoss",
+            "cross_entropy_loss",
             torch.nn.functional.cross_entropy,
             cross_entropy_loss_input_fn,
             FLOAT_DTYPES,
-            marks=pytest.mark.CrossEntropyLoss,
+            marks=pytest.mark.cross_entropy_loss,
         ),
         pytest.param(
             "cumsum",
             torch.cumsum,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=[
-                pytest.mark.cumsum,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.cumsum,
         ),
         pytest.param(
             "cummin",
             torch.cummin,
             cumsum_input_fn,
             FLOAT_DTYPES + INT_DTYPES,
-            marks=[
-                pytest.mark.cummin,
-                pytest.mark.skipif(True, reason="triton not supported"),
-            ],
+            marks=pytest.mark.cummin,
+        ),
+        pytest.param(
+            "cummax",
+            torch.cummax,
+            cumsum_input_fn,
+            FLOAT_DTYPES + INT_DTYPES,
+            marks=pytest.mark.cummax,
         ),
         pytest.param(
             "nll_loss",
             torch.nn.functional.nll_loss,
             nll_loss_input_fn,
             FLOAT_DTYPES,
-            marks=[
-                pytest.mark.NLLLoss,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.nll_loss,
         ),
         pytest.param(
             "mse_loss",
             torch.nn.functional.mse_loss,
             mse_loss_input_fn,
             FLOAT_DTYPES,
-            marks=[
-                pytest.mark.MSELoss,
-                pytest.mark.skipif(
-                    flag_gems.device == "musa", reason="ZeroDivisionError"
-                ),
-            ],
+            marks=pytest.mark.mse_loss,
         ),
     ],
 )
 def test_generic_reduction_benchmark(op_name, torch_op, input_fn, dtypes):
     if vendor_name == "kunlunxin":
-        if op_name in ["CrossEntropyLoss", "nll_loss"]:
+        if op_name in ["nll_loss"]:
             pytest.skip("RUNTIME TODOFIX")
-        elif op_name in ["cummin"]:
+        elif op_name in ["cummax"]:
             pytest.skip("CUMSUM UNSUPPORTED")
+    if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
+        # Compatible with older versions of LLVM
+        os.environ["DISABLE_LLVM_OPT"] = "1"
     bench = GenericBenchmark2DOnly(
         input_fn=input_fn, op_name=op_name, torch_op=torch_op, dtypes=dtypes
     )
+    if op_name == "cross_entropy_loss":
+        bench.set_gems(flag_gems.cross_entropy_loss)
     bench.run()
+    if vendor_name == "mthreads" and op_name in ["cummin", "cummax"]:
+        del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
-)
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.count_nonzero
 def test_perf_count_nonzero():
     def count_nonzero_input_fn(shape, dtype, device):
@@ -257,6 +236,154 @@ def test_perf_count_nonzero():
         torch_op=torch.count_nonzero,
         dtypes=FLOAT_DTYPES,
     )
+    bench.run()
+
+
+def avg_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    # Common case
+    yield inp, {
+        "kernel_size": 3,
+        "stride": 2,
+        "padding": 1,
+        "ceil_mode": False,
+        "count_include_pad": True,
+        "divisor_override": None,
+    }
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # With count_include_pad=False
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "ceil_mode": False,
+            "count_include_pad": False,
+            "divisor_override": None,
+        }
+        # With ceil_mode
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "ceil_mode": True,
+            "count_include_pad": True,
+            "divisor_override": None,
+        }
+        # With divisor_override
+        if shape[-2] >= 2 and shape[-1] >= 2:
+            yield inp, {
+                "kernel_size": 2,
+                "stride": 1,
+                "padding": 0,
+                "ceil_mode": False,
+                "count_include_pad": True,
+                "divisor_override": 3,
+            }
+
+
+class AvgPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+def max_pool2d_input_fn(shape, dtype, device):
+    inp = generate_tensor_input(shape, dtype, device)
+    yield inp, {
+        "kernel_size": 3,
+        "stride": 2,
+        "padding": 1,
+        "dilation": 1,
+        "ceil_mode": False,
+    }
+    if Config.bench_level == BenchLevel.COMPREHENSIVE:
+        # Non-square kernel/stride/padding
+        if shape[-2] > 5 and shape[-1] > 5:
+            yield inp, {
+                "kernel_size": (3, 5),
+                "stride": (2, 1),
+                "padding": (1, 2),
+                "dilation": 1,
+                "ceil_mode": False,
+            }
+        # With dilation
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 1,
+            "padding": 1,
+            "dilation": 2,
+            "ceil_mode": False,
+        }
+        # With ceil_mode
+        yield inp, {
+            "kernel_size": 3,
+            "stride": 2,
+            "padding": 1,
+            "dilation": 1,
+            "ceil_mode": True,
+        }
+
+
+class MaxPool2dBenchmark(GenericBenchmark):
+    def get_input_iter(self, cur_dtype) -> Generator:
+        shapes_4d = [
+            (4, 3, 224, 224),  # Typical input image size
+            (16, 64, 56, 56),  # Early ResNet layer output
+            (32, 128, 28, 28),  # Mid ResNet layer output
+            (64, 256, 14, 14),  # Later ResNet layer output
+            (128, 512, 7, 7),  # Final ResNet layer output
+        ]
+
+        for shape in shapes_4d:
+            yield from self.input_fn(shape, cur_dtype, self.device)
+
+
+@pytest.mark.max_pool2d
+def test_perf_max_pool2d():
+    bench = MaxPool2dBenchmark(
+        input_fn=max_pool2d_input_fn,
+        op_name="max_pool2d_with_indices",
+        torch_op=torch.nn.functional.max_pool2d_with_indices,
+        dtypes=FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.max_pool2d_with_indices)
+    bench.run()
+
+
+@pytest.mark.max_pool2d_backward
+def test_perf_max_pool2d_backward():
+    def max_pool2d_backward_input_fn(shape, dtype, device):
+        for forward_args in max_pool2d_input_fn(shape, dtype, device):
+            inp, params = forward_args
+            inp.requires_grad_(True)
+            output, indices = torch.nn.functional.max_pool2d_with_indices(inp, **params)
+            grad_output = torch.randn_like(output)
+            yield grad_output, inp, indices, params
+
+    def torch_max_pool2d_backward_wrapper(grad_output, input, indices, **kwargs):
+        output, _ = torch.nn.functional.max_pool2d_with_indices(input, **kwargs)
+        grad_input = torch.autograd.grad(
+            outputs=(output,), inputs=(input,), grad_outputs=(grad_output,)
+        )
+        return grad_input[0]
+
+    bench = MaxPool2dBenchmark(
+        input_fn=max_pool2d_backward_input_fn,
+        op_name="max_pool2d_backward",
+        torch_op=torch_max_pool2d_backward_wrapper,
+        dtypes=FLOAT_DTYPES,
+        is_backward=False,
+    )
+
+    bench.set_gems(flag_gems.max_pool2d_backward)
     bench.run()
 
 
@@ -278,6 +405,22 @@ def test_perf_dot():
     bench.run()
 
 
+@pytest.mark.trace
+def test_perf_trace():
+    def trace_input_fn(shape, dtype, device):
+        inp = generate_tensor_input(shape, dtype=dtype, device=device)
+        yield inp,
+
+    bench = GenericBenchmark2DOnly(
+        input_fn=trace_input_fn,
+        op_name="trace",
+        torch_op=torch.trace,
+        dtypes=FLOAT_DTYPES + INT_DTYPES,
+    )
+
+    bench.run()
+
+
 class quantileBenchmark(GenericBenchmark):
     def set_more_shapes(self):
         more_shapes_1d = [(4,), (1024,), (65535)]
@@ -292,7 +435,7 @@ def quantile_input_fn(shape, cur_dtype, device):
     yield inp, q, 0
 
 
-@pytest.mark.skipif(True, reason="Skipping Triton version")
+@pytest.mark.skipif(True, reason="Skipping Triton version due to poor performance")
 @pytest.mark.parametrize(
     "op_name, torch_op, input_fn, dtypes",
     [

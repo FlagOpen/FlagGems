@@ -3,8 +3,7 @@ import triton
 import triton.language as tl
 
 import flag_gems
-
-from ..runtime import torch_device_fn
+from flag_gems.runtime import torch_device_fn
 
 try:
     uint_to_uniform_float = tl.uint_to_uniform_float
@@ -36,12 +35,13 @@ except AttributeError:
 # https://github.com/pytorch/pytorch/blob/8a4597980c2692b73f35fb3c7145eaeaf2273e77/aten/src/ATen/cuda/CUDAGeneratorImpl.cpp#L452
 # It returns the current state of the default Philox RNG in seed and offset and
 # updates the next offset by adding `increment`.
-def philox_backend_seed_offset(increment, device=None):
-    device = device or torch_device_fn.current_device()
-    gen = torch_device_fn.default_generators[device]
-    state_copy = gen.get_state()
+def philox_backend_seed_offset(increment, generator=None):
+    if generator is None:
+        device = torch_device_fn.current_device()
+        generator = torch_device_fn.default_generators[device]
+    state_copy = generator.get_state()
     # TODO[kunlunxin]: we will upgrade torch version in 2025.04
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in ("kunlunxin", "aipu"):
         c0, c1 = state_copy.view(torch.int64)[-2], state_copy.view(torch.int64)[-1]
     else:
         c0, c1 = state_copy.view(torch.int64)
@@ -50,8 +50,19 @@ def philox_backend_seed_offset(increment, device=None):
     increment = (increment + 3) // 4 * 4
     c1 += increment
     # get_state returns a new tensor, so it needs set_state to update the actual generator state.
-    gen.set_state(state_copy)
+    generator.set_state(state_copy)
     return seed, offset
+
+
+def set_philox_state(seed, offset, device=None):
+    assert offset % 4 == 0
+    device = device or torch_device_fn.current_device()
+    gen = torch_device_fn.default_generators[device]
+    state_copy = gen.get_state()
+    state_copy.view(torch.int64)[0] = seed
+    state_copy.view(torch.int64)[1] = offset
+    gen.set_state(state_copy)
+    return
 
 
 def per_thread_offset(N, num_blocks, num_warps, warp_threads=32):

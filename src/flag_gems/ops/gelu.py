@@ -3,14 +3,11 @@ import logging
 import triton
 import triton.language as tl
 
-from ..utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
-try:
-    import torch_npu  # noqa: F401
-except:  # noqa: E722
-    pow = tl_extra_shim.pow
+pow = tl_extra_shim.pow
 tanh = tl_extra_shim.tanh
 
 
@@ -21,16 +18,15 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def gelu_none(x):
     scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    output = 0.5 * x * (1 + erf(x * scale))
+    output = 0.5 * x * (1 + erf(x.to(tl.float32) * scale))
     return output
 
 
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def gelu_tanh(x):
-    output = (
-        0.5 * x * (1 + tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
-    )
+    x_fp32 = x.to(tl.float32)
+    output = 0.5 * x * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * pow(x_fp32, 2))))
     return output
 
 
@@ -54,8 +50,8 @@ def gelu_backward_none(x, dy):
 def gelu_backward_tanh(x, dy):
     x_fp32 = x.to(tl.float32)
     # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x * (1 + 0.044715 * pow(x_fp32, 2)))
-    dydx = 0.5 * x * (
+    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * pow(x_fp32, 2)))
+    dydx = 0.5 * x_fp32 * (
         (1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
     ) + 0.5 * (1 + tanh_out)
     dx = dydx * dy

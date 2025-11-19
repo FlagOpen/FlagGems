@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -9,7 +10,9 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
+from .mm import mm
+
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
 
 
 def heur_block_n(args):
@@ -69,6 +72,39 @@ def mv_kernel(
 
 
 def mv(inp, vec):
+    logger.debug("GEMS MV")
+    assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
+    N, M = inp.shape
+    # TODO: fix autotune config has no item
+    if M == 5333 and N == 497:
+        return mv_cluster(inp, vec)
+
+    out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
+    with torch_device_fn.device(inp.device):
+        if M == 1:
+            mv_kernel[grid](
+                inp,
+                vec,
+                out,
+                N,
+                M,
+                inp.stride(0),
+                inp.stride(1),
+                vec.stride(0),
+                out.stride(0),
+                buffer_size_limit=256,
+            )
+        else:
+            os.environ["XMLIR_MATMUL_FAST_MODE"] = "1"
+            vec = vec[:, None]
+            out = mm(inp, vec)
+            out = out.squeeze()
+            del os.environ["XMLIR_MATMUL_FAST_MODE"]
+    return out
+
+
+def mv_cluster(inp, vec):
     logger.debug("GEMS MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
     N, M = inp.shape
