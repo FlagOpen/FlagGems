@@ -1560,6 +1560,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
 )
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, dtype):
+    init_seed(0)
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
