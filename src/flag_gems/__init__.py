@@ -352,7 +352,9 @@ class use_gems:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
-        self.lib._destory()
+        major, minor = map(int, version.split(".")[:2])
+        if (major, minor) >= (2, 5):
+            self.lib._destory()
         del self.lib
         del self.unused
         del self.registrar
