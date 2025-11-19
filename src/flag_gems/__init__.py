@@ -352,8 +352,7 @@ class use_gems:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
-        major, minor = map(int, version.split(".")[:2])
-        if (major, minor) >= (2, 5):
+        if torch.__version__ >= "2.5":
             self.lib._destory()
         del self.lib
         del self.unused
