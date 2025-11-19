@@ -56,12 +56,12 @@ def to_dtype_func_close_vec(x):
 
 
 def to_dtype(x, dtype, non_blocking=False, copy=False, memory_format=None):
+    logger.debug("GEMS TO.DTYPE")
     if x.dtype == torch.bfloat16:
         to_dtype_fn = to_dtype_func_close_vec
     else:
         to_dtype_fn = to_dtype_func
 
-    logger.debug("GEMS TO.DTYPE")
     if not copy and x.dtype == dtype:
         return x
     out = torch.empty_like(x, dtype=dtype, memory_format=memory_format)
