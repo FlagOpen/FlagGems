@@ -1,6 +1,9 @@
 import argparse
 
+import pytest
+
 from . import backend
+from .commom_utils import vendors
 
 
 class OpDispatcher:
@@ -71,11 +74,45 @@ class OpDispatcher:
 
     def get_cmd_args(self):
         parser = argparse.ArgumentParser(description="...")
-        parser.add_argument("--ops", type=str, required=False)
-        parser.add_argument("--configs", type=str, required=False)
-        parser.add_argument("--vendor", type=str, required=False)
-        parser.add_argument("--debug", type=str, required=False)
-        args = parser.parse_args()
+        _vendors = list(vendors.get_all_vendors().keys())
+        parser.add_argument(
+            "--ops",
+            type=str,
+            action="store",
+            default=None,
+            required=False,
+            choices=_vendors,
+            help="the operator provider(vendor) you want to specify",
+        )
+        parser.add_argument(
+            "--configs",
+            type=str,
+            action="store",
+            default=None,
+            required=False,
+            choices=_vendors,
+            help="the configrations provider(vendor) you want to specify",
+        )
+        parser.add_argument(
+            "--vendor",
+            type=str,
+            action="store",
+            default=None,
+            required=False,
+            choices=_vendors,
+            help="the configrations and the provider(vendor) you want to specify",
+        )
+        parser.add_argument(
+            "--debug",
+            type=str,
+            action="store",
+            default=None,
+            required=False,
+            choices=[False, True],
+            help="device to run reference tests on",
+        )
+        args, remaining = parser.parse_known_args()
+        pytest.main(remaining)
         return args
 
 
