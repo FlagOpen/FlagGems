@@ -191,15 +191,15 @@ def pytest_collection_modifyitems(config, items):
                 selected.append(item)
             else:
                 deselected.append(item)
-    if LIMIT:
-        func_name = item.function.__name__
-        counter.setdefault(func_name, 0)
+        if LIMIT:
+            func_name = item.function.__name__
+            counter.setdefault(func_name, 0)
 
-        if counter[func_name] < limit:
-            selected.append(item)
-            counter[func_name] += 1
-        else:
-            deselected.append(item)
+            if counter[func_name] < LIMIT:
+                selected.append(item)
+                counter[func_name] += 1
+            else:
+                deselected.append(item)
 
     if deselected:
         
