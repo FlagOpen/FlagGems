@@ -6,7 +6,7 @@ from datetime import datetime
 import pytest
 
 import flag_gems
-
+import torch
 device = flag_gems.device
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -40,6 +40,11 @@ def pytest_addoption(parser):
         choices=["none", "log"],
         help="tests function param recorded in log files or not",
     )
+    parser.addoption(
+        "--limit-cases",
+        type=int, 
+        default=None,
+    )
 
 
 def pytest_configure(config):
@@ -48,6 +53,9 @@ def pytest_configure(config):
 
     global QUICK_MODE
     QUICK_MODE = config.getoption("--mode") == "quick"
+
+    global LIMIT
+    LIMIT = config.getoption("--limit-cases")
 
     global RECORD_LOG
     RECORD_LOG = config.getoption("--record") == "log"
@@ -108,6 +116,92 @@ def pytest_sessionfinish(session, exitstatus):
 
 
 test_results = {}
+
+# conftest.py
+import itertools
+
+import pytest
+import torch
+from _pytest.python import Metafunc
+
+# 你想要“强制覆盖参数”的测试和它的参数表
+CUSTOM_TEST_PARAMS = {
+    "test_accuracy_dropout": {
+        "shape": [(2, 19, 7)],
+        "p": [0.1],
+        "dtype": [torch.float16],
+    },
+}
+
+# 给这些特殊 case 打的标记，方便 -m 选择（可改名）
+CUSTOM_PARAM_MARK = pytest.mark.custom_params
+
+
+# ① 接管指定测试的参数化逻辑
+@pytest.hookimpl(tryfirst=True)
+def pytest_generate_tests(metafunc: Metafunc) -> None:
+    test_name = metafunc.function.__name__
+
+    # 只接管在 CUSTOM_TEST_PARAMS 里的测试
+    if test_name not in CUSTOM_TEST_PARAMS:
+        return
+
+    cfg = CUSTOM_TEST_PARAMS[test_name]
+
+    # 用字典生成参数组合：这里就是一个笛卡尔积，当前例子其实只有 1 组
+    argnames = list(cfg.keys())  # ["shape", "p", "dtype"]
+    value_lists = [cfg[name] for name in argnames]
+    combos = list(itertools.product(*value_lists))
+
+    # 每一组组合都打上 custom_params mark
+    params = [
+        pytest.param(*vals, marks=CUSTOM_PARAM_MARK)
+        for vals in combos
+    ]
+
+    # 清空之前可能已有的 calls（防止叠加源码里的 parametrize）
+    metafunc._calls = []
+
+    # 用我们指定的参数重新 parametrize 这个测试
+    metafunc.parametrize(argnames, params)
+
+    # 把和这个测试相关的 parametrize 标记清掉，
+    # 避免 pytest 自带的 pytest_generate_tests 再处理一次
+    nodes = [
+        metafunc.definition,
+        getattr(metafunc, "cls", None),
+        getattr(metafunc, "module", None),
+    ]
+    for node in nodes:
+        if node is None:
+            continue
+        if hasattr(node, "own_markers"):
+            node.own_markers = [
+                m for m in node.own_markers if m.name != "parametrize"
+            ]
+
+    # 我们已经完全处理了这个测试，直接返回
+    return
+
+
+# ② 收集阶段只保留 custom_params 的用例，其他全部丢弃
+@pytest.hookimpl
+def pytest_collection_modifyitems(config, items):
+    selected = []
+    deselected = []
+
+    for item in items:
+        # 只保留打了 custom_params 标记的 item
+        if item.get_closest_marker("custom_params"):
+            selected.append(item)
+        else:
+            deselected.append(item)
+
+    if deselected:
+        # 通知 pytest 这些被 deselect 了（输出里会显示）
+        config.hook.pytest_deselected(items=deselected)
+        # 只留下我们要跑的那些
+        items[:] = selected
 
 
 @pytest.hookimpl(tryfirst=True)
