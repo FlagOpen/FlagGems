@@ -32,11 +32,13 @@ class OpDispatcher:
             self.debug_action()
 
     def debug_action(self):
+        debug_prefix = "\033[93m[DEBUG]:"
         print(
-            f"\033[93m[BEGUG]\033[0m: operator_vendor : {self.operator_vendor}\n",
-            f"operators : {self.operators}\n",
-            f"config_vendor: {self.config_vendor}\n"
-            f" configurations : {self.configurations}",
+            f" {debug_prefix} operator_vendor\033[0m : {self.operator_vendor}\n",
+            f"{debug_prefix} operators\033[0m : {self.operators}\n",
+            f"{debug_prefix} config_vendor\033[0m: {self.config_vendor}\n"
+            f" {debug_prefix} configurations\033[0m : {self.configurations}\n"
+            f" {debug_prefix} device_info\033[0m : {self.device_info}\n",
         )
 
     def _detect_user_action(self):
@@ -68,6 +70,7 @@ class OpDispatcher:
                     f"the reason is {failed_reasons[self.operator_vendor]}\033[0m"
                 )
                 self.operator_vendor = None
+                self.device_info = None
             else:
                 self.device_info = all_info[self.operator_vendor]
 
