@@ -69,7 +69,7 @@ def pytest_configure(config):
     LIMIT = config.getoption("--limit-cases")
 
     global COMPILER_CHOICE
-    COMPILER_CHOICE = config.getoption("--compiler-choice")=="flagtree"
+    COMPILER_CHOICE = config.getoption("--compiler-choice") == "flagtree"
 
     global RECORD_LOG
     RECORD_LOG = config.getoption("--record") == "log"
@@ -182,10 +182,22 @@ def pytest_generate_tests(metafunc: Metafunc) -> None:
 def pytest_collection_modifyitems(config, items):
     selected = []
     deselected = []
+    counter = {}
+    if not COMPILER_CHOICE and not LIMIT:
+        return 
+    if COMPILER_CHOICE:
+        for item in items:
+            if item.get_closest_marker("custom_params"):
+                selected.append(item)
+            else:
+                deselected.append(item)
+    if LIMIT:
+        func_name = item.function.__name__
+        counter.setdefault(func_name, 0)
 
-    for item in items:
-        if item.get_closest_marker("custom_params"):
+        if counter[func_name] < limit:
             selected.append(item)
+            counter[func_name] += 1
         else:
             deselected.append(item)
 
@@ -198,8 +210,7 @@ def pytest_collection_modifyitems(config, items):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
-    if not COMPILER_CHOICE :
-        return 
+        
     test_results[item.nodeid] = {"params": None, "result": None, "opname": None}
     param_values = {}
     request = item._request
