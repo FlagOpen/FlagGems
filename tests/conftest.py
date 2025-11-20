@@ -185,8 +185,9 @@ def pytest_collection_modifyitems(config, items):
     counter = {}
     if not COMPILER_CHOICE and not LIMIT:
         return 
-    if COMPILER_CHOICE:
-        for item in items:
+
+    for item in items:
+        if COMPILER_CHOICE:
             if item.get_closest_marker("custom_params"):
                 selected.append(item)
             else:
@@ -202,9 +203,7 @@ def pytest_collection_modifyitems(config, items):
                 deselected.append(item)
 
     if deselected:
-        
         config.hook.pytest_deselected(items=deselected)
-
         items[:] = selected
 
 
