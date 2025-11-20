@@ -282,7 +282,6 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
         gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0])
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
 @pytest.mark.parametrize(
     "shape",
