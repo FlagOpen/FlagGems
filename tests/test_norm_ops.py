@@ -288,7 +288,6 @@ def test_accuracy_layernorm_backward(shape, dtype, wb_none):
         del os.environ["DISABLE_LLVM_OPT"]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.instance_norm
 @pytest.mark.parametrize(
     "shape",
@@ -558,8 +557,6 @@ def test_accuracy_rmsnorm(shape, dtype):
     )
 
     gems_assert_close(res_out, ref_out, dtype)
-    if flag_gems.vendor_name == "kunlunxin" and shape == (200, 40999, 3):
-        pytest.skip("wait for backward support")
     gems_assert_close(res_grad, ref_grad, dtype)
     gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
 
