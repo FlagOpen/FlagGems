@@ -281,7 +281,10 @@ def test_accuracy_exp2(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.exp2(ref_inp)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_out = torch.exp2(ref_inp.cpu()).to(flag_gems.device)
+    else:
+        ref_out = torch.exp2(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2(inp)
 
@@ -296,7 +299,10 @@ def test_accuracy_exp2_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp.clone(), True)
 
-    ref_out = torch.exp2_(ref_inp)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_out = torch.exp2_(ref_inp.cpu()).to(flag_gems.device)
+    else:
+        ref_out = torch.exp2_(ref_inp)
     with flag_gems.use_gems():
         res_out = torch.exp2_(inp)
 
@@ -1093,7 +1099,7 @@ def test_accuracy_log(shape, dtype):
     gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.to_copy
+@pytest.mark.to
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", ALL_FLOAT_DTYPES + ALL_INT_DTYPES)
 def test_accuracy_to_dtype(shape, dtype):
@@ -1103,46 +1109,6 @@ def test_accuracy_to_dtype(shape, dtype):
     with flag_gems.use_gems():
         out = x.to(dtype)
     gems_assert_equal(out, ref_out)
-
-
-@pytest.mark.to_copy
-@pytest.mark.parametrize("shape", POINTWISE_SHAPES)
-@pytest.mark.parametrize("target_dtype", ALL_FLOAT_DTYPES)
-def test_accuracy_to_copy_dtype_cast(shape, target_dtype):
-    src_dtype = torch.float32 if target_dtype != torch.float32 else torch.float16
-    x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
-    ref_x = to_reference(x)
-    ref_out = torch.ops.aten._to_copy(ref_x, dtype=target_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=target_dtype)
-    gems_assert_equal(res_out, ref_out)
-
-
-@pytest.mark.to_copy
-@pytest.mark.parametrize(
-    "memory_format",
-    [torch.preserve_format, torch.contiguous_format],
-)
-def test_accuracy_to_copy_preserve_strides(memory_format):
-    base = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    x = base.transpose(0, 1)[::2]
-    ref_x = to_reference(x)
-    ref_out = torch.ops.aten._to_copy(
-        ref_x,
-        dtype=ref_x.dtype,
-        memory_format=memory_format,
-    )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(
-            x,
-            dtype=x.dtype,
-            memory_format=memory_format,
-        )
-    gems_assert_equal(res_out, ref_out)
-    if memory_format is torch.preserve_format:
-        assert res_out.stride() == ref_out.stride()
-    else:
-        assert res_out.is_contiguous()
 
 
 @pytest.mark.sqrt

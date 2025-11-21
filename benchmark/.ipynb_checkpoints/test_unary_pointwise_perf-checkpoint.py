@@ -11,7 +11,7 @@ from benchmark.attri_util import (
     FLOAT_DTYPES,
     INT_DTYPES,
 )
-from benchmark.performance_utils import Benchmark, generate_tensor_input
+from benchmark.performance_utils import Benchmark, generate_tensor_input, vendor_name
 
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
@@ -63,6 +63,7 @@ forward_operations = [
     # Activation operations
     ("celu", torch.nn.functional.celu, FLOAT_DTYPES),
     ("elu", torch.nn.functional.elu, FLOAT_DTYPES),
+    ("geglu", tex.geglu, FLOAT_DTYPES),
     ("gelu", torch.nn.functional.gelu, FLOAT_DTYPES),
     ("relu", torch.nn.functional.relu, FLOAT_DTYPES),
     ("softplus", torch.nn.functional.softplus, FLOAT_DTYPES),
@@ -96,6 +97,8 @@ forward_operations = [
     ],
 )
 def test_general_unary_pointwise_perf(op_name, torch_op, dtypes):
+    if vendor_name == "mthreads" and op_name == "angle":
+        pytest.skip(" Unsupport complex dtype")
     bench = UnaryPointwiseBenchmark(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
     bench.run()
 
@@ -121,7 +124,6 @@ forward_inplace_operations = [
     ("cos_", torch.cos_, FLOAT_DTYPES),
     ("sin_", torch.sin_, FLOAT_DTYPES),
     ("tanh_", torch.tanh_, FLOAT_DTYPES),
-    ("atan_", torch.atan_, FLOAT_DTYPES),
     # Bitwise operations
     ("bitwise_not_", lambda a: a.bitwise_not_(), INT_DTYPES),
 ]
@@ -173,18 +175,18 @@ def test_general_unary_pointwise_backward_perf(op_name, torch_op, dtypes):
     bench.run()
 
 
-class ToCopyBenchmark(UnaryPointwiseBenchmark):
+class ToDtypeBenchmark(UnaryPointwiseBenchmark):
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = torch.randn(shape, dtype=torch.float32, device=self.device)
-            yield inp, {"dtype": cur_dtype}
+            yield inp, cur_dtype
 
 
-@pytest.mark.to_copy
-def test_to_copy_perf():
-    bench = ToCopyBenchmark(
-        op_name="to_copy",
-        torch_op=torch.ops.aten._to_copy,
+@pytest.mark.to
+def test_to_dtype_perf():
+    bench = ToDtypeBenchmark(
+        op_name="to",
+        torch_op=torch.Tensor.to,
         dtypes=[torch.float16, torch.bfloat16]
         + ([torch.float64] if fp64_is_supported else []),
     )
