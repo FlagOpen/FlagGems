@@ -9,17 +9,23 @@ import triton.language as tl
 def create_tma_device_descriptor(tensor, block_m, block_n, device):
     assert tensor.dim() == 2, "TMA descriptor only supports 2D tensors"
     TMA_DESCRIPTOR_SIZE = 64
-    desc = np.empty(TMA_DESCRIPTOR_SIZE, dtype=np.int8)
+    desc_np = np.empty(TMA_DESCRIPTOR_SIZE, dtype=np.int8)
+    shapes = [tensor.shape[0], tensor.shape[1]]
+    if not tensor.is_contiguous():
+        assert (
+            tensor.stride(0) == 1 and tensor.stride(1) == tensor.shape[0]
+        ), "TMA descriptor only supports contiguous or transposed 2D tensors"
+        shapes.reverse()
     triton.runtime.driver.active.utils.fill_2d_tma_descriptor(
         tensor.data_ptr(),
-        tensor.shape[0],
-        tensor.shape[1],
+        shapes[0],
+        shapes[1],
         block_m,
         block_n,
         tensor.element_size(),
-        desc,
+        desc_np,
     )
-    desc = torch.tensor(desc, device=device)
+    desc = torch.tensor(desc_np, device=device)
     return desc
 
 
@@ -35,10 +41,6 @@ def get_triton_dtype(dtype):
 def should_enable_sqmma(a_dtype, b_dtype, M, N, K):
     return (
         (os.getenv("MUSA_ENABLE_SQMMA", "0") == "1")
-        and (
-            ((a_dtype is torch.float16) and (b_dtype is torch.float16))
-            or ((a_dtype is torch.bfloat16) and (b_dtype is torch.bfloat16))
-        )
-        and (M != 384)
-        and ((M % 128 == 0) and (N % 128 == 0) and (K % 64 == 0))
+        and (a_dtype in [torch.float16, torch.bfloat16] and a_dtype.itemsize == 2)
+        and ((M, N, K) not in [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)])
     )

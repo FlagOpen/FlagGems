@@ -1,4 +1,5 @@
 import math
+import os
 import random
 
 import pytest
@@ -68,6 +69,22 @@ def linspace_input_fn(shape, dtype, device):
     },
 
 
+def logspace_input_fn(shape, dtype, device):
+    base = 1.05
+    limit = math.log2(torch.finfo(dtype).max - 1) / math.log2(
+        base
+    )  # calculate the max limit according to dtype
+    end = int(limit)
+    yield {
+        "start": 0,
+        "end": end,
+        "steps": math.prod(shape),  # steps influence speed up a lot
+        "base": base,
+        "dtype": dtype,
+        "device": device,
+    },
+
+
 def _2D_input_fn(shape, dtype, device):
     """
     Generate input for 2D input
@@ -110,7 +127,6 @@ tensor_constructor_operations = [
     ("zeros_like", torch.zeros_like, unary_input_fn),
     # tensor constructor with given value
     ("fill", torch.fill, fill_input_fn),
-    ("fill_", torch.fill_, fill_input_fn),
     ("masked_fill", torch.masked_fill, masked_fill_input_fn),
     ("full", torch.full, full_input_fn),
     ("full_like", torch.full_like, full_like_input_fn),
@@ -120,6 +136,8 @@ tensor_constructor_operations = [
     ("linspace", torch.linspace, linspace_input_fn),
     # eye
     ("eye", torch.eye, _2D_input_fn),
+    # logspace
+    ("logspace", torch.logspace, logspace_input_fn),
 ]
 
 
@@ -139,12 +157,33 @@ def test_tensor_constructor_benchmark(op_name, torch_op, input_fn):
     bench.run()
 
 
-@pytest.mark.skipif(
-    vendor_name == "kunlunxin" or vendor_name == "hygon", reason="RESULT TODOFIX"
+tensor_constructor_inplace_operations = [
+    # tensor constructor with given value
+    ("fill_", torch.fill_, fill_input_fn),
+    ("masked_fill_", lambda a, b, c: a.masked_fill_(b, c), masked_fill_input_fn),
+]
+
+
+@pytest.mark.parametrize(
+    "op_name, torch_op, input_fn",
+    [
+        pytest.param(op, fn, input_fn, marks=getattr(pytest.mark, op, None))
+        for op, fn, input_fn in tensor_constructor_inplace_operations
+    ],
 )
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
+def test_tensor_constructor_inplace_benchmark(op_name, torch_op, input_fn):
+    bench = GenericBenchmark(
+        input_fn=input_fn, op_name=op_name, torch_op=torch_op, is_inplace=True
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.randperm
 def test_perf_randperm():
+    if flag_gems.vendor_name == "mthreads":
+        os.environ["DISABLE_LLVM_OPT"] = "1"
+
     def randperm_input_fn(shape, dtype, device):
         yield {"n": shape[0], "dtype": dtype, "device": device},
 
@@ -155,3 +194,6 @@ def test_perf_randperm():
         dtypes=[torch.int32, torch.int64],
     )
     bench.run()
+
+    if flag_gems.vendor_name == "mthreads":
+        del os.environ["DISABLE_LLVM_OPT"]

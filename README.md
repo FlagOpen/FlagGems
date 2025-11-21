@@ -1,6 +1,6 @@
 [中文版](./README_cn.md)
 
-![img_v3_02gp_8115f603-cc89-4e96-ae9d-f01b4fef796g](https://github.com/user-attachments/assets/97950fc6-62bb-4b6a-b8d5-5751c14492fa)
+<img width="4750" height="958" alt="github+banner__2025-11-11+13_27_10" src="https://github.com/user-attachments/assets/ac57a145-4653-42b6-9be1-241d91871d1d" />
 
 ## Introduction
 
@@ -11,7 +11,7 @@ By registering with the ATen backend of PyTorch, FlagGems facilitates a seamless
 We created WeChat group for FlagGems. Scan the QR code to join the group chat! To get the first hand message about our updates and new release, or having any questions or ideas, join us now!
 
 <p align="center">
- <img src="https://github.com/user-attachments/assets/69019a23-0550-44b1-ac42-e73f06cb55d6" alt="bge_wechat_group" class="center" width="200">
+<img width="204" height="180" alt="开源小助手" src="https://github.com/user-attachments/assets/da42799f-c7f7-43f0-91c3-f4935b24e968" />
 </p>
 
 ## Features
@@ -48,7 +48,6 @@ FlagGems introduces `LibEntry`, which independently manages the kernel cache and
 ### C++ Runtime
 
 FlagGems can be installed either as a pure Python package or as a package with C++ extensions. The C++ runtime is designed to address the overhead of the Python runtime and improve end-to-end performance.
-For more details, please refer to [c++ extensions](docs/build_flaggems_with_c_extensions.md).
 
 ## Changelog
 
@@ -135,7 +134,7 @@ If you find our work useful, please consider citing our project:
 
 ## Contact us
 
-If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:flaggems@baai.ac.cn">flaggems@baai.ac.cn</a>.
+If you have any questions about our project, please submit an issue, or contact us through <a href="mailto:contact@flagos.io">contact@flagos.io</a>.
 
 ## License
 

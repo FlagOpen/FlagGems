@@ -2,6 +2,10 @@ import torch
 import triton
 
 
+def simple_elementwise_blocksize_heur(args):
+    return 1024
+
+
 def argmax_heur_block_m(args):
     return 4 if args["M"] < 4096 else 8
 
@@ -33,8 +37,10 @@ def bmm_heur_divisible_k(args):
 def dropout_heur_block(args):
     if args["N"] <= 512:
         return 512
-    else:
+    elif args["N"] <= 1024:
         return 1024
+    else:
+        return 4096
 
 
 def dropout_heur_num_warps(args):
@@ -171,7 +177,7 @@ def softmax_heur_tile_n_bwd_non_inner(args):
     return max(1, 1024 // args["TILE_K"])
 
 
-def softmax_heru_tile_m(args):
+def softmax_heur_tile_m(args):
     return max(1, 1024 // args["TILE_N"])
 
 
@@ -281,7 +287,7 @@ HEURISTICS_CONFIGS = {
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
     "softmax_backward_inner": {
-        "TILE_M": softmax_heru_tile_m,
+        "TILE_M": softmax_heur_tile_m,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
     },
     "uniform": {
@@ -301,5 +307,9 @@ HEURISTICS_CONFIGS = {
     },
     "vdot": {
         "BLOCK_SIZE": vdot_heur_block_size,
+    },
+    "elementwise_generic": {
+        "BLOCK_SIZE": simple_elementwise_blocksize_heur,
+        "num_warps": lambda args: 8,
     },
 }

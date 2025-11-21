@@ -79,10 +79,10 @@ def remainder_kernel(a_ptr, b_ptr, c_ptr, size, BLOCK_SIZE: tl.constexpr):
 
 
 @triton.jit
-def true_div_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
+def true_div_kernel_(a_ptr, b_ptr, c_ptr, size, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < M * N
+    mask = offsets < size
 
     a = tl.load(a_ptr + offsets, mask=mask)
     b = tl.load(b_ptr + offsets, mask=mask)
@@ -91,10 +91,10 @@ def true_div_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
 
 
 @triton.jit
-def trunc_divide_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
+def trunc_divide_kernel_(a_ptr, b_ptr, c_ptr, size, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < M * N
+    mask = offsets < size
 
     a = tl.load(a_ptr + offsets, mask=mask)
     b = tl.load(b_ptr + offsets, mask=mask)
@@ -104,10 +104,10 @@ def trunc_divide_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
 
 
 @triton.jit
-def float_floordiv_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
+def float_floordiv_kernel_(a_ptr, b_ptr, c_ptr, size, N, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < M * N
+    mask = offsets < size
     col = offsets % N
 
     a = tl.load(a_ptr + offsets, mask=mask)
@@ -126,10 +126,10 @@ def float_floordiv_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
 
 
 @triton.jit
-def int_floordiv_kernel_(a_ptr, b_ptr, c_ptr, M, N, BLOCK_SIZE: tl.constexpr):
+def int_floordiv_kernel_(a_ptr, b_ptr, c_ptr, size, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < M * N
+    mask = offsets < size
 
     a = tl.load(a_ptr + offsets, mask=mask).to(tl.int32)
     b = tl.load(b_ptr + offsets, mask=mask).to(tl.int32)

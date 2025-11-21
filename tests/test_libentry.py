@@ -351,6 +351,10 @@ def test_hash_changes_when_dependency_modified():
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason=" Cannot re-initialize MUSA in forked subprocess",
+)
 def test_libcache_vllm_signal_scenario():
     import multiprocessing
     import signal
@@ -374,11 +378,16 @@ def test_libcache_vllm_signal_scenario():
         while True:
             time.sleep(0.1)
 
+    from flag_gems.runtime.backend import vendor_module
     from flag_gems.utils.code_cache import config_cache_dir
     from flag_gems.utils.libentry import major_version, minor_version
 
-    cache_path = config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
-
+    cache_file_name = (
+        f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
+        if vendor_module.vendor_info.vendor_name == "nvidia"
+        else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+    )
+    cache_path = config_cache_dir() / cache_file_name
     # Start child process
     process = multiprocessing.Process(target=child_process)
     process.start()
@@ -408,6 +417,10 @@ def test_libcache_vllm_signal_scenario():
         process.join()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason=" Cannot re-initialize MUSA in forked subprocess",
+)
 def test_libcache_concurrent_write_on_signal():
     """
     Tests that LibCache can handle concurrent writes from multiple processes
@@ -436,11 +449,16 @@ def test_libcache_concurrent_write_on_signal():
         while True:
             time.sleep(0.1)
 
+    from flag_gems.runtime.backend import vendor_module
     from flag_gems.utils.code_cache import config_cache_dir
     from flag_gems.utils.libentry import major_version, minor_version
 
-    cache_path = config_cache_dir() / f"TunedConfig_{major_version}_{minor_version}.db"
-
+    cache_file_name = (
+        f"TunedConfig_{torch.cuda.get_device_name().replace(' ', '_')}_triton_{major_version}_{minor_version}.db"
+        if vendor_module.vendor_info.vendor_name == "nvidia"
+        else f"TunedConfig_{vendor_module.vendor_info.vendor_name}_triton_{major_version}_{minor_version}.db"
+    )
+    cache_path = config_cache_dir() / cache_file_name
     if cache_path.exists():
         try:
             with sqlite3.connect(cache_path, timeout=10.0) as conn:
@@ -484,7 +502,6 @@ def test_libcache_concurrent_write_on_signal():
                 p.kill()
         if cache_path.exists():
             try:
-                with sqlite3.connect(cache_path) as conn:
-                    conn.execute(f"DROP TABLE IF EXISTS {TABLE_NAME}")
+                cache_path.unlink()
             except sqlite3.Error:
                 pass

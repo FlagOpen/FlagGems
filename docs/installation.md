@@ -28,7 +28,7 @@ If you do not want build isolation (often in the case with editable installation
 Example command:
 
 ```shell
-pip install scikit-build-core>=0.11 pybind
+pip install -U scikit-build-core>=0.11 pybind11 ninja cmake
 ```
 
 FlagGems can be installed as either a pure python package or a package with C extensions. By default, the C extensions are not built, as this is still an experimental feature.
@@ -82,7 +82,7 @@ Editable installation with external TritonJIT
 ```shell
 pip install -U scikit-build-core ninja cmake pybind11
 
-CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DDFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=<install path of triton-jit>" \
+CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=<install path of triton-jit>" \
 pip install --no-build-isolation -v -e .
 ```
 

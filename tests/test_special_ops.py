@@ -11,6 +11,7 @@ import flag_gems
 
 from .accuracy_utils import (
     ALL_INT_DTYPES,
+    ARANGE_START,
     BOOL_TYPES,
     FLOAT_DTYPES,
     INT_DTYPES,
@@ -292,7 +293,10 @@ def test_embedding_backward(
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.cfloat])
 def test_accuracy_resolve_neg(shape, dtype):
-    x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "ascend":
+        x = torch.randn(size=shape, dtype=dtype).to(device=flag_gems.device)
+    else:
+        x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     y = x.conj()
     z = y.imag
     assert z.is_neg()
@@ -353,7 +357,7 @@ def test_accuracy_resolve_conj(shape, dtype):
     assert not z.is_conj()
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="AssertionError")
 @pytest.mark.unique
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -530,7 +534,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name == "cambricon", reason="fix")
-@pytest.mark.upsample
+@pytest.mark.upsample_bicubic2d_aa
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.7)])
 @pytest.mark.parametrize(
@@ -568,7 +572,7 @@ def test_upsample_bicubic2d_aa(dtype, shape, scale, align_corners):
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
-@pytest.mark.upsample
+@pytest.mark.upsample_nearest2d
 @pytest.mark.parametrize("scale", [(2, 2), (2.1, 3.7), (1.3, 5.1), (0.3, 0.5)])
 @pytest.mark.parametrize("shape", UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -583,7 +587,7 @@ def test_upsample_nearest2d(dtype, shape, scale):
 
 
 @pytest.mark.arange
-@pytest.mark.parametrize("start", [0, 1, 3])
+@pytest.mark.parametrize("start", ARANGE_START)
 @pytest.mark.parametrize("step", [1, 2, 5])
 @pytest.mark.parametrize("end", [128, 256, 1024])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
@@ -592,10 +596,13 @@ def test_upsample_nearest2d(dtype, shape, scale):
     "pin_memory", [False, None]
 )  # Since triton only target to GPU, pin_memory only used in CPU tensors.
 def test_arange(start, step, end, dtype, device, pin_memory):
-    if TO_CPU:
-        return
     ref_out = torch.arange(
-        start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
+        start,
+        end,
+        step,
+        dtype=dtype,
+        device="cpu" if TO_CPU else device,
+        pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
         res_out = torch.arange(
@@ -613,15 +620,13 @@ def test_arange(start, step, end, dtype, device, pin_memory):
 @pytest.mark.parametrize("device", [device, None])
 @pytest.mark.parametrize("pin_memory", [False, None])
 def test_linspace(start, end, steps, dtype, device, pin_memory):
-    if TO_CPU:
-        return
     ref_out = torch.linspace(
         start,
         end,
         steps,
         dtype=dtype,
         layout=None,
-        device=device,
+        device="cpu" if TO_CPU else device,
         pin_memory=pin_memory,
     )
     with flag_gems.use_gems():
@@ -634,13 +639,51 @@ def test_linspace(start, end, steps, dtype, device, pin_memory):
             device=device,
             pin_memory=pin_memory,
         )
-    if dtype in [torch.float16, torch.bfloat16]:
+    if dtype in [torch.float16, torch.bfloat16, torch.float32, None]:
         gems_assert_close(res_out, ref_out, dtype=dtype)
     else:
         gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="AssertionError")
+@pytest.mark.logspace
+@pytest.mark.parametrize("start", [0, 2, 4])
+@pytest.mark.parametrize("end", [32, 40])
+@pytest.mark.parametrize("steps", [0, 1, 8, 17])
+@pytest.mark.parametrize("base", [1.2])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES + ALL_INT_DTYPES + [None])
+@pytest.mark.parametrize("device", [device])
+@pytest.mark.parametrize("pin_memory", [False])
+def test_logspace(start, end, steps, base, dtype, device, pin_memory):
+    ref_out = torch.logspace(
+        start,
+        end,
+        steps,
+        base,
+        dtype=dtype,
+        layout=None,
+        device="cpu",
+        pin_memory=pin_memory,
+    ).to(
+        "cpu" if TO_CPU else device
+    )  # compute on cpu and move back to device
+    with flag_gems.use_gems():
+        res_out = torch.logspace(
+            start,
+            end,
+            steps,
+            base,
+            dtype=dtype,
+            layout=None,
+            device=device,
+            pin_memory=pin_memory,
+        )
+    if dtype in [torch.float16, torch.bfloat16, torch.float32, None]:
+        gems_assert_close(res_out, ref_out, dtype=dtype)
+    else:
+        gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.isin
 @pytest.mark.parametrize("shape", SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -1089,13 +1132,16 @@ def get_diagonal_backward_shape_and_dims():
 
 
 @pytest.mark.skipif(flag_gems.device == "kunlunxin", reason="tmp skip")
-@pytest.mark.skipif(flag_gems.device == "musa", reason="MUSA error: unknown error")
 @pytest.mark.diagonal
 @pytest.mark.parametrize("shape, dim1, dim2", get_diagonal_backward_shape_and_dims())
 @pytest.mark.parametrize("offset", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
-    torch.empty(1, device="cuda", requires_grad=True).backward()
+    if flag_gems.vendor_name == "mthreads":
+        torch.manual_seed(123)
+        torch.musa.manual_seed_all(123)
+
+    torch.empty(1, device=flag_gems.device, requires_grad=True).backward()
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp)
 
@@ -1113,6 +1159,7 @@ def test_accuracy_diagonal_backward(shape, dtype, dim1, dim2, offset):
     gems_assert_equal(res_in_grad, ref_in_grad)
 
 
+@pytest.mark.skipif(flag_gems.vendor_name == "hygon", reason="RESULT TODOFIX")
 @pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="RESULT TODOFIX")
 @pytest.mark.sort
 @pytest.mark.parametrize("batch_size", [4, 8])
@@ -1150,7 +1197,6 @@ def test_sort(batch_size, hiddensize, descending, dtype, dim):
     gems_assert_equal(res_index, ref_index)
 
 
-@pytest.mark.skipif(flag_gems.device == "musa", reason="ZeroDivisionError")
 @pytest.mark.kron
 @pytest.mark.parametrize("shape", KRON_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + INT_DTYPES + BOOL_TYPES)
@@ -1209,3 +1255,54 @@ def test_accuracy_contiguous(shape, dtype):
     assert res_out.is_contiguous() is True
     assert res_out.stride() == ref_out.stride()
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.rwkv_ka_fusion
+@pytest.mark.parametrize("T", [2**d for d in range(4, 15, 2)])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_rwkv_kafusion(T, dtype):
+    H = 8
+    N = 64
+    C = H * N
+    k = torch.rand(T, C, dtype=dtype, device=flag_gems.device)
+    kk = torch.rand(C, dtype=dtype, device=flag_gems.device)
+    a = torch.rand(T, C, dtype=dtype, device=flag_gems.device)
+    ka = torch.rand(C, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        o_k, o_kk, o_kka = flag_gems.rwkv_ka_fusion(k, kk, a, ka, H, N)
+
+    ref_k = to_reference(k, True)
+    ref_kk = to_reference(kk, True)
+    ref_a = to_reference(a, True)
+    ref_ka = to_reference(ka, True)
+
+    ref_o_kk = torch.nn.functional.normalize(
+        (ref_k * ref_kk).view(T, H, N), dim=-1, p=2.0
+    ).view(T, H * N)
+    ref_o_k = ref_k * (1 + (ref_a - 1) * ref_ka)
+    ref_o_kka = ref_o_kk * ref_a
+
+    gems_assert_close(o_k, ref_o_k, dtype, equal_nan=True)
+    gems_assert_close(o_kk, ref_o_kk, dtype, equal_nan=True)
+    gems_assert_close(o_kka, ref_o_kka, dtype, equal_nan=True)
+
+
+@pytest.mark.rwkv_mm_sparsity
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_rwkv_mmsparsity(dtype):
+    n = 16384
+    embedding_dim = 4096
+
+    k = torch.randn(n, dtype=dtype, device=flag_gems.device)
+    k = torch.relu(k)
+    V_ = torch.randn(n, embedding_dim, dtype=dtype, device=flag_gems.device)
+
+    with flag_gems.use_gems():
+        res = flag_gems.rwkv_mm_sparsity(k, V_)
+
+    ref_k = to_reference(k, True)
+    ref_V_ = to_reference(V_, True)
+    ref_res = ref_k @ ref_V_
+
+    gems_assert_close(res, ref_res, dtype, equal_nan=True)

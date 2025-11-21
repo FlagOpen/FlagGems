@@ -183,7 +183,7 @@ def flash_mla(
 
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
-    major, _ = torch.cuda.get_device_capability(device)
+    major, _ = torch_device_fn.get_device_capability(device)
     if major == 9:
         BLOCK_H = 64
         num_stages = 3
@@ -191,6 +191,9 @@ def flash_mla(
         BLOCK_H = 32
         num_stages = 2
     elif major == 7 and vendor_name == "iluvatar":
+        BLOCK_H = 32
+        num_stages = 1
+    elif major == 3 and vendor_name == "mthreads":
         BLOCK_H = 32
         num_stages = 1
     else:

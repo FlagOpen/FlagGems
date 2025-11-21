@@ -2,7 +2,8 @@ from typing import Optional, Tuple
 
 import torch
 
-from flag_gems.patches.patch_util import patch_module_method
+import flag_gems
+from flag_gems.patches.patch_util import patch_module_method, patch_vllm_lib
 
 
 def custom_gems_rms_forward_cuda(self, x, residual=None):
@@ -138,7 +139,7 @@ def custom_gems_flash_mla_forward(
     return o
 
 
-def custom_gems_flash_attention_impl_forwad(
+def custom_gems_flash_attention_impl_forward(
     self,
     layer: torch.nn.Module,
     query: torch.Tensor,
@@ -202,16 +203,16 @@ def custom_gems_flash_attention_impl_forwad(
             max_seqlen_q = local_metadata.local_max_query_len
             max_seqlen_k = local_metadata.local_max_seq_len
             block_table = local_metadata.local_block_table
-            # scheduler_metadata = local_metadata.local_scheduler_metadata
+            scheduler_metadata = local_metadata.local_scheduler_metadata
         else:
             cu_seqlens_q = attn_metadata.query_start_loc
             seqused_k = attn_metadata.seq_lens
             max_seqlen_q = attn_metadata.max_query_len
             max_seqlen_k = attn_metadata.max_seq_len
             block_table = attn_metadata.block_table
-            # scheduler_metadata = attn_metadata.scheduler_metadata
+            scheduler_metadata = attn_metadata.scheduler_metadata
 
-        # descale_shape = (cu_seqlens_q.shape[0] - 1, key.shape[1])
+        descale_shape = (cu_seqlens_q.shape[0] - 1, key.shape[1])
 
         flash_attn_varlen_func(
             q=query[:num_actual_tokens],
@@ -228,47 +229,107 @@ def custom_gems_flash_attention_impl_forwad(
             window_size=self.sliding_window,
             block_table=block_table,
             softcap=self.logits_soft_cap,
-            # scheduler_metadata=scheduler_metadata,
-            # fa_version=self.vllm_flash_attn_version,
-            # q_descale=layer._q_scale.expand(descale_shape),
-            # k_descale=layer._k_scale.expand(descale_shape),
-            # v_descale=layer._v_scale.expand(descale_shape),
+            scheduler_metadata=scheduler_metadata,
+            fa_version=2,
+            q_descale=layer._q_scale.expand(descale_shape),
+            k_descale=layer._k_scale.expand(descale_shape),
+            v_descale=layer._v_scale.expand(descale_shape),
         )
         return output
 
     # TODO: Support cascade_attention.
     raise NotImplementedError("Cascade attention is not implemented in flag_gems.")
 
-    # assert not use_local_attn, "Cascade attention does not support local attention."
-    # # Cascade attention (rare case).
-    # cascade_attention(
-    #     output[:num_actual_tokens],
-    #     query[:num_actual_tokens],
-    #     key_cache,
-    #     value_cache,
-    #     cu_query_lens=attn_metadata.query_start_loc,
-    #     max_query_len=attn_metadata.max_query_len,
-    #     cu_prefix_query_lens=attn_metadata.cu_prefix_query_lens,
-    #     prefix_kv_lens=attn_metadata.prefix_kv_lens,
-    #     suffix_kv_lens=attn_metadata.suffix_kv_lens,
-    #     max_kv_len=attn_metadata.max_seq_len,
-    #     softmax_scale=self.scale,
-    #     alibi_slopes=self.alibi_slopes,
-    #     sliding_window=self.sliding_window,
-    #     logits_soft_cap=self.logits_soft_cap,
-    #     block_table=attn_metadata.block_table,
-    #     common_prefix_len=attn_metadata.common_prefix_len,
-    #     fa_version=self.vllm_flash_attn_version,
-    #     prefix_scheduler_metadata=attn_metadata.prefix_scheduler_metadata,
-    #     suffix_scheduler_metadata=attn_metadata.scheduler_metadata,
-    #     q_descale=layer._q_scale,
-    #     k_descale=layer._k_scale,
-    #     v_descale=layer._v_scale,
-    # )
-    # return output
+
+def custom_silu_and_mul(out: torch.Tensor, input: torch.Tensor):
+    d = input.size(-1) // 2
+    x, y = input.split(d, dim=-1)
+    flag_gems.silu_and_mul_out(x, y, out)
+
+
+def custom_moe_align_block_size(
+    topk_ids: torch.Tensor,
+    num_experts: int,
+    block_size: int,
+    sorted_token_ids: torch.Tensor,
+    experts_ids: torch.Tensor,
+    num_tokens_post_pad: torch.Tensor,
+):
+    flag_gems.moe_align_block_size_triton(
+        topk_ids,
+        num_experts,
+        block_size,
+        sorted_token_ids,
+        experts_ids,
+        num_tokens_post_pad,
+    )
+
+
+def custom_topk_softmax(
+    topk_weights, topk_indices, token_expert_indices, gating_output
+):
+    flag_gems.topk_softmax(
+        topk_weights,
+        topk_indices,
+        token_expert_indices,
+        gating_output,
+    )
+
+
+def custom_get_scheduler_metadata(
+    batch_size: int,
+    max_seqlen_q: int,
+    max_seqlen_k: int,
+    num_heads: int,
+    num_heads_k: int,
+    headdim: int,
+    headdim_v: int,
+    qkv_dtype: torch.dtype,
+    seqused_k: torch.Tensor,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_k: Optional[torch.Tensor] = None,
+    cu_seqlens_k_new: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    leftpad_k: Optional[torch.Tensor] = None,
+    page_size: Optional[int] = None,
+    max_seqlen_k_new: int = 0,
+    is_causal: bool = False,
+    window_size_left: int = -1,
+    window_size_right: int = -1,
+    has_softcap: bool = False,
+    num_splits: int = 0,
+    pack_gqa: Optional[bool] = None,
+    sm_margin: int = 0,
+):
+    return flag_gems.get_scheduler_metadata(
+        batch_size,
+        max_seqlen_q,
+        max_seqlen_k,
+        num_heads,
+        num_heads_k,
+        headdim,
+        headdim_v,
+        qkv_dtype,
+        seqused_k,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_k=cu_seqlens_k,
+        cu_seqlens_k_new=cu_seqlens_k_new,
+        seqused_q=seqused_q,
+        leftpad_k=leftpad_k,
+        page_size=page_size,
+        max_seqlen_k_new=max_seqlen_k_new,
+        is_causal=is_causal,
+        window_size_left=window_size_left,
+        window_size_right=window_size_right,
+        has_softcap=has_softcap,
+        num_splits=num_splits,
+        pack_gqa=pack_gqa,
+        sm_margin=sm_margin,
+    )
 
 
 def apply_gems_patches_to_vllm(verbose=True):
+    import vllm  # noqa: F401
     from vllm.attention.ops.paged_attn import PagedAttention
     from vllm.model_executor.layers.activation import SiluAndMul
     from vllm.model_executor.layers.layernorm import RMSNorm
@@ -291,5 +352,17 @@ def apply_gems_patches_to_vllm(verbose=True):
         TritonMLAImpl, "_forward_decode", custom_gems_flash_mla_forward, verbose
     )
     patch_module_method(
-        FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forwad, verbose
+        FlashAttentionImpl, "forward", custom_gems_flash_attention_impl_forward, verbose
+    )
+    patch_vllm_lib("_C", "silu_and_mul", custom_silu_and_mul, "CUDA", verbose)
+    patch_vllm_lib(
+        "_moe_C", "moe_align_block_size", custom_moe_align_block_size, "CUDA", verbose
+    )
+    patch_vllm_lib("_moe_C", "topk_softmax", custom_topk_softmax, "CUDA", verbose)
+    patch_vllm_lib(
+        "_vllm_fa3_C",
+        "get_scheduler_metadata",
+        custom_get_scheduler_metadata,
+        "CUDA",
+        verbose,
     )

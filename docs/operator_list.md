@@ -29,6 +29,7 @@
 - contiguous
 - conv1d
 - conv2d
+- conv3d
 - cos
 - cos\_
 - count_nonzero
@@ -162,6 +163,7 @@
 - slice_scatter
 - softmax
 - sort
+- sqrt
 - stack
 - sub
 - sub\_

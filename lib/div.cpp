@@ -8,34 +8,69 @@
 
 namespace flag_gems {
 using namespace triton_jit;
+at::Tensor full_like_cpp_scalar(const at::Tensor& x,
+                                double fill_value,
+                                c10::optional<c10::ScalarType> dtype_opt = c10::nullopt,
+                                c10::optional<c10::Device> device_opt = c10::nullopt) {
+  TORCH_CHECK(x.is_cuda(), "This example only supports CUDA tensors.");
 
-at::Tensor true_div(const at::Tensor& a_, const at::Tensor& b_) {
+  c10::ScalarType dtype = dtype_opt.value_or(x.scalar_type());
+  c10::Device device = device_opt.value_or(x.device());
+
+  c10::TensorOptions options = c10::TensorOptions().dtype(dtype).device(device);
+
+  at::Tensor out = at::empty_like(x, options);
+
+  if (out.numel() == 0) {
+    return out;
+  }
+
+  static const TritonJITFunction& full_kernel_func =
+      TritonJITFunction::getInstance(std::string(utils::get_triton_src_path() / "flag_gems/ops/full.py"),
+                                     "full_func_scalar");
+
+  c10::DeviceGuard guard(device);
+  c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
+  CUstream raw_stream = static_cast<CUstream>(stream.stream());
+
+  constexpr int BLOCK_SIZE = 1024;
+  int64_t num_elements = out.numel();
+  unsigned int grid_x = static_cast<unsigned int>((num_elements + BLOCK_SIZE - 1) / BLOCK_SIZE);
+  unsigned int grid_y = 1;
+  unsigned int grid_z = 1;
+
+  full_kernel_func(raw_stream, grid_x, grid_y, grid_z, 4, 2, out, fill_value);
+
+  return out;
+}
+
+at::Tensor true_div(const at::Tensor& a, const at::Tensor& b) {
   // Case 1: Scalar / Scalar → fallback
-  if (a_.dim() == 0 && b_.dim() == 0) {
-    double a_val = a_.item<double>();
-    double b_val = b_.item<double>();
-    return torch::tensor(a_val / b_val, a_.options());
+  if (a.dim() == 0 && b.dim() == 0) {
+    double a_val = a.item<double>();
+    double b_val = b.item<double>();
+    return torch::tensor(a_val / b_val, a.options());
   }
 
   // Case 2: Scalar / Tensor
-  if (a_.dim() == 0 && b_.dim() > 0) {
-    at::Tensor a = at::full_like(b_, a_.item<double>());
-    return true_div(a, b_);
+  if (a.dim() == 0 && b.dim() > 0) {
+    at::Tensor a = full_like_cpp_scalar(b, a.item<double>());
+    return true_div(a, b);
   }
 
   // Case 3: Tensor / Scalar
-  if (a_.dim() > 0 && b_.dim() == 0) {
-    at::Tensor b = at::full_like(a_, b_.item<double>());
-    return true_div(a_, b);
+  if (a.dim() > 0 && b.dim() == 0) {
+    at::Tensor b = full_like_cpp_scalar(a, b.item<double>());
+    return true_div(a, b);
   }
 
   // Case 4: Tensor / Tensor
-  auto res = torch::broadcast_tensors({a_, b_});
-  at::Tensor a = res[0].contiguous();
-  at::Tensor b = res[1].contiguous();
+  auto res = torch::broadcast_tensors({a, b});
+  at::Tensor an = res[0].contiguous();
+  at::Tensor bn = res[1].contiguous();
 
-  at::ScalarType out_dtype = at::promote_types(a.scalar_type(), b.scalar_type());
-  at::Tensor out = at::empty(a.sizes(), at::TensorOptions().dtype(out_dtype).device(a.device()));
+  at::ScalarType out_dtype = at::promote_types(an.scalar_type(), bn.scalar_type());
+  at::Tensor out = at::empty(an.sizes(), at::TensorOptions().dtype(out_dtype).device(an.device()));
 
   const TritonJITFunction& f =
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "div.py").string(), "true_div_kernel");
@@ -48,7 +83,7 @@ at::Tensor true_div(const at::Tensor& a_, const at::Tensor& b_) {
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   c10::DeviceGuard guard(out.device());
 
-  f(raw_stream, num_blocks, 1, 4, 2, 0, a, b, out, n, tile_size);
+  f(raw_stream, num_blocks, 1, 4, 2, 0, an, bn, out, n, tile_size);
 
   return out;
 }
@@ -59,7 +94,7 @@ at::Tensor true_div_(at::Tensor& a_, const at::Tensor& b_) {
 
   //  Tensor // Scalar
   if (a_.dim() > 0 && b_.dim() == 0) {
-    at::Tensor b_expand = at::full_like(a_, b_.item<double>());
+    at::Tensor b_expand = full_like_cpp_scalar(a_, b_.item<double>());
     return true_div_(a_, b_expand);
   }
 
@@ -69,55 +104,51 @@ at::Tensor true_div_(at::Tensor& a_, const at::Tensor& b_) {
   at::Tensor b_broadcast = res[1].contiguous();
   TORCH_CHECK(a_.numel() == a_broadcast.numel(), "true_div_: broadcasted shape mismatch");
 
-  TORCH_CHECK(a_broadcast.dim() >= 2, "true_div_: input must be at least 2D");
-  int64_t M = a_broadcast.size(0);
-  int64_t N = a_broadcast.numel() / M;
-
+  int64_t num = a_broadcast.numel();
   at::Tensor out = at::empty_like(a_broadcast);
 
   const TritonJITFunction& f =
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "div.py").string(), "true_div_kernel_");
 
   int64_t tile_size = 1024;
-  int64_t n = M * N;
-  int num_blocks = (n + tile_size - 1) / tile_size;
+  int num_blocks = (num + tile_size - 1) / tile_size;
 
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   c10::DeviceGuard guard(a_.device());
 
-  f(raw_stream, num_blocks, 1, 4, 2, 0, a_broadcast, b_broadcast, out, M, N, tile_size);
+  f(raw_stream, num_blocks, 1, 4, 2, 0, a_broadcast, b_broadcast, out, num, tile_size);
 
   return a_.resize_as_(out).copy_(out);
 }
 
-at::Tensor trunc_div(const at::Tensor& a_, const at::Tensor& b_) {
+at::Tensor trunc_div(const at::Tensor& a, const at::Tensor& b) {
   // Scalar / Scalar fallback
-  if (a_.dim() == 0 && b_.dim() == 0) {
-    double a_val = a_.item<double>();
-    double b_val = b_.item<double>();
-    return torch::tensor(std::trunc(a_val / b_val), a_.options());
+  if (a.dim() == 0 && b.dim() == 0) {
+    double a_val = a.item<double>();
+    double b_val = b.item<double>();
+    return torch::tensor(std::trunc(a_val / b_val), a.options());
   }
 
   // Scalar / Tensor
-  if (a_.dim() == 0 && b_.dim() > 0) {
-    at::Tensor a = at::full_like(b_, a_.item<double>());
-    return trunc_div(a, b_);
+  if (a.dim() == 0 && b.dim() > 0) {
+    at::Tensor a = full_like_cpp_scalar(b, a.item<double>());
+    return trunc_div(a, b);
   }
 
   // Tensor / Scalar
-  if (a_.dim() > 0 && b_.dim() == 0) {
-    at::Tensor b = at::full_like(a_, b_.item<double>());
-    return trunc_div(a_, b);
+  if (a.dim() > 0 && b.dim() == 0) {
+    at::Tensor b = full_like_cpp_scalar(a, b.item<double>());
+    return trunc_div(a, b);
   }
 
   // Tensor / Tensor
-  auto res = torch::broadcast_tensors({a_, b_});
-  at::Tensor a = res[0].contiguous();
-  at::Tensor b = res[1].contiguous();
+  auto res = torch::broadcast_tensors({a, b});
+  at::Tensor an = res[0].contiguous();
+  at::Tensor bn = res[1].contiguous();
 
-  at::ScalarType out_dtype = at::promote_types(a.scalar_type(), b.scalar_type());
-  at::Tensor out = at::empty(a.sizes(), at::TensorOptions().dtype(out_dtype).device(a.device()));
+  at::ScalarType out_dtype = at::promote_types(an.scalar_type(), bn.scalar_type());
+  at::Tensor out = at::empty(an.sizes(), at::TensorOptions().dtype(out_dtype).device(an.device()));
 
   const TritonJITFunction& f =
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "div.py").string(),
@@ -131,7 +162,7 @@ at::Tensor trunc_div(const at::Tensor& a_, const at::Tensor& b_) {
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   c10::DeviceGuard guard(out.device());
 
-  f(raw_stream, num_blocks, 1, 4, 2, 0, a, b, out, n, tile_size);
+  f(raw_stream, num_blocks, 1, 4, 2, 0, an, bn, out, n, tile_size);
 
   return out;
 }
@@ -142,7 +173,7 @@ at::Tensor trunc_div_(at::Tensor& a_, const at::Tensor& b_) {
 
   //  Tensor // Scalar
   if (a_.dim() > 0 && b_.dim() == 0) {
-    at::Tensor b_expand = at::full_like(a_, b_.item<double>());
+    at::Tensor b_expand = full_like_cpp_scalar(a_, b_.item<double>());
     return trunc_div_(a_, b_expand);
   }
 
@@ -152,23 +183,19 @@ at::Tensor trunc_div_(at::Tensor& a_, const at::Tensor& b_) {
   at::Tensor b = res[1].contiguous();
   TORCH_CHECK(a_.numel() == a.numel(), "trunc_div_: in-place a_ size mismatch");
 
-  TORCH_CHECK(a.dim() >= 2, "trunc_div_: requires at least 2D tensor for (row, col) layout");
-  int64_t M = a.size(0);
-  int64_t N = a.numel() / M;
-
+  int64_t num = a.numel();
   const TritonJITFunction& f =
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "div.py").string(),
                                      "trunc_divide_kernel_");
 
   int64_t tile_size = 1024;
-  int64_t n = M * N;
-  int num_blocks = (n + tile_size - 1) / tile_size;
+  int num_blocks = (num + tile_size - 1) / tile_size;
 
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   c10::DeviceGuard guard(a_.device());
 
-  f(raw_stream, num_blocks, 1, 4, 2, 0, a, b, a_, M, N, tile_size);
+  f(raw_stream, num_blocks, 1, 4, 2, 0, a, b, a_, num, tile_size);
 
   return a_;
 }
@@ -220,13 +247,13 @@ at::Tensor floor_div(const at::Tensor& a_, const at::Tensor& b_) {
   }
   // ========== Tensor // Scalar ==========
   if (a_.dim() > 0 && b_.dim() == 0) {
-    at::Tensor b_expand = at::full_like(a_, b_.item<double>());
+    at::Tensor b_expand = full_like_cpp_scalar(a_, b_.item<double>());
     bool is_int = c10::isIntegralType(a_.scalar_type(), true) && c10::isIntegralType(b_.scalar_type(), true);
     return launch_floor_div_kernel(a_, b_expand, is_int);
   }
   // ========== Scalar // Tensor ==========
   if (a_.dim() == 0 && b_.dim() > 0) {
-    at::Tensor a_expand = at::full_like(b_, a_.item<double>());
+    at::Tensor a_expand = full_like_cpp_scalar(b_, a_.item<double>());
     bool is_int = c10::isIntegralType(a_.scalar_type(), true) && c10::isIntegralType(b_.scalar_type(), true);
     return launch_floor_div_kernel(a_expand, b_, is_int);
   }
@@ -250,33 +277,30 @@ at::Tensor launch_floor_div_kernel_(at::Tensor& a_, const at::Tensor& b_, bool u
   }
   if (!a_.sizes().equals(a.sizes())) {
     a_ = at::empty(a.sizes(), a_.options().dtype(out_dtype));
+    TORCH_CHECK(a_.sizes() == a.sizes(), "a_ size mismatch after broadcast.");
   }
-  TORCH_CHECK(a_.sizes() == a.sizes(), "a_ size mismatch after broadcast.");
 
   std::string kernel_name = use_integer_kernel ? "int_floordiv_kernel_" : "float_floordiv_kernel_";
   const TritonJITFunction& f =
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "div.py").string(), kernel_name);
 
-  TORCH_CHECK(a.dim() >= 2, "Input tensor must be at least 2D for broadcasting");
-  int64_t M = a.size(0);
-  int64_t N = a.numel() / M;
+  int64_t num = a.numel();
+  int64_t N = a.numel() / a.size(0);
   int64_t tile_size = 1024;
-  int64_t total = M * N;
-  int num_blocks = (total + tile_size - 1) / tile_size;
+  int num_blocks = (num + tile_size - 1) / tile_size;
 
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   c10::DeviceGuard guard(a_.device());
 
-  f(raw_stream, num_blocks, 1, 4, 2, 0, a.to(out_dtype), b.to(out_dtype), a_, M, N, tile_size);
-
+  f(raw_stream, num_blocks, 1, 4, 2, 0, a.to(out_dtype), b.to(out_dtype), a_, num, N, tile_size);
   return a_;
 }
 // ==================== main ====================
 at::Tensor floor_div_(at::Tensor& a_, const at::Tensor& b_) {
   // ========== Tensor // Scalar ==========
   if (a_.dim() > 0 && b_.dim() == 0) {
-    at::Tensor b_expand = at::full_like(a_, b_.item<double>());
+    at::Tensor b_expand = full_like_cpp_scalar(a_, b_.item<double>());
     bool is_int = c10::isIntegralType(a_.scalar_type(), true) && c10::isIntegralType(b_.scalar_type(), true);
     return launch_floor_div_kernel_(a_, b_expand, is_int);
   }
@@ -313,7 +337,7 @@ at::Tensor div_mode(const at::Tensor& a_,
 
   int64_t tile_size = 1024;
   int64_t n = out.numel();
-  const unsigned int num_blocks = (n + tile_size - 1) / tile_size;
+  const signed int num_blocks = (n + tile_size - 1) / tile_size;
   const int num_warps = 8;
   const int num_stages = 1;
 
@@ -358,19 +382,18 @@ at::Tensor div_mode_(at::Tensor& a_, const at::Tensor& b_, const c10::optional<s
       TritonJITFunction::getInstance((utils::get_triton_src_path() / "div.py").string(), kernel_name);
 
   TORCH_CHECK(a.dim() >= 2, "div_mode_: requires at least 2D input");
-  int64_t M = a.size(0);
-  int64_t N = a.numel() / M;
+  int64_t num = a.numel();
+  int64_t N = a.numel() / a.size(0);
   int64_t tile_size = 1024;
-  int64_t total = M * N;
-  int num_blocks = (total + tile_size - 1) / tile_size;
+  int num_blocks = (num + tile_size - 1) / tile_size;
 
   c10::cuda::CUDAStream stream = c10::cuda::getCurrentCUDAStream();
   CUstream raw_stream = static_cast<CUstream>(stream.stream());
   c10::DeviceGuard guard(a_.device());
 
-  at::Tensor b_vec = b.to(out_dtype).view({N});
+  at::Tensor b_vec = b.to(out_dtype).view({num / a.size(0)});
 
-  f(raw_stream, num_blocks, 1, 4, 2, 0, a, b_vec, a_, M, N, tile_size);
+  f(raw_stream, num_blocks, 1, 4, 2, 0, a, b_vec, a_, num, N, tile_size);
 
   return a_;
 }
@@ -400,12 +423,12 @@ at::Tensor remainder_tt(const at::Tensor& a_, const at::Tensor& b_) {
 }
 
 at::Tensor remainder_ts(const at::Tensor& a_, double b_scalar) {
-  at::Tensor b = at::full_like(a_, b_scalar);
+  at::Tensor b = full_like_cpp_scalar(a_, b_scalar);
   return remainder_tt(a_, b);
 }
 
 at::Tensor remainder_st(double a_scalar, const at::Tensor& b_) {
-  at::Tensor a = at::full_like(b_, a_scalar);
+  at::Tensor a = full_like_cpp_scalar(b_, a_scalar);
   return remainder_tt(a, b_);
 }
 

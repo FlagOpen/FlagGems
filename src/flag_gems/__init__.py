@@ -10,11 +10,14 @@ from flag_gems.logging_utils import setup_flaggems_logging
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.patches import *  # noqa: F403
+from flag_gems.runtime.dispatcher import op_dispatcher
 from flag_gems.runtime.register import Register
 
 __version__ = "3.0"
 device = runtime.device.name
 vendor_name = runtime.device.vendor_name
+dispatched_op_vendor = op_dispatcher.operator_vendor
+dispatched_config_vendor = op_dispatcher.config_vendor
 aten_lib = torch.library.Library("aten", "IMPL")
 registrar = Register
 current_work_registrar = None
@@ -37,6 +40,7 @@ def enable(
             ("_log_softmax_backward_data", log_softmax_backward),
             ("_softmax", softmax),
             ("_softmax_backward_data", softmax_backward),
+            ("_to_copy", to_copy),
             ("_unique2", _unique2),
             ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
             ("_weight_norm_interface", weight_norm_interface),
@@ -45,7 +49,11 @@ def enable(
             ("abs_", abs_),
             ("add.Tensor", add),
             ("add_.Tensor", add_),
+            ("addcdiv", addcdiv),
+            ("addmv", addmv),
+            ("addmv.out", addmv_out),
             ("addmm", addmm),
+            ("addmm.out", addmm_out),
             ("all", all),
             ("all.dim", all_dim),
             ("all.dims", all_dims),
@@ -60,11 +68,17 @@ def enable(
             ("arange.start_step", arange_start),
             ("argmax", argmax),
             ("argmin", argmin),
+            ("avg_pool2d", avg_pool2d),
+            ("avg_pool2d_backward", avg_pool2d_backward),
+            ("atan", atan),
+            ("atan_", atan_),
             ("bitwise_and.Scalar", bitwise_and_scalar),
             ("bitwise_and.Scalar_Tensor", bitwise_and_scalar_tensor),
             ("bitwise_and.Tensor", bitwise_and_tensor),
             ("bitwise_and_.Scalar", bitwise_and_scalar_),
             ("bitwise_and_.Tensor", bitwise_and_tensor_),
+            ("bitwise_left_shift", bitwise_left_shift),
+            ("bitwise_right_shift", bitwise_right_shift),
             ("bitwise_not", bitwise_not),
             ("bitwise_not_", bitwise_not_),
             ("bitwise_or.Scalar", bitwise_or_scalar),
@@ -74,10 +88,14 @@ def enable(
             ("bitwise_or_.Tensor", bitwise_or_tensor_),
             ("bmm", bmm),
             ("cat", cat),
+            ("celu", celu),
+            ("celu_", celu_),
             ("clamp", clamp),
             ("clamp.Tensor", clamp_tensor),
+            ("clamp_min", clamp_min),
             ("clamp_", clamp_),
             ("clamp_.Tensor", clamp_tensor_),
+            ("clamp_min_", clamp_min_),
             ("constant_pad_nd", constant_pad_nd),
             ("contiguous", contiguous),
             ("cos", cos),
@@ -108,6 +126,8 @@ def enable(
             ("divide_.Tensor_mode", div_mode_),
             ("dot", dot),
             ("elu", elu),
+            ("elu_", elu_),
+            ("elu_backward", elu_backward),
             ("embedding", embedding),
             ("embedding_backward", embedding_backward),
             ("eq.Scalar", eq_scalar),
@@ -116,6 +136,8 @@ def enable(
             ("erf_", erf_),
             ("exp", exp),
             ("exp_", exp_),
+            ("exp2", exp2),
+            ("exp2_", exp2_),
             ("exponential_", exponential_),
             ("eye", eye),
             ("eye.m", eye_m),
@@ -138,11 +160,13 @@ def enable(
             ("gelu_", gelu_),
             ("gelu_backward", gelu_backward),
             ("glu", glu),
+            ("glu_backward", glu_backward),
             ("gt.Scalar", gt_scalar),
             ("gt.Tensor", gt),
             ("hstack", hstack),
-            ("index.Tensor", index),
+            # ("index.Tensor", index),
             ("index_add", index_add),
+            ("index_add_", index_add_),
             ("index_put", index_put),
             ("index_put_", index_put_),
             ("index_select", index_select),
@@ -168,6 +192,7 @@ def enable(
             ("logical_not", logical_not),
             ("logical_or", logical_or),
             ("logical_xor", logical_xor),
+            ("logspace", logspace),
             ("lt.Scalar", lt_scalar),
             ("lt.Tensor", lt),
             ("masked_fill.Scalar", masked_fill),
@@ -178,6 +203,8 @@ def enable(
             ("max", max),
             ("max.dim", max_dim),
             ("maximum", maximum),
+            ("max_pool2d_with_indices", max_pool2d_with_indices),
+            ("max_pool2d_backward", max_pool2d_backward),
             ("mean", mean),
             ("mean.dim", mean_dim),
             ("min", min),
@@ -232,6 +259,8 @@ def enable(
             ("reciprocal_", reciprocal_),
             ("relu", relu),
             ("relu_", relu_),
+            ("addcmul", addcmul),
+            ("softplus", softplus),
             ("remainder.Scalar", remainder),
             ("remainder.Scalar_Tensor", remainder),
             ("remainder.Tensor", remainder),
@@ -244,6 +273,8 @@ def enable(
             ("resolve_conj", resolve_conj),
             ("resolve_neg", resolve_neg),
             ("rms_norm", rms_norm),
+            ("sqrt", sqrt),
+            ("sqrt_", sqrt_),
             ("rsqrt", rsqrt),
             ("rsqrt_", rsqrt_),
             ("scatter.reduce", scatter),
@@ -263,6 +294,7 @@ def enable(
             ("sort", sort),
             ("sort.stable", sort_stable),
             ("stack", stack),
+            ("std.correction", std),
             ("sub.Tensor", sub),
             ("sub_.Tensor", sub_),
             ("sum", sum),
@@ -275,8 +307,8 @@ def enable(
             ("threshold", threshold),
             ("threshold_backward", threshold_backward),
             ("tile", tile),
-            ("to.dtype", to_dtype),
             ("topk", topk),
+            ("trace", trace),
             ("triu", triu),
             ("true_divide.Scalar", true_divide),
             ("true_divide.Tensor", true_divide),
@@ -286,6 +318,7 @@ def enable(
             ("upsample_nearest2d", upsample_nearest2d),
             ("var_mean.correction", var_mean),
             ("vdot", vdot),
+            ("addr", addr),
             ("vstack", vstack),
             ("where.ScalarOther", where_scalar_other),
             ("where.ScalarSelf", where_scalar_self),
@@ -294,9 +327,8 @@ def enable(
             ("zeros", zeros),
             ("zeros_like", zeros_like),
         ),
-        user_unused_ops_list=list(
-            set([] if unused is None else unused) | set(aten_patch_list)
-        ),
+        user_unused_ops_list=list(set(unused or [])),
+        cpp_patched_ops_list=list(set(aten_patch_list)),
         lib=lib,
     )
     setup_flaggems_logging(path=path, record=record, once=once)
@@ -323,6 +355,8 @@ class use_gems:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         global current_work_registrar
+        if torch.__version__ >= "2.5":
+            self.lib._destroy()
         del self.lib
         del self.unused
         del self.registrar
