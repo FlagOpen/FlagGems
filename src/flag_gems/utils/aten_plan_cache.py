@@ -47,6 +47,8 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CACHE_SIZE = 128
 _DEFAULT_EXCLUDE = ("*arange_func*",)
+_RUNTIME_VENDOR = runtime_device.vendor_name
+_RUNTIME_DEVICE_NAME = runtime_device.name
 _CACHE_SIZE = _DEFAULT_CACHE_SIZE
 _ENABLED = False
 _INCLUDE = None
@@ -97,6 +99,45 @@ def _device_capability(vendor, device_name, current_device):
         return (0, 0)
 
 
+@functools_cache
+def _device_context(vendor, device_name, device_type, device_index):
+    """Build an immutable context once for each process-local device.
+
+    Tensor signatures already distinguish device type and index. Reusing this
+    tuple avoids repeated vendor lookup, capability lookup, and tuple building
+    on every warm routing-plan hit while preserving per-device cache isolation.
+    """
+
+    capability_device = "cpu" if device_type == "cpu" else device_index
+    return (
+        vendor,
+        device_name,
+        device_type,
+        device_index,
+        _device_capability(vendor, device_name, capability_device),
+    )
+
+
+@functools_cache
+def _tensor_device_context(value_device):
+    """Resolve a ``torch.device`` only on the first use of that device."""
+
+    device_type = getattr(value_device, "type", None)
+    if device_type is None:
+        device_type = str(value_device)
+    device_index = getattr(value_device, "index", None)
+    if device_type == "cpu":
+        device_index = "cpu"
+    if device_index is None:
+        return _current_device_context()
+    return _device_context(
+        _RUNTIME_VENDOR,
+        _RUNTIME_DEVICE_NAME,
+        device_type,
+        device_index,
+    )
+
+
 def _current_device_context():
     """Return a hashable vendor/device/architecture identity."""
 
@@ -104,36 +145,24 @@ def _current_device_context():
         current_device = torch_device_fn.current_device()
     except (AttributeError, RuntimeError, TypeError):
         current_device = "unknown"
-    vendor = runtime_device.vendor_name
-    device_name = runtime_device.name
-    return (
+    vendor = _RUNTIME_VENDOR
+    device_name = _RUNTIME_DEVICE_NAME
+    device_type = "cpu" if current_device == "cpu" else device_name
+    return _device_context(
         vendor,
         device_name,
+        device_type,
         current_device,
-        _device_capability(vendor, device_name, current_device),
     )
 
 
 def _argument_device_context(args, kwargs=None):
-    values = args if kwargs is None else (*args, *kwargs.values())
+    values = args if not kwargs else (*args, *kwargs.values())
     for value in values:
         value_device = getattr(value, "device", None)
         if value_device is None:
             continue
-        device_type = getattr(value_device, "type", str(value_device))
-        current_device = getattr(value_device, "index", None)
-        if device_type == "cpu":
-            current_device = "cpu"
-        elif current_device is None:
-            return _current_device_context()
-        vendor = runtime_device.vendor_name
-        device_name = runtime_device.name
-        return (
-            vendor,
-            device_name,
-            current_device,
-            _device_capability(vendor, device_name, current_device),
-        )
+        return _tensor_device_context(value_device)
     return _current_device_context()
 
 
@@ -538,9 +567,16 @@ def _refresh_flagtune(self):
             cache.clear(reset_stats=False)
 
 
-def _run_libentry_plan(self, plan, *args, **kwargs):
+def _run_libentry_plan(
+    self, plan, *args, _aten_plan_device_context=None, **kwargs
+):
     _refresh_flagtune(self)
-    if plan.device_context != _argument_device_context(args, kwargs):
+    device_context = (
+        _argument_device_context(args, kwargs)
+        if _aten_plan_device_context is None
+        else _aten_plan_device_context
+    )
+    if plan.device_context != device_context:
         raise _StaleLaunchPlan("launch-plan device context changed")
     if plan.tuning_epoch != getattr(self, "_aten_plan_tuning_epoch", 0):
         raise _StaleLaunchPlan("FlagTune changed the selected launch configuration")
@@ -600,12 +636,17 @@ def _cached_libentry_run(self, *args, **kwargs):
     if signature is None:
         cache.bypasses += 1
         return _ORIGINAL_LIBENTRY_RUN(self, *args, **kwargs)
-    full_signature, plan = cache.lookup(
-        signature, device_context=_argument_device_context(args, kwargs)
-    )
+    device_context = _argument_device_context(args, kwargs)
+    full_signature, plan = cache.lookup(signature, device_context=device_context)
     if plan is not None:
         try:
-            return _run_libentry_plan(self, plan, *args, **kwargs)
+            return _run_libentry_plan(
+                self,
+                plan,
+                *args,
+                _aten_plan_device_context=device_context,
+                **kwargs,
+            )
         except _StaleLaunchPlan:
             plan = None
     logger.debug(
@@ -974,7 +1015,12 @@ def _run_pointwise_plan(function, plan, args, kwargs):
             return function._unwrap(result)
         kernel_args = tuple(prepared_args) + output_buffers + plan.constant_tail
         with torch_device_fn.device(first_tensor.device):
-            _run_libentry_plan(plan.libentry, plan.launch_plan, *kernel_args)
+            _run_libentry_plan(
+                plan.libentry,
+                plan.launch_plan,
+                *kernel_args,
+                _aten_plan_device_context=plan.launch_plan.device_context,
+            )
     return outputs[0] if schema.num_output_tensors() == 1 else tuple(outputs)
 
 

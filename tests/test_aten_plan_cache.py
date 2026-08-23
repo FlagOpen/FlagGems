@@ -8,11 +8,10 @@
 
 from dataclasses import fields, is_dataclass
 
+import flag_gems
 import pytest
 import torch
 import triton
-
-import flag_gems
 from flag_gems.ops.add import add
 from flag_gems.ops.arange import arange_start
 from flag_gems.ops.bitwise_and import bitwise_and_tensor
@@ -287,6 +286,53 @@ def test_device_context_and_pid_are_part_of_cache_identity(monkeypatch):
     _, value = cache.lookup(("shape", (64,)))
     assert value is None
     assert cache.info().size == 0
+
+
+def test_tensor_device_context_is_reused():
+    plan_cache._tensor_device_context.cache_clear()
+    device = torch.device(flag_gems.device)
+
+    first = plan_cache._tensor_device_context(device)
+    second = plan_cache._tensor_device_context(device)
+
+    assert first is second
+    assert plan_cache._tensor_device_context.cache_info().hits == 1
+
+
+def test_validated_launch_plan_reuses_device_context(monkeypatch):
+    context = ("nvidia", "cuda", "cuda", 0, (9, 0))
+    launches = []
+
+    class FakeKernel:
+        def __getitem__(self, grid):
+            return lambda *args: launches.append((grid, args))
+
+    class FakeEntry:
+        _has_flagtune_tuner = False
+
+    plan = plan_cache.LibEntryLaunchPlan(
+        kernel=FakeKernel(),
+        grid=(1, 1, 1),
+        argument_sources=(),
+        device_context=context,
+        tuning_epoch=0,
+        constexprs=(),
+        num_warps=None,
+        num_stages=None,
+        num_ctas=None,
+    )
+
+    def unexpected_context_scan(*args, **kwargs):
+        raise AssertionError("validated cache hit must reuse its device context")
+
+    monkeypatch.setattr(
+        plan_cache, "_argument_device_context", unexpected_context_scan
+    )
+    plan_cache._run_libentry_plan(
+        FakeEntry(), plan, _aten_plan_device_context=context
+    )
+
+    assert launches == [((1, 1, 1), ())]
 
 
 def test_codegen_config_mutation_invalidates_pointwise_plan():
