@@ -17,6 +17,8 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._conj import _conj
 from ._flash_attention_forward import _flash_attention_forward
+from ._embedding_bag import _embedding_bag_forward_only
+from ._embedding_bag_backward import _embedding_bag_backward
 
 # Hygon internal implementation for attention
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
@@ -207,6 +209,8 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
     "_flash_attention_forward",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell",
     "_unique2",

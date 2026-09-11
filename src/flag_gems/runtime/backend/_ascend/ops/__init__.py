@@ -15,6 +15,8 @@
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
+from ._embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from ._embedding_bag_backward import _embedding_bag_backward
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
@@ -180,6 +182,9 @@ __all__ = [
     "_dyn_quant_matmul_4bit",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_embedding_bag",
+    "_embedding_bag_forward_only",
+    "_embedding_bag_backward",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "adaptive_avg_pool2d",
