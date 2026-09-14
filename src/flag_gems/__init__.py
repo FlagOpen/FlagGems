@@ -122,6 +122,7 @@ _FULL_CONFIG = (
     ("_conj_copy", _conj_copy),
     ("_conj_copy.out", _conj_copy_out),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("conv_depthwise3d", conv_depthwise3d),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
