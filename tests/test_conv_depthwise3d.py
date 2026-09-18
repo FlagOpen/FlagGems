@@ -35,22 +35,18 @@ def test_conv_depthwise3d(
         bias_tensor = None
         ref_bias = None
 
-    # aten.conv_depthwise3d is CUDA-only, so it cannot serve as a CPU reference
-    # (the --ref=cpu quick-mode CI run would fail). A grouped conv3d with
-    # groups=channels is mathematically identical and shares the same weight
-    # layout (C, 1, kd, kh, kw), so it works on both CPU and GPU references.
-    channels = shape_input[1]
-    ref_out = torch.nn.functional.conv3d(
+    ref_out = torch.ops.aten.conv_depthwise3d(
         ref_inp,
         ref_weight,
+        kernel,
         ref_bias,
         stride,
         padding,
         dilation,
-        groups=channels,
     )
 
-    res_out = flag_gems.conv_depthwise3d(
-        inp, weight, kernel, bias_tensor, stride, padding, dilation
-    )
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.conv_depthwise3d(
+            inp, weight, kernel, bias_tensor, stride, padding, dilation
+        )
     utils.gems_assert_close(res_out, ref_out, dtype)
