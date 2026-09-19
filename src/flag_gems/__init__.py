@@ -599,6 +599,7 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_version", _version, None, ["CompositeImplicitAutograd"]),
     ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
