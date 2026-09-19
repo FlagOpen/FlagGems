@@ -164,13 +164,21 @@ def test__nested_compute_contiguous_strides_offsets_empty_and_scalar_paths(shape
 
     ref_strides, ref_offsets = _aten(ref_inp)
     res_strides, res_offsets = flag_gems._nested_compute_contiguous_strides_offsets(inp)
-    utils.gems_assert_equal(res_strides, ref_strides)
-    utils.gems_assert_equal(res_offsets, ref_offsets)
     if len(shape) == 2 and shape[1] == 0:
-        # Native returns the input object itself for the (N, 0) strides.
+        # Native returns the input object itself for the (N, 0) strides, so
+        # the strides output ALIASES the input and its device follows the
+        # input's (native never sees a CUDA input here because it faults on
+        # device memory). The identity check below is the strong assertion;
+        # the value comparison is device-normalized because the reference is
+        # a CPU tensor by construction.
         assert res_strides is inp
         assert res_strides.shape == shape
         assert res_offsets.tolist() == list(range(shape[0]))
+        utils.gems_assert_equal(res_strides.cpu(), ref_strides)
+        utils.gems_assert_equal(res_offsets, ref_offsets)
+        return
+    utils.gems_assert_equal(res_strides, ref_strides)
+    utils.gems_assert_equal(res_offsets, ref_offsets)
 
 
 @pytest.mark._nested_compute_contiguous_strides_offsets
