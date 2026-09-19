@@ -37,8 +37,8 @@ logger = logging.getLogger(__name__)
 #   per-component shapes of a (non-jagged) nested tensor -- NOT a Python list.
 #   ``torch.nested.nested_tensor`` builds it as a CPU tensor and native reads
 #   raw data pointers, so a CUDA sizes tensor makes native SIGSEGV (measured).
-#   This implementation supports CUDA inputs as well (results follow the
-#   input's device).
+#   This implementation accepts CUDA inputs as well and returns the metadata
+#   on CPU exactly as the native CPU path does.
 #
 # * Strides: per row, ``strides[j] = product(sizes[j+1:])`` (row-major, last
 #   dim = 1), computed under int64 wraparound like the C++ chained multiply.
@@ -126,7 +126,7 @@ def _nested_compute_contiguous_strides_offsets(
     Args:
         nested_size (Tensor): int64 tensor of shape ``(ntensors, dim)`` whose
             rows are the shapes of the nested tensor's components (a CPU
-            tensor in native usage; CUDA inputs are supported here too).
+            tensor in native usage; CUDA inputs are accepted here too).
 
     Returns:
         tuple[Tensor, Tensor]: contiguous strides (same shape as
@@ -196,7 +196,9 @@ def _nested_compute_contiguous_strides_offsets(
 
     strides_t = torch.from_numpy(strides)
     offsets_t = torch.from_numpy(offsets)
-    if device.type != "cpu":
-        strides_t = strides_t.to(device)
-        offsets_t = offsets_t.to(device)
+    # The metadata results are CPU tensors, matching native: the native op
+    # allocates both outputs with the input's options and is only ever handed
+    # a CPU sizes tensor (torch.nested builds it on CPU). Returning CPU
+    # metadata for a CUDA input keeps the output placement contract identical
+    # instead of making it device-dependent.
     return strides_t, offsets_t

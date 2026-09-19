@@ -48,18 +48,28 @@ setattr(
 # native ATen in an environment that never imported flag_gems, plus direct
 # ``torch.ops.aten`` calls. ``gems_assert_equal`` is used because both outputs
 # are exact int64 metadata.
+#
+# Reference-device note: the NATIVE implementation is host code that
+# dereferences raw data pointers, so it SIGSEGVs when handed a CUDA sizes
+# tensor (measured on H20; ``torch.nested`` therefore always builds the sizes
+# tensor on CPU). The reference call is consequently always made on a CPU
+# tensor -- ``_aten`` takes ``.cpu()`` of whatever it is given -- while the
+# implementation receives the flag_gems.device tensor. This is a reference-
+# construction constraint, not a skipped case: the quick-cpu phase already
+# runs everything on CPU, and the full-GPU phase converts only the reference
+# side.
 OP = "_nested_compute_contiguous_strides_offsets"
 
 
 def _aten(inp):
-    """Native reference call on an already-converted tensor."""
-    return torch.ops.aten._nested_compute_contiguous_strides_offsets(inp)
+    """Native reference call; the native kernel requires a CPU tensor."""
+    return torch.ops.aten._nested_compute_contiguous_strides_offsets(inp.cpu())
 
 
 @pytest.mark._nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_basic():
     inp = torch.tensor([[2, 3], [4, 5]], dtype=torch.int64, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp)  # reference is always taken on CPU
 
     ref_strides, ref_offsets = _aten(ref_inp)
     res_strides, res_offsets = flag_gems._nested_compute_contiguous_strides_offsets(inp)
