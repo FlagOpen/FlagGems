@@ -56,10 +56,14 @@ class NestedComputeContiguousStridesOffsetsBenchmark(base.Benchmark):
         self.shapes = SIZES_SHAPES
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        # The op's input is always int64 (native rejects other dtypes), so the
-        # dtype sweep only varies the record layout, not the timed work.
+        # The sizes tensor is built on CPU: the NATIVE reference dereferences
+        # raw host pointers, so a CUDA sizes tensor faults inside
+        # torch.ops.aten._nested_compute_contiguous_strides_offsets (measured;
+        # torch.nested therefore always builds it on CPU as well). Both the
+        # reference and the implementation are timed on the same CPU tensor,
+        # so the two sides do identical work on identical inputs.
         for shape in self.shapes:
-            sizes = torch.randint(1, 6, shape, dtype=torch.int64, device=self.device)
+            sizes = torch.randint(1, 6, shape, dtype=torch.int64, device="cpu")
             yield (sizes,)
 
 
