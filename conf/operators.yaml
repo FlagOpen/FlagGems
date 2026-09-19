@@ -379,6 +379,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5.0'
+- id: _shape_as_tensor
+  description: 'Returns the sizes of a tensor as a fresh 1-D int64 tensor on the
+    CPU device (native resolves the result device from the factory default,
+    not from the input), mirroring `aten::_shape_as_tensor`.
+
+    '
+  for:
+  - _shape_as_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _stack
   description: |
     Concatenates a sequence of tensors along a new dimension. This is the

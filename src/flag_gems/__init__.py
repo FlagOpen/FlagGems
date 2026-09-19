@@ -508,6 +508,12 @@ _FULL_CONFIG = (
     ("_scaled_mm_v2", _scaled_mm_v2),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
+    (
+        "_shape_as_tensor",
+        _shape_as_tensor,
+        None,
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
+    ),
     ("_slow_conv2d_backward", _slow_conv2d_backward),
     ("_slow_conv2d_forward", _slow_conv2d_forward),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
