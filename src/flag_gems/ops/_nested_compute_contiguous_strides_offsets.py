@@ -139,8 +139,9 @@ def _nested_compute_contiguous_strides_offsets(
 
     # Empty `sizes` means an empty nested tensor: native returns the input
     # object itself as the strides (any dtype, no check) plus empty offsets.
+    # Both metadata outputs stay on CPU, matching the native CPU contract.
     if sizes.dim() == 0:
-        return sizes, torch.empty((0,), dtype=torch.int64, device=sizes.device)
+        return sizes, torch.empty((0,), dtype=torch.int64, device="cpu")
 
     # `sizes.size(1)` is evaluated before the dtype check, so a 1-D input
     # raises the ATen dimension error even when its dtype is not int64.
@@ -153,20 +154,17 @@ def _nested_compute_contiguous_strides_offsets(
             + _ATEN_TYPE_NAMES.get(sizes.dtype, str(sizes.dtype))
         )
 
-    device = sizes.device
-
     if orig_dim == 0:
         # Native returns the input itself as the strides, and the offsets are
-        # the iota over the components (possibly zero-length).
-        offsets = torch.arange(ntensors, dtype=torch.int64, device=device)
+        # the iota over the components (possibly zero-length). The offsets are
+        # CPU metadata as in the native CPU path.
+        offsets = torch.arange(ntensors, dtype=torch.int64)
         return sizes, offsets
 
     if ntensors == 0:
         # Native segfaults here (it writes offsets_ptr[0] into an empty
         # tensor); return the well-defined empty result instead.
-        return torch.empty_like(sizes), torch.empty(
-            (0,), dtype=torch.int64, device=device
-        )
+        return torch.empty_like(sizes), torch.empty((0,), dtype=torch.int64)
 
     # Raw element read in data-pointer order, which for a non-contiguous input
     # is NOT its .contiguous() copy. `as_strided` reproduces the native

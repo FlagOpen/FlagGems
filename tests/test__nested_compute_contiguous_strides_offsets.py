@@ -53,23 +53,34 @@ setattr(
 # dereferences raw data pointers, so it SIGSEGVs when handed a CUDA sizes
 # tensor (measured on H20; ``torch.nested`` therefore always builds the sizes
 # tensor on CPU). The reference call is consequently always made on a CPU
-# tensor -- ``_aten`` takes ``.cpu()`` of whatever it is given -- while the
-# implementation receives the flag_gems.device tensor. This is a reference-
-# construction constraint, not a skipped case: the quick-cpu phase already
-# runs everything on CPU, and the full-GPU phase converts only the reference
-# side.
+# tensor while the implementation receives the flag_gems.device tensor. This
+# is a reference-construction constraint, not a skipped case: the quick-cpu
+# phase already runs everything on CPU, and the full-GPU phase converts only
+# the reference side.
+#
+# Because the op reads its input through raw pointer arithmetic, a
+# non-contiguous reference view must be derived from an already-CPU base
+# (``base.detach().cpu()[...]``): converting an independently-created CUDA
+# view with ``.cpu()`` reorders it into logical order and would compare
+# against the wrong window.
 OP = "_nested_compute_contiguous_strides_offsets"
 
 
 def _aten(inp):
-    """Native reference call; the native kernel requires a CPU tensor."""
-    return torch.ops.aten._nested_compute_contiguous_strides_offsets(inp.cpu())
+    """Native reference call. ``inp`` must already be a CPU tensor."""
+    assert inp.device.type == "cpu", "native op only runs on CPU tensors"
+    return torch.ops.aten._nested_compute_contiguous_strides_offsets(inp)
+
+
+def _cpu_ref(inp):
+    """CPU reference input for a (possibly CUDA) test tensor."""
+    return inp.detach().cpu()
 
 
 @pytest.mark._nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_basic():
     inp = torch.tensor([[2, 3], [4, 5]], dtype=torch.int64, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)  # reference is always taken on CPU
+    ref_inp = _cpu_ref(inp)  # reference is always taken on CPU
 
     ref_strides, ref_offsets = _aten(ref_inp)
     res_strides, res_offsets = flag_gems._nested_compute_contiguous_strides_offsets(inp)
@@ -113,7 +124,7 @@ def test__nested_compute_contiguous_strides_offsets_basic():
 )
 def test__nested_compute_contiguous_strides_offsets_int64_sizes(sizes):
     inp = torch.tensor(sizes, dtype=torch.int64, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _cpu_ref(inp)
 
     ref_strides, ref_offsets = _aten(ref_inp)
     res_strides, res_offsets = flag_gems._nested_compute_contiguous_strides_offsets(inp)
@@ -134,7 +145,7 @@ def test__nested_compute_contiguous_strides_offsets_empty_and_scalar_paths(shape
     # input as the strides and returns the iota offsets; the (0, 0) shape
     # returns two empty results (native segfaults on (0, D>0), covered below).
     inp = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _cpu_ref(inp)
 
     if len(shape) == 0:
         # Native returns the input tensor itself as the strides.
@@ -223,7 +234,7 @@ def test__nested_compute_contiguous_strides_offsets_non_contiguous_raw_read():
     inp = base[:, ::2]  # logical (4, 3), raw memory rows [0, 1, 2], [5, 6, 7], ...
     assert not inp.is_contiguous()
 
-    ref_base = utils.to_reference(base)
+    ref_base = _cpu_ref(base)
     ref_inp = ref_base[:, ::2]
 
     ref_strides, ref_offsets = _aten(ref_inp)
@@ -234,7 +245,7 @@ def test__nested_compute_contiguous_strides_offsets_non_contiguous_raw_read():
     # Transposed input: raw order is the storage order of the base tensor.
     t_base = torch.arange(12, dtype=torch.int64, device=flag_gems.device).reshape(3, 4)
     t_inp = t_base.t()  # logical (4, 3), raw rows are [0, 1, 2, 3], [4, 5, 6, 7], ...
-    ref_t_base = utils.to_reference(t_base)
+    ref_t_base = _cpu_ref(t_base)
     ref_t_inp = ref_t_base.t()
 
     ref_strides, ref_offsets = _aten(ref_t_inp)
@@ -262,7 +273,7 @@ def test__nested_compute_contiguous_strides_offsets_dtype_error(shape, dtype):
     # message is pinned only for the class + the Long/scalar fragment, never
     # for the reference build's wording.
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.cpu()
+    ref_inp = _cpu_ref(inp)
 
     with pytest.raises(RuntimeError) as ref_exc:
         _aten(ref_inp)
@@ -279,7 +290,7 @@ def test__nested_compute_contiguous_strides_offsets_dim_error(dtype):
     # A 1-D input fails on `sizes.size(1)` before the dtype check, so the
     # dimension error is raised for every dtype.
     inp = torch.zeros((3,), dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.cpu()
+    ref_inp = _cpu_ref(inp)
 
     with pytest.raises(IndexError):
         _aten(ref_inp)
@@ -301,7 +312,7 @@ def test__nested_compute_contiguous_strides_offsets_constructs_nested_tensor():
         torch.randn(1, 3, device=flag_gems.device),
     ]
     sizes = torch.tensor([t.shape for t in tensors], dtype=torch.int64)
-    ref_sizes = utils.to_reference(sizes)
+    ref_sizes = _cpu_ref(sizes)
 
     ref_strides, ref_offsets = _aten(ref_sizes)
     res_strides, res_offsets = flag_gems._nested_compute_contiguous_strides_offsets(
@@ -316,19 +327,26 @@ def test__nested_compute_contiguous_strides_offsets_constructs_nested_tensor():
 
 @pytest.mark._nested_compute_contiguous_strides_offsets
 def test__nested_compute_contiguous_strides_offsets_dispatch_and_repeatability():
-    # Repeated dispatcher-routed calls must stay stable (no recursion, no
-    # state); the direct entry point must agree with the routed one.
+    # Repeated calls must stay stable (no recursion, no state).
+    #
+    # The reference environment does NOT have flag_gems enabled (tests call
+    # the implementation directly, per the repository convention), so a
+    # dispatcher-routed call is the NATIVE kernel: on CPU that is the normal
+    # reference path, and it is exercised here as the third opinion. A routed
+    # CUDA call is deliberately not attempted -- native's host pointer
+    # dereference faults on device memory (measured), which is exactly why
+    # torch.nested feeds this op CPU sizes.
     inp = torch.tensor([[2, 3], [4, 5]], dtype=torch.int64, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _cpu_ref(inp)
     ref = _aten(ref_inp)
 
     for _ in range(3):
         res = flag_gems._nested_compute_contiguous_strides_offsets(inp)
         utils.gems_assert_equal(res[0], ref[0])
         utils.gems_assert_equal(res[1], ref[1])
-        # An unrelated op between calls must not re-route the dispatch.
+        # An unrelated op between calls must not perturb the implementation.
         torch.relu(torch.ones(2, device=flag_gems.device))
 
-    dispatched = torch.ops.aten._nested_compute_contiguous_strides_offsets(inp)
+    dispatched = torch.ops.aten._nested_compute_contiguous_strides_offsets(ref_inp)
     utils.gems_assert_equal(dispatched[0], ref[0])
     utils.gems_assert_equal(dispatched[1], ref[1])
