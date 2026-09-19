@@ -2879,6 +2879,18 @@ ops:
   - Distribution
   stages:
   - beta: '5.3'
+- id: ccol_indices
+  description: Returns the compressed column indices of a sparse CSC/BSC tensor as
+    a zero-copy view.
+  for:
+  - ccol_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: ccol_indices_copy
   description: Returns a fresh contiguous copy of a sparse CSC/BSC tensor's compressed-column-index
     array as an int64 tensor shaped batch dims plus `ncols + 1`.
