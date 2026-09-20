@@ -180,11 +180,11 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
-    "_embedding_bag",
-    "_embedding_bag_forward_only",
-    "_embedding_bag_backward",
     "_unique2",
     "_upsample_bicubic2d_aa",
     "adaptive_avg_pool2d",
