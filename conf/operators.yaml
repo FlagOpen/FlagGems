@@ -3108,7 +3108,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: conv_tbc_backward
   description: Triton kernel implementation for conv_tbc_backward.
   for:
