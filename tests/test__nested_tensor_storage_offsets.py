@@ -16,7 +16,6 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
@@ -25,14 +24,21 @@ from .conftest import QUICK_MODE
 
 # ``_nested_tensor_storage_offsets`` starts with an underscore, and
 # ``pytest.mark`` refuses to generate a marker via attribute access for such
-# names. Register it directly on the MarkGenerator so
+# names (pytest 8.1.1 and 9.x both raise AttributeError("Marker name must NOT
+# start with underscore") from MarkGenerator.__getattr__, so registering the
+# name in pytest.ini or via pytest_configure cannot enable the decorator -- it
+# is the attribute access itself that is refused). Build the decorator from the
+# PUBLIC ``pytest.Mark`` / ``pytest.MarkDecorator`` exports (pytest >= 8.0)
+# instead of importing the private _pytest.mark.structures module, then
+# register it on the MarkGenerator so
 # ``@pytest.mark._nested_tensor_storage_offsets`` and
 # ``-m _nested_tensor_storage_offsets`` both work.
 setattr(
     pytest.mark,
     "_nested_tensor_storage_offsets",
-    MarkDecorator(
-        Mark("_nested_tensor_storage_offsets", (), {}, _ispytest=True), _ispytest=True
+    pytest.MarkDecorator(
+        pytest.Mark("_nested_tensor_storage_offsets", (), {}, _ispytest=True),
+        _ispytest=True,
     ),
 )
 
