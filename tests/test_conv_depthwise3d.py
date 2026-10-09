@@ -12,30 +12,6 @@ SHAPE_DEPTHWISE = [
 ]
 
 
-def _conv_depthwise3d_via_aten(*args):
-    """Invoke torch.ops.aten.conv_depthwise3d through the FlagGems kernel.
-
-    Registers just this operator into a throwaway Library so the call exercises
-    FlagGems' real aten registration and dispatch path, then restores the
-    global registrar. flag_gems.use_gems() would do the same, but the
-    check-kernelgen-tests CI rule rejects it, so this follows the pattern from
-    tests/test_cudnn_rnn.py and tests/test_special_zeta.py.
-    """
-    library = torch.library.Library("aten", "IMPL")
-    previous_registrar = flag_gems.current_work_registrar
-    try:
-        flag_gems.only_enable(
-            lib=library,
-            include=["conv_depthwise3d"],
-            registrar=flag_gems.GeneralOpRegistrar,
-        )
-        return torch.ops.aten.conv_depthwise3d(*args)
-    finally:
-        if hasattr(library, "_destroy"):
-            library._destroy()
-        flag_gems.current_work_registrar = previous_registrar
-
-
 @pytest.mark.conv_depthwise3d
 @pytest.mark.parametrize("shape_input, shape_weight, kernel", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [[1, 1, 1], [2, 2, 2]])
@@ -69,7 +45,10 @@ def test_conv_depthwise3d(
         dilation,
     )
 
-    res_out = _conv_depthwise3d_via_aten(
+    # Register only this op so the bare aten call dispatches to the FlagGems
+    # Triton kernel instead of native aten (see tests/test_cudnn_rnn.py).
+    flag_gems.only_enable(include=["conv_depthwise3d"])
+    res_out = torch.ops.aten.conv_depthwise3d(
         inp, weight, kernel, bias_tensor, stride, padding, dilation
     )
     utils.gems_assert_close(res_out, ref_out, dtype)
