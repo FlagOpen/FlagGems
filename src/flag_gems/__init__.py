@@ -1019,6 +1019,7 @@ _FULL_CONFIG = (
     ("greater_equal.Scalar", ge_scalar),
     ("greater_equal.Tensor", ge),
     ("greater_equal_.Tensor", greater_equal_),
+    ("grid_sampler", grid_sampler),
     ("grid_sampler_2d", grid_sampler_2d),
     ("grid_sampler_3d", grid_sampler_3d),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
