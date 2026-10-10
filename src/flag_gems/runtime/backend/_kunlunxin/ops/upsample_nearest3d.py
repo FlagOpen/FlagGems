@@ -143,20 +143,22 @@ def upsample_nearest3d(
     if output.numel() == 0:
         return output
 
-    # Exact 2x fast path (XPU 2026-08-21): when every output dimension is
-    # exactly twice the input dimension, out[2*d+od, 2*h+oh, 2*w+ow] == in[d,h,w]
-    # for the 8 parity classes (od, oh, ow) in {0,1}^3, identical to the
-    # floor((o * in/out)) nearest-neighbour mapping.  The 8 copies are plain
-    # strided views, so torch.ops.aten._copy_from (never overridden by gems)
-    # dispatches straight to the native strided-copy engine -- far cheaper than
-    # one discrete-gather Triton lane per output voxel (see upsample_nearest1d
-    # vendor fast path; 3D keeps the whole ~50MB in the copy engine).
+    # Exact 2x fast path: out[2*d+od, 2*h+oh, 2*w+ow] == in[d,h,w] for the 8
+    # parity classes (od, oh, ow) in {0,1}^3, identical to floor(o*in/out).
+    # XPU profiling shows a single _copy_from strided view is fast when the
+    # destination has stride-2 in exactly ONE dim, but ~12x slower when stride-2
+    # spans multiple dims simultaneously (the old 8x loop used 3-D-strided
+    # views).  Factor the 2x into three dim-by-dim passes (W then H then D),
+    # each pass = 2 single-dim strided copies, 6 copies total.
     if OD == 2 * ID and OH == 2 * IH and OW == 2 * IW:
+        inter_w = torch.empty((N, C, ID, IH, OW), device=input.device, dtype=input.dtype)
+        for ow in (0, 1):
+            torch.ops.aten._copy_from(input, inter_w[:, :, :, :, ow::2], False)
+        inter_wh = torch.empty((N, C, ID, OH, OW), device=input.device, dtype=input.dtype)
+        for oh in (0, 1):
+            torch.ops.aten._copy_from(inter_w, inter_wh[:, :, :, oh::2, :], False)
         for od in (0, 1):
-            for oh in (0, 1):
-                for ow in (0, 1):
-                    dst = output[:, :, od::2, oh::2, ow::2]
-                    torch.ops.aten._copy_from(input, dst, False)
+            torch.ops.aten._copy_from(inter_wh, output[:, :, od::2, :, :], False)
         return output
 
     total_out = NC * OD * OH * OW
