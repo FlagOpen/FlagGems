@@ -45,10 +45,7 @@ def test_conv_depthwise3d(
         dilation,
     )
 
-    # Register only this op so the bare aten call dispatches to the FlagGems
-    # Triton kernel instead of native aten (see tests/test_cudnn_rnn.py).
-    flag_gems.only_enable(include=["conv_depthwise3d"])
-    res_out = torch.ops.aten.conv_depthwise3d(
+    res_out = flag_gems.conv_depthwise3d(
         inp, weight, kernel, bias_tensor, stride, padding, dilation
     )
     utils.gems_assert_close(res_out, ref_out, dtype)
