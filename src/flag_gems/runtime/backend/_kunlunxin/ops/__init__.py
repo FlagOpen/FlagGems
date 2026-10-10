@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .__iand__ import __iand___scalar, __iand___tensor  # noqa: F401
 from .__irshift__ import __irshift__  # noqa: F401
+from .__rshift__ import __rshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -26,6 +28,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
@@ -319,6 +322,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -466,6 +470,7 @@ from .normal import (
 from .not_equal import not_equal, not_equal_scalar
 from .ones import ones
 from .ones_like import ones_like
+from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .pairwise_distance import pairwise_distance
@@ -527,6 +532,7 @@ from .rnn_relu import rnn_relu
 from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
+from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -694,7 +700,10 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "__iand___scalar",
+    "__iand___tensor",
     "__irshift__",
+    "__rshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
@@ -707,6 +716,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_sigmoid",
     "_foreach_sigmoid_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
@@ -1026,6 +1036,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "ior_tensor",
     "isclose",
     "isfinite",
     "isin",
@@ -1217,6 +1228,7 @@ __all__ = [
     "not_equal_scalar",
     "ones",
     "ones_like",
+    "or_tensor",
     "ormqr",
     "outplace_fused_experts",
     "pad",
@@ -1289,6 +1301,8 @@ __all__ = [
     "round",
     "round_",
     "round_out",
+    "row_indices_copy",
+    "row_indices_copy_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
