@@ -338,6 +338,19 @@ def sqmma_descriptor_pre_hook(nargs):
     nargs["c_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_N"]]
 
 
+def _prune_sqmma_configs(configs, named_args, **kwargs):
+    """Use the wider N tile only for measured large GEMM shapes."""
+    M = named_args["M"]
+    N = named_args["N"]
+    K = named_args["K"]
+    large = M >= 2048 and N >= 2048 and K >= 2048
+    preferred_block_n = 256 if large else 128
+    pruned = [
+        config for config in configs if config.kwargs["BLOCK_N"] == preferred_block_n
+    ]
+    return pruned or list(configs)
+
+
 @libentry()
 @libtuner(
     configs=[
@@ -346,12 +359,19 @@ def sqmma_descriptor_pre_hook(nargs):
             num_stages=1,
             num_warps=4,
             pre_hook=sqmma_descriptor_pre_hook,
-        )
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        ),
     ],
     key=["M", "N", "K", "dtype"],
     strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    prune_configs_by={"early_config_prune": _prune_sqmma_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_sqmma",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
