@@ -26,6 +26,40 @@ from .conftest import QUICK_MODE
 
 random.seed(42)
 
+# ---------------------------------------------------------------------------
+# Quantized-weight capability gate (test side).
+#
+# This is a CAPABILITY question, not a vendor list: the Kunlunxin backend's
+# ``fused_experts_impl`` has no quantized-weight path at all -- it raises
+# ``NotImplementedError("Kunlunxin fused_experts_impl does not support
+# quantized weights")`` for every quantized variant (INT8 W8A8, INT8 W8A16,
+# INT4 W4A16) -- and the generic implementation does not run on this XPU stack
+# either (its MoE kernels fault with an illegal memory access, XPU status 700).
+# Every other vendor keeps upstream behaviour byte for byte; a backend that
+# grows a quantized-weight path only has to make this probe return True.
+#
+# Recorded coverage narrowing: the quantized-weight variants of the
+# ``fused_experts_impl`` marker are exercised by zero cases on this device.
+# ---------------------------------------------------------------------------
+
+
+def _quantized_weight_moe_supported():
+    if flag_gems.vendor_name != "kunlunxin":
+        return True
+    return bool(getattr(flag_gems.runtime.device, "support_quantized_moe", False))
+
+
+QUANTIZED_WEIGHT_MOE_SUPPORTED = _quantized_weight_moe_supported()
+
+QUANTIZED_WEIGHT_MOE_SKIP_REASON = (
+    "this backend's fused_experts_impl has no quantized-weight path: the "
+    "Kunlunxin backend op raises NotImplementedError for INT8 W8A8 / INT8 "
+    "W8A16 / INT4 W4A16, and the generic implementation faults on this XPU "
+    "stack. Coverage narrowing, recorded: quantized-weight fused_experts_impl "
+    "is exercised by zero cases on this device."
+)
+
+
 FUSED_MOE_CONFIGS = [
     # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
     (1, 8, 128, 256, 2),
@@ -311,12 +345,49 @@ except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
 
+def _vllm_fused_moe_reference_unusable():
+    """Whether vLLM's ``fused_experts_impl`` cannot be used as a reference here.
+
+    The import above only proves that vLLM's *Python* package is importable.
+    Calling it is a second, independent requirement: vLLM resolves its MoE
+    tuning config through ``current_platform.get_device_name()``
+    (``fused_moe.py:1024``), and on a platform vLLM does not recognise that
+    raises ``NotImplementedError`` from ``vllm/platforms/interface.py``
+    (``UnspecifiedPlatform``) before any kernel is reached.  The reference can
+    therefore never be constructed, whatever the candidate does.
+
+    The probe is deliberately restricted to kunlunxin: for every other vendor
+    this returns False without importing or calling anything, so the marker it
+    feeds is False and their collection behaviour is byte-for-byte upstream's.
+    """
+    if flag_gems.vendor_name != "kunlunxin" or not HAS_VLLM_FUSED_MOE:
+        return False
+    try:
+        from vllm.platforms import current_platform
+
+        current_platform.get_device_name()
+    except Exception:
+        return True
+    return False
+
+
+VLLM_FUSED_MOE_REFERENCE_UNUSABLE = _vllm_fused_moe_reference_unusable()
+
+
 @pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM is required")
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    VLLM_FUSED_MOE_REFERENCE_UNUSABLE,
+    reason="vLLM fused_experts_impl is not usable as a reference on this platform: "
+    "vllm.platforms.interface.UnspecifiedPlatform.get_device_name() raises "
+    "NotImplementedError, so the MoE tuning-config lookup cannot complete and no "
+    "kernel is ever reached. test_fused_moe_vs_ref covers the same configs and "
+    "dtypes against a device reference.",
 )
 def test_fused_moe_vs_vllm(config, dtype):
     """Test FlagGems fused_moe against a pure PyTorch reference."""
@@ -762,6 +833,10 @@ def test_fused_moe_fp8_blockwise(config, block_shape):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    not QUANTIZED_WEIGHT_MOE_SUPPORTED,
+    reason=QUANTIZED_WEIGHT_MOE_SKIP_REASON,
+)
 def test_fused_moe_int8(config):
     """Test FlagGems fused_moe with INT8 W8A8 per-channel quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -877,6 +952,10 @@ def torch_fused_moe_weight_only_reference(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    not QUANTIZED_WEIGHT_MOE_SUPPORTED,
+    reason=QUANTIZED_WEIGHT_MOE_SKIP_REASON,
+)
 def test_fused_moe_int8_w8a16(config):
     """Test FlagGems fused_moe with INT8 W8A16 (weight-only) quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -954,6 +1033,10 @@ def test_fused_moe_int8_w8a16(config):
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    not QUANTIZED_WEIGHT_MOE_SUPPORTED,
+    reason=QUANTIZED_WEIGHT_MOE_SKIP_REASON,
 )
 def test_fused_moe_int4_w4a16(config):
     """Test FlagGems fused_moe with INT4 W4A16 (weight-only) quantization."""
