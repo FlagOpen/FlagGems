@@ -21,10 +21,108 @@ import flag_gems
 
 from . import base, utils
 
+_KUNLUNXIN_WINDOW_MASK_CACHE = {}
+
+
+def _kunlunxin_window_mask(batch, heads, seq_q, seq_k, wl, wr, device):
+    """Cached additive (B, H, S_q, S_k) mask for the sliding-window shapes.
+
+    The mask depends only on the shape and the window bounds, never on the
+    tensor contents, and the baseline and the candidate are both handed the
+    same cached tensor, so neither side is charged for building it.
+    """
+    key = (batch, heads, seq_q, seq_k, wl, wr)
+    mask = _KUNLUNXIN_WINDOW_MASK_CACHE.get(key)
+    if mask is None:
+        row = torch.arange(seq_q, device=device)[:, None]
+        col = torch.arange(seq_k, device=device)[None, :]
+        off = seq_k - seq_q
+        valid = torch.ones((seq_q, seq_k), dtype=torch.bool, device=device)
+        if wl is not None and wl >= 0:
+            valid = valid & (col >= (row + off - wl))
+        if wr is not None and wr >= 0:
+            valid = valid & (col <= (row + off + wr))
+        mask = valid[None, None].expand(batch, heads, seq_q, seq_k)
+        _KUNLUNXIN_WINDOW_MASK_CACHE[key] = mask
+    return mask
+
+
+def _kunlunxin_flash_attention_forward_baseline(
+    q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
+):
+    """Device baseline used when the native flash op cannot run.
+
+    ``aten::_flash_attention_forward`` -- the op this benchmark normally times
+    -- has no executable kernel on this XPU build, so ``latency_base`` could
+    never be assigned.  The same quantity is measured with the nearest native
+    device op instead:
+
+    * plain / causal shapes: ``aten::_scaled_dot_product_flash_attention``, the
+      same-interface native flash-attention op (BSHD in/out, same family).
+      It takes BHSD, so the BSHD inputs are transposed -- the candidate pays
+      the same layout conversion internally.
+    * sliding-window shapes: the flash op does not accept
+      ``window_size_left/right``, so ``F.scaled_dot_product_attention`` with an
+      explicit window mask is used; it is the only device path here that can
+      express a window.  A masked SDPA cannot skip masked blocks, so this
+      baseline is slower than a fused windowed kernel would be -- the bias
+      runs in the candidate's favour and is recorded rather than hidden.
+    * dropout / debug-mask shapes: ``F.scaled_dot_product_attention`` with the
+      same dropout probability.
+
+    Both branches are real device ops; nothing falls back to the CPU.
+    """
+    wl = extra_kwargs.get("window_size_left")
+    wr = extra_kwargs.get("window_size_right")
+    has_window = (wl is not None and wl >= 0) or (wr is not None and wr >= 0)
+    qb = q.transpose(1, 2).contiguous()
+    kb = k.transpose(1, 2).contiguous()
+    vb = v.transpose(1, 2).contiguous()
+    if not has_window and dropout_p == 0.0 and not return_debug_mask:
+        try:
+            return torch.ops.aten._scaled_dot_product_flash_attention(
+                qb,
+                kb,
+                vb,
+                dropout_p,
+                is_causal,
+                return_debug_mask,
+                scale=scale,
+            )
+        except ValueError:
+            # The flash op rejects causal attention when S_q > S_k on this
+            # build ([INVALID PARAMETER] error code 1), so those shapes fall
+            # through to the masked SDPA path below.
+            pass
+    if has_window or is_causal:
+        mask = _kunlunxin_window_mask(
+            q.shape[0], q.shape[2], q.shape[1], k.shape[1], wl, wr, q.device
+        )
+        if is_causal:
+            row = torch.arange(q.shape[1], device=q.device)[:, None]
+            col = torch.arange(k.shape[1], device=q.device)[None, :]
+            mask = mask & (col <= (row + k.shape[1] - q.shape[1]))
+        return torch.nn.functional.scaled_dot_product_attention(
+            qb,
+            kb,
+            vb,
+            attn_mask=mask,
+            dropout_p=dropout_p,
+            is_causal=False,
+            scale=scale,
+        )
+    return torch.nn.functional.scaled_dot_product_attention(
+        qb, kb, vb, dropout_p=dropout_p, is_causal=is_causal, scale=scale
+    )
+
 
 def torch_flash_attention_forward(
     q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
 ):
+    if flag_gems.vendor_name == "kunlunxin":
+        return _kunlunxin_flash_attention_forward_baseline(
+            q, k, v, scale, is_causal, dropout_p, return_debug_mask, **extra_kwargs
+        )
     return torch.ops.aten._flash_attention_forward(
         q,
         k,
@@ -62,6 +160,14 @@ def gems_flash_attention_forward(
 
 def torch_flash_attention_supports_alibi(device: str) -> bool:
     if device == "cpu" or not torch.cuda.is_available():
+        return False
+
+    if flag_gems.vendor_name == "kunlunxin":
+        # On this XPU build `aten::_flash_attention_forward` has no executable
+        # kernel at all (its CUDA/XPU dispatch entries are ts_eager_fallback
+        # placeholders), so the native op cannot answer this question and the
+        # alibi shapes have no baseline.  The alibi path is still covered by
+        # tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap.
         return False
 
     try:
