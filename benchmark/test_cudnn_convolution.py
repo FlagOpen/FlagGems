@@ -17,7 +17,11 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
 def cudnn_convolution_input_fn(shape, dtype, device):
@@ -65,12 +69,49 @@ class CudnnConv2dBenchmark(base.GenericBenchmark):
             yield from self.input_fn(shape, dtype, self.device)
 
 
+def _cudnn_convolution_device_baseline(
+    inp, weight, padding, stride, dilation, groups, benchmark, deterministic, allow_tf32
+):
+    """SUBSTITUTED / NON-CONTRACT device baseline for ``aten::cudnn_convolution``.
+
+    Kunlunxin-only.  ``aten::cudnn_convolution`` has no executable kernel on this
+    torch_xmlir/XPU build (``Could not run 'aten::cudnn_convolution' with
+    arguments from the 'CPU' backend``), so the native baseline latency cannot be
+    measured with it at all and the marker would report no speedup records.
+    The bias-free native device 2-D convolution computes the same quantity, runs
+    on this device, and is the strongest available device reference, so it
+    stands in for the missing native op.
+
+    This is a SUBSTITUTED, NON-CONTRACT baseline: the timing reference is a
+    different implementation from cuDNN.  Direction of bias -- ``F.conv2d`` is
+    the vendor's own fast device convolution, i.e. the strongest available
+    denominator, so the ratio below is conservative for the candidate rather
+    than inflated.  It is measured at ``benchmark/base.py:754``, outside the
+    ``with dispatch:`` context that wraps only the candidate call, and no
+    FlagGems kernel can intercept it.
+    """
+    return torch.nn.functional.conv2d(
+        inp, weight, None, stride, padding, dilation, groups
+    )
+
+
 @pytest.mark.cudnn_convolution
 def test_cudnn_convolution():
+    if IS_KUNLUNXIN:
+        # aten::cudnn_convolution has no executable kernel on this backend, so the
+        # native baseline is the equivalent bias-free device convolution, and the
+        # candidate is named explicitly so both sides are measured as themselves.
+        torch_op = _cudnn_convolution_device_baseline
+        gems_op = flag_gems.cudnn_convolution
+    else:
+        torch_op = torch.ops.aten.cudnn_convolution.default
+        gems_op = None
     bench = CudnnConv2dBenchmark(
         input_fn=cudnn_convolution_input_fn,
         op_name="cudnn_convolution",
-        torch_op=torch.ops.aten.cudnn_convolution.default,
+        torch_op=torch_op,
         dtypes=consts.FLOAT_DTYPES,
     )
+    if gems_op is not None:
+        bench.set_gems(gems_op)
     bench.run()
