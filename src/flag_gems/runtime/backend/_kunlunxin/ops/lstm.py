@@ -83,108 +83,6 @@ def _run_fusion(x, init_h, init_c, wx, wh, bx, bh, y, last_h, last_c, is_reverse
     )
 
 
-def _lstm_composite(
-    input,
-    hx,
-    params,
-    has_biases,
-    num_layers,
-    dropout,
-    train,
-    bidirectional,
-    batch_first,
-):
-    """fp16/bf16 LSTM as a decomposition over torch basic ops.
-
-    Mirrors xpytorch composite_lstm_cell (_thnn_fused_lstm_cell.cpp:46-57):
-    gates = x@w_ih^T + h@w_hh^T (+bias); i/f/g/o = chunk(gates, 4) with
-    sigmoid/sigmoid/tanh/sigmoid; cy = f*cx + i*g; hy = o*tanh(cy), all in
-    the input dtype. Every sub-op (mm, add, sigmoid, tanh, mul) is a
-    compilable FlagGems triton op, so this path never enters the fused
-    triton kernel compile wall (sdnn.h:2550 family).
-
-    Perf notes: weights are transposed once per direction (contiguous
-    [*, 4H] operands), the two per-step matmuls are chained through
-    addmm, and the gate activations are computed on the full gates
-    tensor (one sigmoid + one tanh) and sliced, keeping the per-step
-    launch count low.
-    """
-    if batch_first:
-        batch_size, seq_len, input_size = input.shape
-        input_view = input.transpose(0, 1).contiguous()
-    else:
-        seq_len, batch_size, input_size = input.shape
-        input_view = input
-    if seq_len == 0:
-        raise RuntimeError("Expected sequence length to be larger than 0 in RNN")
-
-    hx0, cx0 = hx
-    hidden_size = hx0.shape[2]
-    num_directions = 2 if bidirectional else 1
-    final_h = torch.empty(
-        (num_layers * num_directions, batch_size, hidden_size),
-        device=input.device,
-        dtype=input.dtype,
-    )
-    final_c = torch.empty_like(final_h)
-
-    layer_input = input_view
-    for layer in range(num_layers):
-        layer_output = torch.empty(
-            (seq_len, batch_size, hidden_size * num_directions),
-            device=input.device,
-            dtype=input.dtype,
-        )
-        for direction in range(num_directions):
-            state_idx = layer * num_directions + direction
-            reverse = direction == 1
-            if has_biases:
-                w_ih, w_hh, b_ih, b_hh = params[4 * state_idx : 4 * state_idx + 4]
-                bias = b_ih + b_hh
-            else:
-                w_ih, w_hh = params[2 * state_idx : 2 * state_idx + 2]
-                bias = None
-            # Transpose once per direction; contiguous operands keep the
-            # hijacked mm/addmm kernels on the fast path.
-            w_ih_t = w_ih.t().contiguous()
-            w_hh_t = w_hh.t().contiguous()
-            h_prev = hx0[state_idx].contiguous()
-            c_prev = cx0[state_idx].contiguous()
-            for step in range(seq_len):
-                seq_idx = seq_len - 1 - step if reverse else step
-                gates = layer_input[seq_idx] @ w_ih_t
-                gates = torch.addmm(gates, h_prev, w_hh_t)
-                if bias is not None:
-                    gates = gates + bias
-                s_all = torch.sigmoid(gates)
-                t_all = torch.tanh(gates)
-                c_next = (
-                    s_all[:, hidden_size : 2 * hidden_size] * c_prev
-                    + s_all[:, :hidden_size]
-                    * t_all[:, 2 * hidden_size : 3 * hidden_size]
-                )
-                h_next = s_all[:, 3 * hidden_size : 4 * hidden_size] * torch.tanh(
-                    c_next
-                )
-                layer_output[
-                    seq_idx,
-                    :,
-                    direction * hidden_size : (direction + 1) * hidden_size,
-                ] = h_next
-                h_prev = h_next
-                c_prev = c_next
-            final_h[state_idx] = h_prev
-            final_c[state_idx] = c_prev
-        layer_input = layer_output
-        if train and dropout != 0.0 and layer + 1 < num_layers:
-            from flag_gems.ops.dropout import dropout as _dropout
-
-            layer_input, _ = _dropout(layer_input, dropout, True)
-
-    output = layer_input.transpose(0, 1) if batch_first else layer_input
-    return output, final_h, final_c
-
-
 def _run_fusion_layer(
     input,
     hx,
@@ -319,29 +217,15 @@ def lstm(
     bidirectional,
     batch_first,
 ):
-    """aten::lstm: xhpc fusion binding (fast path) with composite fallback.
+    """aten::lstm through the XHPC fused launch-table binding.
 
     The fused path (launch table fg_lstm -> lstm_inference) gives near-native
-    performance (one launch per direction); reverse uses flip+fwd+flip (binding
-    fix, is_reverse=1 is wrong in this stack). On any failure we fall back to
-    the composite decomposition, so precision cannot regress.
+    performance (one launch per direction); reverse uses flip+fwd+flip because
+    is_reverse=1 is wrong in this stack. Vendor failures are propagated rather
+    than hidden by an unapproved native/composite fallback.
     """
-    try:
-        if train:
-            raise RuntimeError("fg_lstm inference kernel: training not supported")
-        out, fh, fc = _lstm_fused(
-            input, hx, params, has_biases, num_layers, bidirectional, batch_first
-        )
-        return out, fh, fc
-    except Exception:
-        return _lstm_composite(
-            input,
-            hx,
-            params,
-            has_biases,
-            num_layers,
-            dropout,
-            train,
-            bidirectional,
-            batch_first,
-        )
+    if train:
+        raise NotImplementedError("XHPC fused LSTM inference does not support training")
+    return _lstm_fused(
+        input, hx, params, has_biases, num_layers, bidirectional, batch_first
+    )
