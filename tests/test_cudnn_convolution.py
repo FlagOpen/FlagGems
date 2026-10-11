@@ -20,6 +20,33 @@ import flag_gems
 from .accuracy_utils import gems_assert_close
 from .conftest import QUICK_MODE
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _cudnn_convolution_device_ref(input, weight, padding, stride, dilation, groups):
+    """Device golden reference for ``aten::cudnn_convolution`` (kunlunxin only).
+
+    ``aten::cudnn_convolution`` has no executable kernel on this torch_xmlir/XPU
+    build: every call raises ``NotImplementedError: Could not run
+    'aten::cudnn_convolution' with arguments from the 'CPU' backend``, so the
+    upstream reference call can never produce a golden output.  Rebuild the
+    reference from the equivalent *device* op
+    ``torch.nn.functional.conv{1,2,3}d``, which is the plain aten convolution
+    running on the same device.  The mapping is 1:1: ``cudnn_convolution`` takes
+    no bias, its ``padding``/``stride``/``dilation`` are per spatial dimension,
+    and ``groups`` is passed through unchanged.  No FlagGems code is involved, so
+    the candidate is still compared against an independent implementation.
+    """
+    conv = {
+        1: torch.nn.functional.conv1d,
+        2: torch.nn.functional.conv2d,
+        3: torch.nn.functional.conv3d,
+    }[input.ndim - 2]
+    return conv(
+        input, weight, None, list(stride), list(padding), list(dilation), groups
+    )
+
+
 if QUICK_MODE:
     SHAPE_CUDNN_CONV2D = [
         ((1, 2, 5, 5), (1, 2, 3, 3), 1),
@@ -50,17 +77,27 @@ def test_cudnn_convolution_2d(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.cudnn_convolution(
-        inp,
-        weight,
-        padding=[padding, padding],
-        stride=[stride, stride],
-        dilation=[dilation, dilation],
-        groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
+    if IS_KUNLUNXIN:
+        ref_out = _cudnn_convolution_device_ref(
+            inp,
+            weight,
+            [padding, padding],
+            [stride, stride],
+            [dilation, dilation],
+            groups,
+        )
+    else:
+        ref_out = torch.cudnn_convolution(
+            inp,
+            weight,
+            padding=[padding, padding],
+            stride=[stride, stride],
+            dilation=[dilation, dilation],
+            groups=groups,
+            benchmark=False,
+            deterministic=False,
+            allow_tf32=False,
+        )
 
     res_out = flag_gems.cudnn_convolution(
         inp,
@@ -101,17 +138,27 @@ def test_cudnn_convolution_1d(shape, kernel, stride, padding, dtype, monkeypatch
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.cudnn_convolution(
-        inp,
-        weight,
-        padding=[padding],
-        stride=[stride],
-        dilation=[1],
-        groups=1,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
+    if IS_KUNLUNXIN:
+        ref_out = _cudnn_convolution_device_ref(
+            inp,
+            weight,
+            [padding],
+            [stride],
+            [1],
+            1,
+        )
+    else:
+        ref_out = torch.cudnn_convolution(
+            inp,
+            weight,
+            padding=[padding],
+            stride=[stride],
+            dilation=[1],
+            groups=1,
+            benchmark=False,
+            deterministic=False,
+            allow_tf32=False,
+        )
 
     res_out = flag_gems.cudnn_convolution(
         inp,
@@ -154,17 +201,27 @@ def test_cudnn_convolution_3d(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
 
-    ref_out = torch.cudnn_convolution(
-        inp,
-        weight,
-        padding=[padding, padding, padding],
-        stride=[stride, stride, stride],
-        dilation=[dilation, dilation, dilation],
-        groups=groups,
-        benchmark=False,
-        deterministic=False,
-        allow_tf32=False,
-    )
+    if IS_KUNLUNXIN:
+        ref_out = _cudnn_convolution_device_ref(
+            inp,
+            weight,
+            [padding, padding, padding],
+            [stride, stride, stride],
+            [dilation, dilation, dilation],
+            groups,
+        )
+    else:
+        ref_out = torch.cudnn_convolution(
+            inp,
+            weight,
+            padding=[padding, padding, padding],
+            stride=[stride, stride, stride],
+            dilation=[dilation, dilation, dilation],
+            groups=groups,
+            benchmark=False,
+            deterministic=False,
+            allow_tf32=False,
+        )
 
     res_out = flag_gems.cudnn_convolution(
         inp,
