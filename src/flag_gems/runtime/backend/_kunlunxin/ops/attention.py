@@ -862,7 +862,12 @@ def scaled_dot_product_attention_forward(
             qk_buf,
             m_buf,
             cmask if use_cmask else qk_buf,
+            # This entry point implements neither alibi nor softcap, so both are
+            # passed in their disabled form: ALIBI gets a dummy pointer (it is
+            # only dereferenced when USE_ALIBI is true) and softcap gets 0.0.
+            qk_buf,
             softmax_scale,
+            0.0,
             q_in.stride(0),
             q_in.stride(2),
             q_in.stride(1),
@@ -876,6 +881,8 @@ def scaled_dot_product_attention_forward(
             k_pad,
             q_head_num,
             USE_CMASK=use_cmask,
+            USE_SOFTCAP=False,
+            USE_ALIBI=False,
             num_warps=8,
             num_stages=1,
             **common_q,
