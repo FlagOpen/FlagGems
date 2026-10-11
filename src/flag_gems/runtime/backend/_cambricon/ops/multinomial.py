@@ -25,6 +25,8 @@ from flag_gems.utils.random_utils import (
     uint_to_uniform_float,
 )
 
+from ._philox_layout import philox_lane
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,9 +53,7 @@ def multinomial_with_replacement(
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
     r = _philox(NBLOCK, sl, sh, c0 + y_off + y_off_step, c1, 0, 0, 10)
     r = uint_to_uniform_float(r)
-    # philox on triton-mlu returns [NBLOCK, 4] (element-major); col 0 is the
-    # per-sample random value. See #6955.
-    rv = r[:, 0]
+    rv = philox_lane(r, 0)
 
     # Do a binary search for each random number on the cumulative
     # probabilities, selecting the leftmost index whose cumulative probability
