@@ -65,8 +65,9 @@ def log_normal_kernel(
         r = _philox(BLOCK, sl, sh, c0 + i4_start, c1, 0, 0, 10)
         r = uint_to_uniform_float(r)
 
-        res[0, :], res[1, :] = pair_uniform_to_normal(r[0, :], r[1, :])
-        res[2, :], res[3, :] = pair_uniform_to_normal(r[2, :], r[3, :])
+        # Same layout as randn: philox is [BLOCK, 4], not [4, BLOCK] (#6955).
+        res[0, :], res[1, :] = pair_uniform_to_normal(r[:, 0], r[:, 1])
+        res[2, :], res[3, :] = pair_uniform_to_normal(r[:, 2], r[:, 3])
         values = tl.exp(
             tl.reshape(res, [BLOCK * UNROLL], can_reorder=True) * std + mean
         )

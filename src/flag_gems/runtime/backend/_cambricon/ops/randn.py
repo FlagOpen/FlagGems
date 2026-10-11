@@ -74,10 +74,11 @@ def randn_kernel(
         r = _philox(BLOCK, sl, sh, c0 + i4_start, c1, 0, 0, 10)
         r = uint_to_uniform_float(r)
 
-        # philox (libdevice v1) returns [4, BLOCK] (lane-major): row i is the
-        # i-th lane across every block element.
-        res[0, :], res[1, :] = pair_uniform_to_normal(r[0, :], r[1, :])
-        res[2, :], res[3, :] = pair_uniform_to_normal(r[2, :], r[3, :])
+        # philox on triton-mlu returns [BLOCK, 4] (element-major). #6259 flipped
+        # indexing to r[0, :], which yields tensor<4xf32> and breaks the cast into
+        # res[0, :] (tensor<BLOCKxf32>) — see issue #6955 / PassManager::run failed.
+        res[0, :], res[1, :] = pair_uniform_to_normal(r[:, 0], r[:, 1])
+        res[2, :], res[3, :] = pair_uniform_to_normal(r[:, 2], r[:, 3])
 
         off = block_offset + tl.arange(0, BLOCK * UNROLL)
         tl.store(
