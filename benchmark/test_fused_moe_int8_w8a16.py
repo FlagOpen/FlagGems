@@ -19,6 +19,33 @@ import flag_gems
 
 from . import base
 
+# ---------------------------------------------------------------------------
+# Kunlunxin capability gate (benchmark side).
+#
+# This file benchmarks a QUANTIZED fused_experts_impl variant.  On Kunlunxin
+# none of them can execute: the backend op raises NotImplementedError for every
+# quantized-weight variant (INT8 W8A8 / INT8 W8A16 / INT4 W4A16), and the FP8
+# variants additionally require NVIDIA Hopper.  Every other vendor is left
+# byte-for-byte upstream.
+#
+# It is skipped at MODULE level rather than with a per-test ``skipif`` because
+# ``benchmark/conftest.py`` records ONE result per operator and the LAST
+# collected test wins.  A per-test skip here would overwrite the
+# ``fused_experts_impl`` marker's benchmark verdict with "Skipped" and mask the
+# plain bf16/fp16 benchmark in ``benchmark/test_fused_moe.py`` -- the only
+# variant that can run on this stack.  Module-level skips are not routed
+# through ``pytest_runtest_logreport``, so the marker's verdict is left to the
+# tests that actually execute.
+#
+# Recorded coverage narrowing: the quantized-weight benchmark variants of the
+# ``fused_experts_impl`` marker are exercised by zero cases on this device.
+# ---------------------------------------------------------------------------
+if flag_gems.vendor_name == "kunlunxin":
+    pytest.skip(
+        "quantized-weight fused_experts_impl is not executable on kunlunxin",
+        allow_module_level=True,
+    )
+
 
 def is_cuda_available():
     if flag_gems.device != "cuda":
