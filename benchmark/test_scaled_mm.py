@@ -26,12 +26,26 @@ pytestmark = pytest.mark.skipif(
 
 
 def _cuda_fp8_available():
+    """Whether this runtime can execute an FP8 scaled matmul.
+
+    On an NVIDIA device the SM89 compute-capability heuristic is the right
+    question, and it is kept verbatim so NVIDIA behaviour is unchanged.  On any
+    other vendor the SM version is meaningless -- the check reports 8.6 on the
+    kunlunxin XPU stack, i.e. it claims FP8 support for a backend that has none
+    -- so ask the backend's own capability flag instead.  Every non-NVIDIA
+    vendor therefore takes the capability answer, and a backend that grows FP8
+    support only has to make ``support_fp8`` true.
+    """
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
     if not flag_gems.runtime.device.support_bf16:
         return False
+    if not hasattr(torch, "float8_e4m3fn"):
+        return False
+    if flag_gems.vendor_name != "nvidia":
+        return bool(getattr(flag_gems.runtime.device, "support_fp8", False))
     major, minor = torch.cuda.get_device_capability()
-    return major * 10 + minor >= 89 and hasattr(torch, "float8_e4m3fn")
+    return major * 10 + minor >= 89
 
 
 def _benchmark_cases():
