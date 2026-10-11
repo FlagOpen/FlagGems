@@ -142,6 +142,7 @@ def mul_contiguous_chunked_kernel(
     x_ptr,
     y_ptr,
     output_ptr,
+    n_elements,
     BLOCK_SIZE: tl.constexpr,
     BLOCKS_PER_PROGRAM: tl.constexpr,
     IS_BOOL: tl.constexpr,
@@ -149,11 +150,19 @@ def mul_contiguous_chunked_kernel(
     pid = tl.program_id(0)
     for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
         block_id = pid * BLOCKS_PER_PROGRAM + block_offset
-        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        x = tl.load(x_ptr + offsets)
-        y = tl.load(y_ptr + offsets)
-        out = x & y if IS_BOOL else x * y
-        tl.store(output_ptr + offsets, out)
+        block_start = block_id * BLOCK_SIZE
+        offsets = block_start + tl.arange(0, BLOCK_SIZE)
+        if block_start + BLOCK_SIZE <= n_elements:
+            x = tl.load(x_ptr + offsets)
+            y = tl.load(y_ptr + offsets)
+            out = x & y if IS_BOOL else x * y
+            tl.store(output_ptr + offsets, out)
+        elif block_start < n_elements:
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask, other=0)
+            y = tl.load(y_ptr + offsets, mask=mask, other=0)
+            out = x & y if IS_BOOL else x * y
+            tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -573,6 +582,7 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
                     a_t,
                     b_t,
                     output,
+                    n_elements,
                     BLOCK_SIZE=chunk_block_size,
                     BLOCKS_PER_PROGRAM=blocks_per_program,
                     IS_BOOL=_is_bool_dtype(dtype),
@@ -1008,7 +1018,7 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 
 def mul(A, B, *, out=None):
-    logger.debug("GEMS_ASCEND MUL")
+    logger.debug("GEMS MUL")
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -1022,7 +1032,7 @@ def mul(A, B, *, out=None):
 
 
 def mul_(A, B):
-    logger.debug("GEMS_ASCEND MUL_")
+    logger.debug("GEMS MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)
