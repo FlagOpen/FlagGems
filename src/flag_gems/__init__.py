@@ -1605,6 +1605,7 @@ _FULL_CONFIG = (
     ("segment_reduce", segment_reduce),
     ("segment_reduce.out", segment_reduce_out),
     ("select_backward", select_backward),
+    ("select_copy.int", select_copy),
     ("select_scatter", select_scatter),
     ("selu", selu),
     ("selu_", selu_),

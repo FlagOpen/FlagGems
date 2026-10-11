@@ -16808,6 +16808,22 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: select_copy
+  description: |
+    Returns a copy of the input with the selected slice along the given
+    dimension at the given index removed. This is the out-of-place counterpart
+    of `torch.select()`: the output has one dimension less than the input and
+    is freshly created instead of aliasing the input, equivalent to
+    `self.select(dim, index).clone()`.
+  for:
+  - select_copy.int
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: select_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given index.
 

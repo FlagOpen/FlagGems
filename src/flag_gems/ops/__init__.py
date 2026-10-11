@@ -1223,6 +1223,7 @@ from flag_gems.ops.segment_reduce import (
     segment_reduce_out,
 )
 from flag_gems.ops.select_backward import select_backward
+from flag_gems.ops.select_copy import select_copy
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
@@ -2749,6 +2750,7 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
