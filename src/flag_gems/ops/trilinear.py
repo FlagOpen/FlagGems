@@ -20,7 +20,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.copy import contiguous, copy_
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.copy import copy_
 from flag_gems.ops.sum import sum_dim
 from flag_gems.utils import libentry, libtuner
 

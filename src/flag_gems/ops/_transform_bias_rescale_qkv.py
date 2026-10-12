@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.copy import contiguous
+from flag_gems.ops.contiguous import contiguous
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

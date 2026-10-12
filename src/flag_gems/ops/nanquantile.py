@@ -20,7 +20,8 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from flag_gems.ops.copy import contiguous, copy_
+from flag_gems.ops.contiguous import contiguous
+from flag_gems.ops.copy import copy_
 from flag_gems.ops.sort import sort_stable
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim

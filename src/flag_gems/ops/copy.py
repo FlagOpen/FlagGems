@@ -140,13 +140,3 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     overload = _copy_kernel.instantiate(expanded_src.ndim)
     overload(expanded_src, out0=dst)
     return dst
-
-
-def contiguous(inp: torch.Tensor, memory_format=torch.contiguous_format):
-    """Return a contiguous copy of ``inp`` allocated and copied on device."""
-    assert memory_format == torch.contiguous_format
-    logger.debug("GEMS CONTIGUOUS")
-    if inp.is_contiguous(memory_format=memory_format):
-        return inp
-    out = torch.empty_like(inp, memory_format=memory_format)
-    return copy_(out, inp)

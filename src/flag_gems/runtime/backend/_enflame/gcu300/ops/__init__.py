@@ -77,6 +77,7 @@ from .clamp_min import clamp_min, clamp_min_
 from .clip import clip, clip_
 from .concatenate import concatenate
 from .conj_physical import conj_physical
+from .contiguous import contiguous
 from .copy import copy, copy_
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out
@@ -360,6 +361,7 @@ __all__ = [
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
+    "contiguous",
     "copy",
     "copy_",
     "cos",

@@ -77,6 +77,7 @@ from .ceil import ceil, ceil_
 from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .concatenate import concatenate
+from .contiguous import contiguous
 from .copy import copy, copy_
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
@@ -335,6 +336,7 @@ __all__ = [
     "clamp_tensor",
     "clamp_tensor_",
     "concatenate",
+    "contiguous",
     "copy",
     "copy_",
     "cos",

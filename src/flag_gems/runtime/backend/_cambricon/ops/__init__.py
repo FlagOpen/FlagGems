@@ -85,6 +85,7 @@ from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
 from .concatenate import concatenate
 from .conj_physical import conj_physical
+from .contiguous import contiguous
 from .copy import copy, copy_
 from .cos import cos, cos_
 from .count_nonzero import count_nonzero
@@ -425,6 +426,7 @@ __all__ = [
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
+    "contiguous",
     "copy",
     "copy_",
     "cos",
