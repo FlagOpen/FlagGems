@@ -3348,22 +3348,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
-- id: contiguous
-  description: 'Returns a contiguous in memory tensor containing the same data as
-    `self` tensor.
-
-    '
-  for:
-  - contiguous
-  labels:
-  - aten
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '2.2'
-  - removed: '4.1'
-  cpp: '4.0'
 - id: conv1d
   description: Applies a 1D convolution over a quantized 1D input composed of several
     input planes.

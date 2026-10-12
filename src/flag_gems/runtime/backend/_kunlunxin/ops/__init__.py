@@ -179,7 +179,6 @@ from .col2im import col2im
 from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
-from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
@@ -880,7 +879,6 @@ __all__ = [
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
-    "contiguous",
     "conv1d",
     "conv2d",
     "conv3d",

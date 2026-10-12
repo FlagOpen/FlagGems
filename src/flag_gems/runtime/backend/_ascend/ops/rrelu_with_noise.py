@@ -23,7 +23,7 @@ import triton
 import triton.language as tl
 from triton.runtime import driver
 
-from flag_gems.ops.contiguous import contiguous as _gems_contiguous
+from flag_gems.ops.copy import contiguous as _gems_contiguous
 from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.ops.rrelu_with_noise import (
     _check_rrelu_with_noise_args,
