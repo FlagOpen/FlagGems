@@ -340,3 +340,28 @@ def init_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def gems_log_prefix(fn):
+    """Derive the expected log prefix from the resolved function module.
+
+    The generic implementation logs with the ``"GEMS"`` prefix, while
+    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
+    ``_<vendor>`` path component so this works for both short imported module
+    names and fully qualified backend module names.
+    """
+    module_parts = fn.__module__.split(".")
+    if f"_{flag_gems.vendor_name}" in module_parts:
+        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    return "GEMS"
+
+
+def gems_log_logger(fn):
+    """Return the canonical logger name used by an operator implementation.
+
+    Vendor overrides may live in a vendor module while intentionally sharing
+    the generic ``flag_gems.ops.<operator>`` logger name.
+    """
+    module = fn.__module__.split(".")
+    operator_module = module[-1]
+    return f"flag_gems.ops.{operator_module}"

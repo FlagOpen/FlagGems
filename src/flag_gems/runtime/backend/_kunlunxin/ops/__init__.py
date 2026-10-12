@@ -25,6 +25,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
     _embedding_bag_per_sample_weights_backward,
 )
 from ._euclidean_dist import _euclidean_dist
+from ._flash_attention_forward import _flash_attention_forward
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -101,11 +102,13 @@ from .atan2 import atan2, atan2_, atan2_out
 from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
+    efficient_attention_backward,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
+    scaled_dot_product_efficient_attention_backward,
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .avg_pool3d import avg_pool3d
@@ -174,12 +177,14 @@ from .clamp import (
 from .clip import clip, clip_
 from .col2im import col2im
 from .concatenate import concatenate
+from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
 from .contiguous import contiguous
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
@@ -201,6 +206,7 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
+from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .digamma import digamma
 from .digamma_ import digamma_
@@ -227,7 +233,7 @@ from .empty import empty  # noqa: F401
 from .empty_permuted import empty_permuted  # noqa: F401
 from .eq import eq, eq_, eq_scalar, eq_scalar_
 from .erf import erf, erf_, special_erf
-from .erfc import erfc, erfc_  # noqa: F401
+from .erfc import erfc, erfc_, special_erfc  # noqa: F401
 from .erfinv import erfinv
 from .erfinv_ import erfinv_  # noqa: F401
 from .exp import exp, exp_, exp_out
@@ -238,6 +244,16 @@ from .exponential import exponential  # noqa: F401
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_per_channel_affine import (  # noqa: F401
+    fake_quantize_per_channel_affine,
+)
+from .fake_quantize_per_channel_affine_cachemask import (  # noqa: F401
+    fake_quantize_per_channel_affine_cachemask,
+    fake_quantize_per_channel_affine_cachemask_out,
+)
+from .fake_quantize_per_channel_affine_cachemask_backward import (  # noqa: F401
+    fake_quantize_per_channel_affine_cachemask_backward,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -287,7 +303,7 @@ from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
-from .hardsigmoid import hardsigmoid, hardsigmoid_out
+from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
@@ -344,7 +360,7 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
-from .linalg_matrix_norm import linalg_matrix_norm
+from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -426,6 +442,7 @@ from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
+from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
@@ -524,7 +541,6 @@ from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
-from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
@@ -578,7 +594,6 @@ from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from .special_digamma import special_digamma
-from .special_erfc import special_erfc
 from .special_erfcx import special_erfcx
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_exp2 import special_exp2
@@ -699,6 +714,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
+    "_flash_attention_forward",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -862,11 +878,13 @@ __all__ = [
     "clip_",
     "col2im",
     "concatenate",
+    "conj_physical",
     "constant_pad_nd",
     "contiguous",
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_transpose1d",
     "conv_transpose2d",
     "copy",
     "copy_",
@@ -891,6 +909,7 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
+    "diagonal_scatter",
     "diff",
     "digamma",
     "digamma_",
@@ -901,6 +920,7 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
+    "efficient_attention_backward",
     "elu",
     "elu_",
     "elu_backward",
@@ -929,6 +949,10 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fake_quantize_per_channel_affine",
+    "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_backward",
+    "fake_quantize_per_channel_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -992,6 +1016,7 @@ __all__ = [
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid",
+    "hardsigmoid_",
     "hardsigmoid_out",
     "histc",
     "hstack",
@@ -1065,6 +1090,7 @@ __all__ = [
     "linalg_lu_factor_out",
     "linalg_lu_out",
     "linalg_matrix_norm",
+    "linalg_matrix_norm_out",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1166,6 +1192,7 @@ __all__ = [
     "narrow_copy",
     "native_batch_norm",
     "native_batch_norm_legit_no_training",
+    "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
@@ -1284,8 +1311,7 @@ __all__ = [
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
-    "scaled_mm",
-    "scaled_mm_out",
+    "scaled_dot_product_efficient_attention_backward",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "ScaleDotProductAttention",
