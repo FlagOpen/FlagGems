@@ -12628,7 +12628,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
 - id: mhc_bwd
   description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
 
