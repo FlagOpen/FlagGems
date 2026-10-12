@@ -45,7 +45,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-_MAXD = tl.constexpr(8)   # sparse dims handled by the scalar-argument kernel
+_MAXD = tl.constexpr(8)  # sparse dims handled by the scalar-argument kernel
 _MAXDN = tl.constexpr(4)  # dense dims handled by the scalar-argument kernel
 _BLOCK_E = 256
 
@@ -66,11 +66,34 @@ def _sb_fused_kernel(
     F,
     V,
     STRIDE0,
-    E0, E1, E2, E3, E4, E5, E6, E7,
-    R0, R1, R2, R3, R4, R5, R6, R7,
-    TS0, TS1, TS2, TS3,
-    TT0, TT1, TT2, TT3,
-    SS0, SS1, SS2, SS3,
+    E0,
+    E1,
+    E2,
+    E3,
+    E4,
+    E5,
+    E6,
+    E7,
+    R0,
+    R1,
+    R2,
+    R3,
+    R4,
+    R5,
+    R6,
+    R7,
+    TS0,
+    TS1,
+    TS2,
+    TS3,
+    TT0,
+    TT1,
+    TT2,
+    TT3,
+    SS0,
+    SS1,
+    SS2,
+    SS3,
     SP_NEW: tl.constexpr,
     SP_BLOCK: tl.constexpr,
     DN: tl.constexpr,
@@ -127,19 +150,27 @@ def _sb_fused_kernel(
         row_safe = tl.where(row >= 0, row, 0)
         ok = (row[:, None] >= 0) & m_e[None, :]
         oldv = tl.load(
-            old_idx_ptr + row_safe[:, None].to(tl.int64) * NNZ + j[None, :].to(tl.int64),
-            mask=ok, other=0)
+            old_idx_ptr
+            + row_safe[:, None].to(tl.int64) * NNZ
+            + j[None, :].to(tl.int64),
+            mask=ok,
+            other=0,
+        )
         val = tl.where(ext[:, None] > 1, combo, oldv)
-        tl.store(new_idx_ptr + d[:, None].to(tl.int64) * NNZ_NEW + e[None, :].to(tl.int64),
-                 val, mask=m_d[:, None] & m_e[None, :])
+        tl.store(
+            new_idx_ptr + d[:, None].to(tl.int64) * NNZ_NEW + e[None, :].to(tl.int64),
+            val,
+            mask=m_d[:, None] & m_e[None, :],
+        )
 
     v = (pv * BLOCK_V + tl.arange(0, BLOCK_V)).to(tl.int64)
     m = m_e[:, None] & (v[None, :] < V)
     off = tl.zeros((BLOCK_E, BLOCK_V), dtype=tl.int64)
     for k in tl.static_range(_MAXDN):
         if k < DN:
-            off += ((v[None, :] // [TS0, TS1, TS2, TS3][k])
-                    % [TT0, TT1, TT2, TT3][k]) * [SS0, SS1, SS2, SS3][k]
+            off += (
+                (v[None, :] // [TS0, TS1, TS2, TS3][k]) % [TT0, TT1, TT2, TT3][k]
+            ) * [SS0, SS1, SS2, SS3][k]
     addr = old_val_ptr + j[:, None].to(tl.int64) * STRIDE0 + off
     if NO_OTHER:
         pval = tl.load(addr, mask=m)
@@ -178,8 +209,11 @@ def _sb_idx_kernel(
     ok = (row[:, None] >= 0) & m_e[None, :]
     oldv = tl.load(old_idx_ptr + row_safe[:, None] * NNZ + j[None, :], mask=ok, other=0)
     val = tl.where(ext[:, None] > 1, combo, oldv)
-    tl.store(new_idx_ptr + d[:, None].to(tl.int64) * NNZ_NEW + e[None, :], val,
-             mask=m_d[:, None] & m_e[None, :])
+    tl.store(
+        new_idx_ptr + d[:, None].to(tl.int64) * NNZ_NEW + e[None, :],
+        val,
+        mask=m_d[:, None] & m_e[None, :],
+    )
 
 
 @triton.jit
@@ -354,7 +388,9 @@ def sparse_broadcast_to(self, size):
         )
 
     out_idx = torch.empty((sp_new, nnz_new), dtype=torch.int64, device=device)
-    out_val = torch.empty((nnz_new,) + tuple(tgt_dense), dtype=self.dtype, device=device)
+    out_val = torch.empty(
+        (nnz_new,) + tuple(tgt_dense), dtype=self.dtype, device=device
+    )
 
     if nnz_new > 0 and (sp_new > 0 or V > 0):
         src_val = self._values()
@@ -393,33 +429,92 @@ def sparse_broadcast_to(self, size):
             # int64 divide.
             pow2 = (F & (F - 1)) == 0
             _sb_fused_kernel[grid](
-                self._indices(), src_val, out_idx, out_val,
-                nnz, nnz_new, F.bit_length() - 1, F - 1, F, V, stride0,
+                self._indices(),
+                src_val,
+                out_idx,
+                out_val,
+                nnz,
+                nnz_new,
+                F.bit_length() - 1,
+                F - 1,
+                F,
+                V,
+                stride0,
                 *(ext + [1] * (_MAXD.value - sp_new)),
                 *(srcrow + [-1] * (_MAXD.value - sp_new)),
                 *(tstrd + [1] * (_MAXDN.value - dn)),
                 *(tgt_dense + [1] * (_MAXDN.value - dn)),
                 *(sstrd + [0] * (_MAXDN.value - dn)),
-                SP_NEW=sp_new, SP_BLOCK=_next_pow2(max(sp_new, 1)), DN=dn,
-                BLOCK_E=block_e, BLOCK_V=block_v, POW2=pow2, NO_OTHER=no_other,
+                SP_NEW=sp_new,
+                SP_BLOCK=_next_pow2(max(sp_new, 1)),
+                DN=dn,
+                BLOCK_E=block_e,
+                BLOCK_V=block_v,
+                POW2=pow2,
+                NO_OTHER=no_other,
             )
         else:
-            _fallback_launch(self, out_idx, out_val, src_val, stride0,
-                             ext, strd, srcrow, tgt_dense, tstrd, sstrd,
-                             nnz, nnz_new, F, V, sp_new, dn, device, no_other)
+            _fallback_launch(
+                self,
+                out_idx,
+                out_val,
+                src_val,
+                stride0,
+                ext,
+                strd,
+                srcrow,
+                tgt_dense,
+                tstrd,
+                sstrd,
+                nnz,
+                nnz_new,
+                F,
+                V,
+                sp_new,
+                dn,
+                device,
+                no_other,
+            )
 
     out_flag = _out_coalesced(self.is_coalesced(), sp, dn, sp_new, ext)
     return torch.sparse_coo_tensor(out_idx, out_val, tuple(tgt), is_coalesced=out_flag)
 
 
-def _fallback_launch(self, out_idx, out_val, src_val, stride0,
-                     ext, strd, srcrow, tgt_dense, tstrd, sstrd,
-                     nnz, nnz_new, F, V, sp_new, dn, device, no_other):
+def _fallback_launch(
+    self,
+    out_idx,
+    out_val,
+    src_val,
+    stride0,
+    ext,
+    strd,
+    srcrow,
+    tgt_dense,
+    tstrd,
+    sstrd,
+    nnz,
+    nnz_new,
+    F,
+    V,
+    sp_new,
+    dn,
+    device,
+    no_other,
+):
     """Correct-but-slower path for shapes outside the scalar-argument kernel."""
     meta = torch.tensor(ext + strd + srcrow, dtype=torch.int64, device=device)
     grid = (triton.cdiv(nnz_new, _BLOCK_E),)
-    _sb_idx_kernel[grid](self._indices(), out_idx, meta, nnz_new, nnz, F, sp_new,
-                         SP_BLOCK=_next_pow2(sp_new), BLOCK_E=_BLOCK_E)
+    _sb_idx_kernel[grid](
+        self._indices(),
+        out_idx,
+        meta,
+        nnz_new,
+        nnz,
+        F,
+        sp_new,
+        SP_BLOCK=_next_pow2(sp_new),
+        BLOCK_E=_BLOCK_E,
+    )
     if V > 0:
         dmeta = []
         for k in range(dn):
@@ -427,5 +522,16 @@ def _fallback_launch(self, out_idx, out_val, src_val, stride0,
         dmeta_t = torch.tensor(dmeta, dtype=torch.int64, device=device)
         blk_v = min(_next_pow2(V), 128)
         grid = (triton.cdiv(nnz_new, _BLOCK_E), triton.cdiv(V, blk_v))
-        _sb_val_kernel[grid](src_val, out_val, dmeta_t, nnz_new, F, V, stride0,
-                             DN=dn, BLOCK_E=_BLOCK_E, BLOCK_V=blk_v, NO_OTHER=no_other)
+        _sb_val_kernel[grid](
+            src_val,
+            out_val,
+            dmeta_t,
+            nnz_new,
+            F,
+            V,
+            stride0,
+            DN=dn,
+            BLOCK_E=_BLOCK_E,
+            BLOCK_V=blk_v,
+            NO_OTHER=no_other,
+        )
