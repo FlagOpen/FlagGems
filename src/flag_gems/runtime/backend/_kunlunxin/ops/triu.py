@@ -246,12 +246,7 @@ def _tle_block_eligible(A, diagonal):
     # fully-aligned case (no column or row padding) where it is verified exact;
     # packing combined with a single-matrix row-tail trim miscompiles, so padded
     # shapes keep the per-dtype kernel.
-    use_pack = (
-        A.dtype == torch.bfloat16
-        and N % 2 == 0
-        and N % BN == 0
-        and BR % BM == 0
-    )
+    use_pack = A.dtype == torch.bfloat16 and N % 2 == 0 and N % BN == 0 and BR % BM == 0
     return BR, Mmat, N, BM, BN, nbcol, use_pack
 
 
