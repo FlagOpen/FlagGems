@@ -8526,7 +8526,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
 - id: greater
   description: Test if input is greater than `other` elementwise.
   for:
