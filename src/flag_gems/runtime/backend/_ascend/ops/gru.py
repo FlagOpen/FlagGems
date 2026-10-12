@@ -33,6 +33,23 @@ _IGEMM_MM_MIN_MACS = 5e8
 _TRANSPOSE_BLOCK = 32
 
 _PACK_BLOCK = 256
+_ASCEND_MAX_CORE_DIM = 65535
+
+
+def _ascend_launch_grid(*axes):
+    axes = [min(max(1, int(axis)), _ASCEND_MAX_CORE_DIM) for axis in axes]
+    while True:
+        product = 1
+        for axis in axes:
+            product *= axis
+        if product <= _ASCEND_MAX_CORE_DIM:
+            return tuple(axes)
+        largest = max(range(len(axes)), key=lambda i: axes[i])
+        others = product // axes[largest]
+        if others > _ASCEND_MAX_CORE_DIM:
+            axes[largest] = 1
+        else:
+            axes[largest] = max(1, _ASCEND_MAX_CORE_DIM // others)
 
 
 @libentry()
@@ -370,6 +387,7 @@ def _gru_x_aug_kernel(
     x_aug_ptr,
     cols,
     batch,
+    seq_len,
     x_stride_s,
     x_stride_b,
     x_stride_f,
@@ -378,19 +396,26 @@ def _gru_x_aug_kernel(
     # x (seq, batch, cols) -> x_aug (seq*batch, cols+1) with a trailing ones column so
     # the mm folds w_aug's bias row in. Affine 3D grid: a div/mod variant faults the AIV.
     pid_s = tl.program_id(0)
+    worker_s = tl.num_programs(0)
     pid_b = tl.program_id(1)
+    worker_b = tl.num_programs(1)
     pid_c = tl.program_id(2)
-    offs_c = pid_c * BLOCK + tl.arange(0, BLOCK)
-    val = tl.load(
-        x_ptr + pid_s * x_stride_s + pid_b * x_stride_b + offs_c * x_stride_f,
-        mask=offs_c < cols,
-        other=1.0,
-    )
-    tl.store(
-        x_aug_ptr + (pid_s * batch + pid_b) * (cols + 1) + offs_c,
-        val,
-        mask=offs_c <= cols,
-    )
+    worker_c = tl.num_programs(2)
+    n_c = tl.cdiv(cols + 1, BLOCK)
+    for s in range(pid_s, seq_len, worker_s):
+        for b in range(pid_b, batch, worker_b):
+            for c_pid in range(pid_c, n_c, worker_c):
+                offs_c = c_pid * BLOCK + tl.arange(0, BLOCK)
+                val = tl.load(
+                    x_ptr + s * x_stride_s + b * x_stride_b + offs_c * x_stride_f,
+                    mask=offs_c < cols,
+                    other=1.0,
+                )
+                tl.store(
+                    x_aug_ptr + (s * batch + b) * (cols + 1) + offs_c,
+                    val,
+                    mask=offs_c <= cols,
+                )
 
 
 @libentry()
@@ -1040,7 +1065,10 @@ def _direction_prep(
     )
 
     macs = seq_len * batch_size * input_size * 3 * hidden_size
-    use_mm = macs >= _IGEMM_MM_MIN_MACS
+    rows = seq_len * batch_size
+    cols = 3 * hidden_size
+    mm_tiles = triton.cdiv(rows, 16) * triton.cdiv(cols, 16)
+    use_mm = macs >= _IGEMM_MM_MIN_MACS and mm_tiles <= _ASCEND_MAX_CORE_DIM
     with torch_device_fn.device(layer_input.device):
         if use_mm:
             m = seq_len * batch_size
@@ -1078,13 +1106,16 @@ def _direction_prep(
             else:
                 w_aug = cached[3]
             _gru_x_aug_kernel[
-                (seq_len, batch_size, triton.cdiv(input_size + 1, _PACK_BLOCK))
+                _ascend_launch_grid(
+                    seq_len, batch_size, triton.cdiv(input_size + 1, _PACK_BLOCK)
+                )
             ](
                 *(
                     layer_input,
                     x_aug,
                     input_size,
                     batch_size,
+                    seq_len,
                     layer_input.stride(0),
                     layer_input.stride(1),
                     layer_input.stride(2),
