@@ -151,6 +151,31 @@ def _te_rmsnorm_fwd_tile2d_kernel(
 
 
 @triton.jit
+def _te_rmsnorm_fwd_flat_kernel(
+    Y,
+    INV_RMS,
+    X,
+    W,
+    eps: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """N == 1 fast path: every element is its own row, so rmsnorm is elementwise.
+
+    The per-row kernel would launch one (tiny) program per element, which is
+    launch-bound for e.g. [10000, 1]; a flat BLOCK-lane kernel amortizes the
+    launch cost the same way rms_norm_flat_kernel does.
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(X + offs).to(tl.float32)
+    rrms = 1.0 / tl.sqrt(x * x + eps)
+    w = tl.load(W)
+    y = (x * rrms).to(Y.dtype.element_ty) * w
+    tl.store(Y + offs, y)
+    tl.store(INV_RMS + offs, rrms)
+
+
+@triton.jit
 def _te_rmsnorm_fwd_row_kernel(
     Y,
     INV_RMS,
@@ -243,16 +268,21 @@ def te_rmsnorm_fwd(
     rsigma = torch.empty_strided((M,), (1,), dtype=torch.float32, device=x.device)
 
     with torch_device_fn.device(x.device):
-        tile_m = _fwd_tile_m(N, M)
-        if tile_m is not None:
-            _te_rmsnorm_fwd_tile2d_kernel[(M // tile_m,)](
-                y, rsigma, x, w, eps, tile_m, N
+        if N == 1:
+            _te_rmsnorm_fwd_flat_kernel[(triton.cdiv(M, 4096),)](
+                y, rsigma, x, w, eps, 4096
             )
         else:
-            need_mask = (N % _FWD_ROW_BLOCK) != 0
-            _te_rmsnorm_fwd_row_kernel[(M,)](
-                y, rsigma, x, w, N, eps, _FWD_ROW_BLOCK, need_mask
-            )
+            tile_m = _fwd_tile_m(N, M)
+            if tile_m is not None:
+                _te_rmsnorm_fwd_tile2d_kernel[(M // tile_m,)](
+                    y, rsigma, x, w, eps, tile_m, N
+                )
+            else:
+                need_mask = (N % _FWD_ROW_BLOCK) != 0
+                _te_rmsnorm_fwd_row_kernel[(M,)](
+                    y, rsigma, x, w, N, eps, _FWD_ROW_BLOCK, need_mask
+                )
 
     if otype is not None and y.dtype != otype:
         y = y.to(otype)
