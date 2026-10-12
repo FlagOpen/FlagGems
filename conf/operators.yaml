@@ -17486,7 +17486,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
 - id: smm
   description: 'Performs a matrix multiplication of the sparse (COO) matrix `self`
     with the
