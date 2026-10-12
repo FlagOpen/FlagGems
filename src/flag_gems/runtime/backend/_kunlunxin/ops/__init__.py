@@ -180,7 +180,6 @@ from .clamp import (
 )
 from .clip import clip, clip_
 from .col2im import col2im
-from .column_stack import column_stack_out
 from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
@@ -532,7 +531,6 @@ from .rnn_relu import rnn_relu
 from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
-from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -680,7 +678,6 @@ from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
 from .view_copy import view_copy
-from .vsplit import vsplit
 from .vstack import vstack
 from .weight_norm import _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
@@ -880,7 +877,6 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
-    "column_stack_out",
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
@@ -1301,8 +1297,6 @@ __all__ = [
     "round",
     "round_",
     "round_out",
-    "row_indices_copy",
-    "row_indices_copy_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
@@ -1483,7 +1477,6 @@ __all__ = [
     "vdot",
     "vector_norm",
     "view_copy",
-    "vsplit",
     "vstack",
     "weight_norm_interface",
     "weight_norm_interface_backward",
