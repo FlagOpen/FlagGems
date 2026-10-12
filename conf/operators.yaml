@@ -4707,6 +4707,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: dstack
+  description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
+    are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
+    single depth slot.
+
+    '
+  for:
+  - dstack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
