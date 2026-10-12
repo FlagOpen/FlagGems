@@ -753,7 +753,11 @@ from flag_gems.ops.greater import (
     greater_scalar_out,
 )
 from flag_gems.ops.greater_ import greater_
-from flag_gems.ops.greater_equal import greater_equal_
+from flag_gems.ops.greater_equal import (
+    greater_equal,
+    greater_equal_,
+    greater_equal_scalar,
+)
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
@@ -2219,7 +2223,9 @@ __all__ = [
     "glu_backward",
     "greater",
     "greater_",
+    "greater_equal",
     "greater_equal_",
+    "greater_equal_scalar",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
