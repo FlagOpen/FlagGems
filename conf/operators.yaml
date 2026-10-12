@@ -17541,6 +17541,21 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: sparse_bsc_tensor
+  description: 'Constructs a block-compressed sparse column (BSC) tensor from its stored
+    components (ccol_indices, row_indices, and the block values payload) with an optional
+    explicit size.
+
+    '
+  for:
+  - sparse_bsc_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
