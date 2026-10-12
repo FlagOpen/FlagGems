@@ -44,11 +44,12 @@ def test_empty_permuted(shape, physical_layout, dtype, caplog):
     ref_out = torch.ops.aten.empty_permuted(
         shape, physical_layout, dtype=dtype, device=flag_gems.device
     )
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.empty_permuted"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.empty_permuted(
-                shape, physical_layout, dtype=dtype, device=flag_gems.device
-            )
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.empty_permuted)
+    ):
+        res_out = flag_gems.empty_permuted(
+            shape, physical_layout, dtype=dtype, device=flag_gems.device
+        )
 
     assert (
         f"{utils.gems_log_prefix(flag_gems.empty_permuted)} EMPTY_PERMUTED"
