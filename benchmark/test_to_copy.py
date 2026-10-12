@@ -50,7 +50,14 @@ _TO_COPY_GEMS_OP = flag_gems.to_copy if _IS_KUNLUNXIN else None
 
 
 class ToCopyBenchmark(base.Benchmark):
-    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
+    # The tflops metric divides by candidate latency with NO EPS guard
+    # (base.py:791-797), unlike speedup/gbps which add self.EPS. On Kunlunxin the
+    # on-demand CI path runs the benchmark WITHOUT XPU_EVENT_KL3_ENABLE=1, so
+    # do_bench silently returns a median latency of 0 on the tiny (1024,1) cast
+    # (warm_up=1/rep=1), making that bare division raise ZeroDivisionError and
+    # fail the whole test. tflops is a meaningless metric for a pointwise cast
+    # anyway, so drop it on Kunlunxin only; other backends keep it unchanged.
+    DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ([] if _IS_KUNLUNXIN else ["tflops"])
 
     def __init__(self, *args, src_dtype=torch.float32, **kwargs):
         super().__init__(*args, **kwargs)
