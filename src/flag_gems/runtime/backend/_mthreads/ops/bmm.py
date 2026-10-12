@@ -178,13 +178,15 @@ def bmm_kernel(
     tl.store(o_ptrs, o, mask_c)
 
 
-def bmm_fma(A, B):
+def bmm_fma(A, B, C=None):
     logger.debug("GEMS_MTHREADS BMM_FMA")
     batch, M, K = A.shape
     _, _, N = B.shape
     A = A.contiguous()
     B = B.contiguous()
-    out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+    out = C
+    if out is None:
+        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
     grid_fn = lambda meta: (
         triton.cdiv(meta["M"], meta["TILE_M"]),
@@ -319,10 +321,11 @@ def bmm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
-def bmm_sqmma(A, B, elem_type, batch, M, N, K):
+def bmm_sqmma(A, B, elem_type, batch, M, N, K, C=None):
     device = "musa"
-    c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-    C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
+    if C is None:
+        c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
+        C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
     desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
     desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
     desc_c = TensorDescriptor.from_tensor(C.reshape(batch * M, N), [1, 1])
@@ -594,3 +597,24 @@ def bmm(a, b):
         return bmm_sqmma(a, b, a_dtype, batch, M, N, K)
     else:
         return bmm_fma(a, b)
+
+
+def bmm_out(a, b, *, out):
+    logger.debug("GEMS_MTHREADS BMM_OUT")
+    batch, M, K = a.shape
+    _, _, N = b.shape
+    assert (
+        out.shape == (batch, M, N) and out.dtype == a.dtype
+    ), "Incompatible output shape or dtype for bmm.out"
+    # All three specialized kernels store straight into a row-major buffer of
+    # the operand dtype, so a contiguous `out` can be the destination itself
+    # instead of paying for a temporary result plus a full-tensor copy.
+    if out.is_contiguous():
+        with torch_device_fn.device(a.device):
+            if is_bmm_ws_compatible(a, b, M, N, K):
+                return bmm_sqmma_ws(a, b, batch, M, N, K, C=out)
+            if is_sqmma_compatible(a, b, N, K) and M >= 128:
+                return bmm_sqmma(a, b, a.dtype, batch, M, N, K, C=out)
+            return bmm_fma(a, b, C=out)
+    out.copy_(bmm(a, b))
+    return out
