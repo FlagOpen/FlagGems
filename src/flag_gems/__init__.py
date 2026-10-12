@@ -2142,5 +2142,5 @@ __all__ = [
 ]
 
 
-if os.getenv("FLAGGEMS_ATEN_PLAN_CACHE", "0").lower() in ("1", "true", "on"):
+if os.getenv("FLAGGEMS_ATEN_PLAN_CACHE", "0").strip().lower() in ("1", "true", "on"):
     enable_aten_plan_cache()

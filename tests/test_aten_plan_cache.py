@@ -6,12 +6,18 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 
-from dataclasses import fields, is_dataclass
+import json
+import os
+import subprocess
+import sys
+from dataclasses import fields, is_dataclass, replace
+from types import SimpleNamespace
 
-import flag_gems
 import pytest
 import torch
 import triton
+
+import flag_gems
 from flag_gems.ops.add import add
 from flag_gems.ops.arange import arange_start
 from flag_gems.ops.bitwise_and import bitwise_and_tensor
@@ -47,7 +53,7 @@ def cached_add_scalar(x, scalar):
 
 @pytest.fixture(autouse=True)
 def _enable_plan_cache():
-    assert install(exclude=("*arange_func*",))
+    assert install(max_size=128, include=None, exclude=("*arange_func*",))
     clear_caches()
     yield
     uninstall()
@@ -325,12 +331,8 @@ def test_validated_launch_plan_reuses_device_context(monkeypatch):
     def unexpected_context_scan(*args, **kwargs):
         raise AssertionError("validated cache hit must reuse its device context")
 
-    monkeypatch.setattr(
-        plan_cache, "_argument_device_context", unexpected_context_scan
-    )
-    plan_cache._run_libentry_plan(
-        FakeEntry(), plan, _aten_plan_device_context=context
-    )
+    monkeypatch.setattr(plan_cache, "_argument_device_context", unexpected_context_scan)
+    plan_cache._run_libentry_plan(FakeEntry(), plan, _aten_plan_device_context=context)
 
     assert launches == [((1, 1, 1), ())]
 
@@ -382,3 +384,152 @@ def test_optional_plan_builder_fails_open(monkeypatch):
     monkeypatch.setattr(plan_cache, "_build_pointwise_plan", incompatible_vendor_abi)
     torch.testing.assert_close(cached_add(x, y), x + y)
     assert cached_add.cache_info().size == 0
+
+
+@pytest.mark.parametrize("shape", [(0,), (3, 0, 7)])
+def test_empty_outputs_reuse_structural_plans(shape):
+    x = torch.empty(shape, device=flag_gems.device)
+    y = torch.empty_like(x)
+    cached_add.clear_plan_cache()
+    torch.testing.assert_close(cached_add(x, y), x + y)
+    torch.testing.assert_close(cached_add(x, y), x + y)
+    assert cached_add.cache_info().hits == 1
+
+
+def test_bounded_lru_eviction_rebuilds_dynamic_shapes():
+    assert enable(max_size=2)
+    cached_add.clear_plan_cache()
+    for size in (17, 31, 47, 17):
+        x = torch.randn(size, device=flag_gems.device)
+        y = torch.randn_like(x)
+        torch.testing.assert_close(cached_add(x, y), x + y)
+    info = cached_add.cache_info()
+    assert info.size == 2
+    assert info.evictions == 2
+    assert info.misses == 4
+
+
+def test_zero_capacity_and_operator_filters_bypass_cache():
+    x = torch.randn(64, device=flag_gems.device)
+    y = torch.randn_like(x)
+    for policy in (
+        {"max_size": 0},
+        {"max_size": 128, "include": ("does_not_match.*",)},
+        {"max_size": 128, "include": None, "exclude": ("*cached_add*",)},
+    ):
+        assert enable(**policy)
+        cached_add.clear_plan_cache()
+        for _ in range(2):
+            torch.testing.assert_close(cached_add(x, y), x + y)
+        assert cached_add.cache_info().size == 0
+        assert cached_add.cache_info().hits == 0
+
+
+@pytest.mark.parametrize("prefer_1d", [False, True])
+def test_balanced_grid_change_invalidates_routing_and_launch_plans(prefer_1d):
+    config = replace(
+        cached_add.config,
+        balance_grid=False,
+        prefer_1d_tile=prefer_1d,
+        max_grid_size=(3, 1, 1),
+    )
+    operator = pointwise_dynamic(
+        num_inputs=2, promotion_methods=[(0, 1, "DEFAULT")], config=config
+    )(cached_add._scalar_fn)
+    x = torch.randn((129, 127), device=flag_gems.device)
+    y = torch.randn_like(x)
+    for balanced in (False, True):
+        operator.config.balance_grid = balanced
+        torch.testing.assert_close(operator(x, y), x + y)
+        torch.testing.assert_close(operator(x, y), x + y)
+    info = operator.cache_info()
+    assert info.misses == 2
+    assert info.hits == 2
+    for vendor_cache in operator._aten_routing_plan_cache.lru.values():
+        for signature, plan in vendor_cache.items():
+            assert plan.launch_plan is not None
+            assert signature[2][-1][-1] in (False, True)
+
+
+def test_stateful_callable_grids_bypass_launch_cache():
+    class MutableGrid:
+        def __init__(self):
+            self.blocks = 1
+
+        def __call__(self, metadata):
+            return (self.blocks,)
+
+    grid = MutableGrid()
+    assert plan_cache._grid_signature(grid) is None
+    grid.blocks = 2
+    assert plan_cache._grid_signature(grid) is None
+
+
+def test_launch_constants_reject_nested_tensors_and_opaque_owners():
+    tensor = torch.ones(1, device=flag_gems.device)
+    for value in (tensor, (tensor,), {"tensor": tensor}, SimpleNamespace(base=tensor)):
+        with pytest.raises(TypeError):
+            plan_cache._launch_constant(value)
+    assert plan_cache._launch_constant((True, 16, torch.float32)) == (
+        True,
+        16,
+        torch.float32,
+    )
+
+
+def test_original_flagtune_path_invalidates_existing_launch_plans():
+    from flag_gems.utils.libentry import LibEntry
+
+    class Tuner:
+        fn = cached_add._scalar_fn
+
+        def __init__(self):
+            self.changed = True
+
+        def apply_flagtune(self):
+            changed, self.changed = self.changed, False
+            return changed
+
+    cache = plan_cache._TwoLevelCache(("unit", "flagtune-original"))
+    signature, _ = cache.lookup(("shape", (1,)))
+    cache.insert(signature, "old-plan")
+    entry = SimpleNamespace(
+        fn=Tuner(),
+        kernel_cache=[{"old": "kernel"}],
+        _cpu_cache={"old": "kernel"},
+        _has_flagtune_tuner=True,
+        _aten_launch_plan_cache=cache,
+    )
+    entry._apply_flagtune = lambda: LibEntry._apply_flagtune(entry)
+    assert entry._apply_flagtune()
+    assert entry._aten_plan_tuning_epoch == 1
+    assert cache.info().size == 0
+    assert not entry.kernel_cache[0]
+    assert not entry._cpu_cache
+    plan_cache._refresh_flagtune(entry)
+    assert entry._aten_plan_tuning_epoch == 1
+
+
+@pytest.mark.parametrize(
+    "switch, expected", [(None, False), ("0", False), ("  true  ", True)]
+)
+def test_import_time_public_api_opt_in(switch, expected):
+    environment = os.environ.copy()
+    environment.pop("FLAGGEMS_ATEN_PLAN_CACHE", None)
+    if switch is not None:
+        environment["FLAGGEMS_ATEN_PLAN_CACHE"] = switch
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import json, flag_gems; "
+            "print(json.dumps(flag_gems.aten_plan_cache_stats()))",
+        ],
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    stats = json.loads(result.stdout.splitlines()[-1])
+    assert stats["installed"] is expected
+    assert stats["enabled"] is expected

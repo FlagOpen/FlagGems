@@ -8,10 +8,9 @@
 
 """Opt-in structural routing and launch-plan cache for generic ATen ops.
 
-The module deliberately does not install itself when :mod:`flag_gems` is
-imported.  Serving integrations call :func:`install` after checking their
-FlagGems ABI.  This keeps the optimization independently deployable and gives
-non-vLLM users an unchanged default.
+The cache is disabled by default. Call :func:`enable` explicitly, or set
+``FLAGGEMS_ATEN_PLAN_CACHE=1`` before importing :mod:`flag_gems`, to install
+the reversible wrappers.
 
 Cached values may own compiled Triton kernels and immutable scalar metadata.
 They never own tensors, data pointers, accelerator streams/events, or graphs.
@@ -348,7 +347,8 @@ def _grid_signature(grid):
         return ("fixed", tuple(grid) if isinstance(grid, (tuple, list)) else grid)
     code = getattr(grid, "__code__", None)
     if code is None:
-        return ("callable", type(grid).__module__, type(grid).__qualname__)
+        # Callable objects can carry mutable state that is absent from the key.
+        return None
     closure = []
     for cell in getattr(grid, "__closure__", ()) or ():
         value = cell.cell_contents
@@ -411,7 +411,11 @@ def _launch_constant(value):
                 for key, item in value.items()
             )
         )
-    return value
+    if value is None or isinstance(
+        value, (bool, int, float, complex, str, torch.dtype, torch.device)
+    ):
+        return value
+    raise TypeError("launch plans must not retain opaque argument objects")
 
 
 def _try_build_libentry_plan(self, *args, **kwargs):
@@ -479,7 +483,7 @@ def _libentry_lookup_compiled(self, args, kwargs):
             kernel_args[parameter.name] = value
 
     if self._has_flagtune_tuner:
-        dtypes = libentry_module._infer_tensor_dtypes(args)
+        dtypes = libentry_module._infer_tensor_dtypes(kernel_args.values())
         const_args.append(("flagtune_dtypes",) + tuple(str(value) for value in dtypes))
     entry_key = self.key(spec_args, dns_args, const_args)
     current_device = torch_device_fn.current_device()
@@ -560,16 +564,16 @@ class _StaleLaunchPlan(RuntimeError):
 def _refresh_flagtune(self):
     if not self._has_flagtune_tuner:
         return
+    previous_epoch = getattr(self, "_aten_plan_tuning_epoch", 0)
     if self._apply_flagtune():
-        self._aten_plan_tuning_epoch = getattr(self, "_aten_plan_tuning_epoch", 0) + 1
+        if getattr(self, "_aten_plan_tuning_epoch", 0) == previous_epoch:
+            self._aten_plan_tuning_epoch = previous_epoch + 1
         cache = getattr(self, "_aten_launch_plan_cache", None)
         if cache is not None:
             cache.clear(reset_stats=False)
 
 
-def _run_libentry_plan(
-    self, plan, *args, _aten_plan_device_context=None, **kwargs
-):
+def _run_libentry_plan(self, plan, *args, _aten_plan_device_context=None, **kwargs):
     _refresh_flagtune(self)
     device_context = (
         _argument_device_context(args, kwargs)
@@ -754,6 +758,7 @@ def _pointwise_signature(function, args, kwargs):
             function.config.max_num_warps_per_cta,
             bool(function.config.prefer_1d_tile),
             bool(function.config.prefer_block_pointer),
+            bool(function.config.balance_grid),
         ),
     )
 
@@ -768,6 +773,7 @@ def _cached_pointwise_instantiate(self, ndim):
         self.config.max_num_warps_per_cta,
         self.config.prefer_1d_tile,
         self.config.prefer_block_pointer,
+        self.config.balance_grid,
     )
     if key not in self._aten_plan_kernels:
         kernel_name, _, _ = self._compute_kernel_names(ndim)
@@ -799,10 +805,17 @@ def _pointwise_geometry(function, prepared_args, outputs, ndim, task_shape):
         num_tiles = math.prod(
             triton.cdiv(size, tile) for size, tile in zip(task_shape, tile_sizes)
         )
-    num_ctas = (
-        num_tiles if hopper_fill else min(function.config.max_grid_size[0], num_tiles)
-    )
-    tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
+    if function.config.balance_grid:
+        num_ctas, tiles_per_cta = pointwise_module._balanced_grid_partition(
+            num_tiles, function.config.max_grid_size[0]
+        )
+    else:
+        num_ctas = (
+            num_tiles
+            if hopper_fill
+            else min(function.config.max_grid_size[0], num_tiles)
+        )
+        tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
     num_warps = heuristics_for_num_warps(tile_size)
     block_pointer = (
         not function.config.prefer_1d_tile and function.config.prefer_block_pointer
@@ -901,6 +914,7 @@ def _build_pointwise_plan(
             function.config.max_num_warps_per_cta,
             function.config.prefer_1d_tile,
             function.config.prefer_block_pointer,
+            function.config.balance_grid,
         )
         libentry = function._aten_plan_kernels[key]
         kernel_args = tuple(prepared_args) + outputs + constant_tail
