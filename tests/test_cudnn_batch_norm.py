@@ -235,8 +235,9 @@ def test_cudnn_batch_norm_autograd_after_registration(dtype, registered, trainin
             lib._destroy()
     actual = torch.autograd.grad(y, (x, w, b), grad)
     for a, e in zip(actual, expected):
+        # The FP64 oracle stays on CPU in both reference modes.
         utils.gems_assert_close(
-            a, e.to(a.dtype), a.dtype, reduce_dim=math.prod(x.shape) // x.shape[1]
+            a.cpu(), e.to(a.dtype), a.dtype, reduce_dim=math.prod(x.shape) // x.shape[1]
         )
 
 
