@@ -181,7 +181,7 @@ def test_complex_slice_view(dtype, layout, dim, start, end, step):
     actual = flag_gems.slice(inp, dim, start, end, step)
 
     assert actual.dtype == dtype
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(torch.view_as_real(actual), torch.view_as_real(expected))
     assert actual.shape == expected.shape
     assert actual.stride() == expected.stride()
     assert actual.storage_offset() == expected.storage_offset()
@@ -189,4 +189,4 @@ def test_complex_slice_view(dtype, layout, dim, start, end, step):
     if actual.numel():
         actual.fill_(3 + 4j)
         expected.fill_(3 + 4j)
-        utils.gems_assert_equal(base, ref_base)
+        utils.gems_assert_equal(torch.view_as_real(base), torch.view_as_real(ref_base))
