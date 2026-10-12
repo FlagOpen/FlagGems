@@ -114,9 +114,11 @@ def test_float_power_tensor_tensor_out():
     _run_benchmark(
         "float_power_tensor_tensor_out",
         _tensor_tensor_out_input,
-        _ref_float_power_out_of_place
-        if _IS_KUNLUNXIN
-        else torch.ops.aten.float_power.Tensor_Tensor_out,
+        (
+            _ref_float_power_out_of_place
+            if _IS_KUNLUNXIN
+            else torch.ops.aten.float_power.Tensor_Tensor_out
+        ),
         gems_op=flag_gems.float_power_tensor_tensor_out if _IS_KUNLUNXIN else None,
     )
 
@@ -126,9 +128,11 @@ def test_float_power_tensor_scalar_out():
     _run_benchmark(
         "float_power_tensor_scalar_out",
         _tensor_scalar_out_input,
-        _ref_float_power_out_of_place
-        if _IS_KUNLUNXIN
-        else torch.ops.aten.float_power.Tensor_Scalar_out,
+        (
+            _ref_float_power_out_of_place
+            if _IS_KUNLUNXIN
+            else torch.ops.aten.float_power.Tensor_Scalar_out
+        ),
         gems_op=flag_gems.float_power_tensor_scalar_out if _IS_KUNLUNXIN else None,
     )
 
@@ -138,8 +142,10 @@ def test_float_power_scalar_tensor_out():
     _run_benchmark(
         "float_power_scalar_tensor_out",
         _scalar_tensor_out_input,
-        _ref_float_power_out_of_place
-        if _IS_KUNLUNXIN
-        else torch.ops.aten.float_power.Scalar_out,
+        (
+            _ref_float_power_out_of_place
+            if _IS_KUNLUNXIN
+            else torch.ops.aten.float_power.Scalar_out
+        ),
         gems_op=flag_gems.float_power_scalar_tensor_out if _IS_KUNLUNXIN else None,
     )

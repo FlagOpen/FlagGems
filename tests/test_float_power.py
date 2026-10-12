@@ -128,9 +128,7 @@ def test_float_power_tensor_tensor_out(shapes, dtype):
         # out buffer fed to the native aten *_out kernel is rejected ("requires
         # Double"). Use an out-of-place reference (numerically identical, always
         # float64) for this backend; other backends keep the stock *_out path.
-        ref = torch.float_power(
-            utils.to_reference(base), utils.to_reference(exponent)
-        )
+        ref = torch.float_power(utils.to_reference(base), utils.to_reference(exponent))
     else:
         ref_out = torch.empty(
             result_shape, dtype=torch.float64, device=utils.to_reference(base).device
