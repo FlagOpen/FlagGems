@@ -17,7 +17,19 @@ device = device.name
 
 _ROW_MAX_N = 4096
 
-_FLAT_TM = {2: 8, 4: 8, 8: 8, 16: 8, 32: 8, 64: 8, 128: 8, 256: 4, 512: 2, 1024: 4, 2048: 2}
+_FLAT_TM = {
+    2: 8,
+    4: 8,
+    8: 8,
+    16: 8,
+    32: 8,
+    64: 8,
+    128: 8,
+    256: 4,
+    512: 2,
+    1024: 4,
+    2048: 2,
+}
 
 _TL_DTYPES = {
     torch.float16: tl.float32,
@@ -369,7 +381,14 @@ def _scan_rows_group_into(inp, out, M, N):
             )
             _scan_rows_into(sums, sums, M, n_groups)
             scan_group_add_kernel[(M, n_groups)](
-                xp, out_t, sums, Np, n_groups, GROUP, num_warps=8, buffer_size_limit=2048
+                xp,
+                out_t,
+                sums,
+                Np,
+                n_groups,
+                GROUP,
+                num_warps=8,
+                buffer_size_limit=2048,
             )
             out[:, :N] = out_t[:, :N]
 
