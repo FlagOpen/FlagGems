@@ -123,12 +123,21 @@ def test_float_power_tensor_tensor_out(shapes, dtype):
     base = _make_input(shapes[0], dtype, positive=True)
     exponent = _make_input(shapes[1], dtype)
     result_shape = torch.broadcast_shapes(*shapes)
-    ref_out = torch.empty(
-        result_shape, dtype=torch.float64, device=utils.to_reference(base).device
-    )
-    ref = torch.ops.aten.float_power.Tensor_Tensor_out(
-        utils.to_reference(base), utils.to_reference(exponent), out=ref_out
-    )
+    if flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin (XPU) hard-maps float64 -> float32, so a device-side float64
+        # out buffer fed to the native aten *_out kernel is rejected ("requires
+        # Double"). Use an out-of-place reference (numerically identical, always
+        # float64) for this backend; other backends keep the stock *_out path.
+        ref = torch.float_power(
+            utils.to_reference(base), utils.to_reference(exponent)
+        )
+    else:
+        ref_out = torch.empty(
+            result_shape, dtype=torch.float64, device=utils.to_reference(base).device
+        )
+        ref = torch.ops.aten.float_power.Tensor_Tensor_out(
+            utils.to_reference(base), utils.to_reference(exponent), out=ref_out
+        )
     out = torch.empty(result_shape, dtype=torch.float64, device=flag_gems.device)
 
     result = flag_gems.float_power_tensor_tensor_out(base, exponent, out=out)
@@ -143,8 +152,11 @@ def test_float_power_tensor_tensor_out(shapes, dtype):
 def test_float_power_tensor_scalar_out(shape, dtype):
     base = _make_input(shape, dtype, positive=True)
     ref_base = utils.to_reference(base)
-    ref_out = torch.empty(shape, dtype=torch.float64, device=ref_base.device)
-    ref = torch.ops.aten.float_power.Tensor_Scalar_out(ref_base, -0.5, out=ref_out)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref = torch.float_power(ref_base, -0.5)
+    else:
+        ref_out = torch.empty(shape, dtype=torch.float64, device=ref_base.device)
+        ref = torch.ops.aten.float_power.Tensor_Scalar_out(ref_base, -0.5, out=ref_out)
     out = torch.empty(0, dtype=torch.float64, device=flag_gems.device)
 
     result = flag_gems.float_power_tensor_scalar_out(base, -0.5, out=out)
@@ -160,8 +172,11 @@ def test_float_power_tensor_scalar_out(shape, dtype):
 def test_float_power_scalar_tensor_out(shape, dtype):
     exponent = _make_input(shape, dtype)
     ref_exponent = utils.to_reference(exponent)
-    ref_out = torch.empty(shape, dtype=torch.float64, device=ref_exponent.device)
-    ref = torch.ops.aten.float_power.Scalar_out(2.0, ref_exponent, out=ref_out)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref = torch.float_power(2.0, ref_exponent)
+    else:
+        ref_out = torch.empty(shape, dtype=torch.float64, device=ref_exponent.device)
+        ref = torch.ops.aten.float_power.Scalar_out(2.0, ref_exponent, out=ref_out)
     out = torch.empty(shape, dtype=torch.float64, device=flag_gems.device)
 
     result = flag_gems.float_power_scalar_tensor_out(2.0, exponent, out=out)

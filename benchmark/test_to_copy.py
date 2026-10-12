@@ -23,6 +23,31 @@ from . import base, consts
 
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 
+_IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+# Kunlunxin's native xdnn cast kernel lacks a direct bf16<->int16 path
+# (cast.cpp:163 "scalar type ... combined is unsupported"), which crashes the
+# torch baseline and takes down the whole benchmark. The gems kernel handles
+# these casts directly, so only the torch *reference* needs rerouting: bf16 is
+# a subset of float32 and int16 fits exactly in float32, so going through
+# float32 is a numerically identical two-step cast (verified bit-exact).
+_KLX_CAST_VIA_FP32 = {
+    (torch.bfloat16, torch.int16),
+    (torch.int16, torch.bfloat16),
+}
+
+
+def _to_copy_ref(inp, *, dtype):
+    if (inp.dtype, dtype) in _KLX_CAST_VIA_FP32:
+        return torch.ops.aten._to_copy(inp.to(torch.float32), dtype=dtype)
+    return torch.ops.aten._to_copy(inp, dtype=dtype)
+
+
+_TO_COPY_TORCH_OP = _to_copy_ref if _IS_KUNLUNXIN else torch.ops.aten._to_copy
+# Candidate calls the gems kernel directly (no per-iteration use_gems context,
+# which would otherwise dominate the measured latency).
+_TO_COPY_GEMS_OP = flag_gems.to_copy if _IS_KUNLUNXIN else None
+
 
 class ToCopyBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
@@ -97,7 +122,8 @@ def test_to_copy():
 
             bench = ToCopyBenchmark(
                 op_name="to_copy",
-                torch_op=torch.ops.aten._to_copy,
+                torch_op=_TO_COPY_TORCH_OP,
+                gems_op=_TO_COPY_GEMS_OP,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
             )
@@ -107,7 +133,8 @@ def test_to_copy():
         for dst_dtype in int_dtypes:
             bench = ToCopyBenchmark(
                 op_name="to_copy",
-                torch_op=torch.ops.aten._to_copy,
+                torch_op=_TO_COPY_TORCH_OP,
+                gems_op=_TO_COPY_GEMS_OP,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
             )
@@ -117,7 +144,8 @@ def test_to_copy():
         for dst_dtype in uint_dtypes:
             bench = ToCopyBenchmark(
                 op_name="to_copy",
-                torch_op=torch.ops.aten._to_copy,
+                torch_op=_TO_COPY_TORCH_OP,
+                gems_op=_TO_COPY_GEMS_OP,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
             )
@@ -127,7 +155,8 @@ def test_to_copy():
         for dst_dtype in float_dtypes:
             bench = ToCopyBenchmark(
                 op_name="to_copy",
-                torch_op=torch.ops.aten._to_copy,
+                torch_op=_TO_COPY_TORCH_OP,
+                gems_op=_TO_COPY_GEMS_OP,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
             )
@@ -139,7 +168,8 @@ def test_to_copy():
                 continue
             bench = ToCopyBenchmark(
                 op_name="to_copy",
-                torch_op=torch.ops.aten._to_copy,
+                torch_op=_TO_COPY_TORCH_OP,
+                gems_op=_TO_COPY_GEMS_OP,
                 dtypes=[dst_dtype],
                 src_dtype=src_dtype,
             )

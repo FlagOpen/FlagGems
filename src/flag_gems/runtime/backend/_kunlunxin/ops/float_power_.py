@@ -239,14 +239,27 @@ def _pick_fp_block(n_elements):
 
 
 def _launch_float_power_tt_fast(x, e, out):
-    # All dtypes (fp16/fp32/bf16, and mixed) flow through the one vectorized
-    # corner kernel, which loads both operands with `.to(tl.float32)`. bf16**bf16
-    # needs NO special path: the old bf16 miscompile was the NaN-in-nested-cascade
-    # bug, now fixed by the tail-nan select in `_float_power_corner`.
+    # fp16/fp32/bf16 (and mixed) flow through the one vectorized corner kernel,
+    # which loads both operands with `.to(tl.float32)`.
+    #
+    # EXCEPTION: the *masked* variant (`float_power_tt_fast_kernel_masked`, taken
+    # for non-block-aligned numel) miscompiles for bf16 on triton-XPU -- it
+    # triggers a device-side illegal memory access (CUDA 700 / kl3 kernel
+    # exception) once numel is large enough (e.g. 96000, (20,320,15)); the small
+    # masked block and all aligned/non-masked blocks are fine, and f16/f32 are
+    # unaffected on the identical shapes. Until the triton-XPU masked bf16
+    # load/store codegen is fixed, route bf16 masked launches through the generic
+    # pointwise kernel, which handles arbitrary numel without that kernel config.
     n_elements = x.numel()
     if n_elements == 0:
         return
     block_size, num_warps, masked = _pick_fp_block(n_elements)
+    if masked and x.dtype == torch.bfloat16:
+        if out.dtype == torch.float64:
+            float_power_tensor_tensor_func(x, e, out0=out)
+        else:
+            float_power_func(x, e, out0=out)
+        return
     if masked:
         grid = (triton.cdiv(n_elements, block_size),)
         float_power_tt_fast_kernel_masked[grid](

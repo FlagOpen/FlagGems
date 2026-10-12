@@ -150,19 +150,33 @@ def _to_copy_contiguous(inp, out, target_dtype):
     ):
         # bf16 source -> non-bf16 float: big power-of-two tile, capped so small
         # tensors keep a single right-sized tile (verified correct at 16384).
-        block_size = min(16384, triton.next_power_of_2(n_elements))
+        # Inline bit-length instead of triton.next_power_of_2 (identical result:
+        # smallest pow2 >= n) -- the triton helper costs ~2.8us/call of pure
+        # Python, which on a tiny host-bound cast chain is pure latency tax.
+        block_size = 1 << (n_elements - 1).bit_length() if n_elements > 1 else 1
+        if block_size > 16384:
+            block_size = 16384
     else:
         # A 256-element tile serializes large contiguous copies into tens of
         # thousands of tiny masked launches, but is the only safe size for the
         # int->float / ->bf16 casts that miscompile at large tiles.
         block_size = 256
-    with torch_device_fn.device(inp.device):
-        kernel = (
-            _to_copy_contiguous_to_bf16_kernel
-            if target_dtype == torch.bfloat16
-            else _to_copy_contiguous_kernel
-        )
-        kernel[(triton.cdiv(n_elements, block_size),)](inp, out, n_elements, block_size)
+    kernel = (
+        _to_copy_contiguous_to_bf16_kernel
+        if target_dtype == torch.bfloat16
+        else _to_copy_contiguous_kernel
+    )
+    grid = ((n_elements + block_size - 1) // block_size,)
+    # The torch_device_fn.device() context manager costs ~4us/call of pure
+    # Python even when it is a no-op (device already current). On the common
+    # cast path the input is already on the current device, so guard the ctx
+    # with a cheap current_device() check (~0.4us) and launch directly when it
+    # would be a no-op; only pay the ctx when the device genuinely differs.
+    if inp.device.index == torch_device_fn.current_device():
+        kernel[grid](inp, out, n_elements, block_size)
+    else:
+        with torch_device_fn.device(inp.device):
+            kernel[grid](inp, out, n_elements, block_size)
     return out
 
 
@@ -256,6 +270,33 @@ def to_copy(
         raise NotImplementedError(
             "FlagGems to_copy does not yet support pin_memory=True."
         )
+
+    # Lean fast-track for the overwhelmingly common cast case (contiguous,
+    # same-device, real dtypes, no explicit memory_format). Cast chains such as
+    # float_power's fp64 round-trip dispatch _to_copy 3-4 times per call and the
+    # whole chain is host-bound by the per-call Python wrapper (~15-20us each on
+    # top of the ~15us triton launch floor). This branch skips the generic
+    # dtype/device/memory-format resolution, the duplicate bf16 probe and the
+    # _allocate_preserve_format aten query (is_non_overlapping_and_dense), going
+    # straight to a contiguous torch.empty + the tuned _to_copy_contiguous launch.
+    # Semantics are identical: contiguous x with preserve_format yields a
+    # contiguous output, which is exactly torch.empty(size). bf16 source keeps the
+    # stock path (its close-interleave handling is dtype-sensitive).
+    if (
+        dtype is not None
+        and device is None
+        and layout is None
+        and memory_format is None
+        and x.layout == torch.strided
+        and not x.is_quantized
+        and not x.dtype.is_complex
+        and not dtype.is_complex
+        and x.dtype != torch.bfloat16
+        and x.is_contiguous()
+    ):
+        out = torch.empty(x.size(), dtype=dtype, device=x.device)
+        return _to_copy_contiguous(x, out, dtype)
+
     if x.is_quantized:
         raise NotImplementedError(
             "Quantized tensors are not supported in FlagGems to_copy yet."
