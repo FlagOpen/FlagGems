@@ -68,7 +68,10 @@ def test_amin_dtype_coverage(dtype, dim, keepdim, transpose):
 @pytest.mark.parametrize("dim", [None, 0, -1, (0, 1)])
 def test_amin_large_int64(dim):
     cpu = torch.tensor(
-        [[2**60 + 3, 2**60 + 1, 2**60 + 2], [2**60 + 9, 2**60 + 7, 2**60 + 8]],
+        [
+            [2**60 + 3, 2**60 + 1, 2**60 + 2],
+            [2**60 + 9, 2**60 + 7, 2**60 + 8],
+        ],
         dtype=torch.int64,
     )
     actual = generic_amin(cpu.to(flag_gems.device), dim=dim).cpu()
