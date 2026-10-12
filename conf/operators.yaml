@@ -1889,6 +1889,7 @@ ops:
   - native_batch_norm_backward_reduce
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -1901,6 +1902,7 @@ ops:
   - batch_norm_gather_stats
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -1915,6 +1917,7 @@ ops:
   - batch_norm_gather_stats_with_counts
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -3786,6 +3789,7 @@ ops:
   - _cslt_sparse_mm
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -3901,6 +3905,7 @@ ops:
   - _cudnn_rnn_backward
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Math
@@ -4323,6 +4328,7 @@ ops:
   - _dirichlet_grad
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Math
@@ -5404,6 +5410,7 @@ ops:
   - _fill_mem_eff_dropout_mask_
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -7857,6 +7864,26 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fused_adamw_
+  description: In-place fused AdamW with scalar learning rate, AMSGrad and AMP.
+  for:
+  - _fused_adamw_
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fused_adamw__tensor_lr
+  description: In-place fused AdamW with tensor learning rate, AMSGrad and AMP.
+  for:
+  - _fused_adamw_.tensor_lr
+  labels:
+  - aten
   kind:
   - Math
   stages:
@@ -13390,6 +13417,7 @@ ops:
   - _nested_from_padded_tensor
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -13404,6 +13432,7 @@ ops:
   - _nested_select_backward
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -13515,6 +13544,7 @@ ops:
   - _nested_view_from_jagged
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -18441,6 +18471,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_spherical_bessel_j0
+  description: Computes the spherical Bessel function of the first kind of order 0.
+  for:
+  - special_spherical_bessel_j0
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: special_xlog1py
   description: 'Computes `x * log1p(y)` for each element pair in the input tensors
     `x` and `y`.
