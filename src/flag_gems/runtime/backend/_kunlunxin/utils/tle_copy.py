@@ -77,9 +77,7 @@ try:
         hasattr(tle, "gpu")
         and hasattr(tle, "dsa")
         and all(hasattr(tle.gpu, a) for a in ("alloc", "lmem", "copy"))
-        and all(
-            hasattr(tle.dsa, a) for a in ("UNI_SRAM", "alloc", "copy", "to_tensor")
-        )
+        and all(hasattr(tle.dsa, a) for a in ("UNI_SRAM", "alloc", "copy", "to_tensor"))
     )
 except ImportError:  # triton without the XPU tile-language extension
     _HAS_TLE = False
