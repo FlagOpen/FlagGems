@@ -51,7 +51,9 @@ def mse_loss_backward_kernel(
     if GRAD_SCALAR:
         grad_val = tl.load(grad_output_ptr).to(tl.float32)
     else:
-        grad_val = tl.load(grad_output_ptr + offset, mask=mask, other=0.0).to(tl.float32)
+        grad_val = tl.load(grad_output_ptr + offset, mask=mask, other=0.0).to(
+            tl.float32
+        )
     self_val = tl.load(self_ptr + offset, mask=mask, other=0.0).to(tl.float32)
     target_val = tl.load(target_ptr + offset, mask=mask, other=0.0).to(tl.float32)
 
