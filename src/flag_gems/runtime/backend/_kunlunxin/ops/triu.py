@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 
 import torch
 import triton
@@ -20,6 +21,33 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+# --- tle.gpu 2D block-tiled fast path (pure-Triton cluster DMA, no C++) --------
+# Each program owns one [BM, BN] block, DMA'd to LM via a TensorDescriptor.
+# Dispatch per block vs the diagonal: fully-kept -> pure copy (DMA in/out, no
+# compute); fully-dropped -> write zeros (write-only DMA); straddling the
+# diagonal -> copy + per-element tl.where. ~7/8 of blocks are pure DMA so the
+# element-rate `where` wall is dodged on all but the diagonal band.
+#
+# BM is pinned to 64: the TLE legacy tile planner requires
+# elemsPerCore = BM*BN/core_num(64) <= innermost(BN), i.e. BM <= 64, for the
+# pure-copy blocks to compile. BN is adaptive (min(256, N)).
+try:
+    import triton.experimental.tle.language as tle
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE_GPU = True
+except Exception:  # pragma: no cover - tle unavailable
+    tle = None
+    TensorDescriptor = None
+    _HAS_TLE_GPU = False
+
+_TLE_DT = {
+    torch.float32: tl.float32,
+    torch.float16: tl.float16,
+    torch.bfloat16: tl.bfloat16,
+}
+_TLE_BM = 64
 
 
 # NOTE: kunlunxin's original triu used the fixed-cluster `M//12` heuristic with
@@ -45,6 +73,209 @@ logger = logging.getLogger(__name__)
 # [4096,4096] 0.72ms -> 0.52ms, [10000,65536] 27.8ms -> 15.2ms. But for small N
 # the row grid is launch-bound (e.g. [100,65536,100] N=100 blows up to 391ms), so
 # we gate on N and keep the flat kernel for small last dims.
+
+
+if _HAS_TLE_GPU:
+
+    @triton.jit
+    def _triu_blk_kernel(
+        a_desc,
+        c_desc,
+        Mmat,
+        N,
+        diag,
+        NBCOL: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        DTYPE: tl.constexpr,
+    ):
+        # One [BM, BN] block per program. `rl = r0 % Mmat` is the within-matrix
+        # row of the block top (handles a batched desc viewed as (B*Mmat, N)).
+        # NBCOL = cdiv(N, BN): when N is not a multiple of BN (non-pow2 N padded
+        # up to a pow2 BN) or BR is not a multiple of BM (single-matrix row tail),
+        # the trailing block is partial and TMA auto-trims cols>=N / rows>=M on
+        # both load and store, so padded lanes are never touched in HBM. `cmax`
+        # is the largest REAL (unpadded) column in the block, used for the
+        # fully-dropped test so padded columns don't skew the dispatch.
+        pid = tl.program_id(0)
+        r0 = (pid // NBCOL) * BM
+        c0 = (pid % NBCOL) * BN
+        rl = r0 % Mmat
+        cmax = c0 + BN - 1
+        cmax = tl.where(cmax < N - 1, cmax, N - 1)
+        buf = tle.gpu.alloc([BM, BN], dtype=DTYPE, layout=None, scope=tle.gpu.lmem)
+        if c0 >= rl + BM - 1 + diag:
+            # whole block kept -> pure copy
+            tle.gpu.copy(a_desc, buf, [BM, BN], [r0, c0])
+            tle.gpu.copy(buf, c_desc, [BM, BN], [r0, c0])
+        elif cmax < rl + diag:
+            # whole block dropped -> write zeros
+            rid = tl.arange(0, BM)[:, None]
+            cid = tl.arange(0, BN)[None, :]
+            p = tle.gpu.local_ptr(
+                buf, (tl.broadcast_to(rid, (BM, BN)), tl.broadcast_to(cid, (BM, BN)))
+            )
+            tl.store(p, tl.zeros((BM, BN), dtype=DTYPE))
+            tle.gpu.copy(buf, c_desc, [BM, BN], [r0, c0])
+        else:
+            # straddles the diagonal -> copy + per-element where
+            tle.gpu.copy(a_desc, buf, [BM, BN], [r0, c0])
+            rid = tl.arange(0, BM)[:, None]
+            cid = tl.arange(0, BN)[None, :]
+            rr = tl.broadcast_to(rid, (BM, BN))
+            cc = tl.broadcast_to(cid, (BM, BN))
+            p = tle.gpu.local_ptr(buf, (rr, cc))
+            x = tl.load(p)
+            keep = (c0 + cc) >= (rl + rr) + diag
+            tl.store(p, tl.where(keep, x, tl.zeros((BM, BN), dtype=DTYPE)))
+            tle.gpu.copy(buf, c_desc, [BM, BN], [r0, c0])
+
+    @triton.jit
+    def _triu_blk_pack_kernel(
+        a_desc,
+        c_desc,
+        Mmat,
+        N2,
+        diag,
+        BM: tl.constexpr,
+        BN2: tl.constexpr,
+    ):
+        # 2-byte dtypes (bf16/fp16) are not vectorized by tle.gpu.copy, so bf16
+        # DMA runs ~2-3x below byte-bandwidth. triu only MOVES bits / writes
+        # zeros (never computes on kept values), so reinterpret the tensor as
+        # int32 (pack 2 columns per word, N2 = N // 2) -> the copy/zero blocks
+        # move vectorized 4-byte words. Each packed col cp spans orig cols
+        # 2*cp (low 16b) and 2*cp+1 (high 16b); the diagonal straddle block is
+        # masked purely with bit ops (0xFFFF low, -65536 == 0xFFFF0000 high).
+        pid = tl.program_id(0)
+        nbcol = N2 // BN2
+        r0 = (pid // nbcol) * BM
+        c0 = (pid % nbcol) * BN2
+        rl = r0 % Mmat
+        buf = tle.gpu.alloc([BM, BN2], dtype=tl.int32, layout=None, scope=tle.gpu.lmem)
+        if 2 * c0 >= rl + BM - 1 + diag:
+            # smallest orig col in block kept -> whole block kept, pure copy
+            tle.gpu.copy(a_desc, buf, [BM, BN2], [r0, c0])
+            tle.gpu.copy(buf, c_desc, [BM, BN2], [r0, c0])
+        elif 2 * (c0 + BN2 - 1) + 1 < rl + diag:
+            # largest orig col in block dropped -> whole block zero
+            rid = tl.arange(0, BM)[:, None]
+            cid = tl.arange(0, BN2)[None, :]
+            p = tle.gpu.local_ptr(
+                buf, (tl.broadcast_to(rid, (BM, BN2)), tl.broadcast_to(cid, (BM, BN2)))
+            )
+            tl.store(p, tl.zeros((BM, BN2), dtype=tl.int32))
+            tle.gpu.copy(buf, c_desc, [BM, BN2], [r0, c0])
+        else:
+            tle.gpu.copy(a_desc, buf, [BM, BN2], [r0, c0])
+            rid = tl.arange(0, BM)[:, None]
+            cid = tl.arange(0, BN2)[None, :]
+            rr = tl.broadcast_to(rid, (BM, BN2))
+            cc = tl.broadcast_to(cid, (BM, BN2))
+            p = tle.gpu.local_ptr(buf, (rr, cc))
+            v = tl.load(p)
+            orig_lo = 2 * (c0 + cc)
+            row = rl + rr
+            keep_lo = orig_lo >= row + diag
+            keep_hi = (orig_lo + 1) >= row + diag
+            lo = tl.where(keep_lo, v & 0xFFFF, 0)
+            hi = tl.where(keep_hi, v & -65536, 0)  # -65536 == 0xFFFF0000 (int32)
+            tl.store(p, lo | hi)
+            tle.gpu.copy(buf, c_desc, [BM, BN2], [r0, c0])
+
+
+def _tle_block_eligible(A, diagonal):
+    # Contiguous, supported dtype. Block path handles any diag. Non-pow2 N and a
+    # single matrix whose M is not a multiple of BM are supported by padding the
+    # trailing block up to the pow2 tile and letting TMA trim the overrun.
+    if not _HAS_TLE_GPU or A.dtype not in _TLE_DT:
+        return None
+    if os.environ.get("TRIU_NO_BLOCK"):
+        return None
+    if not A.is_contiguous():
+        return None
+    Mmat, N = A.shape[-2:]
+    # Block path pays off only when the DMA volume dominates the descriptor /
+    # launch overhead. Tiny shapes are host-overhead-bound and see no gain, so
+    # leave them on the flat/row path. The flat lean kernel is per-element
+    # div/mod-bound and loses badly from ~1M elements up (measured 1024x1024:
+    # flat ~0.3x vs block ~0.7-0.8x of aten), so the gate sits at 1M.
+    if A.numel() < (1 << 20):
+        return None
+    if N < _TLE_BM:  # narrow last dim -> flat/row path wins
+        return None
+    BR = A.numel() // N  # total rows across the batch
+    B = BR // Mmat  # number of matrices
+    # For a BATCHED input the block rows must align to matrix boundaries so that
+    # `rl = r0 % Mmat` is constant within a block; require Mmat % BM == 0. A
+    # single matrix has no interior boundary, so any M is fine (row tail is
+    # TMA-trimmed).
+    if B > 1 and Mmat % _TLE_BM != 0:
+        return None
+    # Column tile (pow2). Wide matrices DMA better with BN=512 (nbcol stays >= 4
+    # so most blocks are still pure copy); narrow ones use 256; non-pow2 N is
+    # padded up to the next pow2 (TMA trims back to N).
+    if N >= 2048:
+        BN = 512
+    elif N >= 256:
+        BN = 256
+    else:
+        BN = triton.next_power_of_2(N)
+    BM = _TLE_BM
+    # Wide matrices (N >= 2048, e.g. 4096x4096): a squarer BM128/BN256 tile beats
+    # the flatter BM64/BN512 for every dtype. Measured 4096x4096 (do_bench, card3,
+    # err=0): fp32 1.01 -> 1.13, fp16 0.74 -> 0.81, bf16(pack) 0.70 -> 0.81. Needs
+    # row alignment to BM so `rl = r0 % Mmat` is constant within a block (a single
+    # matrix always qualifies; a batched input needs Mmat % 128 == 0, otherwise it
+    # keeps the BM64/BN512 fallback which stays correct for Mmat % 64 batches).
+    if N >= 2048 and (B == 1 or Mmat % 128 == 0):
+        BM = 128
+        BN = 256
+    # Batched medium-N shapes (e.g. 64x512x512): a taller/squarer tile cuts the
+    # program count and feeds the TMA larger contiguous runs. Measured 64x512x512
+    # fp32 0.52x (BM64,BN256) -> 0.65x (BM128,BN128); fp16 0.33 -> 0.41, bf16
+    # 0.29 -> 0.39. Only when matrix rows align to the bigger tile (Mmat % 128 ==
+    # 0) so `rl = r0 % Mmat` is constant within a block, and only for batched
+    # inputs (single-matrix shapes already tile well at BM64 and would regress).
+    # Restricted to N < 2048 so it does not clobber the wide-matrix tile above.
+    if B > 1 and 256 <= N < 2048 and Mmat % 128 == 0:
+        BM = 128
+        BN = 128
+    nbcol = triton.cdiv(N, BN)
+    # bf16 int32-packing (2 cols/word, ~2x on 2-byte DMA) is applied ONLY in the
+    # fully-aligned case (no column or row padding) where it is verified exact;
+    # packing combined with a single-matrix row-tail trim miscompiles, so padded
+    # shapes keep the per-dtype kernel.
+    use_pack = (
+        A.dtype == torch.bfloat16
+        and N % 2 == 0
+        and N % BN == 0
+        and BR % BM == 0
+    )
+    return BR, Mmat, N, BM, BN, nbcol, use_pack
+
+
+def _launch_triu_block(A, out, diagonal, plan):
+    BR, Mmat, N, BM, BN, nbcol, use_pack = plan
+    nrow = triton.cdiv(BR, BM)
+    if use_pack:
+        # bf16 DMA is not vectorized by tle.gpu.copy (~2-3x below bandwidth); run
+        # the int32-packed kernel (triu only moves bits) for a ~2x bf16 speedup.
+        N2 = N // 2
+        BN2 = BN // 2
+        a2 = A.view(BR, N).view(torch.int32)
+        o2 = out.view(BR, N).view(torch.int32)
+        a = TensorDescriptor.from_tensor(a2, block_shape=[BM, BN2])
+        c = TensorDescriptor.from_tensor(o2, block_shape=[BM, BN2])
+        grid = (nrow * nbcol,)
+        _triu_blk_pack_kernel[grid](a, c, Mmat, N2, diagonal, BM, BN2)
+        return
+    a2 = A.view(BR, N)
+    o2 = out.view(BR, N)
+    a = TensorDescriptor.from_tensor(a2, block_shape=[BM, BN])
+    c = TensorDescriptor.from_tensor(o2, block_shape=[BM, BN])
+    grid = (nrow * nbcol,)
+    _triu_blk_kernel[grid](a, c, Mmat, N, diagonal, nbcol, BM, BN, _TLE_DT[A.dtype])
 
 
 @triton.jit
@@ -158,6 +389,44 @@ _BLOCK_SIZE = 8192
 # [4096,4096] row wins, so the crossover sits between them.
 _ROW_N_THRESHOLD = 2048
 
+# Lean fast-path gate: small single-matrix contiguous shapes are host-overhead-
+# bound (device exec << python wrapper). For them we skip _check_input, the
+# .contiguous() call, _tle_block_eligible probe, band-trick logic AND the
+# torch_device_fn.device() context manager, issuing one direct flat-2d launch.
+_LEAN_MAX_NUMEL = 1 << 20  # <= 1M elements
+
+
+def _lean_eligible(A):
+    return (
+        not os.environ.get("TRIU_NO_LEAN")
+        and A.dim() >= 2
+        and A.is_contiguous()
+        and A.shape[-1] < _ROW_N_THRESHOLD
+        and A.numel() <= _LEAN_MAX_NUMEL
+        and A.dtype in _TLE_DT
+    )
+
+
+def _lean_flat(input_c, out, diagonal):
+    # Minimal direct launch: no device() ctx, no branching. Caller guarantees
+    # contiguous, N < _ROW_N_THRESHOLD, numel small. Picks the single-matrix
+    # flat-2d kernel (no `% MN`) when the whole tensor is one matrix, else the
+    # batched flat kernel. This avoids the slow gems copy_/zero_ and the heavy
+    # block descriptor build on tiny host-overhead-bound shapes.
+    M, N = input_c.shape[-2:]
+    MN = M * N
+    total = input_c.numel()
+    grid = (triton.cdiv(total, _BLOCK_SIZE),)
+    need_mask = total % _BLOCK_SIZE != 0
+    if total <= MN:
+        _triu_flat_2d_kernel[grid](
+            input_c, out, total, diagonal, N, _BLOCK_SIZE, need_mask, num_warps=8
+        )
+    else:
+        _triu_flat_kernel[grid](
+            input_c, out, total, diagonal, MN, N, _BLOCK_SIZE, need_mask, num_warps=8
+        )
+
 
 def _launch_flat(input_c, out, diagonal, total=None):
     M, N = input_c.shape[-2:]
@@ -233,10 +502,41 @@ def _launch_triu_inplace_contiguous(A, diagonal):
 
 def triu(A, diagonal=0):
     logger.debug("GEMS_KUNLUNXIN TRIU")
+    # Device-bound, block-tileable shapes (contiguous, wide N, numel >= 1M such
+    # as 1024x1024) run far faster on the tle.gpu block path than on the flat
+    # lean kernel (block avoids the per-element div/mod). Probe block FIRST so
+    # these shapes are not captured by the lean gate below; truly tiny
+    # host-overhead-bound shapes fail this probe (numel below the block gate or
+    # narrow N) and fall through to the lean path unchanged.
+    if A.dim() >= 2:
+        Mb, Nb = A.shape[-2:]
+        if 1 - Mb < diagonal < Nb:
+            plan = _tle_block_eligible(A, diagonal)
+            if plan is not None:
+                out = torch.empty_like(A)
+                _launch_triu_block(A, out, diagonal, plan)
+                return out
+    # Lean small-shape path: contiguous, narrow N, few elements (single matrix
+    # OR batched). Host-overhead-bound here, so bypass all the heavy wrapper
+    # machinery (and the slow gems copy_/zero_ for trivial diagonals).
+    if _lean_eligible(A):
+        out = torch.empty_like(A)
+        _lean_flat(A, out, diagonal)
+        return out
     _check_input(A)
+    M, N = A.shape[-2:]
+    # Lean tle.gpu block-tiled fast path: avoids the band-trick / device() ctx
+    # overhead. Only for the trivial-exclusive, block-tileable, contiguous case.
+    # (Redundant with the top probe for contiguous inputs; kept so the dispatch
+    # order below is unchanged for any shape the top probe did not capture.)
+    if 1 - M < diagonal < N:
+        plan = _tle_block_eligible(A, diagonal)
+        if plan is not None:
+            out = torch.empty_like(A)
+            _launch_triu_block(A, out, diagonal, plan)
+            return out
     A = A.contiguous()
     out = torch.empty_like(A)
-    M, N = A.shape[-2:]
     if diagonal <= 1 - M:  # keep everything
         out.copy_(A)
         return out
@@ -263,10 +563,35 @@ def triu(A, diagonal=0):
 
 def triu_(A, diagonal=0):
     logger.debug("GEMS_KUNLUNXIN TRIU_")
+    # Device-bound block-tileable shapes: probe the in-place block path first so
+    # they are not captured by the lean gate (same rationale as triu()). Each
+    # block is read to LM before its region is written back, so in==out is safe.
+    if A.dim() >= 2:
+        Mb, Nb = A.shape[-2:]
+        if 1 - Mb < diagonal < Nb:
+            plan = _tle_block_eligible(A, diagonal)
+            if plan is not None:
+                _launch_triu_block(A, A, diagonal, plan)
+                return A
+    # Lean small-shape in-place path (in == out): same gate as triu(). Keep the
+    # free keep-everything early return (diag <= 1-M) ahead of the kernel so a
+    # trivial in-place triu_ does zero work instead of a redundant launch.
+    if _lean_eligible(A):
+        if diagonal <= 1 - A.shape[-2]:  # keep everything, nothing to zero
+            return A
+        _lean_flat(A, A, diagonal)
+        return A
     _check_input(A)
     M, N = A.shape[-2:]
     if diagonal <= 1 - M:  # keep everything, nothing to zero
         return A
+    # Lean tle.gpu block path, in-place (in == out): each block is read to LM
+    # before its region is written back, so overlapping in/out is safe.
+    if diagonal < N:
+        plan = _tle_block_eligible(A, diagonal)
+        if plan is not None:
+            _launch_triu_block(A, A, diagonal, plan)
+            return A
     if A.is_contiguous():
         _launch_triu_inplace_contiguous(A, diagonal)
         return A
