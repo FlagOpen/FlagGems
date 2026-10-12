@@ -33,6 +33,18 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# The registry id is ``slow_conv2d_backward`` (the aten name starts with an
+# underscore; see naming Rule 2). CI derives the pytest marker from the
+# implementation file name via the #6359 convention:
+# ``_slow_conv2d_backward`` -> ``underscore_slow_conv2d_backward`` (the stripped
+# name collides with this registry id, so the ``underscore_`` prefix is
+# applied). Declare both markers so ``pytest -m <marker>`` selects these tests
+# from either entry point.
+pytestmark = [
+    pytest.mark.slow_conv2d_backward,
+    pytest.mark.underscore_slow_conv2d_backward,
+]
+
 # (input_shape, weight_shape, kernel_size, stride, padding). Inputs are small
 # because the slow conv2d backward is a plain reference implementation and the
 # ATen slow path itself is slow on large inputs.
