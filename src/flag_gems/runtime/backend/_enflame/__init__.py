@@ -49,6 +49,12 @@ fp8_enabled = bool(_gcu_compiler.GCUOptions().supported_fp8_dtypes)
 # ENABLE_I64_CHECK setting, not what the target can do.
 int64_enabled = arch_version != 300
 
+# Complex tensors abort the process on gcu300: even creating one via
+# torch.randn(dtype=complex64) reaches topsatenNormal with ComplexFloat and
+# fails TOPSATEN_STATUS_NOT_SUPPORT, which is a C++ terminate rather than a
+# catchable exception.
+complex_enabled = arch_version != 300
+
 vendor_info = VendorDescriptor(
     vendor_name="enflame",
     device_name="gcu",
@@ -57,6 +63,7 @@ vendor_info = VendorDescriptor(
     fp64_enabled=False,
     int64_enabled=int64_enabled,
     fp8_enabled=fp8_enabled,
+    complex_enabled=complex_enabled,
     tle_enabled=True,
 )
 
