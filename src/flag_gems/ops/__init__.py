@@ -242,6 +242,7 @@ from flag_gems.ops._functional_sym_constrain_range_for_size import (
 )
 from flag_gems.ops._fused_adagrad_ import _fused_adagrad_
 from flag_gems.ops._fused_adam import _fused_adam, _fused_adam_
+from flag_gems.ops._fused_adamw_ import _fused_adamw_, _fused_adamw__tensor_lr
 from flag_gems.ops._fused_dropout import _fused_dropout
 from flag_gems.ops._fused_moving_avg_obs_fq_helper import (
     _fused_moving_avg_obs_fq_helper,
@@ -1350,6 +1351,7 @@ from flag_gems.ops.special_shifted_chebyshev_polynomial_w import (
 )
 from flag_gems.ops.special_sinc import special_sinc
 from flag_gems.ops.special_softmax import special_softmax
+from flag_gems.ops.special_spherical_bessel_j0 import special_spherical_bessel_j0
 from flag_gems.ops.special_xlog1py import special_xlog1py
 from flag_gems.ops.special_xlogy import special_xlogy, special_xlogy_
 from flag_gems.ops.special_zeta import (
@@ -1722,6 +1724,8 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_fused_adamw_",
+    "_fused_adamw__tensor_lr",
     "_fused_dropout",
     "_fused_moving_avg_obs_fq_helper",
     "_fused_rms_norm",
@@ -2869,6 +2873,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
     "special_softmax",
+    "special_spherical_bessel_j0",
     "special_xlog1py",
     "special_xlogy",
     "special_xlogy_",
