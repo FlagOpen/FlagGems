@@ -52,8 +52,7 @@ def has_triton_tle(major: int = 0, minor: int = 0, patch: int = 0) -> bool:
         import triton.experimental.tle.language as _tle  # noqa: F401
 
         return is_support_vendor()
-    except (ImportError, OSError):
-        # Optional TLE libraries may be installed without loadable runtime dependencies.
+    except ImportError:
         return False
 
 
@@ -68,8 +67,7 @@ def has_tle_device_mesh() -> bool:
         import triton.experimental.tle.language as tle_exp
 
         return hasattr(tle_exp, "device_mesh")
-    except (ImportError, OSError):
-        # Optional TLE libraries may be installed without loadable runtime dependencies.
+    except ImportError:
         return False
 
 
