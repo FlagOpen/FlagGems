@@ -73,11 +73,12 @@ jobs:
         with:
           fetch-depth: 0
           ssh-key: ${{ secrets.CI_SSH_KEY }}
-          # ~20 min of rotation (60 rounds x [SSH 10s + HTTP 10s]) to ride out
-          # windows where both links are temporarily down; a good link still
-          # hits on round 1 (~10s), so this only costs time when the network is
-          # fully unreachable.
-          rounds: "60"
+          # Each round is a connect probe (fast reject of a wedged link) then a
+          # throughput-judged fetch, so a slow-but-moving link finishes in round 1
+          # instead of being clock-killed. fetch-depth 0 pulls full history, so
+          # the throughput-based transfer stage matters most here. Rounds only buy
+          # retries across short blips; a full outage fails fast on the probe.
+          rounds: "30"
       - name: Ensure full working tree
         shell: bash
         run: |
