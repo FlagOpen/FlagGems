@@ -617,6 +617,7 @@ from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.det import det
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
+from flag_gems.ops.diagflat import run as diagflat
 from flag_gems.ops.diagonal import diagonal_backward
 from flag_gems.ops.diagonal_copy import diagonal_copy
 from flag_gems.ops.diagonal_scatter import diagonal_scatter
@@ -2083,6 +2084,7 @@ __all__ = [
     "det",
     "diag",
     "diag_embed",
+    "diagflat",
     "diagonal_backward",
     "diagonal_copy",
     "diagonal_scatter",

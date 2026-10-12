@@ -848,6 +848,7 @@ _FULL_CONFIG = (
     ("det", det),
     ("diag", diag),
     ("diag_embed", diag_embed),
+    ("diagflat", diagflat),
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
     ("diagonal_scatter", diagonal_scatter),

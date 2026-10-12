@@ -4385,6 +4385,20 @@ ops:
   - Tensor
   stages:
   - stable: '2.2'
+- id: diagflat
+  description: 'Creates a 2-D tensor whose diagonal, selected by `offset`, holds the
+    flattened `input` and whose remaining elements are zero.
+
+    '
+  for:
+  - diagflat
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: diagonal_backward
   description: 'A diagonal operation returns a partial view of `input` with the its
     diagonal elements
