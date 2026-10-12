@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 device = device.name
 
 
-_ROW_MAX_N = 4096
+_ROW_MAX_N = 1024
 
 _FLAT_TM = {
     2: 8,
@@ -281,7 +281,7 @@ def _scan_rows_into(inp, out, M, N):
         _scan_rows_group_into(inp, out, M, N)
 
 
-_GROUP = 4096
+_GROUP = 1024
 
 
 @libentry()
@@ -417,7 +417,11 @@ def _scan_mid_into(inp, out, M, N, K):
             xp, out_t, sums, Np, n_groups, _GROUP, num_warps=8, buffer_size_limit=2048
         )
     src_t = out_t[:, :N].reshape(M, K, N).permute(0, 2, 1)
-    if not tle_copy(src_t, out.view(M, N, K)):
+    try:
+        ok = tle_copy(src_t, out.view(M, N, K))
+    except Exception:
+        ok = False  # e.g. mainline tle lacks UNI_SRAM (same family as the tril fix)
+    if not ok:
         torch.ops.aten._copy_from(
             out_t[:, :N].reshape(M, K, N).permute(0, 2, 1), out.view(M, N, K), False
         )
