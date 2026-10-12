@@ -784,6 +784,7 @@ _FULL_CONFIG = (
     ("col2im", col2im),
     ("column_stack", column_stack),
     ("column_stack.out", column_stack_out),
+    ("combinations", combinations),
     ("concat", concat),
     ("concatenate", concatenate),
     ("conj_physical", conj_physical),
