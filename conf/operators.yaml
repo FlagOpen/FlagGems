@@ -1997,6 +1997,7 @@ ops:
   - batch_norm_backward_reduce
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -2009,6 +2010,7 @@ ops:
   - batch_norm_gather_stats
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -2021,6 +2023,7 @@ ops:
   - batch_norm_gather_stats_with_counts
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -3927,6 +3930,7 @@ ops:
   - _cslt_sparse_mm
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -4059,6 +4063,7 @@ ops:
   - _cudnn_rnn_backward
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Math
@@ -4496,6 +4501,7 @@ ops:
   - _dirichlet_grad
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Math
@@ -5577,6 +5583,7 @@ ops:
   - _fill_mem_eff_dropout_mask_
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -13583,6 +13590,7 @@ ops:
   - _nested_from_padded_tensor
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -13597,6 +13605,7 @@ ops:
   - _nested_select_backward
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -13708,6 +13717,7 @@ ops:
   - _nested_view_from_jagged
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor

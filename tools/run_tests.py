@@ -433,12 +433,32 @@ def _probe_vllm():
         pwarn(f"vllm detection failed: {e}")
 
 
+def _strip_cpu_fallback():
+    """Drop vendor debug settings that force every op onto the CPU.
+
+    The enflame runtime image exports
+    ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops from
+    /etc/profile.d/runtime_env.sh, which routes *every* aten op through a
+    host round-trip. Accuracy still passes (the reference runs on CPU
+    anyway), but the performance baseline then measures D2H + CPU + H2D
+    instead of the device, inflating the reported speedup by ~60x. Strip it
+    here so the setting cannot silently reach the benchmark subprocesses,
+    whatever the image or the login shell did.
+    """
+    var = "ENFLAME_PT_OP_DEBUG_CONFIG"
+    value = os.environ.get(var)
+    if value and "fallback_cpu" in value:
+        pwarn(f"{var}={value} forces CPU fallback; unsetting it for the test run")
+        del os.environ[var]
+
+
 def probe_env():
     ENV_INFO["architecture"] = platform.machine()
     ENV_INFO["os_name"] = distro.id()
     ENV_INFO["os_release"] = distro.version()
     ENV_INFO["python"] = platform.python_version()
 
+    _strip_cpu_fallback()
     _probe_torch()
     _probe_triton()
     _probe_flaggems()
