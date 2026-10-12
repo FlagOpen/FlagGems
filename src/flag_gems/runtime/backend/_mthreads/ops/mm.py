@@ -318,6 +318,17 @@ def mm_out(a, b, *, out):
     c = out
     if N == 1:
         return gemv_mm(a, b, c, M, K)
+    # The warp-specialized kernel stores straight into a row-major buffer whose
+    # dtype matches the operands, so the SQMMA tiles and the output agree.  Any
+    # other output layout or dtype keeps the portable FMA kernel.
+    if (
+        is_tle_ws_compatible(a, b, M, N, K)
+        and out.is_contiguous()
+        and out.dtype == a.dtype
+        and out.shape == (M, N)
+    ):
+        with torch_device_fn.device(a.device):
+            return mm_sqmma_ws(a, b, M, N, K, C=out)
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -762,7 +773,7 @@ def is_tle_ws_compatible(a, b, M, N, K):
     )
 
 
-def mm_sqmma_ws(A, B, M, N, K):
+def mm_sqmma_ws(A, B, M, N, K, C=None):
     logger.debug("GEMS_MTHREADS MM_SQMMA_WS")
     device = A.device
     if not A.is_contiguous():
@@ -770,7 +781,12 @@ def mm_sqmma_ws(A, B, M, N, K):
     if not B.is_contiguous():
         B = B.contiguous()
     assert A.dtype == B.dtype, "Mat A and Mat B should have the same dtype"
-    C = torch.empty((M, N), dtype=get_higher_dtype(A.dtype, B.dtype), device=device)
+    if C is None:
+        C = torch.empty(
+            (M, N),
+            dtype=get_higher_dtype(A.dtype, B.dtype),
+            device=device,
+        )
     desc_a = TensorDescriptor.from_tensor(A, [_WS_BLOCK_M, _WS_BLOCK_K])
     desc_b = TensorDescriptor.from_tensor(B, [_WS_BLOCK_K, _WS_BLOCK_N])
     grid = (triton.cdiv(N, _WS_BLOCK_N), triton.cdiv(M, _WS_BLOCK_M), 1)
