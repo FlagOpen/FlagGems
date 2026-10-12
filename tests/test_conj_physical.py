@@ -208,10 +208,10 @@ _LAYOUT_SHAPES = {
     "expanded": (3, 4),
 }
 
-_UNDERSCORE_DTYPES = (
-    ([torch.complex64] if utils.complex_is_supported else [])
-    + [torch.float32, torch.int32]
-)
+_UNDERSCORE_DTYPES = ([torch.complex64] if utils.complex_is_supported else []) + [
+    torch.float32,
+    torch.int32,
+]
 
 
 @pytest.mark.underscore_conj_physical
