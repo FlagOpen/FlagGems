@@ -31,6 +31,18 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# The registry id is ``slow_conv2d_forward`` (the aten name starts with an
+# underscore; see naming Rule 2). CI derives the pytest marker from the
+# implementation file name via the #6359 convention:
+# ``_slow_conv2d_forward`` -> ``underscore_slow_conv2d_forward`` (the stripped
+# name collides with this registry id, so the ``underscore_`` prefix is
+# applied). Declare both markers so ``pytest -m <marker>`` selects these tests
+# from either entry point.
+pytestmark = [
+    pytest.mark.slow_conv2d_forward,
+    pytest.mark.underscore_slow_conv2d_forward,
+]
+
 # Shapes mimic a small ResNet-style stage: the 3x3 kernel at stride 1 keeps
 # H_out/W_out equal to H/W and exercises the tap loop, while stride 2 with a
 # 1x1 kernel covers the specialised 1x1 dispatch. The (2, 3, 8, 8) entry is
