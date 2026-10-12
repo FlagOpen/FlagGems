@@ -185,6 +185,84 @@ comparison; for brand-new operators, it posts a single-run report. Results
 日志）会以 PR 评论和上传构件的形式提供。
 
 <!--
+## Manually dispatched utility workflows
+
+These workflows only have a `workflow_dispatch` trigger (`random-test.yaml`,
+`probe-node.yaml`, `review-stats.yaml`); see the English documentation.
+-->
+## 手动触发的辅助工作流
+
+以下工作流只有 `workflow_dispatch` 触发器，需要在 **Actions** 页面点击
+**Run workflow**，或通过 `gh workflow run` 手动运行。
+
+### `random-test.yaml` —— 在指定 runner 上测试指定算子
+
+**触发方式：** `workflow_dispatch`，包含三个必填输入：
+
+| 输入 | 含义 | 示例 |
+|---|---|---|
+| `runner` | 运行所用的 runner 标签 | `a100`、`h100`、`h20`、`ascend`、`cann9`、`metax`、`maca381`、`enflame`、`cambricon` |
+| `operators` | 以逗号分隔的算子名 | `add,mul,softmax` |
+| `gpus` | 以逗号分隔的 GPU 编号 | `0,1` |
+
+```bash
+gh workflow run random-test.yaml \
+  -f runner=a100 -f operators=add,mul,softmax -f gpus=0,1
+```
+
+`check-permission` 作业会先检查触发者是否属于 `FlagGems` 团队，不属于则跳过
+测试作业。随后 `test-operator` 作业把 runner 标签映射为厂商和 backend
+profile（例如 `a100`/`h100`/`h20` → `nvidia-cuda133`，`ascend`/`cann9` →
+`ascend-cann900`；标签未知时直接用标签本身作为两者的值），检出代码，调用
+`setup-flaggems` 搭建厂商环境并运行 GPU 检查脚本，然后执行
+`tools/run_tests.py --ops <operators> --gpus <gpus>`。
+
+上传步骤配置为从 `results/` 读取名为 `random-test` 的构件内容。当前测试命令
+未指定 `--output-dir`，因此调度器会把结果写入默认的
+`logs_results_YYYYMMDD_HHMM` 目录。这两个路径不同，新生成的测试结果不会自动
+写入配置的上传目录。
+
+`operators` 和 `gpus` 会直接拼接到命令行，因此其中不要带空格。如需在本地复现，
+可直接运行 `tools/run_tests.py`。
+
+### `probe-node.yaml` —— 探测自托管 runner 的环境
+
+**触发方式：** `workflow_dispatch`，有一个必填输入 `runner`（runner 标签，
+默认 `h100`）。
+
+收集自托管 runner 的环境信息，用于为其选择合适的 backend profile（例如
+`nvidia-cuda133` 还是 `nvidia-cuda128`）。它只要求 runner 上有 bash，也不会
+检出仓库。输出内容包括：
+
+- 系统与 Python：`uname -a`、`python3 --version`
+- 容器 / 虚拟化：`/.dockerenv`、`/proc/1/cgroup`、`systemd-detect-virt`、
+  PID 1
+- 内存：`free -h` 以及 cgroup 内存上限
+- GPU：`nvidia-smi`，以及每张卡的显存总量 / 已用 / 空闲
+- CUDA 工具链：`nvcc --version` 和 `/usr/local/cuda*`
+
+输出会写入作业日志和该次运行的 **Summary** 页面（`$GITHUB_STEP_SUMMARY`）。
+该探测是只读的，且没有团队成员权限检查。GPU 与 CUDA 相关探测仅针对 NVIDIA；
+在其他厂商的机器上这些项会显示 "not found"，其余部分仍然有效。
+
+### `review-stats.yaml` —— 拉取请求分析报告
+
+**触发方式：** `workflow_dispatch`，有两个可选输入 `report_date_start` 和
+`report_date_end`，格式均为 `dd/MM/YYYY`。
+
+在 `ubuntu-latest` 上运行，使用
+[`AlexSim93/pull-request-analytics-action`](https://github.com/AlexSim93/pull-request-analytics-action)
+统计 `flagos-ai/FlagGems` 在给定日期范围内的拉取请求数据（评审响应时间、活跃度
+等指标）。工作时间配置为 `Asia/Shanghai` 时区的 9:00–23:00。报告会以 issue
+的形式创建在 `flagos-ai/FlagGems` 仓库中，因此该作业需要 `issues: write`
+权限（以及对 contents、pull requests、statuses 的读权限）。
+
+```bash
+gh workflow run review-stats.yaml \
+  -f report_date_start=01/09/2026 -f report_date_end=30/09/2026
+```
+
+<!--
 ## Feishu and monitoring integrations
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu

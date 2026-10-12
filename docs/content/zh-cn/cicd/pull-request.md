@@ -208,6 +208,18 @@ Because these jobs are skipped when the corresponding label is absent, a
 `examples`, `backend-tests`, and `alpha-ops` with `if: always()`, so branch
 protection can require a single, always-present check instead of the
 individual label-gated jobs.
+
+The `python-op` and `examples` jobs in `unittest.yaml`, plus the jobs in
+`cpp-op-test.yaml` and `backend-test.yaml`, first run an independent
+`actions/checkout` with `continue-on-error`, then call `checkout-retry`.
+The composite action makes at most three attempts (one initial attempt and
+two retries, waiting 30s before each retry), so these PR test jobs can make
+up to four checkout attempts in total.
+
+`rule-check.yaml` and `linter.yml` use `actions/checkout`, followed by an
+"Ensure full working tree" step on `cpu-runner`. That step disables sparse
+checkout, clears the tracked files' `skip-worktree` bits, and restores the
+working tree from `HEAD`.
 -->
 `backend-test.yaml`（一个可复用的 `workflow_call` 工作流）会检出 PR 代码、
 运行对应厂商的 GPU 可用性检查、通过 `setup-flaggems` 组合动作搭建环境，
@@ -218,6 +230,16 @@ individual label-gated jobs.
 `if: always()` 聚合 `preprocess`、`cpp-op`、`python-op`、`examples`、
 `backend-tests`、`alpha-ops` 的结果，使分支保护规则可以要求这一个始终存在
 的检查，而不必逐个要求那些按标签门控的作业。
+
+`unittest.yaml` 的 `python-op`、`examples`，以及 `cpp-op-test.yaml`、
+`backend-test.yaml` 中的作业，会先独立执行一次允许失败的
+`actions/checkout`，再调用 `checkout-retry`。该组合动作内部最多尝试检出
+3 次（首次检出加最多 2 次重试，每次重试前等待 30 秒），因此这类 PR 测试
+作业合计最多可尝试检出 4 次。
+
+`rule-check.yaml` 和 `linter.yml` 使用 `actions/checkout`，随后在
+`cpu-runner` 上执行“Ensure full working tree”步骤：禁用稀疏检出，清除
+受跟踪文件的 `skip-worktree` 位，并从 `HEAD` 恢复工作目录。
 
 <!--
 ## 5. On-demand and comment-triggered workflows
