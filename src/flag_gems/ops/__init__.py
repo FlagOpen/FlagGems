@@ -300,7 +300,9 @@ from flag_gems.ops._nested_tensor_from_mask import _nested_tensor_from_mask
 from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
     _nested_tensor_from_mask_left_aligned,
 )
-from flag_gems.ops._nested_tensor_from_tensor_list import _nested_tensor_from_tensor_list
+from flag_gems.ops._nested_tensor_from_tensor_list import (
+    _nested_tensor_from_tensor_list,
+)
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
