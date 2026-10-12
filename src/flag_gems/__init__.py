@@ -752,6 +752,7 @@ _FULL_CONFIG = (
     ("broadcast_tensors", broadcast_tensors),
     ("broadcast_to", broadcast_to),
     ("bucketize.Tensor", bucketize),
+    ("cartesian_prod", cartesian_prod),
     ("cat", cat),
     ("cat.out", cat_out),
     ("cauchy", cauchy),
