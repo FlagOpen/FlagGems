@@ -114,7 +114,8 @@ Backends are split into two execution modes:
 - **Native** (`test-native`) — runs directly on the self-hosted runner
   without a container, with an 1080-minute (18h) job timeout.
 
-Each matrix job retries checkout up to three times (with 30s backoff),
+Each matrix job attempts checkout up to three times (the initial attempt plus
+at most two retries, waiting 30s before each retry),
 installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
 scoped by `--ops` or `--stages all`, summarizes results with
 `add_labels`/`psum_text`/`psum_html`, packages them into a per-vendor
@@ -150,7 +151,8 @@ GitHub Actions 原生的 `schedule` 触发器——因为在负载较高时，�
 - **原生运行**（`test-native`） —— 直接在自托管 runner 上运行，不使用
   容器，作业超时时间为 1080 分钟（18 小时）。
 
-矩阵中的每个作业最多会重试三次代码检出（每次间隔 30 秒），随后安装
+矩阵中的每个作业最多尝试检出代码 3 次（首次失败后最多重试 2 次，
+每次重试前等待 30 秒），随后安装
 FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` 或
 `--stages all` 参数控制测试范围）、使用
 `add_labels`/`psum_text`/`psum_html` 汇总结果，并将结果打包为每个厂商
@@ -181,6 +183,80 @@ comparison; for brand-new operators, it posts a single-run report. Results
 标签或等待完整的 CI 运行。对于已有测试历史的算子，会在 PR 改动前后分别运行
 测试并发布对比结果；对于全新算子，则只发布单次运行的报告。测试结果（及完整
 日志）会以 PR 评论和上传构件的形式提供。
+
+<!--
+## Manually dispatched utility workflows
+
+These workflows only have a `workflow_dispatch` trigger (`random-test.yaml`,
+`probe-node.yaml`, `review-stats.yaml`); see the English documentation.
+-->
+## 手动触发的辅助工作流
+
+以下工作流只有 `workflow_dispatch` 触发器，需要在 **Actions** 页面点击
+**Run workflow**，或通过 `gh workflow run` 手动运行。
+
+### `random-test.yaml` —— 在指定 runner 上测试指定算子
+
+**触发方式：** `workflow_dispatch`，包含三个必填输入：
+
+| 输入 | 含义 | 示例 |
+|---|---|---|
+| `runner` | 运行所用的 runner 标签 | `a100`、`h100`、`h20`、`ascend`、`cann9`、`metax`、`maca381`、`enflame`、`cambricon` |
+| `operators` | 以逗号分隔的算子名 | `add,mul,softmax` |
+| `gpus` | 以逗号分隔的 GPU 编号 | `0,1` |
+
+```bash
+gh workflow run random-test.yaml \
+  -f runner=a100 -f operators=add,mul,softmax -f gpus=0,1
+```
+
+`check-permission` 作业会先检查触发者是否属于 `FlagGems` 团队，不属于则跳过
+测试作业。随后 `test-operator` 作业把 runner 标签映射为厂商和 backend
+profile（例如 `a100`/`h100`/`h20` → `nvidia-cuda133`，`ascend`/`cann9` →
+`ascend-cann900`；标签未知时直接用标签本身作为两者的值），检出代码，运行对应
+厂商的 GPU 检查脚本和 `setup-flaggems`，再执行
+`tools/run_tests.py --ops <operators> --gpus <gpus>`。`results/` 目录会作为
+名为 `random-test` 的构件上传。
+
+`operators` 和 `gpus` 会直接拼接到命令行，因此其中不要带空格。如需在本地复现，
+可直接运行 `tools/run_tests.py`。
+
+### `probe-node.yaml` —— 探测自托管 runner 的环境
+
+**触发方式：** `workflow_dispatch`，有一个必填输入 `runner`（runner 标签，
+默认 `h100`）。
+
+收集自托管 runner 的环境信息，用于为其选择合适的 backend profile（例如
+`nvidia-cuda133` 还是 `nvidia-cuda128`）。它只要求 runner 上有 bash，也不会
+检出仓库。输出内容包括：
+
+- 系统与 Python：`uname -a`、`python3 --version`
+- 容器 / 虚拟化：`/.dockerenv`、`/proc/1/cgroup`、`systemd-detect-virt`、
+  PID 1
+- 内存：`free -h` 以及 cgroup 内存上限
+- GPU：`nvidia-smi`，以及每张卡的显存总量 / 已用 / 空闲
+- CUDA 工具链：`nvcc --version` 和 `/usr/local/cuda*`
+
+输出会写入作业日志和该次运行的 **Summary** 页面（`$GITHUB_STEP_SUMMARY`）。
+该探测是只读的，且没有团队成员权限检查。GPU 与 CUDA 相关探测仅针对 NVIDIA；
+在其他厂商的机器上这些项会显示 "not found"，其余部分仍然有效。
+
+### `review-stats.yaml` —— 拉取请求分析报告
+
+**触发方式：** `workflow_dispatch`，有两个可选输入 `report_date_start` 和
+`report_date_end`，格式均为 `dd/MM/YYYY`。
+
+在 `ubuntu-latest` 上运行，使用
+[`AlexSim93/pull-request-analytics-action`](https://github.com/AlexSim93/pull-request-analytics-action)
+统计 `flagos-ai/FlagGems` 在给定日期范围内的拉取请求数据（评审响应时间、活跃度
+等指标）。工作时间配置为 `Asia/Shanghai` 时区的 9:00–23:00。报告会以 issue
+的形式创建在 `flagos-ai/FlagGems` 仓库中，因此该作业需要 `issues: write`
+权限（以及对 contents、pull requests、statuses 的读权限）。
+
+```bash
+gh workflow run review-stats.yaml \
+  -f report_date_start=01/09/2026 -f report_date_end=30/09/2026
+```
 
 <!--
 ## Feishu and monitoring integrations
