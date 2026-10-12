@@ -186,18 +186,7 @@ def cudnn_batch_norm_backward_kernel(
             )
 
 
-def cudnn_batch_norm_backward(
-    input: Tensor,
-    grad_output: Tensor,
-    weight: Tensor,
-    running_mean: Tensor = None,
-    running_var: Tensor = None,
-    save_mean: Tensor = None,
-    save_var: Tensor = None,
-    epsilon: float = 1e-5,
-    reserveSpace: Tensor = None,
-):
-    logger.debug("GEMS CUDNN_BATCH_NORM_BACKWARD")
+def _validate_backward(input, grad_output, weight, save_mean, save_var):
     if input.ndim < 2 or input.ndim > 5 or input.numel() == 0:
         raise RuntimeError(
             "cudnn_batch_norm_backward requires a nonempty rank 2 through 5 input"
@@ -223,6 +212,21 @@ def cudnn_batch_norm_backward(
                 "weight and saved statistics must be contiguous C-element tensors with the parameter dtype"
             )
 
+
+def cudnn_batch_norm_backward(
+    input: Tensor,
+    grad_output: Tensor,
+    weight: Tensor,
+    running_mean: Tensor = None,
+    running_var: Tensor = None,
+    save_mean: Tensor = None,
+    save_var: Tensor = None,
+    epsilon: float = 1e-5,
+    reserveSpace: Tensor = None,
+):
+    logger.debug("GEMS CUDNN_BATCH_NORM_BACKWARD")
+    _validate_backward(input, grad_output, weight, save_mean, save_var)
+
     input_3d = make_3d_for_bn(input)
     grad_output_3d = make_3d_for_bn(grad_output)
 
@@ -235,68 +239,6 @@ def cudnn_batch_norm_backward(
 
     # Launches 1D grid where each program operates over one feature.
     with torch_device_fn.device(input.device):
-        if (
-            runtime.device.vendor_name == "nvidia"
-            and input.dtype == torch.float64
-            and input_3d.is_contiguous()
-            and grad_output_3d.is_contiguous()
-        ):
-            from flag_gems.runtime.backend._nvidia.ops._cudnn_batch_norm_backward import (
-                _backward_apply,
-                _backward_fused,
-                _backward_partial,
-            )
-
-            count = batch_dim * spatial_dim
-            if count <= 2048:
-                _backward_fused[(feat_dim,)](
-                    input_3d,
-                    grad_output_3d,
-                    weight,
-                    save_mean,
-                    save_var,
-                    input_grad,
-                    weight_grad,
-                    bias_grad,
-                    count,
-                    feat_dim,
-                    spatial_dim,
-                    triton.next_power_of_2(count),
-                )
-            else:
-                parts = triton.cdiv(count, 1024)
-                partial = torch.empty(
-                    (feat_dim, 2, parts), dtype=input.dtype, device=input.device
-                )
-                _backward_partial[(feat_dim, parts)](
-                    input_3d,
-                    grad_output_3d,
-                    save_mean,
-                    partial,
-                    count,
-                    feat_dim,
-                    spatial_dim,
-                    parts,
-                    1024,
-                )
-                _backward_apply[(feat_dim, parts)](
-                    input_3d,
-                    grad_output_3d,
-                    weight,
-                    save_mean,
-                    save_var,
-                    partial,
-                    input_grad,
-                    weight_grad,
-                    bias_grad,
-                    count,
-                    feat_dim,
-                    spatial_dim,
-                    parts,
-                    triton.next_power_of_2(parts),
-                    1024,
-                )
-            return input_grad.view_as(input), weight_grad, bias_grad
         cudnn_batch_norm_backward_kernel[(feat_dim,)](
             grad_output_3d,
             input_3d,

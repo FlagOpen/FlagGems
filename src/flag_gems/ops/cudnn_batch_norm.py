@@ -19,7 +19,6 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
@@ -328,65 +327,6 @@ def _forward(
     double = input.dtype == torch.float64
     channels_last = input.stride(1) == 1 and not input.is_contiguous()
     with torch_device_fn.device(input.device):
-        if (
-            training
-            and 2048 < m <= 131072
-            and not double
-            and runtime.device.vendor_name == "nvidia"
-            and input.is_contiguous()
-        ):
-            from flag_gems.runtime.backend._nvidia.ops._cudnn_batch_norm import (
-                _train_finish,
-                _train_fused,
-                _train_partial,
-            )
-
-            args = (
-                input,
-                weight,
-                bias,
-                running_mean,
-                running_var,
-                output,
-                mean,
-                inv,
-            )
-            if m <= 32768:
-                # A single launch avoids intermediate allocations for short reductions.
-                _train_fused[(c,)](
-                    *args,
-                    m,
-                    c,
-                    s,
-                    running_mean is not None,
-                    exponential_average_factor,
-                    epsilon,
-                    min(triton.next_power_of_2(m), 8192),
-                    num_warps=8,
-                )
-            else:
-                # Merge partial moments inside each output block to save a launch.
-                block = 2048
-                parts = triton.cdiv(m, block)
-                partial = torch.empty(
-                    (c, 2, parts), dtype=torch.float32, device=input.device
-                )
-                _train_partial[(c, parts)](input, partial, m, c, s, parts, block)
-                _train_finish[(c, parts)](
-                    *args,
-                    partial,
-                    m,
-                    c,
-                    s,
-                    running_mean is not None,
-                    exponential_average_factor,
-                    epsilon,
-                    parts,
-                    triton.next_power_of_2(parts),
-                    block,
-                    block,
-                )
-            return
         if not training and double and not channels_last:
             block = min(triton.next_power_of_2(m), _ELEMENT_BLOCK)
             _bn_eval_fp64[(c, triton.cdiv(m, block))](
@@ -493,6 +433,7 @@ def _allocate_forward(
     training,
     exponential_average_factor,
     epsilon,
+    forward_fn=_forward,
 ):
     _validate(input, weight, bias, running_mean, running_var, training, epsilon)
     output = torch.empty_strided(
@@ -505,7 +446,7 @@ def _allocate_forward(
     )
     inv = torch.empty_like(mean)
     reserve = torch.empty((0,), dtype=torch.uint8, device=input.device)
-    _forward(
+    forward_fn(
         input,
         weight,
         bias,
@@ -533,6 +474,8 @@ class _CudnnBatchNorm(torch.autograd.Function):
         training,
         exponential_average_factor,
         epsilon,
+        forward_fn,
+        backward_fn,
     ):
         output, mean, inv, reserve = _allocate_forward(
             input,
@@ -543,6 +486,7 @@ class _CudnnBatchNorm(torch.autograd.Function):
             training,
             exponential_average_factor,
             epsilon,
+            forward_fn,
         )
         ctx.save_for_backward(
             input,
@@ -551,6 +495,7 @@ class _CudnnBatchNorm(torch.autograd.Function):
             inv if training else running_var,
             reserve,
         )
+        ctx.backward_fn = backward_fn
         ctx.training = training
         ctx.epsilon = epsilon
         ctx.bias_shape = bias.shape
@@ -561,11 +506,9 @@ class _CudnnBatchNorm(torch.autograd.Function):
     @torch.autograd.function.once_differentiable
     def backward(ctx, grad_output, grad_mean, grad_inv, grad_reserve):
         # Call the paired implementation directly: registration may already be gone.
-        from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
-
         input, weight, mean, inv, reserve = ctx.saved_tensors
         if ctx.training:
-            dx, dw, db = cudnn_batch_norm_backward(
+            dx, dw, db = ctx.backward_fn(
                 input, grad_output, weight, None, None, mean, inv, ctx.epsilon, reserve
             )
         else:
@@ -604,10 +547,12 @@ class _CudnnBatchNorm(torch.autograd.Function):
             None,
             None,
             None,
+            None,
+            None,
         )
 
 
-def cudnn_batch_norm(
+def _cudnn_batch_norm_impl(
     input,
     weight,
     bias,
@@ -616,13 +561,14 @@ def cudnn_batch_norm(
     training,
     exponential_average_factor,
     epsilon,
+    forward_fn=_forward,
+    backward_fn=None,
 ):
     """BatchNorm with Gems-owned saved statistics and an empty byte reserve.
 
     The reserve is only valid with the paired Gems backward. Autograd retains
     that implementation even after temporary dispatcher registration ends.
     """
-    logger.debug("GEMS CUDNN_BATCH_NORM")
     args = (
         input,
         weight,
@@ -636,11 +582,40 @@ def cudnn_batch_norm(
     if torch.is_grad_enabled() and any(
         t is not None and t.requires_grad for t in args[:5]
     ):
-        return _CudnnBatchNorm.apply(*args)
-    return _allocate_forward(*args)
+        if backward_fn is None:
+            from flag_gems.ops.cudnn_batch_norm_backward import (
+                cudnn_batch_norm_backward,
+            )
+
+            backward_fn = cudnn_batch_norm_backward
+        return _CudnnBatchNorm.apply(*args, forward_fn, backward_fn)
+    return _allocate_forward(*args, forward_fn)
 
 
-def cudnn_batch_norm_out(
+def cudnn_batch_norm(
+    input,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    training,
+    exponential_average_factor,
+    epsilon,
+):
+    logger.debug("GEMS CUDNN_BATCH_NORM")
+    return _cudnn_batch_norm_impl(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        exponential_average_factor,
+        epsilon,
+    )
+
+
+def _cudnn_batch_norm_out_impl(
     input,
     weight,
     bias,
@@ -654,8 +629,8 @@ def cudnn_batch_norm_out(
     out1,
     out2,
     out3,
+    forward_fn=_forward,
 ):
-    logger.debug("GEMS CUDNN_BATCH_NORM_OUT")
     fmt = _validate(input, weight, bias, running_mean, running_var, training, epsilon)
     if torch.is_grad_enabled() and any(
         t is not None and t.requires_grad
@@ -698,7 +673,7 @@ def cudnn_batch_norm_out(
             for t in inputs + written_outputs[:i]
         ):
             raise RuntimeError("overlapping output storage is unsupported")
-    _forward(
+    forward_fn(
         input,
         weight,
         bias,
@@ -712,3 +687,35 @@ def cudnn_batch_norm_out(
         out2,
     )
     return outputs
+
+
+def cudnn_batch_norm_out(
+    input,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    training,
+    exponential_average_factor,
+    epsilon,
+    *,
+    out0,
+    out1,
+    out2,
+    out3,
+):
+    logger.debug("GEMS CUDNN_BATCH_NORM_OUT")
+    return _cudnn_batch_norm_out_impl(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        exponential_average_factor,
+        epsilon,
+        out0=out0,
+        out1=out1,
+        out2=out2,
+        out3=out3,
+    )

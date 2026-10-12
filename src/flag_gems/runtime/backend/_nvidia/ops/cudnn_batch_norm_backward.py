@@ -12,10 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import logging
+
+import torch
 import triton
 import triton.language as tl
+from torch import Tensor
 
+from flag_gems.ops.cudnn_batch_norm_backward import _validate_backward
+from flag_gems.ops.cudnn_batch_norm_backward import (
+    cudnn_batch_norm_backward as _generic_backward,
+)
+from flag_gems.ops.cudnn_batch_norm_backward import make_3d_for_bn
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -117,3 +129,91 @@ def _backward_apply(
     x = tl.load(X + offsets, r < M, 0)
     dy = tl.load(DY + offsets, r < M, 0)
     tl.store(DX + offsets, a * (dy - ((x - mean) * b + d)), r < M)
+
+
+def cudnn_batch_norm_backward(
+    input: Tensor,
+    grad_output: Tensor,
+    weight: Tensor,
+    running_mean: Tensor = None,
+    running_var: Tensor = None,
+    save_mean: Tensor = None,
+    save_var: Tensor = None,
+    epsilon: float = 1e-5,
+    reserveSpace: Tensor = None,
+):
+    logger.debug("GEMS_NVIDIA CUDNN_BATCH_NORM_BACKWARD")
+    if not (
+        input.dtype == torch.float64
+        and input.is_contiguous()
+        and grad_output.is_contiguous()
+    ):
+        return _generic_backward(
+            input,
+            grad_output,
+            weight,
+            running_mean,
+            running_var,
+            save_mean,
+            save_var,
+            epsilon,
+            reserveSpace,
+        )
+    _validate_backward(input, grad_output, weight, save_mean, save_var)
+    input_3d = make_3d_for_bn(input)
+    grad_output_3d = make_3d_for_bn(grad_output)
+    batch_dim, feat_dim, spatial_dim = input_3d.shape
+    input_grad = torch.empty_like(input_3d)
+    weight_grad = torch.empty_like(weight)
+    bias_grad = torch.empty_like(weight)
+    with torch_device_fn.device(input.device):
+        count = batch_dim * spatial_dim
+        if count <= 2048:
+            _backward_fused[(feat_dim,)](
+                input_3d,
+                grad_output_3d,
+                weight,
+                save_mean,
+                save_var,
+                input_grad,
+                weight_grad,
+                bias_grad,
+                count,
+                feat_dim,
+                spatial_dim,
+                triton.next_power_of_2(count),
+            )
+        else:
+            parts = triton.cdiv(count, 1024)
+            partial = torch.empty(
+                (feat_dim, 2, parts), dtype=input.dtype, device=input.device
+            )
+            _backward_partial[(feat_dim, parts)](
+                input_3d,
+                grad_output_3d,
+                save_mean,
+                partial,
+                count,
+                feat_dim,
+                spatial_dim,
+                parts,
+                1024,
+            )
+            _backward_apply[(feat_dim, parts)](
+                input_3d,
+                grad_output_3d,
+                weight,
+                save_mean,
+                save_var,
+                partial,
+                input_grad,
+                weight_grad,
+                bias_grad,
+                count,
+                feat_dim,
+                spatial_dim,
+                parts,
+                triton.next_power_of_2(parts),
+                1024,
+            )
+        return input_grad.view_as(input), weight_grad, bias_grad

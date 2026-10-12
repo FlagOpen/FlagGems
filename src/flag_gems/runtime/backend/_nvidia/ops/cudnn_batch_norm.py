@@ -12,10 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import logging
+import math
+
+import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.cudnn_batch_norm import (
+    _cudnn_batch_norm_impl,
+    _cudnn_batch_norm_out_impl,
+)
+from flag_gems.ops.cudnn_batch_norm import _forward as _generic_forward
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+from .cudnn_batch_norm_backward import cudnn_batch_norm_backward
+
+logger = logging.getLogger(__name__)
 
 
 @libentry()
@@ -148,3 +162,141 @@ def _train_finish(
     x = tl.load(X + offsets, r < M, 0).to(tl.float32)
     y = ((x - anchor) - shift) * inv * tl.load(W + c) + tl.load(Bias + c)
     tl.store(Y + offsets, y, r < M)
+
+
+def _forward(
+    input,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    training,
+    exponential_average_factor,
+    epsilon,
+    output,
+    mean,
+    inv,
+):
+    n, c = input.shape[:2]
+    s = math.prod(input.shape[2:])
+    m = n * s
+    double = input.dtype == torch.float64
+    if training and 2048 < m <= 131072 and not double and input.is_contiguous():
+        with torch_device_fn.device(input.device):
+            args = (
+                input,
+                weight,
+                bias,
+                running_mean,
+                running_var,
+                output,
+                mean,
+                inv,
+            )
+            if m <= 32768:
+                # A single launch avoids intermediate allocations for short reductions.
+                _train_fused[(c,)](
+                    *args,
+                    m,
+                    c,
+                    s,
+                    running_mean is not None,
+                    exponential_average_factor,
+                    epsilon,
+                    min(triton.next_power_of_2(m), 8192),
+                    num_warps=8,
+                )
+            else:
+                # Merge partial moments inside each output block to save a launch.
+                block = 2048
+                parts = triton.cdiv(m, block)
+                partial = torch.empty(
+                    (c, 2, parts), dtype=torch.float32, device=input.device
+                )
+                _train_partial[(c, parts)](input, partial, m, c, s, parts, block)
+                _train_finish[(c, parts)](
+                    *args,
+                    partial,
+                    m,
+                    c,
+                    s,
+                    running_mean is not None,
+                    exponential_average_factor,
+                    epsilon,
+                    parts,
+                    triton.next_power_of_2(parts),
+                    block,
+                    block,
+                )
+            return
+    _generic_forward(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        exponential_average_factor,
+        epsilon,
+        output,
+        mean,
+        inv,
+    )
+
+
+def cudnn_batch_norm(
+    input,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    training,
+    exponential_average_factor,
+    epsilon,
+):
+    logger.debug("GEMS_NVIDIA CUDNN_BATCH_NORM")
+    return _cudnn_batch_norm_impl(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        exponential_average_factor,
+        epsilon,
+        _forward,
+        cudnn_batch_norm_backward,
+    )
+
+
+def cudnn_batch_norm_out(
+    input,
+    weight,
+    bias,
+    running_mean,
+    running_var,
+    training,
+    exponential_average_factor,
+    epsilon,
+    *,
+    out0,
+    out1,
+    out2,
+    out3,
+):
+    logger.debug("GEMS_NVIDIA CUDNN_BATCH_NORM_OUT")
+    return _cudnn_batch_norm_out_impl(
+        input,
+        weight,
+        bias,
+        running_mean,
+        running_var,
+        training,
+        exponential_average_factor,
+        epsilon,
+        out0=out0,
+        out1=out1,
+        out2=out2,
+        out3=out3,
+        forward_fn=_forward,
+    )

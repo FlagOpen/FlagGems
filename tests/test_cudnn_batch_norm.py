@@ -211,8 +211,11 @@ def test_cudnn_batch_norm_invalid(bad):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("registered", [False, True])
 @pytest.mark.parametrize("training", [True, False])
-def test_cudnn_batch_norm_autograd_after_registration(dtype, registered, training):
-    args = _inputs((3, 7, 17), dtype)
+@pytest.mark.parametrize("shape", [(3, 7, 17), (3, 7, 2051)])
+def test_cudnn_batch_norm_autograd_after_registration(
+    dtype, registered, training, shape
+):
+    args = _inputs(shape, dtype)
     x, w, b = [t.detach().requires_grad_() for t in args[:3]]
     xr, wr, br = [t.detach().cpu().double().requires_grad_() for t in (x, w, b)]
     rm, rv = args[3:]
