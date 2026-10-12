@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import json
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base
+from .conftest import Config, recordLogger
+from .native_cudnn_batch_norm import native_out_skip_reason, probe_native_out
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name in ("mthreads", "ascend", "hygon"),
@@ -89,15 +93,35 @@ def test_cudnn_batch_norm():
     bench.run()
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "nvidia" and torch.__version__.split("+")[0] == "2.11.0",
-    reason=(
-        "PyTorch 2.11.0 native cudnn_batch_norm.out fails pyobject_preservation.cpp "
-        "on repeated timing calls; no valid baseline"
-    ),
-)
 @pytest.mark.cudnn_batch_norm_out
 def test_cudnn_batch_norm_out():
+    if (
+        flag_gems.vendor_name == "nvidia"
+        and not Config.skip_native
+        and not (Config.query or Config.list_cases or Config.profile_only)
+    ):
+        result = probe_native_out(
+            CudnnBatchNormBenchmark.DEFAULT_SHAPES,
+            Config.user_desired_dtypes or DTYPES,
+            torch.device("cuda", torch.cuda.current_device()),
+        )
+        if Config.record_log and result.returncode:
+            # Keep diagnostics outside the INFO JSON latency records.
+            recordLogger.warning(
+                "native_cudnn_batch_norm_out_probe=%s",
+                json.dumps(
+                    {
+                        "returncode": result.returncode,
+                        "stdout": result.stdout,
+                        "stderr": result.stderr,
+                    }
+                ),
+            )
+        reason = native_out_skip_reason(result)
+        if reason is not None:
+            # The autouse configure_native_baseline fixture restores these per test.
+            Config.skip_native = True
+            Config.native_baseline_skip_reason = reason
     bench = CudnnBatchNormBenchmark(
         input_fn=_out_inputs,
         op_name="cudnn_batch_norm_out",
