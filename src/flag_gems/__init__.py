@@ -1655,6 +1655,7 @@ _FULL_CONFIG = (
     ("softshrink_backward", softshrink_backward),
     ("sort", sort),
     ("sort.stable", sort_stable),
+    ("sparse_bsr_tensor", sparse_bsr_tensor, None, (SPARSE_CSR_DISPATCH_KEY,)),
     ("sparse_sampled_addmm", sparse_sampled_addmm, None, (SPARSE_CSR_DISPATCH_KEY,)),
     (
         "sparse_sampled_addmm.out",
