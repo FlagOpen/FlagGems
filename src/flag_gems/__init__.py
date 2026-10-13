@@ -851,7 +851,6 @@ _FULL_CONFIG = (
         None,
         (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),
-    ("dequantize", dequantize),
     ("dequantize.self", dequantize, None, (QUANTIZED_DISPATCH_KEY,)),
     ("det", det),
     ("diag", diag),
