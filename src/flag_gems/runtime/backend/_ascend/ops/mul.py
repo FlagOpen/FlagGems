@@ -30,6 +30,8 @@ from flag_gems.utils.shape_utils import volume
 logger = logging.getLogger(__name__)
 
 _DEVICE_NAME = runtime_device.name
+# Ascend's runtime rejects a flattened launch grid larger than this value.
+_ASCEND_MAX_CORE_DIM = 65535
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
@@ -83,6 +85,7 @@ def mul_broadcast_get_configs():
 
 @libentry()
 @libtuner(
+    restore_value=["output_ptr"],
     configs=mul_get_configs(),
     prune_configs_by={"early_config_prune": _prune_mul_flat_configs},
     key=["n_elements", "dtype"],
@@ -102,16 +105,20 @@ def mul_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out, mask=mask)
+    for tile in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = tile * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
 @libtuner(
+    restore_value=["output_ptr"],
     configs=runtime.get_tuned_config("mul_flat"),
     key=["n_elements", "dtype"],
     strategy=["default", "default"],
@@ -129,11 +136,16 @@ def mul_contiguous_full_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    x = tl.load(x_ptr + offsets)
-    y = tl.load(y_ptr + offsets)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out)
+    # Ascend limits the flattened launch grid to 65535 programs. Reuse each
+    # program for additional tiles when the tensor has more elements.
+    for tile in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = tile * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        x = tl.load(x_ptr + offsets)
+        y = tl.load(y_ptr + offsets)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out)
 
 
 @libentry()
@@ -167,6 +179,7 @@ def mul_contiguous_chunked_kernel(
 
 @libentry()
 @libtuner(
+    restore_value=["output_ptr"],
     configs=mul_get_configs(),
     prune_configs_by={"early_config_prune": _prune_mul_flat_configs},
     key=["n_elements", "dtype"],
@@ -189,15 +202,21 @@ def mul_scalar_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    out = x & scalar if IS_BOOL else x * scalar
-    tl.store(output_ptr + offsets, out, mask=mask)
+    # Ascend limits the flattened launch grid to 65535 programs. A program
+    # processes additional tiles when the tensor exceeds that grid size.
+    for tile in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = tile * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        out = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
 @libtuner(
+    restore_value=["out_ptr"],
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "n_cols", "dtype"],
     strategy=["align32", "default", "default"],
@@ -238,6 +257,7 @@ def mul_broadcast_2d_kernel(
 
 @libentry()
 @libtuner(
+    restore_value=["out_ptr"],
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
@@ -283,6 +303,7 @@ def mul_generic_nd_kernel(
 
 @libentry()
 @libtuner(
+    restore_value=["out_ptr"],
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
@@ -329,6 +350,7 @@ def mul_generic_nd_runtime_meta_kernel(
 
 @libentry()
 @libtuner(
+    restore_value=["out_r_ptr", "out_i_ptr"],
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
@@ -390,6 +412,7 @@ def mul_complex_generic_nd_kernel(
 
 @libentry()
 @libtuner(
+    restore_value=["out_r_ptr", "out_i_ptr"],
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
@@ -570,27 +593,9 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     if n_elements == 0:
         return output
     if dtype in (torch.float16, torch.float32, torch.bfloat16) and n_elements % 64 == 0:
-        max_programs = 65535
-
-        chunk_block_size = 8192
-        chunk_blocks = triton.cdiv(n_elements, chunk_block_size)
-        if chunk_blocks > max_programs:
-            blocks_per_program = triton.cdiv(chunk_blocks, max_programs)
-            grid = (triton.cdiv(chunk_blocks, blocks_per_program),)
-            with torch_device_fn.device(output.device):
-                mul_contiguous_chunked_kernel[grid](
-                    a_t,
-                    b_t,
-                    output,
-                    n_elements,
-                    BLOCK_SIZE=chunk_block_size,
-                    BLOCKS_PER_PROGRAM=blocks_per_program,
-                    IS_BOOL=_is_bool_dtype(dtype),
-                )
-            return output
-
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
+        grid = lambda meta: (
+            min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), _ASCEND_MAX_CORE_DIM),
+        )
         with torch_device_fn.device(output.device):
             mul_contiguous_full_kernel[grid](
                 a_t,
@@ -601,7 +606,9 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
                 IS_BOOL=_is_bool_dtype(dtype),
             )
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (
+        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), _ASCEND_MAX_CORE_DIM),
+    )
     with torch_device_fn.device(output.device):
         mul_kernel[grid](
             a_t,
@@ -618,7 +625,9 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (
+        min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), _ASCEND_MAX_CORE_DIM),
+    )
     with torch_device_fn.device(output.device):
         mul_scalar_kernel[grid](
             tensor,
@@ -684,6 +693,7 @@ class _MulTiledTuner(LibTuner):
 
 @libentry()
 @libtuner(
+    restore_value=["out_ptr"],
     configs=runtime.get_tuned_config("mul_broadcast_tiled"),
     key=["M", "N", "dtype", "a_s0", "a_s1", "b_s0", "b_s1"],
     strategy=["default"] * 7,
@@ -1032,6 +1042,8 @@ def mul(A, B, *, out=None):
 
 
 def mul_(A, B):
+    # All MUL tuners restore their outputs between benchmark trials because
+    # out=A aliases an input here. Only the final kernel may update A.
     logger.debug("GEMS_ASCEND MUL_")
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")

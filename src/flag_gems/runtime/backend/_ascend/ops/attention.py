@@ -49,6 +49,7 @@ def _attn_fwd_inner(
     q_load_mask,
     BLOCK_M: tl.constexpr,
     HEAD_DIM: tl.constexpr,
+    ACTUAL_HEAD_DIM: tl.constexpr,
     BLOCK_N: tl.constexpr,  #
     STAGE: tl.constexpr,
     offs_m: tl.constexpr,
@@ -79,9 +80,14 @@ def _attn_fwd_inner(
         kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+        head_mask = tl.arange(0, HEAD_DIM) < ACTUAL_HEAD_DIM
+        key = tl.load(
+            K_block_ptr, mask=head_mask[:, None] & kv_load_mask[None, :], other=0.0
+        )
         if PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & head_mask[None, :], other=0.0
+            )
 
         qk = tl.dot(query, key, allow_tf32=False)
         # incase not divisible.
@@ -123,7 +129,9 @@ def _attn_fwd_inner(
         acc = acc * alpha[:, None]
         # update acc
         if not PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & head_mask[None, :], other=0.0
+            )
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
@@ -156,11 +164,36 @@ SMALL_HEAD_DIM_CONFIGS = [
 ]
 configs += SMALL_HEAD_DIM_CONFIGS
 
+# Bound the accumulator and Q/K/V tiles to fit the Ascend UB. This also
+# applies to non-power-of-two heads (e.g. the Qwen vision head size 72),
+# whose dot products use the next power of two as their padded tile size.
+LARGE_HEAD_DIM_CONFIGS = [
+    triton.Config(
+        {"BLOCK_M": 16, "BLOCK_N": 16, "PRE_LOAD_V": 0},
+        num_stages=1,
+        num_warps=4,
+    )
+]
+configs += LARGE_HEAD_DIM_CONFIGS
+
+
+def _prune_attn_fwd_configs(candidates, args, **kwargs):
+    head_dim = args["HEAD_DIM"]
+    if head_dim >= 128:
+        return [cfg for cfg in candidates if cfg in LARGE_HEAD_DIM_CONFIGS]
+    return [cfg for cfg in candidates if cfg.kwargs["BLOCK_N"] <= head_dim]
+
 
 @libentry()
 @libtuner(
-    configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
-    key=["KV_CTX", "HEAD_DIM"],
+    configs=list(
+        filter(
+            partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS + LARGE_HEAD_DIM_CONFIGS),
+            configs,
+        )
+    ),
+    key=["KV_CTX", "HEAD_DIM", "STAGE"],
+    prune_configs_by={"early_config_prune": _prune_attn_fwd_configs},
 )
 @triton.jit
 def _attn_fwd(
@@ -198,6 +231,7 @@ def _attn_fwd(
     Q_CTX,
     KV_CTX,
     HEAD_DIM: tl.constexpr,
+    ACTUAL_HEAD_DIM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
@@ -276,7 +310,10 @@ def _attn_fwd(
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
     # load query: it will stay in SRAM throughout
-    query = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
+    head_mask = offs_headsize < ACTUAL_HEAD_DIM
+    query = tl.load(
+        Q_block_ptr, mask=q_load_mask[:, None] & head_mask[None, :], other=0.0
+    )
     # stage 1: off-band
     # For causal = True, STAGE = 3 and _attn_fwd_inner gets 1 as its STAGE
     # For causal = False, STAGE = 1, and _attn_fwd_inner gets 3 as its STAGE
@@ -297,6 +334,7 @@ def _attn_fwd(
             q_load_mask,
             BLOCK_M,
             HEAD_DIM,
+            ACTUAL_HEAD_DIM,
             BLOCK_N,
             4 - STAGE,
             offs_m,
@@ -326,6 +364,7 @@ def _attn_fwd(
             q_load_mask,
             BLOCK_M,
             HEAD_DIM,
+            ACTUAL_HEAD_DIM,
             BLOCK_N,
             2,
             offs_m,
@@ -340,7 +379,11 @@ def _attn_fwd(
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
-    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
+    tl.store(
+        O_block_ptr,
+        acc.to(Out.type.element_ty),
+        mask=q_load_mask[:, None] & head_mask[None, :],
+    )
 
 
 @triton.jit
@@ -787,7 +830,7 @@ def scaled_dot_product_attention_forward(
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+    assert 0 < HEAD_DIM_K <= 256, f"Unsupported attention head dimension: {HEAD_DIM_K}"
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
     o = torch.empty_like(query, dtype=value.dtype)
@@ -868,12 +911,43 @@ def scaled_dot_product_attention_forward(
             q_head_num // kv_head_num,  # group_head
             query.shape[2],  #
             key.shape[2],  #
-            HEAD_DIM_K,  #
+            max(16, triton.next_power_of_2(HEAD_DIM_K)),
+            HEAD_DIM_K,
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
             sync_solver=True,
         )
     return o, M
+
+
+def _attention_backward_math(do, query, key, value, attn_mask, is_causal, scale):
+    q_heads, kv_heads = query.shape[1], key.shape[1]
+    group_size = q_heads // kv_heads
+    key_expanded = key.repeat_interleave(group_size, dim=1)
+    value_expanded = value.repeat_interleave(group_size, dim=1)
+
+    scores = torch.matmul(query.float(), key_expanded.float().transpose(-2, -1)) * scale
+    if attn_mask is not None:
+        if attn_mask.dtype == torch.bool:
+            scores = scores.masked_fill(attn_mask, -float("inf"))
+        else:
+            scores = scores + attn_mask.float()
+    if is_causal:
+        causal_mask = torch.ones(
+            scores.shape[-2:], device=scores.device, dtype=torch.bool
+        ).triu(1)
+        scores = scores.masked_fill(causal_mask, -float("inf"))
+
+    probs = torch.softmax(scores, dim=-1)
+    d_probs = torch.matmul(do.float(), value_expanded.float().transpose(-2, -1))
+    d_scores = probs * (d_probs - (probs * d_probs).sum(dim=-1, keepdim=True))
+    dq = (torch.matmul(d_scores, key_expanded.float()) * scale).to(query.dtype)
+    dk = (torch.matmul(d_scores.transpose(-2, -1), query.float()) * scale)
+    dv = torch.matmul(probs.transpose(-2, -1), do.float())
+    if group_size > 1:
+        dk = dk.reshape(key.shape[0], kv_heads, group_size, *key.shape[2:]).sum(dim=2)
+        dv = dv.reshape(value.shape[0], kv_heads, group_size, *value.shape[2:]).sum(dim=2)
+    return dq, dk.to(key.dtype), dv.to(value.dtype)
 
 
 def scaled_dot_product_attention_backward(
@@ -895,13 +969,20 @@ def scaled_dot_product_attention_backward(
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+    assert 0 < HEAD_DIM_K <= 256, f"Unsupported attention head dimension: {HEAD_DIM_K}"
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
     if scale is None:
         sm_scale = 1.0 / (HEAD_DIM_K**0.5)
     else:
         sm_scale = scale
+
+    # The fused backward requires power-of-two head sizes; use the existing
+    # matrix derivative path for heads such as the vision encoder's 72 as well.
+    if HEAD_DIM_K not in {16, 32, 64, 128}:
+        return _attention_backward_math(
+            do, query, key, value, attn_mask, is_causal, sm_scale
+        )
 
     assert do.is_contiguous()
     assert (

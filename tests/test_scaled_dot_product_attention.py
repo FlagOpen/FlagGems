@@ -115,6 +115,41 @@ def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
     return output.to(q.dtype), logsumexp
 
 
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend UB regression")
+def test_ascend_attention_head_dim_256_forward_backward():
+    from flag_gems.runtime.backend._ascend.ops.attention import (
+        scaled_dot_product_attention_backward,
+        scaled_dot_product_attention_forward,
+    )
+
+    current_device = torch_device_fn.current_device()
+    q = torch.randn((1, 4, 64, 256), device=current_device, dtype=torch.bfloat16)
+    k = torch.randn((1, 2, 64, 256), device=current_device, dtype=torch.bfloat16)
+    v = torch.randn_like(k)
+    do = torch.randn_like(q)
+
+    actual, m = scaled_dot_product_attention_forward(
+        q, k, v, is_causal=True, enable_gqa=True
+    )
+    dq, dk, dv = scaled_dot_product_attention_backward(
+        do, q, k, v, actual, m, is_causal=True, enable_gqa=True
+    )
+
+    ref_q, ref_k, ref_v = [x.float().cpu().requires_grad_() for x in (q, k, v)]
+    scores = ref_q @ ref_k.repeat_interleave(2, dim=1).transpose(-2, -1)
+    scores = scores / 16
+    scores = scores.masked_fill(torch.ones((64, 64), dtype=torch.bool).triu(1), -float("inf"))
+    expected = scores.softmax(dim=-1) @ ref_v.repeat_interleave(2, dim=1)
+    expected.backward(do.float().cpu())
+
+    for result, reference in zip(
+        (actual, dq, dk, dv), (expected, ref_q.grad, ref_k.grad, ref_v.grad)
+    ):
+        difference = (result.float().cpu() - reference).abs()
+        assert difference.mean() < 0.002
+        assert difference.max() < 0.05
+
+
 @pytest.mark.scaled_dot_product_flash_attention
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",

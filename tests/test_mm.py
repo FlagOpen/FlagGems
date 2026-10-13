@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
 
 import numpy as np
@@ -83,6 +84,43 @@ def test_mm(M, N, K, dtype, b_column_major):
     res_out = flag_gems.mm(mat1, mat2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
+
+
+@pytest.mark.mm
+def test_mm_exceeds_ascend_core_dim():
+    if flag_gems.device != "npu":
+        pytest.skip("Ascend launch-grid limit")
+
+    # The smallest tuned MM tile (16x32) creates 66,048 output tiles.
+    M, N, K = 4128, 8192, 32
+    a = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
+    b = torch.randn((K, N), dtype=torch.bfloat16, device=flag_gems.device)
+    result = flag_gems.mm(a, b)
+    expected = torch.mm(a, b)
+    torch.testing.assert_close(result, expected, rtol=1e-2, atol=1e-2)
+
+
+@pytest.mark.mm
+@pytest.mark.mm_out
+@pytest.mark.parametrize("use_out", [False, True])
+def test_mm_ascend_grid_stride(monkeypatch, use_out):
+    if flag_gems.vendor_name != "ascend":
+        pytest.skip("Ascend launch-grid limit")
+
+    mm_ops = importlib.import_module("flag_gems.runtime.backend._ascend.ops.mm")
+    monkeypatch.setattr(mm_ops, "_ASCEND_MAX_CORE_DIM", 1)
+
+    # Every tuned tile requires multiple iterations, including masked edge tiles.
+    M, N, K = 513, 513, 33
+    a = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
+    b = torch.randn((N, K), dtype=torch.bfloat16, device=flag_gems.device).t()
+    if use_out:
+        result = torch.full((N, M), float("nan"), dtype=a.dtype, device=a.device).t()
+        flag_gems.mm_out(a, b, out=result)
+    else:
+        result = flag_gems.mm(a, b)
+    expected = torch.mm(a, b)
+    torch.testing.assert_close(result, expected, rtol=1e-2, atol=1e-2)
 
 
 @pytest.mark.mm

@@ -110,7 +110,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -136,7 +136,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .resolve_neg import resolve_neg
-from .rms_norm import rms_norm
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
@@ -153,6 +153,7 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
 from .stack import stack
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
@@ -309,6 +310,7 @@ __all__ = [
     "mm_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
@@ -338,6 +340,8 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "rms_norm_w8a16_int8",
     "rnn_tanh",
     "rnn_tanh_data",
@@ -367,6 +371,10 @@ __all__ = [
     "sparse_sampled_addmm_out",
     "special_erfinv",
     "stack",
+    "sum",
+    "sum_dim",
+    "sum_dim_out",
+    "sum_out",
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",

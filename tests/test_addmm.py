@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 from packaging import version
@@ -98,6 +100,26 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     res_out2 = flag_gems.addmm(bias2, mat1, mat2, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("M, N, K", [(512, 512, 32), (513, 513, 33)])
+@pytest.mark.parametrize("vector_bias", [True, False])
+def test_addmm_ascend_grid_stride(monkeypatch, M, N, K, vector_bias):
+    if flag_gems.vendor_name != "ascend":
+        pytest.skip("Ascend launch-grid limit")
+
+    addmm_ops = importlib.import_module("flag_gems.runtime.backend._ascend.ops.addmm")
+    monkeypatch.setattr(addmm_ops, "_ASCEND_MAX_CORE_DIM", 1)
+
+    mat1 = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=torch.bfloat16, device=flag_gems.device)
+    bias_shape = (N,) if vector_bias else (M, N)
+    bias = torch.randn(bias_shape, dtype=torch.bfloat16, device=flag_gems.device)
+
+    result = flag_gems.addmm(bias, mat1, mat2)
+    expected = torch.addmm(bias, mat1, mat2)
+    torch.testing.assert_close(result, expected, rtol=1e-2, atol=1e-2)
 
 
 @pytest.mark.addmm

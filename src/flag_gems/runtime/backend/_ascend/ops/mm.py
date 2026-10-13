@@ -24,6 +24,7 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
+_ASCEND_MAX_CORE_DIM = 65535
 
 
 @libentry()
@@ -54,52 +55,54 @@ def mm_kernel(
     SPLIT_K: tl.constexpr,
     EVEN_K: tl.constexpr,
 ):
-    pid = tl.program_id(0)
     pid_z = tl.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
-    width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // (group_size)
-    ram = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rbn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
-    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
-        if EVEN_K:
-            a = tl.load(A, mask=(ram < M)[:, None], other=0.0)
-            b = tl.load(B, mask=(rbn < N)[None, :], other=0.0)
+    num_tiles = grid_m * grid_n
+    # The launch grid is capped; each program covers its remaining output tiles.
+    for pid in range(tl.program_id(0), num_tiles, tl.num_programs(0)):
+        width = GROUP_M * grid_n
+        group_id = pid // width
+        group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+        pid_m = group_id * GROUP_M + (pid % group_size)
+        pid_n = (pid % width) // group_size
+        ram = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        rbn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
+        a_ptr = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+        b_ptr = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+        for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
+            if EVEN_K:
+                a = tl.load(a_ptr, mask=(ram < M)[:, None], other=0.0)
+                b = tl.load(b_ptr, mask=(rbn < N)[None, :], other=0.0)
+            else:
+                k_remaining = K - k * (BLOCK_K * SPLIT_K)
+                a = tl.load(
+                    a_ptr,
+                    mask=(rk[None, :] < k_remaining) & (ram < M)[:, None],
+                    other=0.0,
+                )
+                b = tl.load(
+                    b_ptr,
+                    mask=(rk[:, None] < k_remaining) & (rbn < N)[None, :],
+                    other=0.0,
+                )
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
+            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+            a_ptr += BLOCK_K * SPLIT_K * stride_ak
+            b_ptr += BLOCK_K * SPLIT_K * stride_bk
+        acc = acc.to(C.dtype.element_ty)
+        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        c_ptr = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+        mask = (rm < M)[:, None] & (rn < N)[None, :]
+        if SPLIT_K == 1:
+            tl.store(c_ptr, acc, mask=mask)
         else:
-            k_remaining = K - k * (BLOCK_K * SPLIT_K)
-            a = tl.load(
-                A,
-                mask=(rk[None, :] < k_remaining) & (ram < M)[:, None],
-                other=0.0,
-            )
-            b = tl.load(
-                B,
-                mask=(rk[:, None] < k_remaining) & (rbn < N)[None, :],
-                other=0.0,
-            )
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
-        A += BLOCK_K * SPLIT_K * stride_ak
-        B += BLOCK_K * SPLIT_K * stride_bk
-    acc = acc.to(C.dtype.element_ty)
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-    mask = (rm < M)[:, None] & (rn < N)[None, :]
-    if SPLIT_K == 1:
-        tl.store(C, acc, mask=mask)
-    else:
-        tl.atomic_add(C, acc, mask=mask)
+            tl.atomic_add(c_ptr, acc, mask=mask)
 
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
@@ -135,9 +138,12 @@ def mm(a, b):
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     dot_out_dtype = tl.float32
-    # launch kernel
+    # Ascend coreDim is the product of the launch-grid dimensions.
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        min(
+            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+            max(1, _ASCEND_MAX_CORE_DIM // META.get("SPLIT_K", 1)),
+        ),
         META.get("SPLIT_K", 1),
     )
     with torch_device_fn.device(a.device):
@@ -171,7 +177,10 @@ def mm_out(a, b, *, out):
     _, N = b.shape
     dot_out_dtype = tl.float32
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        min(
+            triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+            max(1, _ASCEND_MAX_CORE_DIM // META.get("SPLIT_K", 1)),
+        ),
         META.get("SPLIT_K", 1),
     )
     with torch_device_fn.device(a.device):

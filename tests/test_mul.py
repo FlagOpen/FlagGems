@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
 
 import numpy as np
@@ -39,6 +40,22 @@ def test_mul_tensor_tensor(shape, dtype):
 
 
 @pytest.mark.mul
+@pytest.mark.parametrize("n", [1024 * 1024 + 128, 1024 * 1024 + 17])
+def test_mul_tensor_tensor_ascend_grid_stride(monkeypatch, n):
+    if flag_gems.device != "npu":
+        pytest.skip("Ascend launch-grid limit")
+
+    mul_ops = importlib.import_module("flag_gems.runtime.backend._ascend.ops.mul")
+    monkeypatch.setattr(mul_ops, "_ASCEND_MAX_CORE_DIM", 1)
+
+    inp1 = torch.randn(n, dtype=torch.bfloat16, device=flag_gems.device)
+    inp2 = torch.randn(n, dtype=torch.bfloat16, device=flag_gems.device)
+    result = flag_gems.mul(inp1, inp2)
+    expected = inp1 * inp2
+    torch.testing.assert_close(result, expected, rtol=1e-2, atol=1e-2)
+
+
+@pytest.mark.mul
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -51,6 +68,19 @@ def test_mul_tensor_scalar(shape, scalar, dtype):
     res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+def test_mul_tensor_scalar_exceeds_ascend_grid_limit():
+    if flag_gems.device != "npu":
+        pytest.skip("Ascend launch-grid limit")
+
+    # One more tile than the maximum Ascend coreDim at BLOCK_SIZE=1024.
+    n = 65535 * 1024 + 17
+    inp = torch.arange(n, device=flag_gems.device, dtype=torch.int32) % 31
+    result = flag_gems.mul(inp, 3)
+    expected = inp * 3
+    assert torch.equal(result, expected)
 
 
 @pytest.mark.mul
