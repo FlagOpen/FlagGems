@@ -74,6 +74,7 @@ from .index_fill import index_fill, index_fill_
 from .index_put import index_put, index_put_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
+from .is_same_size import is_same_size
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
 from .lift_fresh import lift_fresh, lift_fresh_copy, lift_fresh_copy_out
@@ -159,6 +160,7 @@ from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
 from .stack import stack
 from .swiglu import swiglu
+from .tensor_split import tensor_split
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
@@ -177,7 +179,7 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -263,6 +265,7 @@ __all__ = [
     "index_reduce_",
     "index_reduce_out",
     "index_select",
+    "is_same_size",
     "isin",
     "layer_norm",
     "linalg_cross",
@@ -380,6 +383,7 @@ __all__ = [
     "special_erfinv",
     "stack",
     "swiglu",
+    "tensor_split",
     "thnn_fused_lstm_cell",
     "threshold",
     "threshold_backward",
@@ -401,6 +405,7 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]
