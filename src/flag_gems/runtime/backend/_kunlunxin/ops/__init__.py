@@ -340,7 +340,7 @@ from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
-from .le import le, le_, le_scalar
+from .le import le, le_, le_scalar, le_scalar_
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_backward, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
 from .less_equal import less_equal, less_equal_scalar
@@ -473,6 +473,7 @@ from .normal import (
     normal_tensor_tensor,
 )
 from .not_equal import not_equal, not_equal_scalar
+from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .ormqr import ormqr
@@ -1058,6 +1059,7 @@ __all__ = [
     "le",
     "le_",
     "le_scalar",
+    "le_scalar_",
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_backward",
@@ -1227,6 +1229,7 @@ __all__ = [
     "normed_cumsum",
     "not_equal",
     "not_equal_scalar",
+    "one_hot",
     "ones",
     "ones_like",
     "ormqr",
