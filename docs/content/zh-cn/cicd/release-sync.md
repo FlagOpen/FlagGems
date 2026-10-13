@@ -59,9 +59,7 @@ dev、rc 等预发布标签不会匹配该规则）。
 ## `hugo-site.yaml` — build and publish documentation
 
 **Trigger:** `push` to `gh-pages`; `workflow_run` after `coverage`
-completes; also `workflow_call` (invoked by `unittest.yaml`'s `build-doc`
-job when a merged PR carries the `documentation` label) and manual
-`workflow_dispatch`.
+completes; also `workflow_call` and manual `workflow_dispatch`.
 
 Builds the Hugo site from `docs/` and publishes it to GitHub Pages.
 `concurrency` is set to serialize deployments (`cancel-in-progress: false`)
@@ -70,9 +68,8 @@ so publishes don't race each other.
 ## `hugo-site.yaml` — 构建并发布文档站点
 
 **触发条件：** 推送到 `gh-pages` 分支；`coverage` 工作流执行完成后触发
-（`workflow_run`）；此外也可通过 `workflow_call` 被调用（当一个带有
-`documentation` 标签的 PR 被合并时，由 `unittest.yaml` 中的 `build-doc`
-作业触发），以及手动触发（`workflow_dispatch`）。
+（`workflow_run`）；此外支持 `workflow_call` 和手动触发
+（`workflow_dispatch`）。
 
 从 `docs/` 目录构建 Hugo 站点并发布到 GitHub Pages。`concurrency`
 配置为串行化部署（`cancel-in-progress: false`），避免多次发布相互抢占、
@@ -115,21 +112,88 @@ project stays available on domestic Git hosting mirrors.
 托管平台上同样保持可用。
 
 <!--
+## `build-deb.yml` and `build-rpm.yml` — distribution packages
+
+**Trigger:** `push` of a `v*` tag; `pull_request` against `master` that
+touches `packaging/debian/**` (or `packaging/rpm/**`), the shared
+`packaging/verify-installed-package.py`, or the corresponding workflow file
+(`.github/workflows/build-deb.yml` or `.github/workflows/build-rpm.yml`);
+also manual `workflow_dispatch`.
+
+Unlike `release.yaml`, these use the broad `v*` tag pattern, so pre-release
+tags build packages too (they are not published, only attached as
+artifacts). The `pull_request` path filter is deliberate: a source-only PR
+has no consumer for a `.deb` or `.rpm`, so those changes are covered by the
+repository's own tests instead.
+
+The DEB workflow builds its wheel and package in `ubuntu:22.04` containers;
+the RPM workflow uses a `fedora:43` builder by default. Each then installs
+its package into a clean `ubuntu:22.04` (`.deb`) or `fedora:43` (`.rpm`) image
+and runs `packaging/verify-installed-package.py`.
+That step exists because a package
+can install cleanly and still be broken: a bare `Depends:`/`Requires:` can
+resolve to a too-old distro version, and a subpackage missing an
+`__init__.py` is silently dropped by `find_packages()`. Both only surface at
+import time, long after `dpkg -l` or `rpm -q` reports success.
+
+Artifacts are uploaded as `flag-gems-amd64-packages` and
+`flag-gems-amd64-rpm-packages` (7-day retention).
+
+## `upload-nexus.yml` — upload release artifacts to Nexus
+
+**Trigger:** `push` of a `v*` tag; also manual `workflow_dispatch` with an
+optional `run_id` input (blank uses the latest successful run).
+
+A thin caller for the shared workflow at
+`flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main`; the upload
+logic lives there. This exact file, with no per-repo edits, is placed in
+every FlagOS component repository, and org-level secrets reach it through
+`secrets: inherit`.
+
 ## Other operational workflows
 
-- **`probe-node.yaml`** — manual `workflow_dispatch` to check a self-hosted
-  runner (e.g. `h100`, `a100`) is online and healthy.
-- **`random-test.yaml`** — manual `workflow_dispatch` to run an arbitrary
-  set of operators against arbitrary GPUs on a chosen runner, for ad-hoc
-  investigation.
-- **`review-stats.yaml`** — manual `workflow_dispatch` to generate PR review
-  statistics for a date range.
+The manually dispatched tools — `probe-node.yaml`, `random-test.yaml`, and
+`review-stats.yaml` — are documented in
+[Scheduled and on-demand testing](/FlagGems/zh-cn/cicd/scheduled/).
+The comment-triggered `command.yaml` and `fix-sort.yaml` are documented in
+[Pull request checks](/FlagGems/zh-cn/cicd/pull-request/).
 -->
+## `build-deb.yml` 与 `build-rpm.yml` —— 发行版安装包
+
+**触发条件：** 推送 `v*` 标签；针对 `master` 且改动了
+`packaging/debian/**`（或 `packaging/rpm/**`）、共享的
+`packaging/verify-installed-package.py`，或对应工作流文件
+（`.github/workflows/build-deb.yml` 或 `.github/workflows/build-rpm.yml`）的
+`pull_request`；此外支持手动触发（`workflow_dispatch`）。
+
+与 `release.yaml` 不同，这两个工作流使用宽泛的 `v*` 标签匹配，因此预发布
+标签也会构建安装包（但不发布，仅作为构件附带）。`pull_request` 的路径过滤
+是有意为之：纯粹的源码 PR 没有 `.deb` 或 `.rpm` 的使用方，这类改动由仓库
+自身的测试覆盖即可。
+
+DEB 工作流在 `ubuntu:22.04` 容器内构建 wheel 和安装包，RPM 工作流默认使用
+`fedora:43` 构建器。随后分别把产物安装到干净的 `ubuntu:22.04`（`.deb`）或
+`fedora:43`（`.rpm`）镜像中，运行 `packaging/verify-installed-package.py`
+做冒烟测试。这一步很有必要，因为
+安装成功并不代表可用：未加版本约束的 `Depends:`/`Requires:` 可能解析到发行版
+中过旧的版本，而缺少 `__init__.py` 的子包会被 `find_packages()` 静默丢弃。
+这两种问题都要到导入时才暴露，而那时 `dpkg -l` 或 `rpm -q` 早已显示安装成功。
+
+构件分别以 `flag-gems-amd64-packages` 和 `flag-gems-amd64-rpm-packages`
+上传，保留 7 天。
+
+## `upload-nexus.yml` —— 上传发布产物到 Nexus
+
+**触发条件：** 推送 `v*` 标签；此外支持手动触发（`workflow_dispatch`），
+可选输入 `run_id`（留空则使用最近一次成功的运行）。
+
+它是共享工作流 `flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main`
+的薄调用层，上传逻辑位于共享工作流中。该文件不做任何按仓库的修改，原样放入
+每个 FlagOS 组件仓库；组织级密钥通过 `secrets: inherit` 传递给共享工作流。
+
 ## 其他运维类工作流
 
-- **`probe-node.yaml`** —— 手动触发（`workflow_dispatch`），用于检查某个
-  自托管 runner（例如 `h100`、`a100`）是否在线且状态正常。
-- **`random-test.yaml`** —— 手动触发（`workflow_dispatch`），可在指定 runner
-  上针对任意选定的算子和 GPU 组合运行测试，用于临时排查问题。
-- **`review-stats.yaml`** —— 手动触发（`workflow_dispatch`），用于生成
-  指定日期范围内的 PR 评审统计数据。
+手动触发的工具类工作流 `probe-node.yaml`、`random-test.yaml`、
+`review-stats.yaml` 记录在[定时与按需测试](/FlagGems/zh-cn/cicd/scheduled/)中。
+由评论触发的 `command.yaml` 和 `fix-sort.yaml` 记录在
+[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)中。
