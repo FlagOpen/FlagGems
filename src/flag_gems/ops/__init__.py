@@ -347,6 +347,7 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
 )
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
+from flag_gems.ops._slow_conv2d_forward import _slow_conv2d_forward
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
@@ -436,6 +437,7 @@ from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addmv_ import addmv_
 from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
+from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
@@ -563,9 +565,11 @@ from flag_gems.ops.clamp import (
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
+from flag_gems.ops.col_indices import col_indices
 from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
+from flag_gems.ops.conj import conj
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.conj_physical_ import conj_physical_
 from flag_gems.ops.contiguous import contiguous
@@ -598,6 +602,7 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.cross_attention import cross_attention
+from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
@@ -615,6 +620,7 @@ from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.det import det
+from flag_gems.ops.detach_copy import detach_copy
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
@@ -754,7 +760,11 @@ from flag_gems.ops.greater import (
     greater_scalar_out,
 )
 from flag_gems.ops.greater_ import greater_
-from flag_gems.ops.greater_equal import greater_equal_
+from flag_gems.ops.greater_equal import (
+    greater_equal,
+    greater_equal_,
+    greater_equal_scalar,
+)
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
@@ -1005,6 +1015,7 @@ from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
+from flag_gems.ops.mT import mT
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss,
@@ -1194,6 +1205,7 @@ from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.row_indices import row_indices
 from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
+from flag_gems.ops.rrelu import rrelu
 from flag_gems.ops.rrelu_ import rrelu_
 from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -1378,6 +1390,7 @@ from flag_gems.ops.std_mean import (
     std_mean_dim,
     std_mean_names_dim,
 )
+from flag_gems.ops.stft import stft, stft_center
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -1799,6 +1812,7 @@ __all__ = [
     "_scaled_mm_v2",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_slow_conv2d_forward",
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
     "_sparse_semi_structured_addmm",
@@ -1877,6 +1891,7 @@ __all__ = [
     "addmv_out",
     "addr",
     "addr_",
+    "adjoint",
     "affine_grid_generator",
     "alias",
     "alias_copy",
@@ -2020,10 +2035,12 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "col_indices",
     "column_stack",
     "column_stack_out",
     "concat",
     "concatenate",
+    "conj",
     "conj_physical",
     "conj_physical_",
     "constant_pad_nd",
@@ -2059,6 +2076,7 @@ __all__ = [
     "cross",
     "cross_attention",
     "cross_out",
+    "crow_indices_copy",
     "ctc_loss",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
@@ -2082,6 +2100,7 @@ __all__ = [
     "deg2rad_out",
     "dequantize",
     "det",
+    "detach_copy",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -2223,7 +2242,9 @@ __all__ = [
     "glu_backward",
     "greater",
     "greater_",
+    "greater_equal",
     "greater_equal_",
+    "greater_equal_scalar",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -2520,6 +2541,7 @@ __all__ = [
     "mse_loss_backward",
     "msort",
     "msort_out",
+    "mT",
     "mul",
     "mul_",
     "multi_margin_loss",
@@ -2716,6 +2738,7 @@ __all__ = [
     "row_indices_copy_out",
     "row_stack",
     "row_stack_out",
+    "rrelu",
     "rrelu_",
     "rrelu_with_noise",
     "rrelu_with_noise_",
@@ -2904,6 +2927,8 @@ __all__ = [
     "std_mean_correction_out",
     "std_mean_dim",
     "std_mean_names_dim",
+    "stft",
+    "stft_center",
     "sub",
     "sub_",
     "subtract",
