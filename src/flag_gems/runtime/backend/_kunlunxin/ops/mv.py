@@ -84,6 +84,54 @@ def mv_kernel(
     tl.store(C_ptrs, acc[:, None], mask=n_mask)
 
 
+@libentry()
+@triton.jit
+def mv_dot_kernel(
+    A,
+    B,
+    C,
+    N,
+    M,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    EVEN_K: tl.constexpr,
+):
+    # GEMV via tl.dot with a stride-0 broadcast of the vector: the (BLOCK_K, 16)
+    # B operand has all 16 columns pointing at the same element, so column 0 of
+    # the dot output is the true dot product (columns 1..15 are unused).
+    # A is assumed row-major contiguous (row stride M, col stride 1), B contiguous.
+    pid = ext.program_id(0)
+    rows = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    ram = rows % N  # clamp the partial last block in-bounds (no masked stores)
+    off_k = tl.arange(0, BLOCK_K)
+    col = tl.arange(0, 16)[None, :]
+    A_ptrs = A + ram[:, None] * M + off_k[None, :]
+    B_ptrs = B + off_k[:, None] + col * 0
+    acc = tl.zeros((BLOCK_N, 16), dtype=tl.float32)
+    for k in range(0, M, BLOCK_K):
+        if EVEN_K:
+            a = tl.load(A_ptrs)
+            b = tl.load(B_ptrs)
+        else:
+            km = (k + off_k) < M
+            a = tl.load(A_ptrs, mask=km[None, :], other=0.0)
+            b = tl.load(B_ptrs)
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+        A_ptrs += BLOCK_K
+        B_ptrs += BLOCK_K
+    # extract column 0 via a split chain (tl.sum(tl.where(...)) mis-lowers here)
+    t = tl.reshape(acc, (BLOCK_N, 8, 2))
+    h, _ = tl.split(t)
+    t = tl.reshape(h, (BLOCK_N, 4, 2))
+    h, _ = tl.split(t)
+    t = tl.reshape(h, (BLOCK_N, 2, 2))
+    h, _ = tl.split(t)
+    t = tl.reshape(h, (BLOCK_N, 1, 2))
+    h, _ = tl.split(t)
+    o = tl.reshape(h, (BLOCK_N,))
+    tl.store(C + rows, o)
+
+
 def mv(inp, vec):
     logger.debug("GEMS_KUNLUNXIN MV")
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
@@ -91,6 +139,37 @@ def mv(inp, vec):
     # TODO: fix autotune config has no item
     if M == 5333 and N == 497:
         return mv_cluster(inp, vec)
+
+    # Dedicated GEMV fast path: one fused kernel, tl.dot with a broadcast
+    # vector, no intermediate GEMM padding/copy. A must be row-major contiguous.
+    if (
+        M != 1
+        and inp.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and inp.is_contiguous()
+        and vec.is_contiguous()
+    ):
+        block_n = 16 if N <= 256 else 256
+        # Plain integer arithmetic instead of triton.cdiv / torch.empty: the
+        # triton.cdiv jit-wrapper and the device/dtype lookup in torch.empty
+        # together cost ~3us, which dominates the launch for small shapes.
+        npad = (N + block_n - 1) // block_n * block_n
+        out = inp.new_empty(npad)
+        # No device guard here: the inputs are already materialized on their
+        # device, and the guard's per-call overhead (~5us) dominates the launch
+        # for small shapes. Consistent with the majority of kunlunxin ops.
+        mv_dot_kernel[(npad // block_n,)](
+            inp,
+            vec,
+            out,
+            N,
+            M,
+            BLOCK_N=block_n,
+            BLOCK_K=128,
+            EVEN_K=(M % 128 == 0),
+        )
+        # npad == N for any N that is a multiple of block_n -> the buffer is
+        # already exactly the output shape, skip the view.
+        return out if npad == N else out[:N]
 
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)

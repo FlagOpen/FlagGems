@@ -750,31 +750,16 @@ class InstanceNorm(torch.autograd.Function):
                         TILE_N=8192,
                         HAS_WEIGHT_BIAS=has_weight_bias,
                     )
-                elif N in (64, 128) and (N & (N - 1)) == 0:
-                    # Exact-width multi-row kernel (single-pass). Measured fastest
-                    # on XPU for these row widths (64/128); TILE_M is restricted:
-                    # non-power-of-2 TILE_M miscompiles, TILE_M=1 is wrong for the
-                    # weight path, and TILE_M >= 64 faults (fp32), so TILE_M is a
-                    # power of two in [2, 32].
-                    tile_m = 1 << (min(8192 // N, M).bit_length() - 1)
-                    tile_m = max(2, min(tile_m, 32))
-                    grid = (triton.cdiv(M, tile_m), 1, 1)
-                    instancenorm_fwd_kernel_xpu_mr[grid](
-                        x,
-                        y,
-                        weight,
-                        bias,
-                        mean,
-                        rstd,
-                        M,
-                        C,
-                        eps,
-                        TILE_M=tile_m,
-                        N=N,
-                        HAS_WEIGHT_BIAS=has_weight_bias,
-                    )
                 else:
-                    # Generic wide-tile scan for the remaining row widths.
+                    # Generic wide-tile scan for all remaining row widths. The
+                    # exact-width multi-row (mr) kernel used here before is slower
+                    # than this scan for every small N on XPU3 (measured 0.12-0.93x
+                    # vs 1.8-2.8x), so every row width <= 8192 uses the scan with a
+                    # row-width-matched RBLOCK. Launch geometry is computed with
+                    # plain integer math: triton.next_power_of_2/cdiv cost ~4us
+                    # each, which is significant for these launch-bound shapes.
+                    xblock = 1 << ((M + 11) // 12 - 1).bit_length()
+                    rblock = min(8192, max(1024, 1 << (N - 1).bit_length()))
                     grid = (12, 1, 1)
                     instancenorm_fwd_kernel_xpu[grid](
                         x,
@@ -787,8 +772,8 @@ class InstanceNorm(torch.autograd.Function):
                         N,
                         C,
                         eps,
-                        XBLOCK=triton.next_power_of_2(triton.cdiv(M, 12)),
-                        RBLOCK=8192,
+                        XBLOCK=xblock,
+                        RBLOCK=rblock,
                         HAS_WEIGHT_BIAS=has_weight_bias,
                         isCloseUnrollControl=True,
                         buffer_size_limit=512,
@@ -833,11 +818,12 @@ class InstanceNorm(torch.autograd.Function):
                     isCloseUnrollControl=True,
                 )
 
-        ctx.save_for_backward(x, weight, mean, rstd)
-        ctx.M = M
-        ctx.N = N
-        ctx.C = C
-        ctx.has_weight_bias = has_weight_bias
+        if ctx is not None:
+            ctx.save_for_backward(x, weight, mean, rstd)
+            ctx.M = M
+            ctx.N = N
+            ctx.C = C
+            ctx.has_weight_bias = has_weight_bias
         return y
 
     @staticmethod
@@ -916,6 +902,28 @@ def instance_norm(
     Returns:
         output tensor of shape :math:`(N, C, *)`
     """
+
+    # Fast path: when no input requires grad, skip the autograd.Function.apply
+    # machinery (which builds an engine node / wraps ctx) and call forward
+    # directly. This saves ~10us per call, which is significant for the
+    # launch-bound small shapes in the benchmark.
+    if (
+        not input.requires_grad
+        and (weight is None or not weight.requires_grad)
+        and (bias is None or not bias.requires_grad)
+    ):
+        return InstanceNorm.forward(
+            None,
+            input,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            use_input_stats,
+            momentum,
+            eps,
+            cudnn_enable,
+        )
 
     return InstanceNorm.apply(
         input, weight, bias, running_mean, running_var, use_input_stats, momentum, eps
