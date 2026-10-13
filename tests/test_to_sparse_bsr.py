@@ -437,6 +437,7 @@ def _assert_bsr_structure(out, shape, blocksize, dense_dim):
     )
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.to_sparse_bsr
 @pytest.mark.parametrize("case", _GRID_CASES)
 @pytest.mark.parametrize("dtype", _DTYPES)
@@ -578,15 +579,17 @@ def test_to_sparse_bsr_invalid_arguments(name, shape, call_args, expected):
 @pytest.mark.parametrize(
     "source_layout",
     tu.selected_cases(
-        [
-            torch.sparse_coo,
-            torch.sparse_csr,
-            torch.sparse_csc,
-            torch.sparse_bsr,
-            torch.sparse_bsc,
-        ]
-        if utils.int64_is_supported
-        else [],
+        (
+            [
+                torch.sparse_coo,
+                torch.sparse_csr,
+                torch.sparse_csc,
+                torch.sparse_bsr,
+                torch.sparse_bsc,
+            ]
+            if utils.int64_is_supported
+            else []
+        ),
         quick=[],
     ),
 )

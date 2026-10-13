@@ -78,6 +78,7 @@ def _assert_copy_result(res_out, ref_out, inp):
         assert res_out.data_ptr() != inp.data_ptr()
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -92,6 +93,7 @@ def test_test_autograd_multiple_dispatch(shape, value_range, dtype):
     _assert_copy_result(res_out, ref_out, inp)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.test_autograd_multiple_dispatch
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

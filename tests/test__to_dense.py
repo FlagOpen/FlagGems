@@ -571,6 +571,7 @@ def _assert_unchanged(inp, ref_inp):
         tu.assert_result_equal(part, reference_part)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape", _FLOAT_VALUE_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

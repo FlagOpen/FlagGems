@@ -139,6 +139,7 @@ def _make_layout_input(kind, shape, dtype):
     raise ValueError(f"unknown layout kind: {kind}")
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.is_contiguous
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

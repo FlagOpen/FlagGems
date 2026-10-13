@@ -124,6 +124,7 @@ def _assert_result(res_out, ref_out, dtype, index_dtype):
     tu.assert_result_equal(res_out.values(), ref_out.values())
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("shape, nnz", _CSC_CASES)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
@@ -162,6 +163,7 @@ def test_sparse_csc_tensor(shape, nnz, dtype, index_dtype, value_range):
     tu.assert_result_equal(values, ref_values)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("shape, nnz", _CSC_BATCHED_CASES)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
@@ -200,6 +202,7 @@ def test_sparse_csc_tensor_batched(shape, nnz, dtype, index_dtype, value_range):
     tu.assert_result_equal(values, ref_values)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("ccol_list, row_list", _CSC_NO_SIZE_CASES)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
@@ -351,6 +354,7 @@ def test_sparse_csc_tensor_shape_levels(shape, nnz, dtype, index_dtype, value_ra
     assert tuple(res_out.shape) == tuple(shape)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("value_range", _BOUNDARY_RANGES)
 @pytest.mark.parametrize("dtype", _CSC_DTYPES)

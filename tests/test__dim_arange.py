@@ -49,6 +49,7 @@ def _assert_arange_result(res_out, ref_out, inp):
     tu.assert_result_equal(res_out, ref_out)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.dim_arange
 @pytest.mark.parametrize("shape, dim", _DIM_ARANGE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -63,6 +64,7 @@ def test__dim_arange_value_ranges(shape, dim, value_range, dtype):
     _assert_arange_result(res_out, ref_out, inp)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.dim_arange
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

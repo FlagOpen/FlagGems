@@ -296,6 +296,7 @@ def test__new_zeros_with_same_feature_meta_no_autograd(self_grad, other_grad, dt
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_shape, other_shape, self_num_batch_dims", _VALUE_RANGE_CASES

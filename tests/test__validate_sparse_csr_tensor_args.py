@@ -181,6 +181,7 @@ SIZE_CASES = tu.selected_cases(
 )
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 @pytest.mark.parametrize("dtype", VALUES_DTYPES)

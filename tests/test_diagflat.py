@@ -73,6 +73,7 @@ def test_diagflat(shape, offset, dtype):
     _assert_output(res_out, ref_out)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.diagflat
 @pytest.mark.parametrize("shape", _DIAGFLAT_RANGE_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

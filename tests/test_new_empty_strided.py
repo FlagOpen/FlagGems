@@ -123,6 +123,7 @@ _QUICK_ROWS = [
 _GRID_ROWS = tu.selected_cases(_ALL_ROWS, quick=_QUICK_ROWS)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.new_empty_strided
 @pytest.mark.parametrize("shape,layout", _GRID_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

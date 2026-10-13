@@ -175,6 +175,7 @@ def test_is_coalesced(size, nnz, recorded, dtype):
     assert inp.is_coalesced() == ref_out
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.is_coalesced
 @pytest.mark.parametrize("size,nnz,recorded", _RANGE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

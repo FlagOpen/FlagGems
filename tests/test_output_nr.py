@@ -286,6 +286,7 @@ def _assert_output_nr(res, ref, expected):
     assert res == expected, (res, expected)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.output_nr
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

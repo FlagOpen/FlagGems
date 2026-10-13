@@ -187,6 +187,7 @@ _DESCRIPTORS = tu.selected_cases(
 )
 
 
+@tu.deduplicate_bool_ranges(dtype_arg="values_dtype")
 @pytest.mark.sparse_compressed_tensor_unsafe
 @pytest.mark.parametrize("layout,batch,base,dense,blocks,nnz", _DESCRIPTORS)
 @pytest.mark.parametrize("values_dtype", _VALUES_DTYPES)

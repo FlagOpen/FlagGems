@@ -28,6 +28,7 @@ import torch
 
 import flag_gems
 
+from .bool_range_utils import deduplicate_bool_ranges  # noqa: F401
 from .conftest import QUICK_MODE
 
 # ---------------------------------------------------------------------------

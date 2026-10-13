@@ -166,6 +166,7 @@ def _autograd_snapshot(node):
     )
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.retains_grad
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

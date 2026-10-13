@@ -67,6 +67,7 @@ def test_detach_copy(shape, dtype):
     _assert_copy_semantics(res_out, ref_out, inp, ref_inp)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.detach_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -129,6 +130,7 @@ def test_detach_copy_out(shape, dtype):
     _assert_copy_semantics(res_ret, ref_ret, inp, ref_inp)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.detach_copy_out
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

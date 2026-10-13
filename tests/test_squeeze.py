@@ -137,6 +137,7 @@ def _make_layout_input(kind, dtype):
     raise AssertionError("unknown layout kind: {}".format(kind))
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -152,6 +153,7 @@ def test_squeeze_all_size_one_dims(shape, value_range, dtype):
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dim", _DIM_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -167,6 +169,7 @@ def test_squeeze_dim(shape, dim, value_range, dtype):
     _assert_view_metadata(res_out, ref_out, inp, ref_inp)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.squeeze
 @pytest.mark.parametrize("shape,dims", _DIMS_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

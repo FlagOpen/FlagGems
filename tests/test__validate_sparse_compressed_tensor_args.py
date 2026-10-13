@@ -403,6 +403,7 @@ _EXTRA_DTYPE_LAYOUTS = tu.selected_cases(
 )
 
 
+@tu.deduplicate_bool_ranges(dtype_arg="values_dtype")
 @pytest.mark.validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("layout", _EXTRA_DTYPE_LAYOUTS)
 @pytest.mark.parametrize("values_dtype", _EXTRA_VALUES_DTYPES)

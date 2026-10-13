@@ -86,6 +86,7 @@ def _storage_tensor(storage, shape, dtype, value_range=None):
     return inp
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
@@ -101,6 +102,7 @@ def test_is_pinned_pinned_host_storage(shape, dtype, value_range):
     _assert_matches_native(res_out, ref_out)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)
@@ -116,6 +118,7 @@ def test_is_pinned_plain_host_storage(shape, dtype, value_range):
     _assert_matches_native(res_out, ref_out)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype", _DTYPES)

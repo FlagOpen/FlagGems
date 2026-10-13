@@ -630,6 +630,7 @@ for _row in _REGATHER_ROWS:
         raise ValueError(f"regather descriptor {_row!r} would need a coalesce kernel")
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_COPY_ROWS, quick=_QUICK_ROWS))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -702,6 +703,7 @@ def test__sparse_sum_backward_dim_forms_large(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_ZERO_ROWS, quick=[]))
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

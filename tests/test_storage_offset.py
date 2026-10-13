@@ -99,6 +99,7 @@ _VIEW_ROWS = _layout_rows(tu.selected_shapes(), _CORE_LAYOUTS) + _layout_rows(
 )
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.storage_offset
 @pytest.mark.parametrize("shape,layout", _VIEW_ROWS)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

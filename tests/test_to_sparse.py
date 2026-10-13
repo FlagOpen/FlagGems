@@ -688,6 +688,7 @@ def _block_backward_upstream(dtype):
     return up
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.to_sparse
 @pytest.mark.parametrize("shape,dtype", _GRID_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())

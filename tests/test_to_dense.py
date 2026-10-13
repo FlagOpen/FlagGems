@@ -130,6 +130,7 @@ def _pointers(values):
     return _index(values, _pointer_dtype())
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
@@ -326,6 +327,7 @@ def test_to_dense_strided_view_cast(geometry, dtype_pair):
 _COO_SHAPES = _coo_cases(tu.selected_shapes())
 
 
+@tu.deduplicate_bool_ranges
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape", _COO_SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
