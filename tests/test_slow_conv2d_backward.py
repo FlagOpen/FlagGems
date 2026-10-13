@@ -22,8 +22,9 @@ all three gradients are computed, and compare against
 ``torch.ops.aten._slow_conv2d_backward.output_mask``. Small feature maps keep
 the slow (non-cuDNN) reference path fast; the stride/padding combos cover both
 tap misalignment and zero-padding edges of the backward. The reference runs on
-upcast inputs (``to_reference(inp, True)``); low-precision gradients therefore
-need a relaxed atol since the kernels accumulate in fp32.
+upcast inputs (``to_reference(inp, True)``); gradients are compared with the
+repo's conv-backward convention of scaling atol by each gradient's reduction
+size (``reduce_dim``) rather than a flat atol.
 """
 
 import pytest
@@ -97,12 +98,13 @@ def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding,
         [True, True, True],
     )
 
-    if dtype in (torch.float16, torch.bfloat16):
-        # The reference runs on upcast inputs while the kernels accumulate in
-        # fp32 for low-precision inputs, so the gradients need a relaxed atol.
-        atol = 5e-2
-    else:
-        atol = 1e-3
-    utils.gems_assert_close(gi, ref_gi, dtype, atol=atol)
-    utils.gems_assert_close(gw, ref_gw, dtype, atol=atol)
-    utils.gems_assert_close(gb, ref_gb, dtype, atol=atol)
+    # Per-gradient reduction sizes, matching the repo's conv-backward tolerance
+    # convention (see test_convolution_backward_overrideable.py):
+    # grad_input contracts over C_out x kH x kW, while grad_weight and grad_bias
+    # contract over N x H_out x W_out. gems_assert_close scales atol by
+    # reduce_dim, and rtol=RESOLUTION[dtype] applies on top.
+    in_reduce_dim = weight_shape[0] * kernel_size[0] * kernel_size[1]
+    out_reduce_dim = shape[0] * ho * wo
+    utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=in_reduce_dim)
+    utils.gems_assert_close(gw, ref_gw, dtype, reduce_dim=out_reduce_dim)
+    utils.gems_assert_close(gb, ref_gb, dtype, reduce_dim=out_reduce_dim)
