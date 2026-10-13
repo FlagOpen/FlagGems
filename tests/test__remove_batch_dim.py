@@ -67,10 +67,13 @@ _NON_CONTIGUOUS_CASES = [
     ((8, 8, 16, 32), 2, 8),
 ]
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _DTYPE_RANGE_PAIRS = [
     (dtype, value_range)
     for dtype in _REMOVE_BATCH_DIM_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 

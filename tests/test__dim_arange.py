@@ -49,10 +49,19 @@ def _assert_arange_result(res_out, ref_out, inp):
     tu.assert_result_equal(res_out, ref_out)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DIM_ARANGE_INPUT_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.dim_arange
 @pytest.mark.parametrize("shape, dim", _DIM_ARANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DIM_ARANGE_INPUT_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__dim_arange_value_ranges(shape, dim, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -65,8 +74,7 @@ def test__dim_arange_value_ranges(shape, dim, value_range, dtype):
 
 @pytest.mark.dim_arange
 @pytest.mark.parametrize("view_case", _VIEW_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DIM_ARANGE_INPUT_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__dim_arange_non_contiguous(view_case, value_range, dtype):
     view_fn, expected_shape, dim = view_case
     base = tu.make_input(dtype, (4, 8, 6), value_range)

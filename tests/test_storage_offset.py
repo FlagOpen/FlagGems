@@ -99,10 +99,19 @@ _VIEW_ROWS = _layout_rows(tu.selected_shapes(), _CORE_LAYOUTS) + _layout_rows(
 )
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.storage_offset
 @pytest.mark.parametrize("shape,layout", _VIEW_ROWS)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_storage_offset_views(shape, layout, value_range, dtype):
     base = tu.make_input(dtype, shape, value_range)
     inp = _offset_view(base, layout)

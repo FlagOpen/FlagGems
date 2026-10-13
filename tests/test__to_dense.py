@@ -571,11 +571,20 @@ def _assert_unchanged(inp, ref_inp):
         tu.assert_result_equal(part, reference_part)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in tu.selected_cases(_DTYPES, quick=_DTYPES)
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape", _FLOAT_VALUE_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("parity", tu.selected_cases([1, 3], quick=[1]))
-@pytest.mark.parametrize("dtype", tu.selected_cases(_DTYPES, quick=_DTYPES))
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__to_dense_value_ranges(shape, value_range, parity, dtype):
     inp = _coo(
         shape, parity * shape[-1], dtype, value_range, seed=parity * 31 + len(shape)

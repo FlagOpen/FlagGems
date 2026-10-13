@@ -139,10 +139,19 @@ def _make_layout_input(kind, shape, dtype):
     raise ValueError(f"unknown layout kind: {kind}")
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SUPPORTED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.is_contiguous
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_is_contiguous(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref = torch.ops.aten.is_contiguous(tu.to_reference(inp))

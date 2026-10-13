@@ -296,12 +296,21 @@ def test__new_zeros_with_same_feature_meta_no_autograd(self_grad, other_grad, dt
     _assert_zero_output(res_out, ref_out, self_t, other_t, ref_self, ref_other)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _NEW_ZEROS_WITH_SAME_FEATURE_META_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.new_zeros_with_same_feature_meta
 @pytest.mark.parametrize(
     "self_shape, other_shape, self_num_batch_dims", _VALUE_RANGE_CASES
 )
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _NEW_ZEROS_WITH_SAME_FEATURE_META_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__new_zeros_with_same_feature_meta_value_ranges(
     self_shape, other_shape, self_num_batch_dims, value_range, dtype
 ):

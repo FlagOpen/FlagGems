@@ -86,10 +86,19 @@ def _storage_tensor(storage, shape, dtype, value_range=None):
     return inp
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_is_pinned_pinned_host_storage(shape, dtype, value_range):
     inp = _storage_tensor("pinned-host", shape, dtype, value_range)
     ref_inp = _storage_tensor("pinned-host", shape, dtype, value_range)
@@ -103,8 +112,7 @@ def test_is_pinned_pinned_host_storage(shape, dtype, value_range):
 
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_is_pinned_plain_host_storage(shape, dtype, value_range):
     inp = _storage_tensor("plain-host", shape, dtype, value_range)
     ref_inp = _storage_tensor("plain-host", shape, dtype, value_range)
@@ -118,8 +126,7 @@ def test_is_pinned_plain_host_storage(shape, dtype, value_range):
 
 @pytest.mark.is_pinned
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_is_pinned_backend_storage(shape, dtype, value_range):
     inp = _storage_tensor("backend", shape, dtype, value_range)
     ref_inp = _storage_tensor("backend", shape, dtype, value_range)

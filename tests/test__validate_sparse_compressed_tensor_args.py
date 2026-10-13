@@ -403,10 +403,19 @@ _EXTRA_DTYPE_LAYOUTS = tu.selected_cases(
 )
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (values_dtype, value_range)
+    for values_dtype in _EXTRA_VALUES_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if values_dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("layout", _EXTRA_DTYPE_LAYOUTS)
-@pytest.mark.parametrize("values_dtype", _EXTRA_VALUES_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("values_dtype, value_range", _DTYPE_RANGE_CASES)
 def test_validate_sparse_compressed_tensor_args_extra_values_dtypes(
     layout, values_dtype, value_range
 ):

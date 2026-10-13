@@ -688,9 +688,18 @@ def _block_backward_upstream(dtype):
     return up
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape, dtype in _GRID_CASES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_sparse
-@pytest.mark.parametrize("shape,dtype", _GRID_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("shape, dtype, value_range", _DTYPE_RANGE_CASES)
 def test_to_sparse_sparse_dim_grid(shape, dtype, value_range):
     sparse_dim = min(2, len(shape))
     inp = tu.make_input(dtype, shape, value_range)

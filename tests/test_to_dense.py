@@ -130,10 +130,19 @@ def _pointers(values):
     return _index(values, _pointer_dtype())
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_STRIDED_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _STRIDED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _STRIDED_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _STRIDED_DTYPE_RANGE_CASES)
 def test_to_dense_strided_is_identity(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -326,10 +335,19 @@ def test_to_dense_strided_view_cast(geometry, dtype_pair):
 _COO_SHAPES = _coo_cases(tu.selected_shapes())
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_SPARSE_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SPARSE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_dense
 @pytest.mark.parametrize("shape", _COO_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _SPARSE_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _SPARSE_DTYPE_RANGE_CASES)
 def test_to_dense_sparse_coo(shape, value_range, dtype):
     # Covers every spec shape, including the 0-dim tensor, whose COO form has
     # sparse_dim == 0 (the native op supports it).

@@ -175,10 +175,19 @@ def test_is_coalesced(size, nnz, recorded, dtype):
     assert inp.is_coalesced() == ref_out
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.is_coalesced
 @pytest.mark.parametrize("size,nnz,recorded", _RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_is_coalesced_value_ranges(size, nnz, recorded, value_range, dtype):
     inp = _make_sparse(
         size, nnz, dtype, recorded=recorded, ordered=recorded, value_range=value_range
