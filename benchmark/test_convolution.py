@@ -34,6 +34,41 @@ CASES = [
     ((2, 6, 12, 12), (9, 2, 3, 3), False, (2, 2), (1, 1), (1, 1), False, (0, 0), 3),
     ((4, 2, 64), (2, 2, 7), True, (2,), (3,), (2,), False, (0,), 1),
     ((2, 8, 10, 11), (8, 1, 3, 3), False, (1, 1), (1, 1), (1, 1), False, (0, 0), 8),
+    # Layer-sized shapes.  The cases above are small enough that launch
+    # latency dominates the measurement; these exercise the implicit-GEMM
+    # itself across the argument space that real models use.
+    # 1x1 projection: pure channel mixing, no kernel window.
+    (
+        (4, 32, 128, 128),
+        (64, 32, 1, 1),
+        True,
+        (1, 1),
+        (0, 0),
+        (1, 1),
+        False,
+        (0, 0),
+        1,
+    ),
+    # Strided large-kernel stem over few input channels.
+    ((32, 3, 224, 224), (64, 3, 7, 7), True, (2, 2), (3, 3), (1, 1), False, (0, 0), 1),
+    # Grouped convolution at a width where the group dimension fills the grid.
+    ((2, 96, 64, 64), (96, 48, 3, 3), False, (1, 1), (1, 1), (1, 1), False, (0, 0), 2),
+    # Dilated 3x3, which widens the gather window without adding reduction.
+    ((4, 32, 64, 64), (64, 32, 3, 3), True, (1, 1), (2, 2), (2, 2), False, (0, 0), 1),
+    # 1D convolution over a long sequence.
+    ((16, 64, 1024), (128, 64, 5), True, (2,), (2,), (1,), False, (0,), 1),
+    # 3D convolution: three-deep kernel window.
+    (
+        (2, 16, 16, 32, 32),
+        (32, 16, 3, 3, 3),
+        True,
+        (1, 1, 1),
+        (1, 1, 1),
+        (1, 1, 1),
+        False,
+        (0, 0, 0),
+        1,
+    ),
 ]
 
 

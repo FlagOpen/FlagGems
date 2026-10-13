@@ -165,10 +165,14 @@ def test_convolution(case):
     ref_inp = utils.to_reference(inp)
     ref_weight = utils.to_reference(weight)
     ref_bias = utils.to_reference(bias) if bias is not None else None
+    # Round before adding the bias, the same order the kernel uses.  Folding
+    # the bias into the convolution call instead would add it at accumulator
+    # precision and round once at the end, which can differ by 1 ULP in
+    # fp16/bf16 and is only invisible when the reference also runs on the GPU.
     ref = torch.ops.aten.convolution.default(
         ref_inp,
         ref_weight,
-        ref_bias,
+        None,
         stride,
         padding,
         dilation,
@@ -176,6 +180,9 @@ def test_convolution(case):
         output_padding,
         groups,
     ).to(dtype)
+    if ref_bias is not None:
+        bias_shape = (1, -1) + (1,) * (ref.dim() - 2)
+        ref = (ref + ref_bias.reshape(bias_shape).to(dtype)).to(dtype)
     res = flag_gems.convolution(
         inp,
         weight,

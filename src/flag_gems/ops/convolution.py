@@ -193,6 +193,69 @@ def _conv_kernel(
     tl.store(out_ptr + ooff, acc.to(out_ptr.dtype.element_ty), mask=smask)
 
 
+def _next_pow2(v, lo, hi):
+    """Clamp ``v`` up to a power of two inside ``[lo, hi]``."""
+    p = lo
+    while p < v and p < hi:
+        p *= 2
+    return p
+
+
+# Below this many implicit-GEMM MACs the kernel retires inside its own launch
+# latency, so the tiling cannot be the bottleneck and is left alone.
+_COMPUTE_BOUND_MACS = 1 << 20
+
+
+def _select_tiles(M, C_out_pg, KDIM, is_ieee_fp32):
+    """Pick implicit-GEMM tiles for an (M, C_out_pg, KDIM) problem.
+
+    Tiny problems keep the original conservative 64x16x32 tiling: they are
+    bound by launch latency, so reshaping the tiles only perturbs noise.
+
+    Past that point the fixed tiling starved the MMA pipelines. A 16-lane N
+    tile issues one ``tl.dot`` per 16 output channels, so a 64-channel layer
+    re-gathered the same activations four times instead of reusing them
+    inside one wider tile. Those shapes size all three tiles from the problem
+    instead.
+
+    The two dtype regimes want different shapes, which an exhaustive
+    BM/BN/BK/num_warps sweep over layer-sized shapes on H20-3e bears out:
+
+    * fp16/bf16 run on tensor cores, so a deep ``BK`` and a wide ``BN`` pay
+      for themselves.
+    * fp32 uses ``input_precision="ieee"`` to stay inside this operator's
+      accuracy tolerance, which lowers to plain FMA. With no MMA pipeline to
+      fill, a deep reduction tile only serializes the inner loop, so the fp32
+      path keeps the reduction shallow and spends occupancy on independent
+      programs instead.
+    """
+    if M * C_out_pg * KDIM < _COMPUTE_BOUND_MACS:
+        BM = 64
+        if M <= 16:
+            BM = 16
+        elif M <= 32:
+            BM = 32
+        return BM, 16, 32, 4
+
+    BM = _next_pow2(M, 16, 128)
+    BN = _next_pow2(C_out_pg, 16, 128)
+    BK = _next_pow2(KDIM, 16, 64)
+
+    if is_ieee_fp32:
+        BK = min(BK, 32)
+        BN = min(BN, 64)
+        return BM, BN, BK, 2 if BM * BN <= 128 * 32 else 4
+
+    tile = BM * BN
+    if tile >= 128 * 128:
+        num_warps = 8
+    elif tile >= 64 * 32:
+        num_warps = 4
+    else:
+        num_warps = 2
+    return BM, BN, BK, num_warps
+
+
 def _gv(v, i, d):
     """Element-wise accessor for stride/padding/dilation-style arguments."""
     if v is None:
@@ -299,13 +362,7 @@ def convolution(
     has_bias = bias is not None and getattr(bias, "numel", lambda: 0)() > 0
     b_ptr = bias if has_bias else x
 
-    BM = 64
-    if M <= 16:
-        BM = 16
-    elif M <= 32:
-        BM = 32
-    BN = 16
-    BK = 32
+    BM, BN, BK, num_warps = _select_tiles(M, C_out_pg, KDIM, x.dtype == torch.float32)
 
     grid = (triton.cdiv(M, BM), triton.cdiv(C_out_pg, BN), g)
     _conv_kernel[grid](
@@ -356,7 +413,7 @@ def convolution(
         BLOCK_M=BM,
         BLOCK_N=BN,
         BLOCK_K=BK,
-        num_warps=4,
+        num_warps=num_warps,
     )
     return out
 
