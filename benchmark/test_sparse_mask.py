@@ -19,8 +19,8 @@ import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 # sparse_mask gathers values from a dense ``self`` at a sparse mask's index
 # positions and returns a sparse COO tensor. There is no public Benchmark family

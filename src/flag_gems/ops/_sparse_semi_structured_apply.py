@@ -66,35 +66,44 @@ _SUPPORTED_INPUT_DTYPES = (torch.float16, torch.bfloat16)
 def _pack4(v0, v1, v2, v3, b0, b1, b2, b3):
     z = tl.zeros_like(v0)
     s0 = tl.where(
-        (b2 & b3) != 0, v2,
+        (b2 & b3) != 0,
+        v2,
         tl.where(b0 != 0, v0, tl.where(b1 != 0, v1, z)),
     )
     s1 = tl.where(
-        b3 != 0, v3,
+        b3 != 0,
+        v3,
         tl.where(b2 != 0, v2, tl.where((b0 & b1) != 0, v1, z)),
     )
     return s0, s1
 
 
 @triton.jit
-def _mask_tile(mask_ptr, pid_m, pid_k, M8, K8,
-               MG: tl.constexpr, KG: tl.constexpr):
+def _mask_tile(mask_ptr, pid_m, pid_k, M8, K8, MG: tl.constexpr, KG: tl.constexpr):
     """Load the (MG, KG, 8) mask tile as packed 8-byte records."""
     mg = tl.arange(0, MG)
     kg = tl.arange(0, KG)
     mgx = pid_m * MG + mg
     kgx = pid_k * KG + kg
-    row = mgx[:, None] * K8 + kgx[None, :]              # (MG, KG)
+    row = mgx[:, None] * K8 + kgx[None, :]  # (MG, KG)
     mptr = mask_ptr + row[:, :, None] * 8 + tl.arange(0, 8)[None, None, :]
     mok = (mgx[:, None, None] < M8) & (kgx[None, :, None] < K8)
     return tl.load(mptr, mask=mok, other=0).to(tl.int32)
 
 
 @triton.jit
-def _apply_kernel_compact(in_ptr, mask_ptr, out0_ptr, out1_ptr,
-                          M, K,
-                          stride_im, stride_ik,
-                          BM: tl.constexpr, BK: tl.constexpr):
+def _apply_kernel_compact(
+    in_ptr,
+    mask_ptr,
+    out0_ptr,
+    out1_ptr,
+    M,
+    K,
+    stride_im,
+    stride_ik,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+):
     """Byte-shift variant: bits never leave the mask tile's own bytes."""
     MG: tl.constexpr = BM // 8
     KG: tl.constexpr = BK // 8
@@ -115,61 +124,77 @@ def _apply_kernel_compact(in_ptr, mask_ptr, out0_ptr, out1_ptr,
 
     B = _mask_tile(mask_ptr, pid_m, pid_k, M8, K8, MG, KG)
     Bo0 = tl.permute(tl.reshape(B, (MG, KG, 2, 2, 2)), (0, 2, 4, 1, 3))
-    Bo1 = tl.permute(Bo0, (3, 4, 0, 1, 2))              # (kg, d, mg, a, b)
+    Bo1 = tl.permute(Bo0, (3, 4, 0, 1, 2))  # (kg, d, mg, a, b)
 
     # tile element (mg, a, b, c, kg, d, r) is input row 8mg+4a+2b+c, col 8kg+4d+r
     t7 = tl.reshape(t, (MG, 2, 2, 2, KG, 2, 4))
 
     # ---- out0 ----
-    v0, v1, v2, v3 = _split_last4(t7)                   # column 4d + r
+    v0, v1, v2, v3 = _split_last4(t7)  # column 4d + r
     c_ax = tl.arange(0, 2)
     nib = Bo0[:, :, :, None, :, :] >> (4 * c_ax[None, None, None, :, None, None])
-    s0, s1 = _pack4(v0, v1, v2, v3, nib & 1, (nib >> 1) & 1,
-                    (nib >> 2) & 1, (nib >> 3) & 1)
+    s0, s1 = _pack4(
+        v0, v1, v2, v3, nib & 1, (nib >> 1) & 1, (nib >> 2) & 1, (nib >> 3) & 1
+    )
     o0 = tl.reshape(tl.join(s0, s1), (BM, BK // 2))
 
     o0_cols = pid_k * (BK // 2) + tl.arange(0, BK // 2)
-    tl.store(out0_ptr + off_m[:, None] * (K // 2) + o0_cols[None, :],
-             o0.to(out0_ptr.dtype.element_ty, bitcast=True),
-             mask=m_ok[:, None] & (o0_cols[None, :] < K // 2))
+    tl.store(
+        out0_ptr + off_m[:, None] * (K // 2) + o0_cols[None, :],
+        o0.to(out0_ptr.dtype.element_ty, bitcast=True),
+        mask=m_ok[:, None] & (o0_cols[None, :] < K // 2),
+    )
 
     # ---- out1 ----
-    tp = tl.permute(t7, (4, 5, 6, 0, 1, 2, 3))          # (kg, d, r, mg, a, b, c)
-    tA, tB = tl.split(tp)                               # c = 0 / c = 1
-    v0, v2 = tl.split(tA)                               # p = 0, 2  (b = 0, 1)
-    v1, v3 = tl.split(tB)                               # p = 1, 3
-    bA, bB = tl.split(Bo1)                              # byte at b = 0 / b = 1
+    tp = tl.permute(t7, (4, 5, 6, 0, 1, 2, 3))  # (kg, d, r, mg, a, b, c)
+    tA, tB = tl.split(tp)  # c = 0 / c = 1
+    v0, v2 = tl.split(tA)  # p = 0, 2  (b = 0, 1)
+    v1, v3 = tl.split(tB)  # p = 1, 3
+    bA, bB = tl.split(Bo1)  # byte at b = 0 / b = 1
     r_ax = tl.arange(0, 4)
-    nA = tl.permute(bA[:, :, :, :, None] >> r_ax[None, None, None, None, :],
-                    (0, 1, 4, 2, 3))                    # (kg, d, r, mg, a)
-    nB = tl.permute(bB[:, :, :, :, None] >> r_ax[None, None, None, None, :],
-                    (0, 1, 4, 2, 3))
-    s0, s1 = _pack4(v0, v1, v2, v3,
-                    nA & 1, (nA >> 4) & 1, nB & 1, (nB >> 4) & 1)
+    nA = tl.permute(
+        bA[:, :, :, :, None] >> r_ax[None, None, None, None, :], (0, 1, 4, 2, 3)
+    )  # (kg, d, r, mg, a)
+    nB = tl.permute(
+        bB[:, :, :, :, None] >> r_ax[None, None, None, None, :], (0, 1, 4, 2, 3)
+    )
+    s0, s1 = _pack4(v0, v1, v2, v3, nA & 1, (nA >> 4) & 1, nB & 1, (nB >> 4) & 1)
     o1 = tl.reshape(tl.join(s0, s1), (BK, BM // 2))
 
     o1_cols = pid_m * (BM // 2) + tl.arange(0, BM // 2)
-    tl.store(out1_ptr + off_k[:, None] * (M // 2) + o1_cols[None, :],
-             o1.to(out1_ptr.dtype.element_ty, bitcast=True),
-             mask=k_ok[:, None] & (o1_cols[None, :] < M // 2))
+    tl.store(
+        out1_ptr + off_k[:, None] * (M // 2) + o1_cols[None, :],
+        o1.to(out1_ptr.dtype.element_ty, bitcast=True),
+        mask=k_ok[:, None] & (o1_cols[None, :] < M // 2),
+    )
 
 
 @triton.jit
 def _split_last4(x):
     """Split a trailing axis of length 4 (ordered 0,1,2,3) into four tensors."""
-    x = tl.reshape(x, (x.shape[0], x.shape[1], x.shape[2], x.shape[3],
-                       x.shape[4], x.shape[5], 2, 2))
-    lo, hi = tl.split(x)        # r // 2 : lo -> r in {0, 2}, hi -> r in {1, 3}
-    a, c = tl.split(lo)         # r = 0, r = 2
-    b, d = tl.split(hi)         # r = 1, r = 3
+    x = tl.reshape(
+        x,
+        (x.shape[0], x.shape[1], x.shape[2], x.shape[3], x.shape[4], x.shape[5], 2, 2),
+    )
+    lo, hi = tl.split(x)  # r // 2 : lo -> r in {0, 2}, hi -> r in {1, 3}
+    a, c = tl.split(lo)  # r = 0, r = 2
+    b, d = tl.split(hi)  # r = 1, r = 3
     return a, b, c, d
 
 
 @triton.jit
-def _apply_kernel(in_ptr, mask_ptr, out0_ptr, out1_ptr,
-                  M, K,
-                  stride_im, stride_ik,
-                  BM: tl.constexpr, BK: tl.constexpr):
+def _apply_kernel(
+    in_ptr,
+    mask_ptr,
+    out0_ptr,
+    out1_ptr,
+    M,
+    K,
+    stride_im,
+    stride_ik,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+):
     """Broadcast variant: fastest for the latency-bound tiles <= 1024x1024."""
     MG: tl.constexpr = BM // 8
     KG: tl.constexpr = BK // 8
@@ -200,8 +225,10 @@ def _apply_kernel(in_ptr, mask_ptr, out0_ptr, out1_ptr,
 
     c_ax = tl.arange(0, 2)
     r_ax = tl.arange(0, 4)
-    bitpos = (4 * c_ax[None, None, None, :, None, None, None]
-              + r_ax[None, None, None, None, None, None, :])
+    bitpos = (
+        4 * c_ax[None, None, None, :, None, None, None]
+        + r_ax[None, None, None, None, None, None, :]
+    )
     bit = (Bexp >> bitpos) & 1
 
     # tile element (mg, a, b, c, kg, d, r) is input row 8mg+4a+2b+c, col 8kg+4d+r
@@ -210,9 +237,9 @@ def _apply_kernel(in_ptr, mask_ptr, out0_ptr, out1_ptr,
     # ---- out0: pack the four (d, r) column-quads of each kg ----------------
     t4 = tl.reshape(t7, (MG, 2, 2, 2, KG, 2, 2, 2))
     b4 = tl.reshape(bit, (MG, 2, 2, 2, KG, 2, 2, 2))
-    tA, tB = tl.split(t4)            # last axis r//2
-    v0, v2 = tl.split(tA)            # r = 0, r = 2
-    v1, v3 = tl.split(tB)            # r = 1, r = 3
+    tA, tB = tl.split(t4)  # last axis r//2
+    v0, v2 = tl.split(tA)  # r = 0, r = 2
+    v1, v3 = tl.split(tB)  # r = 1, r = 3
     bA, bB = tl.split(b4)
     q0, q2 = tl.split(bA)
     q1, q3 = tl.split(bB)
@@ -225,11 +252,11 @@ def _apply_kernel(in_ptr, mask_ptr, out0_ptr, out1_ptr,
     tl.store(st0, o0h, mask=m_ok[:, None] & (o0_cols[None, :] < K // 2))
 
     # ---- out1: pack the four (2b+c) row-quads of each (kg, d, r) -----------
-    tp = tl.permute(t7, (4, 5, 6, 0, 1, 2, 3))   # (kg, d, r, mg, a, b, c)
+    tp = tl.permute(t7, (4, 5, 6, 0, 1, 2, 3))  # (kg, d, r, mg, a, b, c)
     bp = tl.permute(bit, (4, 5, 6, 0, 1, 2, 3))
-    tA, tB = tl.split(tp)            # last axis c
-    v0, v2 = tl.split(tA)            # c = 0 -> p = 0, 2
-    v1, v3 = tl.split(tB)            # c = 1 -> p = 1, 3
+    tA, tB = tl.split(tp)  # last axis c
+    v0, v2 = tl.split(tA)  # c = 0 -> p = 0, 2
+    v1, v3 = tl.split(tB)  # c = 1 -> p = 1, 3
     bA, bB = tl.split(bp)
     q0, q2 = tl.split(bA)
     q1, q3 = tl.split(bB)
@@ -283,25 +310,49 @@ def _sparse_semi_structured_apply(input, thread_masks):
         # pushed them over the register limit).
         grid = (triton.cdiv(M, _LARGE_BM), triton.cdiv(K, _LARGE_BK))
         _apply_kernel_compact[grid](
-            input, thread_masks, out0, out1, M, K,
-            istride[0], istride[1],
-            BM=_LARGE_BM, BK=_LARGE_BK, num_warps=4,
+            input,
+            thread_masks,
+            out0,
+            out1,
+            M,
+            K,
+            istride[0],
+            istride[1],
+            BM=_LARGE_BM,
+            BK=_LARGE_BK,
+            num_warps=4,
         )
     elif size <= 256 * 256:
         # The two smallest benchmark tiles are launch-bound, and a narrow
         # 16x32 tile with one 4-warp program per tile measured fastest.
         grid = (triton.cdiv(M, _SMALL_BM), triton.cdiv(K, _SMALL_BK))
         _apply_kernel[grid](
-            input, thread_masks, out0, out1, M, K,
-            istride[0], istride[1],
-            BM=_SMALL_BM, BK=_SMALL_BK, num_warps=4,
+            input,
+            thread_masks,
+            out0,
+            out1,
+            M,
+            K,
+            istride[0],
+            istride[1],
+            BM=_SMALL_BM,
+            BK=_SMALL_BK,
+            num_warps=4,
         )
     else:
         # Latency-bound mid tiles hide better with 8 warps.
         grid = (triton.cdiv(M, _BM), triton.cdiv(K, _BK))
         _apply_kernel[grid](
-            input, thread_masks, out0, out1, M, K,
-            istride[0], istride[1],
-            BM=_BM, BK=_BK, num_warps=8,
+            input,
+            thread_masks,
+            out0,
+            out1,
+            M,
+            K,
+            istride[0],
+            istride[1],
+            BM=_BM,
+            BK=_BK,
+            num_warps=8,
         )
     return out0, out1

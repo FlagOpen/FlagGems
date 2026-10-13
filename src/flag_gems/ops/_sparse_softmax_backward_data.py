@@ -71,7 +71,11 @@ def _ssbd_key_from_full(full, stride_ptr, sd):
 
 @triton.jit
 def _ssbd_cmap(
-    idx_ptr, cmap_ptr, stride_ptr, nnz, sd,
+    idx_ptr,
+    cmap_ptr,
+    stride_ptr,
+    nnz,
+    sd,
     BLOCK: tl.constexpr,
 ):
     """cmap[coordinate of grad entry] = grad entry index."""
@@ -84,8 +88,18 @@ def _ssbd_cmap(
 
 @triton.jit
 def _ssbd_accumulate(
-    oidx_ptr, g_ptr, cmap_ptr, y_ptr, s_ptr, stride_ptr, nnz_g, nnz, D, sd,
-    USE_MAP: tl.constexpr, BLOCK: tl.constexpr,
+    oidx_ptr,
+    g_ptr,
+    cmap_ptr,
+    y_ptr,
+    s_ptr,
+    stride_ptr,
+    nnz_g,
+    nnz,
+    D,
+    sd,
+    USE_MAP: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """S[key(output element)] += grad_value * output_value."""
     pid = tl.program_id(0)
@@ -107,8 +121,19 @@ def _ssbd_accumulate(
 
 @triton.jit
 def _ssbd_apply(
-    oidx_ptr, g_ptr, cmap_ptr, y_ptr, s_ptr, ov_ptr, stride_ptr, nnz, D, sd,
-    USE_MAP: tl.constexpr, LOCAL: tl.constexpr, BLOCK: tl.constexpr,
+    oidx_ptr,
+    g_ptr,
+    cmap_ptr,
+    y_ptr,
+    s_ptr,
+    ov_ptr,
+    stride_ptr,
+    nnz,
+    D,
+    sd,
+    USE_MAP: tl.constexpr,
+    LOCAL: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """out = y * (grad_value - S) with S the group sum (LOCAL: the entry's own product)."""
     pid = tl.program_id(0)
@@ -199,7 +224,7 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
     dtype = grad_output.dtype
     if dtype not in (torch.float32, torch.float64):
         raise RuntimeError(
-            "\"softmax_backward\" not implemented for "
+            '"softmax_backward" not implemented for '
             f"'{str(dtype).split('.')[-1].capitalize()}'"
         )
 
@@ -263,12 +288,33 @@ def _sparse_softmax_backward_data(grad_output, output, dim, self, out=None):
             g_cmap = torch.zeros(1, dtype=torch.int32, device=device)
         if not local:
             _ssbd_accumulate[grid_out](
-                o_idx, g_flat, g_cmap, o_flat, s_buf, stride_pack, nnz_g, nnz, D,
-                sparse_dim, use_map, BLOCK=_BLOCK,
+                o_idx,
+                g_flat,
+                g_cmap,
+                o_flat,
+                s_buf,
+                stride_pack,
+                nnz_g,
+                nnz,
+                D,
+                sparse_dim,
+                use_map,
+                BLOCK=_BLOCK,
             )
         _ssbd_apply[grid_out](
-            o_idx, g_flat, g_cmap, o_flat, s_buf, result_flat, stride_pack, nnz, D,
-            sparse_dim, use_map, local, BLOCK=_BLOCK,
+            o_idx,
+            g_flat,
+            g_cmap,
+            o_flat,
+            s_buf,
+            result_flat,
+            stride_pack,
+            nnz,
+            D,
+            sparse_dim,
+            use_map,
+            local,
+            BLOCK=_BLOCK,
         )
 
     # An empty dense block leaves the result with no stored values at all.

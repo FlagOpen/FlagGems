@@ -72,8 +72,15 @@ def _gid_kernel(i_ptr, gid_ptr, nnz, k, dim, sh_ptr, st_ptr, BLOCK: tl.constexpr
 
 @triton.jit
 def _sparse_contig_kernel(
-    gid_ptr, v_ptr, o_ptr, nnz, stride_r, m,
-    B_R: tl.constexpr, B_D: tl.constexpr, ACC64: tl.constexpr,
+    gid_ptr,
+    v_ptr,
+    o_ptr,
+    nnz,
+    stride_r,
+    m,
+    B_R: tl.constexpr,
+    B_D: tl.constexpr,
+    ACC64: tl.constexpr,
 ):
     """Case A with ``dim == k - 1``: equal reduce keys form a contiguous run of
     stored entries (a coalesced COO tensor is lexicographically sorted).  One
@@ -107,8 +114,10 @@ def _sparse_contig_kernel(
         base = pid * stride_r + off
         v = tl.load(v_ptr + base, mask=dmask, other=0.0)
         bad = (v * 0.0) != 0.0
-        one = tl.full([B_D], 1.0, dtype=tl.float64) if ACC64 else tl.full(
-            [B_D], 1.0, dtype=tl.float32
+        one = (
+            tl.full([B_D], 1.0, dtype=tl.float64)
+            if ACC64
+            else tl.full([B_D], 1.0, dtype=tl.float32)
         )
         if ACC64:
             tl.store(o_ptr + base, tl.where(bad, float("nan"), one), mask=dmask)
@@ -213,8 +222,14 @@ def _scatter_max1_kernel(
 
 @triton.jit
 def _scatter_sum1_kernel(
-    gid_ptr, v_ptr, mx_ptr, sm_ptr, o_ptr, total,
-    BLOCK: tl.constexpr, ACC64: tl.constexpr,
+    gid_ptr,
+    v_ptr,
+    mx_ptr,
+    sm_ptr,
+    o_ptr,
+    total,
+    BLOCK: tl.constexpr,
+    ACC64: tl.constexpr,
 ):
     """Case A exponential/sum pass (single dense position), same block-level
     atomic reduction as ``_scatter_max1_kernel``."""
@@ -276,8 +291,15 @@ def _scatter_max_kernel(
 
 @triton.jit
 def _scatter_sum_kernel(
-    gid_ptr, v_ptr, mx_ptr, sm_ptr, o_ptr, total, m,
-    BLOCK: tl.constexpr, ACC64: tl.constexpr,
+    gid_ptr,
+    v_ptr,
+    mx_ptr,
+    sm_ptr,
+    o_ptr,
+    total,
+    m,
+    BLOCK: tl.constexpr,
+    ACC64: tl.constexpr,
 ):
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
@@ -318,8 +340,18 @@ def _normalize_kernel(
 
 @triton.jit
 def _dense_softmax_kernel(
-    v_ptr, o_ptr, outer, L, inner, nchunk, stride_r, stride_l, outer_stride,
-    B_L: tl.constexpr, B_I: tl.constexpr, ACC64: tl.constexpr,
+    v_ptr,
+    o_ptr,
+    outer,
+    L,
+    inner,
+    nchunk,
+    stride_r,
+    stride_l,
+    outer_stride,
+    B_L: tl.constexpr,
+    B_I: tl.constexpr,
+    ACC64: tl.constexpr,
 ):
     """Case B: softmax along dense axis ``a`` (stride ``stride_l``) of the values
     block, vectorized over the trailing dense axes.  ``outer_stride`` is the
@@ -410,8 +442,15 @@ def _bw_group_kernel(
 
 @triton.jit
 def _bw_write_kernel(
-    gid_ptr, s_ptr, g_ptr, o_ptr, dv_ptr, total, m,
-    BLOCK: tl.constexpr, ACC64: tl.constexpr,
+    gid_ptr,
+    s_ptr,
+    g_ptr,
+    o_ptr,
+    dv_ptr,
+    total,
+    m,
+    BLOCK: tl.constexpr,
+    ACC64: tl.constexpr,
 ):
     pid = tl.program_id(0)
     e = pid * BLOCK + tl.arange(0, BLOCK)
@@ -450,9 +489,21 @@ def _bw_entry_kernel(
 
 @triton.jit
 def _bw_dense_kernel(
-    g_ptr, o_ptr, ps_ptr, dv_ptr, outer, L, inner, nchunk, stride_r, stride_l,
+    g_ptr,
+    o_ptr,
+    ps_ptr,
+    dv_ptr,
+    outer,
+    L,
+    inner,
+    nchunk,
+    stride_r,
+    stride_l,
     outer_stride,
-    B_L: tl.constexpr, B_I: tl.constexpr, WRITE: tl.constexpr, ACC64: tl.constexpr,
+    B_L: tl.constexpr,
+    B_I: tl.constexpr,
+    WRITE: tl.constexpr,
+    ACC64: tl.constexpr,
 ):
     """Case B backward: ``dv = o * (g - sum_L g*o)``.  ``WRITE == 0`` computes the
     per-row partial sums, ``WRITE == 1`` writes the gradient."""
@@ -630,14 +681,19 @@ def _case_a_forward(cfg, values, out_values):
     if cfg.get("all_single"):
         # every group holds exactly one stored entry
         BLOCK = 1024
-        _ones_kernel[(triton.cdiv(nnz, BLOCK),)](
-            values, out_values, nnz, BLOCK=BLOCK
-        )
+        _ones_kernel[(triton.cdiv(nnz, BLOCK),)](values, out_values, nnz, BLOCK=BLOCK)
         return
     if cfg["contig"]:
         _sparse_contig_kernel[(nnz,)](
-            cfg["gid"], values, out_values, nnz, cfg["stride_r"], m,
-            B_R=64, B_D=cfg["B_D"], ACC64=acc64,
+            cfg["gid"],
+            values,
+            out_values,
+            nnz,
+            cfg["stride_r"],
+            m,
+            B_R=64,
+            B_D=cfg["B_D"],
+            ACC64=acc64,
         )
         return
     if m == 1:
@@ -655,8 +711,14 @@ def _case_a_forward(cfg, values, out_values):
             cfg["gid"], values, maxbuf, nnz, BLOCK=BLOCK, ACC64=acc64
         )
         _scatter_sum1_kernel[grid](
-            cfg["gid"], values, maxbuf, sumbuf, out_values, nnz,
-            BLOCK=BLOCK, ACC64=acc64,
+            cfg["gid"],
+            values,
+            maxbuf,
+            sumbuf,
+            out_values,
+            nnz,
+            BLOCK=BLOCK,
+            ACC64=acc64,
         )
         _normalize1_kernel[grid](
             cfg["gid"], sumbuf, out_values, nnz, BLOCK=BLOCK, ACC64=acc64
@@ -670,11 +732,23 @@ def _case_a_forward(cfg, values, out_values):
     flat_out = out_values.reshape(nnz, m)
     BLOCK = 1024
     grid = (triton.cdiv(total, BLOCK),)
-    _scatter_max_kernel[grid](cfg["gid"], flat_in, maxbuf, total, m, BLOCK=BLOCK, ACC64=acc64)
-    _scatter_sum_kernel[grid](
-        cfg["gid"], flat_in, maxbuf, sumbuf, flat_out, total, m, BLOCK=BLOCK, ACC64=acc64
+    _scatter_max_kernel[grid](
+        cfg["gid"], flat_in, maxbuf, total, m, BLOCK=BLOCK, ACC64=acc64
     )
-    _normalize_kernel[grid](cfg["gid"], sumbuf, flat_out, total, m, BLOCK=BLOCK, ACC64=acc64)
+    _scatter_sum_kernel[grid](
+        cfg["gid"],
+        flat_in,
+        maxbuf,
+        sumbuf,
+        flat_out,
+        total,
+        m,
+        BLOCK=BLOCK,
+        ACC64=acc64,
+    )
+    _normalize_kernel[grid](
+        cfg["gid"], sumbuf, flat_out, total, m, BLOCK=BLOCK, ACC64=acc64
+    )
 
 
 def _case_a_backward(cfg, grad_out, out_values, dv):
@@ -687,23 +761,39 @@ def _case_a_backward(cfg, grad_out, out_values, dv):
     grid = (triton.cdiv(total, BLOCK),)
     if not cfg["group_bw"]:
         _bw_entry_kernel[grid](
-            grad_out.reshape(nnz, m), out_values.reshape(nnz, m), dv.reshape(nnz, m),
-            total, BLOCK=BLOCK, ACC64=acc64,
+            grad_out.reshape(nnz, m),
+            out_values.reshape(nnz, m),
+            dv.reshape(nnz, m),
+            total,
+            BLOCK=BLOCK,
+            ACC64=acc64,
         )
         return
     duck = torch.float64 if acc64 else torch.float32
     psum = torch.zeros(nnz, dtype=duck, device=device)
     _bw_psum_kernel[grid](
-        grad_out.reshape(nnz, m), out_values.reshape(nnz, m), psum, total, m,
-        BLOCK=BLOCK, ACC64=acc64,
+        grad_out.reshape(nnz, m),
+        out_values.reshape(nnz, m),
+        psum,
+        total,
+        m,
+        BLOCK=BLOCK,
+        ACC64=acc64,
     )
     sbuf = torch.zeros(cfg["G"], dtype=duck, device=device)
     _bw_group_kernel[(triton.cdiv(nnz, 256),)](
         cfg["gid"], psum, sbuf, nnz, BLOCK=256, ACC64=acc64
     )
     _bw_write_kernel[grid](
-        cfg["gid"], sbuf, grad_out.reshape(nnz, m), out_values.reshape(nnz, m),
-        dv.reshape(nnz, m), total, m, BLOCK=BLOCK, ACC64=acc64,
+        cfg["gid"],
+        sbuf,
+        grad_out.reshape(nnz, m),
+        out_values.reshape(nnz, m),
+        dv.reshape(nnz, m),
+        total,
+        m,
+        BLOCK=BLOCK,
+        ACC64=acc64,
     )
 
 
@@ -733,9 +823,21 @@ def _case_b_backward(cfg, grad_out, out_values, dv):
     )
     for write in (0, 1):
         _bw_dense_kernel[grid](
-            grad_out, out_values, psum, dv, cfg["outer"], cfg["L"], cfg["inner"],
-            cfg["nchunk"], cfg["stride_r"], cfg["stride_l"], cfg["outer_stride"],
-            B_L=cfg["B_L"], B_I=cfg["B_I"], WRITE=write, ACC64=cfg["acc64"],
+            grad_out,
+            out_values,
+            psum,
+            dv,
+            cfg["outer"],
+            cfg["L"],
+            cfg["inner"],
+            cfg["nchunk"],
+            cfg["stride_r"],
+            cfg["stride_l"],
+            cfg["outer_stride"],
+            B_L=cfg["B_L"],
+            B_I=cfg["B_I"],
+            WRITE=write,
+            ACC64=cfg["acc64"],
         )
 
 

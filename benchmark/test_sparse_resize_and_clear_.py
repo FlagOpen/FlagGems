@@ -19,7 +19,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 # (size, sparse_dim, dense_dim, new_size)
 SPARSE_RESIZE_AND_CLEAR_CASES = [
@@ -37,10 +37,7 @@ class SparseResizeAndClearBenchmark(base.Benchmark):
         for size, sparse_dim, dense_dim, new_size in self.shapes:
             g = torch.Generator(device="cpu").manual_seed(0)
             idx = torch.stack(
-                [
-                    torch.randint(0, s, (64,), generator=g)
-                    for s in size[:sparse_dim]
-                ]
+                [torch.randint(0, s, (64,), generator=g) for s in size[:sparse_dim]]
             ).to(self.device)
             values = torch.randn(
                 (64,) + tuple(size[sparse_dim:]), dtype=cur_dtype, generator=g

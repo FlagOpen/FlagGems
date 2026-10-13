@@ -131,9 +131,7 @@ def _gather_kernel(  # noqa: PLR0913 - one scalar per supported axis index
         val = tl.load(
             self_ptr + base, mask=mask_i, other=0, eviction_policy="evict_first"
         )
-        tl.store(
-            out_ptr + offs_i, val, mask=mask_i, eviction_policy="evict_first"
-        )
+        tl.store(out_ptr + offs_i, val, mask=mask_i, eviction_policy="evict_first")
     else:
         row = offs_i * D
         for od in range(0, D, BLOCK_D):
@@ -242,7 +240,9 @@ class _SparseMaskGather(torch.autograd.Function):
         for size in dense_sizes:
             block *= int(size)
         values = torch.empty(
-            (nnz,) + tuple(dense_sizes), dtype=dense_self.dtype, device=dense_self.device
+            (nnz,) + tuple(dense_sizes),
+            dtype=dense_self.dtype,
+            device=dense_self.device,
         )
         ctx.sizes = sizes
         ctx.sparse_dim = sparse_dim
@@ -286,9 +286,7 @@ class _SparseMaskGather(torch.autograd.Function):
         grad_self = torch.zeros(ctx.sizes, dtype=ctx.dtype, device=ctx.device)
         if nnz > 0:
             sparse_strides = [grad_self.stride(k) for k in range(sparse_dim)]
-            dense_strides = [
-                grad_self.stride(sparse_dim + k) for k in range(dense_dim)
-            ]
+            dense_strides = [grad_self.stride(sparse_dim + k) for k in range(dense_dim)]
             grad_values = grad_values.contiguous()
             grid = (triton.cdiv(nnz, _BLOCK_I),)
             _scatter_add_kernel[grid](
@@ -325,8 +323,7 @@ def sparse_mask(self, mask, out=None):
 
     if mask.layout != torch.sparse_coo:
         raise RuntimeError(
-            "sparse_mask expects a sparse COO mask tensor, got layout "
-            f"{mask.layout}"
+            "sparse_mask expects a sparse COO mask tensor, got layout " f"{mask.layout}"
         )
 
     if tuple(self.shape) != tuple(mask.shape):
@@ -340,7 +337,6 @@ def sparse_mask(self, mask, out=None):
     indices = mask._indices()
     if indices.dim() != 2:
         indices = indices.reshape(mask.sparse_dim(), -1)
-    nnz = int(indices.shape[1])
     sparse_dim = int(mask.sparse_dim())
     dense_dim = int(mask.dense_dim())
     sizes = tuple(mask.shape)

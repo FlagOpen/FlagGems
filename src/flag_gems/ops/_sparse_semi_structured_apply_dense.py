@@ -41,13 +41,22 @@ import triton.language as tl
 
 
 @triton.jit
-def _sssd_apply_kernel(X, M, OUT,
-                       M_S0, M_S1,
-                       s_xr, s_xc,
-                       s_or, s_oc,
-                       ROWS, COLS,
-                       BLOCK_R: tl.constexpr, BLOCK_C: tl.constexpr,
-                       USE32: tl.constexpr):
+def _sssd_apply_kernel(
+    X,
+    M,
+    OUT,
+    M_S0,
+    M_S1,
+    s_xr,
+    s_xc,
+    s_or,
+    s_oc,
+    ROWS,
+    COLS,
+    BLOCK_R: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+    USE32: tl.constexpr,
+):
     pid_r = tl.program_id(0)
     pid_c = tl.program_id(1)
 
@@ -61,13 +70,13 @@ def _sssd_apply_kernel(X, M, OUT,
         ncg = (COLS + 7) // 8
         cgok = cg < ncg
         base = pid_r * M_S0 + cg * M_S1
-        lo = tl.load(M + base, mask=cgok, other=0)        # low  32 bits of each tile word
-        hi = tl.load(M + base + 1, mask=cgok, other=0)    # high 32 bits of each tile word
+        lo = tl.load(M + base, mask=cgok, other=0)  # low  32 bits of each tile word
+        hi = tl.load(M + base + 1, mask=cgok, other=0)  # high 32 bits of each tile word
 
-        I = tl.arange(0, BLOCK_R)[:, None, None]      # row within the 8-row tile
-        J = tl.arange(0, 8)[None, None, :]            # column within the 8-col tile
-        src = tl.where(I // 4 == 0, lo[None, :, None], hi[None, :, None])
-        L = 16 * (J // 4) + 4 * (I % 4) + (J % 4)     # bit inside the 32-bit half
+        IDX = tl.arange(0, BLOCK_R)[:, None, None]  # row within the 8-row tile
+        J = tl.arange(0, 8)[None, None, :]  # column within the 8-col tile
+        src = tl.where(IDX // 4 == 0, lo[None, :, None], hi[None, :, None])
+        L = 16 * (J // 4) + 4 * (IDX % 4) + (J % 4)  # bit inside the 32-bit half
         keep = ((src >> L) & 1) != 0
         keep = tl.reshape(keep, (BLOCK_R, BLOCK_C))
     else:
@@ -90,12 +99,15 @@ _NUM_WARPS = 4
 
 
 def _validate(input, thread_masks):
-    if not isinstance(input, torch.Tensor) or not isinstance(thread_masks, torch.Tensor):
+    if not isinstance(input, torch.Tensor) or not isinstance(
+        thread_masks, torch.Tensor
+    ):
         raise RuntimeError("`input` and `thread_masks` must be Tensors")
     nd = input.dim()
     if nd < 2:
         raise IndexError(
-            "Dimension out of range (expected to be in range of [-2, 1], but got %d)" % nd
+            "Dimension out of range (expected to be in range of [-2, 1], but got %d)"
+            % nd
         )
     if nd != 2:
         raise RuntimeError(
@@ -112,7 +124,9 @@ def _validate(input, thread_masks):
     if input.dtype not in (torch.float16, torch.bfloat16):
         raise RuntimeError("Unsupported `input` dtype")
     if thread_masks.dim() != 3:
-        raise RuntimeError("Expected threads_masks.dim() == 3 to be true, but got false.")
+        raise RuntimeError(
+            "Expected threads_masks.dim() == 3 to be true, but got false."
+        )
     if thread_masks.dtype != torch.uint8:
         raise RuntimeError(
             "Expected threads_masks.scalar_type() == at::ScalarType::Byte to be true, "
@@ -157,12 +171,20 @@ def _sparse_semi_structured_apply_dense(input, thread_masks):
 
     grid = (triton.cdiv(rows, _BLOCK_R), triton.cdiv(cols, _BLOCK_C))
     _sssd_apply_kernel[grid](
-        input, m_arg, out,
-        m_arg_s0, m_arg_s1,
-        s0, s1,
-        out.stride(0), out.stride(1),
-        rows, cols,
-        BLOCK_R=_BLOCK_R, BLOCK_C=_BLOCK_C, USE32=use32,
+        input,
+        m_arg,
+        out,
+        m_arg_s0,
+        m_arg_s1,
+        s0,
+        s1,
+        out.stride(0),
+        out.stride(1),
+        rows,
+        cols,
+        BLOCK_R=_BLOCK_R,
+        BLOCK_C=_BLOCK_C,
+        USE32=use32,
         num_warps=_NUM_WARPS,
     )
     return out

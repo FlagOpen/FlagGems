@@ -42,9 +42,14 @@ _BLOCK_K = 1024
 _BLOCK_V = 128
 
 _NAMES = {
-    torch.bool: "Bool", torch.int8: "Char", torch.uint8: "Byte",
-    torch.int32: "Int", torch.int64: "Long", torch.float16: "Half",
-    torch.bfloat16: "BFloat16", torch.float8_e4m3fn: "Float8_e4m3fn",
+    torch.bool: "Bool",
+    torch.int8: "Char",
+    torch.uint8: "Byte",
+    torch.int32: "Int",
+    torch.int64: "Long",
+    torch.float16: "Half",
+    torch.bfloat16: "BFloat16",
+    torch.float8_e4m3fn: "Float8_e4m3fn",
     torch.float8_e5m2: "Float8_e5m2",
 }
 
@@ -140,16 +145,36 @@ def _bfly(T, N: tl.constexpr, BLOCK: tl.constexpr):
     elif N == 16:
         return _bf_1(_bf_1(_bf_1(_bf_1(T, 8, BLOCK), 4, BLOCK), 2, BLOCK), 1, BLOCK)
     elif N == 32:
-        return _bf_1(_bf_1(_bf_1(_bf_1(_bf_1(T, 16, BLOCK), 8, BLOCK), 4, BLOCK),
-                           2, BLOCK), 1, BLOCK)
+        return _bf_1(
+            _bf_1(_bf_1(_bf_1(_bf_1(T, 16, BLOCK), 8, BLOCK), 4, BLOCK), 2, BLOCK),
+            1,
+            BLOCK,
+        )
     else:
-        return _bf_1(_bf_1(_bf_1(_bf_1(_bf_1(_bf_1(T, 32, BLOCK), 16, BLOCK), 8,
-                                     BLOCK), 4, BLOCK), 2, BLOCK), 1, BLOCK)
+        return _bf_1(
+            _bf_1(
+                _bf_1(_bf_1(_bf_1(_bf_1(T, 32, BLOCK), 16, BLOCK), 8, BLOCK), 4, BLOCK),
+                2,
+                BLOCK,
+            ),
+            1,
+            BLOCK,
+        )
 
 
 @triton.jit
-def _lse_dense(V, O, R, INNER, OI, F64: tl.constexpr, VIA32: tl.constexpr,
-               NP2R: tl.constexpr, SMALL: tl.constexpr, BLOCK_CI: tl.constexpr):
+def _lse_dense(
+    V,
+    OUT,
+    R,
+    INNER,
+    OI,
+    F64: tl.constexpr,
+    VIA32: tl.constexpr,
+    NP2R: tl.constexpr,
+    SMALL: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+):
     """Case A: per stored row, log-sum-exp over the dense reduce axis.
 
     For short reduce axes the exp-sum is taken as a butterfly so that it matches
@@ -177,8 +202,7 @@ def _lse_dense(V, O, R, INNER, OI, F64: tl.constexpr, VIA32: tl.constexpr,
         e = tl.where(rmask, _ld.exp(x - mx[None, :]), 0.0)
         s = _bfly(e, NP2R, BLOCK_CI)
         ls = tl.log(s)
-        tl.store(O + ptr, (tl.where(rmask, x, 0.0) - mx[None, :]) - ls,
-                 mask=rmask)
+        tl.store(OUT + ptr, (tl.where(rmask, x, 0.0) - mx[None, :]) - ls, mask=rmask)
     else:
         if F64:
             mx = tl.full([BLOCK_CI], float("-inf"), dtype=tl.float64)
@@ -209,12 +233,13 @@ def _lse_dense(V, O, R, INNER, OI, F64: tl.constexpr, VIA32: tl.constexpr,
                 x = raw.to(tl.float32).to(tl.float64) if VIA32 else raw.to(tl.float64)
             else:
                 x = raw.to(tl.float32)
-            tl.store(O + base + r * INNER, (x - mx) - ls, mask=m)
+            tl.store(OUT + base + r * INNER, (x - mx) - ls, mask=m)
 
 
 @triton.jit
-def _lse_wide(V, O, R, NP2R: tl.constexpr, OUTER, F64: tl.constexpr,
-              VIA32: tl.constexpr):
+def _lse_wide(
+    V, OUT, R, NP2R: tl.constexpr, OUTER, F64: tl.constexpr, VIA32: tl.constexpr
+):
     """Case A when the dense reduce axis is a contiguous run of ``R`` elements.
 
     One program per (stored row, outer index): the whole reduce axis is loaded
@@ -236,7 +261,7 @@ def _lse_wide(V, O, R, NP2R: tl.constexpr, OUTER, F64: tl.constexpr,
         mx = tl.max(tl.where(rm, x, float("-inf")), axis=0)
         s = tl.sum(tl.where(rm, _ld.exp(x - mx), 0.0), axis=0)
     ls = tl.log(s)
-    tl.store(O + base + r, (tl.where(rm, x, 0.0) - mx) - ls, mask=rm)
+    tl.store(OUT + base + r, (tl.where(rm, x, 0.0) - mx) - ls, mask=rm)
 
 
 @triton.jit
@@ -283,8 +308,16 @@ def _place(KEY, CURSOR, ORDER, n, BLOCK: tl.constexpr):
 
 
 @triton.jit
-def _group_lse(V, O, START, ORDER, Dn, F64: tl.constexpr, VIA32: tl.constexpr,
-               BLOCK_D: tl.constexpr):
+def _group_lse(
+    V,
+    OUT,
+    START,
+    ORDER,
+    Dn,
+    F64: tl.constexpr,
+    VIA32: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
     """Case B: max, sum of exp in member order, then write, per group."""
     g = tl.program_id(0)
     lo = tl.load(START + g)
@@ -323,7 +356,7 @@ def _group_lse(V, O, START, ORDER, Dn, F64: tl.constexpr, VIA32: tl.constexpr,
             x = raw.to(tl.float32).to(tl.float64) if VIA32 else raw.to(tl.float64)
         else:
             x = raw.to(tl.float32)
-        tl.store(O + p * Dn + off, (x - mx) - ls, mask=md)
+        tl.store(OUT + p * Dn + off, (x - mx) - ls, mask=md)
 
 
 # --------------------------------------------------------------------------
@@ -332,8 +365,8 @@ def _group_lse(V, O, START, ORDER, Dn, F64: tl.constexpr, VIA32: tl.constexpr,
 
 
 @triton.jit
-def _bwd_dense(DY, O, DO, R, INNER, OI, F64: tl.constexpr, BLOCK_CI: tl.constexpr):
-    """dO = dY - exp(O) * sum_dense(dY) in the input's own precision."""
+def _bwd_dense(DY, OUT, DO, R, INNER, OI, F64: tl.constexpr, BLOCK_CI: tl.constexpr):
+    """dO = dY - exp(OUT) * sum_dense(dY) in the input's own precision."""
     row = tl.program_id(0)
     oi = tl.program_id(1) * BLOCK_CI + tl.arange(0, BLOCK_CI)
     m = oi < OI
@@ -346,7 +379,7 @@ def _bwd_dense(DY, O, DO, R, INNER, OI, F64: tl.constexpr, BLOCK_CI: tl.constexp
             acc += tl.load(DY + base + r * INNER, mask=m, other=0.0).to(tl.float64)
         for r in range(0, R):
             dy = tl.load(DY + base + r * INNER, mask=m, other=0.0).to(tl.float64)
-            ov = tl.load(O + base + r * INNER, mask=m, other=0.0).to(tl.float64)
+            ov = tl.load(OUT + base + r * INNER, mask=m, other=0.0).to(tl.float64)
             tl.store(DO + base + r * INNER, dy - _ld.exp(ov) * acc, mask=m)
     else:
         acc = tl.zeros([BLOCK_CI], dtype=tl.float32)
@@ -354,7 +387,7 @@ def _bwd_dense(DY, O, DO, R, INNER, OI, F64: tl.constexpr, BLOCK_CI: tl.constexp
             acc += tl.load(DY + base + r * INNER, mask=m, other=0.0).to(tl.float32)
         for r in range(0, R):
             dy = tl.load(DY + base + r * INNER, mask=m, other=0.0).to(tl.float32)
-            ov = tl.load(O + base + r * INNER, mask=m, other=0.0).to(tl.float32)
+            ov = tl.load(OUT + base + r * INNER, mask=m, other=0.0).to(tl.float32)
             tl.store(DO + base + r * INNER, dy - _ld.exp(ov) * acc, mask=m)
 
 
@@ -380,8 +413,9 @@ def _bwd_gseq(DY, START, ORDER, ACC, Dn, F64: tl.constexpr, BLOCK_D: tl.constexp
 
 
 @triton.jit
-def _bwd_gwrite(DY, O, START, ORDER, ACC, DO, Dn, F64: tl.constexpr,
-                BLOCK_D: tl.constexpr):
+def _bwd_gwrite(
+    DY, OUT, START, ORDER, ACC, DO, Dn, F64: tl.constexpr, BLOCK_D: tl.constexpr
+):
     g = tl.program_id(0)
     lo = tl.load(START + g)
     hi = tl.load(START + g + 1)
@@ -391,11 +425,11 @@ def _bwd_gwrite(DY, O, START, ORDER, ACC, DO, Dn, F64: tl.constexpr,
         p = tl.load(ORDER + j)
         if F64:
             dy = tl.load(DY + p * Dn + off, mask=md, other=0.0).to(tl.float64)
-            ov = tl.load(O + p * Dn + off, mask=md, other=0.0).to(tl.float64)
+            ov = tl.load(OUT + p * Dn + off, mask=md, other=0.0).to(tl.float64)
             a = tl.load(ACC + g * Dn + off, mask=md, other=0.0).to(tl.float64)
         else:
             dy = tl.load(DY + p * Dn + off, mask=md, other=0.0).to(tl.float32)
-            ov = tl.load(O + p * Dn + off, mask=md, other=0.0).to(tl.float32)
+            ov = tl.load(OUT + p * Dn + off, mask=md, other=0.0).to(tl.float32)
             a = tl.load(ACC + g * Dn + off, mask=md, other=0.0).to(tl.float32)
         tl.store(DO + p * Dn + off, dy - _ld.exp(ov) * a, mask=md)
 
@@ -434,31 +468,40 @@ def _coalesce(self, dense_shape, dnumel):
     nnz = self._nnz()
     vals = self._values().reshape(nnz, dnumel)
     w = _strides([int(s) for s in size[:sparse_dim]])
-    sizes = torch.tensor([int(s) for s in size[:sparse_dim]], dtype=torch.int64,
-                         device=device)
+    sizes = torch.tensor(
+        [int(s) for s in size[:sparse_dim]], dtype=torch.int64, device=device
+    )
     wt = torch.tensor(w, dtype=torch.int64, device=device)
     domain = 1
     for s in size[:sparse_dim]:
         domain *= int(s)
     keys = torch.empty(nnz, dtype=torch.int64, device=device)
-    _key_all[(triton.cdiv(nnz, _BLOCK_N),)](src, wt, keys, nnz, sparse_dim,
-                                            BLOCK=_BLOCK_N)
+    _key_all[(triton.cdiv(nnz, _BLOCK_N),)](
+        src, wt, keys, nnz, sparse_dim, BLOCK=_BLOCK_N
+    )
     hist = torch.zeros(domain, dtype=torch.int32, device=device)
     _hist[(triton.cdiv(nnz, _BLOCK_N),)](keys, hist, nnz, BLOCK=_BLOCK_N)
     start = torch.empty(domain + 1, dtype=torch.int32, device=device)
     distinct = torch.empty(1, dtype=torch.int32, device=device)
     _scan[(1,)](hist, start, distinct, domain, BLOCK=_BLOCK_K)
     total = int(distinct.item())
-    idx_out = torch.empty((sparse_dim, max(total, 1)), dtype=torch.int64,
-                          device=device)
+    idx_out = torch.empty((sparse_dim, max(total, 1)), dtype=torch.int64, device=device)
     if total > 0:
         _coalesce_idx[(triton.cdiv(domain, _BLOCK_N),)](
-            wt, sizes, start, idx_out, idx_out.stride(0), domain, sparse_dim,
-            BLOCK=_BLOCK_N)
+            wt,
+            sizes,
+            start,
+            idx_out,
+            idx_out.stride(0),
+            domain,
+            sparse_dim,
+            BLOCK=_BLOCK_N,
+        )
     vout = torch.zeros((max(total, 1), dnumel), dtype=vals.dtype, device=device)
     if nnz > 0:
         _scatter_val[(nnz, triton.cdiv(dnumel, _BLOCK_V))](
-            vals, keys, start, vout, dnumel, nnz, _BLOCK_V)
+            vals, keys, start, vout, dnumel, nnz, _BLOCK_V
+        )
     return idx_out[:, :total].contiguous(), vout[:total], total
 
 
@@ -474,8 +517,9 @@ def _pool_key(self, dim):
         if s != dim:
             domain *= int(size[s])
     keys = torch.empty(nnz, dtype=torch.int64, device=device)
-    _key_pool[(triton.cdiv(nnz, _BLOCK_N),)](src, wt, keys, nnz, sparse_dim, dim,
-                                             BLOCK=_BLOCK_N)
+    _key_pool[(triton.cdiv(nnz, _BLOCK_N),)](
+        src, wt, keys, nnz, sparse_dim, dim, BLOCK=_BLOCK_N
+    )
     return keys, domain
 
 
@@ -500,7 +544,7 @@ def _forward_core(self, dim, out_dtype):
                 outer *= s
             red = dense_shape[a]
             inner = 1
-            for s in dense_shape[a + 1:]:
+            for s in dense_shape[a + 1 :]:
                 inner *= s
             oi = outer * inner
             small = red <= 128
@@ -517,40 +561,57 @@ def _forward_core(self, dim, out_dtype):
                 _lse_wide[(nnz, outer)](vals, result, red, np2r, outer, f64, via32)
             else:
                 _lse_dense[(nnz, triton.cdiv(oi, bci))](
-                    vals, result, red, inner, oi, f64, via32, NP2R=np2r,
-                    SMALL=small, BLOCK_CI=bci)
+                    vals,
+                    result,
+                    red,
+                    inner,
+                    oi,
+                    f64,
+                    via32,
+                    NP2R=np2r,
+                    SMALL=small,
+                    BLOCK_CI=bci,
+                )
         else:
             keys, domain = _pool_key(self, dim)
             cnt = torch.zeros(domain, dtype=torch.int32, device=device)
-            _count_key[(triton.cdiv(nnz, _BLOCK_N),)](keys, cnt, nnz,
-                                                      BLOCK=_BLOCK_N)
+            _count_key[(triton.cdiv(nnz, _BLOCK_N),)](keys, cnt, nnz, BLOCK=_BLOCK_N)
             gstart = torch.empty(domain + 1, dtype=torch.int32, device=device)
             total = torch.empty(1, dtype=torch.int32, device=device)
             _scan_counts[(1,)](cnt, gstart, total, domain, BLOCK=_BLOCK_K)
             cursor = gstart[:domain].clone()
             order = torch.empty(nnz, dtype=torch.int32, device=device)
-            _place[(triton.cdiv(nnz, _BLOCK_N),)](keys, cursor, order, nnz,
-                                                 BLOCK=_BLOCK_N)
+            _place[(triton.cdiv(nnz, _BLOCK_N),)](
+                keys, cursor, order, nnz, BLOCK=_BLOCK_N
+            )
             _group_lse[(domain, triton.cdiv(dnumel, _BLOCK_D))](
-                vals, result, gstart, order, dnumel, f64, via32, BLOCK_D=_BLOCK_D)
+                vals, result, gstart, order, dnumel, f64, via32, BLOCK_D=_BLOCK_D
+            )
             ginfo = (gstart, order)
     return indices, result, size, sparse_dim, dense_shape, dnumel, ginfo
 
 
 def _forward(self, dim, out_dtype):
     indices, result, size, sparse_dim, dense_shape, dnumel, _ = _forward_core(
-        self, dim, out_dtype)
+        self, dim, out_dtype
+    )
     nnz = result.shape[0]
-    return torch.sparse_coo_tensor(indices, result.reshape((nnz,) + dense_shape),
-                                   size, dtype=out_dtype, device=indices.device,
-                                   is_coalesced=True)
+    return torch.sparse_coo_tensor(
+        indices,
+        result.reshape((nnz,) + dense_shape),
+        size,
+        dtype=out_dtype,
+        device=indices.device,
+        is_coalesced=True,
+    )
 
 
 class _SparseLogSoftmax(torch.autograd.Function):
     @staticmethod
     def forward(ctx, inp, dim, out_dtype):
-        indices, result, size, sparse_dim, dense_shape, dnumel, ginfo = \
-            _forward_core(inp, dim, out_dtype)
+        indices, result, size, sparse_dim, dense_shape, dnumel, ginfo = _forward_core(
+            inp, dim, out_dtype
+        )
         ctx.dim = dim
         ctx.sparse_dim = sparse_dim
         ctx.size = size
@@ -561,10 +622,14 @@ class _SparseLogSoftmax(torch.autograd.Function):
         ctx.in_dtype = inp.dtype
         ctx.save_for_backward(result)
         nnz = result.shape[0]
-        return torch.sparse_coo_tensor(indices,
-                                       result.reshape((nnz,) + dense_shape),
-                                       size, dtype=out_dtype,
-                                       device=indices.device, is_coalesced=True)
+        return torch.sparse_coo_tensor(
+            indices,
+            result.reshape((nnz,) + dense_shape),
+            size,
+            dtype=out_dtype,
+            device=indices.device,
+            is_coalesced=True,
+        )
 
     @staticmethod
     def backward(ctx, grad_out):
@@ -585,24 +650,31 @@ class _SparseLogSoftmax(torch.autograd.Function):
                     outer *= s
                 red = ctx.dense_shape[a]
                 inner = 1
-                for s in ctx.dense_shape[a + 1:]:
+                for s in ctx.dense_shape[a + 1 :]:
                     inner *= s
                 oi = outer * inner
                 _bwd_dense[(nnz, triton.cdiv(oi, _BLOCK_CI))](
-                    dy, oval, do, red, inner, oi, f64, BLOCK_CI=_BLOCK_CI)
+                    dy, oval, do, red, inner, oi, f64, BLOCK_CI=_BLOCK_CI
+                )
             else:
                 gstart, order = ctx.ginfo
                 ng = gstart.numel() - 1
                 adt = torch.float64 if f64 else do.dtype
                 acc = torch.empty(ng * dnumel, dtype=adt, device=oval.device)
                 _bwd_gseq[(ng, triton.cdiv(dnumel, _BLOCK_D))](
-                    dy, gstart, order, acc, dnumel, f64, BLOCK_D=_BLOCK_D)
+                    dy, gstart, order, acc, dnumel, f64, BLOCK_D=_BLOCK_D
+                )
                 _bwd_gwrite[(ng, triton.cdiv(dnumel, _BLOCK_D))](
-                    dy, oval, gstart, order, acc, do, dnumel, f64,
-                    BLOCK_D=_BLOCK_D)
+                    dy, oval, gstart, order, acc, do, dnumel, f64, BLOCK_D=_BLOCK_D
+                )
         grads = torch.sparse_coo_tensor(
-            ctx.indices, do.reshape((nnz,) + ctx.dense_shape), ctx.size,
-            dtype=ctx.in_dtype, device=ctx.indices.device, is_coalesced=True)
+            ctx.indices,
+            do.reshape((nnz,) + ctx.dense_shape),
+            ctx.size,
+            dtype=ctx.in_dtype,
+            device=ctx.indices.device,
+            is_coalesced=True,
+        )
         return grads, None, None
 
 
@@ -611,11 +683,13 @@ def _resolve_dtype(self, dtype):
         return self.dtype
     target = dtype if isinstance(dtype, torch.dtype) else torch.dtype(dtype)
     if target not in (torch.float32, torch.float64):
-        raise RuntimeError('"log_softmax" not implemented for \'%s\''
-                           % _NAMES.get(target, str(target)))
+        raise RuntimeError(
+            "\"log_softmax\" not implemented for '%s'" % _NAMES.get(target, str(target))
+        )
     if self.dtype == torch.float16 and target == torch.float32:
         raise RuntimeError(
-            "log_softmax: with half to float conversion is not supported on cuda:0")
+            "log_softmax: with half to float conversion is not supported on cuda:0"
+        )
     return target
 
 
@@ -627,20 +701,25 @@ def _sparse_log_softmax(self, dim, half_to_float=False, dtype=None, out=None):
             "this backend, or was omitted during the selective/custom build process "
             "(if using a custom build). If you are a Facebook employee using PyTorch "
             "on mobile, you can also receive this error if you are trying to run the "
-            "operator with a lite interpreter.")
+            "operator with a lite interpreter."
+        )
     if half_to_float:
         raise RuntimeError(
-            "log_softmax: with half to float conversion is not supported on cuda:0")
+            "log_softmax: with half to float conversion is not supported on cuda:0"
+        )
     if not isinstance(dim, int):
         raise TypeError("dim must be an int")
     if dim < -self.dim() or dim >= self.dim():
         raise IndexError(
             "Dimension out of range (expected to be in range of [%d, %d], but got %d)"
-            % (-self.dim(), self.dim() - 1, dim))
+            % (-self.dim(), self.dim() - 1, dim)
+        )
     dim = dim % self.dim()
     if dtype is None and self.dtype not in (torch.float32, torch.float64):
-        raise RuntimeError('"log_softmax" not implemented for \'%s\''
-                           % _NAMES.get(self.dtype, str(self.dtype)))
+        raise RuntimeError(
+            "\"log_softmax\" not implemented for '%s'"
+            % _NAMES.get(self.dtype, str(self.dtype))
+        )
     target = _resolve_dtype(self, dtype)
     if self.requires_grad and target in (torch.float32, torch.float64):
         result = _SparseLogSoftmax.apply(self, dim, target)

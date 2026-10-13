@@ -206,11 +206,7 @@ def _use_tiny_compare(n_s, n_m, lead):
     their tiles; the int32 coordinate key additionally requires the sparse
     coordinate space to fit an int32.
     """
-    return (
-        lead < 2**31
-        and n_m <= _BLOCK_M_TINY
-        and n_s * max(1, n_m) <= _TINY_MAX
-    )
+    return lead < 2**31 and n_m <= _BLOCK_M_TINY and n_s * max(1, n_m) <= _TINY_MAX
 
 
 @triton.jit
@@ -254,7 +250,9 @@ def _fused_tiny_kernel(
     s_lin = tl.zeros([BLOCK_R], dtype=tl.int32)
     for k in tl.static_range(ND):
         sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int32)
-        ck = tl.load(s_ind_ptr + k * i_row + rows * i_col, mask=mr, other=0).to(tl.int32)
+        ck = tl.load(s_ind_ptr + k * i_row + rows * i_col, mask=mr, other=0).to(
+            tl.int32
+        )
         s_lin += ck * sk
 
     offs_m = tl.arange(0, BLOCK_M)

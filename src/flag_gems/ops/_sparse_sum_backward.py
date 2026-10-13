@@ -53,8 +53,8 @@ _WARPS = 4
 _AUX_BLOCK = 1024
 
 # Kept-dense-offset handling inside the value kernels.
-_DM_SUFFIX = 0    # kept dense dims are a suffix -> goff = col % D_KEEP_RUN
-_DM_GENERAL = 1   # arbitrary kept dense dims -> explicit static loop
+_DM_SUFFIX = 0  # kept dense dims are a suffix -> goff = col % D_KEEP_RUN
+_DM_GENERAL = 1  # arbitrary kept dense dims -> explicit static loop
 
 
 # --------------------------------------------------------------------------- #
@@ -146,9 +146,9 @@ def _ssb_gather(
 
     key = tl.zeros([BLOCK], tl.int64)
     for t in tl.static_range(NKS):
-        v = tl.load(
-            sidx_ptr + KS[t] * sidx_s0 + row * sidx_s1, mask=mask, other=0
-        ).to(tl.int64)
+        v = tl.load(sidx_ptr + KS[t] * sidx_s0 + row * sidx_s1, mask=mask, other=0).to(
+            tl.int64
+        )
         key += v * KEY_STRIDES[t]
     grow = tl.load(map_ptr + key, mask=mask, other=-1).to(tl.int64)
     grow = tl.maximum(grow, 0)
@@ -177,9 +177,9 @@ def _ssb_map(
     mask = r < nnzg
     key = tl.zeros([BLOCK], tl.int64)
     for t in tl.static_range(NKS):
-        v = tl.load(
-            gidx_ptr + t * gidx_s0 + r * gidx_s1, mask=mask, other=0
-        ).to(tl.int64)
+        v = tl.load(gidx_ptr + t * gidx_s0 + r * gidx_s1, mask=mask, other=0).to(
+            tl.int64
+        )
         key += v * KEY_STRIDES[t]
     tl.store(map_ptr + key, r, mask=mask)
 
@@ -200,9 +200,9 @@ def _ssb_hist(
     mask = i < nnz
     key = tl.zeros([BLOCK], tl.int64)
     for d in tl.static_range(SD):
-        v = tl.load(
-            sidx_ptr + d * sidx_s0 + i * sidx_s1, mask=mask, other=0
-        ).to(tl.int64)
+        v = tl.load(sidx_ptr + d * sidx_s0 + i * sidx_s1, mask=mask, other=0).to(
+            tl.int64
+        )
         key += v * SSTRIDES[d]
     tl.atomic_add(cnt_ptr + key, 1, mask=mask)
 
@@ -286,8 +286,15 @@ def _sparsify(k, sidx, sparse_sizes, device):
     tot = torch.zeros(1, dtype=torch.int32, device=device)
     if k > 0 and nnz > 0:
         _ssb_hist[(triton.cdiv(nnz, _AUX_BLOCK),)](
-            sidx, cnt, nnz, s0, s1,
-            SD=k, SSTRIDES=tuple(sstr), BLOCK=_AUX_BLOCK, num_warps=_WARPS,
+            sidx,
+            cnt,
+            nnz,
+            s0,
+            s1,
+            SD=k,
+            SSTRIDES=tuple(sstr),
+            BLOCK=_AUX_BLOCK,
+            num_warps=_WARPS,
         )
     _ssb_scan_slots[(1,)](cnt, slot, tot, nkeys, BLOCK=_AUX_BLOCK, num_warps=_WARPS)
     nnz_out = int(tot.item())
@@ -295,9 +302,15 @@ def _sparsify(k, sidx, sparse_sizes, device):
         return torch.empty((k, 0), dtype=torch.long, device=device), 0
     out_idx = torch.empty((k, nnz_out), dtype=torch.long, device=device)
     _ssb_scatter[(triton.cdiv(nkeys, _AUX_BLOCK),)](
-        slot, out_idx, nnz_out, nkeys,
-        SD=k, SIZES=tuple(sparse_sizes), SSTRIDES=tuple(sstr),
-        BLOCK=_AUX_BLOCK, num_warps=_WARPS,
+        slot,
+        out_idx,
+        nnz_out,
+        nkeys,
+        SD=k,
+        SIZES=tuple(sparse_sizes),
+        SSTRIDES=tuple(sstr),
+        BLOCK=_AUX_BLOCK,
+        num_warps=_WARPS,
     )
     return out_idx, nnz_out
 
@@ -307,9 +320,15 @@ def _make_map(ks, key_strides, nkeys, gidx, nnzg, device):
     if nnzg > 0 and nkeys > 0:
         gs0, gs1 = _elem_strides(gidx)
         _ssb_map[(triton.cdiv(nnzg, _BLOCK),)](
-            gidx, map_t, nnzg, gs0, gs1,
-            NKS=len(ks), KEY_STRIDES=tuple(key_strides),
-            BLOCK=_BLOCK, num_warps=_WARPS,
+            gidx,
+            map_t,
+            nnzg,
+            gs0,
+            gs1,
+            NKS=len(ks),
+            KEY_STRIDES=tuple(key_strides),
+            BLOCK=_BLOCK,
+            num_warps=_WARPS,
         )
     return map_t
 
@@ -334,9 +353,7 @@ def _validate_dims(dims, rank):
 # --------------------------------------------------------------------------- #
 def _sparse_sum_backward(grad, self, dim, out=None):
     if not getattr(self, "is_sparse", False) or self.layout != torch.sparse_coo:
-        raise RuntimeError(
-            "_sparse_sum_backward: self must be a sparse COO tensor"
-        )
+        raise RuntimeError("_sparse_sum_backward: self must be a sparse COO tensor")
 
     shape = tuple(int(s) for s in self.shape)
     rank = len(shape)
@@ -369,23 +386,18 @@ def _sparse_sum_backward(grad, self, dim, out=None):
             )
         for t, d in enumerate(ks):
             if gshape[t] != shape[d]:
-                raise RuntimeError(
-                    "_sparse_sum_backward: grad sparse size mismatch"
-                )
+                raise RuntimeError("_sparse_sum_backward: grad sparse size mismatch")
         for t, d in enumerate(kd):
             gs = gshape[gk + t]
             if gs != shape[d] and gs != 1:
-                raise RuntimeError(
-                    "_sparse_sum_backward: grad dense size mismatch"
-                )
+                raise RuntimeError("_sparse_sum_backward: grad dense size mismatch")
         if len(ks) != k and self.dtype not in (
             torch.float16,
             torch.float32,
             torch.float64,
         ):
             raise RuntimeError(
-                '"_sparse_sum_backward_cuda" not implemented for '
-                f"'{self.dtype}'"
+                '"_sparse_sum_backward_cuda" not implemented for ' f"'{self.dtype}'"
             )
     else:
         if grad_sparse:
@@ -401,9 +413,7 @@ def _sparse_sum_backward(grad, self, dim, out=None):
         for t, d in enumerate(kd):
             gs = int(grad.shape[t])
             if gs != shape[d] and gs != 1:
-                raise RuntimeError(
-                    "_sparse_sum_backward: grad dense size mismatch"
-                )
+                raise RuntimeError("_sparse_sum_backward: grad dense size mismatch")
 
     device = self.device
     sidx = self._indices()
@@ -444,9 +454,7 @@ def _sparse_sum_backward(grad, self, dim, out=None):
             dense_mode = _DM_GENERAL
             d_keep_run = 1
 
-    out_vals = torch.empty(
-        (nnz,) + tuple(dense_sizes), dtype=self.dtype, device=device
-    )
+    out_vals = torch.empty((nnz,) + tuple(dense_sizes), dtype=self.dtype, device=device)
     n_elem = nnz * R_out
     if n_elem:
         grid = (triton.cdiv(n_elem, _BLOCK),)
@@ -455,8 +463,7 @@ def _sparse_sum_backward(grad, self, dim, out=None):
             gptr = grad
             grow_stride = 0
             gstrides = [
-                0 if int(grad.shape[t]) == 1 else gd_strides[t]
-                for t in range(nkd)
+                0 if int(grad.shape[t]) == 1 else gd_strides[t] for t in range(nkd)
             ]
         else:
             gptr = gsrc
@@ -473,21 +480,38 @@ def _sparse_sum_backward(grad, self, dim, out=None):
             )
         else:
             dense_kw.update(
-                KD_POS=0, KD_SIZES=(), KD_STRIDES=(), G_STRIDES=(),
+                KD_POS=0,
+                KD_SIZES=(),
+                KD_STRIDES=(),
+                G_STRIDES=(),
             )
 
         if gather:
             key_strides = _rowmajor([sparse_sizes[d] for d in ks])
             map_t = _make_map(
-                ks, key_strides, _prod([sparse_sizes[d] for d in ks]),
-                grad._indices(), int(grad._nnz()), device,
+                ks,
+                key_strides,
+                _prod([sparse_sizes[d] for d in ks]),
+                grad._indices(),
+                int(grad._nnz()),
+                device,
             )
             _ssb_gather[grid](
-                gptr, sidx, map_t, out_vals, n_elem, grow_stride,
-                _elem_strides(sidx)[0], _elem_strides(sidx)[1],
+                gptr,
+                sidx,
+                map_t,
+                out_vals,
+                n_elem,
+                grow_stride,
+                _elem_strides(sidx)[0],
+                _elem_strides(sidx)[1],
                 R_OUT=R_out,
-                NKS=len(ks), KS=tuple(ks), KEY_STRIDES=tuple(key_strides),
-                BLOCK=_BLOCK, num_warps=_WARPS, **dense_kw,
+                NKS=len(ks),
+                KS=tuple(ks),
+                KEY_STRIDES=tuple(key_strides),
+                BLOCK=_BLOCK,
+                num_warps=_WARPS,
+                **dense_kw,
             )
         else:
             # src == offs exactly: row(i) == i and both row strides are R_out
@@ -498,9 +522,16 @@ def _sparse_sum_backward(grad, self, dim, out=None):
                 and grow_stride == R_out
             )
             _ssb_copy[grid](
-                gptr, out_vals, n_elem, grow_stride,
-                R_OUT=R_out, SAME_ROW=same_row, IDENTITY=identity,
-                BLOCK=_BLOCK, num_warps=_WARPS, **dense_kw,
+                gptr,
+                out_vals,
+                n_elem,
+                grow_stride,
+                R_OUT=R_out,
+                SAME_ROW=same_row,
+                IDENTITY=identity,
+                BLOCK=_BLOCK,
+                num_warps=_WARPS,
+                **dense_kw,
             )
 
     res = torch.sparse_coo_tensor(

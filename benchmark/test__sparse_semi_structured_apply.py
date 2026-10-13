@@ -19,7 +19,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 
 # (M, K) with M, K multiples of 8; thread_masks have shape (M/8, K/8, 8).
 SPARSE_SEMI_STRUCTURED_APPLY_SHAPES = [
