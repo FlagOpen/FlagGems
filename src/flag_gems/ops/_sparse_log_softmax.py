@@ -462,14 +462,11 @@ def _coalesce(self, dense_shape, dnumel):
     return idx_out[:, :total].contiguous(), vout[:total], total
 
 
-def _pool_key(self, dim, indices=None):
+def _pool_key(self, dim):
     size, sparse_dim, dense_shape, _ = _sparse_meta(self)
     device = self._indices().device
-    # An uncoalesced input is coalesced internally first, so the pool keys must
-    # be derived from the (possibly re-coalesced) indices and their nnz rather
-    # than the original stored coordinates.
-    src = (self._indices() if indices is None else indices).contiguous()
-    nnz = src.shape[1]
+    src = self._indices().contiguous()
+    nnz = self._nnz()
     w = _strides([int(s) for s in size[:sparse_dim]], skip=dim)
     wt = torch.tensor(w, dtype=torch.int64, device=device)
     domain = 1
@@ -523,7 +520,7 @@ def _forward_core(self, dim, out_dtype):
                     vals, result, red, inner, oi, f64, via32, NP2R=np2r,
                     SMALL=small, BLOCK_CI=bci)
         else:
-            keys, domain = _pool_key(self, dim, indices)
+            keys, domain = _pool_key(self, dim)
             cnt = torch.zeros(domain, dtype=torch.int32, device=device)
             _count_key[(triton.cdiv(nnz, _BLOCK_N),)](keys, cnt, nnz,
                                                       BLOCK=_BLOCK_N)
