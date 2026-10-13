@@ -413,6 +413,28 @@ def _pow2(value):
     return out
 
 
+def _fwd_tile(dtype, cout, mtotal):
+    """Pick (BLOCK_M, BLOCK_CO, num_warps, num_stages) for the dot kernel.
+
+    Measured on an H20 with the benchmark shapes (see PR #6989 review):
+      * The batch-1 shapes only reach 128 CTAs at BLOCK_M=128/BLOCK_CO=64,
+        one short wave on 132 SMs with nothing left to hide latency. Larger
+        BLOCK_M tiles (256) or a wider BLOCK_CO raise the CTA count and give
+        up to 1.5x on fp16 [1,64,128,128].
+      * fp32 is best with a small BLOCK_M=64/BLOCK_CO=64 tile at large M
+        (0.311 -> 0.097 ms) and a fat BLOCK_M=256, 8-warp tile at small M
+        (0.202 -> 0.043 ms); the ieee dot path is launch/latency bound there.
+      * One pipeline stage beats the default three on every tap-loop cell.
+    """
+    if dtype == torch.float32:
+        if mtotal >= 16384:
+            return 64, 64, 4, 1
+        return 256, 32, 8, 1
+    if mtotal >= 16384:
+        return 256, 64, 8, 1
+    return 256, 32, 8, 2
+
+
 def _pair(value, name):
     """Normalize a 2-element parameter; scalars raise TypeError like ATen does."""
     try:
@@ -508,11 +530,17 @@ def _forward(
         )
         return out
 
-    prec = "ieee" if x.dtype == torch.float32 else "tf32"
-    bk = _pow2(min(cin, 64))
-    bco = min(_pow2(max(cout, 16)), 64)
+    # ATen's cuDNN convolutions run TF32 by default (cudnn.allow_tf32), so
+    # follow that flag for fp32; fp16/bf16 always use their native
+    # tensor-core path, and ieee keeps full fp32 precision when TF32 is off.
+    if x.dtype == torch.float32:
+        prec = "tf32" if torch.backends.cudnn.allow_tf32 else "ieee"
+    else:
+        prec = "tf32"
     mtotal = hout * wout
-    bm = 128 if mtotal >= 1024 else 64
+    bk = _pow2(min(cin, 64))
+    bm, bco, warps, stages = _fwd_tile(x.dtype, cout, mtotal)
+    bco = min(bco, _pow2(max(cout, 16)))
     grid = (triton.cdiv(mtotal, bm), triton.cdiv(cout, bco), n)
     _sct2d_dot[grid](
         x,
@@ -551,7 +579,8 @@ def _forward(
         KH=kh,
         KW=kw,
         PREC=prec,
-        num_warps=4,
+        num_warps=warps,
+        num_stages=stages,
     )
     return out
 
