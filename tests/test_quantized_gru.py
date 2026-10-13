@@ -19,6 +19,17 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Building the reference requires a quantization engine compiled into PyTorch
+# (fbgemm/qnnpack/onednn/x86). The reference GRU runs on CPU while the FlagGems
+# implementation runs on flag_gems.device; only skip when no engine is present.
+_has_quantized_engine = any(
+    engine != "none" for engine in torch.backends.quantized.supported_engines
+)
+pytestmark = pytest.mark.skipif(
+    not _has_quantized_engine,
+    reason="PyTorch build has no quantization engine for the reference GRU",
+)
+
 
 def _make_dynamic_quantized_gru(
     input_size,
