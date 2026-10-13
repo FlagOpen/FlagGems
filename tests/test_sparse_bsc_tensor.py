@@ -61,9 +61,7 @@ def test_sparse_bsc_tensor_explicit_size(shape, dtype):
     values = sp.values()
 
     ref_out = _sparse_bsc_tensor_ref(ccol_indices, row_indices, values, shape)
-    res_out = flag_gems.sparse_bsc_tensor(
-        ccol_indices, row_indices, values, size=shape
-    )
+    res_out = flag_gems.sparse_bsc_tensor(ccol_indices, row_indices, values, size=shape)
 
     _assert_bsc_close(res_out, ref_out, dtype)
 
@@ -97,9 +95,7 @@ def test_sparse_bsc_tensor_blocksize(shape, blocksize, dtype):
     values = sp.values()
 
     ref_out = _sparse_bsc_tensor_ref(ccol_indices, row_indices, values, shape)
-    res_out = flag_gems.sparse_bsc_tensor(
-        ccol_indices, row_indices, values, size=shape
-    )
+    res_out = flag_gems.sparse_bsc_tensor(ccol_indices, row_indices, values, size=shape)
 
     _assert_bsc_close(res_out, ref_out, dtype)
 

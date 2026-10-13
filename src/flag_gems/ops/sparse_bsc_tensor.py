@@ -46,7 +46,17 @@ def _flat_copy_cast(src, dst):
 _SPARSE_BSC_TENSOR = torch.sparse_bsc_tensor
 
 
-def sparse_bsc_tensor(ccol_indices, row_indices, values, size=None, *, dtype=None, layout=None, device=None, pin_memory=False):
+def sparse_bsc_tensor(
+    ccol_indices,
+    row_indices,
+    values,
+    size=None,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=False,
+):
     logger.debug("GEMS SPARSE BSC TENSOR")
     # Zero-GPU-work assembly: the benchmark supplies components that already
     # match the requested dtype/device, so the constructor performs no data
@@ -55,7 +65,9 @@ def sparse_bsc_tensor(ccol_indices, row_indices, values, size=None, *, dtype=Non
         # Only the size-inferring overload applies; the constructor infers the
         # logical shape from the block grid and the stored components.
         if layout is None and not pin_memory:
-            return torch.sparse_bsc_tensor(ccol_indices, row_indices, values, dtype=dtype, device=device)
+            return torch.sparse_bsc_tensor(
+                ccol_indices, row_indices, values, dtype=dtype, device=device
+            )
         return torch.sparse_bsc_tensor(
             ccol_indices,
             row_indices,
@@ -66,7 +78,9 @@ def sparse_bsc_tensor(ccol_indices, row_indices, values, size=None, *, dtype=Non
             pin_memory=pin_memory,
         )
     if layout is None and not pin_memory:
-        return torch.sparse_bsc_tensor(ccol_indices, row_indices, values, size, dtype=dtype, device=device)
+        return torch.sparse_bsc_tensor(
+            ccol_indices, row_indices, values, size, dtype=dtype, device=device
+        )
     return torch.sparse_bsc_tensor(
         ccol_indices,
         row_indices,
