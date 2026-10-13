@@ -1,28 +1,12 @@
 import logging
-import os
 
 import torch
 import triton
 import triton.language as tl
 
+from ._nested_copy_wrap import _nested_copy_wrap
+
 logger = logging.getLogger("flag_gems." + __name__)
-
-_CPP_EXT = None
-
-
-def _get_cpp_ext():
-    global _CPP_EXT
-    if _CPP_EXT is None:
-        from torch.utils.cpp_extension import load
-
-        _CPP_EXT = load(
-            name="gems_nested_copy_wrap",
-            sources=[os.path.join(os.path.dirname(__file__), "_nested_copy_wrap.cpp")],
-            extra_cflags=["-O2"],
-            verbose=False,
-        )
-    return _CPP_EXT
-
 
 # Payload copy block size (in elements). B=8192 is a fixed value validated on 0.4–0.8MB payloads; no sweep was run.
 _CPO_BLOCK = 8192
@@ -185,9 +169,7 @@ def _nested_view_from_buffer_copy(
         and sum(int(nested_size[i].item()) for i in range(num_components))
         == self.numel()
     ):
-        return _get_cpp_ext().nested_copy_wrap(
-            self, nested_size, nested_strides, offsets
-        )
+        return _nested_copy_wrap(self, nested_size, nested_strides, offsets)
 
     # Generic fallback: per-component as_strided views + as_nested_tensor.
     components = []
