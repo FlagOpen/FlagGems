@@ -16,6 +16,8 @@
 
 """Accuracy tests for ``aten::convolution``."""
 
+import math
+
 import pytest
 import torch
 
@@ -185,4 +187,5 @@ def test_convolution(case):
         output_padding,
         groups,
     )
-    utils.gems_assert_close(res, ref, dtype)
+    reduction = case[1][1] * math.prod(case[1][2:])
+    utils.gems_assert_close(res, ref, dtype, reduce_dim=reduction)
