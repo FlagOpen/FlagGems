@@ -99,13 +99,12 @@ _VIEW_ROWS = _layout_rows(tu.selected_shapes(), _CORE_LAYOUTS) + _layout_rows(
 )
 
 
-# Bool input generation ignores value_range; keep one sample per workload.
+# Storage offsets depend on the view geometry, not element values.
+# Keep every dtype and structural case with one ordinary value range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DTYPES
-    for value_range in (
-        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
-    )
+    for value_range in tu.selected_ranges()[:1]
 ]
 
 
