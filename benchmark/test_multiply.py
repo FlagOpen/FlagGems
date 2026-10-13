@@ -28,7 +28,7 @@ def test_multiply():
     bench.run()
 
 
-@pytest.mark.multiply
+@pytest.mark.multiply_scalar
 def test_multiply_scalar():
     bench = base.ScalarBinaryPointwiseBenchmark(
         op_name="multiply_scalar",

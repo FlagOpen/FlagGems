@@ -13091,6 +13091,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: multiply_scalar
+  description: Multiplies a tensor by a scalar element-wise (tensor-scalar overload
+    of multiply).
+  for:
+  - multiply.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: mv
   description: Performs a matrix-vector product of the matrix `input` and the vector
     `vec`.
