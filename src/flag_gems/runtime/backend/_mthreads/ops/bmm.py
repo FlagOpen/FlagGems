@@ -204,6 +204,13 @@ def bmm_sqmma_descriptor_pre_hook(nargs):
     nargs["c_desc"].block_shape = [nargs["BLOCK_SIZE_M"], nargs["BLOCK_SIZE_N"]]
 
 
+# bmm_sqmma_kernel can only fold a partial M tile back onto the previous one
+# while a whole BLOCK_SIZE_M window still fits inside the batch, so it needs the
+# masked-store fallback for every M below the largest BLOCK_SIZE_M in the tuned
+# config list below.  Keep the two in sync.
+_SQMMA_MAX_BLOCK_M = 128
+
+
 @libentry()
 @libtuner(
     configs=[
@@ -288,6 +295,7 @@ def bmm_sqmma_kernel(
     a_desc,
     b_desc,
     c_desc,
+    c_ptr,
     batch,
     M,
     N,
@@ -296,6 +304,7 @@ def bmm_sqmma_kernel(
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    NEEDS_M_MASK: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     batch_index = tl.program_id(axis=1)
@@ -306,7 +315,16 @@ def bmm_sqmma_kernel(
     group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
     pid_m = group_id * GROUP_M + (pid % group_size)
     pid_n = (pid % width) // group_size
-    offs_am = (pid_m * BLOCK_SIZE_M + batch_index * M).to(tl.int32)
+    # When M is not a multiple of BLOCK_SIZE_M the last tile of every batch
+    # would run BLOCK_SIZE_M rows past its own slice.  The A/C descriptors are
+    # flattened to (batch * M, .), so those rows belong to the *next* batch:
+    # the load would mix in the next matrix and the store would overwrite its
+    # first rows (and read/write past the buffer for the final batch).  Clamp
+    # the tile start into the batch instead, so the edge tile overlaps the
+    # previous one; the redundant rows recompute the exact same dot products,
+    # which keeps the result correct for every M >= BLOCK_SIZE_M.
+    offs_m = tl.minimum(pid_m * BLOCK_SIZE_M, tl.maximum(M - BLOCK_SIZE_M, 0))
+    offs_am = (offs_m + batch_index * M).to(tl.int32)
     offs_bn = (pid_n * BLOCK_SIZE_N).to(tl.int32)
     offs_ak = 0
     offs_ak = offs_ak.to(tl.int32)
@@ -318,7 +336,26 @@ def bmm_sqmma_kernel(
         accumulator = tl.dot(a, b, acc=accumulator)
         offs_ak += BLOCK_SIZE_K
         offs_bk += BLOCK_SIZE_K
-    tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
+    if NEEDS_M_MASK:
+        # M is smaller than a single tile, so no clamped window of BLOCK_SIZE_M
+        # rows fits inside the batch and the tile above still reaches into the
+        # next matrix.  Those extra rows only exist to fill the tile, so keep
+        # the loads as they are and mask the store down to the live rows rather
+        # than writing them past the end of the batch.
+        offs_cm = (batch_index * M + offs_m + tl.arange(0, BLOCK_SIZE_M)).to(tl.int64)
+        offs_cn = offs_bn + tl.arange(0, BLOCK_SIZE_N)
+        mask = (offs_m + tl.arange(0, BLOCK_SIZE_M) < M)[:, None] & (offs_cn < N)[
+            None, :
+        ]
+        tl.store(
+            c_ptr + offs_cm[:, None] * N + offs_cn[None, :],
+            accumulator.to(c_ptr.dtype.element_ty),
+            mask=mask,
+        )
+    else:
+        tl.store_tensor_descriptor(
+            c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype)
+        )
 
 
 def bmm_sqmma(A, B, elem_type, batch, M, N, K, C=None):
@@ -326,9 +363,10 @@ def bmm_sqmma(A, B, elem_type, batch, M, N, K, C=None):
     if C is None:
         c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
         C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
+    c_flat = C.reshape(batch * M, N)
     desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
     desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
-    desc_c = TensorDescriptor.from_tensor(C.reshape(batch * M, N), [1, 1])
+    desc_c = TensorDescriptor.from_tensor(c_flat, [1, 1])
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
         batch,
@@ -338,10 +376,12 @@ def bmm_sqmma(A, B, elem_type, batch, M, N, K, C=None):
         desc_a,
         desc_b,
         desc_c,
+        c_flat,
         batch,
         M,
         N,
         K,
+        NEEDS_M_MASK=M < _SQMMA_MAX_BLOCK_M,
     )
     return C
 
