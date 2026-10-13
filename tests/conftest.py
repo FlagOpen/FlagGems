@@ -68,12 +68,6 @@ def pytest_addoption(parser):
         help="run tests on quick mode",
     )
 
-    parser.addoption(
-        "--keep-bool-value-ranges",
-        action="store_true",
-        help="Keep repeated bool value-range samples in opted-in tests",
-    )
-
     try:
         parser.addoption(
             "--record",
@@ -275,11 +269,10 @@ def pytest_pycollect_makeitem(collector, name, obj):
 def pytest_collection_modifyitems(session, config, items):
     from .bool_range_utils import deduplicate_bool_range_items
 
-    if not config.getoption("--keep-bool-value-ranges"):
-        retained, deselected = deduplicate_bool_range_items(items)
-        items[:] = retained
-        if deselected:
-            config.hook.pytest_deselected(items=deselected)
+    retained, deselected = deduplicate_bool_range_items(items)
+    items[:] = retained
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
 
     collect_marks_file = config.getoption("--collect-marks")
     if collect_marks_file:

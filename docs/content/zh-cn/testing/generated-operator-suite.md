@@ -38,7 +38,6 @@
 `@tu.deduplicate_bool_ranges`；值类型参数名不为 `dtype` 时，显式指定
 `dtype_arg`。收集时，每个其他参数组合仅保留第一个等价 bool 值域，并通过
 pytest 的 deselected 统计报告移除项。不同参数标记仍分别保留。
-需要执行原始全部随机样本时，传入 `--keep-bool-value-ranges`。
 
 这只减少重复随机采样，不改变输入生成器、测试函数或 retained case 的
 ID 和顺序。非 bool 类型（包括 uint8）不参与此规则。值域会影响其他数据
