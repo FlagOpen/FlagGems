@@ -18,7 +18,15 @@ from .conftest import QUICK_MODE, TO_CPU
 # supports, that case is skipped via ``_skip_if_native_cannot``.
 NATIVE_AVAILABLE = False
 _NATIVE_UNAVAILABLE_REASON = ""
-if torch.cuda.is_available():
+# Only probe on a real NVIDIA device. Out-of-tree backends redirect
+# torch.cuda.* to their own runtime (torch_gcu's transfer_to_gcu makes
+# torch.cuda.is_available() return True and sends device="cuda" to the
+# accelerator), and the probe below then runs on hardware the CUTLASS path was
+# never meant for. On enflame gcu300 to_sparse_semi_structured aborts the
+# process inside topsatenLShift (int64 shift, TOPSATEN_STATUS_NOT_SUPPORT)
+# rather than raising, so the try/except cannot contain it and the whole
+# collection phase dies.
+if flag_gems.vendor_name == "nvidia" and torch.cuda.is_available():
     try:
         with contextlib.ExitStack() as _stk:
             _stk.callback(
