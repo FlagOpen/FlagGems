@@ -103,7 +103,8 @@ to `master`) and builds the backend matrix from
 `.github/configs/backends/config.yaml` plus one YAML file per backend,
 filtered by the `vendors` input (case-insensitive, empty = all enabled
 vendors); the `ops` input likewise narrows the run to specific operators
-(empty = every stage via `--stages all`).
+(empty = `alpha`, `beta`, and `stable` via `--stages all`,
+excluding `removed`).
 
 Backends are split into two execution modes:
 
@@ -141,7 +142,8 @@ GitHub Actions 原生的 `schedule` 触发器——因为在负载较高时，�
 （默认为 `master`），并基于 `.github/configs/backends/config.yaml` 以及
 每个后端对应的独立 YAML 文件构建后端矩阵，根据 `vendors` 输入参数进行
 筛选（不区分大小写，留空表示所有已启用的厂商）；`ops` 输入参数同样用于
-将测试范围缩小到指定算子（留空则通过 `--stages all` 运行全部测试阶段）。
+将测试范围缩小到指定算子（留空则通过 `--stages all` 运行 `alpha`、`beta`、
+`stable` 阶段，不包括 `removed`）。
 
 各后端按两种执行方式划分：
 
@@ -158,31 +160,6 @@ FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` �
 `add_labels`/`psum_text`/`psum_html` 汇总结果，并将结果打包为每个厂商
 对应的压缩包；除非通过 `upload_log`/`send_feishu` 输入参数禁用，还会将
 压缩包上传到内部 op-monitor 服务，并发送包含结果的飞书通知。
-
-<!--
-## `command.yaml` — on-demand `/test` command
-
-**Trigger:** `issue_comment` created on a PR, matching `/test
-<operator>:<runner>`.
-
-Lets any PR participant with the right permissions request an ad-hoc test
-of a single operator on a specific runner (e.g. `/test
-constant_pad_nd:mthreads`) without waiting for the operator to have a
-`vendor/*` label or for a full CI run. For operators that already have
-history, it runs the test before and after the PR's changes and posts a
-comparison; for brand-new operators, it posts a single-run report. Results
-(and full logs) are attached as a PR comment and an uploaded artifact.
--->
-## `command.yaml` — 按需 `/test` 命令
-
-**触发条件：** PR 下创建的 `issue_comment` 事件，且评论内容匹配
-`/test <算子名>:<runner>` 格式。
-
-允许拥有相应权限的任何 PR 参与者，针对单个算子在指定 runner 上发起临时测试
-（例如 `/test constant_pad_nd:mthreads`），而无需等待该算子被打上 `vendor/*`
-标签或等待完整的 CI 运行。对于已有测试历史的算子，会在 PR 改动前后分别运行
-测试并发布对比结果；对于全新算子，则只发布单次运行的报告。测试结果（及完整
-日志）会以 PR 评论和上传构件的形式提供。
 
 <!--
 ## Manually dispatched utility workflows
@@ -263,12 +240,38 @@ gh workflow run review-stats.yaml \
 ```
 
 <!--
+## Comment-triggered PR commands
+
+`command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
+are started by commenting on a pull request rather than by `workflow_dispatch`
+or a schedule, so they are documented in
+[Pull request checks](/FlagGems/zh-cn/cicd/pull-request/) together with the
+checks they complement.
+`command.yaml` reports failures through a PR comment with a link to the
+workflow run.
+-->
+## 由评论触发的 PR 命令
+
+`command.yaml`（`/test <算子名>:<runner>`）和 `fix-sort.yaml`（`/fix-sort`）
+是通过在 PR 下评论启动的，而非 `workflow_dispatch` 或定时触发，因此它们与各自
+配合的检查一并记录在[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)中。
+`command.yaml` 失败时会在 PR 下评论，并附上工作流运行链接。
+
+<!--
 ## Feishu and monitoring integrations
 
-- `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
-  Bitable for tracking pass/fail trends over time.
-- `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
-  notifications via `.github/scripts/notify_feishu.py`.
+- `ci-report-feishu.yaml` synchronizes `rule-check` results to a Feishu
+  Bitable for tracking pass/fail trends over time. Its `workflow_run`
+  trigger runs in the base repository context, so the reporting workflow can
+  use its configured secrets even when the reported run comes from a fork PR.
+  It checks out only `tools/ci_report_feishu.py` and supplies a GitHub token
+  plus Feishu app credentials. The workflow waits 5s, then invokes the
+  script up to three times in total (the initial attempt plus at most two
+  retries, waiting 10s and 20s before those retries). Its per-PR role is
+  described under `rule-check` in
+  [Pull request checks](/FlagGems/zh-cn/cicd/pull-request/).
+- `ops-test.yaml` sends outcome notifications via
+  `.github/scripts/notify_feishu.py`, unless disabled by `send_feishu`.
 - `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP
   service for longer-term dashboards.
 
@@ -276,10 +279,15 @@ These are observability workflows; they do not gate merges.
 -->
 ## 飞书与监控集成
 
-- `ci-report-feishu.yaml` 会将每一次 `rule-check` 的执行结果上报到飞书
-  多维表格（Bitable），用于跟踪长期的通过/失败趋势。
-- `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
-  `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
+- `ci-report-feishu.yaml` 将 `rule-check` 的结果同步到飞书多维表格（Bitable），
+  用于跟踪长期的通过/失败趋势。其 `workflow_run` 触发器在基础仓库上下文中
+  执行，因此即使所报告的运行来自 fork PR，上报工作流也可以使用已配置的密钥。
+  该工作流只检出 `tools/ci_report_feishu.py`，并提供 GitHub 令牌和飞书应用凭据。
+  工作流先等待
+  5 秒，再最多调用脚本 3 次（首次尝试加最多 2 次重试，重试前分别等待 10 秒、
+  20 秒）。它在 PR 流程中的作用见[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)。
+- `ops-test.yaml` 通过 `.github/scripts/notify_feishu.py` 发送运行结果通知，
+  可通过 `send_feishu` 禁用。
 - `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于
   生成长期监控看板。
 

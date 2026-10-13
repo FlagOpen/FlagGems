@@ -71,7 +71,8 @@ to `master`) and builds the backend matrix from
 `.github/configs/backends/config.yaml` plus one YAML file per backend,
 filtered by the `vendors` input (case-insensitive, empty = all enabled
 vendors); the `ops` input likewise narrows the run to specific operators
-(empty = every stage via `--stages all`).
+(empty = `alpha`, `beta`, and `stable` via `--stages all`,
+excluding `removed`).
 
 Backends are split into two execution modes:
 
@@ -90,19 +91,6 @@ scoped by `--ops` or `--stages all`, summarizes results with
 archive, and — unless disabled via the `upload_log`/`send_feishu` inputs —
 uploads the archive to the internal op-monitor service and posts a Feishu
 notification with the outcome.
-
-## `command.yaml` — on-demand `/test` command
-
-**Trigger:** `issue_comment` created on a PR, matching `/test
-<operator>:<runner>`.
-
-Lets any PR participant with the right permissions request an ad-hoc test
-of a single operator on a specific runner (e.g. `/test
-constant_pad_nd:mthreads`) without waiting for the operator to have a
-`vendor/*` label or for a full CI run. For operators that already have
-history, it runs the test before and after the PR's changes and posts a
-comparison; for brand-new operators, it posts a single-run report. Results
-(and full logs) are attached as a PR comment and an uploaded artifact.
 
 ## Manually dispatched utility workflows
 
@@ -183,12 +171,30 @@ gh workflow run review-stats.yaml \
   -f report_date_start=01/09/2026 -f report_date_end=30/09/2026
 ```
 
+## Comment-triggered PR commands
+
+`command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
+are started by commenting on a pull request rather than by `workflow_dispatch`
+or a schedule, so they are documented in
+[Pull request checks](/FlagGems/cicd/pull-request/) together with the checks
+they complement.
+`command.yaml` reports failures through a PR comment with a link to the
+workflow run.
+
 ## Feishu and monitoring integrations
 
-- `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
-  Bitable for tracking pass/fail trends over time.
-- `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
-  notifications via `.github/scripts/notify_feishu.py`.
+- `ci-report-feishu.yaml` synchronizes `rule-check` results to a Feishu
+  Bitable for tracking pass/fail trends over time. Its `workflow_run`
+  trigger runs in the base repository context, so the reporting workflow can
+  use its configured secrets even when the reported run comes from a fork PR.
+  It checks out only `tools/ci_report_feishu.py` and supplies a GitHub token
+  plus Feishu app credentials. The workflow waits 5s, then invokes the
+  script up to three times in total (the initial attempt plus at most two
+  retries, waiting 10s and 20s before those retries). Its per-PR role is
+  described under `rule-check` in
+  [Pull request checks](/FlagGems/cicd/pull-request/).
+- `ops-test.yaml` sends outcome notifications via
+  `.github/scripts/notify_feishu.py`, unless disabled by `send_feishu`.
 - `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP
   service for longer-term dashboards.
 
