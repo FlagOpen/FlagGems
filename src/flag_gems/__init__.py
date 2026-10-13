@@ -787,6 +787,7 @@ _FULL_CONFIG = (
     ("column_stack.out", column_stack_out),
     ("concat", concat),
     ("concatenate", concatenate),
+    ("conj", conj),
     ("conj_physical", conj_physical),
     ("conj_physical_", conj_physical_),
     ("constant_pad_nd", constant_pad_nd),

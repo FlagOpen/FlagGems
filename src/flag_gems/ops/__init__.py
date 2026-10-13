@@ -567,6 +567,7 @@ from flag_gems.ops.col2im import col2im
 from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
+from flag_gems.ops.conj import conj
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.conj_physical_ import conj_physical_
 from flag_gems.ops.contiguous import contiguous
@@ -2032,6 +2033,7 @@ __all__ = [
     "column_stack_out",
     "concat",
     "concatenate",
+    "conj",
     "conj_physical",
     "conj_physical_",
     "constant_pad_nd",
