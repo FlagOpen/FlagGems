@@ -495,6 +495,7 @@ _FULL_CONFIG = (
     ("_scaled_mm_v2", _scaled_mm_v2),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
+    ("_slow_conv2d_forward", _slow_conv2d_forward),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
     (
@@ -1320,6 +1321,7 @@ _FULL_CONFIG = (
     ("mse_loss_backward", mse_loss_backward),
     ("msort", msort),
     ("msort.out", msort_out),
+    ("mT", mT),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
@@ -1582,6 +1584,7 @@ _FULL_CONFIG = (
     ),
     ("row_stack", row_stack),
     ("row_stack.out", row_stack_out),
+    ("rrelu", rrelu),
     ("rrelu_with_noise", rrelu_with_noise),
     ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),

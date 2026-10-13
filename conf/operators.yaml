@@ -12804,6 +12804,17 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: mT
+  description: Returns a view of this tensor with the last two dimensions transposed.
+  for:
+  - mT
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
@@ -15863,7 +15874,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
 - id: row_stack_out
   description: |
     A variant of row_stack() that writes the result into the out tensor.
@@ -15875,7 +15886,21 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
+- id: rrelu
+  description: |
+    Applies the randomized leaky ReLU (RReLU) function element-wise. In training
+    mode the slope for negative inputs is drawn uniformly from [lower, upper],
+    while in evaluation mode the average of lower and upper is used.
+  for:
+  - rrelu
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: rrelu_
   description: |
     In-place Randomized Leaky ReLU (RReLU). Applies RReLU in place: positive
@@ -17172,6 +17197,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv2d_forward
+  description: |
+    An internal slow reference implementation of the 2-D convolution forward
+    pass that applies a 2-D cross-correlation over the input with the given
+    kernel.
+  for:
+  - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the

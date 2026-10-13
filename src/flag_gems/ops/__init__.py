@@ -347,6 +347,7 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
 )
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
 from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
+from flag_gems.ops._slow_conv2d_forward import _slow_conv2d_forward
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
@@ -1005,6 +1006,7 @@ from flag_gems.ops.mode import mode
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
+from flag_gems.ops.mT import mT
 from flag_gems.ops.mul import mul, mul_
 from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss,
@@ -1194,6 +1196,7 @@ from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.row_indices import row_indices
 from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
+from flag_gems.ops.rrelu import rrelu
 from flag_gems.ops.rrelu_ import rrelu_
 from flag_gems.ops.rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from flag_gems.ops.rrelu_with_noise_backward import rrelu_with_noise_backward
@@ -1800,6 +1803,7 @@ __all__ = [
     "_scaled_mm_v2",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
+    "_slow_conv2d_forward",
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
     "_sparse_semi_structured_addmm",
@@ -2521,6 +2525,7 @@ __all__ = [
     "mse_loss_backward",
     "msort",
     "msort_out",
+    "mT",
     "mul",
     "mul_",
     "multi_margin_loss",
@@ -2717,6 +2722,7 @@ __all__ = [
     "row_indices_copy_out",
     "row_stack",
     "row_stack_out",
+    "rrelu",
     "rrelu_",
     "rrelu_with_noise",
     "rrelu_with_noise_",
