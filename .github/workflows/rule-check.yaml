@@ -55,13 +55,12 @@ jobs:
   rule-check-required:
     # cpu-runner is an already-running container; no container: image needed.
     runs-on: cpu-runner
-    env:
-      # NOTE: no http_proxy/https_proxy override here. It used to be
-      # `${{ secrets.CI_HTTP_PROXY }}`, but secrets are unavailable on fork
-      # PRs -> empty string -> clobbered the runner's own proxy (injected
-      # into the step env) -> git tried direct github.com, which times out
-      # behind the firewall. The runner already exports its proxy to every
-      # step; don't touch it.
+    # NOTE: no http_proxy/https_proxy override here. It used to be
+    # `${{ secrets.CI_HTTP_PROXY }}`, but secrets are unavailable on fork
+    # PRs -> empty string -> clobbered the runner's own proxy (injected
+    # into the step env) -> git tried direct github.com, which times out
+    # behind the firewall. The runner already exports its proxy to every
+    # step; don't touch it.
     steps:
       # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung
       # rotates links across rounds. Inlined on purpose (NOT `uses:` of
