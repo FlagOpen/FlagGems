@@ -1215,7 +1215,14 @@ def _run_direction(
     grid = (triton.cdiv(batch_size, block_b),)
     divisible = batch_size % block_b == 0 and hidden_size % block_h == 0
     hsplit = _hsplit_tiles(batch_size, hidden_size, layer_input.device)
-
+    # Only packed+bias at 64x128 overflows UB. Other 64-row launches stay.
+    if (
+        hsplit is not None
+        and batch_sizes is not None
+        and has_biases
+        and hsplit[0] * block_h > 32 * 128
+    ):
+        hsplit = None
     # Tail of the timeloop kernels' argument list, identical for both variants.
     tail_args = (
         input_gates.stride(0),
