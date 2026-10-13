@@ -340,12 +340,16 @@ def test_col_indices_copy_out_spec_shapes(case, dtype):
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
 
 
-# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+# Only indices are copied; one ordinary values range per dtype is sufficient.
+# uint8 keeps nonzero samples when available to detect unintended values writes.
 _VALUE_DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _VALUE_RANGE_DTYPES
-    for value_range in tu.selected_ranges()
-    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
+    for value_range in (
+        [["0", "max"]]
+        if dtype == torch.uint8 and ["0", "max"] in tu.selected_ranges()
+        else tu.selected_ranges()[:1]
+    )
 ]
 
 
