@@ -333,6 +333,17 @@ def _special_input(dtype, shape, scenario, layout):
     return inp
 
 
+def _ref_input(inp):
+    """Reference-side copy of a score tensor.
+
+    The reference is upcast only when it runs on CPU, where this op has no fp16
+    or bf16 forward kernel. On device it keeps the input dtype, so the
+    reference saturates exactly where the kernel does and the extreme value
+    ranges stay meaningful.
+    """
+    return utils.to_reference(inp, utils.TO_CPU)
+
+
 def _reduce_dim(shape, reduction):
     rows, n_classes = _class_rows(shape)
     # Each output element is a sum over up to rows * n_classes hinge terms, so
@@ -358,7 +369,7 @@ def _assert_close(res, ref, shape, reduction):
 def test_multilabel_margin_loss(shape, value_range, reduction, dtype):
     inp = _make_input(dtype, shape, value_range)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
@@ -377,7 +388,7 @@ def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction,
     shape = MML_MAIN_SHAPE
     inp = _make_input(dtype, shape, value_range)
     target = _make_target(shape, pattern)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
@@ -395,7 +406,7 @@ def test_multilabel_margin_loss_default_reduction(shape, value_range, dtype):
     # produce a 0-dim result.
     inp = _make_input(dtype, shape, value_range)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target)
@@ -413,7 +424,7 @@ def test_multilabel_margin_loss_extra_reduction_values(reduction, dtype):
     shape = (32, 47)
     inp = _make_input(dtype, shape)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
@@ -429,7 +440,7 @@ def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
     shape = MML_MAIN_SHAPE
     inp = _make_input(dtype, shape)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     span = shape[0] if reduction == 0 else 1
@@ -437,7 +448,9 @@ def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
     # Independent sentinel-filled buffers per side, so the returned object, the
     # post-call geometry and the complete logical values can all be compared.
     res_buf = _out_buffer(out_shape, span, out_layout, dtype, inp.device)
-    ref_buf = _out_buffer(out_shape, span, out_layout, dtype, ref_inp.device)
+    # The reference buffer follows the reference input's dtype, which differs
+    # from the result dtype when the reference is upcast on CPU.
+    ref_buf = _out_buffer(out_shape, span, out_layout, ref_inp.dtype, ref_inp.device)
 
     ref_out = torch.ops.aten.multilabel_margin_loss.out(
         ref_inp, ref_target, reduction, out=ref_buf
@@ -461,7 +474,7 @@ def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, 
     values = _make_input(dtype, shape)
     inp = _view(_laid_out_input(shape, in_layout, values), shape, in_layout)
     target = _laid_out_target(shape, tgt_layout)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
@@ -479,7 +492,7 @@ def test_multilabel_margin_loss_backward(in_layout, tgt_layout, dtype):
     # Independent laid-out leaves, one per side, so the gradient is compared on
     # the parent buffer rather than on a view of a shared tensor.
     res_buf = _laid_out_input(shape, in_layout, values)
-    ref_buf = _laid_out_input(shape, in_layout, utils.to_reference(values))
+    ref_buf = _laid_out_input(shape, in_layout, _ref_input(values))
     res_buf.requires_grad_(True)
     ref_buf.requires_grad_(True)
     res_inp = _view(res_buf, shape, in_layout)
@@ -505,7 +518,7 @@ def test_multilabel_margin_loss_empty_batch(dtype):
     shape = (0, 11)
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, 0)
@@ -521,7 +534,7 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
     shape = (4, n_classes)
     inp = _make_input(dtype, shape, value_range)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, 1)
@@ -537,7 +550,7 @@ def test_multilabel_margin_loss_special_values(dtype, special, layout):
     shape = MML_MAIN_SHAPE
     inp = _special_input(dtype, shape, special, layout)
     target = _make_target(shape)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _ref_input(inp)
     ref_target = utils.to_reference(target)
 
     ref_out = _ATEN_OP(ref_inp, ref_target, 1)
