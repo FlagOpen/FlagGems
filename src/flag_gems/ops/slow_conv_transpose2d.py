@@ -416,15 +416,18 @@ def _pow2(value):
 def _fwd_tile(dtype, cout, mtotal):
     """Pick (BLOCK_M, BLOCK_CO, num_warps, num_stages) for the dot kernel.
 
-    Measured on an H20 with the benchmark shapes (see PR #6989 review):
-      * The batch-1 shapes only reach 128 CTAs at BLOCK_M=128/BLOCK_CO=64,
-        one short wave on 132 SMs with nothing left to hide latency. Larger
-        BLOCK_M tiles (256) or a wider BLOCK_CO raise the CTA count and give
-        up to 1.5x on fp16 [1,64,128,128].
-      * fp32 is best with a small BLOCK_M=64/BLOCK_CO=64 tile at large M
-        (0.311 -> 0.097 ms) and a fat BLOCK_M=256, 8-warp tile at small M
-        (0.202 -> 0.043 ms); the ieee dot path is launch/latency bound there.
-      * One pipeline stage beats the default three on every tap-loop cell.
+    Measured on an H20 with the benchmark shapes (see PR #6989 review). The
+    batch-1 shapes raise at most 128 CTAs at BLOCK_M=128/BLOCK_CO=64, one wave
+    short of the 132 SMs with nothing left to hide latency, so they want a
+    wider tile instead:
+      * fp32 (tf32x3) prefers a small BLOCK_M=64/BLOCK_CO=64 tile at large M
+        and a fat BLOCK_M=256, 8-warp tile at small M; at large M the extra
+        BLOCK_M only duplicates the weight traffic while the CTAs already fill
+        the device.
+      * fp16/bf16 with M >= 16384 take BLOCK_M=256/BLOCK_CO=64; smaller M keeps
+        the same BLOCK_M with a narrower BLOCK_CO and two pipeline stages.
+      * One pipeline stage beats the default three on every cell that fills the
+        device; the small-M fp16/bf16 cell is the exception and wants two.
     """
     if dtype == torch.float32:
         if mtotal >= 16384:
@@ -530,13 +533,11 @@ def _forward(
         )
         return out
 
-    # ATen's cuDNN convolutions run TF32 by default (cudnn.allow_tf32), so
-    # follow that flag for fp32; fp16/bf16 always use their native
-    # tensor-core path, and ieee keeps full fp32 precision when TF32 is off.
-    if x.dtype == torch.float32:
-        prec = "tf32" if torch.backends.cudnn.allow_tf32 else "ieee"
-    else:
-        prec = "tf32"
+    # fp32 runs the dot with "tf32x3": three tf32 passes give tensor-core
+    # throughput while keeping the error at ieee level (measured ~1e-5 vs an
+    # fp64 reference, against ~1e-1 for a plain tf32 dot), matching the
+    # sibling ops/conv_transpose2d.py.  fp16/bf16 use their native path.
+    prec = "tf32x3" if x.dtype == torch.float32 else "tf32"
     mtotal = hout * wout
     bk = _pow2(min(cin, 64))
     bm, bco, warps, stages = _fwd_tile(x.dtype, cout, mtotal)
