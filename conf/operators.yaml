@@ -3571,6 +3571,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: convolution
+  description: Generic N-dimensional convolution forward operator implemented with a Triton implicit-GEMM kernel.
+  for:
+  - convolution
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.5.0'
 - id: convolution_backward_overrideable
   description: 'Computes the gradients of a convolution with respect to the input,
     weight, and bias, returning (grad_input, grad_weight, grad_bias).
