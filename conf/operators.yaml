@@ -20651,6 +20651,32 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values_copy
+  description: 'Returns a fresh non-aliasing copy of the stored values of a
+    compressed sparse tensor (CSR/CSC/BSR/BSC).
+
+    '
+  for:
+  - values_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.4'
+- id: values_copy_out
+  description: A variant of `values_copy()` that writes the values copy into the
+    `out` tensor.
+  for:
+  - values_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.4'
 - id: vander
   description: Generates a Vandermonde matrix from a 1-D input tensor.
   for:
