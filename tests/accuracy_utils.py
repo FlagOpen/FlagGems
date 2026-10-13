@@ -27,6 +27,7 @@ fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
+complex_is_supported = flag_gems.runtime.device.support_complex
 
 
 def TestForwardOnly():
@@ -271,7 +272,11 @@ ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOA
 INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = (
+    ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
+    if complex_is_supported
+    else []
+)
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
