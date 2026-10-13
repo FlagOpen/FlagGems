@@ -5613,6 +5613,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fft_rfft
+  description: Computes the one-dimensional real-input discrete Fourier transform.
+  for:
+  - fft_rfft
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: fill_diagonal_
   description: 'Fills the main diagonal of a tensor that has at least two dimensions
 
