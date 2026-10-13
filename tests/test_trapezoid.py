@@ -364,13 +364,13 @@ def test_trapezoid_x_backward_empty():
     assert torch.all(x.grad == 0)
 
 
-def _dispatch_case(y, x):
-    """Run torch.trapezoid through the FlagGems dispatcher vs the ATen reference.
+def _registered_case(y, x):
+    """Run the registered FlagGems implementation vs the ATen reference.
 
-    Dispatching through torch.trapezoid under use_gems() exercises the exact
-    production path (registration + every helper op the implementation calls,
-    including ones whose registered kernels must handle the given dtypes), not
-    just the exported flag_gems.trapezoid_x entry point.
+    flag_gems.trapezoid_x is the callable the dispatcher registers for
+    aten::trapezoid.x, so calling it explicitly exercises the same code (and
+    every helper op the implementation calls, whose registered kernels must
+    handle the given dtypes) as the production dispatch path.
     """
     ref_y = utils.to_reference(y.detach().clone(), upcast=True).requires_grad_(
         y.requires_grad
@@ -379,8 +379,7 @@ def _dispatch_case(y, x):
         x.requires_grad
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.trapezoid(y, x)
+    res_out = flag_gems.trapezoid_x(y, x)
     ref_out = torch.trapezoid(ref_y, ref_x)
 
     utils.gems_assert_close(res_out, ref_out, res_out.dtype, reduce_dim=y.shape[-1])
@@ -398,15 +397,15 @@ def _dispatch_case(y, x):
 
 @pytest.mark.trapezoid
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_trapezoid_x_dispatch(dtype):
-    # torch.trapezoid(y, x) must route to the FlagGems registration under
-    # enable() and match ATen, including the empty-integration-dim early return
-    # (where ATen skips the 1-D x length check).
-    _dispatch_case(
+def test_trapezoid_x_registered(dtype):
+    # The registered trapezoid.x implementation must match ATen, including the
+    # empty-integration-dim early return (where ATen skips the 1-D x length
+    # check).
+    _registered_case(
         torch.randn(3, 5, dtype=dtype, device=flag_gems.device),
         torch.randn(5, dtype=dtype, device=flag_gems.device),
     )
-    _dispatch_case(
+    _registered_case(
         torch.randn(10, 0, dtype=dtype, device=flag_gems.device),
         torch.randn(5, dtype=dtype, device=flag_gems.device),
     )
@@ -414,31 +413,29 @@ def test_trapezoid_x_dispatch(dtype):
 
 @pytest.mark.trapezoid
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
-def test_trapezoid_x_dispatch_complex(dtype):
-    # The registered complex forward/backward must survive enable(): helper ops
-    # on the complex path (broadcast_to, zeros) run their FlagGems kernels under
-    # dispatch, so a real-dtype-only helper breaks the production path even when
-    # the direct flag_gems.trapezoid_x call passes.
+def test_trapezoid_x_registered_complex(dtype):
+    # The registered complex forward/backward must run through the same helper
+    # ops the dispatch path uses (broadcast_to, zeros): a real-dtype-only
+    # helper would break production even when isolated cases pass.
     if dtype == torch.complex32:
         # complex32 (ComplexHalf) has no ATen trapezoid implementation either.
         y = torch.randn(3, 5, dtype=dtype, device=flag_gems.device)
         x = torch.randn(5, dtype=dtype, device=flag_gems.device)
-        with flag_gems.use_gems():
-            with pytest.raises(RuntimeError):
-                torch.trapezoid(y, x)
+        with pytest.raises(RuntimeError):
+            flag_gems.trapezoid_x(y, x)
         return
 
-    _dispatch_case(
+    _registered_case(
         torch.randn(3, 5, dtype=dtype, device=flag_gems.device, requires_grad=True),
         torch.randn(5, dtype=dtype, device=flag_gems.device, requires_grad=True),
     )
     # Mixed real y + complex x promotes to the complex dtype.
-    _dispatch_case(
+    _registered_case(
         torch.randn(3, 5, dtype=torch.float32, device=flag_gems.device),
         torch.randn(5, dtype=torch.complex64, device=flag_gems.device),
     )
     # Empty integration dim with mismatched x: ATen returns zeros.
-    _dispatch_case(
+    _registered_case(
         torch.randn(10, 0, dtype=torch.complex64, device=flag_gems.device),
         torch.randn(5, dtype=torch.complex64, device=flag_gems.device),
     )
