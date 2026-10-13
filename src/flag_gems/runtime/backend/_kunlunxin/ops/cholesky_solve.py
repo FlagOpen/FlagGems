@@ -540,10 +540,7 @@ def _cholesky_matvec_left_kernel(
     MBN: tl.constexpr,
     KBN: tl.constexpr,
 ):
-    """ZOUT[:, c] <- ZIN[:, c] - A @ Y[:, c] for every rhs column c.
-
-    Fused because a sum-derived value stores correctly even with a strided
-    store; only dot-derived values need the scratch + apply split."""
+    """ZOUT[:, c] <- ZIN[:, c] - A @ Y[:, c] for every rhs column c."""
     pid = tl.program_id(0)
     batch = pid // nrhs
     col = pid % nrhs
@@ -581,7 +578,7 @@ def _cholesky_dot_right_kernel(
     KBN: tl.constexpr,
     MBN: tl.constexpr,
 ):
-    """UPD[:, c] <- A^T @ Y[:, c] for every rhs column c (dot-only, see left)."""
+    """UPD[:, c] <- A^T @ Y[:, c] for every rhs column c."""
     pid = tl.program_id(0)
     batch = pid // nrhs
     col = pid % nrhs
@@ -656,8 +653,7 @@ def _solve_two_block(X, B, L, batch_size, N, nrhs, upper):
 
     Runs entirely in device kernels; X carries the working data and the
     result.  The right-transpose matvec is split into a dot kernel writing a
-    contiguous scratch plus an apply kernel (``Z -= scratch``) because a
-    strided store of a dot-derived value miscompiles in this backend."""
+    contiguous scratch plus an apply kernel (``Z -= scratch``)."""
     h1 = _SPLIT_HEAD
     h2 = N - h1
     if h2 != h1:
