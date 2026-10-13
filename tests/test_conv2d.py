@@ -129,19 +129,6 @@ def test_conv2d(
 
 
 def _conv2d_reference(ref_inp, ref_weight, bias_ref, groups, stride, padding, dilation):
-    """Reference conv2d built on a path that is differentiable on this backend.
-
-    `F.conv2d(..., padding="valid"|"same")` dispatches to `aten::conv2d.padding`,
-    which carries no Autograd kernel on the kunlunxin XPU build, so torch's
-    autograd fallback builds an empty graph and backprop through the reference
-    raises "One of the differentiated Tensors appears to not have been used in
-    the graph" before the operator under test is ever reached.  Integer padding
-    dispatches to `aten::convolution.default` (ConvolutionBackward0) instead, so
-    the same convolution is expressed here with integer padding.
-
-    Only kunlunxin is affected.  Every other vendor - and every integer-padding
-    call - takes the upstream call verbatim, argument list unchanged.
-    """
     if vendor_name != "kunlunxin" or not isinstance(padding, str):
         return torch.nn.functional.conv2d(
             ref_inp,
@@ -153,7 +140,6 @@ def _conv2d_reference(ref_inp, ref_weight, bias_ref, groups, stride, padding, di
             dilation=dilation,
         )
     if padding == "valid":
-        # exactly integer padding 0
         return torch.nn.functional.conv2d(
             ref_inp,
             ref_weight,
@@ -166,10 +152,6 @@ def _conv2d_reference(ref_inp, ref_weight, bias_ref, groups, stride, padding, di
     assert padding == "same", padding
     assert stride == 1, "padding='same' requires stride 1"
     d_h, d_w = (dilation, dilation) if isinstance(dilation, int) else dilation
-    # 'same' pads dilation*(k-1) in total along each spatial dim, split as
-    # floor(total/2) before and the remainder after, so an odd total puts the
-    # extra row/column at the END.  Integer padding is always symmetric, so an
-    # even total maps onto it directly and an odd total needs an explicit F.pad.
     pad_h = d_h * (ref_weight.shape[2] - 1)
     pad_w = d_w * (ref_weight.shape[3] - 1)
     if pad_h % 2 == 0 and pad_w % 2 == 0:

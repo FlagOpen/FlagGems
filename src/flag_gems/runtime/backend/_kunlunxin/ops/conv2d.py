@@ -58,9 +58,7 @@ _ZERO_BIAS = {}
 
 
 def _zero_bias(out_c, device):
-    """Cached fp32 zero bias.  The XHPC handler decodes bias from a fixed
-    runtime slot, so a `None` bias (which Triton drops from the signature)
-    would shift every following argument; we always pass a real tensor."""
+    """Cached fp32 zero bias used when no bias is supplied."""
     key = (out_c, str(device))
     z = _ZERO_BIAS.get(key)
     if z is None:
@@ -69,20 +67,6 @@ def _zero_bias(out_c, device):
     return z
 
 
-# XHPC launch-table carrier.  The function name must contain the pattern
-# "conv2d_forward" so that try_launch_table()/handle_conv2d_forward() routes
-# the launch to the vendor xpudnn conv2d_fusion kernel instead of running this
-# (scalar-gather) Triton body.  The parameter ORDER is part of the ABI: the
-# handler decodes runtime positional indices
-#   0-3   x, w(filter), y(out), b(bias)
-#   4-7   n, xh, xw, f(out_c)
-#   22    c (per-group weight_c)
-#   23-30 kh, kw, sh, sw, pad_h, pad_w, dil_h, dil_w
-#   31    groups
-# and computes c *= groups itself.  do_not_specialize keeps every scalar in
-# the runtime signature (a scalar equal to 1 would otherwise be specialized
-# away and shift all following indices).  The body below is the generic 1-D
-# fallback and only runs if the vendor handler declines the launch.
 @libentry()
 @triton.jit(do_not_specialize=_ABI_SCALARS)
 def conv2d_forward_kernel(
@@ -730,15 +714,11 @@ def _input_grad(
     CPG: tl.constexpr,
 ):
     # One program per (spatial block, input channel); every tensor rank-1.
-    # Two XPU compiler limits force this shape: TritonXPULegalize aborts on
-    # rank-3 tensors (Legalize.cpp "3D Shape Unsupported.") and mis-rewrites
-    # rank-2 expand_dims/broadcast pairs inside the sliced loop it builds, and
-    # it also rejects tl.sum(axis=0) on 2D+ shapes.
-    # The address arithmetic follows the proven _forward idiom: indices are
-    # clamped to 0 whenever they are out of range and the contribution is
-    # zeroed afterwards with tl.where, instead of feeding an out-of-range
-    # index into a masked load. Loop bounds are constexpr for the same reason
-    # _forward uses constexpr KH/KW.
+    # The address arithmetic follows the _forward idiom: indices are clamped
+    # to 0 whenever they are out of range and the contribution is zeroed
+    # afterwards with tl.where, instead of feeding an out-of-range index into a
+    # masked load. Loop bounds are constexpr for the same reason _forward uses
+    # constexpr KH/KW.
     pm = tl.program_id(0)
     c = tl.program_id(1)
     m = pm * BM + tl.arange(0, BM)
@@ -814,13 +794,9 @@ def _weight_grad(
     BP: tl.constexpr,
     BK: tl.constexpr,
 ):
-    # Rank-1 throughout, one program per weight element. The XPU
-    # TritonXPULegalize pass rejects rank-3 tensors outright and mis-rewrites
-    # rank-2 expand_dims/broadcast pairs inside the sliced iteration loop it
-    # builds, and it additionally rejects tl.sum(axis=0) on 2D+ shapes
-    # ("axis must not be 0 for 2D+ shapes, consider manually transpose").
-    # The spatial reduction is therefore carried by a scalar loop over p with a
-    # rank-1 block reduction. grid == weight.numel(), so oc < cout always holds.
+    # Rank-1 throughout, one program per weight element. The spatial reduction
+    # is carried by a scalar loop over p with a rank-1 block reduction.
+    # grid == weight.numel(), so oc < cout always holds.
     k = tl.program_id(0)
     area = cpg * kh * kw
     oc = k // area
@@ -839,9 +815,7 @@ def _weight_grad(
         oh = q // wout
         ow = q - oh * wout
         # Clamp every index that can leave the tensor before it reaches an
-        # address, then zero the contribution with tl.where (the _forward
-        # idiom). Feeding an out-of-range index to a masked load returns
-        # garbage on this backend.
+        # address, then zero the contribution with tl.where (the _forward idiom).
         pv = p < total
         sni = tl.where(pv, ni, 0)
         soh = tl.where(pv, oh, 0)
@@ -972,12 +946,9 @@ class Conv2d(torch.autograd.Function):
         use_channels16 = use_spatial_tile and groups == 1 and cout % 16 == 0
         use_channels8 = use_spatial_tile and groups == 1 and cout % 8 == 0
         use_channels4 = use_spatial_tile and groups == 1 and cout % 4 == 0
-        # The vendor handler re-derives the output extent from a SYMMETRIC
-        # pad (pad_up == pad_down, pad_left == pad_right) and cannot express
-        # the asymmetric pad that 'same' needs for an even kernel size, nor
-        # spatial extents of 1 (it faults with an illegal memory access).
-        # Only take the vendor path when its own formula reproduces the
-        # extent this op computed; otherwise use the Triton kernels.
+        # Only use the fused path for the shapes it supports (spatial extents
+        # > 1 and a pad layout it can reproduce); otherwise use the Triton
+        # kernels.
         use_vendor = (
             min(hin, win) > 1
             and (hin + 2 * ph - dh * (kh - 1) - 1) // sh + 1 == hout
@@ -1255,21 +1226,18 @@ def _d2(v):
     return v if isinstance(v, (tuple, list)) else (v, v)
 
 
-# Smallest spatial extent the xhpc conv2d_fusion handler accepts: an extent
-# of 1 faults with an illegal memory access, larger ones are fine.
 _VENDOR_MIN_SPATIAL = 2
 
 
 def _square_pad_conv2d(input, weight, bias, stride, padding, dilation, groups):
-    """Lift a non-square input for the xhpc conv2d_fusion handler.
+    """Pad a non-square input, run the conv, and crop the output tail.
 
-    The handler faults with an illegal memory access when a spatial extent is
-    1, so a degenerate axis must be padded.  Pad it only up to the smallest
-    accepted extent, NOT up to max(ih, iw): the conv1d lift is
-    (B, C, L, 1) with the real extent on the H axis, so padding to square
-    turned an O(L) convolution into an O(L^2) one and drove the
-    conv1d_padding benchmark past the scheduler phase cap.  The padded tail
-    is cropped below, so only positions computed from real windows remain.
+    A degenerate spatial axis is padded up to the smallest supported extent,
+    NOT up to max(ih, iw): the conv1d lift is (B, C, L, 1) with the real extent
+    on the H axis, so padding to square turned an O(L) convolution into an
+    O(L^2) one and drove the conv1d_padding benchmark past the scheduler phase
+    cap.  The padded tail is cropped below, so only positions computed from
+    real windows remain.
     """
     ih = input.shape[-2]
     iw = input.shape[-1]
