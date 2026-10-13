@@ -47,28 +47,22 @@ Contract points that drive the implementation:
 * **Grad flow.** ``conj`` and ``transpose`` are differentiable views, so the
   backward of ``mH`` is the same relayout applied to the upstream gradient.
 
-There is no elementwise domain, hence no device payload.  In line with the
-FlagGems metadata-op recipes (``view_as``), the operator's rank precondition --
-the one invariant that gates the last-two-dimension swap -- is re-derived and
-asserted by a real one-program Triton kernel on every call, so the candidate
-carries a launched kernel that cannot perturb any observable value, stride,
-offset or lazy bit.
+There is no elementwise domain, hence no device payload and no Triton kernel
+launch: ``mH`` composes ``Tensor.conj`` and ``Tensor.transpose`` directly, and
+the rank precondition is checked on the host exactly as aten does.  (Round-1
+profiling showed a rank-guard kernel launch was the whole measured cost -- 2 us
+of device time per call on a pure metadata op -- so this revision drops it.)
 
-Round-1 profiling showed the guard launch is the whole measured cost (2.02 us
-of device time, grid=1, 32 threads, 16 registers, 0 shared memory, 2 SASS
-instructions) and that the wrapper's remaining budget is host dispatch.  The
-launch itself is already minimal, so this revision targets the host path: the
-C-level ``Tensor`` descriptors are bound once at import (no per-call bound
-method creation) and real dtypes skip the no-op ``conj()`` dispatch entirely,
-while complex inputs keep the exact lazy-conjugate chain that aten builds.
+Host-path notes: the C-level ``Tensor`` descriptors are bound once at import
+(no per-call bound-method creation) and real dtypes skip the no-op ``conj()``
+dispatch entirely, while complex inputs keep the exact lazy-conjugate chain
+that aten builds.
 """
 
 import logging
 import warnings
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
@@ -90,21 +84,6 @@ _TRANSPOSE = torch.Tensor.transpose
 _IS_COMPLEX = torch.Tensor.is_complex
 
 
-@triton.jit
-def _mH_rank_guard(ndim):
-    """Device-side mirror of the rank precondition of the mH transpose.
-
-    ``mH`` is defined only for matrices and batches of matrices, i.e. for
-    ``ndim != 1``; the host wrapper has already performed the same check before
-    this program is launched.  Re-deriving it on the device keeps the rank
-    contract checked by the executing kernel.  The program takes a single
-    scalar (no tensor argument, no constexpr payload) so the timed launch
-    marshals the minimum, and it reads and writes nothing, so it cannot perturb
-    any observable shape, stride, storage offset or lazy conjugate bit.
-    """
-    tl.device_assert(ndim != 1, "mH: expected a matrix or batch of matrices")
-
-
 def mH(self):
     """Return the zero-copy conjugate-transpose view of ``self``."""
     logger.debug("GEMS MH")
@@ -124,5 +103,4 @@ def mH(self):
     else:
         # Real input: conj() is a no-op identity, so mH is the stride exchange.
         out = _TRANSPOSE(self, -2, -1)
-    _mH_rank_guard[(1,)](ndim, num_warps=1)
     return out
