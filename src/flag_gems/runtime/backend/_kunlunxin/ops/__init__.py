@@ -16,6 +16,9 @@ from .__irshift__ import __irshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from .logit import logit, logit_, logit_out
+from .row_indices_copy import row_indices_copy, row_indices_copy_out
+from .special_expm1 import special_expm1
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._conj import _conj  # noqa: F401
@@ -704,6 +707,12 @@ from .zeros_like import zeros_like
 __all__ = [
     "__irshift__",
     "_amp_foreach_non_finite_check_and_unscale_",
+    "logit",
+    "logit_",
+    "logit_out",
+    "row_indices_copy",
+    "row_indices_copy_out",
+    "special_expm1",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
