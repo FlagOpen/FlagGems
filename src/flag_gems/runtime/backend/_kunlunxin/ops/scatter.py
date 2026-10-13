@@ -19,6 +19,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 from flag_gems.utils.shape_utils import (
@@ -372,16 +373,350 @@ class ScatterFunction:
 _scatter_func = ScatterFunction()
 
 
+# ---- tle.raw LM-staging fast path for innermost-dim scatter_src ---------------
+# The codegen kernel below lowers the data-dependent scatter store to a discrete
+# (stride == -1) per-element GM store.  Staging the output row in local memory,
+# doing the data-dependent write there, and writing the row back as one
+# contiguous block DMA removes that discrete store.
+#
+# Two things this path deliberately avoids:
+#  * device-side index arithmetic to build the per-row base offsets -- the payload
+#    unravelling is done from scalar args.  (kunlunxin `arange` is unreliable for
+#    grid >= 2 and can drop a whole block of its result; building bases with it is
+#    what made four earlier attempts at this path look broken.  See
+#    harness/solution/arange/root_cause.md.)
+#  * dtype casts.  `index.to(torch.int32)` costs ~7.5 ms for 33M elements on this
+#    backend (~53 GB/s, i.e. 10x slower than a plain copy) and dominated the whole
+#    op, so the payload reads the index in its native width instead.
+#
+# Built lazily to keep backend import side-effect free.  Shapes/dtypes/layouts
+# outside the fast path defer to the codegen kernel (dispatch, not fallback).
+_TLE_NDM = 4  # max leading dims (ndim - 1); covers ndim <= 5
+_TLE_GRID = 8  # physical clusters on this part
+# (elt, index C type, WT, KT, simd).  LM budget is ~6-7 KB, so the wider int64
+# index halves KT.
+#
+# The fp32 entries are SIMD: the data-dependent inner loop scatters 16 lanes at a
+# time with `vscatter_lm_float32x16` instead of one scalar store per element.  The
+# byte-offset vector comes straight out of the LM index tile, so no per-lane LM
+# write is needed (that per-lane write is what made the fp16 route a net loss):
+#   * int32 index -> `vload_lm_int32x16(li + j0)` (offset == element index)
+#   * int64 index -> `vgather_lm_int32x16(li + j0, strideoff)` with strideoff =
+#     [0,8,..,120] bytes, i.e. the low 32-bit word of each int64 == the `(int)li[j]`
+#     truncation the scalar loop does.  No dtype cast / re-layout anywhere.
+# 16-bit dtypes stay on the scalar payload (their vscatter needs an int16x32
+# offset, which has no arithmetic/narrowing intrinsics).
+_TLE_VARIANTS = (
+    ("short", "int", 2048, 512, False),
+    ("short", "long", 2048, 256, False),
+    ("int", "int", 1024, 256, True),
+    ("int", "long", 1024, 256, True),
+)
+_TLE = {"init": False, "ok": False, "kern": {}}
+
+
+def _tle_scatter_payload(elt, idx_t, wt, kt, name, simd):
+    if simd:
+        # fp32 vectorised inner loop.  `lo`/`ls` are float; `li` keeps the index's
+        # native width and is read straight into the 16-lane byte-offset vector.
+        # The scatter offset unit is BYTES and must be scaled with svmul (vsllp
+        # returns (x<<2)|3 on negative lanes); out-of-window lanes are clamped to
+        # the dummy slot lo[wlen] by an unsigned min.  A mfence() before LM2GM is
+        # required for the SIMD LM writes to be visible to the read-back DMA.
+        if idx_t == "int":
+            load_idx = "int32x16_t   oo   = vload_lm_int32x16(li + j0);"
+            prelude = ""
+        else:
+            load_idx = "int32x16_t   oo   = vgather_lm_int32x16(li + j0, strideoff);"
+            prelude = (
+                "  __simd__ int soff[16];\n"
+                "  for (int _l = 0; _l < 16; ++_l) soff[_l] = _l * 8;\n"
+                "  mfence();\n"
+                "  int32x16_t strideoff = vload_lm_int32x16(soff);\n"
+            )
+        # The vector scatter's LM writes are only ordered w.r.t. later accesses by
+        # a fence (see xpu/kernel/cluster_memory.h: "You should access memory
+        # after mfence() call").  Without the fence below, a scalar tail store
+        # that shares its target address with a still-pending vscatter lane can
+        # lose to that (earlier-j) vector write, so K % 16 != 0 with duplicate
+        # indices returns the wrong element.  The fence is inside `if (j0 < klen)`
+        # so it is paid only when a tail actually exists -- i.e. never for the
+        # benchmark matrix, whose klen is always a multiple of 16.
+        return rf"""
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_simd.h"
+#define WT {wt}
+#define KT {kt}
+#define GRID {_TLE_GRID}
+#define NDM {_TLE_NDM}
+extern "C" __device__ void {name}(_global_ptr_ float *out,
+    _global_ptr_ const float *base,
+    _global_ptr_ const {idx_t} *index, _global_ptr_ const float *src,
+    int R, int W, int K,
+    int l0, int l1, int l2, int l3,
+    int o0, int o1, int o2, int o3,
+    int i0, int i1, int i2, int i3,
+    int s0, int s1, int s2, int s3) {{
+  __simd__ float lo[WT + 1];
+  __simd__ {idx_t} li[KT];
+  __simd__ float ls[KT];
+{prelude}  int lead[NDM] = {{l0, l1, l2, l3}};
+  int os[NDM] = {{o0, o1, o2, o3}};
+  int is[NDM] = {{i0, i1, i2, i3}};
+  int ss[NDM] = {{s0, s1, s2, s3}};
+  int ncore = core_num();
+  int step = GRID * ncore;
+  for (int r = cluster_id() * ncore + core_id(); r < R; r += step) {{
+    int tmp = r, ob = 0, ib = 0, sb = 0;
+    for (int d = NDM - 1; d >= 0; --d) {{
+      int l = lead[d];
+      if (l > 0) {{
+        int c = tmp % l; tmp /= l;
+        ob += c * os[d];
+        ib += c * is[d];
+        sb += c * ss[d];
+      }}
+    }}
+    for (int c0 = 0; c0 < W; c0 += WT) {{
+      int wlen = (W - c0 < WT) ? (W - c0) : WT;
+      GM2LM(base + ob + c0, lo, wlen * sizeof(float));
+      for (int k0 = 0; k0 < K; k0 += KT) {{
+        int klen = (K - k0 < KT) ? (K - k0) : KT;
+        GM2LM(index + ib + k0, li, klen * sizeof({idx_t}));
+        GM2LM(src + sb + k0, ls, klen * sizeof(float));
+        int j0 = 0;
+        for (; j0 + 16 <= klen; j0 += 16) {{
+          {load_idx}
+          float32x16_t vv   = vload_lm_float32x16(ls + j0);
+          int32x16_t   rel  = svadd_int32x16(-c0, oo);
+          int32x16_t   offb = svmul_int32x16(4, rel);
+          uint32x16_t  cl   = svmin_uint32x16((uint32_t)(wlen * 4), (uint32x16_t)offb);
+          vscatter_lm_float32x16(lo, vv, (int32x16_t)cl);
+        }}
+        if (j0 < klen) {{
+          mfence();
+          for (; j0 < klen; ++j0) {{
+            int c = (int)li[j0];
+            if (c >= c0 && c < c0 + wlen) lo[c - c0] = ls[j0];
+          }}
+        }}
+      }}
+      mfence();
+      LM2GM(lo, out + ob + c0, wlen * sizeof(float));
+    }}
+  }}
+  mfence();
+}}
+"""
+    return rf"""
+#include "xpu/kernel/xtdk.h"
+#define WT {wt}
+#define KT {kt}
+#define GRID {_TLE_GRID}
+#define NDM {_TLE_NDM}
+extern "C" __device__ void {name}(_global_ptr_ {elt} *out,
+    _global_ptr_ const {elt} *base,
+    _global_ptr_ const {idx_t} *index, _global_ptr_ const {elt} *src,
+    int R, int W, int K,
+    int l0, int l1, int l2, int l3,
+    int o0, int o1, int o2, int o3,
+    int i0, int i1, int i2, int i3,
+    int s0, int s1, int s2, int s3) {{
+  __local__ {elt} lo[WT];
+  __local__ {idx_t} li[KT];
+  __local__ {elt} ls[KT];
+  int lead[NDM] = {{l0, l1, l2, l3}};
+  int os[NDM] = {{o0, o1, o2, o3}};
+  int is[NDM] = {{i0, i1, i2, i3}};
+  int ss[NDM] = {{s0, s1, s2, s3}};
+  int ncore = core_num();
+  int step = GRID * ncore;
+  for (int r = cluster_id() * ncore + core_id(); r < R; r += step) {{
+    int tmp = r, ob = 0, ib = 0, sb = 0;
+    for (int d = NDM - 1; d >= 0; --d) {{
+      int l = lead[d];
+      if (l > 0) {{
+        int c = tmp % l; tmp /= l;
+        ob += c * os[d];
+        ib += c * is[d];
+        sb += c * ss[d];
+      }}
+    }}
+    for (int c0 = 0; c0 < W; c0 += WT) {{
+      int wlen = (W - c0 < WT) ? (W - c0) : WT;
+      GM2LM(base + ob + c0, lo, wlen * sizeof({elt}));
+      for (int k0 = 0; k0 < K; k0 += KT) {{
+        int klen = (K - k0 < KT) ? (K - k0) : KT;
+        GM2LM(index + ib + k0, li, klen * sizeof({idx_t}));
+        GM2LM(src + sb + k0, ls, klen * sizeof({elt}));
+        for (int j = 0; j < klen; ++j) {{
+          int c = (int)li[j];
+          if (c >= c0 && c < c0 + wlen) lo[c - c0] = ls[j];
+        }}
+      }}
+      LM2GM(lo, out + ob + c0, wlen * sizeof({elt}));
+    }}
+  }}
+  mfence();
+}}
+"""
+
+
+def _tle_scatter_init():
+    if _TLE["init"]:
+        return _TLE["ok"]
+    _TLE["init"] = True
+    try:
+        import triton as _triton
+        import triton.experimental.tle as _tle
+
+        for elt, idx_t, wt, kt, simd in _TLE_VARIANTS:
+            sym = f"scatter_lm_{elt}_{idx_t}"
+            ns = {"_tle": _tle}
+            exec(
+                "@_tle.raw.dialect('xpu3', source=_SRC)\n"
+                f"def {sym}(out, base, index, src, R, W, K, *md):\n"
+                "    ...\n",
+                {"_tle": _tle,
+                 "_SRC": _tle_scatter_payload(elt, idx_t, wt, kt, sym, simd)},
+                ns,
+            )
+            callee = ns[sym]
+
+            def _mk(callee=callee):
+                @_triton.jit
+                def _k(O, B, I, S, R, W, K, L0, L1, L2, L3, O0, O1, O2, O3,
+                       I0, I1, I2, I3, S0, S1, S2, S3):
+                    _tle.raw.call(callee, (O, B, I, S, R, W, K, L0, L1, L2, L3,
+                                           O0, O1, O2, O3, I0, I1, I2, I3,
+                                           S0, S1, S2, S3))
+
+                return _k
+
+            _TLE["kern"][(elt, idx_t)] = _mk()
+        _TLE["ok"] = True
+    except Exception as _e:  # pragma: no cover - keep backend importable
+        logger.debug("scatter tle.raw init failed: %r", _e)
+        _TLE["ok"] = False
+    return _TLE["ok"]
+
+
+def _tle_scatter_src(inp, dim, index, src):
+    """Innermost-dim scatter_src via tle.raw LM staging; None -> defer to codegen.
+
+    Allocates its own output so the clone can be skipped.  The payload rewrites
+    every visited output row in full (it loads the row's initial values from
+    `base`, applies the scatter in LM, and writes the whole row back), and the
+    row loop enumerates exactly index's leading dims.  So when the index covers
+    every output row (`index.shape[:-1] == inp.shape[:-1]`) every element of the
+    output is written and a bare `empty_like(inp)` (with `base = inp`) suffices
+    -- no clone.  With partial row coverage the rows the kernel never visits must
+    keep inp's values, so `out = inp.clone()` and `base = out`.
+
+    `base` shares `out`'s leading strides in the payload (one `os[]` array serves
+    both the read and the write row base), which is why the clone-skip branch
+    requires `inp.is_contiguous()`.
+    """
+    try:
+        if dim != inp.ndim - 1:
+            return None
+        if inp.ndim - 1 > _TLE_NDM or index.ndim != inp.ndim:
+            return None
+        if inp.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+            return None
+        if src.dtype != inp.dtype or index.dtype not in (torch.int32, torch.int64):
+            return None
+        if not src.is_contiguous():
+            return None
+        # Any dtype cast here would cost more than the kernel (see header note).
+        if not index.is_contiguous():
+            return None
+        ndim = inp.ndim
+        W = inp.size(-1)
+        K = index.size(-1)
+        if W <= 0 or K <= 0:
+            return None
+        R = index.numel() // K
+        if R <= 0:
+            return None
+        if any(index.size(d) > inp.size(d) for d in range(ndim - 1)):
+            return None
+        if any(
+            t.stride(d) * t.size(d) >= 2 ** 32
+            for t in (inp, index, src)
+            for d in range(ndim)
+        ):
+            return None
+        if not _tle_scatter_init():
+            return None
+
+        if inp.dtype == torch.float32:
+            # fp32 takes the SIMD payload, whose C signature is `float*`.
+            elt = "int"
+        else:
+            elt = "short"
+        idx_t = "long" if index.dtype == torch.int64 else "int"
+        kern = _TLE["kern"].get((elt, idx_t))
+        if kern is None:
+            return None
+
+        # Output allocation (only reached once we are committed to this path).
+        # `full_rows` == the row loop visits every output row.  When it does and
+        # inp is contiguous, `empty_like(inp)` plus `base = inp` is complete and
+        # the clone is skipped; otherwise every unwritten row must keep inp's
+        # values, so clone.
+        full_rows = all(index.size(d) == inp.size(d) for d in range(ndim - 1))
+        if full_rows and inp.is_contiguous():
+            out = torch.empty_like(inp)
+            base = inp
+        else:
+            out = inp.clone()
+            if has_internal_overlapping(out) == MemOverlap.Yes:
+                out = out.contiguous()
+            base = out
+        if not out.is_contiguous():
+            return None
+
+        if elt == "int":
+            O, B, S = out, base, src
+        else:
+            O, B, S = out.view(torch.int16), base.view(torch.int16), src.view(torch.int16)
+
+        pad = lambda v: (list(v) + [0] * _TLE_NDM)[:_TLE_NDM]
+        md = (
+            pad([index.shape[d] for d in range(ndim - 1)])
+            + pad([out.stride(d) for d in range(ndim - 1)])
+            + pad([index.stride(d) for d in range(ndim - 1)])
+            + pad([src.stride(d) for d in range(ndim - 1)])
+        )
+
+        with torch_device_fn.device(inp.device):
+            kern[(_TLE_GRID,)](O, B, index, S, R, W, K, *md)
+        return out
+    except Exception as _e:  # pragma: no cover - never break correctness
+        logger.debug("scatter tle path deferred: %r", _e)
+        return None
+
+
 def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS_KUNLUNXIN SCATTER")
     if dim < 0:
         dim += inp.ndim
-    out = inp.clone()
 
     if reduce is not None:
         assert inp.dtype not in (
             torch.bfloat16,
         ), "Unsupported operation: reduce scatter bfloat tensors."
+
+    if reduce is None:
+        # The TLE LM-staging path allocates its own output and, when the index
+        # covers every output row, skips the clone entirely (see
+        # _tle_scatter_src).  Returns None -> defer to the codegen kernel.
+        res = _tle_scatter_src(inp, dim, index, src)
+        if res is not None:
+            return res
+
+    out = inp.clone()
 
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
@@ -394,6 +729,7 @@ def scatter(inp, dim, index, src, reduce=None):
 
     int32_size_dim = lambda x: x.stride(dim) * x.size(dim) < 2**32
     use_int32_offset = all(map(int32_size_dim, (inp, index, src)))
+
     _scatter_func(
         src_strided,
         index,

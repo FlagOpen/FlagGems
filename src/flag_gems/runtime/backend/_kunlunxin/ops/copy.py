@@ -67,8 +67,16 @@ def _copy_flat_kernel(
 
 
 def _pick_flat_block(n_elements: int) -> int:
-    if n_elements >= 2**19:
-        return 65536
+    # BOUNDED-BLOCK compile budget: _copy_flat_kernel materializes a
+    # BLOCK_SIZE-element tile per program.  On the current triton-xpu build a
+    # 65536-element tile (256 KiB for the int32-view big-copy path) overflows
+    # the ELF stack during ConvertTritonXPUToLLVM and the buffer-size tuner
+    # cannot split it -> "RuntimeError: Failed to tune buffer size." (reducing
+    # num_warps/unroll_num/buffer_size_limit alone does NOT help; the decisive
+    # knob is BLOCK_SIZE).  32768 is the largest tile that compiles cleanly, so
+    # cap the >=1MB contiguous same-dtype fast path (clone/copy_ and the
+    # squeeze_copy consumer that imports this helper) at a wide-grid bounded
+    # block DMA instead of a single oversized tile.
     if n_elements >= 2**16:
         return 32768
     if n_elements >= 2**13:
