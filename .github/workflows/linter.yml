@@ -72,10 +72,15 @@ jobs:
         RC_PROBE: "20"
         # Each round is a connect probe (fast reject of a wedged link) then a
         # throughput-judged fetch, so a slow-but-moving link finishes in round 1
-        # instead of being clock-killed. Rounds only buy retries across short
-        # outage blips; a full outage fails fast on the connect probe either way.
-        RC_TRANSFER: "180"
-        RC_ROUNDS: "30"
+        # instead of being clock-killed. 60 rounds x ~20s = ~20 min of rotation
+        # to ride out the observed >=5 min full-proxy outages (a 30-round run
+        # died at exactly 5:00 with every probe killed). A healthy link still
+        # hits on round 1 (~10s); rounds only cost time when both links are
+        # fully unreachable, and a full outage still fails fast per-round on
+        # the connect probe. Same sizing as the composite action on master
+        # (68e1108c4).
+        RC_TRANSFER: "600"
+        RC_ROUNDS: "60"
         RC_TOKEN: ${{ github.token }}
       run: |
         set -eu
@@ -125,7 +130,18 @@ jobs:
         #   ~20 KiB/s for probe-seconds. A low-bandwidth-but-moving runner (e.g.
         #   ~300 KiB/s pulling ~14 MiB -> ~45s) finishes instead of being killed.
         #   transfer-seconds is just a catch-all SIGKILL so a fetch that neither
-        #   finishes nor drops below the floor can't hang a round forever.
+        #   finishes nor drops below the floor can't hang a round forever. Sized
+        #   for the worst healthy link: 20 KiB/s is git's abort floor, so a
+        #   fetch that survives the low-speed check can still legitimately need
+        #   minutes (a depth-1 pull of ~14 MiB at 60 KiB/s -> ~4 min); the old
+        #   180s cap killed a MOVING full-pack fetch at 187s and threw the
+        #   progress away.
+        #
+        #   http.version=HTTP/1.1: git's default HTTP/2 over a CONNECT proxy is
+        #   the known cause of the long zero-byte connect stalls this step
+        #   exists to survive. Forcing HTTP/1.1 removes that failure mode
+        #   outright (both in the probe and the fetch) instead of only
+        #   recovering from it.
         LOW_LIMIT=20480              # bytes/sec (20 KiB/s) low-speed floor
         LOW_TIME="$RC_PROBE"         # seconds under the floor before git aborts
         CONNECT="$RC_CONNECT"        # hard kill (s) for the connect probe
@@ -136,14 +152,15 @@ jobs:
           local start end ms
           start=$(date +%s%N)
           # Stage 1: connect probe. Fast reject of a wedged link.
-          if ! timeout -s KILL "$CONNECT" git ls-remote --quiet origin "$RC_REF" >/dev/null 2>&1; then
+          if ! timeout -s KILL "$CONNECT" git -c http.version=HTTP/1.1 \
+               ls-remote --quiet origin "$RC_REF" >/dev/null 2>&1; then
             end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
             echo "  $1: FAIL (connect) ${ms}ms"
             return 1
           fi
           # Stage 2: transfer. Judged on throughput (low-speed), with a generous
           # hard-kill only as a last-resort catch-all.
-          if timeout -s KILL "$HARD" git \
+          if timeout -s KILL "$HARD" git -c http.version=HTTP/1.1 \
                -c http.lowSpeedLimit="$LOW_LIMIT" -c http.lowSpeedTime="$LOW_TIME" \
                fetch -q --no-tags --prune $depth_arg origin "$RC_REF"; then
             end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
