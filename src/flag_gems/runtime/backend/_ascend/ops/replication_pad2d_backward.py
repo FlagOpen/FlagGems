@@ -739,20 +739,25 @@ def _replication_pad2d_backward_impl(
             # to compile.
             r_wide = max(1, min(H, (16384 * 2 // itemsize) // W))
             grid = (n_images * triton.cdiv(H, r_wide),)
-            _backward_wide_k1[grid](
-                grad_output,
-                out,
-                0,
-                OH,
-                OW,
-                H,
-                W,
-                pad_left,
-                pad_right,
-                pad_top,
-                r_wide,
-                w_width,
-            )
+            row_blocks = triton.cdiv(H, r_wide)
+            images_per_launch = max(1, 65535 // row_blocks)
+            # Ascend allows at most 65535 programs per launch, so split images across launches.
+            for co in range(0, n_images, images_per_launch):
+                n = min(images_per_launch, n_images - co)
+                _backward_wide_k1[(n * row_blocks,)](
+                    grad_output,
+                    out,
+                    co,
+                    OH,
+                    OW,
+                    H,
+                    W,
+                    pad_left,
+                    pad_right,
+                    pad_top,
+                    r_wide,
+                    w_width,
+                )
             # K1 already seeded rows 0/H-1 with the aligned value; K2 rewrites
             # them with every vertical contribution.  Skip it entirely when
             # there are no vertical pads (K1 alone is then exact).
