@@ -29,9 +29,7 @@ owned by the active backend.
 -->
 # 设置设备可见性
 
-FlagGems 可以运行在多种加速器后端上，而每一种硬件都通过自己的一套环境变量来控制
-进程可见的设备。这些变量**没有统一的跨厂商名称**，FlagGems 也不去自创一个名字，
-而是直接读取当前生效的后端所对应的环境变量。
+FlagGems 可以运行在多种加速器后端上，而每一种硬件都通过自己的一套环境变量来控制进程可见的设备。这些变量**没有统一的跨厂商名称**，FlagGems 也不去自创一个名字，而是直接读取当前生效的后端所对应的环境变量。
 
 <!--
 > **Warning** — every backend uses a *different* variable name. A name that works on one
@@ -62,13 +60,10 @@ That last point is the one that most often causes confusion when a script does
 多数加速器运行时都遵循同一套约定，这套约定源自 `CUDA_VISIBLE_DEVICES`：
 
 - 变量取值为以逗号分隔的物理设备编号列表，例如 `0,2`。
-- 变量必须在进程启动**之前**设置好——运行时只在初始化时读取一次，进程运行期间
-  再修改它是没有效果的。
-- 运行时会对着剩余的可用设备**重新编号**。例如设置 `TOPS_VISIBLE_DEVICES=4,6` 之后，
-  保留下来的两张 GCU 卡在进程内看到的是逻辑设备 `0` 和 `1`，而**不是** `4` 和 `6`。
+- 变量必须在进程启动**之前**设置好——运行时只在初始化时读取一次，进程运行期间再修改它是没有效果的。
+- 运行时会对着剩余的可用设备**重新编号**。例如设置 `TOPS_VISIBLE_DEVICES=4,6` 之后，保留下来的两张 GCU 卡在进程内看到的是逻辑设备 `0` 和 `1`，而**不是** `4` 和 `6`。
 
-最后一点最容易造成困惑：如果在设置了可见性的情况下执行 `torch.gcu.set_device(4)`，
-会发现编号 `4` 已经不存在了。
+最后一点最容易造成困惑：如果在设置了可见性的情况下执行 `torch.gcu.set_device(4)`，会发现编号 `4` 已经不存在了。
 
 <!--
 ## Supported backends
@@ -112,10 +107,7 @@ variable as the source of truth and clears the aliases.
 -->
 ## 各后端支持的变量
 
-下表列出了 FlagGems 已知的全部后端及其可见性变量。该表来自
-[`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L468-L495)
-中的 `vendor_env_map`，并以它为准：测试驱动程序正是读取这个字典，把指定的设备子集
-下发给各个后端。
+下表列出了 FlagGems 已知的全部后端及其可见性变量。该表来自 [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L468-L495) 中的 `vendor_env_map`，并以它为准：测试驱动程序正是读取这个字典，把指定的设备子集下发给各个后端。
 
 | 厂商       | 厂商名        | 环境变量                                               |
 | -------- | ---------- | -------------------------------------------------- |
@@ -132,19 +124,11 @@ variable as the source of truth and clears the aliases.
 | Thead    | `thead`    | `CUDA_VISIBLE_DEVICES`                             |
 | TsingMicro | `tsingmicro` | `TXDA_VISIBLE_DEVICES`                           |
 
-需要注意的是，有若干厂商的变量名取自**运行时**而非厂商名本身——Enflame 用的是
-`TOPS_VISIBLE_DEVICES`，MetaX 用的是 `MACA_VISIBLE_DEVICES`，Hygon 用的是
-`HIP_VISIBLE_DEVICES`，Sunrise 用的是 `TANG_VISIBLE_DEVICES`。因此，仅凭厂商名去
-猜测变量名并不可靠，应当以上表为准。
+需要注意的是，有若干厂商的变量名取自**运行时**而非厂商名本身——Enflame 用的是 `TOPS_VISIBLE_DEVICES`，MetaX 用的是 `MACA_VISIBLE_DEVICES`，Hygon 用的是 `HIP_VISIBLE_DEVICES`，Sunrise 用的是 `TANG_VISIBLE_DEVICES`。因此，仅凭厂商名去猜测变量名并不可靠，应当以上表为准。
 
-`nvidia` 之所以没有出现在 `vendor_env_map` 中，是因为它是默认兜底项：未登记的厂商
-同样会被赋予 `CUDA_VISIBLE_DEVICES`。这一兜底对 NVIDIA 本身很方便，但很容易被误
-当成真正的支持——有些厂商会接受该变量，却并不真正读取它。当驱动程序打印出
-`No vendor-specific device masking for '<vendor>', falling back to CUDA_VISIBLE_DEVICES`
-时，应把它理解为“需要补充一条登记”的信号，而不是“过滤已经生效”的证明。
+`nvidia` 之所以没有出现在 `vendor_env_map` 中，是因为它是默认兜底项：未登记的厂商同样会被赋予 `CUDA_VISIBLE_DEVICES`。这一兜底对 NVIDIA 本身很方便，但很容易被误当成真正的支持——有些厂商会接受该变量，却并不真正读取它。当驱动程序打印出 `No vendor-specific device masking for '<vendor>', falling back to CUDA_VISIBLE_DEVICES` 时，应把它理解为“需要补充一条登记”的信号，而不是“过滤已经生效”的证明。
 
-当一个厂商列出了两个变量时，驱动程序会**把二者都设置为同一个值**，以保持一致。
-这与 FlagGems FlagTune 的做法不同：后者以第一个非空变量为准，并清掉其余别名。
+当一个厂商列出了两个变量时，驱动程序会**把二者都设置为同一个值**，以保持一致。这与 FlagGems FlagTune 的做法不同：后者以第一个非空变量为准，并清掉其余别名。
 
 <!--
 > [!WARNING]
@@ -186,8 +170,7 @@ process:
 -->
 ## 验证设置是否生效
 
-只有在进程启动之前设置的可见性变量才有意义。要确认进程究竟能看到哪些设备，最简单
-的方法是在进程内部打印设备数量：
+只有在进程启动之前设置的可见性变量才有意义。要确认进程究竟能看到哪些设备，最简单的方法是在进程内部打印设备数量：
 
 ```shell
 # NVIDIA
@@ -208,8 +191,7 @@ Each command should print `2`. If it prints the full device count of the node in
 the variable was misspelled, is the wrong variable for that backend, or was exported too
 late in the process.
 -->
-每条命令都应该输出 `2`。如果输出的反而是节点上的全部设备数量，那就说明变量拼写有误、
-用错了后端对应的变量，或者导出得太晚。
+每条命令都应该输出 `2`。如果输出的反而是节点上的全部设备数量，那就说明变量拼写有误、用错了后端对应的变量，或者导出得太晚。
 
 <!--
 ## Notes for backend contributors
@@ -219,8 +201,7 @@ benchmark drivers can restrict devices correctly:
 -->
 ## 给后端贡献者的提示
 
-在新增一种后端时，请记得注册它的可见性变量，这样测试和性能测试驱动程序才能正确地
-限制所使用的设备：
+在新增一种后端时，请记得注册它的可见性变量，这样测试和性能测试驱动程序才能正确地限制所使用的设备：
 
 <!--
 - Add an entry to the `vendor_env_map` dictionary in
@@ -235,13 +216,6 @@ benchmark drivers can restrict devices correctly:
   honors it. Falling back to `CUDA_VISIBLE_DEVICES` on a non-CUDA backend, for example,
   produces a setting that is accepted but has no effect.
 -->
-- 在
-  [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484)
-  的 `vendor_env_map` 字典中新增一项，键名使用后端 `VendorDescriptor` 里声明的厂商名
-  （参见[添加一种新的后端](/FlagGems/zh-cn/contribution/backend/)）。请勿改为修改兜底
-  分支——`vendor_env_map` 才是登记新后端的唯一位置。
-- 如果运行时接受多个别名，请把它们全部列出，并把最权威的放在最前面。`get_env` 会把
-  列表中的每个名字都设置为同一个值，因此各别名之间保持一致，已有启动脚本无论使用
-  哪个名字都能继续正常工作。
-- 除非运行时确实读取，否则不要把其他厂商的变量当作兜底。例如在非 CUDA 后端上回退到
-  `CUDA_VISIBLE_DEVICES`，最终只会得到一个被接受但毫无效果的环境变量。
+- 在 [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484) 的 `vendor_env_map` 字典中新增一项，键名使用后端 `VendorDescriptor` 里声明的厂商名（参见[添加一种新的后端](/FlagGems/zh-cn/contribution/backend/)）。请勿改为修改兜底分支——`vendor_env_map` 才是登记新后端的唯一位置。
+- 如果运行时接受多个别名，请把它们全部列出，并把最权威的放在最前面。`get_env` 会把列表中的每个名字都设置为同一个值，因此各别名之间保持一致，已有启动脚本无论使用哪个名字都能继续正常工作。
+- 除非运行时确实读取，否则不要把其他厂商的变量当作兜底。例如在非 CUDA 后端上回退到 `CUDA_VISIBLE_DEVICES`，最终只会得到一个被接受但毫无效果的环境变量。
