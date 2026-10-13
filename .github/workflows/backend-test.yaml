@@ -306,11 +306,19 @@ jobs:
           tools/test-op.sh ${{ inputs.pr_id }}
 
   # Enflame runs inside a container on the enflame-s60-* server available to
-  # this repository. The base repo uses enflame-s60-0; FlagGems-vllm uses
+  # this repository. The base repo uses enflame-s60-tmp; FlagGems-vllm uses
   # enflame-s60-1. Equivalent to:
-  #   docker run --rm -it --privileged -v /dev:/dev \
+  #   docker run --rm -it \
   #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
+  #
+  # NOTE: image/options/runner labels all come from .github/backends.json via
+  # the preprocess matrix, not from this file. The enflame entry there currently
+  # sets no container options, so no --privileged / -v /dev:/dev is passed —
+  # that is deliberate for now, but it is what lets the GPU check report a card
+  # whose GCU context torch then cannot create. gpu_check_enflame.sh probes an
+  # actual allocation, so a regression here fails in "Check GPU availability"
+  # with a clear message rather than inside the test run.
   test-enflame:
     if: ${{ inputs.backend == 'enflame-tops1106' }}
     runs-on: >-
