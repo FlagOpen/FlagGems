@@ -160,6 +160,7 @@ _FULL_CONFIG = (
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
+    ("_dimV", dimV, None, (SPARSE_DISPATCH_KEY,)),
     ("_dirichlet_grad", _dirichlet_grad, lambda: _HAS_MAP_ELEMENTWISE),
     ("_dyn_quant_matmul_4bit", _dyn_quant_matmul_4bit),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
@@ -855,8 +856,12 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
+    # aten::dim is not a dispatcher operator on this build (it is a JIT
+    # primitive plus a Python Tensor method; probes: probe1..probe14 in the
+    # run dir). A device-key registration is unreachable dead code, so the
+    # entry registers no extra dispatch key and the implementation is tested
+    # through its direct call path, mirroring the can_cast investigation.
     ("dim", dim),
-    ("dimV", dimV, None, (SPARSE_DISPATCH_KEY,)),
     ("dist", dist),
     ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
@@ -1370,6 +1375,9 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
+    # nested_to_padded_tensor is a CompositeImplicitAutograd op; it decomposes before
+    # reaching the backend key, so we must also register the CompositeImplicitAutograd
+    # key for use_gems() to intercept it instead of silently running the decomposition.
     (
         "nested_to_padded_tensor",
         nested_to_padded_tensor,
@@ -1417,6 +1425,8 @@ _FULL_CONFIG = (
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
+    # pin_memory is CompositeImplicitAutograd; it decomposes before reaching any
+    # backend key, so the composite key is the only place use_gems() can see it.
     ("pin_memory", pin_memory, None, ["CompositeImplicitAutograd"]),
     ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
