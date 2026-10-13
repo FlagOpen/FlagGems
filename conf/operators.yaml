@@ -3166,6 +3166,32 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: col_indices_copy
+  description: 'Returns a fresh non-aliasing copy of the column indices of a
+    sparse CSR/BSR tensor, shaped (batch_dims + (nnz,)).
+
+    '
+  for:
+  - col_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.4'
+- id: col_indices_copy_out
+  description: A variant of `col_indices_copy()` that writes the column indices
+    copy into the `out` tensor.
+  for:
+  - col_indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.4'
 - id: column_stack
   description: 'Creates a new tensor by horizontally stacking the tensors in tensors.
     Equivalent to
