@@ -63,8 +63,6 @@ def _input_fn(shape, dtype, device):
 def _conv_depthwise2d_torch_op(
     input, weight, kernel_size, bias, stride, padding, dilation
 ):
-    """Kunlunxin-only: aten::_conv_depthwise2d is CUDA-only and has no kernel
-    here, so the baseline is the equivalent grouped convolution."""
     return torch.nn.functional.conv2d(
         input, weight, bias, stride, padding, dilation, groups=input.shape[1]
     )
