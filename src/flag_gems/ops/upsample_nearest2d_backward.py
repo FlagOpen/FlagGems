@@ -432,6 +432,63 @@ def _upsample_nearest2d_backward(
         and total <= 2**24
         and max(ih, iw, oh, ow) <= 4096
         and grad_output.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and not grad_output.is_contiguous()
+        and grad_output.is_contiguous(memory_format=torch.channels_last)
+        and grad_input.is_contiguous(memory_format=torch.channels_last)
+    ):
+        cores = _ascend_vector_cores(grad_output.device.index)
+        with torch_device_fn.device(grad_output.device):
+            if identity:
+                block = 4096
+                _nearest2d_backward_ascend_copy[
+                    (min(cores, triton.cdiv(total, block)),)
+                ](grad_output, grad_input, total, block)
+                return grad_input
+            h_steps = _ceil_span_bound(scale_h, ih, oh)
+            w_steps = _ceil_span_bound(scale_w, iw, ow)
+            pixels = min(
+                triton.next_power_of_2(iw),
+                max(1, 1024 // triton.next_power_of_2(c)),
+            )
+            block = triton.next_power_of_2(pixels * c)
+            patch = triton.next_power_of_2(min(ow, pixels * w_steps) * c)
+            patch_limit = 4096 if grad_output.dtype == torch.float32 else 8192
+            while pixels > 1 and patch > patch_limit:
+                pixels //= 2
+                block = triton.next_power_of_2(pixels * c)
+                patch = triton.next_power_of_2(min(ow, pixels * w_steps) * c)
+            if h_steps * w_steps <= 16 and block <= 1024 and patch <= patch_limit:
+                from flag_gems.runtime.backend._ascend.ops.upsample_nearest2d_backward import (
+                    _nearest2d_backward_channels_last,
+                )
+
+                _nearest2d_backward_channels_last[
+                    (min(cores, n * ih * triton.cdiv(iw, pixels)),)
+                ](
+                    grad_output,
+                    grad_input,
+                    n,
+                    c,
+                    ih,
+                    iw,
+                    oh,
+                    ow,
+                    scale_h,
+                    scale_w,
+                    h_steps,
+                    w_steps,
+                    pixels,
+                    block,
+                    patch,
+                )
+                return grad_input
+    if (
+        runtime_device.vendor_name == "ascend"
+        and not _ASCEND_SIZE_ONLY
+        and not int64_index
+        and total <= 2**24
+        and max(ih, iw, oh, ow) <= 4096
+        and grad_output.dtype in (torch.float16, torch.bfloat16, torch.float32)
         and grad_output.is_contiguous()
         and grad_input.is_contiguous()
     ):

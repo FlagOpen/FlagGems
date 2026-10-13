@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 import torch
 import triton
+from packaging.version import Version
 
 import flag_gems
 
@@ -183,9 +184,9 @@ class UpsampleNearest2dBackwardBenchmark(base.Benchmark):
         from torch_npu.npu.utils import get_cann_version
 
         cann_version = get_cann_version()
-        if cann_version != "9.0.0":
+        if Version(cann_version) < Version("9.0.0"):
             raise RuntimeError(
-                "The 35-call profiler contract is validated only for CANN 9.0.0; "
+                "The 35-call profiler contract requires CANN >= 9.0.0; "
                 f"installed version is {cann_version}"
             )
         if base.Config.mode != base.consts.BenchMode.KERNEL:
