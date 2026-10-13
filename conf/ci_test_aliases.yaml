@@ -258,6 +258,7 @@ upsample_linear1d_backward: test_upsample_linear1d
 upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 
 # Underscore-prefixed aten op shares the base operator test file
+_fused_dropout: test_fused_dropout
 _linalg_eigh: test_linalg_eigh
 _flash_attention_forward: test_flash_attention
 
