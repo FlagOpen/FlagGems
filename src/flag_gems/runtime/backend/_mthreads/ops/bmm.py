@@ -361,8 +361,7 @@ def bmm_sqmma_kernel(
 def bmm_sqmma(A, B, elem_type, batch, M, N, K, C=None):
     device = "musa"
     if C is None:
-        c_type = elem_type if (elem_type != torch.bfloat16) else torch.float16
-        C = torch.empty((batch, M, N), dtype=torch.float16, device=device).to(c_type)
+        C = torch.empty((batch, M, N), dtype=elem_type, device=device)
     c_flat = C.reshape(batch * M, N)
     desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [1, 1])
     desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [1, 1])
@@ -598,9 +597,9 @@ def bmm_sqmma_ws(A, B, batch, M, N, K, C=None):
     assert A.dtype == B.dtype, "Mat A and Mat B should have the same dtype"
     if C is None:
         C = torch.empty((batch, M, N), dtype=A.dtype, device=device)
-    # The SQMMA consumer stores straight into a row-major buffer of the operand
-    # dtype, so C must be allocated at the *operand* dtype (unlike the older
-    # bmm_sqmma path, which round-trips bf16 through an fp16 scratch buffer).
+    # The SQMMA consumer stores straight into a row-major buffer, so C must be
+    # allocated at the *operand* dtype: bmm_sqmma used to round-trip bf16
+    # through an fp16 scratch buffer, which silently downcast the output dtype.
     desc_a = TensorDescriptor.from_tensor(
         A.reshape(batch * M, K), [_WS_BLOCK_M, _WS_BLOCK_K]
     )
