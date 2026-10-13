@@ -3117,6 +3117,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: coalesce
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
+    by their linear index, sorts unique coordinates ascending and sums duplicated
+    values.
+
+    '
+  for:
+  - coalesce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.4'
 - id: coalesced_
   description: 'Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
 

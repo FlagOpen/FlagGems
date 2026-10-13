@@ -783,6 +783,7 @@ _FULL_CONFIG = (
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
+    ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col2im", col2im),
     ("col_indices", col_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("column_stack", column_stack),
