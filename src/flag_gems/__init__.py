@@ -1172,6 +1172,7 @@ _FULL_CONFIG = (
     ("linalg_eigh", linalg_eigh),
     ("linalg_eigvals", linalg_eigvals),
     ("linalg_eigvals.out", linalg_eigvals_out),
+    ("linalg_eigvalsh", linalg_eigvalsh),
     ("linalg_householder_product", linalg_householder_product),
     ("linalg_inv_ex", linalg_inv_ex),
     ("linalg_ldl_factor", ldl_factor),
