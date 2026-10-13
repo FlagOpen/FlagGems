@@ -438,12 +438,14 @@ def _assert_bsr_structure(out, shape, blocksize, dense_dim):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8 keeps anchored zero, unanchored zero and nonzero fixtures.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["-1", "0"], ["0", "max"])
 ]
 
 

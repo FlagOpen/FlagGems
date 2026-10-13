@@ -275,11 +275,19 @@ def _description(
     return compressed, plain, values, size
 
 
+# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+_VALUE_DTYPE_RANGE_CASES = [
+    (values_dtype, value_range)
+    for values_dtype in _VALUES_DTYPES
+    for value_range in tu.selected_ranges()
+    if values_dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
+]
+
+
 @pytest.mark.validate_sparse_compressed_tensor_args
 @pytest.mark.parametrize("layout,batch,base,dense,blocks,nnz", _DESCRIPTORS)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("values_dtype", _VALUES_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("values_dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
 def test_validate_sparse_compressed_tensor_args(
     layout, batch, base, dense, blocks, nnz, index_dtype, values_dtype, value_range
 ):

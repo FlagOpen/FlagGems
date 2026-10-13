@@ -689,12 +689,14 @@ def _block_backward_upstream(dtype):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
 _DTYPE_RANGE_CASES = [
     (shape, dtype, value_range)
     for shape, dtype in _GRID_CASES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 

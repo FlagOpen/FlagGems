@@ -124,12 +124,14 @@ _GRID_ROWS = tu.selected_cases(_ALL_ROWS, quick=_QUICK_ROWS)
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in SUPPORTED_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 

@@ -50,12 +50,14 @@ def _assert_arange_result(res_out, ref_out, inp):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DIM_ARANGE_INPUT_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 

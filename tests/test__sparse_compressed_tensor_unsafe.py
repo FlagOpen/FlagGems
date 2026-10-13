@@ -188,12 +188,14 @@ _DESCRIPTORS = tu.selected_cases(
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
 _DTYPE_RANGE_CASES = [
     (values_dtype, value_range)
     for values_dtype in _VALUES_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if values_dtype == torch.bool else tu.selected_ranges()
     )
+    if values_dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 
