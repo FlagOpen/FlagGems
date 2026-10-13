@@ -286,10 +286,18 @@ def _assert_output_nr(res, ref, expected):
     assert res == expected, (res, expected)
 
 
-@tu.deduplicate_bool_ranges
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SUPPORTED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.output_nr
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_output_nr_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)

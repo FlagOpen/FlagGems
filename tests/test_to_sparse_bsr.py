@@ -437,11 +437,19 @@ def _assert_bsr_structure(out, shape, blocksize, dense_dim):
     )
 
 
-@tu.deduplicate_bool_ranges
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_sparse_bsr
 @pytest.mark.parametrize("case", _GRID_CASES)
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_to_sparse_bsr(case, dtype, value_range):
     shape, blocksize, dense_dim, pattern = case
     inp, parent = _dense_fixture(

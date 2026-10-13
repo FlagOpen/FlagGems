@@ -30,15 +30,3 @@
 原始本地记录：`/data/akg_kernel_bench_lite/kernelgen/runs/generated-operator-pytests-20260924/ce0451ead1e3.json`。测试源码 tree 为 `ce0451ead1e31b06232631dfdab6d5e1a980a076`，随后只补充本段验证说明；远端对应目录保留 JUnit、日志和 case-list JSON。
 
 状态可变算子的多次 Profile capture 还要求消费 hook 的外部 profiler 支持重复采样范围；本次测试文件迁移不修改 KGS 的 capture 次数约束，也不宣称完成这类 KGS 集成验证。
-
-## Bool 值域的重复采样
-
-公共 `make_input` 对 bool 忽略值域，始终生成随机 0/1。确认整个 fixture
-中的 `value_range` 不影响其他输入、结构、预期结果或执行分支后，可使用
-`@tu.deduplicate_bool_ranges`；值类型参数名不为 `dtype` 时，显式指定
-`dtype_arg`。收集时，每个其他参数组合仅保留第一个等价 bool 值域，并通过
-pytest 的 deselected 统计报告移除项。不同参数标记仍分别保留。
-
-这只减少重复随机采样，不改变输入生成器、测试函数或 retained case 的
-ID 和顺序。非 bool 类型（包括 uint8）不参与此规则。值域会影响其他数据
-或构造逻辑的测试必须保留完整参数集，不使用该 opt-in。

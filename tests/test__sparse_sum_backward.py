@@ -630,11 +630,19 @@ for _row in _REGATHER_ROWS:
         raise ValueError(f"regather descriptor {_row!r} would need a coalesce kernel")
 
 
-@tu.deduplicate_bool_ranges
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _COPY_PATH_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_COPY_ROWS, quick=_QUICK_ROWS))
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _COPY_PATH_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__sparse_sum_backward(dtype, value_range, row):
     shape, sparse_dim, dims, nnz = row
     inp = _sparse_self(shape, sparse_dim, dtype, value_range, nnz)
@@ -703,11 +711,9 @@ def test__sparse_sum_backward_dim_forms_large(dtype, value_range, row):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_sum_backward
 @pytest.mark.parametrize("row", tu.selected_cases(_ZERO_ROWS, quick=[]))
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _COPY_PATH_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test__sparse_sum_backward_zero_nnz_and_zero_axis(dtype, value_range, row):
     shape, sparse_dim, dims, nnz = row
     inp = _sparse_self(shape, sparse_dim, dtype, value_range, nnz)

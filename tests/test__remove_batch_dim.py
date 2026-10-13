@@ -67,10 +67,13 @@ _NON_CONTIGUOUS_CASES = [
     ((8, 8, 16, 32), 2, 8),
 ]
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _DTYPE_RANGE_PAIRS = [
     (dtype, value_range)
     for dtype in _REMOVE_BATCH_DIM_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 
@@ -88,7 +91,6 @@ def test__remove_batch_dim(shape, out_dim, batch_size, level, dtype):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.remove_batch_dim
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_PAIRS)
@@ -103,7 +105,6 @@ def test__remove_batch_dim_value_ranges(shape, dtype, value_range):
     tu.assert_result_equal(res_out, ref_out)
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.remove_batch_dim
 @pytest.mark.parametrize("dtype, value_range", tu.selected_cases(_DTYPE_RANGE_PAIRS))
 def test__remove_batch_dim_value_ranges_broadcast(dtype, value_range):

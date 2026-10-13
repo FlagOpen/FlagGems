@@ -267,13 +267,6 @@ def pytest_pycollect_makeitem(collector, name, obj):
 
 
 def pytest_collection_modifyitems(session, config, items):
-    from .bool_range_utils import deduplicate_bool_range_items
-
-    retained, deselected = deduplicate_bool_range_items(items)
-    items[:] = retained
-    if deselected:
-        config.hook.pytest_deselected(items=deselected)
-
     collect_marks_file = config.getoption("--collect-marks")
     if collect_marks_file:
         report = []

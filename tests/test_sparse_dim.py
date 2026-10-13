@@ -186,11 +186,19 @@ def test_sparse_dim_empty_dense(shape, dtype):
     _assert_result(res_out, ref_out)
 
 
-@tu.deduplicate_bool_ranges
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_dim_dense_spec_shapes_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -219,13 +227,11 @@ def test_sparse_dim_coo_layouts(case, dtype):
     assert inp._nnz() == nnz
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if len(shape) >= 1]
 )
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_dim_coo_spec_shapes_value_ranges(shape, value_range, dtype):
     inp = _make_coo(tuple(shape), (), _SPEC_NNZ, dtype, value_range, seed=0)
     ref_inp = tu.to_reference(inp)
@@ -236,11 +242,9 @@ def test_sparse_dim_coo_spec_shapes_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize("case", _COO_RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_dim_coo_value_ranges(case, value_range, dtype):
     sparse_shape, dense_shape, nnz = case
     inp = _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range)
@@ -308,10 +312,8 @@ def test_sparse_dim_csr_layouts(case, dtype):
     assert inp.dense_dim() == 0
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_dim_csr_value_ranges(value_range, dtype):
     shape, nnz = (4, 4), 5
     inp = _make_csr(shape, nnz, dtype, value_range)
@@ -323,10 +325,8 @@ def test_sparse_dim_csr_value_ranges(value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
-@tu.deduplicate_bool_ranges
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_dim_csr_dense_dims(value_range, dtype):
     inp = _make_csr_with_dense_dims(dtype, value_range)
     assert inp.sparse_dim() == 2
