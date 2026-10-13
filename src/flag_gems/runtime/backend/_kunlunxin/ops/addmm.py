@@ -307,8 +307,8 @@ def _bias_with_unit_inner_stride(bias, shape, beta):
     if beta == 0:
         return b
     if b.stride(1) != 1 and b.shape[1] > 1:
-        # The kernel's 2-D load requires a unit inner stride.  Gather one
-        # logical row when M broadcasts, then retain stride-zero broadcasting.
+        # Gather one logical row when M broadcasts, then retain stride-zero
+        # broadcasting.
         if b.stride(0) == 0:
             row = _addmm_contiguous_2d(b[:1])
             b = row.broadcast_to(shape)

@@ -108,27 +108,6 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
 
 
 def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
-    """Kunlunxin-only device baseline for ``aten::addmm.dtype``.
-
-    Every other vendor keeps the native ``torch.ops.aten.addmm.dtype`` op as the
-    baseline, which is available there.
-
-    On this backend the ``addmm.dtype`` schema is registered but ships no device
-    kernel for it: only Meta/Autograd kernels exist, and the CUDA/XPU dispatch
-    keys resolve to the torch_xmlir eager *fallback*
-    (``ts_eager_fallback.cpp``), so the native call raises
-    "Could not run 'aten::addmm.dtype' with arguments from the 'CPU' backend"
-    and ``latency_base`` can never be assigned.
-
-    The baseline is therefore assembled from native device ops only (never from
-    FlagGems, and always outside ``use_gems``): ordinary ``torch.addmm`` with
-    the operands kept in their own fp16/bf16 dtype -- the same tensor-core GEMM
-    the dtype overload would select -- followed by the output-dtype conversion
-    the overload performs. It is dtype sensitive (measured on this card:
-    0.707 ms fp16 vs 1.379 ms bf16 at 4096^3, a 1.95x spread), unlike a shim
-    that promotes every operand to fp32 and therefore times one and the same
-    fp32 GEMM for both dtypes.
-    """
     return torch.addmm(bias.to(mat1.dtype), mat1, mat2, beta=beta, alpha=alpha).to(
         out_dtype
     )
@@ -140,14 +119,12 @@ def _native_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.
 
 
 def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
-    """Candidate wrapper: ``flag_gems.addmm_dtype_out`` has a keyword-only ``out``."""
     return flag_gems.addmm_dtype_out(
         bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
     )
 
 
 def _aten_addmm_dtype_out(bias, mat1, mat2, out_dtype, out):
-    """Upstream baseline for every non-Kunlunxin vendor: the native dtype overload."""
     return torch.ops.aten.addmm.dtype_out(
         bias, mat1, mat2, out_dtype, beta=1.0, alpha=1.0, out=out
     )
