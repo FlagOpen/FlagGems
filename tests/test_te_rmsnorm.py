@@ -100,6 +100,7 @@ def _torch_rmsnorm_bwd(dz, x, weight, eps, zero_centered_gamma=False):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_fwd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -147,6 +148,7 @@ def test_te_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_fwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
@@ -207,6 +209,7 @@ def test_te_rmsnorm_fwd_vs_te(shape, dtype, zero_centered_gamma, use_ln_out):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_bwd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -255,6 +258,7 @@ def test_te_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_bwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
