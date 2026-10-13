@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .__irshift__ import __irshift__  # noqa: F401
+from .__rshift__ import __rshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -704,6 +705,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "__irshift__",
+    "__rshift__",
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
