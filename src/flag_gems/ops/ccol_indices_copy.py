@@ -184,23 +184,18 @@ def ccol_indices_copy(self: torch.Tensor) -> torch.Tensor:
     registered on the backend dispatch keys (the registrar always binds the
     plain device key as well), so the native check is unreachable for them.
 
-    The data movement is performed by the two Triton kernels below: a flat
-    copy for the contiguous case and a single-stride gather for a
-    non-contiguous 1-D source. CSC/BSC tensors built through the public
-    constructors always expose a contiguous ccol array, so the gather branch is
-    the defensive path the source kept for hand-built metadata (an interleaved
-    ccol storage) — native accepts those inputs too, so the branch is kept
-    functional rather than dropped.
+    The data movement is performed by the three Triton kernels below, selected
+    by the source layout: a flat copy for a contiguous source, a single-stride
+    gather for a non-contiguous 1-D source, and an ND-strided gather for a
+    non-contiguous multi-dim (batched) source, which reads through per-dim
+    size/stride metadata uploaded in one H2D copy. All three cases match native
+    ATen; there is no disclosed divergence. The batched strided path is covered
+    by ``test_accuracy_ccol_indices_copy_strided_ccol_multi_dim``.
 
-    Disclosed divergence: the gather kernel handles a 1-D non-contiguous
-    source only, so a multi-dim non-contiguous ccol buffer raises the source's
-    ``ValueError("non-contiguous multi-dim input is unsupported")``, where
-    native ATen copies the buffer correctly. Closing that gap needs a
-    multi-stride gather kernel, which would change the supplied kernel
-    strategy; the divergence is preserved deliberately and pinned by
-    ``test_accuracy_ccol_indices_copy_strided_ccol_multi_dim_divergence``.
-    Every tensor reachable through the public sparse constructors has a
-    contiguous ccol array, so this path cannot be hit by ordinary inputs.
+    Tensors built through the public sparse constructors always expose a
+    contiguous ccol array, so the two gather branches serve hand-built
+    metadata; native accepts those inputs, so they are implemented rather than
+    rejected.
     """
     logger.debug("GEMS CCOL_INDICES_COPY")
     src = _select_src(self)
