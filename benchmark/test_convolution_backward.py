@@ -92,10 +92,6 @@ class ConvolutionBackwardBenchmark(base.GenericBenchmark):
         (2, 3, 5, (17, 19), 1),
     ]
 
-    def __init__(self, case_shape, **kwargs):
-        self.case_shape = case_shape
-        super().__init__(**kwargs)
-
     def get_latency(self, op, *args, **kwargs):
         if flag_gems.vendor_name == "ascend" and Config.mode == consts.BenchMode.KERNEL:
             fn, _ = self._benchmark_callable(op, *args, **kwargs)
@@ -103,7 +99,13 @@ class ConvolutionBackwardBenchmark(base.GenericBenchmark):
                 fn,
                 {
                     "op": str(op),
-                    "shape": self.case_shape,
+                    "shape": (
+                        args[1].shape[0],
+                        args[1].shape[1],
+                        args[0].shape[1],
+                        tuple(args[1].shape[2:]),
+                        args[9],
+                    ),
                     "dtype": str(args[0].dtype),
                     "transposed": args[7],
                     "mask": args[-1],
@@ -115,7 +117,8 @@ class ConvolutionBackwardBenchmark(base.GenericBenchmark):
         return []
 
     def get_input_iter(self, dtype):
-        yield from self.input_fn(self.case_shape, dtype, self.device)
+        for shape in self.DEFAULT_SHAPES:
+            yield from self.input_fn(shape, dtype, self.device)
 
 
 def _inputs(shape, dtype, device, *, transposed, mask, out):
@@ -161,55 +164,59 @@ MASKS = [
 ]
 
 
-def _cases(out):
-    for shape_index, shape in enumerate(ConvolutionBackwardBenchmark.DEFAULT_SHAPES):
-        for transposed in (False, True):
-            for dtype in DTYPES:
-                for mask, name in zip(MASKS, ("dx", "dw", "db", "all")):
-                    marks = [
-                        pytest.mark.skipif(
-                            dtype == torch.float64
-                            and not flag_gems.runtime.device.support_fp64,
-                            reason="The target backend does not support the required FP64 arithmetic",
-                        ),
-                        pytest.mark.skipif(
-                            out and not all(mask),
-                            reason="ATen generated out cannot copy an undefined masked gradient into a defined Tensor",
-                        ),
-                    ]
-                    yield pytest.param(
-                        dtype,
-                        transposed,
-                        mask,
-                        shape,
-                        marks=marks,
-                        id=f"shape{shape_index}-{transposed}-{dtype}-{name}",
-                    )
+def _grouped_inputs(shape, dtype, device, *, out, masks):
+    for transposed in (False, True):
+        for mask in masks:
+            yield from _inputs(
+                shape, dtype, device, transposed=transposed, mask=mask, out=out
+            )
+
+
+DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            dtype == torch.float64 and not flag_gems.runtime.device.support_fp64,
+            reason="The target backend does not support the required FP64 arithmetic",
+        ),
+    )
+    for dtype in DTYPES
+]
+OUT_MASKS = [
+    pytest.param(
+        mask,
+        marks=pytest.mark.skipif(
+            not all(mask),
+            reason="ATen generated out cannot copy an undefined masked gradient into a defined Tensor",
+        ),
+        id=name,
+    )
+    for mask, name in zip(MASKS, ("dx", "dw", "db", "all"))
+]
 
 
 @pytest.mark.convolution_backward
-@pytest.mark.parametrize("dtype,transposed,mask,shape", _cases(False))
-def test_convolution_backward(dtype, transposed, mask, shape):
+@pytest.mark.parametrize("dtype", DTYPE_CASES)
+def test_convolution_backward(dtype):
     bench = ConvolutionBackwardBenchmark(
-        case_shape=shape,
         op_name="convolution_backward",
         torch_op=torch.ops.aten.convolution_backward.default,
         gems_op=flag_gems.convolution_backward,
         dtypes=[dtype],
-        input_fn=partial(_inputs, transposed=transposed, mask=mask, out=False),
+        input_fn=partial(_grouped_inputs, out=False, masks=MASKS),
     )
     bench.run()
 
 
 @pytest.mark.convolution_backward_out
-@pytest.mark.parametrize("dtype,transposed,mask,shape", _cases(True))
-def test_convolution_backward_out(dtype, transposed, mask, shape):
+@pytest.mark.parametrize("dtype", DTYPE_CASES)
+@pytest.mark.parametrize("mask", OUT_MASKS)
+def test_convolution_backward_out(dtype, mask):
     bench = ConvolutionBackwardBenchmark(
-        case_shape=shape,
         op_name="convolution_backward_out",
         torch_op=torch.ops.aten.convolution_backward.out,
         gems_op=flag_gems.convolution_backward_out,
         dtypes=[dtype],
-        input_fn=partial(_inputs, transposed=transposed, mask=mask, out=True),
+        input_fn=partial(_grouped_inputs, out=True, masks=(mask,)),
     )
     bench.run()
