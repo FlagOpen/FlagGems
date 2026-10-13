@@ -139,13 +139,12 @@ def _make_layout_input(kind, shape, dtype):
     raise ValueError(f"unknown layout kind: {kind}")
 
 
-# Bool input generation ignores value_range; keep one sample per workload.
+# Contiguity depends on shape and strides, not element values.
+# Keep every dtype and structural case with one ordinary value range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in SUPPORTED_DTYPES
-    for value_range in (
-        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
-    )
+    for value_range in tu.selected_ranges()[:1]
 ]
 
 

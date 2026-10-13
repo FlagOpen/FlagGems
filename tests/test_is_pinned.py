@@ -86,13 +86,12 @@ def _storage_tensor(storage, shape, dtype, value_range=None):
     return inp
 
 
-# Bool input generation ignores value_range; keep one sample per workload.
+# Pinning depends on the storage allocation, not element values.
+# Keep every dtype and structural case with one ordinary value range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DTYPES
-    for value_range in (
-        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
-    )
+    for value_range in tu.selected_ranges()[:1]
 ]
 
 

@@ -286,13 +286,12 @@ def _assert_output_nr(res, ref, expected):
     assert res == expected, (res, expected)
 
 
-# Bool input generation ignores value_range; keep one sample per workload.
+# Output numbers depend on autograd metadata, not element values.
+# Keep every dtype and structural case with one ordinary value range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _SUPPORTED_DTYPES
-    for value_range in (
-        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
-    )
+    for value_range in tu.selected_ranges()[:1]
 ]
 
 
