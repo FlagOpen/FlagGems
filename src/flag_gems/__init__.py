@@ -1230,6 +1230,7 @@ _FULL_CONFIG = (
     ("linalg_svdvals", linalg_svdvals),
     ("linalg_tensorinv", linalg_tensorinv),
     ("linalg_tensorinv.out", linalg_tensorinv_out),
+    ("linalg_tensorsolve", linalg_tensorsolve),
     ("linalg_vander", linalg_vander),
     ("linalg_vecdot", linalg_vecdot),
     ("linalg_vecdot.out", linalg_vecdot_out),
