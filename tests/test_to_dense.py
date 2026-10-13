@@ -131,12 +131,14 @@ def _pointers(values):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _STRIDED_DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _STRIDED_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 
@@ -336,12 +338,14 @@ _COO_SHAPES = _coo_cases(tu.selected_shapes())
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _SPARSE_DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _SPARSE_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 

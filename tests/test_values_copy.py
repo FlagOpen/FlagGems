@@ -308,13 +308,15 @@ _STORAGE_CASES = tu.selected_cases(
     ],
 )
 
-# One workload per row: the shape levels x the five value ranges over the dtypes
+# One workload per row: shape levels x distinct ordinary ranges over the dtypes
 # that carry a range, then the storage rows over every supported dtype.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _COPY_ROWS = [
     (row, dtype, list(value_range))
     for row in [_shape_to_row(shape) for shape in tu.selected_shapes()]
     for dtype in _RANGE_DTYPES
     for value_range in tu.selected_ranges()
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ] + [(row, dtype, ["-1", "1"]) for row in _STORAGE_CASES for dtype in _VALUE_DTYPES]
 
 # Positive NaN/Inf workloads are default-only.

@@ -349,10 +349,18 @@ def test_crow_indices_copy_out_spec_shapes(case, dtype):
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_VALUE_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _VALUE_RANGE_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
+]
+
+
 @pytest.mark.crow_indices_copy
 @pytest.mark.parametrize("case", _CROW_RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUE_RANGE_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
 def test_crow_indices_copy_value_ranges(case, value_range, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype, value_range=value_range)
@@ -366,8 +374,7 @@ def test_crow_indices_copy_value_ranges(case, value_range, dtype):
 
 @pytest.mark.crow_indices_copy_out
 @pytest.mark.parametrize("case", _CROW_RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUE_RANGE_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
 def test_crow_indices_copy_out_value_ranges(case, value_range, dtype):
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype, value_range=value_range)

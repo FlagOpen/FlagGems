@@ -68,12 +68,14 @@ _NON_CONTIGUOUS_CASES = [
 ]
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_PAIRS = [
     (dtype, value_range)
     for dtype in _REMOVE_BATCH_DIM_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
 ]
 
 
