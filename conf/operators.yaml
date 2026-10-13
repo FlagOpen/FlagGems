@@ -53,6 +53,19 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _conj
+  description: 'The private conjugate primitive backing ``torch.conj`` and
+    ``torch._conj``. Raises on non-complex inputs.
+    '
+  for:
+  - _conj
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _conj_physical
   description: 'Computes the element-wise conjugate of the given `input` tensor as
     a physical (non-view) tensor. For non-complex dtypes the input is returned unchanged.
@@ -3266,18 +3279,16 @@ ops:
 - id: conj
   description: 'Computes the element-wise conjugate of a complex tensor.
 
-    For non-complex tensors, returns the input unchanged.
-
     '
   for:
-  - _conj
+  - conj
   labels:
   - aten
   - KernelGen
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: conj_copy
   description: 'Computes the element-wise conjugate of a complex `input` tensor and
 
@@ -8385,7 +8396,6 @@ ops:
   description: Computes `input` is greater or equal to `other` element-wise.
   for:
   - ge.Tensor
-  - greater_equal.Tensor
   labels:
   - aten
   - pointwise
@@ -8397,7 +8407,6 @@ ops:
   description: The scalar version of `ge()`.
   for:
   - ge.Scalar
-  - greater_equal.Scalar
   labels:
   - aten
   - pointwise
@@ -8565,6 +8574,18 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: greater_equal
+  description: Computes `input` is greater or equal to `other` element-wise. An alias
+    for `ge()`.
+  for:
+  - greater_equal.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: greater_equal_
   description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
   for:
@@ -8577,6 +8598,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: greater_equal_scalar
+  description: The scalar version of `greater_equal()`, which is an alias for `ge()`.
+  for:
+  - greater_equal.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: greater_out
   description: A variant of `greater` that saves the output to the specified `out`.
   for:
@@ -12727,6 +12759,18 @@ ops:
   - Math
   stages:
   - stable: '2.1'
+- id: miopen_batch_norm
+  description: Computes batch normalization on the input tensor using the MIOpen
+    convention and updates the running statistics.
+  for:
+  - miopen_batch_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: miopen_batch_norm_backward
   description: Triton kernel implementation for miopen_batch_norm_backward.
   for:
@@ -19205,6 +19249,17 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: svd
+  description: Computes the singular value decomposition returning `(U, S, V)` such
+    that `input = U diag(S) V^H`.
+  for:
+  - svd
+  labels:
+  - aten
   kind:
   - Math
   stages:
