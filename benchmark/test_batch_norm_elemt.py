@@ -21,23 +21,14 @@ from . import base, consts
 
 
 class BatchNormElemtBenchmark(base.GenericBenchmark):
-    # Shapes cover 3D/4D tensors with varying channel and spatial dimensions
-    DEFAULT_SHAPES = [
-        (16, 16, 64),
-        (16, 16, 1024),
-        (16, 16, 4098),
-        (1, 8, 4, 4),
-        (16, 8, 128, 128),
-        (8, 128, 56, 56),
-        (32, 512, 14, 14),
-    ]
-
     def set_more_shapes(self):
+        # Extra comprehensive-level shapes: few channels, a 3D layout and a
+        # wide-channel case. All keep a non-degenerate spatial extent, since
+        # HW=1 would launch one program per element (see core_shapes.yaml).
         return [
-            (2, 64, 112, 112),
-            (64, 1024, 7, 7),
-            (128, 256, 32, 32),
-            (4, 32, 8, 8, 8),
+            (16, 8, 128, 128),
+            (16, 16, 1024),
+            (2, 2048, 16, 16),
         ]
 
 
