@@ -689,7 +689,7 @@ def _block_backward_upstream(dtype):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
     (shape, dtype, value_range)
     for shape, dtype in _GRID_CASES

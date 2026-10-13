@@ -297,7 +297,7 @@ def test__new_zeros_with_same_feature_meta_no_autograd(self_grad, other_grad, dt
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _NEW_ZEROS_WITH_SAME_FEATURE_META_DTYPES

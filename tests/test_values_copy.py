@@ -310,7 +310,7 @@ _STORAGE_CASES = tu.selected_cases(
 
 # One workload per row: shape levels x distinct ordinary ranges over the dtypes
 # that carry a range, then the storage rows over every supported dtype.
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _COPY_ROWS = [
     (row, dtype, list(value_range))
     for row in [_shape_to_row(shape) for shape in tu.selected_shapes()]

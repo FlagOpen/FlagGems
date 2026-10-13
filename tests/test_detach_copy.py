@@ -68,7 +68,7 @@ def test_detach_copy(shape, dtype):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DETACH_COPY_DTYPES

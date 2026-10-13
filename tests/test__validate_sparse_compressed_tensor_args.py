@@ -275,7 +275,7 @@ def _description(
     return compressed, plain, values, size
 
 
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _VALUE_DTYPE_RANGE_CASES = [
     (values_dtype, value_range)
     for values_dtype in _VALUES_DTYPES

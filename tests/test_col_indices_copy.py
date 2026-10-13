@@ -340,7 +340,7 @@ def test_col_indices_copy_out_spec_shapes(case, dtype):
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
 
 
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _VALUE_DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _VALUE_RANGE_DTYPES

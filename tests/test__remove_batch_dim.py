@@ -68,7 +68,7 @@ _NON_CONTIGUOUS_CASES = [
 ]
 
 # Bool input generation ignores value_range; keep one sample per workload.
-# For uint8, four ordinary ranges generate zeros; keep one plus [0, max].
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_PAIRS = [
     (dtype, value_range)
     for dtype in _REMOVE_BATCH_DIM_DTYPES
