@@ -277,8 +277,98 @@ def convolution(
     is_transposed = bool(transposed)
     g = int(groups)
 
+    # The input and the weight must describe the same spatial rank.  Taking the
+    # rank from the input alone would silently run a 1-D convolution against a
+    # 2-D weight and read the kernel's trailing extent as a stride.
+    if x.dim() != w.dim():
+        raise RuntimeError(
+            "Expected %d-dimensional input for %d-dimensional weight %s, but "
+            "got %d-dimensional input of size %s instead"
+            % (w.dim(), w.dim(), list(w.shape), x.dim(), list(x.shape))
+        )
+    if nd < 1 or nd > 3:
+        raise RuntimeError(
+            "Expected 3D, 4D or 5D input to convolution, but got input of size %s"
+            % (list(x.shape),)
+        )
+
+    if g <= 0:
+        raise RuntimeError("non-positive groups is not supported")
+
+    # A zero-sized weight has no output channel to write, which ATen reports
+    # rather than returning an empty result.
+    if int(w.shape[0]) < 1:
+        raise RuntimeError(
+            "Given groups=%d, expected weight to be at least 1 at dimension 0, "
+            "but got weight of size %s instead" % (g, list(w.shape))
+        )
+
     n_ = int(x.shape[0])
     C_in = int(x.shape[1])
+
+    # ATen validates the channel bookkeeping before touching any data.  The
+    # expected input-channel count is read off the weight, which is laid out as
+    # (C_out, C_in/groups, *K) for a forward convolution and
+    # (C_in, C_out/groups, *K) for a transposed one.
+    if is_transposed:
+        expected_in = int(w.shape[0])
+    else:
+        expected_in = int(w.shape[1]) * g
+    if C_in != expected_in:
+        raise RuntimeError(
+            "Given %sgroups=%d, weight of size %s, expected input%s to have %d "
+            "channels, but got %d channels instead"
+            % (
+                "transposed " if is_transposed else "",
+                g,
+                list(w.shape),
+                list(x.shape),
+                expected_in,
+                C_in,
+            )
+        )
+    out_channels = int(w.shape[1]) * g if is_transposed else int(w.shape[0])
+    if out_channels % g != 0:
+        raise RuntimeError(
+            "Given groups=%d, expected weight to be divisible by %d, but got "
+            "output channels of %d" % (g, g, out_channels)
+        )
+
+    if bias is not None and bias.numel() > 0:
+        # A short bias would be read past its end by the kernel; a long one
+        # means the caller mismatched the weight.
+        if bias.dim() != 1 or int(bias.shape[0]) != out_channels:
+            raise RuntimeError(
+                "Given weight of size %s, expected bias to be 1-dimensional "
+                "with %d elements, but got bias of size %s instead"
+                % (list(w.shape), out_channels, list(bias.shape))
+            )
+
+    # A zero stride divides by zero in the output-extent formula and a
+    # non-positive dilation collapses the kernel footprint; both are rejected
+    # before any index arithmetic runs.
+    for i in range(nd):
+        if _gv(stride, i, 1) <= 0:
+            raise RuntimeError("non-positive stride is not supported")
+        if _gv(dilation, i, 1) <= 0:
+            raise ValueError("Expected positive dilation in convolution.")
+        if _gv(padding, i, 0) < 0:
+            raise RuntimeError("negative padding is not supported")
+        if _gv(output_padding, i, 0) < 0:
+            raise RuntimeError("negative output_padding is not supported")
+
+    # ATen requires the output padding to stay below the stride or the
+    # dilation, otherwise the transposed output extent is ambiguous.
+    if is_transposed:
+        for i in range(nd):
+            op = _gv(output_padding, i, 0)
+            if op >= _gv(stride, i, 1) and op >= _gv(dilation, i, 1):
+                raise RuntimeError(
+                    "output padding must be smaller than either stride or "
+                    "dilation, but got output_padding=%d, stride=%d, dilation=%d"
+                    % (op, _gv(stride, i, 1), _gv(dilation, i, 1))
+                )
+
     C_in_pg = C_in // g
 
     if nd == 1:
@@ -317,6 +407,21 @@ def convolution(
         else:
             o = (IN[i] + 2 * P[i] - DL[i] * (K[i] - 1) - 1) // S[i] + 1
         OUT.append(int(o))
+
+    # A dilated kernel wider than the padded input gives a non-positive output
+    # extent.  ATen reports it; allocating a negative-sized tensor would raise
+    # an unrelated error from the allocator.
+    if not is_transposed and min(OUT[:nd]) <= 0:
+        padded = [IN[i] + 2 * P[i] for i in range(nd)]
+        eff_k = [DL[i] * (K[i] - 1) + 1 for i in range(nd)]
+        raise RuntimeError(
+            "Calculated padded input size per channel: (%s). Kernel size: (%s). "
+            "Kernel size can't be greater than actual input size"
+            % (
+                " x ".join(str(v) for v in padded),
+                " x ".join(str(v) for v in eff_k),
+            )
+        )
 
     if is_transposed:
         C_out_pg = int(w.shape[1])

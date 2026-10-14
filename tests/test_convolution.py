@@ -24,6 +24,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 DEVICE = flag_gems.device
 
@@ -196,3 +197,258 @@ def test_convolution(case):
     )
     reduction = case[1][1] * math.prod(case[1][2:])
     utils.gems_assert_close(res, ref, dtype, reduce_dim=reduction)
+
+
+QUICK_CASES = [CASES[0], CASES[3]]
+SHAPE_CASES = QUICK_CASES if cfg.QUICK_MODE else CASES
+
+# A plain 2-D setup reused by the validation tests below.
+_X = (2, 3, 16, 16)
+_W = (4, 3, 3, 3)
+
+
+def _t(shape, dtype=torch.float32, seed=0):
+    torch.manual_seed(seed)
+    return torch.randn(shape, dtype=dtype, device=DEVICE)
+
+
+def _conv(inp, weight, bias=None, **kw):
+    """Call the gems kernel with ATen's positional argument order."""
+    nd = inp.dim() - 2
+    return flag_gems.convolution(
+        inp,
+        weight,
+        bias,
+        kw.get("stride", (1,) * nd),
+        kw.get("padding", (0,) * nd),
+        kw.get("dilation", (1,) * nd),
+        kw.get("transposed", False),
+        kw.get("output_padding", (0,) * nd),
+        kw.get("groups", 1),
+    )
+
+
+def _ref_conv(inp, weight, bias=None, **kw):
+    """ATen reference with the bias added at operand precision.
+
+    The kernel rounds its accumulator before the bias add, so folding the bias
+    into the ATen call would add it at accumulator precision and round once,
+    which differs by an ULP in reduced precision.
+    """
+    nd = inp.dim() - 2
+    ref_inp = utils.to_reference(inp)
+    ref_w = utils.to_reference(weight)
+    out = torch.ops.aten.convolution.default(
+        ref_inp,
+        ref_w,
+        None,
+        kw.get("stride", (1,) * nd),
+        kw.get("padding", (0,) * nd),
+        kw.get("dilation", (1,) * nd),
+        kw.get("transposed", False),
+        kw.get("output_padding", (0,) * nd),
+        kw.get("groups", 1),
+    ).to(inp.dtype)
+    if bias is not None:
+        ref_b = utils.to_reference(bias)
+        shape = (1, -1) + (1,) * (out.dim() - 2)
+        out = (out + ref_b.reshape(shape).to(inp.dtype)).to(inp.dtype)
+    return out
+
+
+@pytest.mark.convolution
+def test_convolution_empty_batch():
+    """A zero-sized batch convolves to a zero-sized output."""
+    inp = torch.zeros((0, 3, 16, 16), dtype=torch.float32, device=DEVICE)
+    weight = _t(_W)
+    res = _conv(inp, weight, padding=(1, 1))
+    ref = _ref_conv(inp, weight, padding=(1, 1))
+    assert res.shape == ref.shape
+    assert res.numel() == 0
+
+
+@pytest.mark.convolution
+def test_convolution_noncontiguous_input():
+    """A channels-last input must be read through its strides."""
+    inp = _t((2, 16, 16, 3)).permute(0, 3, 1, 2)
+    assert not inp.is_contiguous()
+    weight = _t(_W, seed=1)
+    bias = _t((4,), seed=2)
+    res = _conv(inp, weight, bias, padding=(1, 1))
+    ref = _ref_conv(inp, weight, bias, padding=(1, 1))
+    utils.gems_assert_close(res, ref, torch.float32, reduce_dim=27)
+
+
+@pytest.mark.convolution
+def test_convolution_noncontiguous_weight():
+    """A transposed weight view must be read through its strides too."""
+    inp = _t(_X)
+    weight = _t((3, 4, 3, 3), seed=1).transpose(0, 1)
+    assert not weight.is_contiguous()
+    res = _conv(inp, weight, padding=(1, 1))
+    ref = _ref_conv(inp, weight, padding=(1, 1))
+    utils.gems_assert_close(res, ref, torch.float32, reduce_dim=27)
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize("nd", [1, 2] if cfg.QUICK_MODE else [1, 2, 3])
+def test_convolution_spatial_rank(nd):
+    """1-D, 2-D and 3-D convolutions all route to the same implicit GEMM."""
+    inp = _t((2, 3) + (8,) * nd)
+    weight = _t((4, 3) + (3,) * nd, seed=1)
+    bias = _t((4,), seed=2)
+    res = _conv(inp, weight, bias, padding=(1,) * nd)
+    ref = _ref_conv(inp, weight, bias, padding=(1,) * nd)
+    utils.gems_assert_close(res, ref, torch.float32, reduce_dim=3 * 3**nd)
+
+
+@pytest.mark.convolution
+def test_convolution_depthwise():
+    """``groups == in_channels`` is the depthwise layout."""
+    inp = _t(_X)
+    weight = _t((3, 1, 3, 3), seed=1)
+    bias = _t((3,), seed=2)
+    res = _conv(inp, weight, bias, padding=(1, 1), groups=3)
+    ref = _ref_conv(inp, weight, bias, padding=(1, 1), groups=3)
+    utils.gems_assert_close(res, ref, torch.float32, reduce_dim=9)
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize(
+    "stride, output_padding",
+    [((1, 1), (0, 0)), ((2, 2), (1, 1))],
+)
+def test_convolution_transposed(stride, output_padding):
+    """The transposed path with and without output padding."""
+    inp = _t(_X)
+    weight = _t((3, 4, 3, 3), seed=1)
+    bias = _t((4,), seed=2)
+    kw = dict(
+        stride=stride,
+        padding=(1, 1),
+        transposed=True,
+        output_padding=output_padding,
+    )
+    res = _conv(inp, weight, bias, **kw)
+    ref = _ref_conv(inp, weight, bias, **kw)
+    utils.gems_assert_close(res, ref, torch.float32, reduce_dim=27)
+
+
+@pytest.mark.convolution
+def test_convolution_bias_is_optional():
+    """``bias=None`` is the schema default and must be accepted."""
+    inp = _t(_X)
+    weight = _t(_W, seed=1)
+    res = _conv(inp, weight, None, padding=(1, 1))
+    ref = _ref_conv(inp, weight, None, padding=(1, 1))
+    utils.gems_assert_close(res, ref, torch.float32, reduce_dim=27)
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize("groups", [0, -1])
+def test_convolution_non_positive_groups(groups):
+    """``groups <= 0`` cannot partition the channels."""
+    with pytest.raises(RuntimeError, match="non-positive groups"):
+        _conv(_t(_X), _t(_W), groups=groups)
+
+
+@pytest.mark.convolution
+def test_convolution_input_channel_mismatch():
+    """The weight's input-channel count must match the input."""
+    with pytest.raises(RuntimeError, match="channels"):
+        _conv(_t(_X), _t((4, 5, 3, 3)), padding=(1, 1))
+
+
+@pytest.mark.convolution
+def test_convolution_groups_do_not_divide_channels():
+    """A grouped weight whose channel count does not line up is rejected."""
+    with pytest.raises(RuntimeError, match="channels"):
+        _conv(_t(_X), _t(_W), padding=(1, 1), groups=2)
+
+
+@pytest.mark.convolution
+def test_convolution_empty_weight():
+    """A weight with no output channel has nothing to write."""
+    with pytest.raises(RuntimeError, match="at least 1 at dimension 0"):
+        _conv(_t(_X), torch.zeros((0, 3, 3, 3), device=DEVICE), padding=(1, 1))
+
+
+@pytest.mark.convolution
+@pytest.mark.parametrize("bias_shape", [(7,), (4, 1)])
+def test_convolution_bias_shape_mismatch(bias_shape):
+    """A bias that is not 1-D of length out_channels would be read out of bounds."""
+    bias = torch.zeros(bias_shape, dtype=torch.float32, device=DEVICE)
+    with pytest.raises(RuntimeError, match="bias"):
+        _conv(_t(_X), _t(_W), bias, padding=(1, 1))
+
+
+@pytest.mark.convolution
+def test_convolution_rank_mismatch():
+    """The input and weight must agree on spatial rank."""
+    with pytest.raises(RuntimeError, match="dimensional"):
+        _conv(_t((2, 3, 16)), _t(_W))
+
+
+@pytest.mark.convolution
+def test_convolution_non_positive_stride():
+    """A zero stride would divide by zero in the output-extent formula."""
+    with pytest.raises(RuntimeError, match="non-positive stride"):
+        _conv(_t(_X), _t(_W), stride=(0, 0), padding=(1, 1))
+
+
+@pytest.mark.convolution
+def test_convolution_non_positive_dilation():
+    """A zero dilation collapses the kernel footprint."""
+    with pytest.raises(ValueError, match="positive dilation"):
+        _conv(_t(_X), _t(_W), dilation=(0, 0), padding=(1, 1))
+
+
+@pytest.mark.convolution
+def test_convolution_negative_padding():
+    """Negative padding is not a crop; ATen refuses it."""
+    with pytest.raises(RuntimeError, match="negative padding"):
+        _conv(_t(_X), _t(_W), padding=(-1, -1))
+
+
+@pytest.mark.convolution
+def test_convolution_output_padding_too_large():
+    """Output padding at or above both stride and dilation is ambiguous."""
+    with pytest.raises(RuntimeError, match="output padding must be smaller"):
+        _conv(
+            _t(_X),
+            _t((3, 4, 3, 3)),
+            padding=(1, 1),
+            transposed=True,
+            output_padding=(1, 1),
+        )
+
+
+@pytest.mark.convolution
+def test_convolution_kernel_larger_than_padded_input():
+    """A kernel wider than the padded input leaves no output position."""
+    with pytest.raises(RuntimeError, match="Kernel size can't be greater"):
+        _conv(_t((1, 3, 3, 3)), _t((4, 3, 5, 5)))
+
+
+@pytest.mark.convolution
+def test_convolution_dilated_kernel_larger_than_input():
+    """Dilation widens the effective kernel and can overflow the input too."""
+    with pytest.raises(RuntimeError, match="Kernel size can't be greater"):
+        _conv(_t((1, 3, 5, 5)), _t(_W), dilation=(4, 4))
+
+
+@pytest.mark.convolution
+def test_convolution_rejects_complex():
+    """Complex convolution is outside this kernel's declared support."""
+    inp = _t(_X).to(torch.complex64)
+    weight = _t(_W).to(torch.complex64)
+    with pytest.raises(Exception):
+        _conv(inp, weight, padding=(1, 1))
+
+
+@pytest.mark.convolution
+def test_convolution_autograd_input_is_detached():
+    """A grad-requiring input is accepted; the forward kernel builds no graph."""
+    inp = _t(_X).requires_grad_(True)
+    res = _conv(inp, _t(_W, seed=1), padding=(1, 1))
+    assert not res.requires_grad
