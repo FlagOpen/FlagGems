@@ -313,12 +313,20 @@ jobs:
   # with GitHub Actions creating/starting the container and exec'ing each step.
   #
   # NOTE: image/options/runner labels all come from .github/backends.json via
-  # the preprocess matrix, not from this file. The enflame entry there currently
-  # sets no container options, so no --privileged / -v /dev:/dev is passed —
-  # that is deliberate for now, but it is what lets the GPU check report a card
-  # whose GCU context torch then cannot create. gpu_check_enflame.sh probes an
-  # actual allocation, so a regression here fails in "Check GPU availability"
-  # with a clear message rather than inside the test run.
+  # the preprocess matrix, not from this file.
+  #
+  # This job currently fails on its first torch allocation on the GCU
+  # (dtu_context_create fails while efsmi still reports a healthy card), and
+  # container_options cannot fix it here: the enflame-s60-tmp runner starts the
+  # job as a k8s pod rather than via `docker create`, so GitHub Actions has
+  # nowhere to apply container.options. Adding --privileged / -v /dev:/dev to
+  # backends.json therefore has no effect — which is why the earlier
+  # add/remove/revert cycles on that field changed nothing. Exposing the GCU
+  # devices has to happen in the runner's pod spec.
+  #
+  # gpu_check_enflame.sh probes a real allocation, so this shows up as a clear
+  # failure in "Check GPU availability" instead of an opaque driver abort
+  # inside the test run.
   test-enflame:
     if: ${{ inputs.backend == 'enflame-tops1106' }}
     runs-on: >-

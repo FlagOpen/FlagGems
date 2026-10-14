@@ -82,7 +82,7 @@ probe_rc=$?
 if [ $probe_rc -ne 0 ]; then
     # A broken interpreter and an unusable device both land here. Distinguish
     # them so the message points at the actual cause instead of always blaming
-    # the container's device access.
+    # the device.
     if ! "$python_bin" -c 'pass' >/dev/null 2>&1; then
         echo "Error: cannot run the GCU probe — ${python_bin} is not usable."
         echo "  ${probe_out}"
@@ -90,9 +90,40 @@ if [ $probe_rc -ne 0 ]; then
     fi
     echo "Error: Enflame GCU is visible to efsmi but unusable from this container."
     echo "  ${probe_out}"
-    echo "  This means the container is missing device access for GCU context"
-    echo "  creation, and the operator tests would fail at the first allocation."
-    echo "  Check the container options for this backend (--privileged, -v /dev:/dev)."
+    echo "  Context creation needs the GCU device nodes and driver domain config"
+    echo "  inside the job's container, and this one does not have them."
+    echo "  On the k8s runner this job uses, container.options is not honoured"
+    echo "  (there is no docker create to pass it to), so --privileged / -v /dev"
+    echo "  cannot fix this from the workflow — the pod spec used by the runner"
+    echo "  has to expose the GCU devices."
+    echo
+    echo "--- Diagnostics: device nodes and container privilege ---"
+    # Tells apart "the device nodes never reached this container" (nothing
+    # listed / cgroup denies them) from "they're here but the driver still
+    # can't init them" (nodes present, cgroup allows them, still fails) —
+    # the two root causes need different fixes (pod spec vs. driver/domain).
+    dtu_nodes=$(ls -la /dev 2>/dev/null | grep -iE 'dtu|gcu|efml|dri' || true)
+    if [ -n "$dtu_nodes" ]; then
+        echo "GCU-related device nodes under /dev:"
+        echo "$dtu_nodes" | sed 's/^/  /'
+    else
+        echo "No GCU-related device nodes (dtu|gcu|efml|dri) found under /dev."
+        echo "  -> the device was very likely never passed into this container."
+    fi
+    if [ -r /proc/self/status ]; then
+        cap=$(grep -i '^CapEff:' /proc/self/status || true)
+        echo "Capabilities: ${cap:-<unreadable>}"
+    fi
+    if [ -r /sys/fs/cgroup/devices/devices.list ]; then
+        echo "Allowed devices (cgroup v1 devices.list):"
+        sed 's/^/  /' /sys/fs/cgroup/devices/devices.list
+    elif [ -r /sys/fs/cgroup/devices.list ]; then
+        echo "Allowed devices (cgroup v2 devices.list):"
+        sed 's/^/  /' /sys/fs/cgroup/devices.list
+    else
+        echo "Could not read a cgroup devices.list (cgroup v1 or v2) to check allowed devices."
+    fi
+    echo "--- End diagnostics ---"
     exit 1
 fi
 
