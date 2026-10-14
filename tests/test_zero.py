@@ -70,3 +70,34 @@ def test_zero_out(shape, dtype):
         act_out = torch.ops.aten.zero.out(act_x, out=act_x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
+
+
+@pytest.mark.zero_
+@pytest.mark.parametrize(
+    "dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES
+)
+@pytest.mark.parametrize("view", ["cols", "step", "column"])
+def test_zero__non_contiguous_view(dtype, view):
+    """`zero_` must write only inside a non-contiguous view (Issue #7115).
+
+    `zeros_kernel` walks flat offsets over `numel` from the view's data pointer,
+    so a strided view used to be zeroed outside its own memory while part of the
+    view was left untouched.
+    """
+    base = torch.ones((4, 8), dtype=dtype, device=flag_gems.device)
+    ref = base.clone()
+    act = base.clone()
+
+    if view == "cols":
+        ref_view, act_view = ref[:, 3:], act[:, 3:]
+    elif view == "step":
+        ref_view, act_view = ref[:, ::2], act[:, ::2]
+    else:
+        ref_view, act_view = ref[:, 5], act[:, 5]
+    assert not act_view.is_contiguous()
+
+    ref_view.zero_()
+    with flag_gems.use_gems():
+        act_view.zero_()
+
+    utils.gems_assert_equal(act, ref)
