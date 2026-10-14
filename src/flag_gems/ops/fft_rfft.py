@@ -35,7 +35,7 @@ import triton
 import triton.language as tl
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["n"])
 def _rfft_lastdim_kernel(
     x_ptr,
     out_ptr,
@@ -107,7 +107,7 @@ def _rfft_lastdim_kernel(
     tl.store(out_ptr + tmp + 1, acc_im, mask=kmask)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["n"])
 def _rfft_dft_kernel(
     x_ptr,
     out_ptr,
@@ -250,18 +250,44 @@ def _pad8(lst, fill):
     return lst + [fill] * (8 - len(lst))
 
 
-def fft_rfft(self, n, dim, norm):
+def fft_rfft(self, n=None, dim=-1, norm=None):
+    # ``aten::fft_rfft(Tensor self, SymInt? n=None, int dim=-1, str? norm=None)``
+    # defaults every argument but ``self``, so ``torch.fft.rfft(x)`` only binds
+    # if the defaults are mirrored here.
     x = self
     if not isinstance(x, torch.Tensor):
         x = torch.as_tensor(x)
+
+    if x.is_complex():
+        raise RuntimeError(
+            "rfft expects a real input tensor, but got %s"
+            % ("ComplexDouble" if x.dtype == torch.complex128 else "ComplexFloat")
+        )
+    if norm is not None and norm not in ("backward", "forward", "ortho"):
+        raise RuntimeError('Invalid normalization mode: "%s"' % norm)
 
     ndim = x.dim()
     d = int(dim)
     if d < 0:
         d += ndim
+    # A 0-d tensor has no transform axis at all, and ATen reports the
+    # out-of-range dimension rather than letting the shape lookup fail.
+    if ndim == 0:
+        raise IndexError(
+            "Dimension specified as %d but tensor has no dimensions" % int(dim)
+        )
+    if d < 0 or d >= ndim:
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [%d, %d], but got %d)"
+            % (-ndim, ndim - 1, int(dim))
+        )
 
     N = int(x.shape[d])
     nn = N if n is None else int(n)
+    # ATen rejects a non-positive transform length instead of returning an
+    # empty or DC-only result.
+    if nn <= 0:
+        raise RuntimeError("Invalid number of data points (%d) specified" % nn)
     K = nn // 2 + 1
 
     shape_out = list(x.shape)
