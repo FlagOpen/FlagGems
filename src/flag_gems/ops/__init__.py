@@ -755,6 +755,7 @@ from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
+from flag_gems.ops.geqrf import geqrf
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
@@ -853,6 +854,7 @@ from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.isposinf import isposinf
 from flag_gems.ops.isreal import isreal
+from flag_gems.ops.istft import istft
 from flag_gems.ops.kaiser_window import (
     kaiser_window,
     kaiser_window_beta,
@@ -1244,6 +1246,7 @@ from flag_gems.ops.segment_reduce import (
     segment_reduce_out,
 )
 from flag_gems.ops.select_backward import select_backward
+from flag_gems.ops.select_copy import select_copy
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
@@ -2254,6 +2257,7 @@ __all__ = [
     "gelu_backward",
     "geometric",
     "geometric_",
+    "geqrf",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
@@ -2363,6 +2367,7 @@ __all__ = [
     "isneginf_out",
     "isposinf",
     "isreal",
+    "istft",
     "kaiser_window",
     "kaiser_window_beta",
     "kaiser_window_periodic",
@@ -2797,6 +2802,7 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
