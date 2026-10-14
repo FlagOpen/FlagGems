@@ -4807,6 +4807,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: dstack
+  description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
+    are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
+    single depth slot.
+
+    '
+  for:
+  - dstack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -12775,6 +12790,18 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: mH
+  description: Returns a view of this tensor with the last two dimensions conjugated
+    and transposed.
+  for:
+  - mH
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mhc_bwd
   description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
 
@@ -18592,6 +18619,38 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_modified_bessel_i1
+  description: 'Computes the modified Bessel function of the first kind of order 1
+
+    (I_1(x)) for each element of `input`.
+
+    '
+  for:
+  - special_modified_bessel_i1
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: special_modified_bessel_i1_out
+  description: 'A variant of `special_modified_bessel_i1()` with output saved to
+
+    provided `out`.
+
+    '
+  for:
+  - special_modified_bessel_i1.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: special_modified_bessel_k0
   description: Triton kernel implementation for special_modified_bessel_k0.
   for:

@@ -646,6 +646,7 @@ from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dsplit import dsplit
+from flag_gems.ops.dstack import run as dstack
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_bag import embedding_bag
@@ -1007,6 +1008,7 @@ from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
+from flag_gems.ops.mH import mH
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm import miopen_batch_norm
@@ -1336,6 +1338,10 @@ from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_i0 import (
     special_modified_bessel_i0,
     special_modified_bessel_i0_out,
+)
+from flag_gems.ops.special_modified_bessel_i1 import (
+    special_modified_bessel_i1,
+    special_modified_bessel_i1_out,
 )
 from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
@@ -2128,6 +2134,7 @@ __all__ = [
     "dropout_",
     "dropout_backward",
     "dsplit",
+    "dstack",
     "efficient_attention_backward",
     "elu",
     "elu_",
@@ -2534,6 +2541,7 @@ __all__ = [
     "median_dim",
     "median_dim_values",
     "median_out",
+    "mH",
     "min",
     "min_dim",
     "minimum",
@@ -2888,6 +2896,8 @@ __all__ = [
     "special_logsumexp",
     "special_modified_bessel_i0",
     "special_modified_bessel_i0_out",
+    "special_modified_bessel_i1",
+    "special_modified_bessel_i1_out",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
