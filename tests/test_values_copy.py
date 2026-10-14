@@ -308,16 +308,27 @@ _STORAGE_CASES = tu.selected_cases(
     ],
 )
 
+# Scalar and singleton spec shapes map to the same sparse matrix.
+_SHAPE_CASES = list(
+    dict.fromkeys(_shape_to_row(shape) for shape in tu.selected_shapes())
+)
+
 # One workload per row: shape levels x distinct ordinary ranges over the dtypes
 # that carry a range, then the storage rows over every supported dtype.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _COPY_ROWS = [
     (row, dtype, list(value_range))
-    for row in [_shape_to_row(shape) for shape in tu.selected_shapes()]
+    for row in _SHAPE_CASES
     for dtype in _RANGE_DTYPES
     for value_range in tu.selected_ranges()
     if dtype != torch.uint8 or value_range in (["-1", "1"], ["0", "max"])
-] + [(row, dtype, ["-1", "1"]) for row in _STORAGE_CASES for dtype in _VALUE_DTYPES]
+] + [
+    (row, dtype, ["-1", "1"])
+    for row in _STORAGE_CASES
+    for dtype in _VALUE_DTYPES
+    # Shape rows already cover this range, except for bool.
+    if row not in _SHAPE_CASES or dtype == torch.bool
+]
 
 # Positive NaN/Inf workloads are default-only.
 _SPECIAL_ROWS = tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[])
