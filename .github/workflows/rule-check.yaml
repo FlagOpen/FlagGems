@@ -211,6 +211,28 @@ jobs:
 
           git checkout -q --force FETCH_HEAD
           echo "robust-checkout: done ($(git rev-parse --short HEAD))"
+
+          # The PR base SHA (master tip, github.event.pull_request.base.sha) is
+          # usually NOT an ancestor of the PR head, so fetching the head ref
+          # alone leaves it missing from the object store and every later
+          # three-dot diff (`git diff base...head` in derive_changed_operators)
+          # dies with "Invalid symmetric difference expression". Fetch the base
+          # SHA explicitly; --depth=0 keeps full history so the merge-base
+          # resolution works. Best-effort: if the base fetch fails the derive
+          # step will surface a clear diff error rather than a silent pass.
+          RC_BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -n "$RC_BASE" ] && ! git cat-file -e "$RC_BASE^{commit}" 2>/dev/null; then
+            for b in 1 2 3 4 5; do
+              if timeout -s KILL "$RC_TRANSFER" git -c http.version=HTTP/1.1 \
+                   -c http.lowSpeedLimit="$LOW_LIMIT" -c http.lowSpeedTime="$LOW_TIME" \
+                   fetch -q --no-tags origin "$RC_BASE"; then
+                echo "robust-checkout: fetched base $RC_BASE"
+                break
+              fi
+              echo "robust-checkout: base fetch attempt $b failed, retrying"
+              sleep 5
+          done
+          fi
       - name: Ensure full working tree
         shell: bash
         run: |

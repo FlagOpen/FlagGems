@@ -100,7 +100,34 @@ def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
         )
         return [f.strip() for f in result.stdout.splitlines() if f.strip()]
     except subprocess.CalledProcessError as e:
+        # The base SHA (master tip) is often not an ancestor of the checked-out
+        # head, so a head-only fetch leaves it missing and the three-dot diff
+        # fails with "Invalid symmetric difference expression". Try to fetch it
+        # directly from origin once before giving up.
+        subprocess.run(
+            ["git", "fetch", "--no-tags", "-q", "origin", base_sha],
+            capture_output=True,
+            text=True,
+        )
+        retry = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--diff-filter=ACMR",
+                f"{base_sha}...{head_sha}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if retry.returncode == 0:
+            return [f.strip() for f in retry.stdout.splitlines() if f.strip()]
         print(f"::error::Failed to get git diff: {e.stderr}", file=sys.stderr)
+        print(
+            "::error::Base SHA %s not present locally and fetching it failed. "
+            "Ensure the checkout step fetches the PR base SHA." % base_sha,
+            file=sys.stderr,
+        )
         sys.exit(2)
 
 
