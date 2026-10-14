@@ -605,6 +605,7 @@ from .special_gammaincc import special_gammaincc
 from .special_gammaln import special_gammaln
 from .special_gammaln_out import special_gammaln_out
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_i0 import special_i0, special_i0_out  # noqa: F401
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out  # noqa: F401
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
@@ -614,6 +615,10 @@ from .special_log_ndtr import special_log_ndtr, special_log_ndtr_
 from .special_log_softmax import special_log_softmax
 from .special_logit import special_logit, special_logit_out  # noqa: F401
 from .special_logsumexp import special_logsumexp
+from .special_modified_bessel_i0 import (  # noqa: F401
+    special_modified_bessel_i0,
+    special_modified_bessel_i0_out,
+)
 from .special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
@@ -622,6 +627,10 @@ from .special_multigammaln import special_multigammaln
 from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
+from .special_scaled_modified_bessel_k1 import (  # noqa: F401
+    special_scaled_modified_bessel_k1,
+    special_scaled_modified_bessel_k1_out,
+)
 from .special_shifted_chebyshev_polynomial_t import (
     special_shifted_chebyshev_polynomial_t,
 )
@@ -1394,6 +1403,8 @@ __all__ = [
     "special_gammaln",
     "special_gammaln_out",
     "special_hermite_polynomial_h",
+    "special_i0",
+    "special_i0_out",
     "special_i0e",
     "special_i0e_out",
     "special_legendre_polynomial_p",
@@ -1405,6 +1416,8 @@ __all__ = [
     "special_logit",
     "special_logit_out",
     "special_logsumexp",
+    "special_modified_bessel_i0",
+    "special_modified_bessel_i0_out",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
@@ -1412,6 +1425,8 @@ __all__ = [
     "special_ndtri",
     "special_round",
     "special_round_out",
+    "special_scaled_modified_bessel_k1",
+    "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
