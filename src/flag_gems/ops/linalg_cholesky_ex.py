@@ -82,9 +82,19 @@ def _cholesky_ex_kernel(
     # order, not the padded tile width: rows/columns >= N are zero and the store
     # is masked to the valid region, so the padded steps would be dead work on
     # the serial critical path.
+    # ``info`` is the 1-based index of the first non-positive pivot, matching
+    # ``aten::linalg_cholesky_ex``; 0 means the factorisation succeeded.
+    info = 0
     for j in tl.static_range(NSTEPS):
         col = tl.sum(tl.where(cj == j, W, 0.0), axis=1)
         pivot = tl.sum(tl.where(r == j, col, 0.0))
+        # A non-positive or non-finite pivot means the leading minor of order
+        # j+1 is not positive definite.  Record the first such j and keep the
+        # loop going: the trip count is a static range, and the trailing values
+        # are discarded by the caller once info != 0.
+        bad = (pivot <= 0.0) or (pivot != pivot)
+        if bad and info == 0:
+            info = j + 1
         scale = tl.sqrt(pivot)
         inv = 1.0 / scale
         col = tl.where(r > j, col * inv, 0.0)
@@ -104,19 +114,41 @@ def _cholesky_ex_kernel(
         res.to(Out_ptr.dtype.element_ty),
         mask=valid,
     )
-    # success flag for this matrix
-    tl.store(Info_ptr + pid, 0)
+    tl.store(Info_ptr + pid, info)
 
 
 _MAX_N = 64
 
 
-def linalg_cholesky_ex(self, upper, check_errors):
+def linalg_cholesky_ex(self, upper=False, check_errors=False):
+    # ``aten::linalg_cholesky_ex`` defaults both flags, so they default here as
+    # well; otherwise ``torch.linalg.cholesky_ex(A)`` cannot bind.
     a = self
+    if a.dim() < 2:
+        raise RuntimeError(
+            "linalg.cholesky: The input tensor A must have at least 2 dimensions."
+        )
+    if a.shape[-1] != a.shape[-2]:
+        raise RuntimeError(
+            "linalg.cholesky: A must be batches of square matrices, but they are "
+            "%d by %d matrices" % (a.shape[-2], a.shape[-1])
+        )
+
     n = int(a.shape[-1])
+    batch_shape = a.shape[:-2]
+
+    # A zero-sized matrix is vacuously factorised; ATen returns empty outputs
+    # rather than dividing by the zero matrix order.
+    if n == 0 or a.numel() == 0:
+        return torch.return_types.linalg_cholesky_ex(
+            (
+                torch.empty_like(a),
+                torch.zeros(batch_shape, dtype=torch.int32, device=a.device),
+            )
+        )
+
     if n > _MAX_N:
         raise NotImplementedError("linalg_cholesky_ex kernel supports N <= 64")
-    batch_shape = a.shape[:-2]
     num = int(a.numel()) // (n * n)
 
     a2 = a.reshape(num, n, n)
@@ -143,6 +175,16 @@ def linalg_cholesky_ex(self, upper, check_errors):
         IS64=bool(a.dtype == torch.float64),
         num_warps=1,
     )
+
+    if check_errors:
+        bad = torch.nonzero(info.reshape(-1))
+        if bad.numel() > 0:
+            first = int(info.reshape(-1)[int(bad[0])])
+            raise torch.linalg.LinAlgError(
+                "linalg.cholesky_ex: The factorization could not be completed "
+                "because the input is not positive-definite (the leading "
+                "minor of order %d is not positive-definite)." % first
+            )
 
     return torch.return_types.linalg_cholesky_ex((out, info))
 
