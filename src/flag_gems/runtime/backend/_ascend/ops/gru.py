@@ -33,24 +33,20 @@ _IGEMM_MM_MIN_MACS = 5e8
 _TRANSPOSE_BLOCK = 32
 
 _PACK_BLOCK = 256
+
+# CANN flattens Triton's launch grid into blockDim, whose valid range is [1, 65535].
 _ASCEND_MAX_CORE_DIM = 65535
 
+# mm_out uses 2D output tiles internally; estimate its blockDim before taking this path.
+_ASCEND_MM_OUT_TILE_M = 32
+_ASCEND_MM_OUT_TILE_N = 16
 
-def _ascend_launch_grid(*axes):
-    axes = [min(max(1, int(axis)), _ASCEND_MAX_CORE_DIM) for axis in axes]
-    while True:
-        product = 1
-        for axis in axes:
-            product *= axis
-        if product <= _ASCEND_MAX_CORE_DIM:
-            return tuple(axes)
-        largest = max(range(len(axes)), key=lambda i: axes[i])
-        others = product // axes[largest]
-        if others > _ASCEND_MAX_CORE_DIM:
-            axes[largest] = 1
-        else:
-            axes[largest] = max(1, _ASCEND_MAX_CORE_DIM // others)
-
+# Packed+bias h-split keeps extra fp32 tiles live; 32x128 is the largest safe tile.
+_GRU_PACKED_BIAS_UB_SAFE_BLOCK_B = 32
+_GRU_PACKED_BIAS_UB_SAFE_BLOCK_H = 128
+_GRU_PACKED_BIAS_UB_SAFE_TILE_ELEMS = (
+    _GRU_PACKED_BIAS_UB_SAFE_BLOCK_B * _GRU_PACKED_BIAS_UB_SAFE_BLOCK_H
+)
 
 @libentry()
 @triton.jit
@@ -387,7 +383,6 @@ def _gru_x_aug_kernel(
     x_aug_ptr,
     cols,
     batch,
-    seq_len,
     x_stride_s,
     x_stride_b,
     x_stride_f,
@@ -396,26 +391,19 @@ def _gru_x_aug_kernel(
     # x (seq, batch, cols) -> x_aug (seq*batch, cols+1) with a trailing ones column so
     # the mm folds w_aug's bias row in. Affine 3D grid: a div/mod variant faults the AIV.
     pid_s = tl.program_id(0)
-    worker_s = tl.num_programs(0)
     pid_b = tl.program_id(1)
-    worker_b = tl.num_programs(1)
     pid_c = tl.program_id(2)
-    worker_c = tl.num_programs(2)
-    n_c = tl.cdiv(cols + 1, BLOCK)
-    for s in range(pid_s, seq_len, worker_s):
-        for b in range(pid_b, batch, worker_b):
-            for c_pid in range(pid_c, n_c, worker_c):
-                offs_c = c_pid * BLOCK + tl.arange(0, BLOCK)
-                val = tl.load(
-                    x_ptr + s * x_stride_s + b * x_stride_b + offs_c * x_stride_f,
-                    mask=offs_c < cols,
-                    other=1.0,
-                )
-                tl.store(
-                    x_aug_ptr + (s * batch + b) * (cols + 1) + offs_c,
-                    val,
-                    mask=offs_c <= cols,
-                )
+    offs_c = pid_c * BLOCK + tl.arange(0, BLOCK)
+    val = tl.load(
+        x_ptr + pid_s * x_stride_s + pid_b * x_stride_b + offs_c * x_stride_f,
+        mask=offs_c < cols,
+        other=1.0,
+    )
+    tl.store(
+        x_aug_ptr + (pid_s * batch + pid_b) * (cols + 1) + offs_c,
+        val,
+        mask=offs_c <= cols,
+    )
 
 
 @libentry()
@@ -1067,8 +1055,21 @@ def _direction_prep(
     macs = seq_len * batch_size * input_size * 3 * hidden_size
     rows = seq_len * batch_size
     cols = 3 * hidden_size
-    mm_tiles = triton.cdiv(rows, 16) * triton.cdiv(cols, 16)
-    use_mm = macs >= _IGEMM_MM_MIN_MACS and mm_tiles <= _ASCEND_MAX_CORE_DIM
+    x_aug_programs = (
+        seq_len
+        * batch_size
+        * triton.cdiv(input_size + 1, _PACK_BLOCK)
+    )
+    mm_out_programs = triton.cdiv(rows, _ASCEND_MM_OUT_TILE_M) * triton.cdiv(
+        cols, _ASCEND_MM_OUT_TILE_N
+    )
+    # Skip the mm_out fast path when either preparatory packing or mm_out would
+    # exceed CANN's blockDim limit; the Triton GEMM fallback has bounded launches.
+    use_mm = (
+        macs >= _IGEMM_MM_MIN_MACS
+        and x_aug_programs <= _ASCEND_MAX_CORE_DIM
+        and mm_out_programs <= _ASCEND_MAX_CORE_DIM
+    )
     with torch_device_fn.device(layer_input.device):
         if use_mm:
             m = seq_len * batch_size
@@ -1106,16 +1107,13 @@ def _direction_prep(
             else:
                 w_aug = cached[3]
             _gru_x_aug_kernel[
-                _ascend_launch_grid(
-                    seq_len, batch_size, triton.cdiv(input_size + 1, _PACK_BLOCK)
-                )
+                (seq_len, batch_size, triton.cdiv(input_size + 1, _PACK_BLOCK))
             ](
                 *(
                     layer_input,
                     x_aug,
                     input_size,
                     batch_size,
-                    seq_len,
                     layer_input.stride(0),
                     layer_input.stride(1),
                     layer_input.stride(2),
@@ -1215,12 +1213,12 @@ def _run_direction(
     grid = (triton.cdiv(batch_size, block_b),)
     divisible = batch_size % block_b == 0 and hidden_size % block_h == 0
     hsplit = _hsplit_tiles(batch_size, hidden_size, layer_input.device)
-    # Only packed+bias at 64x128 overflows UB. Other 64-row launches stay.
+    # Packed+bias h-split overflows UB at 64x128; keep only tiles up to 32x128.
     if (
         hsplit is not None
         and batch_sizes is not None
         and has_biases
-        and hsplit[0] * block_h > 32 * 128
+        and hsplit[0] * block_h > _GRU_PACKED_BIAS_UB_SAFE_TILE_ELEMS
     ):
         hsplit = None
     # Tail of the timeloop kernels' argument list, identical for both variants.
