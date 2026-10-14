@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 _CAPABILITY_FLAGS = {
     torch.bfloat16: utils.bf16_is_supported,
@@ -155,14 +156,20 @@ def to_reference(inp, upcast=False):
         )
         if inp.is_conj():
             reference = reference.conj()
+    # In quick-cpu mode the reference runs on CPU and the assert helpers
+    # require both sides on the same device. .to() preserves size, stride
+    # and storage offset, so the view metadata survives the move.
+    if TO_CPU:
+        reference = reference.to("cpu")
     reference.requires_grad_(inp.requires_grad)
     return reference
 
 
 def assert_result_equal(result, reference):
     # Comparison results are exact 0/1 values; equal_nan keeps the NaN payload
-    # rows comparable.
-    torch.testing.assert_close(result, reference, rtol=0, atol=0, equal_nan=True)
+    # rows comparable. gem-agnostic: moves res to the reference device in
+    # quick-cpu mode via utils.gems_assert_equal's TO_CPU handling.
+    utils.gems_assert_equal(result, reference, equal_nan=True)
 
 
 def assert_result_close(result, reference, *, atol=1e-4):
