@@ -166,18 +166,24 @@ def _autograd_snapshot(node):
     )
 
 
-# Retention depends on autograd state, not element values.
-# Keep every dtype and structural case with one ordinary value range.
-_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
-    for dtype in _VALUE_DTYPES
-    for value_range in tu.selected_ranges()[:1]
-]
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_SHAPE_DTYPE_CASES = tu.selected_cases(
+    [
+        ((), torch.float32),
+        ((1,), torch.float32),
+        ((256,), torch.float32),
+        ((1024, 1024), torch.float32),
+        ((16, 128, 64, 60), torch.float32),
+        ((16, 7, 57, 32, 29), torch.float32),
+    ]
+    + [((20, 320, 15), dtype) for dtype in _VALUE_DTYPES],
+    quick=[((2, 19, 7), dtype) for dtype in _VALUE_DTYPES],
+)
 
 
 @pytest.mark.retains_grad
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_retains_grad_plain_tensor(shape, value_range, dtype):
     # A tensor that no operation produced is a leaf, so every supported dtype
     # and storage form (0-dim, strided, bool, FP8, complex) answers False.

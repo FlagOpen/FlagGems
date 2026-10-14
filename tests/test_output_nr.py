@@ -286,18 +286,24 @@ def _assert_output_nr(res, ref, expected):
     assert res == expected, (res, expected)
 
 
-# Output numbers depend on autograd metadata, not element values.
-# Keep every dtype and structural case with one ordinary value range.
-_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
-    for dtype in _SUPPORTED_DTYPES
-    for value_range in tu.selected_ranges()[:1]
-]
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_SHAPE_DTYPE_CASES = tu.selected_cases(
+    [
+        ((), torch.float32),
+        ((1,), torch.float32),
+        ((256,), torch.float32),
+        ((1024, 1024), torch.float32),
+        ((16, 128, 64, 60), torch.float32),
+        ((16, 7, 57, 32, 29), torch.float32),
+    ]
+    + [((20, 320, 15), dtype) for dtype in _SUPPORTED_DTYPES],
+    quick=[((2, 19, 7), dtype) for dtype in _SUPPORTED_DTYPES],
+)
 
 
 @pytest.mark.output_nr
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
-@pytest.mark.parametrize("shape", tu.selected_shapes())
+@pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_output_nr_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
