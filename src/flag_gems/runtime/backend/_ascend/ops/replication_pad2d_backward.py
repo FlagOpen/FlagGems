@@ -777,28 +777,6 @@ def _replication_pad2d_backward_impl(
                 w_width,
                 tiles_per_prog,
             )
-            n_tiles = n_images * row_blocks
-
-            # CANN caps blockDim at 65535, while only one wave of vector cores runs at once.
-            # Launch one program per vector core and let each program walk multiple tiles.
-            CORE_NUM = get_npu_properties()["num_vectorcore"]
-            tiles_per_prog = triton.cdiv(n_tiles, CORE_NUM)
-            grid = (triton.cdiv(n_tiles, tiles_per_prog),)
-            _backward_wide_k1[grid](
-                grad_output,
-                out,
-                OH,
-                OW,
-                H,
-                W,
-                n_tiles,
-                pad_left,
-                pad_right,
-                pad_top,
-                r_wide,
-                w_width,
-                tiles_per_prog,
-            )
             # K1 already seeded rows 0/H-1 with the aligned value; K2 rewrites
             # them with every vertical contribution.  Skip it entirely when
             # there are no vertical pads (K1 alone is then exact).
