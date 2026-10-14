@@ -118,7 +118,7 @@ def _gather_kernel(  # noqa: PLR0913 - one scalar per supported axis index
 
     base = tl.zeros([BLOCK_I], dtype=tl.int64)
     for k in tl.static_range(P):
-        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int64)
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
         ik = tl.load(idx_ptr + k * N + offs_i, mask=mask_i, other=0).to(tl.int64)
         base += ik * sk
 
@@ -140,8 +140,8 @@ def _gather_kernel(  # noqa: PLR0913 - one scalar per supported axis index
             rem = offs_d.to(tl.int64)
             lin = tl.zeros([BLOCK_D], dtype=tl.int64)
             for q in tl.static_range(Q):
-                sz = _pick(q, z0, z1, z2, z3, z4, z5, z6, z7).to(tl.int64)
-                st = _pick(q, d0, d1, d2, d3, d4, d5, d6, d7).to(tl.int64)
+                sz = _pick(q, z0, z1, z2, z3, z4, z5, z6, z7)
+                st = _pick(q, d0, d1, d2, d3, d4, d5, d6, d7)
                 lin += (rem % sz) * st
                 rem = rem // sz
             mask2 = mask_i[:, None] & mask_d[None, :]
@@ -200,7 +200,7 @@ def _scatter_add_kernel(  # noqa: PLR0913 - one scalar per supported axis index
 
     base = tl.zeros([BLOCK_I], dtype=tl.int64)
     for k in tl.static_range(P):
-        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int64)
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
         ik = tl.load(idx_ptr + k * N + offs_i, mask=mask_i, other=0).to(tl.int64)
         base += ik * sk
 
@@ -215,8 +215,8 @@ def _scatter_add_kernel(  # noqa: PLR0913 - one scalar per supported axis index
             rem = offs_d.to(tl.int64)
             lin = tl.zeros([BLOCK_D], dtype=tl.int64)
             for q in tl.static_range(Q):
-                sz = _pick(q, z0, z1, z2, z3, z4, z5, z6, z7).to(tl.int64)
-                st = _pick(q, d0, d1, d2, d3, d4, d5, d6, d7).to(tl.int64)
+                sz = _pick(q, z0, z1, z2, z3, z4, z5, z6, z7)
+                st = _pick(q, d0, d1, d2, d3, d4, d5, d6, d7)
                 lin += (rem % sz) * st
                 rem = rem // sz
             mask2 = mask_i[:, None] & mask_d[None, :]

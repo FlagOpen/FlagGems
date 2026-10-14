@@ -123,7 +123,7 @@ def _count_kernel(
     m = offs < n_m
     lin = tl.zeros([BLOCK], dtype=tl.int64)
     for k in tl.static_range(ND):
-        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int64)
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
         ck = tl.load(ind_ptr + k * i_row + offs * i_col, mask=m, other=0).to(tl.int64)
         lin += ck * sk
     tl.atomic_add(scratch_ptr + lin, 1, mask=m)
@@ -159,7 +159,7 @@ def _project_kernel(
     mr = rows < n_s
     lin = tl.zeros([BLOCK_R], dtype=tl.int64)
     for k in tl.static_range(ND):
-        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int64)
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
         ck = tl.load(ind_ptr + k * i_row + rows * i_col, mask=mr, other=0).to(tl.int64)
         lin += ck * sk
     c = tl.load(sc_ptr + lin, mask=mr, other=0)
@@ -249,7 +249,7 @@ def _fused_tiny_kernel(
     mr = rows < n_s
     s_lin = tl.zeros([BLOCK_R], dtype=tl.int32)
     for k in tl.static_range(ND):
-        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int32)
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
         ck = tl.load(s_ind_ptr + k * i_row + rows * i_col, mask=mr, other=0).to(
             tl.int32
         )
@@ -297,7 +297,7 @@ def _key_kernel(
     m = offs < n
     lin = tl.zeros([BLOCK], dtype=tl.int32)
     for k in tl.static_range(ND):
-        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7).to(tl.int32)
+        sk = _pick(k, s0, s1, s2, s3, s4, s5, s6, s7)
         ck = tl.load(ind_ptr + k * i_row + offs * i_col, mask=m, other=0).to(tl.int32)
         lin += ck * sk
     tl.store(key_ptr + offs, lin, mask=m)
