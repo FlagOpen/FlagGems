@@ -29,7 +29,7 @@ def _conj_materialize(x):
 
 @pytest.mark.conj
 def test_conj():
-    # _conj only operates on complex dtypes (FLOAT_DTYPES not applicable)
+    # conj only operates on complex dtypes (FLOAT_DTYPES not applicable)
     bench = base.UnaryPointwiseBenchmark(
         op_name="conj",
         torch_op=_conj_materialize,
