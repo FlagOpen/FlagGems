@@ -88,9 +88,18 @@ def _assert_alias_matches(inp, ref_inp, res_out, ref_out):
     assert res_out.storage_offset() == ref_out.storage_offset()
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.autocast_to_full_precision
-@pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__autocast_to_full_precision(shape, value_range, dtype):
     # Both flags enabled is the accelerator-promoting configuration, and every

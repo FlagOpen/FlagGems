@@ -73,12 +73,15 @@ _DTYPES = [
 # rejection test covers False.
 _GRID_DIMS = tu.selected_cases([[0], [1]], quick=[[0]])
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _GRID_ROWS = [
     (shape, dtype, value_range, dim)
     for dtype in _DTYPES
     for shape in _GRID_SHAPES
     for value_range in tu.selected_ranges()
     for dim in _GRID_DIMS
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 # dim is an int[1] list: negative (normalized) values, multi-axis lists and the

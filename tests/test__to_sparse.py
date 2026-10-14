@@ -282,10 +282,19 @@ def _grad_upstream(result, dtype):
     return torch.sparse_coo_tensor(indices, values, coo.shape, is_coalesced=True)
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _COO_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.to_sparse
-@pytest.mark.parametrize("dtype", _COO_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__to_sparse_default(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -333,10 +342,21 @@ def test__to_sparse_compressed_layout(layout, blocksize, value_range, dtype):
 _EXPLICIT_COO_DTYPES = tu.selected_cases(_COO_DTYPES, quick=[])
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_TO_SPARSE_EXPLICIT_COO_LAYOUT_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _EXPLICIT_COO_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.to_sparse
-@pytest.mark.parametrize("dtype", _EXPLICIT_COO_DTYPES)
+@pytest.mark.parametrize(
+    "dtype,value_range", _TO_SPARSE_EXPLICIT_COO_LAYOUT_DTYPE_RANGE_CASES
+)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__to_sparse_explicit_coo_layout(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)

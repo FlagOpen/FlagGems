@@ -85,12 +85,15 @@ _GRID = tu.selected_cases(
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _GRID_RANGE_CASES = [
     (shape, axis0, axis1, dtype, value_range)
     for shape, axis0, axis1, dtype in _GRID
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 
@@ -183,10 +186,21 @@ _MUTATION = tu.selected_cases(
 )
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_SWAPAXES__WRITE_THROUGH_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _BASE_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.swapaxes_
 @pytest.mark.parametrize("shape,axis0,axis1", _MUTATION)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _BASE_DTYPES)
+@pytest.mark.parametrize(
+    "dtype,value_range", _SWAPAXES__WRITE_THROUGH_DTYPE_RANGE_CASES
+)
 def test_swapaxes__write_through(shape, axis0, axis1, value_range, dtype):
     # The returned view aliases the original storage, so writes through it are
     # visible on the input tensor.

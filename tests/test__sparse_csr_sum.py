@@ -168,10 +168,19 @@ def _assert_index_dtype(result, index_dtype):
     assert result.col_indices().dtype == index_dtype
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SUM_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.parametrize("shape", _SUM_SHAPES)
-@pytest.mark.parametrize("dtype", _SUM_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("dim", _DIMS)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test__sparse_csr_sum(shape, dtype, dim, value_range):
     inp = tu.make_input(dtype, shape, value_range).to_sparse_csr()
     ref_inp = tu.to_reference(inp)

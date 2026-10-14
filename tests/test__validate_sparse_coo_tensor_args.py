@@ -753,12 +753,15 @@ def _invalid_operands(row):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _LAYOUT_DTYPE_RANGE_CASES = [
     pytest.param(layout, dtype, value_range, id=f"{case_id}-range{range_index}")
     for (layout, dtype), case_id in zip(_LAYOUT_ROWS, _LAYOUT_IDS)
     for range_index, value_range in enumerate(
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 

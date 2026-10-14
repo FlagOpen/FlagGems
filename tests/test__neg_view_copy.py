@@ -45,10 +45,13 @@ _NEG_VIEW_COPY_EMPTY_SHAPES = [(0,), (4, 0), (2, 0, 3)]
 
 _NEG_VIEW_COPY_BACKWARD_SHAPES = [(16, 64), (7, 13, 29)]
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _RANGE_CASES = [
     (dtype, value_range)
     for dtype in _NEG_VIEW_COPY_DTYPES
     for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 

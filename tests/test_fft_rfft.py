@@ -127,6 +127,7 @@ _HALF_SHAPES = tu.selected_cases(
 )
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _VALUE_CASES = [
     (dtype, shape, value_range)
     for dtype in _RFFT_DTYPES
@@ -134,6 +135,8 @@ _VALUE_CASES = [
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 

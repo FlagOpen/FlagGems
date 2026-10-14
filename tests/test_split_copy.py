@@ -181,10 +181,19 @@ def _strided_views(parts, device):
     return parents, [parent[..., ::2] for parent in parents]
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SPLIT_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.split_copy
 @pytest.mark.parametrize("shape", _SPLIT_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _SPLIT_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_split_copy_value_ranges(shape, value_range, dtype):
     split_size, dim = _main_split(shape)
     inp = tu.make_input(dtype, shape, value_range)

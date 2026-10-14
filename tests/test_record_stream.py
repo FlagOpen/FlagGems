@@ -193,10 +193,19 @@ def _allocator_signature(record, dtype):
     return held, float(reuse.reshape(-1)[0].item())
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in tu.REQUIRED_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.record_stream
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", tu.REQUIRED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_record_stream_grid(dtype, shape, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     stream = torch.accelerator.current_stream()

@@ -85,10 +85,19 @@ def test_flatten_dense_tensors(tensor_shapes, dtype):
         tu.assert_result_equal(res_t, ref_t)
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _NUMERIC_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.flatten_dense_tensors
 @pytest.mark.parametrize("tensor_shapes", _FLATTEN_RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _NUMERIC_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_flatten_dense_tensors_value_ranges(tensor_shapes, value_range, dtype):
     inp = [tu.make_input(dtype, shape, value_range) for shape in tensor_shapes]
     ref_inp = [tu.to_reference(t) for t in inp]

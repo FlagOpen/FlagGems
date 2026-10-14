@@ -152,10 +152,19 @@ def _strided_input(kind, dtype):
     return base[:, ::2, 1:9]
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SUPPORTED_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.to_mkldnn
 @pytest.mark.parametrize("shape", SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_to_mkldnn_with_value_range(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range).cpu()
     ref_inp = tu.to_reference(inp)

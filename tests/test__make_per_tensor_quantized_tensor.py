@@ -109,10 +109,19 @@ def _assert_quant_metadata(res_out, ref_out):
     tu.assert_result_equal(res_out.int_repr(), ref_out.int_repr())
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _MAKE_PERTENSOR_INPUT_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.make_per_tensor_quantized_tensor
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
-@pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__make_per_tensor_quantized_tensor_value_ranges(shape, dtype, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -188,8 +197,7 @@ def test__make_per_tensor_quantized_tensor_non_contiguous(dtype):
 
 @pytest.mark.make_per_tensor_quantized_tensor_out
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
-@pytest.mark.parametrize("dtype", _MAKE_PERTENSOR_INPUT_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__make_per_tensor_quantized_tensor_out_value_ranges(shape, dtype, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)

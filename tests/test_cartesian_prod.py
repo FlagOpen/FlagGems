@@ -33,11 +33,14 @@ _SUPPORTED_DTYPES = (
     + [torch.bool]
 )
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _RANGE_PAIRS = [
     (dtype, value_range)
     for dtype in _SUPPORTED_DTYPES
     if dtype != torch.bool
     for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 _CARTESIAN_PROD_SIZES = tu.selected_cases(

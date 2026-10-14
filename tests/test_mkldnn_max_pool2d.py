@@ -87,10 +87,19 @@ def _assert_operand_metadata(res_out, ref_out, operand):
     assert res_out.device == operand.device
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in _RANGES
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.mkldnn_max_pool2d
 @pytest.mark.parametrize("shape,params", _VALUE_ROWS)
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", _RANGES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_mkldnn_max_pool2d(shape, dtype, value_range, params):
     kernel_size, stride, padding, dilation, ceil_mode = params
     inp = tu.make_input(dtype, shape, value_range)
@@ -146,8 +155,7 @@ def test_mkldnn_max_pool2d_default_args(dtype, kernel_size):
 
 
 @pytest.mark.mkldnn_max_pool2d
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", _RANGES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_mkldnn_max_pool2d_out(dtype, value_range):
     kernel_size, stride, padding, dilation, ceil_mode = _ASYMMETRIC
     inp = tu.make_input(dtype, (2, 3, 19, 7), value_range)
