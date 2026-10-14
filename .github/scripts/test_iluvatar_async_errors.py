@@ -108,12 +108,13 @@ def _run_candidate(dtype_name, count, order, stream_mode="default"):
         seed_indices = torch.zeros(2, device="cuda", dtype=torch.int64)
         seed_offsets = torch.zeros(1, device="cuda", dtype=torch.int64)
         forward._embedding_bag(seed_weight, seed_indices, seed_offsets, mode=1)
-    context = (
-        torch.cuda.stream(torch.cuda.Stream())
-        if stream_mode != "default"
-        else contextlib.nullcontext()
-    )
-    with context:
+    if stream_mode != "default":
+        # Each case owns a subprocess. Do not restore the previous stream after
+        # catching a device assertion: CoreX reports the sticky error again in
+        # set_stream(), outside pytest.raises. The subprocess exits immediately.
+        stream = torch.cuda.Stream()
+        torch.cuda.set_stream(stream)
+    with contextlib.nullcontext():
         samples = count * 256
         weight = torch.ones((8, 33), dtype=dtype, device="cuda")
         indices = torch.ones(samples, dtype=torch.int64, device="cuda")
