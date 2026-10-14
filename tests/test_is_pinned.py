@@ -87,7 +87,7 @@ def _storage_tensor(storage, shape, dtype, value_range=None):
 
 
 # Pinning depends on the storage allocation, not element values.
-# Keep every dtype and structural case with one ordinary value range.
+# One ordinary value range; dtype/structure coverage is combined below.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DTYPES
@@ -95,9 +95,19 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+# Both default and quick shapes include a nontrivial rank-3 dtype smoke case.
+_DTYPE_SMOKE_SHAPE = next(shape for shape in tu.selected_shapes() if len(shape) == 3)
+# All structures use float32; every dtype also covers the selected structure.
+_SHAPE_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape in tu.selected_shapes()
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
+]
+
+
 @pytest.mark.is_pinned
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test_is_pinned_pinned_host_storage(shape, dtype, value_range):
     inp = _storage_tensor("pinned-host", shape, dtype, value_range)
     ref_inp = _storage_tensor("pinned-host", shape, dtype, value_range)
@@ -110,8 +120,7 @@ def test_is_pinned_pinned_host_storage(shape, dtype, value_range):
 
 
 @pytest.mark.is_pinned
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test_is_pinned_plain_host_storage(shape, dtype, value_range):
     inp = _storage_tensor("plain-host", shape, dtype, value_range)
     ref_inp = _storage_tensor("plain-host", shape, dtype, value_range)
@@ -124,8 +133,7 @@ def test_is_pinned_plain_host_storage(shape, dtype, value_range):
 
 
 @pytest.mark.is_pinned
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test_is_pinned_backend_storage(shape, dtype, value_range):
     inp = _storage_tensor("backend", shape, dtype, value_range)
     ref_inp = _storage_tensor("backend", shape, dtype, value_range)

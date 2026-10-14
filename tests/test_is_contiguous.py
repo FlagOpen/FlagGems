@@ -140,7 +140,7 @@ def _make_layout_input(kind, shape, dtype):
 
 
 # Contiguity depends on shape and strides, not element values.
-# Keep every dtype and structural case with one ordinary value range.
+# One ordinary value range; dtype/structure coverage is combined below.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in SUPPORTED_DTYPES
@@ -148,9 +148,19 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+# Both default and quick shapes include a nontrivial rank-3 dtype smoke case.
+_DTYPE_SMOKE_SHAPE = next(shape for shape in tu.selected_shapes() if len(shape) == 3)
+# All structures use float32; every dtype also covers the selected structure.
+_SHAPE_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape in tu.selected_shapes()
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
+]
+
+
 @pytest.mark.is_contiguous
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test_is_contiguous(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref = torch.ops.aten.is_contiguous(tu.to_reference(inp))

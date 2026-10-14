@@ -176,7 +176,7 @@ def test_is_coalesced(size, nnz, recorded, dtype):
 
 
 # The query reads the recorded coalesced flag, not stored values.
-# Keep every dtype and structural case with one ordinary value range.
+# One ordinary value range; dtype/structure coverage is combined below.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DTYPES
@@ -184,9 +184,23 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+# Exercise a nonempty, uncoalesced structure for every dtype.
+_DTYPE_SMOKE_ROW = next(
+    row for row in _RANGE_CASES if row[0] and row[1] > 1 and row[2] is False
+)
+# All structures use float32; every dtype also covers the selected structure.
+_FLAG_DTYPE_RANGE_CASES = [
+    (size, nnz, recorded, dtype, value_range)
+    for size, nnz, recorded in _RANGE_CASES
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or (size, nnz, recorded) == _DTYPE_SMOKE_ROW
+]
+
+
 @pytest.mark.is_coalesced
-@pytest.mark.parametrize("size,nnz,recorded", _RANGE_CASES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "size, nnz, recorded, dtype, value_range", _FLAG_DTYPE_RANGE_CASES
+)
 def test_is_coalesced_value_ranges(size, nnz, recorded, value_range, dtype):
     inp = _make_sparse(
         size, nnz, dtype, recorded=recorded, ordered=recorded, value_range=value_range

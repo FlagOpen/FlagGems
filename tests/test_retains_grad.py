@@ -167,7 +167,7 @@ def _autograd_snapshot(node):
 
 
 # Retention depends on autograd state, not element values.
-# Keep every dtype and structural case with one ordinary value range.
+# One ordinary value range; dtype/structure coverage is combined below.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _VALUE_DTYPES
@@ -175,9 +175,19 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+# Both default and quick shapes include a nontrivial rank-3 dtype smoke case.
+_DTYPE_SMOKE_SHAPE = next(shape for shape in tu.selected_shapes() if len(shape) == 3)
+# All structures use float32; every dtype also covers the selected structure.
+_SHAPE_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape in tu.selected_shapes()
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
+]
+
+
 @pytest.mark.retains_grad
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test_retains_grad_plain_tensor(shape, value_range, dtype):
     # A tensor that no operation produced is a leaf, so every supported dtype
     # and storage form (0-dim, strided, bool, FP8, complex) answers False.

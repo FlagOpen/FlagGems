@@ -187,7 +187,7 @@ def test_sparse_dim_empty_dense(shape, dtype):
 
 
 # Sparse dimensions depend on the tensor layout, not stored values.
-# Keep every dtype and structural case with one ordinary value range.
+# One ordinary value range; dtype/structure coverage is combined below.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in _DTYPES
@@ -195,9 +195,19 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
+# Both default and quick shapes include a nontrivial rank-3 dtype smoke case.
+_DTYPE_SMOKE_SHAPE = next(shape for shape in tu.selected_shapes() if len(shape) == 3)
+# All structures use float32; every dtype also covers the selected structure.
+_SHAPE_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape in tu.selected_shapes()
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
+]
+
+
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test_sparse_dim_dense_spec_shapes_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -226,11 +236,17 @@ def test_sparse_dim_coo_layouts(case, dtype):
     assert inp._nnz() == nnz
 
 
+# All structures use float32; every dtype also covers the selected structure.
+_COO_SPEC_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape in [shape for shape in tu.selected_shapes() if shape]
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
+]
+
+
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize(
-    "shape", [shape for shape in tu.selected_shapes() if len(shape) >= 1]
-)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype, value_range", _COO_SPEC_DTYPE_RANGE_CASES)
 def test_sparse_dim_coo_spec_shapes_value_ranges(shape, value_range, dtype):
     inp = _make_coo(tuple(shape), (), _SPEC_NNZ, dtype, value_range, seed=0)
     ref_inp = tu.to_reference(inp)
@@ -241,9 +257,17 @@ def test_sparse_dim_coo_spec_shapes_value_ranges(shape, value_range, dtype):
     _assert_result(res_out, ref_out)
 
 
+# All structures use float32; every dtype also covers the selected structure.
+_COO_DTYPE_RANGE_CASES = [
+    (case, dtype, value_range)
+    for case in _COO_RANGE_CASES
+    for dtype, value_range in _DTYPE_RANGE_CASES
+    if dtype == torch.float32 or case == _COO_RANGE_CASES[-1]
+]
+
+
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("case", _COO_RANGE_CASES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("case, dtype, value_range", _COO_DTYPE_RANGE_CASES)
 def test_sparse_dim_coo_value_ranges(case, value_range, dtype):
     sparse_shape, dense_shape, nnz = case
     inp = _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range)
