@@ -613,10 +613,8 @@ _CORE_PERSISTENT_SHAPES = {
 _SYNTHETIC_MATRIX_BIAS_SHAPES = {(4096, 4096, 4096)}
 
 
-def _make_descriptor(tensor, block_shape, *, stride_alignment=16):
-    return TensorDescriptor.from_tensor(
-        tensor, block_shape, stride_alignment=stride_alignment
-    )
+def _make_descriptor(tensor, block_shape):
+    return TensorDescriptor.from_tensor(tensor, block_shape)
 
 
 @libentry()
@@ -780,12 +778,12 @@ def _persistent_bn256_consumer_synced(
                 ready = reader.wait(token)
                 accumulator_0 = tle.gpu.wgmma(
                     ready.slot.a,
-                    ready.slot.b.slice(0, 128, dim=1),
+                    ready.slot.b.subslice(0, 128, dim=1),
                     accumulator_0,
                 )
                 accumulator_1 = tle.gpu.wgmma(
                     ready.slot.a,
-                    ready.slot.b.slice(128, 128, dim=1),
+                    ready.slot.b.subslice(128, 128, dim=1),
                     accumulator_1,
                 )
                 accumulator_0 = tle.gpu.wgmma_wait(0, accumulator_0)
@@ -856,12 +854,12 @@ def _persistent_bn256_consumer(
                 ready = reader.wait(token)
                 accumulator_0 = tle.gpu.wgmma(
                     ready.slot.a,
-                    ready.slot.b.slice(0, 128, dim=1),
+                    ready.slot.b.subslice(0, 128, dim=1),
                     accumulator_0,
                 )
                 accumulator_1 = tle.gpu.wgmma(
                     ready.slot.a,
-                    ready.slot.b.slice(128, 128, dim=1),
+                    ready.slot.b.subslice(128, 128, dim=1),
                     accumulator_1,
                 )
                 accumulator_0 = tle.gpu.wgmma_wait(0, accumulator_0)
@@ -1244,10 +1242,7 @@ def launch_persistent_addmm(shape, bias, mat1, mat2, out):
     block_m = 256
     block_n = 128 if kind == "bn128" else 256
     block_k = 64
-    a_stride_alignment = 4 if shape == (65536, 1152, 538) else 16
-    a_desc = _make_descriptor(
-        mat1, [block_m, block_k], stride_alignment=a_stride_alignment
-    )
+    a_desc = _make_descriptor(mat1, [block_m, block_k])
     b_desc = _make_descriptor(mat2, [block_k, block_n])
     fuse_matrix_bias = shape in _SYNTHETIC_MATRIX_BIAS_SHAPES
     if fuse_matrix_bias:
@@ -1333,6 +1328,7 @@ _SPLIT384_SHAPES = {
     (16384, 4608, 4608): (1, 4, False),
     (16384, 576, 4608): (1, 4, False),
 }
+
 
 def _is_one(value):
     try:
@@ -1495,7 +1491,7 @@ def _synthetic_consumer(
     for k_iter in range(TOTAL_K_TILES):
         ready = reader.wait(k_iter)
         accumulator = tle.gpu.wgmma(
-            ready.slot.a.slice(ROW_OFFSET, BLOCK_M, dim=0),
+            ready.slot.a.subslice(ROW_OFFSET, BLOCK_M, dim=0),
             ready.slot.b,
             accumulator,
         )
@@ -1528,7 +1524,7 @@ def _synthetic_consumer_unrolled(
     for k_iter in tl.static_range(TOTAL_K_TILES):
         ready = reader.wait(k_iter)
         accumulator = tle.gpu.wgmma(
-            ready.slot.a.slice(ROW_OFFSET, BLOCK_M, dim=0),
+            ready.slot.a.subslice(ROW_OFFSET, BLOCK_M, dim=0),
             ready.slot.b,
             accumulator,
         )
@@ -1581,7 +1577,7 @@ def _direct_bias_consumer(
     for k_iter in tl.static_range(K_TILES):
         ready = reader.wait(k_iter)
         accumulator = tle.gpu.wgmma(
-            ready.slot.a.slice(ROW_OFFSET, 256, dim=0),
+            ready.slot.a.subslice(ROW_OFFSET, 256, dim=0),
             ready.slot.b,
             accumulator,
         )
@@ -2013,16 +2009,9 @@ def _launch_synthetic_m512(shape, slots, unroll, bias, mat1, mat2, out):
     m, n, k = shape
     seed = _seed_a(mat1)
     a_desc = _make_descriptor(mat1, [512, _BLOCK_K])
-    b_stride_alignment = 4 if shape == (65536, 538, 1152) else 16
-    b_desc = _make_descriptor(
-        mat2, [_BLOCK_K, 128], stride_alignment=b_stride_alignment
-    )
+    b_desc = _make_descriptor(mat2, [_BLOCK_K, 128])
     seed_a_desc = _make_descriptor(seed, [512, _BLOCK_K])
-    seed_b_desc = _make_descriptor(
-        bias.reshape(1, bias.numel()),
-        [_BLOCK_K, 128],
-        stride_alignment=b_stride_alignment,
-    )
+    seed_b_desc = _make_descriptor(bias.reshape(1, bias.numel()), [_BLOCK_K, 128])
     grid_n = triton.cdiv(n, 128)
     with torch_device_fn.device(mat1.device):
         _synthetic_m512_n128_kernel[(triton.cdiv(m, 512) * grid_n,)](
