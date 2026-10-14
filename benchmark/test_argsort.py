@@ -14,10 +14,10 @@
 
 import csv
 import json
+import logging
 import math
 import shutil
 import statistics
-import tempfile
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -28,6 +28,8 @@ import torch
 import flag_gems
 
 from . import base, consts, utils
+
+logger = logging.getLogger(__name__)
 
 
 def summarize_kernel_rows(rows, warmup, active):
@@ -87,7 +89,8 @@ def do_bench_argsort_npu(fn, warmup=5, active=30, context=None):
 
     artifacts = Path("benchmark_profiles") / "argsort" / uuid.uuid4().hex
     artifacts.mkdir(parents=True)
-    with tempfile.TemporaryDirectory(prefix="argsort-npu-") as temporary:
+    profile_dir = artifacts / "profiler"
+    try:
         # Compile before recording. Some Triton versions use mspti and ignore
         # profile-directory arguments, so own the CSV-producing collector here.
         fn()
@@ -98,17 +101,60 @@ def do_bench_argsort_npu(fn, warmup=5, active=30, context=None):
         )
         with torch_npu.profiler.profile(
             activities=[torch_npu.profiler.ProfilerActivity.NPU],
+            # Finish one collection cycle before parsing the device data.
+            # Record all invocations so the existing warmup grouping is intact.
+            schedule=torch_npu.profiler.schedule(
+                wait=0, warmup=0, active=warmup + active, repeat=1
+            ),
             on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(
-                temporary, async_mode=False
+                str(profile_dir), async_mode=False
             ),
             experimental_config=config,
-        ):
+        ) as prof:
             for _ in range(warmup + active):
                 fn()
                 torch.npu.synchronize()
-        files = list(Path(temporary).rglob("kernel_details.csv"))
+                prof.step()
+        files = list(profile_dir.rglob("kernel_details.csv"))
         if len(files) != 1:
-            raise RuntimeError("Expected exactly one NPU kernel_details.csv")
+            # CI may not upload profiler artifacts; expose bounded parser logs.
+            log_bytes = 8 * 1024
+            remaining = 4 * log_bytes
+            logs = sorted(
+                profile_dir.rglob("*.log"),
+                key=lambda path: (
+                    not path.name.endswith("_ProfilingParser.log"),
+                    not path.name.endswith("_CANNExportParser.log"),
+                    str(path),
+                ),
+            )
+            for path in logs:
+                if remaining <= 0:
+                    break
+                try:
+                    with path.open("rb") as stream:
+                        stream.seek(0, 2)
+                        stream.seek(max(0, stream.tell() - min(log_bytes, remaining)))
+                        detail = stream.read(min(log_bytes, remaining))
+                except OSError:
+                    logger.warning("Cannot read profiler log %s", path, exc_info=True)
+                    continue
+                remaining -= len(detail)
+                logger.error(
+                    "Argsort NPU profiler log %s (tail):\n%s",
+                    path,
+                    detail.decode(errors="replace"),
+                )
+            exported = sorted(
+                str(path.relative_to(profile_dir))
+                for path in profile_dir.rglob("*")
+                if path.is_file()
+            )
+            raise RuntimeError(
+                f"Expected exactly one NPU kernel_details.csv, found {len(files)}; "
+                f"profiler directory: {profile_dir.resolve()}; "
+                f"context: {context}; exported files: {exported}"
+            )
         csv_path = artifacts / "kernel_details.csv"
         shutil.copyfile(files[0], csv_path)
         with csv_path.open(newline="") as stream:
@@ -117,6 +163,15 @@ def do_bench_argsort_npu(fn, warmup=5, active=30, context=None):
         report["csv"] = str(csv_path.resolve())
         report["context"] = context
         (artifacts / "operator-timing.json").write_text(json.dumps(report, indent=2))
+    except Exception:
+        logger.exception(
+            "Argsort NPU profiling failed; raw data retained at %s; context=%s",
+            profile_dir.resolve(),
+            context,
+        )
+        raise
+    # Keep the source CSV and timing report after successful validation.
+    shutil.rmtree(profile_dir)
     return report["latency_ms"]
 
 
