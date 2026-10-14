@@ -23,7 +23,7 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 pytestmark = pytest.mark.skipif(
-    not hasattr(flag_gems, "scaled_grouped_mm"),
+    flag_gems.vendor_name != "metax" and not hasattr(flag_gems, "scaled_grouped_mm"),
     reason="flag_gems.scaled_grouped_mm is unavailable",
 )
 
@@ -44,6 +44,21 @@ def _float8_dtypes():
 def _e4m3_dtypes():
     names = ("float8_e4m3fn", "float8_e4m3fnuz")
     return [getattr(torch, name) for name in names if hasattr(torch, name)]
+
+
+def _quantized_operator(dtype: torch.dtype, entrypoint: str):
+    if entrypoint == "compat":
+        return flag_gems.scaled_grouped_mm
+    name = (
+        "scaled_grouped_mm_w8a16_int8"
+        if dtype == torch.int8
+        else "scaled_grouped_mm_w8a16_fp8"
+    )
+    if not hasattr(flag_gems, name):
+        if flag_gems.vendor_name == "metax":
+            pytest.fail(f"MetaX must export flag_gems.{name}")
+        pytest.skip(f"flag_gems.{name} is unavailable on this backend")
+    return getattr(flag_gems, name)
 
 
 def _floating_output_dtypes():
@@ -283,12 +298,15 @@ def test_scaled_grouped_mm(case_name, dtype, use_bias):
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("dtype", _float8_dtypes(), ids=str)
 @pytest.mark.parametrize(
     "groups, m_per_group, N, K",
     [(4, 64, 128, 128), (8, 128, 256, 256), (16, 256, 512, 512)],
 )
-def test_scaled_grouped_mm_fp8_core(groups, m_per_group, N, K, dtype):
+def test_scaled_grouped_mm_fp8_core(groups, m_per_group, N, K, dtype, entrypoint):
+    operator = _quantized_operator(dtype, entrypoint)
     sizes = [m_per_group + group for group in range(groups)]
     offsets = [sum(sizes[: group + 1]) for group in range(groups)]
     M = offsets[-1]
@@ -315,7 +333,7 @@ def test_scaled_grouped_mm_fp8_core(groups, m_per_group, N, K, dtype):
     offs = offs_cpu.to(flag_gems.device)
     scale_a = scale_a_cpu.to(flag_gems.device)
     scale_b = scale_b_cpu.to(flag_gems.device)
-    res = flag_gems.scaled_grouped_mm(
+    res = operator(
         mat_a,
         mat_b,
         scale_a,
@@ -332,8 +350,11 @@ def test_scaled_grouped_mm_fp8_core(groups, m_per_group, N, K, dtype):
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
-def test_scaled_grouped_mm_fp8_encodings(dtype):
+def test_scaled_grouped_mm_fp8_encodings(dtype, entrypoint):
+    operator = _quantized_operator(dtype, entrypoint)
     # Cover every finite encoding, including subnormals and the largest values.
     bits = torch.arange(256, dtype=torch.int16).to(torch.uint8)
     if dtype == getattr(torch, "float8_e4m3fnuz", None):
@@ -343,7 +364,7 @@ def test_scaled_grouped_mm_fp8_encodings(dtype):
     a_cpu = bits.view(dtype).reshape(1, 16, 16)
     b_cpu = torch.eye(16).to(dtype).reshape(1, 16, 16)
     scales = torch.ones((1, 16), dtype=torch.float32).to(flag_gems.device)
-    result = flag_gems.scaled_grouped_mm(
+    result = operator(
         a_cpu.to(flag_gems.device),
         b_cpu.to(flag_gems.device),
         scales,
@@ -354,8 +375,16 @@ def test_scaled_grouped_mm_fp8_encodings(dtype):
 
 
 @pytest.mark.scaled_grouped_mm
-@pytest.mark.parametrize("dtype", [torch.float16, torch.int8, *_e4m3_dtypes()], ids=str)
-def test_scaled_grouped_mm_scale_before_output_cast(dtype):
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.parametrize(
+    "dtype,entrypoint",
+    [(dtype, "compat") for dtype in [torch.float16, torch.int8, *_e4m3_dtypes()]]
+    + [(dtype, "named") for dtype in [torch.int8, *_e4m3_dtypes()]],
+    ids=lambda value: str(value),
+)
+def test_scaled_grouped_mm_scale_before_output_cast(dtype, entrypoint):
+    operator = _quantized_operator(dtype, entrypoint)
     # The unscaled product is 65536: casting it to FP16 before scaling overflows.
     mat_a = (
         torch.full((1, 3, 16), 64.0, dtype=torch.float32).to(dtype).to(flag_gems.device)
@@ -369,9 +398,7 @@ def test_scaled_grouped_mm_scale_before_output_cast(dtype):
     scale_b = torch.full((1, 5), 0.5, dtype=torch.float32, device="cpu").to(
         flag_gems.device
     )
-    result = flag_gems.scaled_grouped_mm(
-        mat_a, mat_b, scale_a, scale_b, out_dtype=torch.float16
-    )
+    result = operator(mat_a, mat_b, scale_a, scale_b, out_dtype=torch.float16)
     expected = torch.full((1, 3, 5), 16384.0, dtype=torch.float16)
     torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
 
@@ -521,11 +548,13 @@ def _assert_quantized_accuracy(
     out_dtype: Optional[torch.dtype],
     a_layout: str = "contiguous",
     b_layout: str = "contiguous",
+    entrypoint: str = "compat",
 ) -> None:
     mat_a, mat_b, scale_a, scale_b, offs, bias = cpu_inputs
+    operator = _quantized_operator(mat_a.dtype, entrypoint)
     target_dtype = out_dtype or torch.bfloat16
     ref = _reference(*cpu_inputs, target_dtype)
-    result = flag_gems.scaled_grouped_mm(
+    result = operator(
         _quantized_device_view(mat_a, a_layout),
         _quantized_device_view(mat_b, b_layout),
         scale_a.to(flag_gems.device),
@@ -540,10 +569,12 @@ def _assert_quantized_accuracy(
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("case_name", ["m_varying", "n_varying", "k_varying", "batch"])
 @pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
 @pytest.mark.parametrize("strided", [False, True])
-def test_scaled_grouped_mm_int8_accuracy(case_name, out_dtype, strided):
+def test_scaled_grouped_mm_int8_accuracy(case_name, out_dtype, strided, entrypoint):
     bias_kind = (
         "none"
         if case_name == "batch"
@@ -561,10 +592,13 @@ def test_scaled_grouped_mm_int8_accuracy(case_name, out_dtype, strided):
         out_dtype,
         "strided" if strided else "contiguous",
         "column_major" if strided else "contiguous",
+        entrypoint=entrypoint,
     )
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
 @pytest.mark.parametrize(
     "case_name,out_dtype,a_layout,b_layout",
@@ -576,38 +610,51 @@ def test_scaled_grouped_mm_int8_accuracy(case_name, out_dtype, strided):
     ],
 )
 def test_scaled_grouped_mm_fp8_group_addressing(
-    case_name, out_dtype, a_layout, b_layout, dtype
+    case_name, out_dtype, a_layout, b_layout, dtype, entrypoint
 ):
     cpu_inputs = _make_quantized_accuracy_case(case_name, dtype)
-    _assert_quantized_accuracy(cpu_inputs, out_dtype, a_layout, b_layout)
+    _assert_quantized_accuracy(
+        cpu_inputs, out_dtype, a_layout, b_layout, entrypoint=entrypoint
+    )
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
 @pytest.mark.parametrize("case_name", ["m_varying", "n_varying", "k_varying"])
-def test_scaled_grouped_mm_quantized_empty_groups(case_name, dtype):
+def test_scaled_grouped_mm_quantized_empty_groups(case_name, dtype, entrypoint):
     cpu_inputs = _make_quantized_accuracy_case(case_name, dtype, empty_groups=True)
-    _assert_quantized_accuracy(cpu_inputs, torch.float32)
+    _assert_quantized_accuracy(cpu_inputs, torch.float32, entrypoint=entrypoint)
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
 @pytest.mark.parametrize(
     "case_name,zero_axis",
     [("m_varying", "M"), ("n_varying", "N"), ("k_varying", "K"), ("batch", "K")],
 )
-def test_scaled_grouped_mm_quantized_zero_extents(case_name, zero_axis, dtype):
+def test_scaled_grouped_mm_quantized_zero_extents(
+    case_name, zero_axis, dtype, entrypoint
+):
     cpu_inputs = _make_quantized_accuracy_case(case_name, dtype, zero_axis=zero_axis)
-    _assert_quantized_accuracy(cpu_inputs, torch.float32)
+    _assert_quantized_accuracy(cpu_inputs, torch.float32, entrypoint=entrypoint)
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
-def test_scaled_grouped_mm_fp8_nan(dtype):
+def test_scaled_grouped_mm_fp8_nan(dtype, entrypoint):
+    operator = _quantized_operator(dtype, entrypoint)
     nan_bits = 128 if dtype == getattr(torch, "float8_e4m3fnuz", None) else 127
     mat_a = torch.tensor([nan_bits, 0], dtype=torch.uint8).view(dtype).reshape(1, 2, 1)
     mat_b = torch.ones((1, 1, 2)).to(dtype)
-    result = flag_gems.scaled_grouped_mm(
+    result = operator(
         _quantized_device_view(mat_a, "contiguous"),
         _quantized_device_view(mat_b, "contiguous"),
         torch.ones((1, 2), device=flag_gems.device),
@@ -619,13 +666,16 @@ def test_scaled_grouped_mm_fp8_nan(dtype):
 
 
 @pytest.mark.scaled_grouped_mm
+@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.parametrize("entrypoint", ["compat", "named"])
 @pytest.mark.parametrize(
     "n,k", [(512, 512), (1024, 1024)], ids=["n512_k512", "n1024_k1024"]
 )
 @pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
 def test_scaled_grouped_mm_int8_large_ragged_boundaries(
-    n: int, k: int, out_dtype: torch.dtype
+    n: int, k: int, out_dtype: torch.dtype, entrypoint: str
 ) -> None:
+    operator = _quantized_operator(torch.int8, entrypoint)
     # Large total M exercises the grouped scheduler with empty groups and
     # lengths immediately below, at, and above the 32/128-row boundaries.
     lengths = (0, 31, 32, 33, 127, 128, 129, 0, 2048, 1665, 0)
@@ -680,7 +730,7 @@ def test_scaled_grouped_mm_int8_large_ragged_boundaries(
         start = end
     expected = expected.to(out_dtype)
 
-    result = flag_gems.scaled_grouped_mm(
+    result = operator(
         _quantized_device_view(mat_a, "contiguous"),
         _quantized_device_view(mat_b, "column_major"),
         scale_a.to(flag_gems.device),
