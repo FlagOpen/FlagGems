@@ -362,18 +362,38 @@ def launch_reflection_pad2d(input, padding, out=None):
             edge_tiles = B * pad_top * n_tiles_w
             edge_grid = (min(GRID_DIM, edge_tiles),)
             edge_rows_dma_kernel[edge_grid](
-                x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out,
-                0, pad_top,
-                GRID_DIM=min(GRID_DIM, edge_tiles), BLOCK_W=BLOCK_W,
+                x,
+                out,
+                B,
+                H_in,
+                W_in,
+                pad_left,
+                pad_top,
+                H_out,
+                W_out,
+                0,
+                pad_top,
+                GRID_DIM=min(GRID_DIM, edge_tiles),
+                BLOCK_W=BLOCK_W,
                 num_warps=1,
             )
         if pad_bottom > 0:
             edge_tiles = B * pad_bottom * n_tiles_w
             edge_grid = (min(GRID_DIM, edge_tiles),)
             edge_rows_dma_kernel[edge_grid](
-                x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out,
-                pad_top + H_in, pad_bottom,
-                GRID_DIM=min(GRID_DIM, edge_tiles), BLOCK_W=BLOCK_W,
+                x,
+                out,
+                B,
+                H_in,
+                W_in,
+                pad_left,
+                pad_top,
+                H_out,
+                W_out,
+                pad_top + H_in,
+                pad_bottom,
+                GRID_DIM=min(GRID_DIM, edge_tiles),
+                BLOCK_W=BLOCK_W,
                 num_warps=1,
             )
 
@@ -383,8 +403,19 @@ def launch_reflection_pad2d(input, padding, out=None):
             edge_elems = B * H_out * pad_left
             edge_grid = (min(GRID_DIM, triton.cdiv(edge_elems, BLOCK_EDGE)),)
             edge_gather_kernel[edge_grid](
-                x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out,
-                0, H_out, 0, pad_left,
+                x,
+                out,
+                B,
+                H_in,
+                W_in,
+                pad_left,
+                pad_top,
+                H_out,
+                W_out,
+                0,
+                H_out,
+                0,
+                pad_left,
                 GRID_DIM=min(GRID_DIM, triton.cdiv(edge_elems, BLOCK_EDGE)),
                 BLOCK=BLOCK_EDGE,
             )
@@ -392,8 +423,19 @@ def launch_reflection_pad2d(input, padding, out=None):
             edge_elems = B * H_out * pad_right
             edge_grid = (min(GRID_DIM, triton.cdiv(edge_elems, BLOCK_EDGE)),)
             edge_gather_kernel[edge_grid](
-                x, out, B, H_in, W_in, pad_left, pad_top, H_out, W_out,
-                0, H_out, pad_left + W_in, pad_right,
+                x,
+                out,
+                B,
+                H_in,
+                W_in,
+                pad_left,
+                pad_top,
+                H_out,
+                W_out,
+                0,
+                H_out,
+                pad_left + W_in,
+                pad_right,
                 GRID_DIM=min(GRID_DIM, triton.cdiv(edge_elems, BLOCK_EDGE)),
                 BLOCK=BLOCK_EDGE,
             )

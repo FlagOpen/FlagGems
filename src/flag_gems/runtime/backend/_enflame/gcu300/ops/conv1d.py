@@ -192,7 +192,9 @@ def conv1d_fwd_kernel(
                         block_shape=(BLOCK_M, BLOCK_K),
                         order=(1, 0),
                     )
-                    a = tl.load(a_block_ptr, boundary_check=(0, 1), padding_option="zero")
+                    a = tl.load(
+                        a_block_ptr, boundary_check=(0, 1), padding_option="zero"
+                    )
                     b_block_ptr = tl.make_block_ptr(
                         base=x_base,
                         shape=(Cg, L),
@@ -201,7 +203,9 @@ def conv1d_fwd_kernel(
                         block_shape=(BLOCK_K, BLOCK_N),
                         order=(1, 0),
                     )
-                    b = tl.load(b_block_ptr, boundary_check=(0, 1), padding_option="zero")
+                    b = tl.load(
+                        b_block_ptr, boundary_check=(0, 1), padding_option="zero"
+                    )
                     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
             if HAS_BIAS:
@@ -213,7 +217,9 @@ def conv1d_fwd_kernel(
                     block_shape=(BLOCK_M,),
                     order=(0,),
                 )
-                bias = tl.load(bias_block_ptr, boundary_check=(0,), padding_option="zero")
+                bias = tl.load(
+                    bias_block_ptr, boundary_check=(0,), padding_option="zero"
+                )
                 acc += bias.to(tl.float32)[:, None]
 
             o_block_ptr = tl.make_block_ptr(
@@ -256,7 +262,9 @@ def conv1d_fwd_kernel(
                         block_shape=(BLOCK_M, BLOCK_K),
                         order=(1, 0),
                     )
-                    a = tl.load(a_block_ptr, boundary_check=(0, 1), padding_option="zero")
+                    a = tl.load(
+                        a_block_ptr, boundary_check=(0, 1), padding_option="zero"
+                    )
                     b_block_ptr = tl.make_block_ptr(
                         base=x_base,
                         shape=(Cg, L),
@@ -265,7 +273,9 @@ def conv1d_fwd_kernel(
                         block_shape=(BLOCK_K, BLOCK_NP),
                         order=(1, 0),
                     )
-                    b = tl.load(b_block_ptr, boundary_check=(0, 1), padding_option="zero")
+                    b = tl.load(
+                        b_block_ptr, boundary_check=(0, 1), padding_option="zero"
+                    )
                     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
             if HAS_BIAS:
@@ -277,7 +287,9 @@ def conv1d_fwd_kernel(
                     block_shape=(BLOCK_M,),
                     order=(0,),
                 )
-                bias = tl.load(bias_block_ptr, boundary_check=(0,), padding_option="zero")
+                bias = tl.load(
+                    bias_block_ptr, boundary_check=(0,), padding_option="zero"
+                )
                 acc += bias.to(tl.float32)[:, None]
 
             # down-sample acc[:, i*S] -> (BM, BLOCK_OL) with tl.split, a pure
@@ -299,7 +311,9 @@ def conv1d_fwd_kernel(
                 block_shape=(BLOCK_M, BLOCK_OL),
                 order=(1, 0),
             )
-            tl.store(o_block_ptr, acc_ds.to(o_ptr.dtype.element_ty), boundary_check=(0, 1))
+            tl.store(
+                o_block_ptr, acc_ds.to(o_ptr.dtype.element_ty), boundary_check=(0, 1)
+            )
 
     # ------- edge region: out columns [0, OL0) needing negative positions ---
     # Matrix-vector edge (no ``tl.dot``).  The edge only reads the first few
@@ -375,7 +389,9 @@ def conv1d_fwd_kernel(
                             block_shape=(BLOCK_M, BLOCK_K),
                             order=(1, 0),
                         )
-                        a = tl.load(a_block_ptr, boundary_check=(0, 1), padding_option="zero")
+                        a = tl.load(
+                            a_block_ptr, boundary_check=(0, 1), padding_option="zero"
+                        )
                         ci = ci0 * BLOCK_K + offs_k
                         ci_ok = ci < Cg
                         # pos >= 0 is guaranteed by _k0, so only clamp/guard the

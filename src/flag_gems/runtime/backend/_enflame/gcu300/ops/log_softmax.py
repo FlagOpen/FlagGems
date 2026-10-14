@@ -76,51 +76,39 @@ def log_softmax_kernel(
         n_offset0 = tl.arange(0, BLOCK_N)
         offset0 = m_offset[:, None] * N * K + n_offset0[None, :] * K + pid_k
         mask0 = row_mask[:, None] & (n_offset0[None, :] < N)
-        inp0 = tl.load(
-            input_ptr + offset0, mask=mask0, other=-float("inf")
-        ).to(tl.float32)
+        inp0 = tl.load(input_ptr + offset0, mask=mask0, other=-float("inf")).to(
+            tl.float32
+        )
         m = inp0
         z = tl.where(inp0 == float("-inf"), 0.0, 1.0)
 
         if N > BLOCK_N:
-            for start_n in tl.range(
-                BLOCK_N, N, BLOCK_N, num_stages=num_stages
-            ):
+            for start_n in tl.range(BLOCK_N, N, BLOCK_N, num_stages=num_stages):
                 n_offset = start_n + tl.arange(0, BLOCK_N)
-                offset = (
-                    m_offset[:, None] * N * K
-                    + n_offset[None, :] * K
-                    + pid_k
-                )
+                offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
                 mask = row_mask[:, None] & (n_offset[None, :] < N)
-                inp = tl.load(
-                    input_ptr + offset, mask=mask, other=-float("inf")
-                ).to(tl.float32)
+                inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                    tl.float32
+                )
                 m_new = tl.maximum(inp, m)
-                z = z * tl.math.exp2(
-                    (m - m_new) * LOG2E
-                ) + tl.math.exp2((inp - m_new) * LOG2E)
+                z = z * tl.math.exp2((m - m_new) * LOG2E) + tl.math.exp2(
+                    (inp - m_new) * LOG2E
+                )
                 m = m_new
 
         m_reduced = tl.max(m, 1)
-        z = tl.sum(
-            z * tl.math.exp2((m - m_reduced[:, None]) * LOG2E), 1
-        )
+        z = tl.sum(z * tl.math.exp2((m - m_reduced[:, None]) * LOG2E), 1)
         m = m_reduced
         mid = m + tl.math.log2(z) * LN2
 
         # --- Pass 2: compute and store output ---
         for start_n in tl.range(0, N, BLOCK_N, num_stages=num_stages):
             n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = (
-                m_offset[:, None] * N * K
-                + n_offset[None, :] * K
-                + pid_k
-            )
+            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
             mask = row_mask[:, None] & (n_offset[None, :] < N)
-            inp = tl.load(
-                input_ptr + offset, mask=mask, other=-float("inf")
-            ).to(tl.float32)
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
             o = inp - mid[:, None]
             tl.store(output_ptr + offset, o, mask=mask)
 
@@ -159,31 +147,25 @@ def log_softmax_kernel_non_inner(
             n_offsets = tl.arange(0, TILE_N)
             offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
             mask = (n_offsets[:, None] < N) & (k_mask[None, :])
-            inp = tl.load(
-                input_ptr + offset, mask=mask, other=-float("inf")
-            ).to(tl.float32)
+            inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                tl.float32
+            )
             m = tl.max(inp, 0)
             e = tl.math.exp2((inp - m[None, :]) * LOG2E)
             z = tl.sum(e, 0)
             out = inp - m[None, :] - tl.math.log2(z) * LN2
             tl.store(output_ptr + offset, out, mask=mask)
         else:
-            m = tl.full(
-                [TILE_N, TILE_K], value=float("-inf"), dtype=tl.float32
-            )
+            m = tl.full([TILE_N, TILE_K], value=float("-inf"), dtype=tl.float32)
             z = tl.full([TILE_N, TILE_K], value=0.0, dtype=tl.float32)
 
             for start_n in range(0, N, TILE_N):
                 n_offsets = start_n + tl.arange(0, TILE_N)
-                offset = (
-                    pid_m * N * K
-                    + n_offsets[:, None] * K
-                    + k_offsets[None, :]
-                )
+                offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
                 mask = (n_offsets[:, None] < N) & (k_mask[None, :])
-                inp = tl.load(
-                    input_ptr + offset, mask=mask, other=-float("inf")
-                ).to(tl.float32)
+                inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                    tl.float32
+                )
                 m_new = tl.maximum(inp, m)
                 all_neg_inf = m_new == float("-inf")
                 z = tl.where(
@@ -195,23 +177,17 @@ def log_softmax_kernel_non_inner(
                 m = m_new
 
             m_reduced = tl.max(m, 0)
-            z = tl.sum(
-                z * tl.math.exp2((m - m_reduced[None, :]) * LOG2E), 0
-            )
+            z = tl.sum(z * tl.math.exp2((m - m_reduced[None, :]) * LOG2E), 0)
             m = m_reduced
             mid = m + tl.math.log2(z) * LN2
 
             for start_n in range(0, N, TILE_N):
                 n_offsets = start_n + tl.arange(0, TILE_N)
-                offset = (
-                    pid_m * N * K
-                    + n_offsets[:, None] * K
-                    + k_offsets[None, :]
-                )
+                offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets[None, :]
                 mask = (n_offsets[:, None] < N) & (k_mask[None, :])
-                inp = tl.load(
-                    input_ptr + offset, mask=mask, other=-float("inf")
-                ).to(tl.float32)
+                inp = tl.load(input_ptr + offset, mask=mask, other=-float("inf")).to(
+                    tl.float32
+                )
                 out = inp - mid[None, :]
                 tl.store(output_ptr + offset, out, mask=mask)
 
@@ -248,22 +224,14 @@ def log_softmax_backward_kernel(
         scale = tl.zeros((BLOCK_M,), dtype=tl.float32)
         for start_n in range(0, N, BLOCK_N):
             n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = (
-                m_offset[:, None] * N * K
-                + n_offset[None, :] * K
-                + pid_k
-            )
+            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
             mask = row_mask[:, None] & (n_offset[None, :] < N)
             out_grad = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
             scale += tl.sum(out_grad, 1)
 
         for start_n in range(0, N, BLOCK_N):
             n_offset = start_n + tl.arange(0, BLOCK_N)
-            offset = (
-                m_offset[:, None] * N * K
-                + n_offset[None, :] * K
-                + pid_k
-            )
+            offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
             mask = row_mask[:, None] & (n_offset[None, :] < N)
             out_val = tl.load(out_ptr + offset, mask=mask).to(tl.float32)
             out_grad = tl.load(out_grad_ptr + offset, mask=mask).to(tl.float32)
@@ -292,9 +260,7 @@ def log_softmax(self, dim, half_to_float=False):
 
     with torch_device_fn.device(inp.device):
         if K > 1:
-            grid = lambda meta: (
-                min(NUM_SIPS, M * triton.cdiv(K, meta["TILE_K"])),
-            )
+            grid = lambda meta: (min(NUM_SIPS, M * triton.cdiv(K, meta["TILE_K"])),)
             log_softmax_kernel_non_inner[grid](
                 out,
                 inp,
@@ -303,9 +269,7 @@ def log_softmax(self, dim, half_to_float=False):
                 K,
             )
         else:
-            grid = lambda meta: (
-                min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),
-            )
+            grid = lambda meta: (min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),)
             log_softmax_kernel[grid](
                 out,
                 inp,
@@ -343,9 +307,7 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
 
     with torch_device_fn.device(inp.device):
         if K > 1:
-            grid = lambda meta: (
-                min(NUM_SIPS, M * triton.cdiv(K, meta["TILE_K"])),
-            )
+            grid = lambda meta: (min(NUM_SIPS, M * triton.cdiv(K, meta["TILE_K"])),)
             log_softmax_kernel_non_inner[grid](
                 out,
                 inp,
@@ -354,9 +316,7 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
                 K,
             )
         else:
-            grid = lambda meta: (
-                min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),
-            )
+            grid = lambda meta: (min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),)
             log_softmax_kernel[grid](
                 out,
                 inp,
@@ -381,9 +341,7 @@ def log_softmax_backward(grad_output, output, dim, input_dtype):
     in_grad = torch.empty_like(output, dtype=input_dtype)
     K = output.numel() // M // N
 
-    grid = lambda meta: (
-        min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),
-    )
+    grid = lambda meta: (min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),)
     with torch_device_fn.device(in_grad.device):
         log_softmax_backward_kernel[grid](
             output,
@@ -415,9 +373,7 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
         )
     K = output.numel() // M // N
 
-    grid = lambda meta: (
-        min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),
-    )
+    grid = lambda meta: (min(NUM_SIPS, triton.cdiv(M, meta["BLOCK_M"]) * K),)
     with torch_device_fn.device(out.device):
         log_softmax_backward_kernel[grid](
             output,

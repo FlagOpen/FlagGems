@@ -54,7 +54,9 @@ def sum_kernel_1(
         order=(0,),
     )
     for _ in tl.range(pid, num_blocks, GRID_DIM):
-        inp_val = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(cdtype)
+        inp_val = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
         acc += tl.sum(inp_val)
         in_block = tl.advance(in_block, (GRID_DIM * BLOCK_SIZE,))
     tl.store(mid + pid, acc)
@@ -101,8 +103,12 @@ def sum_kernel_1_dual(
     )
     stride = GRID_DIM * 2 * BLOCK_SIZE
     for _ in tl.range(pid, num_blocks, GRID_DIM * 2):
-        inp_val_0 = tl.load(in_block_0, boundary_check=(0,), padding_option="zero").to(cdtype)
-        inp_val_1 = tl.load(in_block_1, boundary_check=(0,), padding_option="zero").to(cdtype)
+        inp_val_0 = tl.load(in_block_0, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
+        inp_val_1 = tl.load(in_block_1, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
         acc0 += tl.sum(inp_val_0)
         acc1 += tl.sum(inp_val_1)
         in_block_0 = tl.advance(in_block_0, (stride,))
@@ -138,7 +144,9 @@ def sum_atomic_kernel(
         order=(0,),
     )
     for _ in tl.range(pid, num_blocks, GRID_DIM):
-        inp_val = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(cdtype)
+        inp_val = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
         acc += tl.sum(inp_val)
         in_block = tl.advance(in_block, (GRID_DIM * BLOCK_SIZE,))
     tl.atomic_add(out, acc, sem="relaxed")
@@ -276,9 +284,7 @@ def sum_out(inp, *, dtype=None, out):
             BLOCK_SIZE=BLOCK_SIZE,
             num_warps=4,
         )
-        sum_kernel_2[(1,)](
-            mid, out, GRID_DIM, triton.next_power_of_2(GRID_DIM)
-        )
+        sum_kernel_2[(1,)](mid, out, GRID_DIM, triton.next_power_of_2(GRID_DIM))
     return out
 
 

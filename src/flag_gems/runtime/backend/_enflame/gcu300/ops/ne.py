@@ -106,11 +106,7 @@ def ne_scalar(A, B):
     logger.debug("GEMS_ENFLAME NE_SCALAR")
     if _is_float64_scalar(A):
         return torch.ne(A.cpu(), B).to(A.device)
-    if (
-        A.is_contiguous()
-        and A.numel() > SMALL_THRESHOLD
-        and A.is_floating_point()
-    ):
+    if A.is_contiguous() and A.numel() > SMALL_THRESHOLD and A.is_floating_point():
         out = torch.empty_like(A, dtype=torch.bool)
         N = A.numel()
         dtype = A.dtype

@@ -73,10 +73,7 @@ def pixel_unshuffle_kernel_flat(
         dw = remc - dh * R
 
         in_index = (
-            n * sN_in
-            + c_in * sC_in
-            + (h_out * R + dh) * sH_in
-            + (w_out * R + dw)
+            n * sN_in + c_in * sC_in + (h_out * R + dh) * sH_in + (w_out * R + dw)
         )
 
         x = tl.load(in_ptr + in_index, mask=mask)
@@ -131,7 +128,9 @@ def pixel_unshuffle_kernel_block_ptr(
         w_out_start = w_block * BLOCK_W
 
         # Input block_ptr: strided access with strides (R*W_in, R)
-        in_base = in_ptr + n * (C_in * H_in * W_in) + c_in * (H_in * W_in) + dh * W_in + dw
+        in_base = (
+            in_ptr + n * (C_in * H_in * W_in) + c_in * (H_in * W_in) + dh * W_in + dw
+        )
         in_block = tl.make_block_ptr(
             in_base,
             shape=(H_out, W_out),
@@ -193,9 +192,14 @@ def _launch_pixel_unshuffle_kernel(
                 inp,
                 out,
                 n_elements,
-                sN_in, sC_in, sH_in,
-                sN_out, sC_out, sH_out,
-                r, R2,
+                sN_in,
+                sC_in,
+                sH_in,
+                sN_out,
+                sC_out,
+                sH_out,
+                r,
+                R2,
                 BLOCK_SIZE,
                 num_warps=4,
                 num_stages=2,
@@ -245,7 +249,9 @@ def pixel_unshuffle(input, downscale_factor, *, layout=None):
     N, C, H, W = x.shape
     r = int(downscale_factor)
     assert r > 0, "downscale_factor must be > 0"
-    assert (H % r == 0) and (W % r == 0), "H and W must be divisible by downscale_factor"
+    assert (H % r == 0) and (
+        W % r == 0
+    ), "H and W must be divisible by downscale_factor"
 
     out_shape = (N, C * r * r, H // r, W // r)
     out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
@@ -264,7 +270,9 @@ def pixel_unshuffle_out(input, downscale_factor, out):
     N, C, H, W = x.shape
     r = int(downscale_factor)
     assert r > 0, "downscale_factor must be > 0"
-    assert (H % r == 0) and (W % r == 0), "H and W must be divisible by downscale_factor"
+    assert (H % r == 0) and (
+        W % r == 0
+    ), "H and W must be divisible by downscale_factor"
     expected_shape = (N, C * r * r, H // r, W // r)
     assert tuple(out.shape) == expected_shape, f"out must have shape {expected_shape}"
     assert out.dtype == x.dtype, "out dtype must match input dtype"

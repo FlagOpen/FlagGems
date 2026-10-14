@@ -52,11 +52,16 @@ _DUAL_THRESHOLD = 4 * 1024 * 1024  # 4M elements
 # dim=None path: Fixed Grid map + reduce (2 launches, unavoidable)
 # ---------------------------------------------------------------------------
 
+
 @libentry()
 @triton.jit(do_not_specialize=["N"])
 def _std_map_kernel(
-    X, MidSum, MidSumSq, N,
-    GRID_DIM: tl.constexpr, BLOCK_SIZE: tl.constexpr,
+    X,
+    MidSum,
+    MidSumSq,
+    N,
+    GRID_DIM: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -70,9 +75,12 @@ def _std_map_kernel(
     acc_sq = tl.zeros((), dtype=cdtype)
     num_blocks = tl.cdiv(N, BLOCK_SIZE)
     in_block = tl.make_block_ptr(
-        base=X, shape=(N,), strides=(1,),
+        base=X,
+        shape=(N,),
+        strides=(1,),
         offsets=(pid * BLOCK_SIZE,),
-        block_shape=(BLOCK_SIZE,), order=(0,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
     )
     for _ in tl.range(pid, num_blocks, GRID_DIM):
         x = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(cdtype)
@@ -86,8 +94,12 @@ def _std_map_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["N"])
 def _std_map_kernel_dual(
-    X, MidSum, MidSumSq, N,
-    GRID_DIM: tl.constexpr, BLOCK_SIZE: tl.constexpr,
+    X,
+    MidSum,
+    MidSumSq,
+    N,
+    GRID_DIM: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """Dual-accumulator variant for large N: break serial dependency."""
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
@@ -104,14 +116,20 @@ def _std_map_kernel_dual(
     q1 = tl.zeros((), dtype=cdtype)
     num_blocks = tl.cdiv(N, BLOCK_SIZE)
     blk0 = tl.make_block_ptr(
-        base=X, shape=(N,), strides=(1,),
+        base=X,
+        shape=(N,),
+        strides=(1,),
         offsets=(pid * BLOCK_SIZE,),
-        block_shape=(BLOCK_SIZE,), order=(0,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
     )
     blk1 = tl.make_block_ptr(
-        base=X, shape=(N,), strides=(1,),
+        base=X,
+        shape=(N,),
+        strides=(1,),
         offsets=((pid + GRID_DIM) * BLOCK_SIZE,),
-        block_shape=(BLOCK_SIZE,), order=(0,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
     )
     stride = GRID_DIM * 2 * BLOCK_SIZE
     for _ in tl.range(pid, num_blocks, GRID_DIM * 2):
@@ -130,7 +148,13 @@ def _std_map_kernel_dual(
 @libentry()
 @triton.jit(do_not_specialize=["correction"])
 def _std_reduce_kernel(
-    MidSum, MidSumSq, Out, N, correction, mid_size, MID_SIZE: tl.constexpr,
+    MidSum,
+    MidSumSq,
+    Out,
+    N,
+    correction,
+    mid_size,
+    MID_SIZE: tl.constexpr,
 ):
     offset = tl.arange(0, MID_SIZE)
     mask = offset < mid_size
@@ -149,6 +173,7 @@ def _std_reduce_kernel(
 # dim inner (K==1): single-pass sum/sum_sq, BLOCK_M rows per block
 # ---------------------------------------------------------------------------
 
+
 def _keep(conf):
     BLOCK_M = conf.kwargs["BLOCK_M"]
     if BLOCK_M < 32:
@@ -163,8 +188,13 @@ def _keep(conf):
 )
 @triton.jit(do_not_specialize=["correction"])
 def _std_dim_inner_kernel(
-    X, Out, M, N, correction,
-    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
+    X,
+    Out,
+    M,
+    N,
+    correction,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
 ):
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -217,8 +247,14 @@ _NON_INNER_CONFIGS = [
 @triton.autotune(configs=_NON_INNER_CONFIGS, key=["N", "K"])
 @triton.jit(do_not_specialize=["correction"])
 def _std_dim_non_inner_kernel(
-    X, Out, M, N, K, correction,
-    BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,
+    X,
+    Out,
+    M,
+    N,
+    K,
+    correction,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
     if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
         X.dtype.element_ty == tl.bfloat16
@@ -256,6 +292,7 @@ def _std_dim_non_inner_kernel(
 # Python wrapper
 # ---------------------------------------------------------------------------
 
+
 def std(x, dim=None, *, correction=None, keepdim=False):
     logger.debug("GEMS_ENFLAME STD")
     effective_correction = 1.0 if correction is None else float(correction)
@@ -290,12 +327,20 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         mid_sum_sq = torch.empty((grid_dim,), dtype=torch.float32, device=x.device)
         with torch_device_fn.device(x.device):
             kernel[(grid_dim,)](
-                x, mid_sum, mid_sum_sq, N,
-                GRID_DIM=grid_dim, BLOCK_SIZE=block_size,
+                x,
+                mid_sum,
+                mid_sum_sq,
+                N,
+                GRID_DIM=grid_dim,
+                BLOCK_SIZE=block_size,
                 num_warps=4,
             )
             _std_reduce_kernel[(1,)](
-                mid_sum, mid_sum_sq, out, N, effective_correction,
+                mid_sum,
+                mid_sum_sq,
+                out,
+                N,
+                effective_correction,
                 grid_dim,
                 MID_SIZE=triton.next_power_of_2(grid_dim),
             )
@@ -309,15 +354,19 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         shape[d] = 1
 
     if N - effective_correction <= 0:
-        final_shape = shape if keepdim else [
-            s for i, s in enumerate(original_shape) if i not in dim_list
-        ]
+        final_shape = (
+            shape
+            if keepdim
+            else [s for i, s in enumerate(original_shape) if i not in dim_list]
+        )
         return torch.full(final_shape, float("nan"), device=x.device, dtype=x.dtype)
 
     if N == 1 and effective_correction == 0.0:
-        final_shape = shape if keepdim else [
-            s for i, s in enumerate(original_shape) if i not in dim_list
-        ]
+        final_shape = (
+            shape
+            if keepdim
+            else [s for i, s in enumerate(original_shape) if i not in dim_list]
+        )
         return torch.zeros(final_shape, device=x.device, dtype=x.dtype)
 
     x_contiguous = x.contiguous()
@@ -329,7 +378,7 @@ def std(x, dim=None, *, correction=None, keepdim=False):
         for s in original_shape[:dim0]:
             M *= s
         K = 1
-        for s in original_shape[dim0 + 1:]:
+        for s in original_shape[dim0 + 1 :]:
             K *= s
 
         out = torch.empty(shape, device=x.device, dtype=x.dtype)
@@ -362,7 +411,5 @@ def std(x, dim=None, *, correction=None, keepdim=False):
 
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(x.device):
-        _std_dim_inner_kernel[grid](
-            x_view, out.view(M), M, N, effective_correction
-        )
+        _std_dim_inner_kernel[grid](x_view, out.view(M), M, N, effective_correction)
     return out.squeeze(dim=tuple(dim_list)) if not keepdim else out

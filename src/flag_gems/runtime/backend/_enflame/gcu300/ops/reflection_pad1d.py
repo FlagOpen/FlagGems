@@ -38,9 +38,16 @@ _TINY_THRESHOLD = 500_000
 
 @triton.jit(
     do_not_specialize=[
-        "B", "W_in", "W_out", "pad_left",
-        "left_count", "right_start", "right_count", "edge_total",
-        "n_tiles_b", "n_tiles_w",
+        "B",
+        "W_in",
+        "W_out",
+        "pad_left",
+        "left_count",
+        "right_start",
+        "right_count",
+        "edge_total",
+        "n_tiles_b",
+        "n_tiles_w",
     ]
 )
 def fused_two_phase_kernel(
@@ -164,13 +171,11 @@ def _launch_reflection_pad1d(input, padding, out=None):
 
     if W_in < 2:
         raise ValueError(
-            "input width must be at least 2 "
-            "for reflection padding when padding > 0"
+            "input width must be at least 2 " "for reflection padding when padding > 0"
         )
     if pad_left >= W_in or pad_right >= W_in:
         raise ValueError(
-            "padding values must be less than "
-            "the input width for reflection padding"
+            "padding values must be less than " "the input width for reflection padding"
         )
 
     total_elems = B * W_out
@@ -178,9 +183,7 @@ def _launch_reflection_pad1d(input, padding, out=None):
     if total_elems < _TINY_THRESHOLD:
         # Tiny shape: aten flip+copy (lower dispatch overhead than Triton launch)
         if pad_left > 0:
-            out.narrow(-1, 0, pad_left).copy_(
-                x.narrow(-1, 1, pad_left).flip(-1)
-            )
+            out.narrow(-1, 0, pad_left).copy_(x.narrow(-1, 1, pad_left).flip(-1))
         out.narrow(-1, pad_left, W_in).copy_(x)
         if pad_right > 0:
             out.narrow(-1, pad_left + W_in, pad_right).copy_(
@@ -205,9 +208,9 @@ def _launch_reflection_pad1d(input, padding, out=None):
                 W_in,
                 W_out,
                 pad_left,
-                pad_left,           # left_count
-                pad_left + W_in,    # right_start
-                pad_right,          # right_count
+                pad_left,  # left_count
+                pad_left + W_in,  # right_start
+                pad_right,  # right_count
                 B * (pad_left + pad_right),  # edge_total
                 n_tiles_b,
                 n_tiles_w,

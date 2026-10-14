@@ -22,6 +22,7 @@ from . import conftest as cfg
 
 device = flag_gems.device
 
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame", reason="aten dose not support int64 temply"
 )
