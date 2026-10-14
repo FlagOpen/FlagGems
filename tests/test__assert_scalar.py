@@ -103,12 +103,10 @@ _FALSY_ROWS = [
     pytest.param(-0.0, id="float_negative_zero"),
     pytest.param(False, id="bool_false"),
     pytest.param(0j, id="complex_zero"),
-    pytest.param(complex(0.0, 0.0), id="complex_zero_parts"),
     pytest.param(complex(-0.0, -0.0), id="complex_negative_zero_parts"),
     pytest.param(complex(0.0, -0.0), id="complex_zero_real_negative_zero_imag"),
     pytest.param(np.float64(0.0), id="numpy_float64_zero"),
     pytest.param(np.float64(-0.0), id="numpy_float64_negative_zero"),
-    pytest.param(np.float64(0), id="numpy_float64_int_zero"),
 ]
 
 # The message travels unchanged through both paths; only the empty message is rewritten.

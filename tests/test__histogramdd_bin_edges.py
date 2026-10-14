@@ -63,7 +63,8 @@ _EXTRA_SHAPES = [
     (3, 7),
     (64, 5),
 ]
-GRID_SHAPES = _SPEC_SHAPES + _EXTRA_SHAPES
+# The quick shape also appears in the extra shapes.
+GRID_SHAPES = list(dict.fromkeys(_SPEC_SHAPES + _EXTRA_SHAPES))
 
 # Parameter-coverage workload: a spec shape whose innermost dimension (D = 15)
 # keeps len(bins) == D and len(range) == 2 * D expressible.

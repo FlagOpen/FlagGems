@@ -74,8 +74,7 @@ _FLOAT_DTYPES = [
     if _dtype_supported(dtype)
 ]
 
-# Empty tensors and the 0-dim scalar sit outside the spec's seven-shape grid;
-# both are cheap, so quick mode keeps them (its grid shape is (2, 19, 7)).
+# Empty tensors extend the shared grid; quick also needs a scalar boundary.
 _BOUNDARY_DTYPES = [
     dtype
     for dtype in (torch.float32, torch.int32, torch.float8_e4m3fn)
@@ -89,6 +88,8 @@ _BOUNDARY_CASES = [
         ((0,), ["-1", "1"]),
         ((0,), ["min", "max"]),
     )
+    # The default shape grid already covers this scalar and range.
+    if shape != () or () not in tu.selected_shapes()
 ]
 
 # One row per workload: the five value ranges x the seven spec shapes for every
