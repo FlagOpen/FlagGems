@@ -854,6 +854,7 @@ from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.isposinf import isposinf
 from flag_gems.ops.isreal import isreal
+from flag_gems.ops.istft import istft
 from flag_gems.ops.kaiser_window import (
     kaiser_window,
     kaiser_window_beta,
@@ -2364,6 +2365,7 @@ __all__ = [
     "isneginf_out",
     "isposinf",
     "isreal",
+    "istft",
     "kaiser_window",
     "kaiser_window_beta",
     "kaiser_window_periodic",
