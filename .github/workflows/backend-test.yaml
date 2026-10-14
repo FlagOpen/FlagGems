@@ -308,25 +308,25 @@ jobs:
   # Enflame runs inside a container on the enflame-s60-* server available to
   # this repository. The base repo uses enflame-s60-tmp; FlagGems-vllm uses
   # enflame-s60-1. Equivalent to:
-  #   docker run --rm -it \
+  #   docker run --rm -it --privileged -v /dev:/dev \
   #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   #
   # NOTE: image/options/runner labels all come from .github/backends.json via
   # the preprocess matrix, not from this file.
   #
-  # This job currently fails on its first torch allocation on the GCU
-  # (dtu_context_create fails while efsmi still reports a healthy card), and
-  # container_options cannot fix it here: the enflame-s60-tmp runner starts the
-  # job as a k8s pod rather than via `docker create`, so GitHub Actions has
-  # nowhere to apply container.options. Adding --privileged / -v /dev:/dev to
-  # backends.json therefore has no effect — which is why the earlier
-  # add/remove/revert cycles on that field changed nothing. Exposing the GCU
-  # devices has to happen in the runner's pod spec.
+  # enflame-s60-tmp runs in DooD (Docker-outside-of-Docker) mode, so this job's
+  # container is created via a real `docker create` and container.options is
+  # honoured. Earlier, the runner started the job as a bare k8s pod instead —
+  # container.options had nowhere to apply, so the GCU context the backend
+  # needs couldn't be created (dtu_context_create failed even though efsmi
+  # still reported a healthy card). --privileged -v /dev:/dev is required for
+  # GCU context creation to succeed under DooD.
   #
-  # gpu_check_enflame.sh probes a real allocation, so this shows up as a clear
-  # failure in "Check GPU availability" instead of an opaque driver abort
-  # inside the test run.
+  # gpu_check_enflame.sh probes a real allocation, so a regression here (e.g.
+  # the runner reverting to bare k8s pods) shows up as a clear failure in
+  # "Check GPU availability" instead of an opaque driver abort inside the test
+  # run.
   test-enflame:
     if: ${{ inputs.backend == 'enflame-tops1106' }}
     runs-on: >-
