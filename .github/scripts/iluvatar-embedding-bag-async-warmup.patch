@@ -8,10 +8,42 @@
  from functools import lru_cache
 
  import torch
-@@ -204,6 +205,33 @@
-         _embedding_bag_check_flags_native[(1,)](error, count, 256, debug=True)
+@@ -181,27 +182,51 @@
+
+ # Keep the assertion launch on Triton's JIT path, matching the CoreX 4.5
+ # asynchronous-error probe. Do not use libentry's cached CompiledKernel launch.
+-@triton.jit
++# Runtime count keeps scalar and vector error flags in the same specialization.
++@triton.jit(do_not_specialize=["count"])
+ def _embedding_bag_check_flags_native(
+     error,
+-    count: tl.constexpr,  # number of error flags
++    count,  # number of error flags; deliberately not constexpr
+     block: tl.constexpr,  # error reduction block size
+ ):
+-    if count == 1:
+-        # Match the scalar load/assert sequence verified by the IX probe.
+-        bad = tl.load(error)
+-    else:
+-        lane = tl.arange(0, block)
+-        bad = tl.full((), 0, tl.int32)
+-        for base in range(0, count, block):
+-            code = tl.load(error + base + lane, base + lane < count, other=0)
+-            bad |= tl.max(code, 0)
++    lane = tl.arange(0, block)
++    bad = tl.full((), 0, tl.int32)
++    for base in range(0, count, block):
++        code = tl.load(error + base + lane, base + lane < count, other=0)
++        bad |= tl.max(code, 0)
+     tl.device_assert(bad == 0, "embedding_bag: invalid index or offset")
 
 
+ def _check_native_error(error, count):
+     with torch_device_fn.device(error.device):
+-        _embedding_bag_check_flags_native[(1,)](error, count, 256, debug=True)
++        return _embedding_bag_check_flags_native[(1,)](error, count, 256, debug=True)
++
++
 +# Keep the seed allocation alive; its launch initializes CoreX assertion state.
 +_NATIVE_ASSERT_STATES = {}
 +_NATIVE_ASSERT_LOCK = threading.Lock()
@@ -37,12 +69,10 @@
 +        if stream.cuda_stream != state[2]:
 +            # Device-side dependency only; never synchronize or read a CPU flag.
 +            stream.wait_event(state[1])
-+
-+
+
+
  def _embedding_bag(
-     weight,
-     indices,
-@@ -216,6 +244,7 @@
+@@ -216,6 +241,7 @@
      padding_idx=-1,
  ):
      logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG")
@@ -50,7 +80,7 @@
      return _generic_impl(
          weight,
          indices,
-@@ -245,6 +274,7 @@
+@@ -245,6 +271,7 @@
      padding_idx=-1,
  ):
      logger.debug("GEMS_ILUVATAR _EMBEDDING_BAG_FORWARD_ONLY")

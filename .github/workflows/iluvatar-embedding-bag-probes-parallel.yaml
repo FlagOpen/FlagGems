@@ -101,6 +101,7 @@ jobs:
           test "$(git rev-parse HEAD)" = 2d9f6e395c3dd4642c0bf301be11629356eb92df
           mkdir -p ../ix-results
           git rev-parse HEAD > ../ix-results/operator-sha.txt
+          git show HEAD:src/flag_gems/runtime/backend/_iluvatar/ops/embedding_bag.py > ../ix-results/baseline_embedding_bag.py
           git apply --check ../.github/scripts/iluvatar-embedding-bag-async-warmup.patch
           git apply ../.github/scripts/iluvatar-embedding-bag-async-warmup.patch
           git diff > ../ix-results/candidate.patch

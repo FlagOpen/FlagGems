@@ -15,7 +15,10 @@
 
 import ast
 import importlib
+import importlib.util
 import inspect
+import sys
+from pathlib import Path
 
 
 def pytest_configure(config):
@@ -49,3 +52,18 @@ def pytest_configure(config):
                 namespace,
             )
             function.__code__ = namespace[name].__code__
+
+    # Restore the original constexpr checker as well as removing warmup calls.
+    # This snapshot is exported from the pinned commit before applying the patch.
+    source = Path.cwd().parent / "ix-results" / "baseline_embedding_bag.py"
+    spec = importlib.util.spec_from_file_location("ix_pinned_embedding_bag", source)
+    original = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = original
+    spec.loader.exec_module(original)
+    forward = importlib.import_module(
+        "flag_gems.runtime.backend._iluvatar.ops.embedding_bag"
+    )
+    forward._embedding_bag_check_flags_native = (
+        original._embedding_bag_check_flags_native
+    )
+    forward._check_native_error.__code__ = original._check_native_error.__code__

@@ -88,13 +88,20 @@ def _run_candidate(dtype_name, count, order, stream_mode="default"):
     )
     dtype = getattr(torch, dtype_name)
     observed = []
+    binaries = []
     original_check = backward._check_native_error
 
     def record_check(error, length):
-        observed.append(length)
-        return original_check(error, length)
+        compiled = original_check(error, length)
+        binaries.append((length, compiled.hash))
+        return compiled
 
-    backward._check_native_error = record_check
+    def record_backward_check(error, length):
+        observed.append(length)
+        return record_check(error, length)
+
+    forward._check_native_error = record_check
+    backward._check_native_error = record_backward_check
     # Initialize on the default stream for the cross-stream dependency case.
     if stream_mode == "cross_stream":
         seed_weight = torch.ones((8, 33), device="cuda")
@@ -135,6 +142,9 @@ def _run_candidate(dtype_name, count, order, stream_mode="default"):
         assert result.shape == (8, 33)
         assert observed == [count], f"Unexpected validation flag lengths: {observed}"
         assert len(forward._NATIVE_ASSERT_STATES) == 1
+        print(f"ASSERT_BINARIES {binaries}", flush=True)
+        assert binaries[0][0] == 1, "The sole seed must have one flag"
+        assert len({binary for _, binary in binaries}) == 1, binaries
         # Put the bad index in the last validation block, not always block zero.
         indices[-1] = 8
         print(
