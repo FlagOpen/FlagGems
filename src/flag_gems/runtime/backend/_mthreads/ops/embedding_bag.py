@@ -18,18 +18,64 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import device as runtime_device
-from flag_gems.runtime import torch_device_fn
+from flag_gems.ops.embedding_bag import _embedding_bag_impl
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger(__name__)
-_USE_DEVICE_ASSERT = runtime_device.vendor_name in ("nvidia", "hygon")
+
+@triton.jit
+def _embedding_bag_metadata(
+    indices,
+    offsets,
+    offset_to_bag,
+    bag,
+    begin,
+    end,
+    valid_offsets,
+    code,
+    num_indices: tl.constexpr,
+    num_bags: tl.constexpr,
+    num_weights: tl.constexpr,
+    stride_i: tl.constexpr,  # indices stride
+    stride_o: tl.constexpr,  # offsets stride
+    index_block: tl.constexpr,
+    search_steps: tl.constexpr,
+):
+    lane = tl.arange(0, index_block)
+    if num_indices > 0:
+        # Ownership is fixed by the input partition, including invalid offsets.
+        # The checked hint avoids indirect offset gathers for regular bags.
+        for base in range(
+            bag * index_block, num_indices, tl.maximum(num_bags, 1) * index_block
+        ):
+            pos = base + lane
+            in_bounds = pos < num_indices
+            idx = tl.load(indices + pos * stride_i, in_bounds, other=0)
+            invalid = in_bounds & ((idx < 0) | (idx >= num_weights))
+            code |= tl.max(invalid.to(tl.int32), 0)
+            own_bag = valid_offsets & (pos >= begin) & (pos < end)
+            if tl.sum((in_bounds & ~own_bag).to(tl.int32), 0) == 0:
+                tl.store(offset_to_bag + pos, bag, in_bounds)
+            else:
+                low = tl.full((index_block,), 0, tl.int64)
+                high = tl.full((index_block,), num_bags, tl.int64)
+                for _ in range(search_steps):
+                    mid = (low + high) // 2
+                    off = tl.load(
+                        offsets + mid * stride_o,
+                        in_bounds & (mid < num_bags),
+                        other=num_indices,
+                    )
+                    right = (mid < num_bags) & (off <= pos)
+                    low = tl.where(right, mid + 1, low)
+                    high = tl.where(right, high, mid)
+                tl.store(offset_to_bag + pos, tl.maximum(low - 1, 0), in_bounds)
+    return code
 
 
 @libentry()
-@triton.jit(debug=_USE_DEVICE_ASSERT)
-def _embedding_bag_forward_kernel(
+@triton.jit
+def _embedding_bag_forward_mthreads(
     weight,
     indices,
     offsets,
@@ -63,6 +109,7 @@ def _embedding_bag_forward_kernel(
     key_max: tl.constexpr = False,  # maximum reduction using ordered keys
     reciprocal_mean: tl.constexpr = False,
     skip_pad_scale: tl.constexpr = False,  # skip padding-scale adjustment
+    mapping_hint: tl.constexpr = False,
 ):
     pid = tle.program_id(0)
     programs = tle.num_programs(0)
@@ -88,33 +135,52 @@ def _embedding_bag_forward_kernel(
             valid_offsets &= (bag != num_bags - 1) | (end == num_indices)
         if dim_tile == 0:
             code = tl.where(valid_offsets, 0, 2)
-            index_lane = tl.arange(0, index_block)
-            # Fixed partitions keep mapping writes disjoint even when a
-            # malformed offset sequence makes different bags overlap.
-            if num_indices > 0:
-                for input_base in range(
-                    bag * index_block,
+            if mapping_hint:
+                code = _embedding_bag_metadata(
+                    indices,
+                    offsets,
+                    offset_to_bag,
+                    bag,
+                    begin,
+                    end,
+                    valid_offsets,
+                    code,
                     num_indices,
-                    tl.maximum(num_bags, 1) * index_block,
-                ):
-                    pos = input_base + index_lane
-                    in_bounds = pos < num_indices
-                    idx = tl.load(indices + pos * stride_i, in_bounds, other=0)
-                    invalid = in_bounds & ((idx < 0) | (idx >= num_weights))
-                    code |= tl.max(invalid.to(tl.int32), 0)
-                    low = tl.full((index_block,), 0, tl.int64)
-                    high = tl.full((index_block,), num_bags, tl.int64)
-                    for _ in range(search_steps):
-                        mid = (low + high) // 2
-                        off = tl.load(
-                            offsets + mid * stride_o,
-                            in_bounds & (mid < num_bags),
-                            other=num_indices,
-                        )
-                        right = (mid < num_bags) & (off <= pos)
-                        low = tl.where(right, mid + 1, low)
-                        high = tl.where(right, high, mid)
-                    tl.store(offset_to_bag + pos, tl.maximum(low - 1, 0), in_bounds)
+                    num_bags,
+                    num_weights,
+                    stride_i,
+                    stride_o,
+                    index_block,
+                    search_steps,
+                )
+            else:
+                index_lane = tl.arange(0, index_block)
+                # Fixed partitions keep mapping writes disjoint even when a
+                # malformed offset sequence makes different bags overlap.
+                if num_indices > 0:
+                    for input_base in range(
+                        bag * index_block,
+                        num_indices,
+                        tl.maximum(num_bags, 1) * index_block,
+                    ):
+                        pos = input_base + index_lane
+                        in_bounds = pos < num_indices
+                        idx = tl.load(indices + pos * stride_i, in_bounds, other=0)
+                        invalid = in_bounds & ((idx < 0) | (idx >= num_weights))
+                        code |= tl.max(invalid.to(tl.int32), 0)
+                        low = tl.full((index_block,), 0, tl.int64)
+                        high = tl.full((index_block,), num_bags, tl.int64)
+                        for _ in range(search_steps):
+                            mid = (low + high) // 2
+                            off = tl.load(
+                                offsets + mid * stride_o,
+                                in_bounds & (mid < num_bags),
+                                other=num_indices,
+                            )
+                            right = (mid < num_bags) & (off <= pos)
+                            low = tl.where(right, mid + 1, low)
+                            high = tl.where(right, high, mid)
+                        tl.store(offset_to_bag + pos, tl.maximum(low - 1, 0), in_bounds)
             if async_assert:
                 tl.device_assert(code == 0, "embedding_bag: invalid index or offset")
             else:
@@ -126,18 +192,47 @@ def _embedding_bag_forward_kernel(
             count = tl.full((), 0, tl.int64)
             best = tl.full((block_d,), 0, acc_dtype)
             winner = tl.full((block_d,), -1, tl.int64)
-            for pos in range(begin, end):
-                idx = tl.load(indices + pos * stride_i).to(tl.int64)
-                valid = (idx >= 0) & (idx < num_weights) & (idx != padding)
-                values = tl.load(
-                    weight + idx * stride_w0 + dim * stride_w1,
-                    valid & (dim < embedding_dim),
-                    other=0.0,
-                ).to(acc_dtype)
-                replace = valid & ((count == 0) | (values > best))
-                best = tl.where(replace, values, best)
-                winner = tl.where(replace, idx, winner)
-                count += valid.to(tl.int64)
+            # Unrolling keeps the original sequential comparison order. Restrict
+            # it to the measured BF16/FP32 medium-width path; other paths retain
+            # the scalar loop below.
+            if (embedding_dim >= 256 and embedding_dim < 512) and (
+                weight.dtype.element_ty == tl.bfloat16
+                or weight.dtype.element_ty == tl.float32
+            ):
+                for base in range(begin, end, 4):
+                    # Preserve input order and first-value NaN/tie semantics. Each
+                    # indirect access retains its own bounds and padding mask.
+                    for shift in tl.static_range(4):
+                        pos = base + shift
+                        active = (pos >= 0) & (pos < end)
+                        idx = tl.load(indices + pos * stride_i, active, other=0).to(
+                            tl.int64
+                        )
+                        valid = (
+                            active & (idx >= 0) & (idx < num_weights) & (idx != padding)
+                        )
+                        values = tl.load(
+                            weight + idx * stride_w0 + dim * stride_w1,
+                            valid & (dim < embedding_dim),
+                            other=0.0,
+                        ).to(acc_dtype)
+                        replace = valid & ((count == 0) | (values > best))
+                        best = tl.where(replace, values, best)
+                        winner = tl.where(replace, idx, winner)
+                        count += valid.to(tl.int64)
+            else:
+                for pos in range(begin, end):
+                    idx = tl.load(indices + pos * stride_i).to(tl.int64)
+                    valid = (idx >= 0) & (idx < num_weights) & (idx != padding)
+                    values = tl.load(
+                        weight + idx * stride_w0 + dim * stride_w1,
+                        valid & (dim < embedding_dim),
+                        other=0.0,
+                    ).to(acc_dtype)
+                    replace = valid & ((count == 0) | (values > best))
+                    best = tl.where(replace, values, best)
+                    winner = tl.where(replace, idx, winner)
+                    count += valid.to(tl.int64)
             result = best
             tl.store(
                 max_indices + bag * embedding_dim + dim, winner, dim < embedding_dim
@@ -149,12 +244,13 @@ def _embedding_bag_forward_kernel(
                     best = tl.full((block_d,), -9223372036854775808, tl.int64)
                 else:
                     best = tl.full((block_d,), float("-inf"), acc_dtype)
-                best_pos = tl.full(
-                    (block_d,),
-                    num_indices,
-                    tl.int32 if key_max and num_indices < 2147483647 else tl.int64,
+                # Position values never exceed the N sentinel. Pointer arithmetic
+                # is promoted back to int64 before applying arbitrary input strides.
+                position_dtype: tl.constexpr = (
+                    tl.int32 if num_indices < 2147483647 else tl.int64
                 )
-                first = tl.full((), num_indices, tl.int64)
+                best_pos = tl.full((block_d,), num_indices, position_dtype)
+                first = tl.full((), num_indices, position_dtype)
             else:
                 acc = tl.zeros((block_l, block_d), acc_dtype)
             if num_indices > 0:
@@ -177,8 +273,9 @@ def _embedding_bag_forward_kernel(
                         values = tl.zeros((block_l, block_d), acc_dtype)
                     count += tl.sum(valid.to(tl.int32), 0)
                     if mode == 2:
+                        position = pos.to(position_dtype)
                         first = tl.minimum(
-                            first, tl.min(tl.where(valid, pos, num_indices), 0)
+                            first, tl.min(tl.where(valid, position, num_indices), 0)
                         )
                         if key_max:
                             bits = values.to(tl.int64, bitcast=True)
@@ -205,7 +302,7 @@ def _embedding_bag_forward_kernel(
                             tile_pos = tl.min(
                                 tl.where(
                                     numeric & (values == tile_best[None, :]),
-                                    pos[:, None],
+                                    position[:, None],
                                     num_indices,
                                 ),
                                 0,
@@ -232,7 +329,9 @@ def _embedding_bag_forward_kernel(
                     result = tl.zeros((block_d,), acc_dtype)
                 else:
                     first_idx = tl.load(
-                        indices + first * stride_i, first < num_indices, other=0
+                        indices + first.to(tl.int64) * stride_i,
+                        first < num_indices,
+                        other=0,
                     )
                     first_value = tl.load(
                         weight + first_idx.to(tl.int64) * stride_w0 + dim * stride_w1,
@@ -298,205 +397,51 @@ def _embedding_bag_forward_kernel(
                 tl.store(error, tl.where(only_offset == 0, 0, 2))
 
 
-def _embedding_bag_impl(
-    weight,
-    indices,
-    offsets,
-    scale_grad_by_freq=False,
-    mode=0,
-    sparse=False,
-    per_sample_weights=None,
-    include_last_offset=False,
-    padding_idx=-1,
-    forward_only=False,
-    *,
-    _kernel=None,
-    _async_assert=None,
-    _launch_kwargs=None,
-    _check_error=None,
-    _block_config=None,
-):
-    """Embedding-bag forward with target ATen auxiliary tensor conventions.
+logger = logging.getLogger(__name__)
 
-    The low-level ``-1`` padding sentinel means no padding; other legal negative
-    padding indices are normalized. Unlike legacy CUDA, a supplied terminal
-    offset must equal ``indices.numel()``. NVIDIA reports invalid tensor data
-    asynchronously through device assertions, matching CUDA ATen. Backend
-    implementations may provide their own launch and error checks. Other vendors
-    read error flags on the host and raise a recoverable exception; that path
-    synchronizes and cannot be captured in a device graph. All indirect memory
-    accesses remain masked regardless of the error-reporting mechanism.
-    """
-    if weight.ndim != 2 or indices.ndim != 1 or offsets.ndim != 1:
-        raise RuntimeError("weight must be 2D and indices and offsets must be 1D")
-    if weight.dtype not in (
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-        torch.float64,
-    ):
-        raise RuntimeError(
-            "weight must have float16, bfloat16, float32 or float64 dtype"
-        )
-    if indices.dtype not in (torch.int32, torch.int64) or offsets.dtype not in (
-        torch.int32,
-        torch.int64,
-    ):
-        raise RuntimeError("indices and offsets must have int32 or int64 dtype")
-    if indices.device != weight.device or offsets.device != weight.device:
-        raise RuntimeError("weight, indices and offsets must be on the same device")
-    if mode not in (0, 1, 2):
-        raise RuntimeError("mode must be 0 (sum), 1 (mean), or 2 (max)")
-    if per_sample_weights is not None:
-        if mode != 0:
-            raise RuntimeError("per_sample_weights is only supported for mode='sum'")
-        if (
-            per_sample_weights.ndim != 1
-            or per_sample_weights.numel() != indices.numel()
-        ):
-            raise RuntimeError(
-                "per_sample_weights must be 1D with the same size as indices"
-            )
-        if (
-            per_sample_weights.device != weight.device
-            or per_sample_weights.dtype != weight.dtype
-        ):
-            raise RuntimeError(
-                "per_sample_weights must have the same device and dtype as weight"
-            )
-    n, o = indices.numel(), offsets.numel()
-    v, d = weight.shape
-    if padding_idx != -1:
-        if padding_idx < -v or padding_idx >= v:
-            raise RuntimeError("padding_idx must be within the number of embeddings")
-        if padding_idx < 0:
-            padding_idx += v
-    if include_last_offset and o == 0:
-        raise RuntimeError("include_last_offset requires at least one offset")
-    bags = o - int(include_last_offset)
-    if bags == 0 and n != 0:
-        raise RuntimeError("nonempty indices require at least one bag")
-    index_dtype = (
-        torch.int64 if torch.int64 in (indices.dtype, offsets.dtype) else torch.int32
-    )
-    out = torch.empty((bags, d), device=weight.device, dtype=weight.dtype)
-    offset2bag = torch.empty((n,), device=weight.device, dtype=index_dtype)
-    ascend_abi = runtime_device.vendor_name == "ascend"
-    async_assert = _USE_DEVICE_ASSERT if _async_assert is None else _async_assert
-    kernel = _embedding_bag_forward_kernel if _kernel is None else _kernel
-    bag_size_b = ascend_abi or (
-        runtime_device.vendor_name == "mthreads" and not forward_only
-    )
-    bag_size = torch.empty(
-        (bags if bag_size_b else o,), device=weight.device, dtype=index_dtype
-    )
-    if ascend_abi and mode != 2:
-        max_indices = bag_size
-    else:
-        max_indices = torch.empty(
-            (bags, d) if mode == 2 else (0,), device=weight.device, dtype=index_dtype
-        )
-    with torch_device_fn.device(weight.device):
-        error = None
-        error_blocks = max(bags, 1)
-        if n or o:
-            if not async_assert:
-                error = torch.empty(
-                    (error_blocks,), device=weight.device, dtype=torch.int32
-                )
-        if o:
-            # One masked feature tile also defines helpers for zero-width weights.
-            block_d = min(64, triton.next_power_of_2(max(d, 1)))
-            block_l = 16 if n <= bags * 16 else 32
-            num_warps = 4
-            serial_max = key_max = reciprocal_mean = False
-            # Wide or long FP64 bags are limited by double-precision reduction
-            # work and register pressure. Keep the ordinary path for small bags.
-            if (
-                runtime_device.vendor_name == "nvidia"
-                and weight.dtype == torch.float64
-                and bags >= 128
-            ):
-                if mode == 2:
-                    if n > bags * 16 and d <= 256:
-                        serial_max = True
-                        block_d = 64
-                        num_warps = 1 if d <= 64 else 2
-                    else:
-                        key_max = True
-                        block_d = 128
-                        block_l = 8 if n <= bags * 8 else 16
-                else:
-                    reciprocal_mean = mode == 1
-                    if d <= 64:
-                        block_d = 64
-                        block_l = 4 if mode == 1 else 8
-                    elif d <= 128:
-                        block_d = 128 if mode == 1 else 64
-                        block_l = 16 if per_sample_weights is not None else 8
-                    else:
-                        block_d = 128 if d <= 256 or mode == 1 else 64
-                        block_l = 4
-            index_block = 128
-            if _block_config is not None:
-                block_l, block_d, index_block, num_warps = _block_config
-            launch_kwargs = {"debug": True} if async_assert else {}
-            if _launch_kwargs is not None:
-                launch_kwargs.update(_launch_kwargs)
-            grid = (min(max(bags * max(triton.cdiv(d, block_d), 1), 1), 65535),)
-            kernel[grid](
-                weight,
-                indices,
-                offsets,
-                per_sample_weights,
-                out,
-                offset2bag,
-                bag_size,
-                max_indices,
-                error,
-                n,
-                o,
-                bags,
-                d,
-                v,
-                weight.stride(0),
-                weight.stride(1),
-                indices.stride(0),
-                offsets.stride(0),
-                per_sample_weights.stride(0) if per_sample_weights is not None else 0,
-                padding_idx,
-                mode,
-                per_sample_weights is not None,
-                block_l,
-                block_d,
-                ascend_abi=ascend_abi,
-                bag_size_b=bag_size_b,
-                # A single bag maps every position to zero. Avoid a redundant
-                # vector gather from one scalar offset on Ascend's compiler.
-                search_steps=bags.bit_length() if bags > 1 else 0,
-                index_block=index_block,
-                async_assert=async_assert,
-                serial_max=serial_max,
-                key_max=key_max,
-                reciprocal_mean=reciprocal_mean,
-                num_warps=num_warps,
-                # Keep assertions enabled even with TRITON_DEBUG=0.
-                **launch_kwargs,
-            )
-        if (n or o) and not async_assert and _check_error is not None:
-            _check_error(error, error_blocks)
-        elif (n or o) and not async_assert:
-            code = max(error.tolist())
-            if code & 1:
-                raise RuntimeError(
-                    "embedding_bag: indices must be in [0, weight.size(0))"
-                )
-            if code & 2:
-                raise RuntimeError(
-                    "embedding_bag: offsets must start at 0, be nondecreasing and in [0, indices.numel()]; "
-                    "the terminal offset must equal indices.numel() when include_last_offset=True"
-                )
-    return out, offset2bag, bag_size, max_indices
+
+@libentry()
+@triton.jit(debug=True)
+def _embedding_bag_check_flags(
+    error,
+    num_error_flags: tl.constexpr,
+    block: tl.constexpr,  # element block size
+):
+    lane = tl.arange(0, block)
+    bad = tl.full((), 0, tl.int32)
+    for base in range(0, num_error_flags, block):
+        code = tl.load(error + base + lane, base + lane < num_error_flags, other=0)
+        bad |= tl.max(code, 0)
+    if bad != 0:
+        tl.device_assert(False, "embedding_bag: invalid index or offset")
+
+
+def _check_error(error, count):
+    # Keeping assertions out of the gather/reduction kernel avoids the MUSA
+    # compiler's large valid-input slowdown while retaining device validation.
+    _embedding_bag_check_flags[(1,)](error, count, 128, debug=True)
+
+
+class _ReductionKernel:
+    def __init__(self, serial, hint=False):
+        self.serial = serial
+        self.hint = hint
+        self.entry = libentry()(_embedding_bag_forward_mthreads.jit_function)
+
+    def __getitem__(self, grid):
+        def run(*args, **kwargs):
+            kwargs["serial_max"] = self.serial
+            kwargs["mapping_hint"] = self.hint
+            return self.entry[grid](*args, **kwargs)
+
+        return run
+
+
+_KERNELS = {
+    (serial, hint): _ReductionKernel(serial, hint)
+    for serial in (False, True)
+    for hint in (False, True)
+}
 
 
 def _embedding_bag(
@@ -510,7 +455,71 @@ def _embedding_bag(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG")
+    logger.debug("GEMS_MTHREADS _EMBEDDING_BAG")
+    bags = offsets.numel() - int(include_last_offset)
+    wide = (
+        weight.ndim == 2
+        and 512 <= weight.shape[1] <= 1024
+        and bags >= 128
+        and indices.numel() <= 16 * bags
+    )
+    medium = (
+        weight.ndim == 2
+        and 256 <= weight.shape[1] < 512
+        and bags >= 128
+        and indices.numel() <= 32 * bags
+    )
+    average = triton.cdiv(indices.numel(), max(bags, 1))
+    mapping_hint = (
+        weight.ndim == 2
+        and weight.shape[1] <= 128
+        and bags >= 64
+        and (8 < average <= 16 or (mode == 2 and average >= 32))
+    )
+    block_config = None
+    if mapping_hint:
+        block_config = (
+            16 if indices.numel() <= bags * 16 else 32,
+            64,
+            min(128, triton.next_power_of_2(max(average, 1))),
+            4,
+        )
+    if wide:
+        block_config = (2, 1024, 128, 4)
+    elif medium:
+        block_config = (4 if mode == 2 else 8, 256, 128, 4)
+    # Smaller metadata tiles let regular bags use the checked ownership hint.
+    # Irregular offsets retain the kernel's binary-search mapping path.
+    if weight.dtype == torch.float32:
+        if wide:
+            mapping_hint = True
+            block_config = (
+                8 if mode == 2 else 2,
+                1024,
+                min(128, triton.next_power_of_2(max(average, 1))),
+                4,
+            )
+        elif medium:
+            mapping_hint = True
+            block_config = (
+                8,
+                256,
+                min(128, triton.next_power_of_2(max(average, 1))),
+                4,
+            )
+        elif (
+            weight.ndim == 2
+            and 0 < bags <= 32
+            and weight.shape[1] <= 64
+            and average <= 8
+        ):
+            mapping_hint = True
+            block_config = (
+                4 if average <= 4 else 8,
+                min(64, triton.next_power_of_2(max(weight.shape[1], 1))),
+                triton.next_power_of_2(max(average, 1)),
+                4,
+            )
     return _embedding_bag_impl(
         weight,
         indices,
@@ -521,6 +530,15 @@ def _embedding_bag(
         per_sample_weights,
         include_last_offset,
         padding_idx,
+        _kernel=(
+            _KERNELS[(mode == 2 if wide or medium else False, mapping_hint)]
+            if mode == 2 or mapping_hint
+            else None
+        ),
+        _block_config=block_config,
+        _async_assert=False,
+        _launch_kwargs={"skip_pad_scale": True},
+        _check_error=_check_error,
     )
 
 
@@ -535,7 +553,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_MTHREADS _EMBEDDING_BAG_FORWARD_ONLY")
     return _embedding_bag_impl(
         weight,
         indices,
@@ -547,4 +565,6 @@ def _embedding_bag_forward_only(
         include_last_offset,
         padding_idx,
         forward_only=True,
+        _async_assert=False,
+        _check_error=_check_error,
     )

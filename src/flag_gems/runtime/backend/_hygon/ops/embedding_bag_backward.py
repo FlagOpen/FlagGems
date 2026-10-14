@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._embedding_bag_backward import (
+from flag_gems.ops.embedding_bag_backward import (
     _eb_backward_chunk_offsets,
     _eb_backward_chunk_offsets_body,
     _eb_backward_finish,
@@ -35,7 +35,7 @@ from flag_gems.ops._embedding_bag_backward import (
 )
 from flag_gems.runtime import torch_device_fn
 
-from ._embedding_bag import _hygon_entry
+from .embedding_bag import _hygon_entry
 
 logger = logging.getLogger(__name__)
 

@@ -19,7 +19,7 @@ import triton
 import triton.language as tl
 from packaging import version
 
-from flag_gems.ops._embedding_bag_backward import (
+from flag_gems.ops.embedding_bag_backward import (
     _eb_backward_init,
     _eb_backward_scatter,
     _eb_backward_scatter_body,

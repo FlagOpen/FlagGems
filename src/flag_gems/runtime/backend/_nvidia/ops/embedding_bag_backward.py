@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._embedding_bag_backward import (
+from flag_gems.ops.embedding_bag_backward import (
     _eb_backward_validate_body,
     _embedding_bag_backward_impl,
 )

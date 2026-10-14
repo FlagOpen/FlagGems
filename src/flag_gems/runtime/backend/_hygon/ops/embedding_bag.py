@@ -19,8 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._embedding_bag import _embedding_bag_forward_kernel as _generic_entry
-from flag_gems.ops._embedding_bag import _embedding_bag_impl as _generic_impl
+from flag_gems.ops.embedding_bag import _embedding_bag_forward_kernel as _generic_entry
+from flag_gems.ops.embedding_bag import _embedding_bag_impl as _generic_impl
 from flag_gems.utils import libentry
 from flag_gems.utils.triton_version_utils import _triton_version_at_least
 

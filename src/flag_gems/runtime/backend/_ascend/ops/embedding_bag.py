@@ -18,7 +18,7 @@ import triton
 import triton.language as tl
 from packaging import version
 
-from flag_gems.ops._embedding_bag import _embedding_bag_impl
+from flag_gems.ops.embedding_bag import _embedding_bag_impl
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)

@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ._embedding_bag_backward import _embedding_bag_backward
+from .embedding_bag_backward import _embedding_bag_backward
 
 __all__ = ["_embedding_bag_backward"]

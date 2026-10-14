@@ -18,14 +18,14 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._embedding_bag_backward import (
+from flag_gems.ops.embedding_bag_backward import (
     _eb_backward_sparse,
     _eb_backward_validate_body,
     _embedding_bag_backward_impl,
     _launch_backward,
 )
 from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend._mthreads.ops._embedding_bag import (
+from flag_gems.runtime.backend._mthreads.ops.embedding_bag import (
     _embedding_bag_check_flags,
 )
 from flag_gems.utils import libentry

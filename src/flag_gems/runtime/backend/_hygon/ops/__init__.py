@@ -16,8 +16,6 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._conj import _conj
-from ._embedding_bag import _embedding_bag, _embedding_bag_forward_only
-from ._embedding_bag_backward import _embedding_bag_backward
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
@@ -67,6 +65,8 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
 from .exponential import exponential
 from .exponential_ import exponential_
