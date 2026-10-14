@@ -147,6 +147,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _embedding_bag
+  description: Reduce indexed embedding rows into sum, mean, or maximum bags and return
+    backward metadata.
+  for:
+  - _embedding_bag
+  labels:
+  - aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: _flash_attention_forward
   description: Run the canonical FlashAttention forward operator.
   for:
@@ -5105,9 +5117,9 @@ ops:
   stages:
   - stable: '3.0'
 - id: embedding_bag
-  description: Reduce indexed embedding rows into sum, mean, or maximum bags and return backward metadata.
+  description: Reduce indexed embedding rows into bags using the shared embedding bag implementation.
   for:
-  - _embedding_bag
+  - embedding_bag
   labels:
   - aten
   - NoCPU
@@ -5116,7 +5128,8 @@ ops:
   stages:
   - alpha: '5.4'
 - id: embedding_bag_backward
-  description: Compute dense or sparse embedding bag gradients with optional frequency and per-sample scaling.
+  description: Compute dense or sparse embedding bag gradients with optional frequency
+    and per-sample scaling.
   for:
   - _embedding_bag_backward
   labels:
