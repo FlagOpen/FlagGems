@@ -8816,6 +8816,17 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: gru_cell
+  description: Fused single-step GRU cell implemented as one Triton kernel covering both gate GEMMs and the reset/update/new gate chain.
+  for:
+  - gru_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: gru_data
   description: Gated recurrent unit (GRU) over packed-sequence data.
   for:

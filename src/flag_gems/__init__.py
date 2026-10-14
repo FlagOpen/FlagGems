@@ -1039,6 +1039,7 @@ _FULL_CONFIG = (
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("gru.data", gru_data),
     ("gru.input", gru),
+    ("gru_cell", gru_cell),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
     ("gt_.Scalar", gt_scalar_),
