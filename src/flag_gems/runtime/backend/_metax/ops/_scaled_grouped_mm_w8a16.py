@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MetaX grouped E4M3/INT8 GEMM with FP32 row and column scales.
+"""Private MetaX implementation shared by the named FP8/INT8 entry points.
 
 Offsets stay on the device. Ragged M/N groups are mapped to output tiles by
 a parallel prefix sum; no per-group host dispatch or floating GEMM fallback
@@ -32,9 +32,6 @@ from flag_gems.ops.scaled_grouped_mm import (
     _normalize_bias,
     _normalize_scale,
     _resolve_shapes,
-)
-from flag_gems.ops.scaled_grouped_mm import (
-    scaled_grouped_mm as _generic_scaled_grouped_mm,
 )
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -273,7 +270,7 @@ def _scaled_grouped_mm_kernel(
     tl.store(c_ptrs, value, (offs_m[:, None] < m_size) & (offs_n[None, :] < n_size))
 
 
-def scaled_grouped_mm(
+def _scaled_grouped_mm_w8a16(
     self: torch.Tensor,
     mat2: torch.Tensor,
     scale_a: torch.Tensor,
@@ -295,21 +292,11 @@ def scaled_grouped_mm(
     _check_dims(self, mat2)
     is_int8 = self.dtype == torch.int8
     if not is_int8 and self.dtype not in _E4M3_DTYPES:
-        return _generic_scaled_grouped_mm(
-            self,
-            mat2,
-            scale_a,
-            scale_b,
-            offs=offs,
-            bias=bias,
-            scale_result=scale_result,
-            out_dtype=out_dtype,
-            use_fast_accum=use_fast_accum,
-        )
+        raise TypeError("the quantized grouped GEMM requires INT8 or E4M3 inputs")
 
-    logger.debug("GEMS_METAX SCALED_GROUPED_MM")
+    logger.debug("GEMS_METAX SCALED_GROUPED_MM_W8A16")
     if scale_result is not None:
-        raise RuntimeError("scale_result is not supported for scaled_grouped_mm")
+        raise RuntimeError("scale_result is not supported for quantized grouped GEMM")
     output_dtype = torch.bfloat16 if out_dtype is None else out_dtype
     float_outputs = (torch.float16, torch.bfloat16, torch.float32)
     if output_dtype not in float_outputs:
@@ -338,7 +325,7 @@ def scaled_grouped_mm(
         self, mat2, offs
     )
     if is_int8 and K > 131071:
-        raise ValueError("INT8 scaled_grouped_mm requires K <= 131071")
+        raise ValueError("INT8 grouped GEMM requires K <= 131071")
     multiplier = groups if a_is_2d and b_is_2d else 1
     scale_a = _normalize_scale(
         scale_a,

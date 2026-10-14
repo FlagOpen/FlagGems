@@ -18,7 +18,7 @@ from typing import Optional
 
 import torch
 
-from .scaled_grouped_mm import scaled_grouped_mm as _scaled_grouped_mm
+from ._scaled_grouped_mm_w8a16 import _scaled_grouped_mm_w8a16
 
 
 def scaled_grouped_mm_w8a16_fp8(
@@ -38,8 +38,8 @@ def scaled_grouped_mm_w8a16_fp8(
     have the same dtype. This entry does not accept FP16/BF16 activations.
     Output defaults to BF16; FP16 and FP32 are also supported.
 
-    Group offsets, scale layouts, bias and accumulation behavior match
-    scaled_grouped_mm. The computation uses the same MetaX kernel.
+    Offsets contain cumulative group ends; scales apply per row and column.
+    FP32 accumulation, scaling and optional bias precede the output cast.
     """
     if not isinstance(self, torch.Tensor) or not isinstance(mat2, torch.Tensor):
         raise TypeError("mat_a and mat_b must be tensors")
@@ -50,7 +50,7 @@ def scaled_grouped_mm_w8a16_fp8(
         raise TypeError(
             "scaled_grouped_mm_w8a16_fp8 requires matching E4M3FN or E4M3FNUZ inputs"
         )
-    return _scaled_grouped_mm(
+    return _scaled_grouped_mm_w8a16(
         self,
         mat2,
         scale_a,

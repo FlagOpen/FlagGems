@@ -93,7 +93,6 @@ from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
-from .scaled_grouped_mm import scaled_grouped_mm
 from .scaled_grouped_mm_w8a16_fp8 import scaled_grouped_mm_w8a16_fp8
 from .scaled_grouped_mm_w8a16_int8 import scaled_grouped_mm_w8a16_int8
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -260,7 +259,6 @@ __all__ = [
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
-    "scaled_grouped_mm",
     "scaled_grouped_mm_w8a16_fp8",
     "scaled_grouped_mm_w8a16_int8",
     "segment_reduce",
