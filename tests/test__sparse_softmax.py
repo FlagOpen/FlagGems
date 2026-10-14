@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # aten::_sparse_softmax(x, dim, False) binds the positional bool to the ScalarType
 # parameter of .int, so every family names its overload: .default for the

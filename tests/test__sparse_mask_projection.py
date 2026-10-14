@@ -50,7 +50,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 _SPARSE_STRUCTURE_SUPPORTED = bool(utils.int64_is_supported)
 

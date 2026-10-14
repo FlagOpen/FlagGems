@@ -19,7 +19,7 @@ import torch
 
 import flag_gems
 
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # Only SparseCPU / SparseCUDA kernels are registered and the CUDA kernel
 # dispatches on AT_DISPATCH_FLOATING_TYPES, so the supported set is the static

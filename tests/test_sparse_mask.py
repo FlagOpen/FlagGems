@@ -20,7 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # Gather values at the sparse mask positions; both operands must have the same shape.
 # The reference rejects FP8 self operands during dtype promotion.

@@ -27,7 +27,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # Static construction capability, taken from the runtime detector's existing
 # flags: a dtype whose flag is False is never used to build a fixture, so no

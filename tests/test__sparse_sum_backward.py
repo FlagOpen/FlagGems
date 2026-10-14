@@ -41,7 +41,7 @@ import torch
 
 import flag_gems
 
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # Existing static capability flags (tests/accuracy_utils.py re-exports the same values
 # as bf16_is_supported / fp64_is_supported / int64_is_supported / fp8_is_supported).
@@ -465,7 +465,7 @@ def _strided(tensor):
 def _special_values(payload, shape):
     """The shared special payload cycled to a required (count,) + tail shape.
 
-    The payload is the one tests/test_utils.py builds for this dtype and scenario, already
+    The payload is the one tests/kernelgen_test_utils.py builds for this dtype and scenario, already
     on the target device and already cast to that dtype, so it is exactly the nan / inf /
     mixed pattern the format can represent and is used as handed over: no cast is applied
     here, and in particular none that would rebuild the pattern through fp32 or move it

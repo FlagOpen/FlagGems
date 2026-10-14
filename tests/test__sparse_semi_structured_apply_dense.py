@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # aten::_sparse_semi_structured_apply_dense(input, threads_masks) selects each
 # element of a dense 2-D tensor by its packed mask bit: the element is kept where

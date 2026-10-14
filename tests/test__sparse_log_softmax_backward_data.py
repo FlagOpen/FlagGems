@@ -19,7 +19,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import test_utils as tu
+from . import kernelgen_test_utils as tu
 
 # The CUDA operator has float32/float64 kernels only: it reports
 # "'log_softmax_backward' not implemented" for the reduced-precision and integer types
