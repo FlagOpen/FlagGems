@@ -120,7 +120,13 @@ def test_geqrf(shape, dtype):
     kcols = min(res_R.shape[-1], k)
     res_R_aligned = res_R[..., :kcols] * sgn.unsqueeze(-2)
     ref_R_aligned = ref_R[..., :kcols] * ref_sgn.unsqueeze(-2)
-    utils.gems_assert_close(res_R_aligned, ref_R_aligned, torch.float64, atol=1e-2)
+    # Both inputs are upcast to fp64 before the comparison, so the absolute
+    # error here tracks the *input* precision: fp64 inputs agree with the
+    # reference to ~2e-13 and fp32 inputs to ~2.4e-4 (worst over 10 seeds x
+    # all shapes, sign-aligned). atol=1e-3 keeps ~4x headroom over the fp32
+    # worst case while staying tight against the fp64 one; the rtol floor of
+    # the fp64 resolution table (1e-7) covers the large-|R| entries.
+    utils.gems_assert_close(res_R_aligned, ref_R_aligned, torch.float64, atol=1e-3)
 
 
 @pytest.mark.geqrf
