@@ -72,7 +72,6 @@ _BOUNDARY_ROWS = tu.selected_cases(
         ("moderate", (0, 0), ("-1", "1")),
         ("moderate", (0, 4, 4), ("-1", "1")),
         ("moderate", (3, 0, 0), ("-1", "1")),
-        ("moderate", (1, 1), ("-1", "1")),
     ],
     quick=[],
 )

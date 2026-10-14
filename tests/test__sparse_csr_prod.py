@@ -83,7 +83,8 @@ _GRID_ROWS = [
 
 # dim is an int[1] list: negative (normalized) values, multi-axis lists and the
 # empty list select distinct reduction paths and output shapes.
-_DIM_FORMS = ([0], [1], [-1], [-2], [0, 1], [1, 0], [])
+# Positive single-axis dims are already covered by the grid.
+_DIM_FORMS = ([-1], [-2], [0, 1], [1, 0], [])
 
 _DIM_ROWS = [
     (shape, dtype, ["-1", "1"], dim)

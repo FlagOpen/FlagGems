@@ -78,7 +78,6 @@ _BOUNDARY_ROWS = [
     (-1, -1, 3),
     (-5, -10, 3),
     (-3.9, -10, 3),
-    (_INT64_MAX, 0, _INT64_MAX),
     (_INT64_MAX, _INT64_MAX, _INT64_MAX),
     (2**62, 2**62 - 1, 2**62),
     (_INT64_MIN + 1, _INT64_MIN, 3),

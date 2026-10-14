@@ -104,11 +104,10 @@ SHAPE_DIM_CASES = tu.selected_cases(
 
 
 # dim sweep on the parameter-coverage dtype (int32 promotes to float32 on both
-# sides, so the extreme ranges stay representable).
+# sides, so the extreme ranges stay representable). Dim 1 is already in the grid.
 DIM_CASES = tu.selected_cases(
     [
         ((1024, 1024), 0, torch.int32, ["-1", "1"]),
-        ((1024, 1024), 1, torch.int32, ["-1", "1"]),
         ((1024, 1024), -1, torch.int32, ["-1", "1"]),
         ((1024, 1024), -2, torch.int32, ["-1", "1"]),
     ],
