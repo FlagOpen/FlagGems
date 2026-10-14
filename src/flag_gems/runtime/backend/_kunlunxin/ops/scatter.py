@@ -596,7 +596,7 @@ def _tle_scatter_init():
             _TLE["kern"][(elt, idx_t)] = _mk()
         _TLE["ok"] = True
     except Exception as _e:  # pragma: no cover - keep backend importable
-        logger.debug("scatter tle.raw init failed: %r", _e)
+        logger.debug("GEMS_KUNLUNXIN SCATTER tle.raw init failed: %r", _e)
         _TLE["ok"] = False
     return _TLE["ok"]
 
@@ -694,7 +694,7 @@ def _tle_scatter_src(inp, dim, index, src):
             kern[(_TLE_GRID,)](O, B, index, S, R, W, K, *md)
         return out
     except Exception as _e:  # pragma: no cover - never break correctness
-        logger.debug("scatter tle path deferred: %r", _e)
+        logger.debug("GEMS_KUNLUNXIN SCATTER tle path deferred: %r", _e)
         return None
 
 
