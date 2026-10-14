@@ -71,60 +71,60 @@ def test_accuracy_select_copy(input_shape, dim, index, dtype):
 
 @pytest.mark.select_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_select_copy_noncontiguous_input(dtype):
+@pytest.mark.parametrize("dim, index", [(0, 1), (0, -1), (1, 3), (1, 0)])
+def test_accuracy_select_copy_noncontiguous_input(dtype, dim, index):
     base = torch.randn(6, 4, dtype=dtype, device=flag_gems.device)
     inp = base.t()
     ref_inp = utils.to_reference(inp)
 
-    for dim, index in [(0, 1), (0, -1), (1, 3), (1, 0)]:
-        ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
-        res_out = flag_gems.select_copy(inp, dim, index)
-        assert res_out.is_contiguous()
-        utils.gems_assert_equal(res_out, ref_out)
+    ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
+    res_out = flag_gems.select_copy(inp, dim, index)
+    assert res_out.is_contiguous()
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.select_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_select_copy_strided_input(dtype):
+@pytest.mark.parametrize("dim, index", [(0, 2), (1, 1), (2, -1)])
+def test_accuracy_select_copy_strided_input(dtype, dim, index):
     # A stride-2 view: the strided gather path must honor the real strides.
     base = torch.randn(4, 8, 6, dtype=dtype, device=flag_gems.device)
     inp = base[:, ::2, :]
     ref_inp = utils.to_reference(inp)
 
-    for dim, index in [(0, 2), (1, 1), (2, -1)]:
-        ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
-        res_out = flag_gems.select_copy(inp, dim, index)
-        assert res_out.is_contiguous()
-        utils.gems_assert_equal(res_out, ref_out)
+    ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
+    res_out = flag_gems.select_copy(inp, dim, index)
+    assert res_out.is_contiguous()
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.select_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_select_copy_broadcast_input(dtype):
+@pytest.mark.parametrize("dim, index", [(0, 1), (1, 2)])
+def test_accuracy_select_copy_broadcast_input(dtype, dim, index):
     # An expanded (zero-stride) input; the copy must materialize the values.
     base = torch.randn(1, 6, dtype=dtype, device=flag_gems.device)
     inp = base.expand(4, 6)
     ref_inp = utils.to_reference(inp)
 
-    for dim, index in [(0, 1), (1, 2)]:
-        ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
-        res_out = flag_gems.select_copy(inp, dim, index)
-        assert res_out.is_contiguous()
-        utils.gems_assert_equal(res_out, ref_out)
+    ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
+    res_out = flag_gems.select_copy(inp, dim, index)
+    assert res_out.is_contiguous()
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.select_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_accuracy_select_copy_storage_offset(dtype):
+@pytest.mark.parametrize("dim, index", [(0, 1), (1, 2)])
+def test_accuracy_select_copy_storage_offset(dtype, dim, index):
     base = torch.randn(20, dtype=dtype, device=flag_gems.device)
     inp = base[4:12].reshape(2, 4)
     ref_inp = utils.to_reference(inp)
 
-    for dim, index in [(0, 1), (1, 2)]:
-        ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
-        res_out = flag_gems.select_copy(inp, dim, index)
-        assert res_out.is_contiguous()
-        utils.gems_assert_equal(res_out, ref_out)
+    ref_out = torch.ops.aten.select_copy(ref_inp, dim, index)
+    res_out = flag_gems.select_copy(inp, dim, index)
+    assert res_out.is_contiguous()
+    utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.select_copy
