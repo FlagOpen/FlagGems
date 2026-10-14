@@ -267,8 +267,9 @@ fused_adamw_: test__fused_adamw_
 fused_adamw__tensor_lr: test__fused_adamw_
 
 
-# Leading-underscore aten ops whose FlagGems id carries an ``underscore_``
+# Leading-underscore aten ops: the FlagGems id gets an ``underscore`` prefix
 # prefix (naming Rule 2), while the test file keeps the aten name. The markers
 # check resolves ids from this file, so without the alias the id in
 # conf/operators.yaml cannot find its test.
+underscore_linalg_det: test__linalg_det
 underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
