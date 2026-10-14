@@ -84,7 +84,7 @@ def test_div_tensor_mode_float(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
     res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -102,7 +102,7 @@ def test_div_tensor_mode_int(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
     res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     utils.gems_assert_equal(res_out, ref_out)
@@ -118,7 +118,7 @@ def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
     res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
@@ -137,7 +137,7 @@ def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = ref_inp1.div_(ref_inp2, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
     res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
@@ -153,7 +153,7 @@ def test_div_scalar_mode_float(shape, rounding_mode, dtype):
     scalar = -2.5
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.div(ref_inp, scalar, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
     res_out = flag_gems.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -170,7 +170,7 @@ def test_div_scalar_mode_int(shape, rounding_mode, dtype):
     scalar = -3
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.div(ref_inp, scalar, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
     res_out = flag_gems.div_mode(inp, scalar, rounding_mode=rounding_mode)
 
     utils.gems_assert_equal(res_out, ref_out)
@@ -185,7 +185,7 @@ def test_div_scalar_mode_float_(shape, rounding_mode, dtype):
     scalar = -2.5
     ref_inp = utils.to_reference(inp.clone(), False)
 
-    ref_out = ref_inp.div_(scalar, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
     res_out = flag_gems.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     assert res_out is inp
@@ -203,7 +203,7 @@ def test_div_scalar_mode_int_(shape, rounding_mode, dtype):
     scalar = -3
     ref_inp = utils.to_reference(inp.clone(), False)
 
-    ref_out = ref_inp.div_(scalar, rounding_mode=rounding_mode)
+    ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
     res_out = flag_gems.div_mode_(inp, scalar, rounding_mode=rounding_mode)
 
     assert res_out is inp
@@ -223,7 +223,7 @@ def test_div_tensor_scalar(shape, scalar, dtype):
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1, False)
 
-    ref_out = torch.div(ref_inp1, inp2)
+    ref_out = utils.ref_div_rounding(ref_inp1, inp2, None)
     res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -242,7 +242,7 @@ def test_div_tensor_scalar_(shape, scalar, dtype):
     inp2 = scalar
     ref_inp1 = utils.to_reference(inp1.clone(), False)
 
-    ref_out = ref_inp1.div_(inp2)
+    ref_out = utils.ref_div_rounding(ref_inp1, inp2, None)
     res_out = flag_gems.true_divide_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -256,7 +256,7 @@ def test_div_scalar_(shape, scalar, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone(), False)
 
-    ref_out = ref_inp.div_(scalar)
+    ref_out = utils.ref_div_rounding(ref_inp, scalar, None)
     res_out = flag_gems.true_divide_(inp, scalar)
 
     assert res_out is inp
@@ -276,7 +276,7 @@ def test_div_scalar_tensor(shape, scalar, dtype):
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.div(inp1, ref_inp2)
+    ref_out = utils.ref_div_rounding(inp1, ref_inp2, None)
     res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -325,12 +325,12 @@ def test_div_complex_complex(shape, complex_dtype):
     ref_inp1 = utils.to_reference(inp1, True)
     ref_inp2 = utils.to_reference(inp2, True)
 
-    ref_out = torch.div(ref_inp1, ref_inp2)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
     res_out = flag_gems.true_divide(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         res_out = res_out.to("cpu")
         ref_out = ref_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
@@ -372,12 +372,13 @@ def test_div_complex_float_tensor(shape, complex_dtype):
     else:
         ref_inp1 = utils.to_reference(inp1, True)
         ref_inp2 = utils.to_reference(inp2, True)
-        ref_out = torch.div(ref_inp1, ref_inp2)
+        ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
 
     res_out = flag_gems.true_divide(inp1, inp2)
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         res_out = res_out.to("cpu")
+        ref_out = ref_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
@@ -408,12 +409,13 @@ def test_div_tensor_int(shape, complex_dtype):
     else:
         ref_inp1 = utils.to_reference(inp1, True)
         ref_inp2 = utils.to_reference(inp2, True)
-        ref_out = torch.div(ref_inp1, ref_inp2)
+        ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
 
     res_out = flag_gems.true_divide(inp1, inp2)
 
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         res_out = res_out.to("cpu")
+        ref_out = ref_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
@@ -437,12 +439,12 @@ def test_div_complex_int_scalar(shape, complex_dtype):
     ref_inp1 = utils.to_reference(inp1, True)
     ref_inp2 = inp2
 
-    ref_out = torch.div(ref_inp1, ref_inp2)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
     res_out = flag_gems.true_divide(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         res_out = res_out.to("cpu")
         ref_out = ref_out.to("cpu")
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
@@ -493,8 +495,7 @@ def test_div_out_scalar_tensor(shape, scalar, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
 
-    ref_out = torch.empty_like(ref_inp)
-    torch.div(scalar, ref_inp, out=ref_out)
+    ref_out = utils.ref_div_rounding(scalar, ref_inp, None)
 
     out = torch.empty_like(inp)
     res_out = flag_gems.true_divide_out(scalar, inp, out)
@@ -532,9 +533,7 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.ops.aten.div.Tensor_mode(
-        ref_inp1, ref_inp2, rounding_mode=rounding_mode
-    )
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
     # Route through torch.div + use_gems() so the backend specialization (with
     # the correct half-precision floor algorithm) is used instead of the common op.
@@ -580,13 +579,9 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     if rounding_mode == "trunc" and isinstance(scalar, float):
         scalar_device = ref_inp.device
         scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
-        ref_out = torch.ops.aten.div.Tensor_mode(
-            ref_inp, scalar_tensor, rounding_mode=rounding_mode
-        )
+        ref_out = utils.ref_div_rounding(ref_inp, scalar_tensor, rounding_mode)
     else:
-        ref_out = torch.ops.aten.div.Scalar_mode(
-            ref_inp, scalar, rounding_mode=rounding_mode
-        )
+        ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
 
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
@@ -638,9 +633,7 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.ops.aten.div_.Tensor_mode(
-        ref_inp1, ref_inp2, rounding_mode=rounding_mode
-    )
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
@@ -681,13 +674,9 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     if rounding_mode == "trunc" and isinstance(scalar, float):
         scalar_device = ref_inp.device
         scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
-        ref_out = torch.ops.aten.div.Tensor_mode(
-            ref_inp, scalar_tensor, rounding_mode=rounding_mode
-        )
+        ref_out = utils.ref_div_rounding(ref_inp, scalar_tensor, rounding_mode)
     else:
-        ref_out = torch.ops.aten.div_.Scalar_mode(
-            ref_inp, scalar, rounding_mode=rounding_mode
-        )
+        ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
             res_out = inp.div_(scalar, rounding_mode=rounding_mode)
