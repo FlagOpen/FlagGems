@@ -149,7 +149,7 @@ def _histc_tle_init():
         _HISTC_TLE["k"] = _k
         _HISTC_TLE["ok"] = True
     except Exception as _e:  # pragma: no cover - keep backend importable
-        logger.debug("histc tle.raw init failed: %r", _e)
+        logger.debug("GEMS_KUNLUNXIN HISTC tle.raw init failed: %r", _e)
         _HISTC_TLE["ok"] = False
     return _HISTC_TLE["ok"]
 
@@ -182,7 +182,7 @@ def _histc_tle_lm(inp, bins, min_val, max_val):
             out = out.to(inp.dtype)
         return out
     except Exception as _e:  # pragma: no cover - never break correctness
-        logger.debug("histc tle path deferred: %r", _e)
+        logger.debug("GEMS_KUNLUNXIN HISTC tle path deferred: %r", _e)
         return None
 
 
