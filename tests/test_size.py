@@ -46,10 +46,19 @@ def _assert_dim(res_out, ref_out):
     )
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SIZE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.size
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SIZE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_size_default(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -93,10 +102,17 @@ SIZE_DIM_RANGES = tu.selected_cases(
 )
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DIM_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SIZE_DIM_DTYPES
+    for value_range in (SIZE_DIM_RANGES[:1] if dtype == torch.bool else SIZE_DIM_RANGES)
+]
+
+
 @pytest.mark.size
 @pytest.mark.parametrize("shape,dim", SIZE_DIM_ROWS)
-@pytest.mark.parametrize("value_range", SIZE_DIM_RANGES)
-@pytest.mark.parametrize("dtype", SIZE_DIM_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DIM_DTYPE_RANGE_CASES)
 def test_size_int_dim(shape, dim, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)

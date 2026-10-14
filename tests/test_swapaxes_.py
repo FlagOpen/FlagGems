@@ -84,9 +84,18 @@ _GRID = tu.selected_cases(
 )
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_GRID_RANGE_CASES = [
+    (shape, axis0, axis1, dtype, value_range)
+    for shape, axis0, axis1, dtype in _GRID
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.swapaxes_
-@pytest.mark.parametrize("shape,axis0,axis1,dtype", _GRID)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("shape,axis0,axis1,dtype,value_range", _GRID_RANGE_CASES)
 def test_swapaxes_(shape, axis0, axis1, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -210,10 +219,19 @@ _ROUNDTRIP = tu.selected_cases(
 _ROUNDTRIP_DTYPES = [torch.float32, torch.int8, torch.bool]
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _ROUNDTRIP_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.swapaxes_
 @pytest.mark.parametrize("shape,axis0,axis1", _ROUNDTRIP)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _ROUNDTRIP_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_swapaxes__roundtrip(shape, axis0, axis1, value_range, dtype):
     # Swapping the same pair twice restores the original layout and values.
     inp = tu.make_input(dtype, shape, value_range)

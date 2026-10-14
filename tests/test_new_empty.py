@@ -207,10 +207,19 @@ def _source_with_parent(dtype, variant):
     return view, parent, snapshot
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in NEW_EMPTY_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.new_empty
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", NEW_EMPTY_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_new_empty(shape, value_range, dtype):
     # The source payload is never read: its dtype and device only supply the
     # defaults of the allocation.

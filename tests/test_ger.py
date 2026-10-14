@@ -65,10 +65,19 @@ GER_SHAPE_PAIRS = [
 VALUE_CASES = tu.selected_cases(GER_SHAPE_PAIRS, quick=[(19, 7)])
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in GER_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.ger
 @pytest.mark.parametrize("shape_pair", VALUE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", GER_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_ger_values(shape_pair, value_range, dtype):
     self_len, vec2_len = shape_pair
     inp = tu.make_input(dtype, (self_len,), value_range)

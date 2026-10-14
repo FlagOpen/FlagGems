@@ -507,9 +507,18 @@ _INVALID_BLOCKSIZE_ROWS = [
 ]
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SUPPORTED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_sparse_bsc
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _VALUE_GRID_ROWS)
 def test__to_sparse_bsc_value_grid(
     shape, blocksize, dense_dim, omit_dense_dim, value_range, dtype

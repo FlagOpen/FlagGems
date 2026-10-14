@@ -148,10 +148,19 @@ def test_sparse_resize_(case, dtype):
     _assert_resized(res_out, ref_out)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _RESIZE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.sparse_resize_
 @pytest.mark.parametrize("case", _VALUE_RANGE_CASES)
-@pytest.mark.parametrize("dtype", _RESIZE_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_sparse_resize_value_ranges(case, dtype, value_range):
     src_shape, sparse_dim, nnz, size, new_sparse_dim, new_dense_dim = case
     dense_shape = tuple(src_shape[sparse_dim:])

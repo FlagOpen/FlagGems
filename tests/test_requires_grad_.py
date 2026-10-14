@@ -107,10 +107,19 @@ def _make_non_leaf(dtype, kind):
     return leaf, (leaf * 2 if kind == "computed" else leaf.t())
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_FLAG_RANGE_CASES = [
+    (dtype, flag, value_range)
+    for dtype, flag in _GRID_ROWS
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.requires_grad_
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,flag", _GRID_ROWS)
+@pytest.mark.parametrize("dtype,flag,value_range", _DTYPE_FLAG_RANGE_CASES)
 def test_requires_grad_metadata_state(shape, value_range, dtype, flag):
     inp = tu.make_input(dtype, shape, value_range)
     _set_initial(inp, flag)

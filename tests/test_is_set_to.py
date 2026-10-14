@@ -170,16 +170,24 @@ def test_is_set_to_alias_pairs(kind, expected, shape, dtype):
     _assert_operands_intact(cand_self, cand_other, facts)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _RANGE_CASES = [
-    pytest.param(kind, value_range, id=f"{kind}-{value_range[0]}_{value_range[1]}")
+    pytest.param(
+        kind,
+        dtype,
+        value_range,
+        id=f"{kind}-{dtype}-{value_range[0]}_{value_range[1]}",
+    )
     for kind in ("same_object", "clone")
-    for value_range in tu.selected_ranges()
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 
 @pytest.mark.is_set_to
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("kind,value_range", _RANGE_CASES)
+@pytest.mark.parametrize("kind,dtype,value_range", _RANGE_CASES)
 def test_is_set_to_ignores_element_values(kind, value_range, dtype):
     # Only allocation metadata is compared, so the answer must not depend on the
     # spec's five value ranges; the other relations run once in the pair grid.

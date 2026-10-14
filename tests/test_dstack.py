@@ -79,10 +79,13 @@ _DSTACK_BACKWARD_SHAPE_SETS = [
     [(4, 5, 6), (4, 5, 7)],
 ]
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _DTYPE_RANGE_PAIRS = [
     (dtype, value_range)
     for dtype in DSTACK_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 

@@ -39,10 +39,13 @@ _SUPPORTED_DTYPES += [
 ]
 _VALUE_DTYPES = [dtype for dtype in _SUPPORTED_DTYPES if not dtype.is_complex]
 _COMPLEX_DTYPES = [dtype for dtype in _SUPPORTED_DTYPES if dtype.is_complex]
+# Bool input generation ignores value_range; keep one sample per workload.
 _VALUE_CASES = [
     (dtype, value_range)
     for dtype in _VALUE_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 _VALUE_CASE_IDS = [
     f"{str(dtype).replace('torch.', '')}-{'_'.join(value_range)}"

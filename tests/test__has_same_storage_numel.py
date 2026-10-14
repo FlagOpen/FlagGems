@@ -161,10 +161,19 @@ def test__has_same_storage_numel_shapes(shape, dtype):
     _assert_result(res_out, ref_out)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _HAS_SAME_STORAGE_NUMEL_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.has_same_storage_numel
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _HAS_SAME_STORAGE_NUMEL_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__has_same_storage_numel_value_ranges(shape, value_range, dtype):
     self_t = tu.make_input(dtype, shape, value_range)
     other_t = tu.make_input(dtype, shape, value_range)

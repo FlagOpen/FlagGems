@@ -752,9 +752,18 @@ def _invalid_operands(row):
     return indices, values, size, is_coalesced
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_LAYOUT_DTYPE_RANGE_CASES = [
+    pytest.param(layout, dtype, value_range, id=f"{case_id}-range{range_index}")
+    for (layout, dtype), case_id in zip(_LAYOUT_ROWS, _LAYOUT_IDS)
+    for range_index, value_range in enumerate(
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.validate_sparse_coo_tensor_args
-@pytest.mark.parametrize("layout,dtype", _LAYOUT_ROWS, ids=_LAYOUT_IDS)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("layout,dtype,value_range", _LAYOUT_DTYPE_RANGE_CASES)
 def test__validate_sparse_coo_tensor_args_valid(layout, dtype, value_range):
     size, nnz, dense_shape = layout
     sparse_dim = _sparse_dim(size, dense_shape)

@@ -52,10 +52,13 @@ _NEG_VIEW_MUTATION_SHAPES = [(16, 32), (4, 8, 16)]
 
 _NEG_VIEW_BACKWARD_SHAPES = [(16, 64), (7, 13, 29), (0,), (3, 0)]
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _RANGE_CASES = [
     (dtype, value_range)
     for dtype in _ALL_TEST_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 

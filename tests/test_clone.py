@@ -286,10 +286,19 @@ def _layout_tensors(dtype, shape, layout, value_range):
     return base.expand(shape), base
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _CLONE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.clone
 @pytest.mark.parametrize("shape", _GRID_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _CLONE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_clone(shape, value_range, dtype):
     # Called without memory_format, which also covers the schema default.
     inp = tu.make_input(dtype, shape, value_range)

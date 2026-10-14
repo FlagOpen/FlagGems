@@ -121,12 +121,21 @@ def _assert_components(res_out, ref_out, index_dtype):
     tu.assert_result_equal(res_out.values(), ref_out.values())
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _VALUE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.sparse_csc_tensor_unsafe
 @pytest.mark.parametrize(
     "spec_shape", tu.selected_cases(_SPEC_SHAPES, quick=_QUICK_SPEC_SHAPES)
 )
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__sparse_csc_tensor_unsafe_values(spec_shape, value_range, dtype):
     size = _matrix_size(spec_shape)
     ccol, row, values_shape = _csc_indices(size, 1)

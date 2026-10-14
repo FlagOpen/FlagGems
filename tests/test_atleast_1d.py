@@ -34,10 +34,19 @@ _NAN_INF_DTYPES = utils.ALL_FLOAT_DTYPES + _FP8_DTYPES
 _ATLEAST_1D_SHAPES = [()] + [shape for shape in tu.selected_shapes() if shape]
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SUPPORTED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.atleast_1d
 @pytest.mark.parametrize("shape", _ATLEAST_1D_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_atleast_1d_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -80,8 +89,7 @@ def test_atleast_1d_nan_inf(dtype):
 
 @pytest.mark.atleast_1d_sequence
 @pytest.mark.parametrize("shape", _ATLEAST_1D_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_atleast_1d_sequence(shape, value_range, dtype):
     # Mix a 0-dim scalar with the current shape so the sequence overload
     # exercises both the scalar -> (1,) view path and the identity path.

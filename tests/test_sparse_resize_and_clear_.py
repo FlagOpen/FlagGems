@@ -76,8 +76,13 @@ _INVALID_CALLS = [
 
 _SELECTED_RANGES = tu.selected_ranges()
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _VALUE_RANGE_PAIRS = [
-    (dtype, value_range) for dtype in _RESIZE_DTYPES for value_range in _SELECTED_RANGES
+    (dtype, value_range)
+    for dtype in _RESIZE_DTYPES
+    for value_range in (
+        _SELECTED_RANGES[:1] if dtype == torch.bool else _SELECTED_RANGES
+    )
 ]
 
 _VALUE_RANGE_IDS = [

@@ -278,10 +278,19 @@ def _assert_matches_reference(res, ref):
     tu.assert_result_equal(res.values(), ref.values())
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _VALUE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.sparse_csr_tensor_unsafe
 @pytest.mark.parametrize("size", _CSR_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__sparse_csr_tensor_unsafe_values(size, value_range, dtype):
     dense = tu.make_input(dtype, size, value_range)
     batch, rows = tuple(size[:-2]), size[-2]

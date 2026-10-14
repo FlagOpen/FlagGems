@@ -339,10 +339,19 @@ def test_result_type_missing_argument():
         flag_gems.result_type(inp)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in ALL_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.result_type
-@pytest.mark.parametrize("dtype", ALL_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_result_type_shared_grid(dtype, shape, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     other = tu.make_input(dtype, (), ["-1", "1"])

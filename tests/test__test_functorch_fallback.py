@@ -79,10 +79,19 @@ _TFF_SPECIAL_CASES = tu.selected_cases(
 )
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _TFF_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.test_functorch_fallback
 @pytest.mark.parametrize("shape", tu.selected_shapes() + [(0,), (2, 0, 3)])
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _TFF_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_test_functorch_fallback(shape, value_range, dtype):
     # CPU-only operator: both operands use the CPU tensor type the native kernel
     # and the injected candidate accept.
