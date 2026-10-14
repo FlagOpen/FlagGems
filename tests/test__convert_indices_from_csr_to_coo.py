@@ -111,17 +111,23 @@ _BOUNDARY_COMBOS = [
     ((32767,), torch.int16),
     ((4, 32767), torch.int16),
 ]
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _GRID_ROWS = [
     (shape, dtype, value_range)
     for shape, dtype in _SPEC_COMBOS + _BOUNDARY_COMBOS
     for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 # Quick keeps the spec's single small shape; the range comes from the shared
 # selector so it uses the framework's bound vocabulary rather than a literal.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _QUICK_GRID_ROWS = [
     (_QUICK_SHAPE, dtype, value_range)
     for dtype in _SUPPORTED_DTYPES
     for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 _GRID_CASES = tu.selected_cases(_GRID_ROWS, quick=_QUICK_GRID_ROWS)
 
@@ -196,12 +202,15 @@ _OUT_FLAG_ROWS = [
     for transpose in (False, True)
     if out_int32 or utils.int64_is_supported
 ]
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _OUT_CASES = tu.selected_cases(
     [
         (_SUPPLEMENT_SHAPE, dtype, out_int32, transpose, value_range)
         for dtype in _SUPPORTED_DTYPES
         for out_int32, transpose in _OUT_FLAG_ROWS
         for value_range in tu.selected_ranges()
+        if dtype != torch.uint8
+        or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
     ],
     quick=[],
 )

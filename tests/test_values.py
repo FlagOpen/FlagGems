@@ -363,6 +363,7 @@ _SHAPE_CASES = list(
 # One workload per row: the shape levels x the five value ranges over every
 # supported dtype, then the layout rows over every supported dtype.
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _VALUE_ROWS = [
     (row, dtype, list(value_range))
     for row in _SHAPE_CASES
@@ -370,6 +371,8 @@ _VALUE_ROWS = [
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ] + [(row, dtype, ["-1", "1"]) for row in _STORAGE_CASES for dtype in _VALUE_DTYPES]
 _COO_ROWS = [(case, dtype) for case in _COO_CASES for dtype in _COO_DTYPES]
 _STRIDED_CASES = tu.selected_cases(

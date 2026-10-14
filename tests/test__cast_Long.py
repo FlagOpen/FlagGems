@@ -73,12 +73,15 @@ _CAST_DTYPES = _positive(
 _CAST_FLOAT_DTYPES = [dtype for dtype in _CAST_DTYPES if dtype.is_floating_point]
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _VALUE_CASES = [
     (shape, value_range, dtype)
     for shape in tu.selected_shapes()
     for value_range in tu.selected_ranges()
     for dtype in _CAST_DTYPES
     if dtype != torch.bool or value_range == tu.selected_ranges()[0]
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 # Explicit ``non_blocking`` call forms. The omitted keyword is already covered by

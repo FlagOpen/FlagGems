@@ -175,12 +175,15 @@ def _layout_grad(layout):
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
     (dtype, value_range)
     for dtype in GRID_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 
@@ -469,12 +472,23 @@ MKLDNN_CAST_PAIRS = [
 ]
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_TO_MKLDNN_BACKWARD_OPAQUE_GRAD_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in MKLDNN_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.to_mkldnn_backward
-@pytest.mark.parametrize("dtype", MKLDNN_DTYPES)
+@pytest.mark.parametrize(
+    "dtype,value_range", _TO_MKLDNN_BACKWARD_OPAQUE_GRAD_DTYPE_RANGE_CASES
+)
 @pytest.mark.parametrize(
     "shape", [s for s in tu.selected_shapes() if s] + [(0,), (0, 3)]
 )
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_to_mkldnn_backward_opaque_grad(dtype, shape, value_range):
     dense = tu.make_input(dtype, shape, value_range).cpu()
     grad = dense.to_mkldnn()

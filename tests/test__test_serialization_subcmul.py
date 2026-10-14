@@ -60,10 +60,19 @@ _FINITE_ALPHAS = (0.0, -1.5, 2.5)
 _SPECIAL_ALPHAS = (float("nan"), float("inf"), float("-inf"))
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.test_serialization_subcmul
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__test_serialization_subcmul(shape, value_range, dtype):
     # The argument-free call form exercises the schema default alpha=1.
     inp = tu.make_input(dtype, shape, value_range)

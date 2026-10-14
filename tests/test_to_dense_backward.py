@@ -548,10 +548,19 @@ def _backward_upstream(shape, nnz, masked_grad):
     )
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in DENSE_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.to_dense_backward
-@pytest.mark.parametrize("dtype", DENSE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_to_dense_backward_dense_layout(shape, value_range, dtype):
     """Strided path: the result is grad in the scalar type of input.
 

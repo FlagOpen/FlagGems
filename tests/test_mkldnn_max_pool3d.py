@@ -78,10 +78,19 @@ def assert_pooled(res, ref):
     tu.assert_result_equal(dense_values(res), dense_values(ref))
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SUPPORTED_DTYPES
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.mkldnn_max_pool3d
 @pytest.mark.parametrize("shape", SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_mkldnn_max_pool3d(shape, value_range, dtype):
     dense = tu.make_input(dtype, shape, value_range)
     inp = to_mkldnn(dense)

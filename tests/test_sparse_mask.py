@@ -59,6 +59,7 @@ _SPARSE_MASK_NON_CONTIGUOUS_CASES = [
 ]
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _SPARSE_MASK_VALUE_RANGE_CASES = [
     (shape, value_range, dtype)
     for dtype in _SPARSE_MASK_DTYPES
@@ -66,6 +67,8 @@ _SPARSE_MASK_VALUE_RANGE_CASES = [
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
     )
     for shape in tu.selected_shapes()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 
 

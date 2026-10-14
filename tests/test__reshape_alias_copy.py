@@ -116,9 +116,18 @@ _GRID_ROWS = tu.selected_cases(
 )
 
 
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
+_SHAPE_DTYPE_RANGE_CASES = [
+    (shape, dtype, value_range)
+    for shape, dtype in _GRID_ROWS
+    for value_range in tu.selected_ranges()
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
+]
+
+
 @pytest.mark.reshape_alias_copy
-@pytest.mark.parametrize("shape,dtype", _GRID_ROWS)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("shape,dtype,value_range", _SHAPE_DTYPE_RANGE_CASES)
 def test__reshape_alias_copy_value_range(shape, value_range, dtype):
     size, stride = _permuted_spec(shape)
     inp = tu.make_input(dtype, shape, value_range)

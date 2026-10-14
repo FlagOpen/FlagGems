@@ -37,12 +37,15 @@ if utils.int64_is_supported:
 _GRID_DTYPES = _PROMOTED_DTYPES + _FLOAT_DTYPES
 
 # Bool input generation ignores value_range; keep one sample per workload.
+# uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _GRID_CASES = [
     (dtype, value_range)
     for dtype in _GRID_DTYPES
     for value_range in (
         tu.REQUIRED_RANGES[:1] if dtype == torch.bool else tu.REQUIRED_RANGES
     )
+    if dtype != torch.uint8
+    or value_range not in (["0", "1"], ["-1", "0"], ["min", "0"])
 ]
 _QUICK_GRID_CASES = [(dtype, _BASE_RANGE) for dtype in _GRID_DTYPES]
 
