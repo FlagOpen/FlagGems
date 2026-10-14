@@ -24,7 +24,7 @@ the slow (non-cuDNN) reference path fast; the stride/padding combos cover both
 tap misalignment and zero-padding edges of the backward. The reference runs on
 upcast inputs (``to_reference(inp, True)``); gradients are compared with the
 repo's conv-backward convention of scaling its default ``atol=1e-4`` by each
-gradient's ``reduce_dim`` (kW / C_out / N, as in
+gradient's ``reduce_dim`` (kH / C_out / N, as in
 ``test_convolution_backward_overrideable.py``) rather than a flat atol.
 """
 
@@ -100,11 +100,12 @@ def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding,
     )
 
     # Per-gradient reduce_dim, matching the repo's conv-backward tolerance
-    # convention (see test_convolution_backward_overrideable.py):
-    # grad_input -> kW, grad_weight -> C_out, grad_bias -> N.
+    # convention (see test_convolution_backward_overrideable.py, which passes
+    # weight.shape[2] = kH / weight.shape[0] = C_out / grad_out.shape[0] = N):
+    # grad_input -> kH, grad_weight -> C_out, grad_bias -> N.
     # gems_assert_close scales its default atol=1e-4 by reduce_dim and applies
     # rtol=RESOLUTION[dtype] on top, so the effective check is
     # |res - ref| <= 1e-4 * reduce_dim + rtol * |ref|.
-    utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=kernel_size[1])
+    utils.gems_assert_close(gi, ref_gi, dtype, reduce_dim=kernel_size[0])
     utils.gems_assert_close(gw, ref_gw, dtype, reduce_dim=weight_shape[0])
     utils.gems_assert_close(gb, ref_gb, dtype, reduce_dim=shape[0])
