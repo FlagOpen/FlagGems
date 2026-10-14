@@ -30,9 +30,7 @@ def _make_indices_values(shape, dtype, density=0.3):
 
 def _sparse_coo_tensor_ref(indices, values, size):
     """CPU reference for ``sparse_coo_tensor``."""
-    return torch.sparse_coo_tensor(
-        indices.cpu(), values.cpu(), list(size)
-    )
+    return torch.sparse_coo_tensor(indices.cpu(), values.cpu(), list(size))
 
 
 def _assert_coo_close(res_out, ref_out, dtype):
@@ -79,9 +77,7 @@ def test_sparse_coo_tensor_infer_size(shape, dtype):
 def test_sparse_coo_tensor_size_only(shape, dtype):
     """The size-only overload builds an all-zero COO tensor."""
     size = list(shape)
-    ref_out = torch.sparse_coo_tensor(
-        size, dtype=dtype, device=torch.device("cpu")
-    )
+    ref_out = torch.sparse_coo_tensor(size, dtype=dtype, device=torch.device("cpu"))
     res_out = flag_gems.sparse_coo_tensor(size, dtype=dtype, device=flag_gems.device)
 
     _assert_coo_close(res_out, ref_out, dtype)
@@ -94,6 +90,4 @@ def test_sparse_coo_tensor_rejects_wrong_layout(dtype):
     indices, values = _make_indices_values((64, 64), dtype)
 
     with pytest.raises(RuntimeError):
-        flag_gems.sparse_coo_tensor(
-            indices, values, (64, 64), layout=torch.sparse_csr
-        )
+        flag_gems.sparse_coo_tensor(indices, values, (64, 64), layout=torch.sparse_csr)

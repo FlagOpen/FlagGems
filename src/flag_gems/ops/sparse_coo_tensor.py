@@ -34,8 +34,8 @@ import torch
 import triton
 import triton.language as tl
 
-_I64_MIN = -(2 ** 63)
-_I64_MAX = 2 ** 63 - 1
+_I64_MIN = -(2**63)
+_I64_MAX = 2**63 - 1
 
 _BLOCK_BOUNDS = 256
 _BLOCK_CAST = 1024
@@ -115,9 +115,7 @@ def _infer_size(indices, values):
     lo_l = lo.tolist()
     for d in range(sparse_dim):
         if lo_l[d] < 0:
-            raise RuntimeError(
-                "found negative index %d for dim %d" % (lo_l[d], d)
-            )
+            raise RuntimeError("found negative index %d for dim %d" % (lo_l[d], d))
     return [hi_l[d] + 1 for d in range(sparse_dim)] + list(values.shape[1:])
 
 
