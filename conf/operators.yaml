@@ -16023,6 +16023,17 @@ ops:
   - rnn_tanh
   source:
   - aten
+- id: rnn_tanh_cell
+  description: Fused single-step tanh RNN cell implemented as one Triton kernel covering both GEMMs, the bias adds and the activation.
+  for:
+  - rnn_tanh_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: rnn_tanh_data
   description: Pure Triton implementation for the rnn_tanh data overload.
   for:
