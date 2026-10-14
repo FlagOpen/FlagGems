@@ -57,6 +57,7 @@ from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
@@ -233,6 +234,9 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "gelu",
+    "gelu_",
+    "gelu_backward",
     "geometric",
     "geometric_",
     "group_norm",
