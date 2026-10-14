@@ -455,7 +455,6 @@ from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
-from .miopen_batch_norm import miopen_batch_norm
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
 from .mish import mish, mish_
 from .mish_backward import mish_backward
@@ -1287,7 +1286,6 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
-    "miopen_batch_norm",
     "miopen_batch_norm_backward",
     "mish",
     "mish_",
