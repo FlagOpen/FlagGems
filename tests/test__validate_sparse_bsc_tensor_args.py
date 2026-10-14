@@ -124,10 +124,19 @@ def _bsc_inputs(batch, nrows, ncols, dense, blocksize, fill, dtype, index_dtype=
 # --- accepted descriptor space: logical shape x value range x values dtype ----
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _VALUE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("shape", _BSC_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__validate_sparse_bsc_tensor_args_values(shape, value_range, dtype):
     # 1x1 blocks keep the main-grid descriptor shape (nnz == number of columns);
     # the structural rows below supply the nontrivial and dense block shapes.

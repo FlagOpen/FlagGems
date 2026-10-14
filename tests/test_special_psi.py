@@ -36,8 +36,13 @@ if utils.int64_is_supported:
 
 _GRID_DTYPES = _PROMOTED_DTYPES + _FLOAT_DTYPES
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _GRID_CASES = [
-    (dtype, value_range) for dtype in _GRID_DTYPES for value_range in tu.REQUIRED_RANGES
+    (dtype, value_range)
+    for dtype in _GRID_DTYPES
+    for value_range in (
+        tu.REQUIRED_RANGES[:1] if dtype == torch.bool else tu.REQUIRED_RANGES
+    )
 ]
 _QUICK_GRID_CASES = [(dtype, _BASE_RANGE) for dtype in _GRID_DTYPES]
 

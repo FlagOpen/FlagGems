@@ -126,11 +126,14 @@ _HALF_SHAPES = tu.selected_cases(
     quick=[(2, 19, 8)],
 )
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _VALUE_CASES = [
     (dtype, shape, value_range)
     for dtype in _RFFT_DTYPES
     for shape in (_HALF_SHAPES if dtype is torch.float16 else _SPEC_SHAPES)
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 

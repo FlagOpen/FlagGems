@@ -73,9 +73,18 @@ def _grid_moves(rank):
     return [(0, last), ([0, last], [last, 0])]
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.movedim
-@pytest.mark.parametrize("dtype", _DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("move_index", [0, 1])
 def test_movedim(shape, value_range, dtype, move_index):

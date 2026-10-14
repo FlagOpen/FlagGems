@@ -301,9 +301,18 @@ def _layout_input(base, layout):
     return base.conj()
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _BSC_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.to_sparse_bsc
-@pytest.mark.parametrize("dtype", _BSC_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim", _MATRIX_CASES)
 def test_to_sparse_bsc(shape, blocksize, dense_dim, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
@@ -318,8 +327,7 @@ def test_to_sparse_bsc(shape, blocksize, dense_dim, value_range, dtype):
 
 
 @pytest.mark.to_sparse_bsc
-@pytest.mark.parametrize("dtype", _BSC_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("batch_shape,shape,blocksize", _BATCHED_CASES)
 def test_to_sparse_bsc_batched(batch_shape, shape, blocksize, value_range, dtype):
     tile = tu.make_input(dtype, shape, value_range)
@@ -489,15 +497,17 @@ def test_to_sparse_bsc_unequal_batch_blocks():
 @pytest.mark.parametrize(
     "source_layout",
     tu.selected_cases(
-        [
-            torch.sparse_coo,
-            torch.sparse_csr,
-            torch.sparse_csc,
-            torch.sparse_bsr,
-            torch.sparse_bsc,
-        ]
-        if utils.int64_is_supported
-        else [],
+        (
+            [
+                torch.sparse_coo,
+                torch.sparse_csr,
+                torch.sparse_csc,
+                torch.sparse_bsr,
+                torch.sparse_bsc,
+            ]
+            if utils.int64_is_supported
+            else []
+        ),
         quick=[],
     ),
 )

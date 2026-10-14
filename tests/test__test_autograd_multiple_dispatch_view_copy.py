@@ -186,9 +186,18 @@ def _out_buffers(kind, dtype, numel):
     raise ValueError(f"Unknown out-buffer layout {kind!r}")
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _COPY_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.test_autograd_multiple_dispatch_view_copy
-@pytest.mark.parametrize("dtype", _COPY_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__test_autograd_multiple_dispatch_view_copy(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)

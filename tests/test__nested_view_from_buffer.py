@@ -132,9 +132,18 @@ def _assert_components(res_out, ref_out, sizes, strides):
         tu.assert_result_equal(res_component, ref_component)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in GRID_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.nested_view_from_buffer
-@pytest.mark.parametrize("dtype", GRID_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_nested_view_from_buffer(shape, value_range, dtype):
     sizes, strides, offsets = _packed_metadata(shape)

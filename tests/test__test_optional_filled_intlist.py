@@ -112,9 +112,18 @@ def _out_buffer(kind, numel):
     return base[::2], base
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _IDENTITY_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.test_optional_filled_intlist
-@pytest.mark.parametrize("dtype", _IDENTITY_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__test_optional_filled_intlist_none_addends(shape, value_range, dtype):
     inp = _cpu(tu.make_input(dtype, shape, value_range))

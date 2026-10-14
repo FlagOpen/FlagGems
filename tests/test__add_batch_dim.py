@@ -68,10 +68,19 @@ def test__add_batch_dim(shape, batch_dim, level, dtype):
     _assert_batched_view(res_out, ref_out, inp, ref_inp, batch_dim, level)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _ADD_BATCH_DIM_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.add_batch_dim
 @pytest.mark.parametrize("shape", _ADD_BATCH_DIM_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _ADD_BATCH_DIM_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__add_batch_dim_value_ranges(shape, dtype, value_range):
     batch_dim = len(shape) // 2
     level = 0

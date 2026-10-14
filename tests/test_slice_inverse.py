@@ -86,10 +86,19 @@ def _assert_view(result, reference, src, base, operands):
     assert _snapshot(base, src) == operands
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.slice_inverse
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_slice_inverse(shape, value_range, dtype):
     base = tu.make_input(dtype, shape, value_range)
     src_plain = tu.make_input(dtype, shape, SRC_RANGE)

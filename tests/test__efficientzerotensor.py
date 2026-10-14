@@ -29,10 +29,13 @@ _EFFICIENTZEROTENSOR_DTYPES = (
     + ([torch.float64] if utils.fp64_is_supported else [])
 )
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _OUT_RANGE_PARAMS = [
     (dtype, value_range)
     for dtype in _EFFICIENTZEROTENSOR_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
 ]
 
 _ZERO_SIZE_SHAPES = [(0,), (0, 3), (2, 0, 4), (0, 0)]

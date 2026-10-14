@@ -77,10 +77,19 @@ def _assert_sparse_equal(res_out, ref_out):
     tu.assert_result_equal(res_out, ref_out)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _VALUE_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.sparse_coo_tensor_unsafe
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUE_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_sparse_coo_tensor_unsafe(shape, value_range, dtype):
     size = [int(dim) for dim in shape]
     indices = _coo_indices(size, _NNZ)

@@ -100,9 +100,18 @@ def _view_input(dtype, shape, layout):
     raise AssertionError("unknown layout: " + layout)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _MAIN_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.cast_Half
-@pytest.mark.parametrize("dtype", _MAIN_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test__cast_Half_value_range(dtype, value_range, shape):
     inp = tu.make_input(dtype, shape, value_range)

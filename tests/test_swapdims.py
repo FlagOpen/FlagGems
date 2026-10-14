@@ -192,9 +192,18 @@ def _swapped_shape(shape, dim0, dim1):
     return tuple(shape[axis] for axis in perm)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.swapdims
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape,dim0,dim1", _GRID_CASES)
 def test_swapdims(shape, dim0, dim1, dtype, value_range):
     inp = tu.make_input(dtype, shape, value_range)

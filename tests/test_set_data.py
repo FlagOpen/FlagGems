@@ -276,10 +276,19 @@ _GRAD_TARGET_SOURCE_DTYPES = _supported(
 # ---------------------------------------------------------------------------
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SUPPORTED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.set_data
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_set_data_value_ranges(dtype, shape, value_range):
     target = tu.make_input(dtype, shape, value_range)
     source = tu.make_input(dtype, shape, value_range)

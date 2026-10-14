@@ -84,10 +84,19 @@ def _assert_operand_preserved(res_out, inp, before_state, before_ptr):
     assert _operand_state(inp) == before_state
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in _SUPPORTED_DTYPES
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
+]
+
+
 @pytest.mark.test_string_default
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_test_string_default_value_ranges(shape, value_range, dtype):
     # Values are never read; the grid still asserts that every dtype and shape
     # passes through unchanged (and that the schema default strings hold).
