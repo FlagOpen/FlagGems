@@ -147,7 +147,10 @@ def _tensorsolve_kernel(
     tl.store(O_ptr + i, x.to(O_ptr.dtype.element_ty), mask=bm)
 
 
-def linalg_tensorsolve(self, other, dims):
+def linalg_tensorsolve(self, other, dims=None):
+    # ``aten::linalg_tensorsolve(Tensor self, Tensor other, int[]? dims=None)``
+    # defaults ``dims``, so it defaults here too; otherwise the public
+    # ``torch.linalg.tensorsolve(A, B)`` call cannot bind.
     A = self
     B = other
     a = A.dim()
@@ -161,7 +164,24 @@ def linalg_tensorsolve(self, other, dims):
             raw = dims.reshape(-1).tolist()
         else:
             raw = list(dims)
-        dl = [int(d) % a for d in raw]
+        # ``% a`` alone would silently wrap an out-of-range dim onto a valid
+        # one and solve a different system; ATen raises instead.  Duplicates
+        # are rejected for the same reason: the permutation would drop an axis.
+        dl = []
+        for d in raw:
+            d = int(d)
+            if d < -a or d >= a:
+                raise IndexError(
+                    "Dimension out of range (expected to be in range of "
+                    "[%d, %d], but got %d)" % (-a, a - 1, d)
+                )
+            d = d % a
+            if d in dl:
+                raise RuntimeError(
+                    "linalg.tensorsolve: dims must not contain duplicates, "
+                    "but dimension %d appears more than once" % d
+                )
+            dl.append(d)
         rest = [d for d in range(a) if d not in dl]
         perm = rest + dl
 
@@ -214,22 +234,26 @@ def linalg_tensorsolve(self, other, dims):
     else:
         # Separable addressing: addr(i, j) = row_off[i] + col_off[j]
         lstrides = Ap.stride()
-        row = []
-        for ii in range(nlead):
-            off = 0
-            rem = ii
-            for s, st in zip(lead_shape, lstrides[:bn]):
-                off += (rem % int(s)) * int(st)
-                rem //= int(s)
-            row.append(off)
-        col = []
-        for jj in range(P):
-            off = 0
-            rem = jj
-            for s, st in zip(tail_shape, lstrides[bn:]):
-                off += (rem % int(s)) * int(st)
-                rem //= int(s)
-            col.append(off)
+
+        def _offsets(count, shape, strides):
+            # ``count`` enumerates row-major flat indices, where the LAST axis
+            # varies fastest, so the mixed-radix decomposition has to consume
+            # the axes back to front.  Walking them front to back instead
+            # treats the first axis as fastest and silently reads a
+            # transposed system whenever the lead or tail spans more than one
+            # axis of unequal size.
+            out = []
+            for flat in range(count):
+                off = 0
+                rem = flat
+                for s, st in zip(reversed(shape), reversed(strides)):
+                    off += (rem % int(s)) * int(st)
+                    rem //= int(s)
+                out.append(off)
+            return out
+
+        row = _offsets(nlead, lead_shape, lstrides[:bn])
+        col = _offsets(P, tail_shape, lstrides[bn:])
         row_t = torch.tensor(row, dtype=torch.int32, device=A.device)
         col_t = torch.tensor(col, dtype=torch.int32, device=A.device)
         _tensorsolve_kernel[(1,)](

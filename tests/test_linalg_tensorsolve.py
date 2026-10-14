@@ -25,6 +25,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 DEVICE = flag_gems.device
 
@@ -73,3 +74,202 @@ def test_linalg_tensorsolve(case):
     utils.gems_assert_close(
         res, ref.to(dtype), dtype, reduce_dim=case[0][-1] if case[0] else 1
     )
+
+
+QUICK_CASES = [CASES[0], CASES[3]]
+SHAPE_CASES = QUICK_CASES if cfg.QUICK_MODE else CASES
+
+
+def _system(lhs_shape, rhs_shape, dtype=torch.float32, seed=0):
+    """Build a well-conditioned tensorized system with a known solution."""
+    torch.manual_seed(seed)
+    solution_shape = lhs_shape[: -len(rhs_shape)]
+    p = 1
+    for size in solution_shape:
+        p *= size
+    raw = torch.randn(p, p, dtype=dtype, device=DEVICE)
+    matrix = raw @ raw.T + 2.0 * torch.eye(p, dtype=dtype, device=DEVICE)
+    solution = torch.randn(*solution_shape, dtype=dtype, device=DEVICE)
+    rhs = (matrix @ solution.reshape(-1)).reshape(*rhs_shape)
+    return matrix.reshape(*lhs_shape), rhs, solution
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_empty():
+    """A zero-sized system solves to a zero-sized result."""
+    lhs = torch.zeros(0, 0, dtype=torch.float32, device=DEVICE)
+    rhs = torch.zeros(0, dtype=torch.float32, device=DEVICE)
+    ref = torch.ops.aten.linalg_tensorsolve.default(
+        utils.to_reference(lhs, True), utils.to_reference(rhs, True)
+    )
+    res = flag_gems.linalg_tensorsolve(lhs, rhs)
+    assert res.shape == ref.shape
+    assert res.dtype == rhs.dtype
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_noncontiguous():
+    """A transposed system matrix exercises the separable addressing path."""
+    lhs, rhs, _ = _system((4, 4), (4,))
+    view = lhs.T
+    assert not view.is_contiguous()
+    ref = torch.ops.aten.linalg_tensorsolve.default(
+        utils.to_reference(view, True), utils.to_reference(rhs, True)
+    )
+    res = flag_gems.linalg_tensorsolve(view, rhs)
+    utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=4)
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_noncontiguous_multidim_lead():
+    """A non-contiguous system whose lead and tail each span two unequal axes.
+
+    This is the case that distinguishes row-major flat-index decomposition from
+    the reverse: with a single axis, or with equal-sized axes, both orders agree
+    and a transposed read goes unnoticed.
+    """
+    lhs, rhs, solution = _system((2, 3, 2, 3), (2, 3))
+    view = lhs.permute(2, 3, 0, 1).contiguous().permute(2, 3, 0, 1)
+    assert not view.is_contiguous()
+    assert torch.equal(view, lhs)
+    res = flag_gems.linalg_tensorsolve(view, rhs)
+    utils.gems_assert_close(
+        res, utils.to_reference(solution, True), torch.float32, reduce_dim=6
+    )
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_recovers_known_solution():
+    """The right-hand side was built from a known solution; recover it."""
+    lhs, rhs, solution = _system((2, 3, 2, 3), (2, 3))
+    res = flag_gems.linalg_tensorsolve(lhs, rhs)
+    utils.gems_assert_close(
+        res, utils.to_reference(solution, True), torch.float32, reduce_dim=6
+    )
+
+
+@pytest.mark.linalg_tensorsolve
+@pytest.mark.parametrize(
+    "dims",
+    (
+        [None, [0, 1], [2, 3]]
+        if cfg.QUICK_MODE
+        else [None, [0, 1], [2, 3], [3, 2], [-2, -1]]
+    ),
+)
+def test_linalg_tensorsolve_dims(dims):
+    """Each accepted ``dims`` spelling must agree with ATen."""
+    lhs, rhs, _ = _system((2, 3, 2, 3), (2, 3))
+    ref = torch.ops.aten.linalg_tensorsolve.default(
+        utils.to_reference(lhs, True), utils.to_reference(rhs, True), dims=dims
+    )
+    res = flag_gems.linalg_tensorsolve(lhs, rhs, dims=dims)
+    utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=6)
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_dims_defaults_to_none():
+    """``dims`` is optional in the ATen schema, so it must default here too."""
+    lhs, rhs, _ = _system((2, 3, 2, 3), (2, 3))
+    assert torch.equal(
+        flag_gems.linalg_tensorsolve(lhs, rhs),
+        flag_gems.linalg_tensorsolve(lhs, rhs, dims=None),
+    )
+
+
+@pytest.mark.linalg_tensorsolve
+@pytest.mark.parametrize("dims", [[0, 9], [0, -9], [4, 1]])
+def test_linalg_tensorsolve_dims_out_of_range(dims):
+    """An out-of-range dim must raise, not wrap onto a valid axis.
+
+    Wrapping would quietly permute the system differently and return a
+    confidently wrong answer.
+    """
+    lhs, rhs, _ = _system((2, 3, 2, 3), (2, 3))
+    with pytest.raises(IndexError, match="Dimension out of range"):
+        flag_gems.linalg_tensorsolve(lhs, rhs, dims=dims)
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_dims_duplicate():
+    """A repeated dim cannot form a permutation, so it is rejected."""
+    lhs, rhs, _ = _system((2, 3, 2, 3), (2, 3))
+    with pytest.raises(RuntimeError, match="duplicate"):
+        flag_gems.linalg_tensorsolve(lhs, rhs, dims=[1, 1])
+
+
+@pytest.mark.linalg_tensorsolve
+@pytest.mark.parametrize(
+    "lhs_shape, rhs_shape",
+    [
+        pytest.param((2, 3, 2, 3), (2, 4), id="rhs_mismatch"),
+        pytest.param((2, 3, 2, 4), (2, 3), id="non_square_system"),
+        pytest.param((2, 3, 5), (5,), id="unbalanced_split"),
+    ],
+)
+def test_linalg_tensorsolve_shape_mismatch(lhs_shape, rhs_shape):
+    """The flattened system must be square and match the right-hand side."""
+    lhs = torch.randn(*lhs_shape, dtype=torch.float32, device=DEVICE)
+    rhs = torch.randn(*rhs_shape, dtype=torch.float32, device=DEVICE)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_tensorsolve(lhs, rhs)
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_residual_is_small():
+    """Re-applying the system to the solution reproduces the right-hand side."""
+    lhs, rhs, _ = _system((4, 4), (4,))
+    res = flag_gems.linalg_tensorsolve(lhs, rhs)
+    recon = utils.to_reference(lhs, True) @ utils.to_reference(res, True)
+    utils.gems_assert_close(
+        recon.to(torch.float32),
+        utils.to_reference(rhs, True).to(torch.float32),
+        torch.float32,
+        reduce_dim=4,
+    )
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_singular_does_not_hang_or_crash():
+    """A singular system returns unspecified values instead of raising.
+
+    ATen raises ``LinAlgError``, which requires a device-to-host sync on every
+    call.  This kernel keeps the asynchronous path, so the contract tested here
+    is the weaker one it offers: the call completes with the right shape and
+    dtype and does not crash.
+    """
+    lhs = torch.zeros(2, 2, dtype=torch.float32, device=DEVICE)
+    rhs = torch.ones(2, dtype=torch.float32, device=DEVICE)
+    res = flag_gems.linalg_tensorsolve(lhs, rhs)
+    assert res.shape == rhs.shape
+    assert res.dtype == rhs.dtype
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_rejects_complex():
+    """Complex systems are outside this kernel's declared support."""
+    lhs, rhs, _ = _system((4, 4), (4,))
+    with pytest.raises(Exception):
+        flag_gems.linalg_tensorsolve(lhs.to(torch.complex64), rhs.to(torch.complex64))
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_fp64_preserved():
+    """Double precision stays double rather than silently narrowing."""
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    lhs, rhs, _ = _system((3, 3), (3,), dtype=torch.float64)
+    res = flag_gems.linalg_tensorsolve(lhs, rhs)
+    assert res.dtype == torch.float64
+    ref = torch.ops.aten.linalg_tensorsolve.default(
+        utils.to_reference(lhs, True), utils.to_reference(rhs, True)
+    )
+    utils.gems_assert_close(res, ref, torch.float64, reduce_dim=3)
+
+
+@pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_autograd_input_is_detached():
+    """A grad-requiring input is accepted; the forward kernel builds no graph."""
+    lhs, rhs, _ = _system((4, 4), (4,))
+    res = flag_gems.linalg_tensorsolve(lhs.clone().requires_grad_(True), rhs)
+    assert not res.requires_grad
