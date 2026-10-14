@@ -39,7 +39,12 @@ def _compressed_components(sp):
 def _sparse_compressed_tensor_ref(c_indices, p_indices, values, size, layout):
     """CPU reference for ``sparse_compressed_tensor``."""
     return torch.ops.aten.sparse_compressed_tensor(
-        c_indices.cpu(), p_indices.cpu(), values.cpu(), list(size), layout=layout
+        c_indices.cpu(),
+        p_indices.cpu(),
+        values.cpu(),
+        list(size),
+        dtype=values.dtype,
+        layout=layout,
     )
 
 
@@ -68,7 +73,7 @@ def test_sparse_compressed_tensor_explicit_size(shape, dtype, layout):
 
     ref_out = _sparse_compressed_tensor_ref(c_indices, p_indices, values, shape, layout)
     res_out = flag_gems.sparse_compressed_tensor(
-        c_indices, p_indices, values, size=shape, layout=layout
+        c_indices, p_indices, values, size=shape, dtype=dtype, layout=layout
     )
 
     _assert_compressed_close(res_out, ref_out, dtype)
@@ -87,10 +92,10 @@ def test_sparse_compressed_tensor_infer_size(shape, dtype, layout):
     c_indices, p_indices, values = _compressed_components(sp)
 
     ref_out = torch.ops.aten.sparse_compressed_tensor(
-        c_indices.cpu(), p_indices.cpu(), values.cpu(), layout=layout
+        c_indices.cpu(), p_indices.cpu(), values.cpu(), dtype=values.dtype, layout=layout
     )
     res_out = flag_gems.sparse_compressed_tensor(
-        c_indices, p_indices, values, layout=layout
+        c_indices, p_indices, values, dtype=dtype, layout=layout
     )
 
     _assert_compressed_close(res_out, ref_out, dtype)

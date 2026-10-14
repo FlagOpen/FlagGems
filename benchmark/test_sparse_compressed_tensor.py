@@ -48,7 +48,7 @@ class SparseCompressedTensorBenchmark(base.Benchmark):
                 sp.col_indices(),
                 sp.values(),
                 shape,
-                {"layout": torch.sparse_csr},
+                {"dtype": cur_dtype, "layout": torch.sparse_csr},
             )
 
 
