@@ -898,6 +898,7 @@ _FULL_CONFIG = (
     ("dropout_", dropout_),
     ("dsplit.array", dsplit),
     ("dsplit.int", dsplit),
+    ("dstack", dstack),
     ("elu", elu),
     ("elu_", elu_),
     ("elu_backward", elu_backward),
