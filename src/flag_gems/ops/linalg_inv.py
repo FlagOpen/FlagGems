@@ -186,6 +186,24 @@ def _collapse(shape, strides):
 
 
 def linalg_inv(A):
+    # Without these guards a non-square or 1-D input silently flows through the
+    # batch reshape and produces a finite but meaningless result, where ATen
+    # raises.  Low-precision dtypes are rejected for the same reason ATen
+    # rejects them: the pivoted elimination cannot hold accuracy in half.
+    if A.dim() < 2:
+        raise RuntimeError(
+            "linalg.inv: The input tensor A must have at least 2 dimensions."
+        )
+    if A.shape[-1] != A.shape[-2]:
+        raise RuntimeError(
+            "linalg.inv: A must be batches of square matrices, but they are "
+            "%d by %d matrices" % (A.shape[-2], A.shape[-1])
+        )
+    if A.dtype in (torch.float16, torch.bfloat16):
+        raise RuntimeError(
+            "linalg.inv: Low precision dtypes not supported. Got %s"
+            % ("Half" if A.dtype == torch.float16 else "BFloat16")
+        )
     N = A.shape[-1]
     out = torch.empty(A.shape, dtype=A.dtype, device=A.device)
 
