@@ -25,6 +25,9 @@ from flag_gems.utils.shape_utils import volume
 device_ = device
 logger = logging.getLogger(__name__)
 
+# Ascend's runtime rejects a flattened launch grid larger than this value.
+_ASCEND_MAX_CORE_DIM = 65535
+
 
 @triton.jit
 def zeros_kernel(
@@ -33,14 +36,19 @@ def zeros_kernel(
     BLOCK_SIZE: tl.constexpr,
     BLOCK_SIZE_SUB: tl.constexpr,
 ):
-    pid = ext.program_id(axis=0)
-
-    for sub_block_start_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
-        sub_offset = (
-            pid * BLOCK_SIZE + sub_block_start_idx + tl.arange(0, BLOCK_SIZE_SUB)
-        )
-        mask = sub_offset < n_elements
-        tl.store(output_ptr + sub_offset, 0.0, mask=mask)
+    # Ascend limits the flattened launch grid to 65535 programs. Reuse each
+    # program for additional tiles when the tensor has more elements.
+    for tile in range(
+        ext.program_id(axis=0),
+        tl.cdiv(n_elements, BLOCK_SIZE),
+        ext.num_programs(axis=0),
+    ):
+        for sub_block_start_idx in range(0, BLOCK_SIZE, BLOCK_SIZE_SUB):
+            sub_offset = (
+                tile * BLOCK_SIZE + sub_block_start_idx + tl.arange(0, BLOCK_SIZE_SUB)
+            )
+            mask = sub_offset < n_elements
+            tl.store(output_ptr + sub_offset, 0.0, mask=mask)
 
 
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
@@ -52,7 +60,9 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (max(triton.cdiv(N, meta["BLOCK_SIZE"]), 1),)
+    grid_fn = lambda meta: (
+        max(min(triton.cdiv(N, meta["BLOCK_SIZE"]), _ASCEND_MAX_CORE_DIM), 1),
+    )
     with torch_device_fn.device(device):
         zeros_kernel[grid_fn](out, N, BLOCK_SIZE=20480, BLOCK_SIZE_SUB=1024)
     return out
