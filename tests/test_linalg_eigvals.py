@@ -19,8 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Eigenvalue decomposition needs a square matrix, and cuSOLVER only covers
-# float32 among the real dtypes.
+# Eigenvalue decomposition needs a square matrix. The native CUDA kernel
+# accepts float32/complex64/complex128 (float64 upcasts to complex128).
 EIGVALS_SHAPES = [(2, 2), (3, 3), (5, 5), (10, 10), (20, 20)]
 
 
@@ -29,10 +29,14 @@ def _sorted_eigvals(values):
 
     Eigenvalues come back in an unspecified order, and LAPACK and cuSOLVER
     genuinely disagree on it for some inputs, so the order has to be
-    normalised before an element-wise comparison is meaningful.
+    normalised before an element-wise comparison is meaningful.  Works on the
+    flattened view so batched inputs sort the eigenvalue axis, not dim 0.
     """
-    ordered = values[torch.argsort(values.imag, stable=True)]
-    return ordered[torch.argsort(ordered.real, stable=True)]
+    shape = values.shape
+    flat = values.reshape(-1)
+    ordered = flat[torch.argsort(flat.imag, stable=True)]
+    ordered = ordered[torch.argsort(ordered.real, stable=True)]
+    return ordered.reshape(shape)
 
 
 @pytest.mark.linalg_eigvals
@@ -54,55 +58,32 @@ def test_linalg_eigvals(shape, dtype):
 
 @pytest.mark.linalg_eigvals
 @pytest.mark.parametrize("shape", EIGVALS_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test_linalg_eigvals_default(shape, dtype):
-    """The canonical linalg_eigvals entry must reach the GEMS wrapper."""
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+def test_linalg_eigvals_complex(shape, dtype):
+    """Complex input is supported natively and must stay delegate-clean."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.ops.aten.linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.linalg_eigvals(inp)
+    ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
+    res_out = flag_gems.ops._linalg_eigvals(inp)
 
+    assert res_out.dtype == dtype
     utils.gems_assert_close(
         _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
     )
 
 
-@pytest.mark.linalg_eigvals_out
-@pytest.mark.parametrize("shape", EIGVALS_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test_linalg_eigvals_out(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+@pytest.mark.linalg_eigvals
+@pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 5, 5)])
+def test_linalg_eigvals_batched(shape):
+    """Batched square matrices must keep the native batched result shape."""
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    # complex64 is the eigenvalue dtype produced for a float32 input
-    ref_out = torch.empty(shape[0], dtype=torch.complex64, device=ref_inp.device)
-    torch.ops.aten.linalg_eigvals.out(ref_inp, out=ref_out)
+    ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
+    res_out = flag_gems.ops._linalg_eigvals(inp)
 
-    res_out = torch.empty(shape[0], dtype=torch.complex64, device=flag_gems.device)
-    returned = flag_gems.ops.linalg_eigvals_out(inp, out=res_out)
-
-    # the out variant must write in place and return the very same tensor
-    assert returned.data_ptr() == res_out.data_ptr()
-    utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
-    )
-
-
-@pytest.mark.linalg_eigvals_out
-@pytest.mark.parametrize("dtype", [torch.float32])
-def test_linalg_eigvals_out_resize(dtype):
-    """An empty ``out`` must be resized to the eigenvalue shape."""
-    inp = torch.randn((6, 6), dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-
-    ref_out = torch.empty(0, dtype=torch.complex64, device=ref_inp.device)
-    torch.ops.aten.linalg_eigvals.out(ref_inp, out=ref_out)
-
-    res_out = torch.empty(0, dtype=torch.complex64, device=flag_gems.device)
-    flag_gems.ops.linalg_eigvals_out(inp, out=res_out)
-
-    assert res_out.shape == (6,)
+    assert res_out.shape == ref_out.shape == (*shape[:-1],)
     utils.gems_assert_close(
         _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
     )

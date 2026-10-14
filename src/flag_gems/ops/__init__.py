@@ -883,7 +883,6 @@ from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
 from flag_gems.ops.linalg_eigh import linalg_eigh
-from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
 from flag_gems.ops.linalg_inv_ex import linalg_inv_ex
 from flag_gems.ops.linalg_ldl_factor import ldl_factor
@@ -2394,8 +2393,6 @@ __all__ = [
     "linalg_det_out",
     "linalg_eig",
     "linalg_eigh",
-    "linalg_eigvals",
-    "linalg_eigvals_out",
     "linalg_householder_product",
     "linalg_inv_ex",
     "linalg_ldl_solve",
