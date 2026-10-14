@@ -1873,6 +1873,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atleast_1d
+  description: Returns a view of the input tensor with at least one dimension (view
+    operation).
+  for:
+  - atleast_1d
+  - atleast_1d.Sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: atleast_3d
   description: Returns a view of the input tensor with at least three dimensions (view
     operation).

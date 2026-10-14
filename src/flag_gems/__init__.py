@@ -693,6 +693,8 @@ _FULL_CONFIG = (
     ("atan_", atan_),
     ("atanh", atanh),
     ("atanh_", atanh_),
+    ("atleast_1d", atleast_1d),
+    ("atleast_1d.Sequence", atleast_1d),
     ("atleast_3d", atleast_3d),
     ("atleast_3d.Sequence", atleast_3d),
     ("avg_pool1d", avg_pool1d),

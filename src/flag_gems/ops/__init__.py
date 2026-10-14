@@ -478,6 +478,7 @@ from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.atan2_ import atan2_
 from flag_gems.ops.atanh import atanh, atanh_
+from flag_gems.ops.atleast_1d import run as atleast_1d
 from flag_gems.ops.atleast_3d import run as atleast_3d
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -1964,6 +1965,7 @@ __all__ = [
     "atan_",
     "atanh",
     "atanh_",
+    "atleast_1d",
     "atleast_3d",
     "avg_pool1d",
     "avg_pool2d",
