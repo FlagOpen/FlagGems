@@ -355,11 +355,16 @@ def _make_case(kind, case, dtype, values, is_coalesced=True):
     return _make_compressed(*case, dtype, values)
 
 
+# Scalar and singleton spec shapes map to the same sparse matrix.
+_SHAPE_CASES = list(
+    dict.fromkeys(_shape_to_row(shape) for shape in tu.selected_shapes())
+)
+
 # One workload per row: the shape levels x the five value ranges over every
 # supported dtype, then the layout rows over every supported dtype.
 _VALUE_ROWS = [
     (row, dtype, list(value_range))
-    for row in [_shape_to_row(shape) for shape in tu.selected_shapes()]
+    for row in _SHAPE_CASES
     for dtype in _VALUE_DTYPES
     for value_range in tu.selected_ranges()
 ] + [(row, dtype, ["-1", "1"]) for row in _STORAGE_CASES for dtype in _VALUE_DTYPES]

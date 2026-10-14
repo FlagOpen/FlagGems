@@ -98,7 +98,10 @@ def _shape_to_csr_case(shape):
     return ("csr_batch", size, nnz, None)
 
 
-_SHAPE_CASES = [_shape_to_csr_case(shape) for shape in tu.selected_shapes()]
+# Scalar and singleton spec shapes map to the same sparse matrix.
+_SHAPE_CASES = list(
+    dict.fromkeys(_shape_to_csr_case(shape) for shape in tu.selected_shapes())
+)
 
 
 def _make_crow(n_compressed, nnz):
