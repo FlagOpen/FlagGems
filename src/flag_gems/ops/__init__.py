@@ -769,6 +769,7 @@ from flag_gems.ops.greater_equal import (
     greater_equal_scalar,
 )
 from flag_gems.ops.grid_sample import grid_sample
+from flag_gems.ops.grid_sampler import grid_sampler
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
 from flag_gems.ops.grid_sampler_3d_backward import grid_sampler_3d_backward
@@ -2255,6 +2256,7 @@ __all__ = [
     "greater_scalar",
     "greater_scalar_out",
     "grid_sample",
+    "grid_sampler",
     "grid_sampler_2d",
     "grid_sampler_3d",
     "grid_sampler_3d_backward",

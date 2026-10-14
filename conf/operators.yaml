@@ -8709,6 +8709,22 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: grid_sampler
+  description: 'Given an `input` and a flow-field `grid`, computes the `output` using
+    `input` values and pixel locations from `grid`. Supports bilinear, nearest, and
+    bicubic interpolation with zeros, border, and reflection padding for 4D inputs,
+    and trilinear/nearest for 5D inputs.
+
+    '
+  for:
+  - grid_sampler
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: grid_sampler_2d
   description: 'Performs 2D grid sampling of the input tensor using the given grid.
 
