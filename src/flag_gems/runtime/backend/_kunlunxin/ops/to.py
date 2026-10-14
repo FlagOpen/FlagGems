@@ -114,7 +114,9 @@ def _to_copy_contiguous_to_bf16_kernel(inp, out, n_elements, BLOCK_SIZE: tl.cons
 
 
 @triton.jit
-def _to_copy_from_bf16_contiguous_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+def _to_copy_from_bf16_contiguous_kernel(
+    inp, out, n_elements, BLOCK_SIZE: tl.constexpr
+):
     # `inp` is a uint16 view of a bfloat16 tensor. Rebuilding the f32 value from
     # the raw bits (shift + bitcast) rather than `values.to(tl.float32)` keeps the
     # generated LLVM IR as `fptosi float`; the natural bf16->int widening is folded
