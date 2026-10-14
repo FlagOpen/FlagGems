@@ -113,6 +113,21 @@ def _to_copy_contiguous_to_bf16_kernel(inp, out, n_elements, BLOCK_SIZE: tl.cons
     tl.store(out_bits + offsets, bf16_bits, mask=mask)
 
 
+@triton.jit
+def _to_copy_from_bf16_contiguous_kernel(inp, out, n_elements, BLOCK_SIZE: tl.constexpr):
+    # `inp` is a uint16 view of a bfloat16 tensor. Rebuilding the f32 value from
+    # the raw bits (shift + bitcast) rather than `values.to(tl.float32)` keeps the
+    # generated LLVM IR as `fptosi float`; the natural bf16->int widening is folded
+    # by InstCombine into `fptosi bfloat`, which the XPU LLVM shipped with flagtree
+    # 0.7.0 (used by CI) cannot select -- it aborts with "Cannot select: fp_to_sint
+    # ... bf16" (Fatal Python error: Aborted). The shift/bitcast form is portable.
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    bits = tl.load(inp + offsets, mask=mask).to(tl.uint32)
+    values = (bits << 16).to(tl.float32, bitcast=True)
+    tl.store(out + offsets, values.to(out.dtype.element_ty), mask=mask)
+
+
 def _to_copy_contiguous(inp, out, target_dtype):
     n_elements = inp.numel()
     if n_elements == 0:
@@ -161,11 +176,18 @@ def _to_copy_contiguous(inp, out, target_dtype):
         # thousands of tiny masked launches, but is the only safe size for the
         # int->float / ->bf16 casts that miscompile at large tiles.
         block_size = 256
-    kernel = (
-        _to_copy_contiguous_to_bf16_kernel
-        if target_dtype == torch.bfloat16
-        else _to_copy_contiguous_kernel
-    )
+    if inp.dtype == torch.bfloat16 and not target_dtype.is_floating_point:
+        # bf16 -> integer: route through the bit-rebuilt kernel so the int cast
+        # is `fptosi float` instead of the unselectable `fptosi bfloat`. See
+        # _to_copy_from_bf16_contiguous_kernel.
+        src = inp.view(torch.uint16)
+        kernel = _to_copy_from_bf16_contiguous_kernel
+    elif target_dtype == torch.bfloat16:
+        src = inp
+        kernel = _to_copy_contiguous_to_bf16_kernel
+    else:
+        src = inp
+        kernel = _to_copy_contiguous_kernel
     grid = ((n_elements + block_size - 1) // block_size,)
     # The torch_device_fn.device() context manager costs ~4us/call of pure
     # Python even when it is a no-op (device already current). On the common
@@ -173,10 +195,10 @@ def _to_copy_contiguous(inp, out, target_dtype):
     # with a cheap current_device() check (~0.4us) and launch directly when it
     # would be a no-op; only pay the ctx when the device genuinely differs.
     if inp.device.index == torch_device_fn.current_device():
-        kernel[grid](inp, out, n_elements, block_size)
+        kernel[grid](src, out, n_elements, block_size)
     else:
         with torch_device_fn.device(inp.device):
-            kernel[grid](inp, out, n_elements, block_size)
+            kernel[grid](src, out, n_elements, block_size)
     return out
 
 
