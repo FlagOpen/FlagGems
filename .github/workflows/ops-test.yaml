@@ -292,6 +292,23 @@ jobs:
             AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
           fi
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
+          if [ "${{ matrix.vendor }}" = "KunLunXin" ]; then
+            AVAILABLE_GPUS=$(printf '%s\n' "${AVAILABLE_GPUS}" | awk -F, '
+              {
+                filtered = ""
+                for (i = 1; i <= NF; i++) {
+                  if ($i != "0") {
+                    if (filtered != "") {
+                      filtered = filtered ","
+                    }
+                    filtered = filtered $i
+                  }
+                }
+                print filtered
+              }
+            ')
+            echo "[GPU check] KunLunXin skips GPU 0; using GPUs: ${AVAILABLE_GPUS}"
+          fi
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
       # Run ops tests.
