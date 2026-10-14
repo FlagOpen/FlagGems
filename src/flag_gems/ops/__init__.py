@@ -269,6 +269,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_det import _linalg_det
 from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
@@ -352,6 +353,7 @@ from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
+from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
@@ -437,6 +439,7 @@ from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addmv_ import addmv_
 from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
+from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
 from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
@@ -564,9 +567,11 @@ from flag_gems.ops.clamp import (
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
+from flag_gems.ops.col_indices import col_indices
 from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
+from flag_gems.ops.conj import conj
 from flag_gems.ops.conj_physical import conj_physical
 from flag_gems.ops.conj_physical_ import conj_physical_
 from flag_gems.ops.contiguous import contiguous
@@ -599,6 +604,7 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.cross_attention import cross_attention
+from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
@@ -616,6 +622,7 @@ from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.det import det
+from flag_gems.ops.detach_copy import detach_copy
 from flag_gems.ops.diag import diag
 from flag_gems.ops.diag_embed import diag_embed
 from flag_gems.ops.diagonal import diagonal_backward
@@ -755,7 +762,11 @@ from flag_gems.ops.greater import (
     greater_scalar_out,
 )
 from flag_gems.ops.greater_ import greater_
-from flag_gems.ops.greater_equal import greater_equal_
+from flag_gems.ops.greater_equal import (
+    greater_equal,
+    greater_equal_,
+    greater_equal_scalar,
+)
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
@@ -1381,6 +1392,7 @@ from flag_gems.ops.std_mean import (
     std_mean_dim,
     std_mean_names_dim,
 )
+from flag_gems.ops.stft import stft, stft_center
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -1745,6 +1757,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_det",
     "_linalg_eigh",
     "_linalg_eigvals",
     "_linalg_slogdet",
@@ -1805,6 +1818,7 @@ __all__ = [
     "_slow_conv2d_forward",
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
+    "_sobol_engine_scramble_",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
@@ -1881,6 +1895,7 @@ __all__ = [
     "addmv_out",
     "addr",
     "addr_",
+    "adjoint",
     "affine_grid_generator",
     "alias",
     "alias_copy",
@@ -2024,10 +2039,12 @@ __all__ = [
     "clip",
     "clip_",
     "col2im",
+    "col_indices",
     "column_stack",
     "column_stack_out",
     "concat",
     "concatenate",
+    "conj",
     "conj_physical",
     "conj_physical_",
     "constant_pad_nd",
@@ -2063,6 +2080,7 @@ __all__ = [
     "cross",
     "cross_attention",
     "cross_out",
+    "crow_indices_copy",
     "ctc_loss",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
@@ -2086,6 +2104,7 @@ __all__ = [
     "deg2rad_out",
     "dequantize",
     "det",
+    "detach_copy",
     "diag",
     "diag_embed",
     "diagonal_backward",
@@ -2227,7 +2246,9 @@ __all__ = [
     "glu_backward",
     "greater",
     "greater_",
+    "greater_equal",
     "greater_equal_",
+    "greater_equal_scalar",
     "greater_out",
     "greater_scalar",
     "greater_scalar_out",
@@ -2910,6 +2931,8 @@ __all__ = [
     "std_mean_correction_out",
     "std_mean_dim",
     "std_mean_names_dim",
+    "stft",
+    "stft_center",
     "sub",
     "sub_",
     "subtract",
