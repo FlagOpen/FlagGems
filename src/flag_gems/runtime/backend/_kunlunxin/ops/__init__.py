@@ -312,7 +312,6 @@ from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
 from .grid_sampler_2d import grid_sampler_2d
-from .grid_sampler_3d import grid_sampler_3d  # noqa: F401
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
@@ -1103,7 +1102,6 @@ __all__ = [
     "greater_scalar_out",
     "grid_sample",
     "grid_sampler_2d",
-    "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "group_mm",
     "group_norm",
