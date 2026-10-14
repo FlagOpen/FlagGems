@@ -16008,6 +16008,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: rnn_relu_cell
+  description: Fused single-step ReLU RNN cell implemented as one Triton kernel covering both GEMMs, the bias adds and the activation.
+  for:
+  - rnn_relu_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: rnn_tanh
   description: Pure Triton implementation for the rnn_tanh input overload.
   for:
