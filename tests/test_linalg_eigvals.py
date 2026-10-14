@@ -19,6 +19,18 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# The registry id is ``linalg_eigvals`` (the aten name starts with an
+# underscore; see naming Rule 2), so check-operator-markers expects the
+# ``linalg_eigvals`` marker, while CI's marker selection (tools/test-op.sh)
+# derives the marker from the implementation file stem ``_linalg_eigvals``
+# via the #6359 convention, yielding ``underscore_linalg_eigvals``. Carry
+# both markers so the tests are reachable from either entry point. See
+# tests/test_nested_tensor_from_tensor_list.py for the same pattern.
+pytestmark = [
+    pytest.mark.linalg_eigvals,
+    pytest.mark.underscore_linalg_eigvals,
+]
+
 # Eigenvalue decomposition needs a square matrix. The native CUDA kernel
 # accepts float32/complex64/complex128 (float64 upcasts to complex128).
 EIGVALS_SHAPES = [(2, 2), (3, 3), (5, 5), (10, 10), (20, 20)]
