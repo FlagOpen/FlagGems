@@ -71,6 +71,7 @@ class DeviceDetector:
                         self.support_fp8 = False
                 except Exception:
                     pass
+            self.support_complex = self.info.complex_enabled
 
     def get_vendor(self, vendor_name=None) -> tuple:
         # Try to get the vendor name from a quick special command like 'torch.mlu'.
