@@ -632,11 +632,61 @@ def test_scaled_grouped_mm_quantized_empty_groups(case_name, dtype):
 @pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
 @pytest.mark.parametrize(
     "case_name,zero_axis",
-    [("m_varying", "M"), ("n_varying", "N"), ("k_varying", "K"), ("batch", "K")],
+    [
+        ("m_varying", "M"),
+        ("m_varying", "K"),
+        ("n_varying", "N"),
+        ("k_varying", "K"),
+        ("batch", "K"),
+    ],
 )
 def test_scaled_grouped_mm_quantized_zero_extents(case_name, zero_axis, dtype):
     cpu_inputs = _make_quantized_accuracy_case(case_name, dtype, zero_axis=zero_axis)
     _assert_quantized_accuracy(cpu_inputs, torch.float32)
+
+
+@pytest.mark.scaled_grouped_mm_w8a16_fp8
+@pytest.mark.scaled_grouped_mm_w8a16_int8
+@pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
+@pytest.mark.parametrize(
+    "lengths,n,k",
+    [
+        ((0, 1, 17, 0, 33, 129, 0), 67, 65),
+        ((0, 1, 257, 0, 513, 0), 257, 128),
+    ],
+    ids=["small_average", "large_average_k128"],
+)
+def test_scaled_grouped_mm_quantized_skewed_ragged_tiles(dtype, lengths, n, k):
+    # Uneven groups exercise multiple M tiles with leading/interior/trailing
+    # empty experts. K=128 with average M > 128 also covers inline FP8 decode
+    # when large groups cannot use the predecoded path. N/K tails check masking.
+    groups, m = len(lengths), sum(lengths)
+    rows = torch.arange(m, dtype=torch.int64)
+    mat_a = torch.zeros((m, k), dtype=torch.float32)
+    mat_a[rows, (37 * rows) % k] = 1
+    mat_b = (
+        (torch.arange(groups * k * n, dtype=torch.int32) % 17 - 8)
+        .to(torch.float32)
+        .reshape(groups, k, n)
+    )
+    scale_a = (2.0 ** (rows % 3 - 3)).to(torch.float32)
+    scale_b = (
+        (2.0 ** (torch.arange(groups * n, dtype=torch.int64) % 3 - 3))
+        .to(torch.float32)
+        .reshape(groups, n)
+    )
+    offs = torch.tensor(lengths, dtype=torch.int32).cumsum(0).to(torch.int32)
+    bias = (
+        (torch.arange(groups * n, dtype=torch.int32) % 9 - 4).to(torch.float32) / 4
+    ).reshape(groups, n)
+    # One-hot A, integral B and binary scales/bias yield an exact CPU reference
+    # for both INT8 and E4M3 while testing non-contiguous operand strides.
+    _assert_quantized_accuracy(
+        (mat_a.to(dtype), mat_b.to(dtype), scale_a, scale_b, offs, bias),
+        torch.float32,
+        "strided",
+        "column_major",
+    )
 
 
 @pytest.mark.scaled_grouped_mm_w8a16_fp8
@@ -659,7 +709,9 @@ def test_scaled_grouped_mm_fp8_nan(dtype):
 
 @pytest.mark.scaled_grouped_mm_w8a16_int8
 @pytest.mark.parametrize(
-    "n,k", [(512, 512), (1024, 1024)], ids=["n512_k512", "n1024_k1024"]
+    "n,k",
+    [(512, 512), (1024, 1024), (256, 513), (1025, 1025)],
+    ids=["n512_k512", "n1024_k1024", "n256_k513", "n1025_k1025"],
 )
 @pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
 def test_scaled_grouped_mm_int8_large_ragged_boundaries(
@@ -668,6 +720,8 @@ def test_scaled_grouped_mm_int8_large_ragged_boundaries(
     operator = _quantized_operator(torch.int8)
     # Large total M exercises the grouped scheduler with empty groups and
     # lengths immediately below, at, and above the 32/128-row boundaries.
+    # M / groups > 256 also exercises the largest INT8 tiles for 16-bit output;
+    # K=513 and N=K=1025 check their masked reduction and output-column tails.
     lengths = (0, 31, 32, 33, 127, 128, 129, 0, 2048, 1665, 0)
     groups, total_m = len(lengths), sum(lengths)
     rows = torch.arange(total_m, dtype=torch.int64)

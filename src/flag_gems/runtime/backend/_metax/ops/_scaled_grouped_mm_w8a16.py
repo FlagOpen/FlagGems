@@ -14,9 +14,9 @@
 
 """Private MetaX implementation shared by the named FP8/INT8 entry points.
 
-Offsets stay on the device. Ragged M/N groups are mapped to output tiles by
-a parallel prefix sum; no per-group host dispatch or floating GEMM fallback
-is used for these quantized input types.
+Offsets stay on the device. Small ragged-M workloads map CTAs directly to
+groups; other ragged M/N groups use a parallel prefix sum. Neither path uses
+per-group host dispatch or a floating GEMM fallback for quantized inputs.
 """
 
 import logging
@@ -42,6 +42,17 @@ _E4M3_DTYPES = (torch.float8_e4m3fn, torch.float8_e4m3fnuz)
 
 def _select_config(M, N, K, num_groups, mode, is_int8):
     if is_int8:
+        # Packed M alone overestimates the useful tile height for small experts.
+        if mode == 0 and M <= 16 * num_groups and N >= 64 and K >= 128:
+            return (16, 64, 128, 4)
+        # Larger expert groups can amortize wider tiles and their shared memory.
+        if mode == 0 and N == 256 and K >= 512 and M >= 256 * num_groups:
+            return (256, 128, 64, 8)
+        if mode == 0 and M >= 128 * num_groups and K >= 512:
+            if N == 256:
+                return (128, 128, 64, 4)
+            if N >= 1024 and K >= 1024:
+                return (128, 256, 64, 8)
         if mode != 0:
             return (32, 64, 64, 4)
         if N >= 512 and K >= 512 and M >= 4096:
@@ -159,12 +170,15 @@ def _scaled_grouped_mm_kernel(
     BLOCK_K: tl.constexpr,
     NUM_WARPS: tl.constexpr,
     GROUP_MAJOR: tl.constexpr = False,
+    DIRECT_GROUP: tl.constexpr = False,
 ):
     # LibEntry does not key compiler options; include the warp count explicitly
     # so different launch configurations cannot alias.
     tl.static_assert(NUM_WARPS > 0)
     if GROUP_MAJOR:
         tl.static_assert(IS_INT8 and MODE == 0)
+    if DIRECT_GROUP:
+        tl.static_assert(MODE == 0 and not GROUP_MAJOR)
     # MODE: ragged M, ragged N, ragged K, regular batch.
     tile = tl.program_id(0).to(tl.int64)
     other_tile = tl.program_id(1).to(tl.int64)
@@ -174,7 +188,16 @@ def _scaled_grouped_mm_kernel(
     n_size = tl.full((), N, tl.int64)
     k_size = tl.full((), K, tl.int64)
 
-    if MODE == 0 or MODE == 1:
+    if DIRECT_GROUP:
+        # A flattened (group, N tile) grid avoids scanning every group's
+        # offsets for each CTA and does not depend on the grid-Y limit.
+        DIRECT_TILES_N: tl.constexpr = (N + BLOCK_N - 1) // BLOCK_N
+        group = tile // DIRECT_TILES_N
+        pid_n = tile % DIRECT_TILES_N
+        pid_m = zero
+        m_start = tl.load(Offs + group - 1, group > 0, other=0).to(tl.int64)
+        m_size = tl.load(Offs + group).to(tl.int64) - m_start
+    elif MODE == 0 or MODE == 1:
         groups = tl.arange(0, GROUP_BLOCK)
         ends = tl.load(Offs + groups, groups < NUM_GROUPS, other=0).to(tl.int64)
         starts = tl.load(
@@ -218,56 +241,63 @@ def _scaled_grouped_mm_kernel(
             k_start = tl.load(Offs + group - 1, group > 0, other=0).to(tl.int64)
             k_size = tl.load(Offs + group).to(tl.int64) - k_start
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_k = tl.arange(0, BLOCK_K).to(tl.int64)
-    a_base = A + (group * stride_ag if MODE == 1 or MODE == 3 else 0)
-    b_base = B + (group * stride_bg if MODE == 0 or MODE == 3 else 0)
-    a_rows = (m_start + offs_m) * stride_am
-    b_cols = (n_start + offs_n) * stride_bn
-    if IS_INT8:
-        acc = tl.zeros((BLOCK_M, BLOCK_N), tl.int32)
+    # Direct mapping keeps all M tiles for an expert on one CTA. Empty groups
+    # execute zero iterations; all existing mappings execute exactly one tile.
+    if DIRECT_GROUP:
+        m_tile_count = tl.cdiv(m_size, BLOCK_M)
     else:
-        acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-    for k_offset in range(0, k_size, BLOCK_K):
-        relative_k = k_offset + offs_k
-        a = tl.load(
-            a_base + a_rows[:, None] + (k_start + relative_k[None, :]) * stride_ak,
-            (offs_m[:, None] < m_size) & (relative_k[None, :] < k_size),
-            other=0,
-        )
-        b = tl.load(
-            b_base + (k_start + relative_k[:, None]) * stride_bk + b_cols[None, :],
-            (relative_k[:, None] < k_size) & (offs_n[None, :] < n_size),
-            other=0,
-        )
+        m_tile_count = 1
+    for m_iteration in range(0, m_tile_count):
+        offs_m = (pid_m + m_iteration) * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        offs_k = tl.arange(0, BLOCK_K).to(tl.int64)
+        a_base = A + (group * stride_ag if MODE == 1 or MODE == 3 else 0)
+        b_base = B + (group * stride_bg if MODE == 0 or MODE == 3 else 0)
+        a_rows = (m_start + offs_m) * stride_am
+        b_cols = (n_start + offs_n) * stride_bn
         if IS_INT8:
-            acc = tl.dot(a, b, acc, out_dtype=tl.int32)
+            acc = tl.zeros((BLOCK_M, BLOCK_N), tl.int32)
         else:
-            if DECODE_FP8:
-                a = _decode_e4m3(a, FNUZ)
-                b = _decode_e4m3(b, FNUZ)
-            acc = tl.dot(a, b, acc, out_dtype=tl.float32, allow_tf32=False)
+            acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
+        for k_offset in range(0, k_size, BLOCK_K):
+            relative_k = k_offset + offs_k
+            a = tl.load(
+                a_base + a_rows[:, None] + (k_start + relative_k[None, :]) * stride_ak,
+                (offs_m[:, None] < m_size) & (relative_k[None, :] < k_size),
+                other=0,
+            )
+            b = tl.load(
+                b_base + (k_start + relative_k[:, None]) * stride_bk + b_cols[None, :],
+                (relative_k[:, None] < k_size) & (offs_n[None, :] < n_size),
+                other=0,
+            )
+            if IS_INT8:
+                acc = tl.dot(a, b, acc, out_dtype=tl.int32)
+            else:
+                if DECODE_FP8:
+                    a = _decode_e4m3(a, FNUZ)
+                    b = _decode_e4m3(b, FNUZ)
+                acc = tl.dot(a, b, acc, out_dtype=tl.float32, allow_tf32=False)
 
-    sa_base = m_start if MODE == 0 else group * M
-    sb_base = n_start if MODE == 1 else group * N
-    scale_a = tl.load(ScaleA + sa_base + offs_m, offs_m < m_size, other=0)
-    scale_b = tl.load(ScaleB + sb_base + offs_n, offs_n < n_size, other=0)
-    value = acc.to(tl.float32) * scale_a[:, None] * scale_b[None, :]
-    if BIAS_MODE != 0:
-        if BIAS_MODE == 2:
-            bias_base = group * N
-        elif MODE == 1:
-            bias_base = n_start
+        sa_base = m_start if MODE == 0 else group * M
+        sb_base = n_start if MODE == 1 else group * N
+        scale_a = tl.load(ScaleA + sa_base + offs_m, offs_m < m_size, other=0)
+        scale_b = tl.load(ScaleB + sb_base + offs_n, offs_n < n_size, other=0)
+        value = acc.to(tl.float32) * scale_a[:, None] * scale_b[None, :]
+        if BIAS_MODE != 0:
+            if BIAS_MODE == 2:
+                bias_base = group * N
+            elif MODE == 1:
+                bias_base = n_start
+            else:
+                bias_base = 0
+            bias = tl.load(Bias + bias_base + offs_n, offs_n < n_size, other=0)
+            value += bias.to(tl.float32)[None, :]
+        if MODE == 0 or MODE == 1:
+            c_ptrs = C + (m_start + offs_m[:, None]) * N + n_start + offs_n[None, :]
         else:
-            bias_base = 0
-        bias = tl.load(Bias + bias_base + offs_n, offs_n < n_size, other=0)
-        value += bias.to(tl.float32)[None, :]
-    if MODE == 0 or MODE == 1:
-        c_ptrs = C + (m_start + offs_m[:, None]) * N + n_start + offs_n[None, :]
-    else:
-        c_ptrs = C + group * M * N + offs_m[:, None] * N + offs_n[None, :]
-    tl.store(c_ptrs, value, (offs_m[:, None] < m_size) & (offs_n[None, :] < n_size))
+            c_ptrs = C + group * M * N + offs_m[:, None] * N + offs_n[None, :]
+        tl.store(c_ptrs, value, (offs_m[:, None] < m_size) & (offs_n[None, :] < n_size))
 
 
 def _scaled_grouped_mm_w8a16(
@@ -354,6 +384,16 @@ def _scaled_grouped_mm_w8a16(
         return out
 
     bm, bn, bk, warps = _select_config(M, N, K, groups, mode, is_int8)
+    # The larger INT8 tiles fit 16-bit outputs, but FP32 epilogue staging
+    # exceeds C550 shared memory. Keep the established FP32 configurations.
+    if is_int8 and output_dtype == torch.float32:
+        if (bm, bn) == (256, 128):
+            bm, bn, bk, warps = (64, 64, 64, 4)
+        elif (bm, bn) == (128, 256):
+            bm, bn, bk, warps = (128, 128, 64, 4)
+    # Direct expert mapping avoids prefix work for small average group sizes;
+    # its inner M loop also handles skewed partitions with larger individual groups.
+    direct_group = mode == 0 and M <= 64 * groups
     if mode == 0:
         grid = (triton.cdiv(M, bm) + groups - 1, triton.cdiv(N, bn))
     elif mode == 1:
@@ -362,11 +402,20 @@ def _scaled_grouped_mm_w8a16(
         grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn), groups)
     # A wider N makes group-local traversal worthwhile; narrower GEMMs retain
     # the original tile order with the tuned four-warp tile configuration.
-    group_major = is_int8 and mode == 0 and M >= 4096 and N >= 1024 and K >= 512
+    group_major = (
+        not direct_group
+        and is_int8
+        and mode == 0
+        and M >= 4096
+        and N >= 1024
+        and K >= 512
+    )
     if group_major:
         # Use the original host upper bound; excess programs return after the
         # compact GPU prefix lookup. No offsets are copied to the host.
         grid = (grid[0] * grid[1],)
+    if direct_group:
+        grid = (groups * triton.cdiv(N, bn),)
     fnuz = self.dtype == torch.float8_e4m3fnuz
     a = self if is_int8 else self.view(torch.uint8)
     b = mat2 if is_int8 else mat2.view(torch.uint8)
@@ -404,8 +453,10 @@ def _scaled_grouped_mm_w8a16(
             BLOCK_K=bk,
             NUM_WARPS=warps,
             GROUP_MAJOR=group_major,
+            DIRECT_GROUP=direct_group,
             num_warps=warps,
-            num_stages=2,
+            # IS_INT8 is a constexpr cache key; stages are fixed by input dtype.
+            num_stages=2 if is_int8 else 1,
             pipeline="basic",
             enable_fp_fusion=False,
         )
