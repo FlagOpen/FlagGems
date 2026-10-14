@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # aten::int_repr returns the raw integer codes an affine-quantized tensor
 # stores: quint8 -> uint8, qint8 -> int8, qint32 -> int32. The quantization
@@ -76,7 +77,7 @@ _UNIT_ZERO_POINT = 0
 # Shared value-range / shape helpers (mirrors the operator-test spec
 # conventions; QUICK_MODE selects the reduced sets via pytest --quick).
 # ---------------------------------------------------------------------------
-QUICK_MODE = False
+QUICK_MODE = utils.QUICK_MODE
 
 
 def selected_cases(cases, *, quick=()):
@@ -180,8 +181,24 @@ def to_reference(inp, upcast=False):
         )
         if inp.is_conj():
             reference = reference.conj()
+    # In quick-cpu mode the reference runs on CPU and gems_assert_equal
+    # asserts the reference is already there. .to() preserves size, stride
+    # and storage offset, so the view metadata survives the move.
+    if TO_CPU:
+        reference = reference.to("cpu")
     reference.requires_grad_(inp.requires_grad)
     return reference
+
+
+def int_repr_snapshot(tensor):
+    """Device-side ``aten::int_repr`` snapshot, moved to the oracle device.
+
+    Used for the read-only checks that snapshot the input's raw codes before
+    and after the candidate runs; both sides must live on the reference
+    device for gems_assert_equal's TO_CPU handling.
+    """
+    codes = torch.ops.aten.int_repr(tensor)
+    return codes.cpu() if TO_CPU else codes
 
 
 def _quantized_input(
@@ -340,7 +357,7 @@ NON_QUANTIZED_ROWS = _unquantized_dtypes() if _NON_QUANTIZED_MEASURED else []
 def test_int_repr(shape, value_range, qdtype):
     inp = _quantized_input(shape, qdtype, value_range)
     ref_inp = to_reference(inp)
-    before = torch.ops.aten.int_repr(inp)
+    before = int_repr_snapshot(inp)
 
     ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
@@ -372,7 +389,7 @@ def test_int_repr_out(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
     ref_inp = to_reference(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
-    before = torch.ops.aten.int_repr(inp)
+    before = int_repr_snapshot(inp)
 
     ref_out = torch.ops.aten.int_repr.out(
         ref_inp, out=torch.empty(shape, dtype=out_dtype, device=ref_inp.device)
@@ -393,7 +410,7 @@ def test_int_repr_out_resizes_buffer(qdtype):
     inp = _quantized_input((2, 19, 7), qdtype, ["-1", "1"])
     ref_inp = to_reference(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
-    before = torch.ops.aten.int_repr(inp)
+    before = int_repr_snapshot(inp)
 
     ref_out = torch.ops.aten.int_repr.out(
         ref_inp, out=torch.empty((3,), dtype=out_dtype, device=ref_inp.device)
@@ -415,7 +432,7 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
     out_dtype = _QUANTIZED_TO_INT[qdtype]
     gap = (4, 5, 12)
     sentinel = _sentinel(out_dtype)
-    before = torch.ops.aten.int_repr(inp)
+    before = int_repr_snapshot(inp)
 
     ref_pad = torch.full(gap, sentinel, dtype=out_dtype, device=ref_inp.device)
     ref_out = torch.ops.aten.int_repr.out(ref_inp, out=ref_pad[:, :, ::2])
@@ -450,7 +467,7 @@ def test_int_repr_per_channel_quantization(qdtype, shape, axis):
     scales, zero_points = _channel_qparams(shape[axis], qdtype)
     inp = _quantized_per_channel(payload, qdtype, scales, zero_points, axis)
     ref_inp = to_reference(inp)
-    before = torch.ops.aten.int_repr(inp)
+    before = int_repr_snapshot(inp)
 
     ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
@@ -523,7 +540,7 @@ def test_int_repr_out_degenerate_shape(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
     ref_inp = to_reference(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
-    before = torch.ops.aten.int_repr(inp)
+    before = int_repr_snapshot(inp)
 
     ref_out = torch.ops.aten.int_repr.out(
         ref_inp, out=torch.empty(shape, dtype=out_dtype, device=ref_inp.device)
