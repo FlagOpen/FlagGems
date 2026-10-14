@@ -354,12 +354,12 @@ from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
+from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
 from flag_gems.ops._sparse_log_softmax import _sparse_log_softmax
 from flag_gems.ops._sparse_log_softmax_backward_data import (
     _sparse_log_softmax_backward_data,
 )
 from flag_gems.ops._sparse_mask_projection import _sparse_mask_projection
-from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_apply import _sparse_semi_structured_apply
 from flag_gems.ops._sparse_semi_structured_apply_dense import (
@@ -1843,10 +1843,10 @@ __all__ = [
     "_slow_conv2d_forward",
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
+    "_sobol_engine_scramble_",
     "_sparse_log_softmax",
     "_sparse_log_softmax_backward_data",
     "_sparse_mask_projection",
-    "_sobol_engine_scramble_",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_apply",
     "_sparse_semi_structured_apply_dense",
