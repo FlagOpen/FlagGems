@@ -92,7 +92,11 @@ def test_sparse_compressed_tensor_infer_size(shape, dtype, layout):
     c_indices, p_indices, values = _compressed_components(sp)
 
     ref_out = torch.ops.aten.sparse_compressed_tensor(
-        c_indices.cpu(), p_indices.cpu(), values.cpu(), dtype=values.dtype, layout=layout
+        c_indices.cpu(),
+        p_indices.cpu(),
+        values.cpu(),
+        dtype=values.dtype,
+        layout=layout,
     )
     res_out = flag_gems.sparse_compressed_tensor(
         c_indices, p_indices, values, dtype=dtype, layout=layout
