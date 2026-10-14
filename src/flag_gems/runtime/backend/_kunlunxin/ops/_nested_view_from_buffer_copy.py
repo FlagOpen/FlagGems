@@ -4,8 +4,6 @@ import torch
 import triton
 import triton.language as tl
 
-from ._nested_copy_wrap import _nested_copy_wrap
-
 logger = logging.getLogger("flag_gems." + __name__)
 
 # Payload copy block size (in elements). B=8192 is a fixed value validated on 0.4–0.8MB payloads; no sweep was run.
@@ -157,19 +155,6 @@ def _nested_view_from_buffer_copy(
             lengths=nested_size_dev[:, 0],
             ragged_idx=1,
         )
-
-    # C++ fast path for 1-D exact-packed host-metadata inputs:
-    # clone + NestedTensorImpl wrap in one C++ call, avoiding
-    # _nested_tensor_from_tensor_list's 3.5µs per-component iteration overhead.
-    # Grad inputs take the Python path below: direct construction carries no
-    # autograd node, while as_nested_tensor matches native's autograd behavior.
-    if (
-        self.dim() == 1
-        and not self.requires_grad
-        and sum(int(nested_size[i].item()) for i in range(num_components))
-        == self.numel()
-    ):
-        return _nested_copy_wrap(self, nested_size, nested_strides, offsets)
 
     # Generic fallback: per-component as_strided views + as_nested_tensor.
     components = []
