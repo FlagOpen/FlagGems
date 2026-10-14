@@ -269,6 +269,7 @@ from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._jagged_to_padded_dense_forward import (
     _jagged_to_padded_dense_forward,
 )
+from flag_gems.ops._linalg_det import _linalg_det
 from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
@@ -319,6 +320,7 @@ from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
+from flag_gems.ops._reshape_copy import _reshape_copy
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._safe_softmax import _safe_softmax
@@ -352,6 +354,7 @@ from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
 )
+from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
 from flag_gems.ops._sparse_semi_structured_addmm import _sparse_semi_structured_addmm
 from flag_gems.ops._sparse_semi_structured_linear import _sparse_semi_structured_linear
 from flag_gems.ops._sparse_semi_structured_mm import _sparse_semi_structured_mm
@@ -475,6 +478,7 @@ from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.atan2_ import atan2_
 from flag_gems.ops.atanh import atanh, atanh_
+from flag_gems.ops.atleast_3d import run as atleast_3d
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -643,6 +647,7 @@ from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dsplit import dsplit
+from flag_gems.ops.dstack import run as dstack
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
 from flag_gems.ops.embedding_bag import embedding_bag
@@ -767,6 +772,7 @@ from flag_gems.ops.greater_equal import (
     greater_equal_scalar,
 )
 from flag_gems.ops.grid_sample import grid_sample
+from flag_gems.ops.grid_sampler import grid_sampler
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
 from flag_gems.ops.grid_sampler_3d_backward import grid_sampler_3d_backward
@@ -1003,6 +1009,7 @@ from flag_gems.ops.max_unpool3d import max_unpool3d
 from flag_gems.ops.maximum import maximum
 from flag_gems.ops.mean import mean, mean_dim
 from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
+from flag_gems.ops.mH import mH
 from flag_gems.ops.min import min, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm import miopen_batch_norm
@@ -1332,6 +1339,10 @@ from flag_gems.ops.special_logsumexp import special_logsumexp
 from flag_gems.ops.special_modified_bessel_i0 import (
     special_modified_bessel_i0,
     special_modified_bessel_i0_out,
+)
+from flag_gems.ops.special_modified_bessel_i1 import (
+    special_modified_bessel_i1,
+    special_modified_bessel_i1_out,
 )
 from flag_gems.ops.special_modified_bessel_k0 import (
     special_modified_bessel_k0,
@@ -1756,6 +1767,7 @@ __all__ = [
     "_index_put_impl_",
     "_is_all_true",
     "_jagged_to_padded_dense_forward",
+    "_linalg_det",
     "_linalg_eigh",
     "_linalg_eigvals",
     "_linalg_slogdet",
@@ -1798,6 +1810,7 @@ __all__ = [
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_reshape_alias",
+    "_reshape_copy",
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
@@ -1816,6 +1829,7 @@ __all__ = [
     "_slow_conv2d_forward",
     "_sobol_engine_ff_",
     "_sobol_engine_initialize_state_",
+    "_sobol_engine_scramble_",
     "_sparse_semi_structured_addmm",
     "_sparse_semi_structured_linear",
     "_sparse_semi_structured_mm",
@@ -1951,6 +1965,7 @@ __all__ = [
     "atan_",
     "atanh",
     "atanh_",
+    "atleast_3d",
     "avg_pool1d",
     "avg_pool2d",
     "avg_pool2d_backward",
@@ -2122,6 +2137,7 @@ __all__ = [
     "dropout_",
     "dropout_backward",
     "dsplit",
+    "dstack",
     "efficient_attention_backward",
     "elu",
     "elu_",
@@ -2252,6 +2268,7 @@ __all__ = [
     "greater_scalar",
     "greater_scalar_out",
     "grid_sample",
+    "grid_sampler",
     "grid_sampler_2d",
     "grid_sampler_3d",
     "grid_sampler_3d_backward",
@@ -2527,6 +2544,7 @@ __all__ = [
     "median_dim",
     "median_dim_values",
     "median_out",
+    "mH",
     "min",
     "min_dim",
     "minimum",
@@ -2881,6 +2899,8 @@ __all__ = [
     "special_logsumexp",
     "special_modified_bessel_i0",
     "special_modified_bessel_i0_out",
+    "special_modified_bessel_i1",
+    "special_modified_bessel_i1_out",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_modified_bessel_k1",
