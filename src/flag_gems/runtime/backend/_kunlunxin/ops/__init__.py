@@ -196,10 +196,6 @@ from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
-from .convolution_overrideable import (
-    convolution_overrideable,
-    convolution_overrideable_out,
-)
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
@@ -984,8 +980,6 @@ __all__ = [
     "conv3d",
     "conv_transpose1d",
     "conv_transpose2d",
-    "convolution_overrideable",
-    "convolution_overrideable_out",
     "copy",
     "copy_",
     "copysign",
