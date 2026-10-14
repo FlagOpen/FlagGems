@@ -118,29 +118,23 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
     ), "Input and output must have the same number of elements"
     assert out.device == x.device, "Input and output must be on the same device"
 
-    x_in = x
-    out_in = out
+    # Red line: no ATen implementation calls allowed.  The kernel promotes the
+    # loaded value to fp32 for the polynomial and stores through the output
+    # pointer's dtype (triton casts on store), so neither an input dtype
+    # conversion (`x.to(...)`) nor a `contiguous()` / `copy_()` round-trip is
+    # needed -- a non-contiguous tensor is rejected up front (same contract as
+    # i0_).
+    if not x.is_contiguous() or not out.is_contiguous():
+        raise ValueError("i0: input and output tensors must be contiguous")
 
-    if not x_in.is_floating_point():
-        x_in = x_in.to(torch.get_default_dtype())
-    if x_in.dtype != out_in.dtype:
-        x_in = x_in.to(out_in.dtype)
-
-    x_contig = x_in.contiguous()
-    out_was_noncontig = not out_in.is_contiguous()
-    out_contig = out_in.contiguous() if out_was_noncontig else out_in
-
-    n_elements = out_contig.numel()
+    n_elements = out.numel()
     if n_elements % _BLOCK == 0 and n_elements > 0:
         grid = (n_elements // _BLOCK,)
-        i0_kernel_nomask[grid](x_contig, out_contig, n_elements, BLOCK_SIZE=_BLOCK)
+        i0_kernel_nomask[grid](x, out, n_elements, BLOCK_SIZE=_BLOCK)
     else:
         grid = (triton.cdiv(n_elements, _BLOCK),)
-        i0_kernel[grid](x_contig, out_contig, n_elements, BLOCK_SIZE=_BLOCK)
-
-    if out_was_noncontig:
-        out_in.copy_(out_contig)
-    return out_in
+        i0_kernel[grid](x, out, n_elements, BLOCK_SIZE=_BLOCK)
+    return out
 
 
 def i0(x: torch.Tensor):
