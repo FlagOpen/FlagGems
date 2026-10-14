@@ -1392,15 +1392,6 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
-    # nested_to_padded_tensor is a CompositeImplicitAutograd op; it decomposes before
-    # reaching the backend key, so we must also register the CompositeImplicitAutograd
-    # key for use_gems() to intercept it instead of silently running the decomposition.
-    (
-        "nested_to_padded_tensor",
-        nested_to_padded_tensor,
-        None,
-        ["CompositeImplicitAutograd"],
-    ),
     ("new_full", new_full),
     ("new_ones", new_ones),
     ("nextafter", nextafter),

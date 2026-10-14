@@ -13856,18 +13856,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5.0'
-- id: nested_to_padded_tensor
-  description: Converts a nested (ragged) tensor into a padded dense tensor, filling
-    unoccupied positions with a scalar padding value.
-  for:
-  - nested_to_padded_tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5.0'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
