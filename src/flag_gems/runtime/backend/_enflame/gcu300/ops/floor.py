@@ -41,10 +41,7 @@ def floor_kernel(
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
     for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
-        off = block_id * BLOCK + arange
-        mask = off < N_total
         in_blk = tl.make_block_ptr(
             base=in_ptr,
             shape=(N_total,),
