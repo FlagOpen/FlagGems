@@ -176,7 +176,11 @@ def test_linalg_cholesky_ex_check_errors_passes_when_definite():
     assert int(res_info) == 0
     # ``L @ L^T`` must rebuild the input; compare against the reference copy so
     # the check also works when the harness runs with ``--ref=cpu``.
-    recon = res_L @ res_L.transpose(-1, -2)
+    # Upcast before multiplying: an fp32 device matmul would inherit whatever
+    # TF32 setting the host has, and TF32's 10-bit mantissa costs far more
+    # than fp32 tolerance allows for a product of this size.
+    ref_L = utils.to_reference(res_L, True)
+    recon = (ref_L @ ref_L.transpose(-1, -2)).to(torch.float32)
     ref_inp = utils.to_reference(inp, True)
     utils.gems_assert_close(
         recon, ref_inp.to(torch.float32), torch.float32, reduce_dim=25
