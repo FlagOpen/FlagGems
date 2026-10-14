@@ -25,6 +25,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 DEVICE = flag_gems.device
 
@@ -61,3 +62,183 @@ def test_linalg_eigvalsh(case):
     )
     res = flag_gems.linalg_eigvalsh(inputs[0], UPLO=inputs[1])
     utils.gems_assert_close(res, ref.to(dtype), dtype, reduce_dim=case[1])
+
+
+QUICK_CASES = [CASES[0], CASES[3]]
+SHAPE_CASES = QUICK_CASES if cfg.QUICK_MODE else CASES
+
+
+def _symmetric(n, batch=(), dtype=torch.float32, seed=0):
+    torch.manual_seed(seed)
+    raw = torch.randn(*batch, n, n, dtype=dtype, device=DEVICE)
+    return raw + raw.transpose(-1, -2)
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize(
+    "shape", [(0, 0), (0, 3, 3)] if cfg.QUICK_MODE else [(0, 0), (0, 3, 3), (2, 0, 0)]
+)
+def test_linalg_eigvalsh_empty(shape):
+    """A zero-order matrix has no eigenvalues, so the result is zero-sized."""
+    inp = torch.zeros(shape, dtype=torch.float32, device=DEVICE)
+    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    res = flag_gems.linalg_eigvalsh(inp)
+    assert res.shape == ref.shape
+    assert res.dtype == inp.dtype
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_noncontiguous():
+    """A transposed view of a symmetric batch keeps the same spectrum."""
+    base = _symmetric(5, batch=(2,))
+    view = base.transpose(-1, -2)
+    assert not view.is_contiguous()
+    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(view, True))
+    res = flag_gems.linalg_eigvalsh(view)
+    utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=5)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_identity():
+    """The identity has every eigenvalue equal to one."""
+    inp = torch.eye(5, dtype=torch.float32, device=DEVICE)
+    res = flag_gems.linalg_eigvalsh(inp)
+    expected = utils.to_reference(
+        torch.ones(5, dtype=torch.float32, device=DEVICE), True
+    )
+    utils.gems_assert_close(res, expected, torch.float32, reduce_dim=5)
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize(
+    "diagonal",
+    [
+        pytest.param([2.0, 2.0, 5.0, 5.0], id="two_pairs"),
+        pytest.param([3.0, 3.0, 3.0], id="all_equal"),
+        pytest.param([1.0, 1.0, 1.0, 4.0], id="triple_plus_one"),
+    ],
+)
+def test_linalg_eigvalsh_degenerate_eigenvalues(diagonal):
+    """Repeated eigenvalues must come back with the right multiplicity.
+
+    A Jacobi sweep has no rotation that separates an exactly degenerate pair,
+    so this is where a sorting or convergence bug would show up as a dropped or
+    duplicated value.
+    """
+    inp = torch.diag(torch.tensor(diagonal, dtype=torch.float32, device=DEVICE))
+    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    res = flag_gems.linalg_eigvalsh(inp)
+    utils.gems_assert_close(
+        res, ref.to(torch.float32), torch.float32, reduce_dim=len(diagonal)
+    )
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize("n", [3, 5] if cfg.QUICK_MODE else [2, 3, 5, 8])
+def test_linalg_eigvalsh_ascending_order(n):
+    """ATen documents an ascending spectrum; the sort step must deliver it."""
+    res = flag_gems.linalg_eigvalsh(_symmetric(n, seed=n))
+    assert bool(torch.all(res[1:] >= res[:-1]))
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_trace_is_preserved():
+    """The eigenvalues sum to the trace, which catches a lost rotation."""
+    inp = _symmetric(6, seed=3)
+    res = flag_gems.linalg_eigvalsh(inp)
+    total = res.sum()
+    trace = utils.to_reference(inp, True).diagonal(dim1=-2, dim2=-1).sum()
+    utils.gems_assert_close(
+        total.reshape(1).to(torch.float32),
+        trace.reshape(1).to(torch.float32),
+        torch.float32,
+        reduce_dim=6,
+    )
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_reads_requested_triangle():
+    """``UPLO`` selects which triangle is mirrored; a wrong pick changes the result."""
+    inp = torch.tensor([[1.0, 2.0], [7.0, 1.0]], dtype=torch.float32, device=DEVICE)
+    ref_inp = utils.to_reference(inp, True)
+    lower = flag_gems.linalg_eigvalsh(inp, UPLO="L")
+    upper = flag_gems.linalg_eigvalsh(inp, UPLO="U")
+    ref_l = torch.ops.aten.linalg_eigvalsh.default(ref_inp, UPLO="L")
+    ref_u = torch.ops.aten.linalg_eigvalsh.default(ref_inp, UPLO="U")
+    utils.gems_assert_close(lower, ref_l.to(torch.float32), torch.float32, reduce_dim=2)
+    utils.gems_assert_close(upper, ref_u.to(torch.float32), torch.float32, reduce_dim=2)
+    assert not torch.allclose(lower, upper)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_default_uplo_is_lower():
+    """``UPLO`` defaults to ``"L"`` in the ATen schema, so it must default here."""
+    inp = torch.tensor([[1.0, 2.0], [7.0, 1.0]], dtype=torch.float32, device=DEVICE)
+    assert torch.equal(
+        flag_gems.linalg_eigvalsh(inp), flag_gems.linalg_eigvalsh(inp, UPLO="L")
+    )
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_batch_independence():
+    """Each matrix in a batch is diagonalised on its own."""
+    a = _symmetric(4, seed=1)
+    b = _symmetric(4, seed=2)
+    stacked = torch.stack([a, b])
+    res = flag_gems.linalg_eigvalsh(stacked)
+    torch.testing.assert_close(res[0], flag_gems.linalg_eigvalsh(a))
+    torch.testing.assert_close(res[1], flag_gems.linalg_eigvalsh(b))
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize(
+    "bad_fn, match",
+    [
+        pytest.param(
+            lambda: torch.randn(3, 4, device=DEVICE), "square", id="non_square"
+        ),
+        pytest.param(
+            lambda: torch.randn(4, device=DEVICE), "2 dimensions", id="one_dimensional"
+        ),
+    ],
+)
+def test_linalg_eigvalsh_invalid_shape(bad_fn, match):
+    """Shapes ATen refuses must raise rather than silently reshape."""
+    with pytest.raises(RuntimeError, match=match):
+        flag_gems.linalg_eigvalsh(bad_fn())
+
+
+@pytest.mark.linalg_eigvalsh
+@pytest.mark.parametrize("uplo", ["X", "l", "lower", ""])
+def test_linalg_eigvalsh_invalid_uplo(uplo):
+    """An unrecognised ``UPLO`` must be rejected, not treated as a default."""
+    with pytest.raises(RuntimeError, match="UPLO"):
+        flag_gems.linalg_eigvalsh(_symmetric(3), UPLO=uplo)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_rejects_complex():
+    """Hermitian complex input is outside this kernel's declared support."""
+    inp = _symmetric(4).to(torch.complex64)
+    with pytest.raises(Exception):
+        flag_gems.linalg_eigvalsh(inp)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_fp64_preserved():
+    """Double precision stays double rather than silently narrowing."""
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inp = _symmetric(4, dtype=torch.float64)
+    res = flag_gems.linalg_eigvalsh(inp)
+    assert res.dtype == torch.float64
+    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    utils.gems_assert_close(res, ref, torch.float64, reduce_dim=4)
+
+
+@pytest.mark.linalg_eigvalsh
+def test_linalg_eigvalsh_autograd_input_is_detached():
+    """A grad-requiring input is accepted; the forward kernel builds no graph."""
+    inp = _symmetric(4).requires_grad_(True)
+    res = flag_gems.linalg_eigvalsh(inp)
+    assert not res.requires_grad

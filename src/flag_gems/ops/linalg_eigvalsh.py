@@ -156,8 +156,29 @@ def _eigvalsh_jacobi_kernel(
     tl.store(Out_ptr + pid * s_o + ri, vals, mask=ri < NP)
 
 
-def linalg_eigvalsh(self, UPLO):
+def linalg_eigvalsh(self, UPLO="L"):
+    # ``aten::linalg_eigvalsh(Tensor self, str UPLO="L")`` defaults UPLO, so it
+    # has to default here too or ``torch.linalg.eigvalsh(A)`` fails to bind.
+    if UPLO not in ("L", "U"):
+        raise RuntimeError(
+            "Expected UPLO argument to be 'L' or 'U', but got " + str(UPLO)
+        )
+    if self.dim() < 2:
+        raise RuntimeError(
+            "linalg.eigh: The input tensor A must have at least 2 dimensions."
+        )
+    if self.shape[-1] != self.shape[-2]:
+        raise RuntimeError(
+            "linalg.eigh: A must be batches of square matrices, but they are %d by %d matrices"
+            % (self.shape[-2], self.shape[-1])
+        )
+
     n = int(self.shape[-1])
+    # An empty matrix has no eigenvalues; ATen returns the empty result rather
+    # than dividing by the zero-sized matrix order.
+    if n == 0 or self.numel() == 0:
+        return torch.empty(self.shape[:-2] + (n,), device=self.device, dtype=self.dtype)
+
     B = int(self.numel() // (n * n))
     mat = self.reshape(B, n, n)
 
