@@ -74,4 +74,8 @@ jobs:
             echo
             echo "=== /usr/local/cuda* ==="
             ls -d /usr/local/cuda* 2>/dev/null || echo "no /usr/local/cuda*"
+            echo
+
+            echo "=== npu-smi info ==="
+            npu-smi info 2>&1 || echo "npu-smi: not found"
           } | tee -a "$GITHUB_STEP_SUMMARY"
