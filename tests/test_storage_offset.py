@@ -99,30 +99,24 @@ _VIEW_ROWS = _layout_rows(tu.selected_shapes(), _CORE_LAYOUTS) + _layout_rows(
 )
 
 
-# Storage offsets depend on the view geometry, not element values.
-# One ordinary value range; dtype/structure coverage is combined below.
-_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
-    for dtype in _DTYPES
-    for value_range in tu.selected_ranges()[:1]
-]
-
-
-# A nonzero-offset, noncontiguous view checks dtype-specific offset units.
-_DTYPE_SMOKE_VIEW = next(
-    row for row in _VIEW_ROWS if row[1] == "slice_cols" and len(row[0]) == 3
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_VIEW_DTYPE_CASES = [
+    (shape, layout, torch.float32) for shape, layout in _VIEW_ROWS
+] + tu.selected_cases(
+    [
+        ((20, 320, 15), "slice_cols", dtype)
+        for dtype in _DTYPES
+        if dtype != torch.float32
+    ],
+    quick=[
+        ((2, 19, 7), "slice_cols", dtype) for dtype in _DTYPES if dtype != torch.float32
+    ],
 )
-# All structures use float32; every dtype also covers the selected structure.
-_VIEW_DTYPE_RANGE_CASES = [
-    (shape, layout, dtype, value_range)
-    for shape, layout in _VIEW_ROWS
-    for dtype, value_range in _DTYPE_RANGE_CASES
-    if dtype == torch.float32 or (shape, layout) == _DTYPE_SMOKE_VIEW
-]
 
 
 @pytest.mark.storage_offset
-@pytest.mark.parametrize("shape, layout, dtype, value_range", _VIEW_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, layout, dtype", _VIEW_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_storage_offset_views(shape, layout, value_range, dtype):
     base = tu.make_input(dtype, shape, value_range)
     inp = _offset_view(base, layout)

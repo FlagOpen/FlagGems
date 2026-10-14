@@ -175,28 +175,24 @@ def test_dim_empty_dense(shape, dtype):
     _assert_result(res_out, ref_out)
 
 
-# Tensor rank depends on shape, not element values.
-# One ordinary value range; dtype/structure coverage is combined below.
-_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
-    for dtype in _DIM_DTYPES
-    for value_range in tu.selected_ranges()[:1]
-]
-
-
-# Both default and quick shapes include a nontrivial rank-3 dtype smoke case.
-_DTYPE_SMOKE_SHAPE = next(shape for shape in tu.selected_shapes() if len(shape) == 3)
-# All structures use float32; every dtype also covers the selected structure.
-_SHAPE_DTYPE_RANGE_CASES = [
-    (shape, dtype, value_range)
-    for shape in tu.selected_shapes()
-    for dtype, value_range in _DTYPE_RANGE_CASES
-    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
-]
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_SHAPE_DTYPE_CASES = tu.selected_cases(
+    [
+        ((), torch.float32),
+        ((1,), torch.float32),
+        ((256,), torch.float32),
+        ((1024, 1024), torch.float32),
+        ((16, 128, 64, 60), torch.float32),
+        ((16, 7, 57, 32, 29), torch.float32),
+    ]
+    + [((20, 320, 15), dtype) for dtype in _DIM_DTYPES],
+    quick=[((2, 19, 7), dtype) for dtype in _DIM_DTYPES],
+)
 
 
 @pytest.mark.dim
-@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_dim_dense_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -242,17 +238,20 @@ def test_dim_sparse_coo_layouts(case, dtype):
     assert inp._nnz() == nnz
 
 
-# All structures use float32; every dtype also covers the selected structure.
-_COO_DTYPE_RANGE_CASES = [
-    (case, dtype, value_range)
-    for case in _COO_RANGE_CASES
-    for dtype, value_range in _DTYPE_RANGE_CASES
-    if dtype == torch.float32 or case == _COO_RANGE_CASES[-1]
-]
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_COO_DTYPE_CASES = tu.selected_cases(
+    [
+        (((3, 4), (), 7), torch.float32),
+        (((3, 4), (3,), 8), torch.float32),
+    ]
+    + [(((12, 9, 3, 6), (4,), 9), dtype) for dtype in _DIM_DTYPES],
+    quick=[(((2, 19, 7), (), 8), dtype) for dtype in _DIM_DTYPES],
+)
 
 
 @pytest.mark.dim
-@pytest.mark.parametrize("case, dtype, value_range", _COO_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("case, dtype", _COO_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_dim_sparse_coo_value_ranges(case, value_range, dtype):
     sparse_shape, dense_shape, nnz = case
     inp = _make_coo(sparse_shape, dense_shape, nnz, dtype, value_range)
@@ -281,17 +280,19 @@ def test_dim_sparse_csr_layouts(case, dtype):
     assert inp.sparse_dim() == 2
 
 
-# All structures use float32; every dtype also covers the selected structure.
-_CSR_DTYPE_RANGE_CASES = [
-    (case, dtype, value_range)
-    for case in _CSR_RANGE_CASES
-    for dtype, value_range in _DTYPE_RANGE_CASES
-    if dtype == torch.float32 or case == _CSR_RANGE_CASES[-1]
-]
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_CSR_DTYPE_CASES = tu.selected_cases(
+    [
+        (((4, 4), 3), torch.float32),
+    ]
+    + [(((2, 4, 4), 5), dtype) for dtype in _DIM_DTYPES],
+    quick=[(((2, 19, 7), 3), dtype) for dtype in _DIM_DTYPES],
+)
 
 
 @pytest.mark.dim
-@pytest.mark.parametrize("case, dtype, value_range", _CSR_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("case, dtype", _CSR_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_dim_sparse_csr_value_ranges(case, value_range, dtype):
     shape, nnz = case
     inp = _make_csr(shape, nnz, dtype, value_range)

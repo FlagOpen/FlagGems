@@ -286,28 +286,24 @@ def _assert_output_nr(res, ref, expected):
     assert res == expected, (res, expected)
 
 
-# Output numbers depend on autograd metadata, not element values.
-# One ordinary value range; dtype/structure coverage is combined below.
-_DTYPE_RANGE_CASES = [
-    (dtype, value_range)
-    for dtype in _SUPPORTED_DTYPES
-    for value_range in tu.selected_ranges()[:1]
-]
-
-
-# Both default and quick shapes include a nontrivial rank-3 dtype smoke case.
-_DTYPE_SMOKE_SHAPE = next(shape for shape in tu.selected_shapes() if len(shape) == 3)
-# All structures use float32; every dtype also covers the selected structure.
-_SHAPE_DTYPE_RANGE_CASES = [
-    (shape, dtype, value_range)
-    for shape in tu.selected_shapes()
-    for dtype, value_range in _DTYPE_RANGE_CASES
-    if dtype == torch.float32 or shape == _DTYPE_SMOKE_SHAPE
-]
+# Explicit default/quick pairs; dtype lists retain device capability filtering.
+_SHAPE_DTYPE_CASES = tu.selected_cases(
+    [
+        ((), torch.float32),
+        ((1,), torch.float32),
+        ((256,), torch.float32),
+        ((1024, 1024), torch.float32),
+        ((16, 128, 64, 60), torch.float32),
+        ((16, 7, 57, 32, 29), torch.float32),
+    ]
+    + [((20, 320, 15), dtype) for dtype in _SUPPORTED_DTYPES],
+    quick=[((2, 19, 7), dtype) for dtype in _SUPPORTED_DTYPES],
+)
 
 
 @pytest.mark.output_nr
-@pytest.mark.parametrize("shape, dtype, value_range", _SHAPE_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
+@pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_output_nr_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
