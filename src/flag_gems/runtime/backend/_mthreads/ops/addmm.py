@@ -1334,6 +1334,7 @@ _SPLIT384_SHAPES = {
     (16384, 576, 4608): (1, 4, False),
 }
 
+
 def _is_one(value):
     try:
         return float(value) == 1.0
