@@ -1277,6 +1277,7 @@ _FULL_CONFIG = (
     ("logspace", logspace),
     ("logsumexp", logsumexp),
     ("lstm.input", lstm),
+    ("lstm_cell", lstm_cell),
     ("lt.Scalar", lt_scalar),
     ("lt.Tensor", lt),
     ("lt_.Scalar", lt_scalar_),

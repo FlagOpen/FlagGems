@@ -12092,6 +12092,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: lstm_cell
+  description: Fused single-step LSTM cell implemented as one Triton kernel covering both gate GEMMs, the gate chain and the cell update.
+  for:
+  - lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: lt
   description: Computes that `input` is less than `other` element-wise.
   for:
