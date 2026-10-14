@@ -21,9 +21,24 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 
+def _reference_impl(logits, pm, om, pens):
+    for i in range(logits.shape[0]):
+        m = pm[i] | om[i]
+        logits[i][m] = torch.where(
+            logits[i][m] > 0, logits[i][m] / pens[i], logits[i][m] * pens[i]
+        )
+
+
 def _init_vllm():
     if not torch.cuda.is_available():
         return None, False
+    # vLLM ships CUDA kernels built for NVIDIA only. On other vendors the
+    # launch is accepted but fails asynchronously, poisoning the device for
+    # every later kernel in the process -- and since this runs at import time,
+    # it breaks unrelated tests that merely got collected alongside this file.
+    # Never probe the kernel off NVIDIA; use the reference implementation.
+    if flag_gems.vendor_name != "nvidia":
+        return _reference_impl, True
     try:
         from vllm._custom_ops import apply_repetition_penalties as fn
 
@@ -33,15 +48,7 @@ def _init_vllm():
         fn(t, m, m, torch.full((2,), 1.2, device="cuda"))
         return fn, True
     except (ImportError, RuntimeError, AttributeError):
-
-        def fallback(logits, pm, om, pens):
-            for i in range(logits.shape[0]):
-                m = pm[i] | om[i]
-                logits[i][m] = torch.where(
-                    logits[i][m] > 0, logits[i][m] / pens[i], logits[i][m] * pens[i]
-                )
-
-        return fallback, True
+        return _reference_impl, True
 
 
 _vllm_fn, _VLLM_OK = _init_vllm()
