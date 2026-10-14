@@ -38,12 +38,18 @@ import flag_gems
 from . import base, consts
 
 # (shape, dim): the split axis stays even so GLU's two halves are exact.
+# The largest entry is kept at 512**3 rather than 1024**3: the fp32 case of
+# 1024**3 makes the ATen composite baseline alone peak at ~40 GiB (the five
+# operands are 16 GiB and the composite materializes several full-size
+# intermediates), which OOMs on a 40 GiB shared CI GPU before the Gems kernel is
+# ever reached. 512**3 peaks at ~5 GiB in fp32 and still exercises the same
+# address-decode path.
 GLU_BWD_JVP_SHAPES = [
     ((4096, 4096), -1),
     ((4096, 4096), 0),
     ((64, 512, 512), -1),
     ((64, 512, 512), 1),
-    ((1024, 1024, 1024), -1),
+    ((512, 512, 512), -1),
 ]
 
 
