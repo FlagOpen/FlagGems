@@ -415,170 +415,42 @@ _TLE_VARIANTS = (
 _TLE = {"init": False, "ok": False, "kern": {}}
 
 
-def _tle_scatter_payload(elt, idx_t, wt, kt, name, simd):
-    if simd:
-        # fp32 vectorised inner loop.  `lo`/`ls` are float; `li` keeps the index's
-        # native width and is read straight into the 16-lane byte-offset vector.
-        # The scatter offset unit is BYTES and must be scaled with svmul (vsllp
-        # returns (x<<2)|3 on negative lanes); out-of-window lanes are clamped to
-        # the dummy slot lo[wlen] by an unsigned min.  A mfence() before LM2GM is
-        # required for the SIMD LM writes to be visible to the read-back DMA.
-        if idx_t == "int":
-            load_idx = "int32x16_t   oo   = vload_lm_int32x16(li + j0);"
-            prelude = ""
-        else:
-            load_idx = "int32x16_t   oo   = vgather_lm_int32x16(li + j0, strideoff);"
-            prelude = (
-                "  __simd__ int soff[16];\n"
-                "  for (int _l = 0; _l < 16; ++_l) soff[_l] = _l * 8;\n"
-                "  mfence();\n"
-                "  int32x16_t strideoff = vload_lm_int32x16(soff);\n"
-            )
-        # The vector scatter's LM writes are only ordered w.r.t. later accesses by
-        # a fence (see xpu/kernel/cluster_memory.h: "You should access memory
-        # after mfence() call").  Without the fence below, a scalar tail store
-        # that shares its target address with a still-pending vscatter lane can
-        # lose to that (earlier-j) vector write, so K % 16 != 0 with duplicate
-        # indices returns the wrong element.  The fence is inside `if (j0 < klen)`
-        # so it is paid only when a tail actually exists -- i.e. never for the
-        # benchmark matrix, whose klen is always a multiple of 16.
-        return rf"""
-#include "xpu/kernel/xtdk.h"
-#include "xpu/kernel/xtdk_simd.h"
-#define WT {wt}
-#define KT {kt}
-#define GRID {_TLE_GRID}
-#define NDM {_TLE_NDM}
-extern "C" __device__ void {name}(_global_ptr_ float *out,
-    _global_ptr_ const float *base,
-    _global_ptr_ const {idx_t} *index, _global_ptr_ const float *src,
-    int R, int W, int K,
-    int l0, int l1, int l2, int l3,
-    int o0, int o1, int o2, int o3,
-    int i0, int i1, int i2, int i3,
-    int s0, int s1, int s2, int s3) {{
-  __simd__ float lo[WT + 1];
-  __simd__ {idx_t} li[KT];
-  __simd__ float ls[KT];
-{prelude}  int lead[NDM] = {{l0, l1, l2, l3}};
-  int os[NDM] = {{o0, o1, o2, o3}};
-  int is[NDM] = {{i0, i1, i2, i3}};
-  int ss[NDM] = {{s0, s1, s2, s3}};
-  int ncore = core_num();
-  int step = GRID * ncore;
-  for (int r = cluster_id() * ncore + core_id(); r < R; r += step) {{
-    int tmp = r, ob = 0, ib = 0, sb = 0;
-    for (int d = NDM - 1; d >= 0; --d) {{
-      int l = lead[d];
-      if (l > 0) {{
-        int c = tmp % l; tmp /= l;
-        ob += c * os[d];
-        ib += c * is[d];
-        sb += c * ss[d];
-      }}
-    }}
-    for (int c0 = 0; c0 < W; c0 += WT) {{
-      int wlen = (W - c0 < WT) ? (W - c0) : WT;
-      GM2LM(base + ob + c0, lo, wlen * sizeof(float));
-      for (int k0 = 0; k0 < K; k0 += KT) {{
-        int klen = (K - k0 < KT) ? (K - k0) : KT;
-        GM2LM(index + ib + k0, li, klen * sizeof({idx_t}));
-        GM2LM(src + sb + k0, ls, klen * sizeof(float));
-        int j0 = 0;
-        for (; j0 + 16 <= klen; j0 += 16) {{
-          {load_idx}
-          float32x16_t vv   = vload_lm_float32x16(ls + j0);
-          int32x16_t   rel  = svadd_int32x16(-c0, oo);
-          int32x16_t   offb = svmul_int32x16(4, rel);
-          uint32x16_t  cl   = svmin_uint32x16((uint32_t)(wlen * 4), (uint32x16_t)offb);
-          vscatter_lm_float32x16(lo, vv, (int32x16_t)cl);
-        }}
-        if (j0 < klen) {{
-          mfence();
-          for (; j0 < klen; ++j0) {{
-            int c = (int)li[j0];
-            if (c >= c0 && c < c0 + wlen) lo[c - c0] = ls[j0];
-          }}
-        }}
-      }}
-      mfence();
-      LM2GM(lo, out + ob + c0, wlen * sizeof(float));
-    }}
-  }}
-  mfence();
-}}
-"""
-    return rf"""
-#include "xpu/kernel/xtdk.h"
-#define WT {wt}
-#define KT {kt}
-#define GRID {_TLE_GRID}
-#define NDM {_TLE_NDM}
-extern "C" __device__ void {name}(_global_ptr_ {elt} *out,
-    _global_ptr_ const {elt} *base,
-    _global_ptr_ const {idx_t} *index, _global_ptr_ const {elt} *src,
-    int R, int W, int K,
-    int l0, int l1, int l2, int l3,
-    int o0, int o1, int o2, int o3,
-    int i0, int i1, int i2, int i3,
-    int s0, int s1, int s2, int s3) {{
-  __local__ {elt} lo[WT];
-  __local__ {idx_t} li[KT];
-  __local__ {elt} ls[KT];
-  int lead[NDM] = {{l0, l1, l2, l3}};
-  int os[NDM] = {{o0, o1, o2, o3}};
-  int is[NDM] = {{i0, i1, i2, i3}};
-  int ss[NDM] = {{s0, s1, s2, s3}};
-  int ncore = core_num();
-  int step = GRID * ncore;
-  for (int r = cluster_id() * ncore + core_id(); r < R; r += step) {{
-    int tmp = r, ob = 0, ib = 0, sb = 0;
-    for (int d = NDM - 1; d >= 0; --d) {{
-      int l = lead[d];
-      if (l > 0) {{
-        int c = tmp % l; tmp /= l;
-        ob += c * os[d];
-        ib += c * is[d];
-        sb += c * ss[d];
-      }}
-    }}
-    for (int c0 = 0; c0 < W; c0 += WT) {{
-      int wlen = (W - c0 < WT) ? (W - c0) : WT;
-      GM2LM(base + ob + c0, lo, wlen * sizeof({elt}));
-      for (int k0 = 0; k0 < K; k0 += KT) {{
-        int klen = (K - k0 < KT) ? (K - k0) : KT;
-        GM2LM(index + ib + k0, li, klen * sizeof({idx_t}));
-        GM2LM(src + sb + k0, ls, klen * sizeof({elt}));
-        for (int j = 0; j < klen; ++j) {{
-          int c = (int)li[j];
-          if (c >= c0 && c < c0 + wlen) lo[c - c0] = ls[j];
-        }}
-      }}
-      LM2GM(lo, out + ob + c0, wlen * sizeof({elt}));
-    }}
-  }}
-  mfence();
-}}
-"""
-
-
 def _tle_scatter_init():
     if _TLE["init"]:
         return _TLE["ok"]
     _TLE["init"] = True
     try:
+        import os as _os
+
         import triton as _triton
         import triton.experimental.tle as _tle
 
-        for elt, idx_t, wt, kt, simd in _TLE_VARIANTS:
+        # Precompiled, secrecy-hardened device objects (packed from
+        # payload/src/scatter_lm_*.xpu via
+        # docs/xpu3/how_to_pack_payload/pack_payload.py --obj-dir, then merged
+        # into one object with `ld.lld -r`).  We ship the .o (not the .xpu
+        # source): the stub name must equal the entry symbol and the signature
+        # must match the C++ ABI.  In object= mode the merge-time signature
+        # check is skipped (the payload isn't in IR), so a wrong signature fails
+        # at runtime, not compile -- keep the stub in lockstep with the C++.
+        # Re-pack after editing any .xpu: the compile-cache key is the .o
+        # content digest, so a stale .o silently keeps the old code.
+        _obj = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+            "payload",
+            "obj",
+            "scatter_src.o",
+        )
+
+        # `_wt`/`_kt`/`_simd` are baked into the packed payloads now; the tuple
+        # stays as the record of the variant set and the tile sizes it used.
+        for elt, idx_t, _wt, _kt, _simd in _TLE_VARIANTS:
             sym = f"scatter_lm_{elt}_{idx_t}"
-            ns = {"_tle": _tle}
+            ns = {"_tle": _tle, "_OBJ": _obj}
             exec(
-                "@_tle.raw.dialect('xpu3', source=_SRC)\n"
+                "@_tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
                 f"def {sym}(out, base, index, src, R, W, K, *md):\n"
                 "    ...\n",
-                {"_tle": _tle,
-                 "_SRC": _tle_scatter_payload(elt, idx_t, wt, kt, sym, simd)},
                 ns,
             )
             callee = ns[sym]
