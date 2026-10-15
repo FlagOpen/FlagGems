@@ -16018,7 +16018,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: rnn_tanh
   description: Pure Triton implementation for the rnn_tanh input overload.
   for:
