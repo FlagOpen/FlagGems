@@ -18,18 +18,16 @@ import torch
 import triton
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.ops import scalar_tensor as _gems_scalar_tensor
-
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems.ops.__rshift__")
+logger = logging.getLogger(__name__)
 
-# Two codegen variants for the two latency regimes on XPU (mirrors the validated
-# sibling override _kunlunxin/ops/bitwise_right_shift.py):
+# Two codegen variants for the two latency regimes on XPU (mirrors the
+# validated sibling override _kunlunxin/ops/bitwise_right_shift.py):
 # - small tensors (numel <= 4096): launch-bound -> 1-CTA (kunlunAutoGrid) path
 #   keeps the whole tensor in one CTA.
-# - medium/large tensors: grid-stride path with explicit unroll 16, the sweet
-#   spot measured for this op family on XPU.
+# - medium/large tensors: 12-CTA grid-stride path with explicit unroll 16;
+#   unroll 16 is the sweet spot measured for this op family on XPU.
 config_small = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -51,37 +49,62 @@ config_large = CodeGenConfig(
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_small)
 @triton.jit
-def rshift_kernel_small(a, b):
+def _rshift_tensor_kernel_small(a, b):
     return a >> b
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")], config=config_large)
 @triton.jit
-def rshift_kernel_large(a, b):
+def _rshift_tensor_kernel_large(a, b):
     return a >> b
 
 
-def __rshift__(self, other, *, out=None):
-    """``__rshift__`` for Kunlunxin (tensor/scalar and ``.out`` overloads).
+@pointwise_dynamic(
+    is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_small
+)
+@triton.jit
+def _rshift_scalar_kernel_small(a, b):
+    return a >> b
 
-    The generic ``_rshift_tensor_kernel``/``_rshift_scalar_kernel`` run without
-    an XPU CodeGenConfig, so every shape recompiles and the scalar variant keeps
-    a runtime scalar operand that blocks vectorization.  Here the scalar is
-    materialized as a device tensor (so the kernel is the same tensor-tensor
-    fast path) and the two size regimes use the validated small/large recipes.
-    """
-    logger.debug("GEMS_KUNLUNXIN __RSHIFT__")
 
-    if not torch.is_tensor(other):
-        other = _gems_scalar_tensor(other, dtype=self.dtype, device=self.device)
+@pointwise_dynamic(
+    is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")], config=config_large
+)
+@triton.jit
+def _rshift_scalar_kernel_large(a, b):
+    return a >> b
 
-    large = self.numel() > 4096
-    if out is not None:
+
+def _rshift_kernel(a, b, *, out=None):
+    """Dispatch to the small/large codegen variants, tensor-vs-scalar shift."""
+    large = a.numel() > 4096
+    if torch.is_tensor(b):
         if large:
-            rshift_kernel_large(self, other, out0=out)
-        else:
-            rshift_kernel_small(self, other, out0=out)
-        return out
+            return _rshift_tensor_kernel_large(a, b, out0=out)
+        return _rshift_tensor_kernel_small(a, b, out0=out)
     if large:
-        return rshift_kernel_large(self, other)
-    return rshift_kernel_small(self, other)
+        return _rshift_scalar_kernel_large(a, b, out0=out)
+    return _rshift_scalar_kernel_small(a, b, out0=out)
+
+
+def __rshift__(self: torch.Tensor, other, *, out=None) -> torch.Tensor:
+    """Apply arithmetic or logical right shift for tensor and scalar operands."""
+    logger.debug("GEMS_KUNLUNXIN __RSHIFT__")
+    if out is None:
+        # Non-out path: let the pointwise_dynamic wrapper allocate the output.
+        large = self.numel() > 4096
+        if torch.is_tensor(other):
+            if large:
+                return _rshift_tensor_kernel_large(self, other)
+            return _rshift_tensor_kernel_small(self, other)
+        if large:
+            return _rshift_scalar_kernel_large(self, other)
+        return _rshift_scalar_kernel_small(self, other)
+    _rshift_kernel(self, other, out=out)
+    return out
+
+
+def __rshift___out(self: torch.Tensor, other, *, out) -> torch.Tensor:
+    """Apply arithmetic or logical right shift for tensor and scalar operands (out variant)."""
+    logger.debug("GEMS_KUNLUNXIN __RSHIFT__ OUT")
+    return __rshift__(self, other, out=out)

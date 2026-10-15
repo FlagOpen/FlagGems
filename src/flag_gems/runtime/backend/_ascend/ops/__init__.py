@@ -38,6 +38,7 @@ from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
 from .count_nonzero import count_nonzero
+from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
@@ -48,6 +49,7 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -206,6 +208,7 @@ __all__ = [
     "cholesky_solve_out",
     "concat",
     "count_nonzero",
+    "cudnn_convolution",
     "cummax",
     "cummin",
     "cumsum",
@@ -216,6 +219,7 @@ __all__ = [
     "dist",
     "dot",
     "embedding",
+    "embedding_spmdm",
     "exponential",
     "exponential_",
     "fill_scalar",
