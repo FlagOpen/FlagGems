@@ -42,11 +42,22 @@ def test_mish_inplace():
 
 
 class MishBackwardBenchmark(base.UnaryPointwiseBenchmark):
-    def get_input_iter(self, dtype: torch.dtype) -> Generator:
-        for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, dtype, self.device)
-            grad_out = torch.randn_like(inp)
-            yield grad_out, inp
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        grad_out = torch.randn_like(inp)
+        return grad_out, inp
 
 
 @pytest.mark.mish_backward

@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "dropout",
+  "requires_triton_kernel": true,
+  "description": "During training, randomly zeroes some of the elements of the `input` tensor with\nprobability `p`.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.5
+    },
+    {
+      "name": "train",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

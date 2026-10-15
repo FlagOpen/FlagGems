@@ -1,0 +1,29 @@
+{
+  "api_version": "v6.0",
+  "name": "beam_search_score_",
+  "requires_triton_kernel": true,
+  "description": "In-place version of beam search score computation.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "beam_scores",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "log_probs"
+    ],
+    "returns_alias_of": {
+      "out": "log_probs"
+    }
+  }
+}

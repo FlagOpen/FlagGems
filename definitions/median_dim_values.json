@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "median_dim_values",
+  "requires_triton_kernel": true,
+  "description": "A variant of `median_dim()` with the `out` argument.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "values",
+      "kind": "keyword_only",
+      "required": true
+    },
+    {
+      "name": "indices",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "values",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

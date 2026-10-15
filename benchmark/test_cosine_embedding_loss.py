@@ -18,19 +18,29 @@ import torch
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input1": list(shape), "input2": list(shape)},
+        params={"margin": 0.0, "reduction": 1},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp1 = torch.randn(shape, dtype=dtype, device=device)
     inp2 = torch.randn(shape, dtype=dtype, device=device)
     target = (torch.randint(0, 2, (shape[0],), device=device).to(dtype) * 2) - 1
     # aten::cosine_embedding_loss(input1, input2, target, margin, reduction)
-    yield inp1, inp2, target, 0.0, 1
+    return inp1, inp2, target, 0.0, 1
 
 
 @pytest.mark.cosine_embedding_loss
 def test_cosine_embedding_loss():
     # 2D-only: cosine_embedding_loss needs (N, D) inputs with a 1D (N,) target.
     bench = base.GenericBenchmark2DOnly(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="cosine_embedding_loss",
         torch_op=torch.ops.aten.cosine_embedding_loss,
         dtypes=consts.FLOAT_DTYPES,

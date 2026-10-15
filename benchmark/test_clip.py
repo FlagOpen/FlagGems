@@ -18,18 +18,36 @@ import torch
 from . import base, consts, utils
 
 
-def _input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, -0.5, 0.5
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"min": -0.5, "max": 0.5},
+        builder_args=(shape, -0.5, 0.5),
+    )
     if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield inp, None, 0.5
-        yield inp, -0.5, None
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"min": None, "max": 0.5},
+            builder_args=(shape, None, 0.5),
+        )
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"min": -0.5, "max": None},
+            builder_args=(shape, -0.5, None),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, min_v, max_v = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, min_v, max_v
 
 
 @pytest.mark.clip
 def test_clip():
     bench = base.GenericBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="clip",
         torch_op=torch.clip,
         dtypes=consts.FLOAT_DTYPES,
@@ -40,7 +58,8 @@ def test_clip():
 @pytest.mark.clip_
 def test_clip_inplace():
     bench = base.GenericBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="clip_",
         torch_op=torch.clip_,
         dtypes=consts.FLOAT_DTYPES,

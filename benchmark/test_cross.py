@@ -40,24 +40,38 @@ class CrossBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(CROSS_COMMON_CASES)
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for input_shape, other_shape, dim in self.shapes:
-            input = _randn(input_shape, cur_dtype, self.device)
-            other = _randn(other_shape, cur_dtype, self.device)
-            yield input, other, {"dim": dim}
+    def get_case_iter(self, cur_dtype) -> Generator:
+        for ordinal, (input_shape, other_shape, dim) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(input_shape), "other": list(other_shape)},
+                    params={"dim": dim},
+                    builder_args=(input_shape, other_shape, dim),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        input_shape, other_shape, dim = plan.builder_args
+        input = _randn(input_shape, case.dtype, self.device)
+        other = _randn(other_shape, case.dtype, self.device)
+        return input, other, {"dim": dim}
 
 
 class CrossOutBenchmark(CrossBenchmark):
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for input_shape, other_shape, dim in self.shapes:
-            input = _randn(input_shape, cur_dtype, self.device)
-            other = _randn(other_shape, cur_dtype, self.device)
-            out = torch.empty(
-                torch.broadcast_shapes(input_shape, other_shape),
-                dtype=cur_dtype,
-                device=self.device,
-            )
-            yield input, other, {"dim": dim, "out": out}
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        input_shape, other_shape, dim = plan.builder_args
+        input = _randn(input_shape, case.dtype, self.device)
+        other = _randn(other_shape, case.dtype, self.device)
+        out = torch.empty(
+            torch.broadcast_shapes(input_shape, other_shape),
+            dtype=case.dtype,
+            device=self.device,
+        )
+        return input, other, {"dim": dim, "out": out}
 
 
 @pytest.mark.cross

@@ -33,14 +33,31 @@ class Im2colBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = IM2COL_SHAPES_4D
 
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, cur_dtype):
+        ordinal = 0
         for shape in self.shapes:
-            yield from self.im2col_input_fn(shape, cur_dtype, self.device)
+            for kernel_size, dilation, padding, stride in IM2COL_CONFIGS:
+                yield self._case_from_plan(
+                    cur_dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params={
+                            "kernel_size": kernel_size,
+                            "dilation": dilation,
+                            "padding": padding,
+                            "stride": stride,
+                        },
+                        builder_args=(shape, kernel_size, dilation, padding, stride),
+                    ),
+                )
+                ordinal += 1
 
-    def im2col_input_fn(self, shape, dtype, device):
-        for kernel_size, dilation, padding, stride in IM2COL_CONFIGS:
-            x = torch.randn(shape, dtype=dtype, device=device)
-            yield x, kernel_size, dilation, padding, stride
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, kernel_size, dilation, padding, stride = plan.builder_args
+        x = torch.randn(shape, dtype=case.dtype, device=self.device)
+        return x, kernel_size, dilation, padding, stride
 
 
 @pytest.mark.im2col

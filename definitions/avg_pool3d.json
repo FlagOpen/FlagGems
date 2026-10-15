@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "avg_pool3d",
+  "requires_triton_kernel": true,
+  "description": "Applies 3D average pooling over an input signal composed of several input planes.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "count_include_pad",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true
+    },
+    {
+      "name": "divisor_override",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

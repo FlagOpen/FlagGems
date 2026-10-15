@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "scatter_add_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `scatter_add()`: adds all values from the tensor `src`\ninto `inp` at the indices specified in the `index` tensor along dimension `dim`.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "src",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "inp"
+    ],
+    "returns_alias_of": {
+      "out": "inp"
+    }
+  }
+}

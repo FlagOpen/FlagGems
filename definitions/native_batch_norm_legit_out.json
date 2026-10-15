@@ -1,0 +1,75 @@
+{
+  "api_version": "v6.0",
+  "name": "native_batch_norm_legit_out",
+  "requires_triton_kernel": true,
+  "description": "The `out` overload of `native_batch_norm_legit`, writing the normalized output and\nthe saved statistics into the provided `out`, `save_mean` and `save_invstd` tensors.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "running_mean",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "running_var",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "training",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "save_mean",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "save_invstd",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out",
+    "save_mean",
+    "save_invstd"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

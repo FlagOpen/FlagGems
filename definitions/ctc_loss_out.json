@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "ctc_loss_out",
+  "requires_triton_kernel": true,
+  "description": "The `out` variant of the private `aten::_ctc_loss` overload, writing the negative\nlog likelihood and the log-alpha lattice into `out0` and `out1`.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "zero_infinity",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "out0",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out1",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "neg_log_likelihood",
+    "log_alpha"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -45,11 +45,23 @@ class IsAllTrueBenchmark(base.Benchmark):
         more_shapes_3d = [(64, 2**i, 64) for i in range(0, 15, 4)]
         return more_shapes_1d + more_shapes_2d + more_shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            # _is_all_true only accepts bool tensors, generate random bool tensor
-            inp = torch.randint(0, 2, shape, dtype=torch.bool, device=self.device)
-            yield inp,
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        # _is_all_true only accepts bool tensors, generate random bool tensor
+        inp = torch.randint(0, 2, shape, dtype=torch.bool, device=self.device)
+        return (inp,)
 
 
 @pytest.mark.is_all_true

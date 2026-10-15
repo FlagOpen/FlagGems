@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "as_strided_scatter",
+  "requires_triton_kernel": true,
+  "description": "Returns a clone of the input storage with source values written through a\nview defined by the requested size, stride, and storage offset.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "src",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "storage_offset",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

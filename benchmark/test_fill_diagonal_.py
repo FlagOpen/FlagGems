@@ -36,10 +36,23 @@ class FillDiagonalBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = FILL_DIAGONAL_SHAPES
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape, wrap in self.shapes:
-            inp = utils.generate_tensor_input(shape, dtype, self.device)
-            yield inp, 5.0, {"wrap": wrap}
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, (shape, wrap) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"value": 5.0, "wrap": wrap},
+                    builder_args=(shape, wrap),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, wrap = plan.builder_args
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        return inp, 5.0, {"wrap": wrap}
 
 
 @pytest.mark.fill_diagonal_

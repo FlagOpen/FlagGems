@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "broadcast_to",
+  "requires_triton_kernel": true,
+  "description": "Broadcasts input to the shape size. Equivalent to calling input.expand(size).",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

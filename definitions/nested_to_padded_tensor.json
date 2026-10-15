@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_to_padded_tensor",
+  "requires_triton_kernel": true,
+  "description": "Converts a nested (ragged) tensor into a padded dense tensor, filling unoccupied positions with a scalar padding value.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

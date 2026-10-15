@@ -6,13 +6,22 @@ import flag_gems
 from . import base
 
 
-def choose_qparams_optimized_input_fn(shape, dtype, device):
+def choose_qparams_optimized_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"n_bins": 200, "ratio": 0.16, "bit_width": 8},
+        builder_args=(shape,),
+    )
+
+
+def choose_qparams_optimized_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     numel = 1
     for s in shape:
         numel *= s
     inp = torch.randn(shape, dtype=dtype, device=device).view(-1)
     # (input, numel, n_bins, ratio, bit_width)
-    yield inp, numel, 200, 0.16, 8
+    return inp, numel, 200, 0.16, 8
 
 
 def torch_choose_qparams_optimized(inp, numel, n_bins, ratio, bit_width):
@@ -41,6 +50,7 @@ def test_choose_qparams_optimized():
         gems_op=flag_gems.choose_qparams_optimized,
         # float32-only: the aten reference has a CPU-only float32 implementation.
         dtypes=[torch.float32],
-        input_fn=choose_qparams_optimized_input_fn,
+        case_fn=choose_qparams_optimized_case_fn,
+        build_inputs_fn=choose_qparams_optimized_build_inputs_fn,
     )
     bench.run()

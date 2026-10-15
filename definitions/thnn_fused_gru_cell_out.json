@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "thnn_fused_gru_cell_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `thnn_fused_gru_cell()` that writes the new hidden state and the\nbackward workspace into `out0` and `out1`.",
+  "parameters": [
+    {
+      "name": "input_gates",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hidden_gates",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "input_bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hidden_bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out0",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out1",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "hy",
+    "workspace"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

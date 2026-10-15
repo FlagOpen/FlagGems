@@ -17,14 +17,25 @@ import pytest
 from . import base, consts, utils
 
 
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"other": 0.5},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, 0.5
+
+
 @pytest.mark.gt_scalar_
 def test_gt_scalar_():
-    def _scalar_inplace_fn(shape, dtype, device):
-        inp = utils.generate_tensor_input(shape, dtype, device)
-        yield inp, 0.5
-
     bench = base.GenericBenchmark(
-        input_fn=_scalar_inplace_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="gt_scalar_",
         torch_op=lambda a, b: a.gt_(b),
         dtypes=consts.FLOAT_DTYPES,

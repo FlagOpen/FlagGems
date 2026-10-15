@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "beam_search_score",
+  "requires_triton_kernel": true,
+  "description": "Computes beam search scores by adding cumulative log probabilities with new token scores.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "beam_scores",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

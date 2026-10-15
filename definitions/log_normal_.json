@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "log_normal_",
+  "requires_triton_kernel": true,
+  "description": "Fills the tensor with log-normal samples parameterized by mean and standard deviation, in-place.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mean",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0
+    },
+    {
+      "name": "std",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2.0
+    },
+    {
+      "name": "generator",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

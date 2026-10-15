@@ -19,18 +19,28 @@ class GridSampler2dBenchmark(base.GenericBenchmark):
         self.shape_desc = "N, C, H, W"
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"interpolation_mode": 0, "padding_mode": 0, "align_corners": False},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     N, C, H, W = shape
     input_t = utils.generate_tensor_input((N, C, H, W), dtype, device)
     grid = torch.rand(N, H, W, 2, dtype=dtype, device=device)
-    yield input_t, grid, 0, 0, False
+    return input_t, grid, 0, 0, False
 
 
 @pytest.mark.grid_sampler_2d
 def test_grid_sampler_2d():
     bench = GridSampler2dBenchmark(
         op_name="grid_sampler_2d",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.grid_sampler_2d,
         dtypes=consts.FLOAT_DTYPES,
     )

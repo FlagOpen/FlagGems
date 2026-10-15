@@ -26,22 +26,34 @@ class UpsampleNearestExact2dBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            # Create grad_output by doing a forward pass first
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
             out_h = shape[2] * 2
             out_w = shape[3] * 2
-            output_size = (out_h, out_w)
-
-            # Forward pass to get output
-            out = torch.ops.aten._upsample_nearest_exact2d(
-                x, [out_h, out_w], None, None
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [shape[0], shape[1], out_h, out_w]},
+                    builder_args=(shape,),
+                ),
             )
-            grad_output = torch.ones_like(out)
 
-            input_size = tuple(x.shape)
-            yield grad_output, output_size, input_size
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        # Create grad_output by doing a forward pass first
+        x = torch.randn(shape, dtype=case.dtype, device=self.device)
+        out_h = shape[2] * 2
+        out_w = shape[3] * 2
+        output_size = (out_h, out_w)
+
+        # Forward pass to get output
+        out = torch.ops.aten._upsample_nearest_exact2d(x, [out_h, out_w], None, None)
+        grad_output = torch.ones_like(out)
+
+        input_size = tuple(x.shape)
+        return grad_output, output_size, input_size
 
 
 @pytest.mark.upsample_nearest_exact2d_backward

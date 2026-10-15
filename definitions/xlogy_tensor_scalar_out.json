@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "xlogy_tensor_scalar_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `xlogy` where `other` is a scalar and the output is assigned to an `out` tensor.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

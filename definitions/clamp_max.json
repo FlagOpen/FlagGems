@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "clamp_max",
+  "requires_triton_kernel": true,
+  "description": "Clamps all elements in `input` to be smaller or equal `max`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "max_value",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

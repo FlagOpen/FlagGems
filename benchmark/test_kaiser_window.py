@@ -20,30 +20,39 @@ import torch
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
-    yield {
-        "window_length": math.prod(shape),
-        "periodic": True,
-        "beta": 12.0,
-        "dtype": dtype,
-        "device": device,
-    },
-
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"periodic": True, "beta": 12.0},
+        builder_args=(shape, True),
+    )
     if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield {
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"periodic": False, "beta": 12.0},
+            builder_args=(shape, False),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, periodic = plan.builder_args
+    return (
+        {
             "window_length": math.prod(shape),
-            "periodic": False,
+            "periodic": periodic,
             "beta": 12.0,
             "dtype": dtype,
             "device": device,
         },
+    )
 
 
 @pytest.mark.kaiser_window
 def test_kaiser_window():
     bench = base.GenericBenchmark(
         op_name="kaiser_window",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.kaiser_window,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -54,7 +63,8 @@ def test_kaiser_window():
 def test_kaiser_window_beta():
     bench = base.GenericBenchmark(
         op_name="kaiser_window_beta",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.kaiser_window,
         dtypes=consts.FLOAT_DTYPES,
     )

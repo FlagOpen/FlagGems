@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_tensor_from_mask",
+  "requires_triton_kernel": true,
+  "description": "Builds a nested tensor from a padded dense tensor of shape (N, L, D) and a\nboolean padding mask of shape (N, L), using the mask to determine the ragged\nlength of each component.",
+  "parameters": [
+    {
+      "name": "t",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mask_check",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

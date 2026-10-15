@@ -33,13 +33,25 @@ class AffineGridBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = AFFINE_GRID_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            N, H, W = shape
-            theta = torch.randn((N, 2, 3), dtype=cur_dtype, device=self.device)
-            size = [N, 3, H, W]
-            align_corners = False
-            yield theta, size, align_corners
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"theta": list(shape)},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        N, H, W = shape
+        theta = torch.randn((N, 2, 3), dtype=case.dtype, device=self.device)
+        size = [N, 3, H, W]
+        align_corners = False
+        return theta, size, align_corners
 
 
 @pytest.mark.affine_grid_generator

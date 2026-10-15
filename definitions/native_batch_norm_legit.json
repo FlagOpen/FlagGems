@@ -1,0 +1,63 @@
+{
+  "api_version": "v6.0",
+  "name": "native_batch_norm_legit",
+  "requires_triton_kernel": true,
+  "description": "Batch normalization with in-place running statistics updates, returning the normalized output along with the saved mean and inverse standard deviation.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "running_mean",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "running_var",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "training",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    }
+  ],
+  "outputs": [
+    "out",
+    "save_mean",
+    "save_invstd"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

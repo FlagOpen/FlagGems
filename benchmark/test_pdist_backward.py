@@ -32,14 +32,28 @@ class PdistBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = PDIST_BACKWARD_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            n, m = shape
-            n_pairs = n * (n - 1) // 2
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            pdist_out = torch.pdist(x, p=2.0)
-            grad = torch.ones(n_pairs, dtype=cur_dtype, device=self.device)
-            yield grad, x, 2.0, pdist_out
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    params={"p": 2.0},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        cur_dtype = case.dtype
+        n, m = shape
+        n_pairs = n * (n - 1) // 2
+        x = torch.randn(shape, dtype=cur_dtype, device=self.device)
+        pdist_out = torch.pdist(x, p=2.0)
+        grad = torch.ones(n_pairs, dtype=cur_dtype, device=self.device)
+        return grad, x, 2.0, pdist_out
 
 
 @pytest.mark.pdist_backward

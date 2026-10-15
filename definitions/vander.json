@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "vander",
+  "requires_triton_kernel": true,
+  "description": "Generates a Vandermonde matrix from a 1-D input tensor.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "N",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "increasing",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "silu",
+  "requires_triton_kernel": true,
+  "description": "Applies the Sigmoid Linear Unit (SiLU) function element-wise: `input * sigmoid(input)`.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

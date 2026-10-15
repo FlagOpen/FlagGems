@@ -18,10 +18,18 @@ import torch
 from . import base, consts, utils
 
 
-def fake_quantize_per_tensor_affine_cachemask_backward_input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"grad": list(shape), "mask": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     grad = utils.generate_tensor_input(shape, dtype, device)
     mask = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
-    yield grad, mask
+    return grad, mask
 
 
 class FakeQuantizePerTensorAffineCachemaskBackwardBenchmark(base.GenericBenchmark):
@@ -46,7 +54,8 @@ def test_fake_quantize_per_tensor_affine_cachemask_backward():
     bench = FakeQuantizePerTensorAffineCachemaskBackwardBenchmark(
         op_name="fake_quantize_per_tensor_affine_cachemask_backward",
         torch_op=torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward,
-        input_fn=fake_quantize_per_tensor_affine_cachemask_backward_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

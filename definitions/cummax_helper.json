@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "cummax_helper",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for `_cummax_helper`, the out-of-place helper used\nby `aten::cummax` / `aten::cummax.out`. It writes the cumulative maximum of\nelements of `input` along `dim` into the pre-allocated `values` tensor and the\nindex location of each maximum value into the pre-allocated `indices` tensor.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "values",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

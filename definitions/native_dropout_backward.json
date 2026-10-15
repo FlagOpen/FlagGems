@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "native_dropout_backward",
+  "requires_triton_kernel": true,
+  "description": "The backward case of `dropout()`.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

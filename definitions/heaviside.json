@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "heaviside",
+  "requires_triton_kernel": true,
+  "description": "The heaviside step function. Computes 0 where input < 0, 1 where input > 0,\nand values where input == 0. Supports tensor values.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -20,13 +20,21 @@ from . import base, consts
 
 @pytest.mark.infinitely_differentiable_gelu_backward
 def test_infinitely_differentiable_gelu_backward():
-    def input_fn(shape, dtype, device):
+    def case_fn(shape, dtype):
+        yield base.BenchmarkCasePlan(
+            shape={"grad": list(shape), "self": list(shape)},
+            builder_args=(shape,),
+        )
+
+    def build_inputs_fn(plan, dtype, device):
+        (shape,) = plan.builder_args
         grad = torch.randn(shape, dtype=dtype, device=device)
         self_input = torch.randn(shape, dtype=dtype, device=device)
-        yield grad, self_input
+        return grad, self_input
 
     bench = base.GenericBenchmark(
-        input_fn=input_fn,
+        case_fn=case_fn,
+        build_inputs_fn=build_inputs_fn,
         op_name="infinitely_differentiable_gelu_backward",
         torch_op=torch.ops.aten.infinitely_differentiable_gelu_backward,
         dtypes=consts.FLOAT_DTYPES,

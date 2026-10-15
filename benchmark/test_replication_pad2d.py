@@ -50,9 +50,23 @@ class ReplicationPad2dBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
-        for config in self.shapes:
-            yield from _input_fn(config, cur_dtype, self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, config in enumerate(self.shapes):
+            shape, padding = config
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"padding": list(padding)},
+                    builder_args=(config,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (config,) = plan.builder_args
+        return next(_input_fn(config, case.dtype, self.device))
 
 
 class ReplicationPad2dOutBenchmark(base.Benchmark):

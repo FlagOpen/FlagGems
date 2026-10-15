@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "fake_quantize_per_tensor_affine",
+  "requires_triton_kernel": true,
+  "description": "Applies per-tensor affine fake quantization using shared scale and zero-point parameters.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_min",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_max",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

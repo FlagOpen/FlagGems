@@ -27,11 +27,19 @@ from . import base
 _MAX_LEN = 1 << 20
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
     # aten::_list_to_tensor takes a Python list of ints; the shape drives the
     # length of the list. dtype/device are ignored by the op semantics.
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     n = min(math.prod(shape), _MAX_LEN)
-    yield ([i % 128 for i in range(n)],)
+    return ([i % 128 for i in range(n)],)
 
 
 @pytest.mark.list_to_tensor
@@ -41,7 +49,8 @@ def test__list_to_tensor():
     # directly via the gems_op hook.
     bench = base.GenericBenchmark(
         op_name="list_to_tensor",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._list_to_tensor,
         gems_op=flag_gems._list_to_tensor,
         dtypes=[torch.int32],

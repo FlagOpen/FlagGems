@@ -52,30 +52,39 @@ class FusedLSTMCellBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return list(COMPREHENSIVE_SHAPES)
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, hidden_size, has_bias in self.shapes:
-            input_gates = torch.randn(
-                batch_size,
-                4 * hidden_size,
-                dtype=cur_dtype,
-                device=self.device,
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch_size, hidden_size, has_bias) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"grad_hy": [batch_size, hidden_size]},
+                    params={"has_bias": has_bias},
+                    builder_args=(batch_size, hidden_size, has_bias),
+                ),
             )
-            hidden_gates = torch.randn_like(input_gates)
-            cx = torch.randn(
-                batch_size, hidden_size, dtype=cur_dtype, device=self.device
+
+    def build_inputs(self, case):
+        batch_size, hidden_size, has_bias = case.builder_args[0].builder_args
+        cur_dtype = case.dtype
+        input_gates = torch.randn(
+            batch_size,
+            4 * hidden_size,
+            dtype=cur_dtype,
+            device=self.device,
+        )
+        hidden_gates = torch.randn_like(input_gates)
+        cx = torch.randn(batch_size, hidden_size, dtype=cur_dtype, device=self.device)
+        bias = (
+            torch.randn(4 * hidden_size, dtype=cur_dtype, device=self.device)
+            if has_bias
+            else None
+        )
+        with torch.no_grad():
+            hy, cy, workspace = torch.ops.aten._thnn_fused_lstm_cell(
+                input_gates, hidden_gates, cx, bias, bias
             )
-            bias = (
-                torch.randn(4 * hidden_size, dtype=cur_dtype, device=self.device)
-                if has_bias
-                else None
-            )
-            with torch.no_grad():
-                hy, cy, workspace = torch.ops.aten._thnn_fused_lstm_cell(
-                    input_gates, hidden_gates, cx, bias, bias
-                )
-            yield torch.randn_like(hy), torch.randn_like(
-                cy
-            ), cx, cy, workspace, has_bias
+        return torch.randn_like(hy), torch.randn_like(cy), cx, cy, workspace, has_bias
 
 
 @pytest.mark.thnn_fused_lstm_cell_backward

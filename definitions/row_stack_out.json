@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "row_stack_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of row_stack() that writes the result into the out tensor.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

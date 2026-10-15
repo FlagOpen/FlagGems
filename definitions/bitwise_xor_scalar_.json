@@ -1,0 +1,29 @@
+{
+  "api_version": "v6.0",
+  "name": "bitwise_xor_scalar_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `bitwise_xor_scalar()`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

@@ -31,7 +31,15 @@ class UpsampleBenchmark(base.GenericBenchmark):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_trilinear3d(align_corners):
-    def upsample_trilinear3d_input_fn(shape, dtype, device):
+    def upsample_trilinear3d_case_fn(shape, dtype):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"align_corners": align_corners},
+            builder_args=(shape,),
+        )
+
+    def upsample_trilinear3d_build_inputs_fn(plan, dtype, device):
+        (shape,) = plan.builder_args
         batch, channel, height, width = shape
         depth = 4
         width = width // 4
@@ -46,10 +54,11 @@ def test_upsample_trilinear3d(align_corners):
             int(width * scale_factors[2]),
         )
 
-        yield input, output_size, align_corners, None, None, None
+        return input, output_size, align_corners, None, None, None
 
     bench = UpsampleBenchmark(
-        input_fn=upsample_trilinear3d_input_fn,
+        case_fn=upsample_trilinear3d_case_fn,
+        build_inputs_fn=upsample_trilinear3d_build_inputs_fn,
         op_name="upsample_trilinear3d",
         torch_op=torch.ops.aten.upsample_trilinear3d.default,
         dtypes=consts.FLOAT_DTYPES,

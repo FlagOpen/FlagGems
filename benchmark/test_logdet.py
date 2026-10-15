@@ -33,15 +33,27 @@ class LogdetBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return LOGDET_MORE_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            n = shape[-1]
-            matrix = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            matrix /= math.sqrt(n)
-            inp = matrix @ matrix.transpose(-2, -1) + torch.eye(
-                n, dtype=cur_dtype, device=self.device
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    builder_args=(shape,),
+                ),
             )
-            yield (inp,)
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        n = shape[-1]
+        matrix = torch.randn(shape, dtype=case.dtype, device=self.device)
+        matrix /= math.sqrt(n)
+        inp = matrix @ matrix.transpose(-2, -1) + torch.eye(
+            n, dtype=case.dtype, device=self.device
+        )
+        return (inp,)
 
 
 @pytest.mark.logdet

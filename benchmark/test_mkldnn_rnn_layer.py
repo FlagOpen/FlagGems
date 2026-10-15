@@ -1,11 +1,15 @@
-from typing import Generator
-
 import pytest
 import torch
 
 import flag_gems
 
 from . import base, consts
+
+_MKLDNN_RNN_LAYER_SHAPES = [
+    (16, 4, 32),
+    (32, 8, 64),
+    (64, 16, 128),
+]
 
 # mkldnn_rnn_layer is LSTM (mode=2), single-layer, unidirectional.
 _MODE = 2
@@ -15,17 +19,26 @@ _BATCH_FIRST = False
 
 
 class MkldnnRnnLayerBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        shapes = [
-            (16, 4, 32),
-            (32, 8, 64),
-            (64, 16, 128),
-        ]
-        for shape in shapes:
-            yield from self.input_fn(shape, dtype, self.device)
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = _MKLDNN_RNN_LAYER_SHAPES
+
+    def set_more_shapes(self):
+        return None
 
 
-def mkldnn_rnn_layer_input_fn(shape, dtype, device):
+def mkldnn_rnn_layer_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def mkldnn_rnn_layer_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return mkldnn_rnn_layer_input_tuple(shape, dtype, device)
+
+
+def mkldnn_rnn_layer_input_tuple(shape, dtype, device):
     seq_len, batch_size, input_size = shape
     hidden_size = input_size
     inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
@@ -39,7 +52,7 @@ def mkldnn_rnn_layer_input_fn(shape, dtype, device):
     # All arguments are positional in the aten schema:
     # (input, w0, w1, w2, w3, hx, cx, reverse, batch_sizes, mode, hidden_size,
     #  num_layers, has_biases, bidirectional, batch_first, train)
-    yield (
+    return (
         inp,
         w_ih,
         w_hh,
@@ -87,7 +100,8 @@ def _torch_lstm_layer_baseline(inp, w_ih, w_hh, b_ih, b_hh, hx, cx, *rest):
 @pytest.mark.mkldnn_rnn_layer
 def test_mkldnn_rnn_layer():
     bench = MkldnnRnnLayerBenchmark(
-        input_fn=mkldnn_rnn_layer_input_fn,
+        case_fn=mkldnn_rnn_layer_case_fn,
+        build_inputs_fn=mkldnn_rnn_layer_build_inputs_fn,
         op_name="mkldnn_rnn_layer",
         torch_op=_torch_lstm_layer_baseline,
         gems_op=flag_gems.ops.mkldnn_rnn_layer,

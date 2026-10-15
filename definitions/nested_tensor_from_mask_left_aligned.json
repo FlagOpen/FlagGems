@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_tensor_from_mask_left_aligned",
+  "requires_triton_kernel": true,
+  "description": "Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean padding\nmask (N * L) is left-aligned, i.e. the valid (True) elements of every row appear\nat the beginning with no gaps. Returns a bool.",
+  "parameters": [
+    {
+      "name": "t",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -12,43 +12,46 @@ class UpsampleNearest3dBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
             out_d = shape[2] * 2
             out_h = shape[3] * 2
             out_w = shape[4] * 2
-            output_size = (out_d, out_h, out_w)
-
-            out = torch.ops.aten.upsample_nearest3d(
-                x, [out_d, out_h, out_w], None, None, None
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [shape[0], shape[1], out_d, out_h, out_w]},
+                    builder_args=(shape,),
+                ),
             )
-            grad_output = torch.ones_like(out)
 
-            input_size = tuple(x.shape)
-            yield grad_output, output_size, input_size
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        x = torch.randn(shape, dtype=case.dtype, device=self.device)
+        out_d = shape[2] * 2
+        out_h = shape[3] * 2
+        out_w = shape[4] * 2
+        output_size = (out_d, out_h, out_w)
+
+        out = torch.ops.aten.upsample_nearest3d(
+            x, [out_d, out_h, out_w], None, None, None
+        )
+        grad_output = torch.ones_like(out)
+
+        input_size = tuple(x.shape)
+        return grad_output, output_size, input_size
 
 
 class UpsampleNearest3dBackwardGradInputBenchmark(UpsampleNearest3dBackwardBenchmark):
-    def get_input_iter(self, cur_dtype):
-        # The .grad_input overload requires the out tensor `grad_input` to be
-        # supplied. Yield it as a kwargs dict so it is forwarded as a keyword
-        # argument (see base.unpack_to_args_kwargs).
-        for shape in self.shapes:
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            out_d = shape[2] * 2
-            out_h = shape[3] * 2
-            out_w = shape[4] * 2
-            output_size = (out_d, out_h, out_w)
-
-            out = torch.ops.aten.upsample_nearest3d(
-                x, [out_d, out_h, out_w], None, None, None
-            )
-            grad_output = torch.ones_like(out)
-
-            input_size = tuple(x.shape)
-            grad_input = torch.empty(input_size, dtype=cur_dtype, device=self.device)
-            yield grad_output, output_size, input_size, {"grad_input": grad_input}
+    # The .grad_input overload requires the out tensor `grad_input` to be
+    # supplied. Yield it as a kwargs dict so it is forwarded as a keyword
+    # argument (see base.unpack_to_args_kwargs).
+    def build_inputs(self, case):
+        grad_output, output_size, input_size = super().build_inputs(case)
+        grad_input = torch.empty(input_size, dtype=case.dtype, device=self.device)
+        return grad_output, output_size, input_size, {"grad_input": grad_input}
 
 
 @pytest.mark.upsample_nearest3d_backward

@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "underscore_aminmax",
+  "requires_triton_kernel": true,
+  "description": "The private `aten::_aminmax` overload. Computes the minimum and maximum values of\nthe `inp` tensor over all elements.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "min",
+    "max"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "nll_loss2d_backward",
+  "requires_triton_kernel": true,
+  "description": "Backward pass of the negative log likelihood loss for a 4D input (N, C, H, W).\nComputes the gradient with respect to the input log-probabilities.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "ignore_index",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": -100
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -16,18 +16,34 @@ class BinaryCrossEntropyBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = BINARY_CROSS_ENTROPY_BACKWARD_SHAPES
 
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, dtype):
+        ordinal = 0
         for shape in self.shapes:
-            # self is probability in (0, 1) - required for BCE backward
-            self_t = torch.rand(shape, dtype=cur_dtype, device=self.device)
-            self_t = torch.clamp(self_t, 1e-4, 1 - 1e-4)
-            target = torch.randint(0, 2, shape, dtype=cur_dtype, device=self.device).to(
-                dtype=cur_dtype
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"self": list(shape)},
+                    params={"reduction": 0},
+                    builder_args=(shape,),
+                ),
             )
-            grad_output = torch.ones_like(self_t)
-            weight = torch.rand(shape, dtype=cur_dtype, device=self.device)
-            # reduction=0 (none) for benchmarking
-            yield grad_output, self_t, target, weight, 0
+            ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        cur_dtype = case.dtype
+        # self is probability in (0, 1) - required for BCE backward
+        self_t = torch.rand(shape, dtype=cur_dtype, device=self.device)
+        self_t = torch.clamp(self_t, 1e-4, 1 - 1e-4)
+        target = torch.randint(0, 2, shape, dtype=cur_dtype, device=self.device).to(
+            dtype=cur_dtype
+        )
+        grad_output = torch.ones_like(self_t)
+        weight = torch.rand(shape, dtype=cur_dtype, device=self.device)
+        # reduction=0 (none) for benchmarking
+        return grad_output, self_t, target, weight, 0
 
 
 @pytest.mark.binary_cross_entropy_backward

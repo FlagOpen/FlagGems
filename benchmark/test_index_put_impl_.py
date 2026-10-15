@@ -84,8 +84,18 @@ def gen_indices_bool(input_shape, indices_shape, accumulate, is_bool):
         return indices
 
 
-def _input_fn(accumulate, unsafe=False):
-    def inner(shapes, dtype, device):
+def _case_fn(shapes, dtype):
+    input_shape, indices_shape, values_shape, is_bool = shapes
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(input_shape)},
+        params={"is_bool": is_bool},
+        builder_args=(shapes,),
+    )
+
+
+def _build_inputs_fn_factory(accumulate, unsafe=False):
+    def inner(plan, dtype, device):
+        (shapes,) = plan.builder_args
         input_shape, indices_shape, values_shape, is_bool = shapes
         inp = torch.randn(
             input_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
@@ -102,7 +112,7 @@ def _input_fn(accumulate, unsafe=False):
             values = torch.randn(
                 values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
             )
-        yield inp, indices, values, accumulate, unsafe
+        return inp, indices, values, accumulate, unsafe
 
     return inner
 
@@ -112,7 +122,8 @@ def test_index_put_impl_acc_false():
     bench = IndexPutAccFalseBenchmark(
         op_name="index_put_impl_",
         torch_op=torch._index_put_impl_,
-        input_fn=_input_fn(False, unsafe=False),
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn_factory(False, unsafe=False),
         dtypes=consts.FLOAT_DTYPES,
     )
 
@@ -140,7 +151,8 @@ def test_index_put_impl_acc_true():
     bench = IndexPutAccTrueBenchmark(
         op_name="index_put_impl_",
         torch_op=torch._index_put_impl_,
-        input_fn=_input_fn(True, unsafe=False),
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn_factory(True, unsafe=False),
         dtypes=[torch.float16, torch.float32],
     )
 

@@ -1,0 +1,57 @@
+{
+  "api_version": "v6.0",
+  "name": "thnn_differentiable_gru_cell_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes differentiable gradients for a fused GRU cell.",
+  "parameters": [
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "input_gates",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hidden_gates",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "input_bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hidden_bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input_gates",
+    "grad_hidden_gates",
+    "grad_hx",
+    "grad_input_bias",
+    "grad_hidden_bias"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

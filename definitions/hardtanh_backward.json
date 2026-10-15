@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "hardtanh_backward",
+  "requires_triton_kernel": true,
+  "description": "The backward pass for hardtanh activation function. Computes the gradient of hardtanh:\ngrad_output when min_val < x < max_val, 0 otherwise.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "min_val",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "max_val",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

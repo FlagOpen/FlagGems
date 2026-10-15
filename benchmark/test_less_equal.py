@@ -18,9 +18,17 @@ import torch
 from . import base, consts, utils
 
 
-def _scalar_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, 0
+def _scalar_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"inp": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _scalar_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
+    inp = utils.generate_tensor_input(shape, cur_dtype, device)
+    return inp, 0
 
 
 @pytest.mark.less_equal
@@ -36,7 +44,8 @@ def test_less_equal():
 @pytest.mark.less_equal_scalar
 def test_less_equal_scalar():
     bench = base.GenericBenchmark(
-        input_fn=_scalar_input_fn,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn,
         op_name="less_equal_scalar",
         torch_op=torch.less_equal,
         dtypes=consts.FLOAT_DTYPES,

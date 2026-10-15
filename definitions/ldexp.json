@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "ldexp",
+  "requires_triton_kernel": true,
+  "description": "Multiplies `self` by 2 raised to the power of `other`, element-wise.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

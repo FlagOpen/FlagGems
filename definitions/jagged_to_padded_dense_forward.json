@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "jagged_to_padded_dense_forward",
+  "requires_triton_kernel": true,
+  "description": "Converts a jagged (variable-length) tensor to a padded dense tensor.",
+  "parameters": [
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "offsets",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "max_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "padding_value",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "api_version": "v6.0",
+  "name": "upsample_nearest3d_backward_grad_input",
+  "requires_triton_kernel": true,
+  "description": "An out variant of `upsample_nearest3d_backward()`.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tuple[int, int, int]"
+    },
+    {
+      "name": "input_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tuple[int, int, int, int, int]"
+    },
+    {
+      "name": "scales_d",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_h",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_w",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "grad_input",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

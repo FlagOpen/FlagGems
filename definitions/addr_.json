@@ -1,0 +1,46 @@
+{
+  "api_version": "v6.0",
+  "name": "addr_",
+  "requires_triton_kernel": true,
+  "description": "In-place version of addr. Performs the outer-product of vectors `vec1` and `vec2`\nand adds it to the matrix `input` in-place.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "vec1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "vec2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "beta",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "input"
+    ],
+    "returns_alias_of": {
+      "out": "input"
+    }
+  }
+}

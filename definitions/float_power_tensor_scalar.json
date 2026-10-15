@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "float_power_tensor_scalar",
+  "requires_triton_kernel": true,
+  "description": "Raises tensor elements to a scalar exponent in float64.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "exponent",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "new_full",
+  "requires_triton_kernel": true,
+  "description": "Returns a Tensor of size `size` filled with `fill_value`.\nBy default, the returned Tensor has the same `torch.dtype` and `torch.device`\nas this tensor.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "fill_value",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "requires_grad",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

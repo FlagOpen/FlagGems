@@ -18,17 +18,27 @@ import torch
 from . import base, consts, utils
 
 
-def input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"dim": 1},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     values = torch.empty_like(inp)
     indices = torch.empty(inp.shape, dtype=torch.int64, device=device)
-    yield inp, values, indices, 1
+    return inp, values, indices, 1
 
 
 @pytest.mark.cummax_helper
 def test_cummax_helper():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="cummax_helper",
         torch_op=torch.ops.aten._cummax_helper,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,

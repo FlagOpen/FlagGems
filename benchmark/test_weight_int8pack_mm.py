@@ -46,9 +46,26 @@ class WeightInt8packMMBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = WEIGHT_INT8PACK_MM_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            yield from weight_int8pack_mm_input_fn(shape, cur_dtype, self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            M, N, K = shape
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"A": [M, K], "B": [N, K], "scales": [N]},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        M, N, K = shape
+        A = torch.randn((M, K), dtype=case.dtype, device=self.device)
+        B = torch.randint(-128, 127, (N, K), dtype=torch.int8, device=self.device)
+        scales = torch.randn((N,), dtype=case.dtype, device=self.device)
+        return (A, B, scales)
 
     def _run_metric(self, input_item):
         metric = BenchmarkMetrics()
@@ -65,15 +82,6 @@ class WeightInt8packMMBenchmark(base.Benchmark):
             metric.error_msg = str(e)
             pytest.fail(str(e))
         return metric
-
-
-def weight_int8pack_mm_input_fn(shape, dtype, device):
-    """Yield tuples of (A, B_int8, scales) for the given shape and dtype."""
-    M, N, K = shape
-    A = torch.randn((M, K), dtype=dtype, device=device)
-    B = torch.randint(-128, 127, (N, K), dtype=torch.int8, device=device)
-    scales = torch.randn((N,), dtype=dtype, device=device)
-    yield (A, B, scales)
 
 
 def weight_int8pack_mm_torch(A, B, scales):

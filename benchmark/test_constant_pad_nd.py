@@ -22,12 +22,21 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"value": 1.5},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, device=device, dtype=dtype)
     rank = inp.ndim
     pad = [random.randint(0, 10) for _ in range(rank * 2)]
     value = 1.5
-    yield inp, {"pad": pad, "value": value}
+    return inp, {"pad": pad, "value": value}
 
 
 @pytest.mark.constant_pad_nd
@@ -36,7 +45,8 @@ def _input_fn(shape, dtype, device):
 )
 def test_constant_pad_nd():
     bench = base.GenericBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="constant_pad_nd",
         torch_op=torch.constant_pad_nd,
         dtypes=consts.FLOAT_DTYPES,

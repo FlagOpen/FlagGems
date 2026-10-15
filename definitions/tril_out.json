@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "tril_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `tril()` that writes the lower triangular part into the `out` tensor.\nThe `out` tensor may be non-contiguous, e.g. transposed or strided.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "diagonal",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

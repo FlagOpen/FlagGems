@@ -18,16 +18,39 @@ class MaxUnpool3dBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = MAX_UNPOOL3D_BENCH_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            # Generate pooled input and indices from max_pool3d
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            pool = torch.nn.MaxPool3d(kernel_size=2, stride=2, return_indices=True)
-            output, indices = pool(x)
-            # Output size should be the original input shape
-            yield output, indices, 2, 2, 0, shape[
-                2:
-            ]  # kernel_size, stride, padding, output_size(D,H,W)
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={
+                        "kernel_size": 2,
+                        "stride": 2,
+                        "padding": 0,
+                        "output_size": list(shape[2:]),
+                    },
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        # Generate pooled input and indices from max_pool3d
+        x = torch.randn(shape, dtype=case.dtype, device=self.device)
+        pool = torch.nn.MaxPool3d(kernel_size=2, stride=2, return_indices=True)
+        output, indices = pool(x)
+        # Output size should be the original input shape
+        return (
+            output,
+            indices,
+            2,
+            2,
+            0,
+            shape[2:],
+        )  # kernel_size, stride, padding, output_size(D,H,W)
 
 
 @pytest.mark.max_unpool3d

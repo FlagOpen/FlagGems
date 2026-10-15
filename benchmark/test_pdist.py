@@ -18,10 +18,23 @@ class PdistBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = PDIST_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            yield (x, 2.0)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    params={"p": 2.0},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        x = torch.randn(shape, dtype=case.dtype, device=self.device)
+        return (x, 2.0)
 
 
 @pytest.mark.pdist

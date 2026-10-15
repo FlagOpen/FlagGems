@@ -1,0 +1,47 @@
+{
+  "api_version": "v6.0",
+  "name": "native_batch_norm_legit_no_stats",
+  "requires_triton_kernel": true,
+  "description": "The `no_stats` overload of `native_batch_norm_legit`: batch normalization without\nrunning statistics, returning the normalized output along with the saved mean and\ninverse standard deviation.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "training",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out",
+    "save_mean",
+    "save_invstd"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

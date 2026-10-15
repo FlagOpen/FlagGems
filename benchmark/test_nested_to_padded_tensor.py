@@ -44,20 +44,34 @@ class NestedToPaddedTensorBenchmark(base.Benchmark):
         nt = args[0]
         return [nt._nested_tensor_size().tolist()] + list(args[1:])
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, max_rows, trailing_dim in self.shapes:
-            # Force component 0 to the full row count so the inferred padded
-            # shape is deterministic; the rest are ragged.
-            np.random.seed(42)
-            row_counts = np.random.randint(1, max_rows + 1, size=batch_size)
-            row_counts[0] = max_rows
-            comps = [
-                torch.randn([int(r), trailing_dim], dtype=cur_dtype, device=self.device)
-                for r in row_counts
-            ]
-            nt = torch.nested.nested_tensor(comps, device=self.device)
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            batch_size, max_rows, trailing_dim = shape
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [batch_size, max_rows, trailing_dim]},
+                    builder_args=(shape,),
+                ),
+            )
 
-            yield nt, 0.0, None
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        batch_size, max_rows, trailing_dim = shape
+        cur_dtype = case.dtype
+        # Force component 0 to the full row count so the inferred padded
+        # shape is deterministic; the rest are ragged.
+        np.random.seed(42)
+        row_counts = np.random.randint(1, max_rows + 1, size=batch_size)
+        row_counts[0] = max_rows
+        comps = [
+            torch.randn([int(r), trailing_dim], dtype=cur_dtype, device=self.device)
+            for r in row_counts
+        ]
+        nt = torch.nested.nested_tensor(comps, device=self.device)
+        return nt, 0.0, None
 
 
 @pytest.mark.nested_to_padded_tensor

@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "roll",
+  "requires_triton_kernel": true,
+  "description": "Roll the tensor input along the given dimension(s). Elements that are shifted beyond the last position\nare re-introduced at the first position.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "shifts",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dims",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

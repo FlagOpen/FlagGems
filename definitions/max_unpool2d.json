@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "max_unpool2d",
+  "requires_triton_kernel": true,
+  "description": "Computes a partial inverse of `MaxPool2d`.",
+  "parameters": [
+    {
+      "name": "pooled",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

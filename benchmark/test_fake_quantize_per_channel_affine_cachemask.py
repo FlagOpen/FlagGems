@@ -33,29 +33,40 @@ class BenchmarkFakeQuantizePerChannelAffineCachemask(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = self.DEFAULT_SHAPES
 
-    def get_input_iter(self, dtype):
+    def get_case_iter(self, dtype):
+        ordinal = 0
         for shape in self.shapes:
             for axis in self.axis_configs:
-                input = torch.randn(shape, dtype=dtype, device=self.device)
-                channels = shape[axis]
-                scale = (
-                    torch.rand(channels, dtype=torch.float32, device=self.device) + 0.1
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params={"axis": axis, "quant_min": 0, "quant_max": 255},
+                        builder_args=(shape, axis),
+                    ),
                 )
-                zero_point = torch.zeros(
-                    channels, dtype=torch.int32, device=self.device
-                )
-                yield input, scale, zero_point, axis, 0, 255
+                ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, axis = plan.builder_args
+        input = torch.randn(shape, dtype=case.dtype, device=self.device)
+        channels = shape[axis]
+        scale = torch.rand(channels, dtype=torch.float32, device=self.device) + 0.1
+        zero_point = torch.zeros(channels, dtype=torch.int32, device=self.device)
+        return input, scale, zero_point, axis, 0, 255
 
 
 class BenchmarkFakeQuantizePerChannelAffineCachemaskOut(
     BenchmarkFakeQuantizePerChannelAffineCachemask
 ):
-    def get_input_iter(self, dtype):
-        for args in super().get_input_iter(dtype):
-            input = args[0]
-            out0 = torch.empty_like(input)
-            out1 = torch.empty_like(input, dtype=torch.bool)
-            yield *args, {"out0": out0, "out1": out1}
+    def build_inputs(self, case):
+        args = super().build_inputs(case)
+        input = args[0]
+        out0 = torch.empty_like(input)
+        out1 = torch.empty_like(input, dtype=torch.bool)
+        return (*args, {"out0": out0, "out1": out1})
 
 
 @pytest.mark.fake_quantize_per_channel_affine_cachemask

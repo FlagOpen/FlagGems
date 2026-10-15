@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "diagonal_copy",
+  "requires_triton_kernel": true,
+  "description": "Performs the same operation as torch.diagonal, but all output tensors\nare freshly created instead of aliasing the input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "offset",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    },
+    {
+      "name": "dim1",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    },
+    {
+      "name": "dim2",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

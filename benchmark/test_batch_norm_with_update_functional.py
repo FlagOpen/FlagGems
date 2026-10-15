@@ -45,21 +45,17 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
-def batch_norm_with_update_functional_input_fn(shape, dtype, device):
-    C = shape[1]
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    weight = torch.randn((C,), dtype=dtype, device=device)
-    bias = torch.randn((C,), dtype=dtype, device=device)
-    running_mean = torch.randn((C,), dtype=dtype, device=device)
-    running_var = torch.abs(torch.randn((C,), dtype=dtype, device=device)) + 0.1
-    momentum = 0.1
-    eps = 1e-5
-    yield inp, weight, bias, running_mean, running_var, momentum, eps
-
-
 @pytest.mark.batch_norm_with_update_functional
 def test__batch_norm_with_update_functional():
-    def batch_norm_with_update_functional_input_fn_wrapper(shape, dtype, device):
+    def case_fn(shape, dtype):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"momentum": 0.1, "eps": 1e-5},
+            builder_args=(shape,),
+        )
+
+    def build_inputs_fn(plan, dtype, device):
+        (shape,) = plan.builder_args
         C = shape[1]
         inp = torch.randn(shape, dtype=dtype, device=device)
         weight = torch.randn((C,), dtype=dtype, device=device)
@@ -68,10 +64,11 @@ def test__batch_norm_with_update_functional():
         running_var = torch.abs(torch.randn((C,), dtype=dtype, device=device)) + 0.1
         momentum = 0.1
         eps = 1e-5
-        yield inp, weight, bias, running_mean, running_var, momentum, eps
+        return inp, weight, bias, running_mean, running_var, momentum, eps
 
     bench = NormBenchmark(
-        input_fn=batch_norm_with_update_functional_input_fn_wrapper,
+        case_fn=case_fn,
+        build_inputs_fn=build_inputs_fn,
         op_name="batch_norm_with_update_functional",
         torch_op=torch.ops.aten._batch_norm_with_update_functional,
         dtypes=consts.FLOAT_DTYPES,

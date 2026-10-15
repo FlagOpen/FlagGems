@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "choose_qparams_optimized",
+  "requires_triton_kernel": true,
+  "description": "Chooses optimized quantization parameters (scale and zero-point) for a tensor\nby searching candidate value ranges and selecting the pair that minimizes the\nquantization error.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "numel",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "n_bins",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "ratio",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "bit_width",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "scale",
+    "zero_point"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

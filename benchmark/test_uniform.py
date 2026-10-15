@@ -20,13 +20,26 @@ import flag_gems
 from . import base, consts, utils
 
 
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return (utils.generate_tensor_input(shape, dtype, device),)
+
+
 @pytest.mark.uniform_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_uniform_inplace():
     bench = base.GenericBenchmark(
-        input_fn=utils.unary_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="uniform_",
         torch_op=torch.Tensor.uniform_,
         dtypes=consts.FLOAT_DTYPES,
@@ -40,7 +53,8 @@ def test_uniform_inplace():
 )
 def test_uniform():
     bench = base.GenericBenchmark(
-        input_fn=utils.unary_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="uniform",
         torch_op=torch.ops.aten.uniform,
         dtypes=consts.FLOAT_DTYPES,

@@ -37,14 +37,27 @@ class NestedTensorFromMaskLeftAlignedBenchmark(base.Benchmark):
         io_amount = shape_utils.size_in_bytes(mask)
         return io_amount * 1e-9 / (latency * 1e-3)
 
-    def get_input_iter(self, dtype) -> Generator:
+    def get_case_iter(self, dtype) -> Generator:
         shapes = [(8, 128), (64, 256), (512, 512), (2048, 1024)]
-        for N, L in shapes:
+        for ordinal, (N, L) in enumerate(shapes):
             D = 64
-            t = torch.randn(N, L, D, dtype=dtype, device=self.device)
-            lengths = torch.randint(0, L + 1, (N,), device=self.device)
-            mask = torch.arange(L, device=self.device)[None, :] < lengths[:, None]
-            yield t, mask
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [N, L, D]},
+                    builder_args=(N, L, D),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        N, L, D = plan.builder_args
+        dtype = case.dtype
+        t = torch.randn(N, L, D, dtype=dtype, device=self.device)
+        lengths = torch.randint(0, L + 1, (N,), device=self.device)
+        mask = torch.arange(L, device=self.device)[None, :] < lengths[:, None]
+        return t, mask
 
 
 @pytest.mark.nested_tensor_from_mask_left_aligned

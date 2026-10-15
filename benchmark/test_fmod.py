@@ -20,16 +20,33 @@ import flag_gems
 from . import base, consts, utils
 
 
-def _tensor_input_fn(shape, dtype, device):
+def _tensor_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "other": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _tensor_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = torch.where(inp2 == 0, torch.ones_like(inp2), inp2)
-    yield inp1, inp2
+    return inp1, inp2
 
 
-def _scalar_input_fn(shape, dtype, device):
+def _scalar_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"other": 0.5},
+        builder_args=(shape,),
+    )
+
+
+def _scalar_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp1 = utils.generate_tensor_input(shape, dtype, device)
-    yield inp1, 0.5
+    return inp1, 0.5
 
 
 @pytest.mark.fmod_tensor
@@ -38,7 +55,8 @@ def _scalar_input_fn(shape, dtype, device):
 )
 def test_fmod_tensor():
     bench = base.GenericBenchmark(
-        input_fn=_tensor_input_fn,
+        case_fn=_tensor_case_fn,
+        build_inputs_fn=_tensor_build_inputs_fn,
         op_name="fmod_tensor",
         torch_op=torch.fmod,
         dtypes=consts.FLOAT_DTYPES,
@@ -52,7 +70,8 @@ def test_fmod_tensor():
 )
 def test_fmod_scalar():
     bench = base.GenericBenchmark(
-        input_fn=_scalar_input_fn,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn,
         op_name="fmod_scalar",
         torch_op=torch.fmod,
         dtypes=consts.FLOAT_DTYPES,
@@ -66,7 +85,8 @@ def test_fmod_scalar():
 )
 def test_fmod_tensor_():
     bench = base.GenericBenchmark(
-        input_fn=_tensor_input_fn,
+        case_fn=_tensor_case_fn,
+        build_inputs_fn=_tensor_build_inputs_fn,
         op_name="fmod_tensor_",
         torch_op=torch.Tensor.fmod_,
         dtypes=consts.FLOAT_DTYPES,
@@ -81,7 +101,8 @@ def test_fmod_tensor_():
 )
 def test_fmod_scalar_():
     bench = base.GenericBenchmark(
-        input_fn=_scalar_input_fn,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn,
         op_name="fmod_scalar_",
         torch_op=torch.Tensor.fmod_,
         dtypes=consts.FLOAT_DTYPES,

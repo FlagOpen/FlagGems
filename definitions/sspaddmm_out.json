@@ -1,0 +1,48 @@
+{
+  "api_version": "v6.0",
+  "name": "sspaddmm_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of sspaddmm() that writes the result into the out tensor.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mat1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "beta",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1.0
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1.0
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

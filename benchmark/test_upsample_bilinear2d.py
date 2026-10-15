@@ -27,7 +27,15 @@ class UpsampleBenchmark(base.GenericBenchmark):
         return []
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     batch, channel, height, weight = shape
     input = torch.randn(size=shape, device=device, dtype=dtype)
     scale_factors = (2, 2)
@@ -35,13 +43,15 @@ def _input_fn(shape, dtype, device):
         int(height * scale_factors[0]),
         int(weight * scale_factors[1]),
     )
-    yield {
-        "input": input,
-        "output_size": output_size,
-        "align_corners": False,
-        "scales_h": None,
-        "scales_w": None,
-    },
+    return (
+        {
+            "input": input,
+            "output_size": output_size,
+            "align_corners": False,
+            "scales_h": None,
+            "scales_w": None,
+        },
+    )
 
 
 @pytest.mark.upsample_bilinear2d
@@ -51,7 +61,8 @@ def _input_fn(shape, dtype, device):
 def test_upsample_bilinear2d():
     bench = UpsampleBenchmark(
         op_name="upsample_bilinear2d",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch._C._nn.upsample_bilinear2d,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -42,9 +42,21 @@ class RowStackBenchmark(base.Benchmark):
         # row_stack materializes 3 inputs plus the stacked output in memory.
         self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            yield from self.input_fn(shape, dtype, self.device)
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        return next(self.input_fn(shape, case.dtype, self.device))
 
     def set_more_shapes(self):
         # Extra 2D / 3D shapes spanning a range of trailing-axis widths so the

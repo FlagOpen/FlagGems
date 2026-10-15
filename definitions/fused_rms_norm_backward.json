@@ -1,0 +1,48 @@
+{
+  "api_version": "v6.0",
+  "name": "fused_rms_norm_backward",
+  "requires_triton_kernel": true,
+  "description": "Backward pass for `fused_rms_norm`. Given the output gradient, the forward input,\nthe inverse RMS and the weight, computes the gradients with respect to the input\nand the weight as selected by `output_mask`.",
+  "parameters": [
+    {
+      "name": "grad_out",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "normalized_shape",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "rstd",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "output_mask",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "grad_input",
+    "grad_weight"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

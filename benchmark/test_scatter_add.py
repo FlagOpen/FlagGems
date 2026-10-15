@@ -51,6 +51,21 @@ def _input_fn(shape, dtype, device):
     yield inp, dim, index
 
 
+def _scatter_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _scatter_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    inp, dim, index = next(_input_fn(shape, dtype, device))
+    src_shape = list(size + 16 for size in index.shape)
+    src = torch.randn(src_shape, dtype=dtype, device=device)
+    return inp, dim, index, src
+
+
 def _get_gbps(bench_fn_args, latency):
     inp, dim, index = bench_fn_args[:3]
     data_shape = list(inp.shape)
@@ -65,18 +80,11 @@ def _get_gbps(bench_fn_args, latency):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_scatter_add_inplace():
-    def scatter_input_fn(shape, dtype, device):
-        input_gen = _input_fn(shape, dtype, device)
-        inp, dim, index = next(input_gen)
-        src_shape = list(size + 16 for size in index.shape)
-        src = torch.randn(src_shape, dtype=dtype, device=device)
-
-        yield inp, dim, index, src
-
     bench = TensorSelectBenchmark(
         op_name="scatter_add_",
         torch_op=torch.Tensor.scatter_add_,
-        input_fn=scatter_input_fn,
+        case_fn=_scatter_case_fn,
+        build_inputs_fn=_scatter_build_inputs_fn,
         get_gbps=_get_gbps,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -88,18 +96,11 @@ def test_scatter_add_inplace():
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_scatter_add():
-    def scatter_input_fn(shape, dtype, device):
-        input_gen = _input_fn(shape, dtype, device)
-        inp, dim, index = next(input_gen)
-        src_shape = list(size + 16 for size in index.shape)
-        src = torch.randn(src_shape, dtype=dtype, device=device)
-
-        yield inp, dim, index, src
-
     bench = TensorSelectBenchmark(
         op_name="scatter_add",
         torch_op=torch.scatter_add,
-        input_fn=scatter_input_fn,
+        case_fn=_scatter_case_fn,
+        build_inputs_fn=_scatter_build_inputs_fn,
         get_gbps=_get_gbps,
         dtypes=consts.FLOAT_DTYPES,
     )

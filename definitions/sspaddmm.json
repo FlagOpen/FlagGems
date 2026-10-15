@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "sspaddmm",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for sspaddmm.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mat1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "beta",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1.0
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

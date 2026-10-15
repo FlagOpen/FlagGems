@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "xlogy_scalar_tensor",
+  "requires_triton_kernel": true,
+  "description": "A variant of `xlogy` where `input` is a scalar.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

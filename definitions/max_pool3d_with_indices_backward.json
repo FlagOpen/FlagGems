@@ -1,0 +1,59 @@
+{
+  "api_version": "v6.0",
+  "name": "max_pool3d_with_indices_backward",
+  "requires_triton_kernel": true,
+  "description": "Backward pass for 3D max pooling with indices. Computes the gradient of the\ninput given the gradient of the output and the indices from the forward pass.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

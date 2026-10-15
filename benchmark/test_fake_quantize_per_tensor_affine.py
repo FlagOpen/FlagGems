@@ -18,9 +18,18 @@ import torch
 from . import base, consts, utils
 
 
-def fake_quantize_per_tensor_affine_input_fn(shape, dtype, device):
+def fake_quantize_per_tensor_affine_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"scale": 0.125, "zero_point": 3, "quant_min": 0, "quant_max": 255},
+        builder_args=(shape,),
+    )
+
+
+def fake_quantize_per_tensor_affine_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     input = utils.generate_tensor_input(shape, dtype, device)
-    yield input, 0.125, 3, 0, 255
+    return input, 0.125, 3, 0, 255
 
 
 @pytest.mark.fake_quantize_per_tensor_affine
@@ -40,7 +49,8 @@ def test_fake_quantize_per_tensor_affine():
     bench = BenchmarkFakeQuantizePerTensorAffine(
         op_name="fake_quantize_per_tensor_affine",
         torch_op=torch.fake_quantize_per_tensor_affine,
-        input_fn=fake_quantize_per_tensor_affine_input_fn,
+        case_fn=fake_quantize_per_tensor_affine_case_fn,
+        build_inputs_fn=fake_quantize_per_tensor_affine_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

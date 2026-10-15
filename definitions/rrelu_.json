@@ -1,0 +1,48 @@
+{
+  "api_version": "v6.0",
+  "name": "rrelu_",
+  "requires_triton_kernel": true,
+  "description": "In-place Randomized Leaky ReLU (RReLU). Applies RReLU in place: positive\ninputs are passed through unchanged, while negative inputs are multiplied\nby a slope. During training the slope is sampled uniformly from\n[lower, upper] per element, and at evaluation time the constant slope\n(lower + upper) / 2 is used.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "lower",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.125
+    },
+    {
+      "name": "upper",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.3333333333333333
+    },
+    {
+      "name": "training",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "generator",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

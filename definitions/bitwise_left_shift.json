@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "bitwise_left_shift",
+  "requires_triton_kernel": true,
+  "description": "Computes the left arithmetic shift of `self` by `other` bits.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -25,18 +25,28 @@ class HardtanhBackwardBenchmark(base.GenericBenchmark):
         return None
 
 
-def hardtanh_backward_input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": list(shape), "input": list(shape)},
+        params={"min_val": -1.0, "max_val": 1.0},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     grad_output = torch.randn(shape, dtype=dtype, device=device)
     min_val = -1.0
     max_val = 1.0
-    yield grad_output, inp, min_val, max_val
+    return grad_output, inp, min_val, max_val
 
 
 @pytest.mark.hardtanh_backward
 def test_hardtanh_backward():
     bench = HardtanhBackwardBenchmark(
-        input_fn=hardtanh_backward_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="hardtanh_backward",
         torch_op=torch.ops.aten.hardtanh_backward,
         dtypes=consts.FLOAT_DTYPES,

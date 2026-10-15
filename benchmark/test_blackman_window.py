@@ -22,21 +22,31 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
-    yield {
-        "window_length": math.prod(shape),
-        "periodic": True,
-        "dtype": dtype,
-        "device": device,
-    },
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"window_length": list(shape)},
+        params={"periodic": True},
+        builder_args=(shape, True),
+    )
 
     if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield {
+        yield base.BenchmarkCasePlan(
+            shape={"window_length": list(shape)},
+            params={"periodic": False},
+            builder_args=(shape, False),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, periodic = plan.builder_args
+    return (
+        {
             "window_length": math.prod(shape),
-            "periodic": False,
+            "periodic": periodic,
             "dtype": dtype,
             "device": device,
         },
+    )
 
 
 @pytest.mark.blackman_window
@@ -46,7 +56,8 @@ def _input_fn(shape, dtype, device):
 def test_blackman_window():
     bench = base.GenericBenchmark(
         op_name="blackman_window",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.blackman_window,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -60,7 +71,8 @@ def test_blackman_window():
 def test_blackman_window_periodic():
     bench = base.GenericBenchmark(
         op_name="blackman_window_periodic",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.blackman_window,
         dtypes=consts.FLOAT_DTYPES,
     )

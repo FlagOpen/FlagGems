@@ -18,24 +18,41 @@ import torch
 from . import base, consts, utils
 
 
-def _take_input_fn(shape, cur_dtype, device):
+def _take_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _take_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
     index = torch.randint(0, inp.numel(), (inp.numel(),), device=device)
-    yield inp, index
+    return inp, index
 
 
-def _take_out_input_fn(shape, cur_dtype, device):
+def _take_out_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _take_out_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
     index = torch.randint(0, inp.numel(), (inp.numel(),), device=device)
     out = torch.empty(index.shape, dtype=cur_dtype, device=device)
-    yield inp, index, {"out": out}
+    return inp, index, {"out": out}
 
 
 @pytest.mark.take
 def test_take():
     bench = base.GenericBenchmark(
         op_name="take",
-        input_fn=_take_input_fn,
+        case_fn=_take_case_fn,
+        build_inputs_fn=_take_build_inputs_fn,
         torch_op=torch.take,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -46,7 +63,8 @@ def test_take():
 def test_take_out():
     bench = base.GenericBenchmark(
         op_name="take_out",
-        input_fn=_take_out_input_fn,
+        case_fn=_take_out_case_fn,
+        build_inputs_fn=_take_out_build_inputs_fn,
         torch_op=torch.take,
         dtypes=consts.FLOAT_DTYPES,
     )

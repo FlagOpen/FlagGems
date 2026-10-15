@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "concatenate",
+  "requires_triton_kernel": true,
+  "description": "An alias of `cat()`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Union[Tuple[torch.Tensor, ...], List[torch.Tensor]]"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

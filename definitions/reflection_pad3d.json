@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "reflection_pad3d",
+  "requires_triton_kernel": true,
+  "description": "Pads the input 5D tensor by reflecting the boundary values at both edges\nalong the last three spatial dimensions (depth, height, width).",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "addcmul_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `addcmul()`.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "tensor1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "tensor2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "value",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "inp"
+    ],
+    "returns_alias_of": {
+      "out": "inp"
+    }
+  }
+}

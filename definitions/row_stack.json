@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "row_stack",
+  "requires_triton_kernel": true,
+  "description": "Stack tensors in sequence vertically (row wise). Alias of vstack.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

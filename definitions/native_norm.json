@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "native_norm",
+  "requires_triton_kernel": true,
+  "description": "Computes the p-norm over all elements of the input tensor, reducing to a scalar.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -31,19 +31,30 @@ class LSTMCellBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = LSTM_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
             batch_size, hidden_size = shape
-            input_gates = torch.randn(
-                batch_size, 4 * hidden_size, dtype=cur_dtype, device=self.device
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input_gates": [batch_size, 4 * hidden_size]},
+                    builder_args=(shape,),
+                ),
             )
-            hidden_gates = torch.randn(
-                batch_size, 4 * hidden_size, dtype=cur_dtype, device=self.device
-            )
-            cx = torch.randn(
-                batch_size, hidden_size, dtype=cur_dtype, device=self.device
-            )
-            yield input_gates, hidden_gates, cx
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        batch_size, hidden_size = shape
+        cur_dtype = case.dtype
+        input_gates = torch.randn(
+            batch_size, 4 * hidden_size, dtype=cur_dtype, device=self.device
+        )
+        hidden_gates = torch.randn(
+            batch_size, 4 * hidden_size, dtype=cur_dtype, device=self.device
+        )
+        cx = torch.randn(batch_size, hidden_size, dtype=cur_dtype, device=self.device)
+        return input_gates, hidden_gates, cx
 
 
 @pytest.mark.thnn_fused_lstm_cell

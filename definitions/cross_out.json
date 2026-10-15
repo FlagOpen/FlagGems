@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "cross_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `cross` that allows the output to be assigned to `out`.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

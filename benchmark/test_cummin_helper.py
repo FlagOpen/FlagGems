@@ -18,19 +18,28 @@ import torch
 from . import base, consts, utils
 
 
-def _cummin_helper_input_fn(shape, cur_dtype, device):
+def _cummin_helper_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _cummin_helper_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
     values = torch.empty_like(inp)
     indices = torch.empty(inp.shape, dtype=torch.int64, device=device)
     dim = 1 if len(shape) >= 2 else 0
-    yield inp, values, indices, dim
+    return inp, values, indices, dim
 
 
 @pytest.mark.cummin_helper
 def test_cummin_helper():
     bench = base.GenericBenchmark2DOnly(
         op_name="cummin_helper",
-        input_fn=_cummin_helper_input_fn,
+        case_fn=_cummin_helper_case_fn,
+        build_inputs_fn=_cummin_helper_build_inputs_fn,
         torch_op=torch.ops.aten._cummin_helper,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     )

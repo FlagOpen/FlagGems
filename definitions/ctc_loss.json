@@ -1,0 +1,53 @@
+{
+  "api_version": "v6.0",
+  "name": "ctc_loss",
+  "requires_triton_kernel": true,
+  "description": "Connectionist Temporal Classification loss for sequence-to-sequence models.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": "mean"
+    },
+    {
+      "name": "zero_infinity",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

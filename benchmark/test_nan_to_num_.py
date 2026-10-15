@@ -17,22 +17,30 @@ import pytest
 from . import base, consts, utils
 
 
-def _input_fn(shape, cur_dtype, device):
+def _case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
     inp.view(-1)[0] = float("nan")
     if inp.numel() > 1:
         inp.view(-1)[1] = float("inf")
     if inp.numel() > 2:
         inp.view(-1)[2] = float("-inf")
-
-    yield inp,
+    return (inp,)
 
 
 @pytest.mark.nan_to_num_
 def test_nan_to_num_():
     bench = base.GenericBenchmark(
         op_name="nan_to_num_",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=lambda a: a.nan_to_num_(),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,

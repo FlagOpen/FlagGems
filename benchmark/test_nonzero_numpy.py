@@ -20,13 +20,26 @@ import flag_gems
 from . import base, consts
 
 
+def _case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
+    return (base.generate_tensor_input(shape, cur_dtype, device),)
+
+
 @pytest.mark.nonzero_numpy
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_nonzero_numpy():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=base.unary_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="nonzero_numpy",
         torch_op=torch.ops.aten.nonzero_numpy,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,

@@ -31,7 +31,15 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
-def batch_norm_backward_elemt_input_fn(shape, dtype, device):
+def batch_norm_backward_elemt_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def batch_norm_backward_elemt_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     C = shape[1]
     spatial = 1
     for s in shape[2:]:
@@ -49,7 +57,7 @@ def batch_norm_backward_elemt_input_fn(shape, dtype, device):
     sum_dy_xmu = torch.randn(C, dtype=torch.float32, device=device)
     count = torch.tensor([count_val], dtype=torch.int32, device=device)
 
-    yield (
+    return (
         grad_output,
         inp,
         mean,
@@ -64,7 +72,8 @@ def batch_norm_backward_elemt_input_fn(shape, dtype, device):
 @pytest.mark.batch_norm_backward_elemt
 def test_batch_norm_backward_elemt():
     bench = NormBenchmark(
-        input_fn=batch_norm_backward_elemt_input_fn,
+        case_fn=batch_norm_backward_elemt_case_fn,
+        build_inputs_fn=batch_norm_backward_elemt_build_inputs_fn,
         op_name="batch_norm_backward_elemt",
         torch_op=torch.batch_norm_backward_elemt,
         dtypes=consts.FLOAT_DTYPES,

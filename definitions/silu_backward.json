@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "silu_backward",
+  "requires_triton_kernel": true,
+  "description": "A variant of `silu()` for backward case.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

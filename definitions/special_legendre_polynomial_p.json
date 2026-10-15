@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "special_legendre_polynomial_p",
+  "requires_triton_kernel": true,
+  "description": "Computes the Legendre polynomial P_n(x) of degree n for each element in the input tensor,\ndesigned for special mathematical functions.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

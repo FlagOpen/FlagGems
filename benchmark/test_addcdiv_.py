@@ -20,14 +20,21 @@ import flag_gems
 from . import base, consts, utils
 
 
-def addcdiv__input_fn(shape, dtype, device):
-    # For in-place addcdiv_, we need to yield the arguments for tensor.addcdiv_() method call
-    # The input function format: (inp1, inp2, inp3) + kwargs
+def _case_fn(shape, dtype):
+    # For in-place addcdiv_, the call is tensor.addcdiv_(tensor1, tensor2, value=...)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "tensor1": list(shape), "tensor2": list(shape)},
+        params={"value": 0.5},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)
     inp3 = utils.generate_tensor_input(shape, dtype, device)
-
-    yield inp1, inp2, inp3, {"value": 0.5}
+    return inp1, inp2, inp3, {"value": 0.5}
 
 
 @pytest.mark.addcdiv_
@@ -38,7 +45,8 @@ def test_addcdiv_():
     bench = base.GenericBenchmark(
         op_name="addcdiv_",
         torch_op=torch.Tensor.addcdiv_,
-        input_fn=addcdiv__input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )

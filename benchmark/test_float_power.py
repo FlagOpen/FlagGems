@@ -23,44 +23,58 @@ class FloatPowerBenchmark(base.GenericBenchmark):
         self.shapes = [(4,), (1024,), (65536,), (512, 512), (2048, 2048)]
 
 
-def _tensor_tensor_input(shape, dtype, device):
+def _simple_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _tensor_tensor_build(plan, dtype, device):
+    (shape,) = plan.builder_args
     base_tensor = torch.rand(shape, dtype=dtype, device=device).add_(0.25)
     exponent = torch.rand(shape, dtype=dtype, device=device).mul_(4).sub_(2)
-    yield base_tensor, exponent
+    return base_tensor, exponent
 
 
-def _tensor_scalar_input(shape, dtype, device):
+def _tensor_scalar_build(plan, dtype, device):
+    (shape,) = plan.builder_args
     base_tensor = torch.rand(shape, dtype=dtype, device=device).add_(0.25)
-    yield base_tensor, 1.234
+    return base_tensor, 1.234
 
 
-def _scalar_tensor_input(shape, dtype, device):
+def _scalar_tensor_build(plan, dtype, device):
+    (shape,) = plan.builder_args
     exponent = torch.rand(shape, dtype=dtype, device=device).mul_(4).sub_(2)
-    yield 2.0, exponent
+    return 2.0, exponent
 
 
-def _tensor_tensor_out_input(shape, dtype, device):
+def _tensor_tensor_out_build(plan, dtype, device):
+    (shape,) = plan.builder_args
     base_tensor = torch.rand(shape, dtype=dtype, device=device).add_(0.25)
     exponent = torch.rand(shape, dtype=dtype, device=device).mul_(4).sub_(2)
     out = torch.empty(shape, dtype=torch.float64, device=device)
-    yield base_tensor, exponent, {"out": out}
+    return base_tensor, exponent, {"out": out}
 
 
-def _tensor_scalar_out_input(shape, dtype, device):
+def _tensor_scalar_out_build(plan, dtype, device):
+    (shape,) = plan.builder_args
     base_tensor = torch.rand(shape, dtype=dtype, device=device).add_(0.25)
     out = torch.empty(shape, dtype=torch.float64, device=device)
-    yield base_tensor, 1.234, {"out": out}
+    return base_tensor, 1.234, {"out": out}
 
 
-def _scalar_tensor_out_input(shape, dtype, device):
+def _scalar_tensor_out_build(plan, dtype, device):
+    (shape,) = plan.builder_args
     exponent = torch.rand(shape, dtype=dtype, device=device).mul_(4).sub_(2)
     out = torch.empty(shape, dtype=torch.float64, device=device)
-    yield 2.0, exponent, {"out": out}
+    return 2.0, exponent, {"out": out}
 
 
-def _run_benchmark(op_name, input_fn, torch_op):
+def _run_benchmark(op_name, build_inputs_fn, torch_op):
     bench = FloatPowerBenchmark(
-        input_fn=input_fn,
+        case_fn=_simple_case_fn,
+        build_inputs_fn=build_inputs_fn,
         op_name=op_name,
         torch_op=torch_op,
         dtypes=consts.FLOAT_DTYPES,
@@ -72,7 +86,7 @@ def _run_benchmark(op_name, input_fn, torch_op):
 def test_float_power_tensor_tensor():
     _run_benchmark(
         "float_power_tensor_tensor",
-        _tensor_tensor_input,
+        _tensor_tensor_build,
         torch.ops.aten.float_power.Tensor_Tensor,
     )
 
@@ -81,7 +95,7 @@ def test_float_power_tensor_tensor():
 def test_float_power_tensor_scalar():
     _run_benchmark(
         "float_power_tensor_scalar",
-        _tensor_scalar_input,
+        _tensor_scalar_build,
         torch.ops.aten.float_power.Tensor_Scalar,
     )
 
@@ -90,7 +104,7 @@ def test_float_power_tensor_scalar():
 def test_float_power_scalar_tensor():
     _run_benchmark(
         "float_power_scalar_tensor",
-        _scalar_tensor_input,
+        _scalar_tensor_build,
         torch.ops.aten.float_power.Scalar,
     )
 
@@ -99,7 +113,7 @@ def test_float_power_scalar_tensor():
 def test_float_power_tensor_tensor_out():
     _run_benchmark(
         "float_power_tensor_tensor_out",
-        _tensor_tensor_out_input,
+        _tensor_tensor_out_build,
         torch.ops.aten.float_power.Tensor_Tensor_out,
     )
 
@@ -108,7 +122,7 @@ def test_float_power_tensor_tensor_out():
 def test_float_power_tensor_scalar_out():
     _run_benchmark(
         "float_power_tensor_scalar_out",
-        _tensor_scalar_out_input,
+        _tensor_scalar_out_build,
         torch.ops.aten.float_power.Tensor_Scalar_out,
     )
 
@@ -117,6 +131,6 @@ def test_float_power_tensor_scalar_out():
 def test_float_power_scalar_tensor_out():
     _run_benchmark(
         "float_power_scalar_tensor_out",
-        _scalar_tensor_out_input,
+        _scalar_tensor_out_build,
         torch.ops.aten.float_power.Scalar_out,
     )

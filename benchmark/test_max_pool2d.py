@@ -36,45 +36,60 @@ class MaxPool2dBenchmark(base.GenericBenchmark):
             yield from self.input_fn(shape, dtype, self.device)
 
 
-def max_pool2d_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-
-    yield inp, {
-        "kernel_size": 3,
-        "stride": 2,
-        "padding": 1,
-        "dilation": 1,
-        "ceil_mode": False,
-    }
-
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        # Non-square kernel/stride/padding
-        if shape[-2] > 5 and shape[-1] > 5:
-            yield inp, {
-                "kernel_size": (3, 5),
-                "stride": (2, 1),
-                "padding": (1, 2),
-                "dilation": 1,
-                "ceil_mode": False,
-            }
-
-        # With dilation
-        yield inp, {
-            "kernel_size": 3,
-            "stride": 1,
-            "padding": 1,
-            "dilation": 2,
-            "ceil_mode": False,
-        }
-
-        # With ceil_mode
-        yield inp, {
+def _max_pool2d_param_variants(shape):
+    # Pure enumeration of the pooling-kwargs variants for one shape, mirroring
+    # max_pool2d_input_fn's control flow without allocating any tensors.
+    variants = [
+        {
             "kernel_size": 3,
             "stride": 2,
             "padding": 1,
             "dilation": 1,
-            "ceil_mode": True,
+            "ceil_mode": False,
         }
+    ]
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        # Non-square kernel/stride/padding
+        if shape[-2] > 5 and shape[-1] > 5:
+            variants.append(
+                {
+                    "kernel_size": (3, 5),
+                    "stride": (2, 1),
+                    "padding": (1, 2),
+                    "dilation": 1,
+                    "ceil_mode": False,
+                }
+            )
+
+        # With dilation
+        variants.append(
+            {
+                "kernel_size": 3,
+                "stride": 1,
+                "padding": 1,
+                "dilation": 2,
+                "ceil_mode": False,
+            }
+        )
+
+        # With ceil_mode
+        variants.append(
+            {
+                "kernel_size": 3,
+                "stride": 2,
+                "padding": 1,
+                "dilation": 1,
+                "ceil_mode": True,
+            }
+        )
+    return variants
+
+
+def max_pool2d_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+
+    for params in _max_pool2d_param_variants(shape):
+        yield inp, params
 
 
 @pytest.mark.max_pool2d_with_indices
@@ -171,12 +186,64 @@ def torch_max_pool2d_with_indices_backward_wrapper(
     )
 
 
+_MAX_POOL2D_SHAPES_4D = [
+    (4, 3, 224, 224),  # Typical input image size
+    (16, 64, 56, 56),  # Early ResNet layer output
+    (32, 128, 28, 28),  # Mid ResNet layer output
+    (64, 256, 14, 14),  # Later ResNet layer output
+    (128, 512, 7, 7),  # Final ResNet layer output
+]
+
+
+class MaxPool2dWithIndicesBackwardBenchmark(base.GenericBenchmark):
+    def get_case_iter(self, dtype):
+        ordinal = 0
+        for shape in _MAX_POOL2D_SHAPES_4D:
+            for variant_idx, params in enumerate(_max_pool2d_param_variants(shape)):
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params={
+                            "kernel_size": params["kernel_size"],
+                            "stride": params["stride"],
+                            "padding": params["padding"],
+                            "dilation": params["dilation"],
+                            "ceil_mode": params["ceil_mode"],
+                        },
+                        builder_args=(shape, variant_idx),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, variant_idx = plan.builder_args
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        params = _max_pool2d_param_variants(shape)[variant_idx]
+        # Use FlagGems forward to produce indices compatible with FlagGems backward
+        # Note: FlagGems indices format differs from PyTorch's format
+        output, indices = flag_gems.max_pool2d_with_indices(inp, **params)
+        grad_output = torch.randn_like(output)
+        return (
+            grad_output,
+            inp,
+            params["kernel_size"],
+            params["stride"],
+            params["padding"],
+            params["dilation"],
+            params["ceil_mode"],
+            indices,
+        )
+
+
 @pytest.mark.max_pool2d_with_indices_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_max_pool2d_with_indices_backward():
-    bench = MaxPool2dBenchmark(
+    bench = MaxPool2dWithIndicesBackwardBenchmark(
         input_fn=max_pool2d_with_indices_backward_input_fn,
         op_name="max_pool2d_with_indices_backward",
         torch_op=torch_max_pool2d_with_indices_backward_wrapper,

@@ -37,13 +37,29 @@ class BilinearBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = BILINEAR_SHAPES
 
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, dtype):
+        ordinal = 0
         for m, in1, in2, out in self.shapes:
-            input1 = torch.randn((m, in1), dtype=cur_dtype, device=self.device)
-            input2 = torch.randn((m, in2), dtype=cur_dtype, device=self.device)
-            weight = torch.randn((out, in1, in2), dtype=cur_dtype, device=self.device)
-            bias = torch.randn((out,), dtype=cur_dtype, device=self.device)
-            yield input1, input2, weight, bias
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input1": [m, in1]},
+                    params={},
+                    builder_args=(m, in1, in2, out),
+                ),
+            )
+            ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        m, in1, in2, out = plan.builder_args
+        cur_dtype = case.dtype
+        input1 = torch.randn((m, in1), dtype=cur_dtype, device=self.device)
+        input2 = torch.randn((m, in2), dtype=cur_dtype, device=self.device)
+        weight = torch.randn((out, in1, in2), dtype=cur_dtype, device=self.device)
+        bias = torch.randn((out,), dtype=cur_dtype, device=self.device)
+        return input1, input2, weight, bias
 
 
 @pytest.mark.bilinear

@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "underscore_conj_physical_out",
+  "requires_triton_kernel": true,
+  "description": "The `out` variant of the private `aten::_conj_physical` overload, writing the\nconjugate into the provided `out` tensor.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

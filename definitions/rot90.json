@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "rot90",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for rot90.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "k",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "dims",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [
+        0,
+        1
+      ]
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

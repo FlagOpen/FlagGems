@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "binomial_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of binomial() that writes the result into the out tensor.",
+  "parameters": [
+    {
+      "name": "count",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "prob",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "generator",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

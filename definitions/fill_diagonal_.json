@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "fill_diagonal_",
+  "requires_triton_kernel": true,
+  "description": "Fills the main diagonal of a tensor that has at least two dimensions\nwith the specified scalar value, in-place.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "fill_value",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "wrap",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

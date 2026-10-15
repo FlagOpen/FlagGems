@@ -59,12 +59,20 @@ def group_norm_input_fn(shape, dtype, device):
         yield inp, channel, weight, bias
 
 
-def native_group_norm_input_fn(shape, dtype, device):
+def native_group_norm_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def native_group_norm_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     channel_count = shape[1]
     weight = torch.randn(channel_count, dtype=dtype, device=device)
     bias = torch.randn(channel_count, dtype=dtype, device=device)
-    yield (
+    return (
         inp,
         weight,
         bias,
@@ -79,7 +87,8 @@ def native_group_norm_input_fn(shape, dtype, device):
 @pytest.mark.native_group_norm
 def test_native_group_norm():
     bench = NormBenchmark(
-        input_fn=native_group_norm_input_fn,
+        case_fn=native_group_norm_case_fn,
+        build_inputs_fn=native_group_norm_build_inputs_fn,
         op_name="native_group_norm",
         torch_op=torch.ops.aten.native_group_norm.default,
         dtypes=consts.FLOAT_DTYPES,

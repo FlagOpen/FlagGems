@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "weight_int8pack_mm",
+  "requires_triton_kernel": true,
+  "description": "Performs int8 weight-only quantized matrix multiplication with per-channel scales.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "scales",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

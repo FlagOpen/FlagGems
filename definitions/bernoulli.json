@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "bernoulli",
+  "requires_triton_kernel": true,
+  "description": "Draws binary random numbers (0 or 1) from a Bernoulli distribution with per-element probabilities.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "generator",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

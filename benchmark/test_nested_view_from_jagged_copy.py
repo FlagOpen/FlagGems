@@ -45,20 +45,35 @@ class NestedViewFromJaggedCopyBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = JAGGED_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for num_components, inner_dim, total in self.shapes:
-            values = torch.randn(total, inner_dim, dtype=cur_dtype, device=self.device)
-            # Deterministic variable-length split of the packed jagged dimension.
-            base_len = total // num_components
-            offsets = [0]
-            for i in range(num_components):
-                length = base_len + (1 if i < (total % num_components) else 0)
-                offsets.append(offsets[-1] + length)
-            offsets = torch.tensor(offsets, dtype=torch.int64, device=self.device)
-            dummy = torch.randn(
-                num_components, inner_dim, dtype=cur_dtype, device=self.device
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            num_components, inner_dim, total = shape
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [total, inner_dim]},
+                    builder_args=(shape,),
+                ),
             )
-            yield values, offsets, dummy
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        num_components, inner_dim, total = shape
+        cur_dtype = case.dtype
+        values = torch.randn(total, inner_dim, dtype=cur_dtype, device=self.device)
+        # Deterministic variable-length split of the packed jagged dimension.
+        base_len = total // num_components
+        offsets = [0]
+        for i in range(num_components):
+            length = base_len + (1 if i < (total % num_components) else 0)
+            offsets.append(offsets[-1] + length)
+        offsets = torch.tensor(offsets, dtype=torch.int64, device=self.device)
+        dummy = torch.randn(
+            num_components, inner_dim, dtype=cur_dtype, device=self.device
+        )
+        return values, offsets, dummy
 
     def get_tflops(self, op, *args, **kwargs):
         return 0.0

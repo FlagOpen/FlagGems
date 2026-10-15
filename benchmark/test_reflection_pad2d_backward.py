@@ -47,9 +47,22 @@ class ReflectionPad2dBackwardBenchmark(base.Benchmark):
             (4, 128, 64, 64),
         ]
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            yield from reflection_pad2d_backward_input_fn(shape, cur_dtype, self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    params={"padding": [2, 2, 2, 2]},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        return next(reflection_pad2d_backward_input_fn(shape, case.dtype, self.device))
 
 
 @pytest.mark.reflection_pad2d_backward

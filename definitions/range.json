@@ -1,0 +1,49 @@
+{
+  "api_version": "v6.0",
+  "name": "range",
+  "requires_triton_kernel": true,
+  "description": "Returns a 1-D tensor of size `floor(end - start) + 1` with values from `start` to\n`end` with step `1`.",
+  "parameters": [
+    {
+      "name": "start",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "end",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -20,11 +20,24 @@ class VanderBenchmark(base.Benchmark):
         # within memory. Rule 14: override set_shapes so CI cannot clobber these.
         self.shapes = [(64,), (128,), (256,), (512,)]
 
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            # Generate 1D input
-            inp = base.generate_tensor_input(shape, dtype, flag_gems.device)
-            yield inp, None, False  # (x, N=None, increasing=False)
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"N": None, "increasing": False},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        # Generate 1D input
+        inp = base.generate_tensor_input(shape, case.dtype, flag_gems.device)
+        return inp, None, False  # (x, N=None, increasing=False)
 
     def unpack_to_args_kwargs(self, input):
         x, N, increasing = input

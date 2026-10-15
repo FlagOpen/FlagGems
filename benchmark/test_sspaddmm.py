@@ -73,10 +73,6 @@ class SspaddmmBenchmark(base.BlasBenchmark):
     def set_more_shapes(self):
         return []
 
-    def get_input_iter(self, dtype):
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
-
     def get_tflops(self, op, *args, **kwargs):
         sparse_input, mat1 = args[0], args[1]
         nnz = mat1._nnz()

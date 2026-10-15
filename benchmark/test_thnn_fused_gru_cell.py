@@ -44,30 +44,43 @@ class FusedGRUCellBenchmark(base.Benchmark):
         if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             self.shapes += list(COMPREHENSIVE_SHAPES)
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, hidden_size, with_bias in self.shapes:
-            input_gates = torch.randn(
-                batch_size,
-                3 * hidden_size,
-                dtype=cur_dtype,
-                device=self.device,
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch_size, hidden_size, with_bias) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input_gates": [batch_size, 3 * hidden_size]},
+                    params={"with_bias": with_bias},
+                    builder_args=(batch_size, hidden_size, with_bias),
+                ),
             )
-            hidden_gates = torch.randn_like(input_gates)
-            hx = torch.randn(
-                batch_size,
-                hidden_size,
-                dtype=cur_dtype,
-                device=self.device,
+
+    def build_inputs(self, case):
+        batch_size, hidden_size, with_bias = case.builder_args[0].builder_args
+        cur_dtype = case.dtype
+        input_gates = torch.randn(
+            batch_size,
+            3 * hidden_size,
+            dtype=cur_dtype,
+            device=self.device,
+        )
+        hidden_gates = torch.randn_like(input_gates)
+        hx = torch.randn(
+            batch_size,
+            hidden_size,
+            dtype=cur_dtype,
+            device=self.device,
+        )
+        if with_bias:
+            input_bias = torch.randn(
+                3 * hidden_size, dtype=cur_dtype, device=self.device
             )
-            if with_bias:
-                input_bias = torch.randn(
-                    3 * hidden_size, dtype=cur_dtype, device=self.device
-                )
-                hidden_bias = torch.randn_like(input_bias)
-            else:
-                input_bias = None
-                hidden_bias = None
-            yield input_gates, hidden_gates, hx, input_bias, hidden_bias
+            hidden_bias = torch.randn_like(input_bias)
+        else:
+            input_bias = None
+            hidden_bias = None
+        return input_gates, hidden_gates, hx, input_bias, hidden_bias
 
 
 def _fused_gru_cell_out(

@@ -51,11 +51,19 @@ def test_ldexp():
     bench.run()
 
 
-def ldexp_out_input_fn(shape, dtype, device):
-    self = torch.randn(shape, dtype=dtype, device=device)
+def ldexp_out_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(shape), "other": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def ldexp_out_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
+    self = torch.randn(shape, dtype=cur_dtype, device=device)
     other = torch.randint(-8, 9, shape, dtype=torch.int32, device=device)
-    out = torch.empty(shape, dtype=dtype, device=device)
-    yield self, other, {"out": out}
+    out = torch.empty(shape, dtype=cur_dtype, device=device)
+    return self, other, {"out": out}
 
 
 @pytest.mark.ldexp_out
@@ -63,7 +71,8 @@ def test_ldexp_out():
     bench = LdexpBenchmark(
         op_name="ldexp_out",
         torch_op=torch.ops.aten.ldexp.out,
-        input_fn=ldexp_out_input_fn,
+        case_fn=ldexp_out_case_fn,
+        build_inputs_fn=ldexp_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

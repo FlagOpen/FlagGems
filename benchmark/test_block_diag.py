@@ -25,15 +25,26 @@ class BlockDiagBenchmark(base.Benchmark):
         self.shapes = BLOCK_DIAG_SHAPES[:]
         self.shape_desc = "num_blocks, block_size"
 
-    def get_input_iter(self, cur_dtype):
-        for num_blocks, block_size in self.shapes:
-            blocks = [
-                torch.randn(
-                    (block_size, block_size), dtype=cur_dtype, device=self.device
-                )
-                for _ in range(num_blocks)
-            ]
-            yield (blocks,)
+    def get_case_iter(self, dtype):
+        for ordinal, (num_blocks, block_size) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"block": [block_size, block_size]},
+                    params={"num_blocks": num_blocks},
+                    builder_args=(num_blocks, block_size),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        num_blocks, block_size = plan.builder_args
+        blocks = [
+            torch.randn((block_size, block_size), dtype=case.dtype, device=self.device)
+            for _ in range(num_blocks)
+        ]
+        return (blocks,)
 
 
 @pytest.mark.block_diag

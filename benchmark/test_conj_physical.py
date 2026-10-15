@@ -52,6 +52,24 @@ def _input_fn(shape, dtype, device):
     yield (input_tensor,)
 
 
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return next(_input_fn(shape, dtype, device))
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    args = next(_input_fn(shape, dtype, device))
+    return args[0], {"out": torch.empty_like(args[0])}
+
+
 class Conj_physicalBenchmark(base.GenericBenchmarkExcluse3D):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -89,7 +107,8 @@ def test_conj_physical():
         )
 
     bench = Conj_physicalBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="conj_physical",
         torch_op=torch.conj_physical,
         dtypes=dtypes,
@@ -104,7 +123,8 @@ def test__conj_physical():
     # The private op only differs from the public one for real dtypes (where it
     # still allocates), so benchmark the complex path it actually accelerates.
     bench = Conj_physicalBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="_conj_physical",
         torch_op=torch.ops.aten._conj_physical,
         dtypes=consts.COMPLEX_DTYPES,
@@ -113,16 +133,11 @@ def test__conj_physical():
     bench.run()
 
 
-def _out_input_fn(shape, dtype, device):
-    """Same inputs as ``_input_fn``, plus the pre-allocated ``out`` target."""
-    for args in _input_fn(shape, dtype, device):
-        yield args[0], {"out": torch.empty_like(args[0])}
-
-
 @pytest.mark.underscore_conj_physical_out
 def test__conj_physical_out():
     bench = Conj_physicalBenchmark(
-        input_fn=_out_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
         op_name="_conj_physical_out",
         torch_op=torch.ops.aten._conj_physical.out,
         dtypes=consts.COMPLEX_DTYPES,

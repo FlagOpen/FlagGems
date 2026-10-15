@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "median_dim",
+  "requires_triton_kernel": true,
+  "description": "Returns a namedtuple `(values, indices)` where `values` contains the median\nof each row of `input` in the dimension `dim`, and `indices` contains the\nindex location of each median value found.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "values",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

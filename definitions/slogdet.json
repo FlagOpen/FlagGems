@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "slogdet",
+  "requires_triton_kernel": true,
+  "description": "Computes the sign and natural logarithm of the absolute value of the\ndeterminant of a square matrix (or a batch of square matrices) using LU\ndecomposition with partial pivoting. This is the public alias for\n`torch.linalg.slogdet`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "sign",
+    "logabsdet"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

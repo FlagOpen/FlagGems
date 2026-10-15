@@ -20,11 +20,20 @@ import flag_gems
 from . import base, consts, utils
 
 
-def _dropout_backward_input_fn(shape, dtype, device):
+def _dropout_backward_case_fn(shape, dtype):
+    scale = 1.0 / 0.5  # 1.0 / (1.0 - p), where p=0.5
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": list(shape), "mask": list(shape)},
+        params={"scale": scale},
+        builder_args=(shape, scale),
+    )
+
+
+def _dropout_backward_build_inputs_fn(plan, dtype, device):
+    shape, scale = plan.builder_args
     grad_output = utils.generate_tensor_input(shape, dtype, device)
     mask = torch.randint(0, 2, shape, dtype=torch.bool, device=device)
-    scale = 1.0 / 0.5  # 1.0 / (1.0 - p), where p=0.5
-    yield grad_output, mask, {"scale": scale}
+    return grad_output, mask, {"scale": scale}
 
 
 @pytest.mark.dropout
@@ -45,7 +54,8 @@ def test_dropout():
 def test_native_dropout_backward():
     bench = base.GenericBenchmark(
         op_name="native_dropout_backward",
-        input_fn=_dropout_backward_input_fn,
+        case_fn=_dropout_backward_case_fn,
+        build_inputs_fn=_dropout_backward_build_inputs_fn,
         torch_op=torch.ops.aten.native_dropout_backward,
         dtypes=consts.FLOAT_DTYPES,
     )

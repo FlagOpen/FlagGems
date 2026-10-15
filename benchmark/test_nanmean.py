@@ -7,22 +7,38 @@ from . import base, consts
 
 
 class _NanmeanBenchmark(base.UnaryReductionBenchmark):
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, dtype):
+        ordinal = 0
         for shape in self.shapes:
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device) * 10
-            mask = torch.rand(shape, device=self.device) > 0.7
-            x[mask] = float("nan")
-
-            ndim = x.ndim
-
-            yield (x,)
-
+            ndim = len(shape)
+            dims = [None]
             if ndim >= 2:
-                yield x, -1
-                yield x, 0
-
+                dims += [-1, 0]
             if ndim >= 3:
-                yield x, 1
+                dims += [1]
+            for dim in dims:
+                params = {} if dim is None else {"dim": dim}
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params=params,
+                        builder_args=(shape, dim),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, dim = plan.builder_args
+        cur_dtype = case.dtype
+        x = torch.randn(shape, dtype=cur_dtype, device=self.device) * 10
+        mask = torch.rand(shape, device=self.device) > 0.7
+        x[mask] = float("nan")
+        if dim is None:
+            return (x,)
+        return x, dim
 
 
 class _NanmeanOutBenchmark(base.UnaryReductionBenchmark):

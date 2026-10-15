@@ -20,6 +20,40 @@ import flag_gems
 from . import base, consts
 
 
+def _fused_rms_norm_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _fused_rms_norm_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    M, N = shape
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    weight = torch.randn(N, dtype=dtype, device=device)
+    return inp, (N,), weight
+
+
+def _fused_rms_norm_backward_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _fused_rms_norm_backward_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    M, N = shape
+    normalized_shape = [N]
+    eps = 1e-5
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    grad = torch.randn_like(inp)
+    weight = torch.randn(N, dtype=dtype, device=device)
+    rstd = torch.rsqrt(inp.to(torch.float32).pow(2).mean(dim=-1) + eps)
+    return grad, inp, normalized_shape, rstd, weight, [True, True]
+
+
 @pytest.mark.fused_rms_norm
 def test_fused_rms_norm():
     """Benchmark for _fused_rms_norm which returns (output, inv_rms)."""
@@ -35,14 +69,9 @@ def test_fused_rms_norm():
             return weight * hidden_states, inv_rms.squeeze(-1)
         return hidden_states, inv_rms.squeeze(-1)
 
-    def fused_rms_norm_input_fn(shape, dtype, device):
-        M, N = shape
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        weight = torch.randn(N, dtype=dtype, device=device)
-        yield inp, (N,), weight
-
     bench = base.GenericBenchmark2DOnly(
-        input_fn=fused_rms_norm_input_fn,
+        case_fn=_fused_rms_norm_case_fn,
+        build_inputs_fn=_fused_rms_norm_build_inputs_fn,
         op_name="fused_rms_norm",
         torch_op=_torch_fused_rms_norm,
         dtypes=consts.FLOAT_DTYPES,
@@ -55,18 +84,9 @@ def test_fused_rms_norm():
 def test_fused_rms_norm_backward():
     """Benchmark for aten._fused_rms_norm_backward which returns (dx, dw)."""
 
-    def fused_rms_norm_backward_input_fn(shape, dtype, device):
-        M, N = shape
-        normalized_shape = [N]
-        eps = 1e-5
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        grad = torch.randn_like(inp)
-        weight = torch.randn(N, dtype=dtype, device=device)
-        rstd = torch.rsqrt(inp.to(torch.float32).pow(2).mean(dim=-1) + eps)
-        yield grad, inp, normalized_shape, rstd, weight, [True, True]
-
     bench = base.GenericBenchmark2DOnly(
-        input_fn=fused_rms_norm_backward_input_fn,
+        case_fn=_fused_rms_norm_backward_case_fn,
+        build_inputs_fn=_fused_rms_norm_backward_build_inputs_fn,
         op_name="fused_rms_norm_backward",
         torch_op=torch.ops.aten._fused_rms_norm_backward,
         dtypes=consts.FLOAT_DTYPES,

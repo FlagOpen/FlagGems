@@ -17,20 +17,29 @@ import pytest
 from . import base, consts, utils
 
 
-def _input_fn_scalar(shape, cur_dtype, device):
+def _case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp1 = utils.generate_tensor_input(shape, cur_dtype, device)
     if cur_dtype == consts.BOOL_DTYPES[0]:
         inp2 = True
     else:
         inp2 = 0x00FF
-    yield inp1, inp2
+    return inp1, inp2
 
 
 @pytest.mark.ior_scalar
 def test_ior_scalar_inplace():
     bench = base.GenericBenchmark(
         op_name="ior_scalar",
-        input_fn=_input_fn_scalar,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=lambda a, b: a.__ior__(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
         is_inplace=True,

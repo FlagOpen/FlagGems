@@ -37,15 +37,29 @@ class MaskedSoftmaxBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=dtype, device=self.device)
-            mask = torch.rand(shape, device=self.device) < 0.3
-            # dim=-1 reduction; build a consistent forward output.
-            output = torch.ops.aten._masked_softmax(inp, mask, -1, 2)
-            output = torch.where(mask, torch.zeros_like(output), output)
-            grad_output = torch.randn(shape, dtype=dtype, device=self.device)
-            yield grad_output, output, mask, -1
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"dim": -1},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        dtype = case.dtype
+        inp = torch.randn(shape, dtype=dtype, device=self.device)
+        mask = torch.rand(shape, device=self.device) < 0.3
+        # dim=-1 reduction; build a consistent forward output.
+        output = torch.ops.aten._masked_softmax(inp, mask, -1, 2)
+        output = torch.where(mask, torch.zeros_like(output), output)
+        grad_output = torch.randn(shape, dtype=dtype, device=self.device)
+        return grad_output, output, mask, -1
 
 
 @pytest.mark.masked_softmax_backward

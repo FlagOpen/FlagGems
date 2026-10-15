@@ -18,17 +18,27 @@ import torch
 from . import base, consts, utils
 
 
-def input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"grad": list(shape), "input": list(shape)},
+        params={"dim": 1},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     grad = utils.generate_tensor_input(shape, dtype, device)
     _, indices = torch.cummax(inp, dim=1)
-    yield grad, inp, indices, 1
+    return grad, inp, indices, 1
 
 
 @pytest.mark.cummaxmin_backward
 def test_cummaxmin_backward():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="cummaxmin_backward",
         torch_op=torch.ops.aten.cummaxmin_backward,
         dtypes=consts.FLOAT_DTYPES,

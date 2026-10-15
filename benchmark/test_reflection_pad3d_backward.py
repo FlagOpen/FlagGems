@@ -43,19 +43,33 @@ class ReflectionPad3dBackwardBenchmark(base.Benchmark):
             for padding in REFLECTION_PAD3D_PADDINGS
         ]
 
-    def get_input_iter(self, cur_dtype):
-        for shape, padding in self.shapes:
-            N, C, D, H, W = shape
-            pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1 = padding
-            D_out = D + pad_d0 + pad_d1
-            H_out = H + pad_h0 + pad_h1
-            W_out = W + pad_w0 + pad_w1
-
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            grad_output = torch.ones(
-                (N, C, D_out, H_out, W_out), dtype=cur_dtype, device=self.device
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (shape, padding) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"padding": list(padding)},
+                    builder_args=(shape, padding),
+                ),
             )
-            yield grad_output, x, padding
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, padding = plan.builder_args
+        cur_dtype = case.dtype
+        N, C, D, H, W = shape
+        pad_d0, pad_d1, pad_h0, pad_h1, pad_w0, pad_w1 = padding
+        D_out = D + pad_d0 + pad_d1
+        H_out = H + pad_h0 + pad_h1
+        W_out = W + pad_w0 + pad_w1
+
+        x = torch.randn(shape, dtype=cur_dtype, device=self.device)
+        grad_output = torch.ones(
+            (N, C, D_out, H_out, W_out), dtype=cur_dtype, device=self.device
+        )
+        return grad_output, x, padding
 
 
 @pytest.mark.reflection_pad3d_backward

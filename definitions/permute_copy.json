@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "permute_copy",
+  "requires_triton_kernel": true,
+  "description": "Creates and returns a copy of x with permuted dimensions.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "dims",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

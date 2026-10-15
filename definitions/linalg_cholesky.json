@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_cholesky",
+  "requires_triton_kernel": true,
+  "description": "Computes the Cholesky decomposition of a symmetric positive-definite matrix A\nor for batches of symmetric positive-definite matrices.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "upper",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

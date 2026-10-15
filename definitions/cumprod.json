@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "cumprod",
+  "requires_triton_kernel": true,
+  "description": "Returns the cumulative product of elements of `inp` in the dimension `dim`.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

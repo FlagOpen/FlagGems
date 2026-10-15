@@ -55,14 +55,25 @@ class ChebyshevPolynomialWBenchmark(base.Benchmark):
 class ChebyshevPolynomialWOutBenchmark(ChebyshevPolynomialWBenchmark):
     """Benchmark for special_chebyshev_polynomial_w_out."""
 
-    def get_input_iter(self, cur_dtype) -> Generator:
+    def get_case_iter(self, cur_dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
         n_val = 3
-        for shape in self.shapes:
-            x = base.generate_tensor_input(shape, cur_dtype, self.device)
-            x = x * 2 - 1
-            n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
-            out = torch.empty_like(x)
-            yield x, n, {"out": out}
+        shape = case.builder_args[0].builder_args[0]
+        x = base.generate_tensor_input(shape, case.dtype, self.device)
+        x = x * 2 - 1
+        n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
+        out = torch.empty_like(x)
+        return x, n, {"out": out}
 
 
 @pytest.mark.special_chebyshev_polynomial_w

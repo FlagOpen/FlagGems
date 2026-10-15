@@ -20,11 +20,20 @@ import flag_gems
 from . import base, consts
 
 
-def normal_functional_input_fn(shape, dtype, device):
+def normal_functional_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(shape)},
+        params={"loc": 3.0, "scale": 10.0},
+        builder_args=(shape,),
+    )
+
+
+def normal_functional_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     self = torch.empty(shape, dtype=dtype, device=device)
     loc = 3.0
     scale = 10.0
-    yield self, loc, scale
+    return self, loc, scale
 
 
 @pytest.mark.normal_functional
@@ -33,7 +42,8 @@ def normal_functional_input_fn(shape, dtype, device):
 )
 def test_normal_functional():
     bench = base.GenericBenchmark(
-        input_fn=normal_functional_input_fn,
+        case_fn=normal_functional_case_fn,
+        build_inputs_fn=normal_functional_build_inputs_fn,
         op_name="normal_functional",
         torch_op=torch.ops.aten.normal_functional,
         dtypes=consts.FLOAT_DTYPES,

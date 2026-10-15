@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "take_out",
+  "requires_triton_kernel": true,
+  "description": "Out-variant of take. Writes the gathered elements into the `out` tensor,\nresizing it to the shape of `index` if needed.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

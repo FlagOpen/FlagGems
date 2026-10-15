@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_eigvals",
+  "requires_triton_kernel": true,
+  "description": "Computes the eigenvalues of a square matrix.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

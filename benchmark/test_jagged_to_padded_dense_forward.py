@@ -34,21 +34,33 @@ class JaggedToPaddedDenseForwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = JAGGED_TO_PADDED_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, max_length in self.shapes:
-            # Generate random sequence lengths
-            np.random.seed(42)
-            seq_lengths = np.random.randint(1, max_length + 1, size=batch_size).tolist()
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch_size, max_length) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [batch_size, max_length]},
+                    builder_args=((batch_size, max_length),),
+                ),
+            )
 
-            # Create offsets tensor (cumulative)
-            offsets = [0] + list(np.cumsum(seq_lengths).astype(int).tolist())
-            offsets = torch.tensor(offsets, device=self.device, dtype=torch.int64)
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        batch_size, max_length = plan.builder_args[0]
+        # Generate random sequence lengths
+        np.random.seed(42)
+        seq_lengths = np.random.randint(1, max_length + 1, size=batch_size).tolist()
 
-            # Create values tensor (concatenated sequences)
-            total_length = sum(seq_lengths)
-            values = torch.randn(total_length, dtype=cur_dtype, device=self.device)
+        # Create offsets tensor (cumulative)
+        offsets = [0] + list(np.cumsum(seq_lengths).astype(int).tolist())
+        offsets = torch.tensor(offsets, device=self.device, dtype=torch.int64)
 
-            yield values, [offsets], [max_length], 0.0
+        # Create values tensor (concatenated sequences)
+        total_length = sum(seq_lengths)
+        values = torch.randn(total_length, dtype=case.dtype, device=self.device)
+
+        return values, [offsets], [max_length], 0.0
 
 
 @pytest.mark.jagged_to_padded_dense_forward

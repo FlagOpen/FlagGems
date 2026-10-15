@@ -32,18 +32,33 @@ class BeamSearchScoreBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [(16, 512), (32, 1024), (64, 2048), (128, 4096), (256, 8192)]
     DEFAULT_SHAPE_DESC = "batch_size, vocab_size"
 
-    def get_input_iter(self, cur_dtype) -> Generator:
+    def get_case_iter(self, dtype) -> Generator:
+        ordinal = 0
         for shape in self.shapes:
             # log_probs: [batch, vocab], beam_scores: [batch]
             batch_size = shape[0]
             vocab_size = shape[1] if len(shape) > 1 else shape[0]
-            log_probs = utils.generate_tensor_input(
-                (batch_size, vocab_size), cur_dtype, self.device
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"log_probs": [batch_size, vocab_size]},
+                    params={},
+                    builder_args=(batch_size, vocab_size),
+                ),
             )
-            beam_scores = utils.generate_tensor_input(
-                (batch_size,), cur_dtype, self.device
-            )
-            yield log_probs, beam_scores
+            ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        batch_size, vocab_size = plan.builder_args
+        log_probs = utils.generate_tensor_input(
+            (batch_size, vocab_size), case.dtype, self.device
+        )
+        beam_scores = utils.generate_tensor_input(
+            (batch_size,), case.dtype, self.device
+        )
+        return log_probs, beam_scores
 
     def get_tflops(self, op, *args, **kwargs):
         shape1 = list(args[0].shape)  # log_probs shape

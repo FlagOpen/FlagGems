@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "huber_loss",
+  "requires_triton_kernel": true,
+  "description": "Computes the Huber loss between input and target. Quadratic for small errors\n(|x - y| <= delta) and linear for large errors. Supports reduction none/mean/sum.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "delta",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

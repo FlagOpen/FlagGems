@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_inv_ex",
+  "requires_triton_kernel": true,
+  "description": "Compute the inverse of a square matrix using LU factorization with partial pivoting.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "check_errors",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "inverse",
+    "info"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

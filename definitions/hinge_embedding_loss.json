@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "hinge_embedding_loss",
+  "requires_triton_kernel": true,
+  "description": "Compute the hinge embedding loss.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "margin",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": "mean"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
