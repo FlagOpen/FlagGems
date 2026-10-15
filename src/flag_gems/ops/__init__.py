@@ -320,6 +320,7 @@ from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
 from flag_gems.ops._reshape_alias import _reshape_alias
+from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
@@ -478,6 +479,7 @@ from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.atan2_ import atan2_
 from flag_gems.ops.atanh import atanh, atanh_
+from flag_gems.ops.atleast_1d import run as atleast_1d
 from flag_gems.ops.atleast_3d import run as atleast_3d
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -497,6 +499,7 @@ from flag_gems.ops.bartlett_window import bartlett_window
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.batch_norm_backward_elemt import batch_norm_backward_elemt
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
+from flag_gems.ops.batch_norm_elemt import batch_norm_elemt
 from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
@@ -547,6 +550,7 @@ from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 from flag_gems.ops.broadcast_tensors import broadcast_tensors
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
+from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
@@ -755,9 +759,11 @@ from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
+from flag_gems.ops.geqrf import geqrf
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.glu_jvp import glu_jvp
 from flag_gems.ops.greater import (
     greater,
     greater_out,
@@ -852,6 +858,7 @@ from flag_gems.ops.isnan import isnan
 from flag_gems.ops.isneginf import isneginf, isneginf_out
 from flag_gems.ops.isposinf import isposinf
 from flag_gems.ops.isreal import isreal
+from flag_gems.ops.istft import istft
 from flag_gems.ops.kaiser_window import (
     kaiser_window,
     kaiser_window_beta,
@@ -1243,6 +1250,7 @@ from flag_gems.ops.segment_reduce import (
     segment_reduce_out,
 )
 from flag_gems.ops.select_backward import select_backward
+from flag_gems.ops.select_copy import select_copy
 from flag_gems.ops.select_scatter import select_scatter
 from flag_gems.ops.selu import selu
 from flag_gems.ops.selu_ import selu_
@@ -1809,6 +1817,7 @@ __all__ = [
     "_prelu_kernel",
     "_prelu_kernel_backward",
     "_reshape_alias",
+    "_reshape_alias_copy",
     "_reshape_copy",
     "_resize_output",
     "_resize_output_",
@@ -1964,6 +1973,7 @@ __all__ = [
     "atan_",
     "atanh",
     "atanh_",
+    "atleast_1d",
     "atleast_3d",
     "avg_pool1d",
     "avg_pool2d",
@@ -1978,6 +1988,7 @@ __all__ = [
     "batch_norm_backward",
     "batch_norm_backward_elemt",
     "batch_norm_backward_reduce",
+    "batch_norm_elemt",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
     "batch_norm_stats",
@@ -2022,6 +2033,7 @@ __all__ = [
     "broadcast_tensors",
     "broadcast_to",
     "bucketize",
+    "cartesian_prod",
     "cat",
     "cat_out",
     "cauchy",
@@ -2252,10 +2264,12 @@ __all__ = [
     "gelu_backward",
     "geometric",
     "geometric_",
+    "geqrf",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "glu_jvp",
     "greater",
     "greater_",
     "greater_equal",
@@ -2360,6 +2374,7 @@ __all__ = [
     "isneginf_out",
     "isposinf",
     "isreal",
+    "istft",
     "kaiser_window",
     "kaiser_window_beta",
     "kaiser_window_periodic",
@@ -2794,6 +2809,7 @@ __all__ = [
     "segment_reduce",
     "segment_reduce_out",
     "select_backward",
+    "select_copy",
     "select_scatter",
     "selu",
     "selu_",
