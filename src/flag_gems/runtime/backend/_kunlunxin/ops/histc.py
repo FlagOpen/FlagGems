@@ -70,8 +70,8 @@ def _histc_tle_init():
         def histc_lm_raw(partial, inp, N, bins, minv, maxv): ...
 
         @_triton.jit
-        def _k(P, I, N, B, MN, MX):
-            _tle.raw.call(histc_lm_raw, (P, I, N, B, MN, MX))
+        def _k(P, INP, N, B, MN, MX):
+            _tle.raw.call(histc_lm_raw, (P, INP, N, B, MN, MX))
 
         _HISTC_TLE["k"] = _k
         _HISTC_TLE["ok"] = True
