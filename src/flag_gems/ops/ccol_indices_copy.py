@@ -129,11 +129,14 @@ def _select_src(self: torch.Tensor) -> torch.Tensor:
 
 
 def _launch_ccol_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
-    """Copy the ``src`` ccol view into ``dst`` with the two source kernels.
+    """Copy the ``src`` ccol view into ``dst`` with the three kernels below.
 
     Contiguous sources take the flat kernel; a non-contiguous 1-D source takes
-    the single-stride gather kernel. Empty tensors skip the launch entirely
-    (the grid would be ``(0,)``), mirroring the source's ``if n:`` guard.
+    the single-stride gather kernel; a non-contiguous multi-dim (batched)
+    source takes the ND-strided gather kernel, which reads through per-dim
+    size/stride metadata uploaded in one H2D copy. Empty tensors skip the
+    launch entirely (the grid would be ``(0,)``), mirroring the source's
+    ``if n:`` guard.
     """
     n = src.numel()
     if n == 0:
