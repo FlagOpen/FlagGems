@@ -457,11 +457,59 @@ def _tle_scatter_init():
 
             def _mk(callee=callee):
                 @_triton.jit
-                def _k(O, B, I, S, R, W, K, L0, L1, L2, L3, O0, O1, O2, O3,
-                       I0, I1, I2, I3, S0, S1, S2, S3):
-                    _tle.raw.call(callee, (O, B, I, S, R, W, K, L0, L1, L2, L3,
-                                           O0, O1, O2, O3, I0, I1, I2, I3,
-                                           S0, S1, S2, S3))
+                def _k(
+                    O,
+                    B,
+                    I,
+                    S,
+                    R,
+                    W,
+                    K,
+                    L0,
+                    L1,
+                    L2,
+                    L3,
+                    O0,
+                    O1,
+                    O2,
+                    O3,
+                    I0,
+                    I1,
+                    I2,
+                    I3,
+                    S0,
+                    S1,
+                    S2,
+                    S3,
+                ):
+                    _tle.raw.call(
+                        callee,
+                        (
+                            O,
+                            B,
+                            I,
+                            S,
+                            R,
+                            W,
+                            K,
+                            L0,
+                            L1,
+                            L2,
+                            L3,
+                            O0,
+                            O1,
+                            O2,
+                            O3,
+                            I0,
+                            I1,
+                            I2,
+                            I3,
+                            S0,
+                            S1,
+                            S2,
+                            S3,
+                        ),
+                    )
 
                 return _k
 
@@ -514,7 +562,7 @@ def _tle_scatter_src(inp, dim, index, src):
         if any(index.size(d) > inp.size(d) for d in range(ndim - 1)):
             return None
         if any(
-            t.stride(d) * t.size(d) >= 2 ** 32
+            t.stride(d) * t.size(d) >= 2**32
             for t in (inp, index, src)
             for d in range(ndim)
         ):
@@ -552,7 +600,11 @@ def _tle_scatter_src(inp, dim, index, src):
         if elt == "int":
             O, B, S = out, base, src
         else:
-            O, B, S = out.view(torch.int16), base.view(torch.int16), src.view(torch.int16)
+            O, B, S = (
+                out.view(torch.int16),
+                base.view(torch.int16),
+                src.view(torch.int16),
+            )
 
         pad = lambda v: (list(v) + [0] * _TLE_NDM)[:_TLE_NDM]
         md = (

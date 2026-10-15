@@ -23,7 +23,9 @@ _HISTC_GRID = 12  # this XPU has exactly 12 clusters: grid=16/24 silently drop w
 #                   clusters (partial coverage -> wrong sum), grid=12 covers every
 #                   element.  12 clusters x 64 cores = 768 cores vs 512 at grid=8
 #                   => 1.32x on the per-core scan chain (device-measured).
-_HISTC_CORE_MAX = 64  # cores per cluster on this XPU (probed via scatter: GRID*64 covers all)
+_HISTC_CORE_MAX = (
+    64  # cores per cluster on this XPU (probed via scatter: GRID*64 covers all)
+)
 _HISTC_TLE = {"init": False, "ok": False, "k": None}
 
 
@@ -65,8 +67,7 @@ def _histc_tle_init():
         )
 
         @_tle.raw.dialect("xpu3", object=_obj, arch=3)
-        def histc_lm_raw(partial, inp, N, bins, minv, maxv):
-            ...
+        def histc_lm_raw(partial, inp, N, bins, minv, maxv): ...
 
         @_triton.jit
         def _k(P, I, N, B, MN, MX):
@@ -90,7 +91,7 @@ def _histc_tle_lm(inp, bins, min_val, max_val):
         if not (max_val > min_val):
             return None
         n = inp.numel()
-        if n <= 0 or n >= 2 ** 31:
+        if n <= 0 or n >= 2**31:
             return None
         if not _histc_tle_init():
             return None
@@ -110,7 +111,6 @@ def _histc_tle_lm(inp, bins, min_val, max_val):
     except Exception as _e:  # pragma: no cover - never break correctness
         logger.debug("GEMS_KUNLUNXIN HISTC tle path deferred: %r", _e)
         return None
-
 
 
 @libentry()

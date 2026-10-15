@@ -136,13 +136,11 @@ def _reflection_pad2d_backward_kernel(
 # artifact digest, so an un-repacked edit silently keeps the old binary.
 # ---------------------------------------------------------------------------
 
-_XPU_BUFN = 1408   # centre-row floats held in LM (BUFN * 4 bytes)
-_XPU_ROWN = 256    # max row width OW the payload can serve
-_XPU_GRID = 12     # clusters on this device (extra clusters self-disable)
+_XPU_BUFN = 1408  # centre-row floats held in LM (BUFN * 4 bytes)
+_XPU_ROWN = 256  # max row width OW the payload can serve
+_XPU_GRID = 12  # clusters on this device (extra clusters self-disable)
 
-_PAYLOAD_OBJ = os.path.join(
-    os.path.dirname(__file__), "..", "payload", "obj", "rp2b.o"
-)
+_PAYLOAD_OBJ = os.path.join(os.path.dirname(__file__), "..", "payload", "obj", "rp2b.o")
 
 _XPU_KERNELS = {}
 if _HAS_TLE:
@@ -152,16 +150,13 @@ if _HAS_TLE:
     try:
 
         @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
-        def rp2b_f32(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr):
-            ...
+        def rp2b_f32(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr): ...
 
         @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
-        def rp2b_f16(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr):
-            ...
+        def rp2b_f16(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr): ...
 
         @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
-        def rp2b_bf16(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr):
-            ...
+        def rp2b_bf16(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr): ...
 
         _DNS = ["NC", "OH", "OW", "H", "W", "PT", "PL", "PB", "PR"]
 
