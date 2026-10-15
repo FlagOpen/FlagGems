@@ -99,11 +99,15 @@ def test_ravel_contiguous_view_path(dtype):
 
     res_out = flag_gems.ravel(inp)
     ref_out = torch.ravel(inp)
+    # .to("cpu") compacts the view, so the offset metadata must be asserted
+    # against the device-side native result while the value comparison uses
+    # the moved reference (gems_assert_close requires it on CPU in quick-cpu).
+    ref_values = torch.ravel(utils.to_reference(inp))
 
     assert res_out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
     assert res_out.storage_offset() == ref_out.storage_offset()
     assert res_out.storage_offset() != 0
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_out, ref_values, dtype)
 
 
 @pytest.mark.ravel
@@ -170,9 +174,13 @@ def test_ravel_lazy_conj_bit_kept_on_view_path():
 
     res_out = flag_gems.ravel(conj_inp)
     ref_out = torch.ravel(conj_inp)
+    # The lazy conj bit lives in view metadata that a .to("cpu") move would
+    # materialize away, so the bit is asserted on the device-side native
+    # result; the value comparison uses the moved reference.
+    ref_values = torch.ravel(utils.to_reference(conj_inp))
 
     assert res_out.is_conj() == ref_out.is_conj()
-    utils.gems_assert_close(res_out, ref_out, torch.complex64)
+    utils.gems_assert_close(res_out, ref_values, torch.complex64)
 
 
 @pytest.mark.ravel
@@ -194,12 +202,17 @@ def test_ravel_autograd():
     # Backward rearranges gradients back to the input shape and touches no
     # backing storage. The leaf is the 2-D base, so the gradient accumulates
     # on a leaf while the non-contiguous transposed view feeds the copy path.
+    # In quick-cpu mode the reference leaf lives on CPU so the backward graph
+    # stays on the same device as the reference forward result.
     base = torch.randn(
         (4, 6), device=flag_gems.device, dtype=torch.float32, requires_grad=True
     )
     inp = base.t()
     ref_base = torch.randn(
-        (4, 6), device=flag_gems.device, dtype=torch.float32, requires_grad=True
+        (4, 6),
+        dtype=torch.float32,
+        requires_grad=True,
+        device="cpu" if utils.TO_CPU else flag_gems.device,
     )
     ref_inp = ref_base.t()
 
