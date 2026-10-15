@@ -855,20 +855,27 @@ _BLOCK_BK = 128
 _BLOCK_NW = 8
 
 if _BLOCK_TLE_OK:
-    _ORMQR_LARFT_OBJ = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "..",
-        "payload",
-        "obj",
-        "ormqr_larft.o",
-    )
+    try:
+        _ORMQR_LARFT_OBJ = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "payload",
+            "obj",
+            "ormqr_larft.o",
+        )
 
-    @tle.raw.dialect("xpu3", object=_ORMQR_LARFT_OBJ, arch=3)
-    def ormqr_larft_raw(G, TAU, T, NB): ...
+        @tle.raw.dialect("xpu3", object=_ORMQR_LARFT_OBJ, arch=3)
+        def ormqr_larft_raw(G, TAU, T, NB): ...
 
-    @triton.jit
-    def _ormqr_larft_payload(G, TAU, T, NB):
-        tle.raw.call(ormqr_larft_raw, (G, TAU, T, NB))
+        @triton.jit
+        def _ormqr_larft_payload(G, TAU, T, NB):
+            tle.raw.call(ormqr_larft_raw, (G, TAU, T, NB))
+
+    except TypeError:
+        # Older flagtree builds ship a tle.raw.RawJITFunction that does not
+        # accept `object=`, so the payload cannot be registered; fall back to
+        # the non-blocked sweep path instead of failing at import time.
+        _BLOCK_TLE_OK = False
 
 
 @triton.jit
