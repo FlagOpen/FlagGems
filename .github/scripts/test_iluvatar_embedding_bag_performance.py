@@ -300,3 +300,156 @@ def test_forward_performance(request, variant, dtype_name, mode, shape):
             break
         save()
     print(json.dumps(report, indent=2), flush=True)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["loop_store", "loop_assert", "scalar_assert", "guarded_assert", "tiled_assert"],
+)
+@pytest.mark.parametrize("count", [1, 513])
+@pytest.mark.parametrize("phase", ["timing", "invalid"])
+def test_assertion_components(request, kind, count, phase):
+    """Separate reduction work from assertion runtime machinery in fresh processes."""
+    if phase == "invalid" and kind == "loop_store":
+        pytest.skip("Reduction-only control deliberately has no assertion")
+    if _isolated(request):
+        return
+    import importlib
+    import json
+    import statistics
+    import time
+
+    import torch
+    import triton
+    import triton.language as tl
+
+    @triton.jit(do_not_specialize=["count"])
+    def check(flags, result, count, kind: tl.constexpr, block: tl.constexpr):
+        lane = tl.arange(0, block)
+        if kind == "scalar_assert":
+            # One program per flag removes both the loop and the reduction.
+            index = tl.program_id(0)
+            bad = tl.load(flags + index)
+            tl.device_assert(bad == 0, "IX component probe: invalid flag")
+        elif kind == "tiled_assert":
+            index = tl.program_id(0) * block + lane
+            bad = tl.load(flags + index, index < count, other=0)
+            # Elementwise assertion checks all flags without scalar reduction.
+            tl.device_assert(bad == 0, "IX component probe: invalid flag")
+        else:
+            bad = tl.full((), 0, tl.int32)
+            for base in range(0, count, block):
+                values = tl.load(flags + base + lane, base + lane < count, other=0)
+                bad |= tl.max(values, 0)
+            if kind == "loop_store":
+                tl.store(result, bad)
+            elif kind == "guarded_assert":
+                # Test whether a device-side cold error branch avoids overhead.
+                if bad != 0:
+                    tl.device_assert(bad == 0, "IX component probe: invalid flag")
+            else:
+                tl.device_assert(bad == 0, "IX component probe: invalid flag")
+
+    path = Path("../ix-results/assertion-components") / request.node.name
+    path.mkdir(parents=True, exist_ok=True)
+    flags = torch.zeros(count, dtype=torch.int32, device="cuda")
+    result = torch.empty(1, dtype=torch.int32, device="cuda")
+    grid = (
+        count
+        if kind == "scalar_assert"
+        else triton.cdiv(count, 256) if kind == "tiled_assert" else 1
+    )
+
+    def launch():
+        return check[(grid,)](flags, result, count, kind, 256, debug=True)
+
+    # Warm the exact assertion specialization before any embedding-bag kernels.
+    # No host wait or readback is inserted into this candidate sequence.
+    compiled = launch()
+    for name, code in compiled.asm.items():
+        if isinstance(code, str):
+            (path / (name + ".txt")).write_text(code)
+    report = {
+        "kind": kind,
+        "count": count,
+        "phase": phase,
+        "torch": torch.__version__,
+        "triton": triton.__version__,
+        "kernel_hash": compiled.hash,
+    }
+
+    def save():
+        (path / "results.json").write_text(json.dumps(report, indent=2))
+
+    save()
+    if phase == "invalid":
+        backend = importlib.import_module(
+            "flag_gems.runtime.backend._iluvatar.ops.embedding_bag"
+        )
+        backward = importlib.import_module(
+            "flag_gems.runtime.backend._iluvatar.ops.embedding_bag_backward"
+        )
+        weight = torch.ones((16, 8), device="cuda")
+        indices = torch.tensor([1, 2, 3, 4], device="cuda")
+        offsets = torch.tensor([0, 2], device="cuda")
+        output, mapping, sizes, maxima = backend._embedding_bag(
+            weight, indices, offsets
+        )
+        backward._embedding_bag_backward(
+            torch.ones_like(output),
+            indices,
+            offsets,
+            mapping,
+            sizes,
+            maxima,
+            16,
+            False,
+            0,
+            False,
+        )
+        # Preserve the asynchronous forward/backward-to-check sequence.
+        flags[-1:].fill_(1)
+        try:
+            launch()
+            torch.cuda.synchronize()
+        except Exception as error:
+            report["exception_type"] = type(error).__name__
+            report["exception"] = str(error)
+            report["caught"] = "assert" in str(error).lower()
+        else:
+            report["caught"] = False
+        save()
+        assert report["caught"], report
+        return
+
+    for _ in range(5):
+        launch()
+    torch.cuda.synchronize()
+    report["triton_ms"] = [
+        triton.testing.do_bench(launch, warmup=20, rep=60, return_mode="median")
+        for _ in range(3)
+    ]
+    report["median_ms"] = statistics.median(report["triton_ms"])
+    start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(
+        enable_timing=True
+    )
+    start.record()
+    begin = time.perf_counter()
+    for _ in range(50):
+        launch()
+    report["submit_ms"] = (time.perf_counter() - begin) * 1000 / 50
+    end.record()
+    end.synchronize()
+    report["batch_event_ms"] = start.elapsed_time(end) / 50
+    save()
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
+    ) as prof:
+        for _ in range(5):
+            launch()
+        torch.cuda.synchronize()
+    prof.export_chrome_trace(str(path / "trace.json"))
+    (path / "profiler.txt").write_text(prof.key_averages().table(row_limit=30))
