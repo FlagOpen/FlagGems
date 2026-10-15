@@ -19,6 +19,15 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# CI derives the pytest marker from the implementation file name via
+# the #6359 convention: the stripped name collides with the registry id,
+# so the ``underscore_`` prefix is applied. Declare both markers so
+# ``pytest -m <marker>`` selects these tests from either entry point.
+pytestmark = [
+    pytest.mark.neg_view_copy,
+    pytest.mark.underscore_neg_view_copy,
+]
+
 # Materialize negated values in independent contiguous storage. The dtype and
 # case lists mirror the KernelGen acceptance suite so the reported speedup
 # stays comparable to its H20 measurement.
