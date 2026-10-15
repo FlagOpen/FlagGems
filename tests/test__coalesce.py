@@ -19,6 +19,16 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# CI derives the pytest marker from the implementation file name via the
+# #6359 convention. On a branch without the bare ``coalesce`` op the derived
+# marker is ``coalesce``; once that op lands the stripped name collides and
+# the ``underscore_`` prefix is applied. Declare both so ``pytest -m`` selects
+# these tests from either entry point.
+pytestmark = [
+    pytest.mark.coalesce,
+    pytest.mark.underscore_coalesce,
+]
+
 # Merge duplicate COO coordinates and sum their stored values.
 # FP8 inputs are exercised by the rejection test.
 _COALESCE_DTYPES = [
