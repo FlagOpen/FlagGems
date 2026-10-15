@@ -44,7 +44,14 @@ class AdaptiveAvgPool3dBenchmark(base.GenericBenchmark):
             yield from self.input_fn(shape, cur_dtype, self.device)
 
 
+# The yaml ids are ``adaptive_avg_pool3d`` / ``adaptive_avg_pool3d_out``, but the
+# aten name starts with an underscore and the stripped name collides with the
+# separate ``adaptive_avg_pool3d`` op, so the #6359 convention maps the
+# implementation file to ``underscore_adaptive_avg_pool3d``. CI selects tests by
+# that derived marker (tools/test-op.sh), while the rule-check marker gate uses
+# the yaml id -- so declare both names (cf. tests/test__sobol_engine_scramble_.py).
 @pytest.mark.adaptive_avg_pool3d
+@pytest.mark.underscore_adaptive_avg_pool3d
 def test_perf_adaptive_avg_pool3d():
     bench = AdaptiveAvgPool3dBenchmark(
         input_fn=adaptive_avg_pool3d_input_fn,
@@ -86,6 +93,7 @@ class AdaptiveAvgPool3dOutBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.adaptive_avg_pool3d_out
+@pytest.mark.underscore_adaptive_avg_pool3d_out
 def test_perf_adaptive_avg_pool3d_out():
     bench = AdaptiveAvgPool3dOutBenchmark(
         input_fn=adaptive_avg_pool3d_out_input_fn,

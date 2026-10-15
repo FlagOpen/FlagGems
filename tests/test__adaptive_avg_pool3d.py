@@ -33,7 +33,14 @@ ADAPTIVE_AVG_POOL3D_CASES = [
 ]
 
 
+# The yaml ids are ``adaptive_avg_pool3d`` / ``adaptive_avg_pool3d_out``, but the
+# aten name starts with an underscore and the stripped name collides with the
+# separate ``adaptive_avg_pool3d`` op, so the #6359 convention maps the
+# implementation file to ``underscore_adaptive_avg_pool3d``. CI selects tests by
+# that derived marker (tools/test-op.sh), while the rule-check marker gate uses
+# the yaml id -- so declare both names (cf. tests/test__sobol_engine_scramble_.py).
 @pytest.mark.adaptive_avg_pool3d
+@pytest.mark.underscore_adaptive_avg_pool3d
 @pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVG_POOL3D_CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_avg_pool3d(shape, output_size, dtype):
@@ -47,6 +54,7 @@ def test_adaptive_avg_pool3d(shape, output_size, dtype):
 
 
 @pytest.mark.adaptive_avg_pool3d_out
+@pytest.mark.underscore_adaptive_avg_pool3d_out
 @pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVG_POOL3D_CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_avg_pool3d_out(shape, output_size, dtype):
@@ -65,6 +73,7 @@ def test_adaptive_avg_pool3d_out(shape, output_size, dtype):
 
 
 @pytest.mark.adaptive_avg_pool3d
+@pytest.mark.underscore_adaptive_avg_pool3d
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_avg_pool3d_4d_input(dtype):
     # A 4D (C, D, H, W) input takes the unsqueeze-to-5D branch.
@@ -80,6 +89,7 @@ def test_adaptive_avg_pool3d_4d_input(dtype):
 
 
 @pytest.mark.adaptive_avg_pool3d_out
+@pytest.mark.underscore_adaptive_avg_pool3d_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_avg_pool3d_out_4d_input(dtype):
     # A 4D (C, D, H, W) input takes the unsqueeze-to-5D branch of the out variant;
