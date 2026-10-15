@@ -10836,7 +10836,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: linalg_householder_product
   description: Compute the matrix product of Householder matrices from QR decomposition.
   for:
