@@ -16009,7 +16009,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: rnn_relu_cell
-  description: Fused single-step ReLU RNN cell implemented as one Triton kernel covering both GEMMs, the bias adds and the activation.
+  description: An Elman RNN cell with ReLU non-linearity.
   for:
   - rnn_relu_cell
   labels:
