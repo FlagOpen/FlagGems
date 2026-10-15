@@ -124,12 +124,12 @@ def test_numpy_T_strided_and_expanded(shape):
     base = torch.randn((1,) + shape[1:], device=flag_gems.device, dtype=torch.float32)
     expanded = base.expand(shape)
     res_expanded = flag_gems.numpy_T(expanded)
-    ref_expanded = torch.ops.aten.numpy_T(expanded)
+    ref_expanded = torch.ops.aten.numpy_T(utils.to_reference(expanded))
     utils.gems_assert_close(res_expanded, ref_expanded, torch.float32)
 
     stepped = torch.randn((8, 16), device=flag_gems.device, dtype=torch.float32)[:, ::2]
     res_stepped = flag_gems.numpy_T(stepped)
-    ref_stepped = torch.ops.aten.numpy_T(stepped)
+    ref_stepped = torch.ops.aten.numpy_T(utils.to_reference(stepped))
     utils.gems_assert_close(res_stepped, ref_stepped, torch.float32)
 
 
@@ -141,7 +141,7 @@ def test_numpy_T_lazy_conj_bit_forwarded():
     conj_inp = base.conj()
     res_conj = flag_gems.numpy_T(conj_inp)
     assert res_conj.is_conj()
-    ref_conj = torch.ops.aten.numpy_T(conj_inp)
+    ref_conj = torch.ops.aten.numpy_T(utils.to_reference(conj_inp))
     utils.gems_assert_close(res_conj, ref_conj, torch.complex64)
 
     # (The lazy neg bit is exercised implicitly: no public API creates a lazy
