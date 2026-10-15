@@ -13216,7 +13216,7 @@ ops:
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: mv
   description: Performs a matrix-vector product of the matrix `input` and the vector
     `vec`.
