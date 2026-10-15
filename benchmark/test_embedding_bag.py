@@ -12,14 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import csv
-import math
-import tempfile
-from pathlib import Path
-
 import pytest
 import torch
-import triton
 
 import flag_gems
 from flag_gems import _embedding_bag, _embedding_bag_forward_only
@@ -56,38 +50,6 @@ DTYPES = [
 FORWARD_MODES = [(0, False), (1, False), (2, False), (0, True)]
 
 
-def _npu_complete_kernel_latency(fn, warmup=5, active=30, profile_dir=None):
-    # CANN's timer assumes one kernel per call. Native embedding_bag also
-    # launches index casts, and Gems may launch a separate validation kernel.
-    # Account for the complete, repeated kernel sequence on both sides.
-    with tempfile.TemporaryDirectory(prefix="embedding-bag-profile-") as temporary:
-        directory = Path(profile_dir) if profile_dir is not None else Path(temporary)
-        # Newer Triton defaults to mspti, which does not export a CSV trace.
-        testing = triton.backends.ascend.testing
-        profiler = getattr(testing, "do_bench_npu_profiler", testing.do_bench_npu)
-        profiler(
-            fn, warmup=warmup, active=active, prof_dir=str(directory), keep_res=True
-        )
-        files = list(directory.rglob("kernel_details.csv"))
-        if len(files) != 1:
-            raise RuntimeError("Expected one embedding-bag NPU kernel trace")
-        with files[0].open(newline="") as stream:
-            rows = list(csv.DictReader(stream))
-        rows.sort(key=lambda row: float(row["Start Time(us)"]))
-        iterations = warmup + active
-        if not rows or len(rows) % iterations:
-            raise RuntimeError("NPU trace does not contain complete repeated calls")
-        width = len(rows) // iterations
-        pattern = [(row["Name"], row["Type"]) for row in rows[:width]]
-        durations = []
-        for iteration in range(iterations):
-            group = rows[iteration * width : (iteration + 1) * width]
-            if [(row["Name"], row["Type"]) for row in group] != pattern:
-                raise RuntimeError("NPU kernel sequence changed between calls")
-            durations.append(math.fsum(float(row["Duration(us)"]) for row in group))
-        return math.fsum(durations[warmup:]) / active / 1000
-
-
 class EmbeddingBagBenchmark(base.Benchmark):
     def __init__(
         self,
@@ -109,14 +71,6 @@ class EmbeddingBagBenchmark(base.Benchmark):
         self.forward_only = forward_only
         self.default_entry = default_entry
         super().__init__(*args, **kwargs)
-
-    def get_latency(self, op, *args, **kwargs):
-        if (
-            flag_gems.vendor_name == "ascend"
-            and base.Config.mode == base.consts.BenchMode.KERNEL
-        ):
-            return _npu_complete_kernel_latency(lambda: op(*args, **kwargs))
-        return super().get_latency(op, *args, **kwargs)
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = SHAPES
