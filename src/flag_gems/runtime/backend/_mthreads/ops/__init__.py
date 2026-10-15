@@ -355,9 +355,9 @@ __all__ = [
 if get_device_capability(current_device())[0] >= 3:
     from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
     from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm  # noqa: F401
+    from .bmm import bmm, bmm_out  # noqa: F401
     from .gelu import gelu  # noqa: F401
-    from .mm import mm  # noqa: F401
+    from .mm import mm, mm_out  # noqa: F401
     from .mv import mv  # noqa: F401
     from .tanh import tanh  # noqa: F401
 
@@ -370,8 +370,10 @@ if get_device_capability(current_device())[0] >= 3:
             "baddbmm",
             "baddbmm_out",
             "bmm",
+            "bmm_out",
             "gelu",
             "mm",
+            "mm_out",
             "mv",
             "tanh",
             "atan2",
@@ -437,3 +439,7 @@ if get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+
+from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+
+__all__.extend(["scaled_mm", "scaled_mm_out"])
