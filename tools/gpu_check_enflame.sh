@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -x
 
 # Copyright 2026 FlagOS Contributors
 #
