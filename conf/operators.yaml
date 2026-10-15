@@ -16024,7 +16024,7 @@ ops:
   source:
   - aten
 - id: rnn_tanh_cell
-  description: Fused single-step tanh RNN cell implemented as one Triton kernel covering both GEMMs, the bias adds and the activation.
+  description: An Elman RNN cell with tanh non-linearity.
   for:
   - rnn_tanh_cell
   labels:
