@@ -3131,7 +3131,7 @@ ops:
   kind:
   - Sparse
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: coalesced_
   description: 'Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
 
