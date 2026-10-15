@@ -21,7 +21,7 @@ def _matmul(A, B, As, Bs, output_dtype=torch.bfloat16, *, tuned=True):
     return w8a8_block_fp8_matmul(A, B, As, Bs, [32, 32], output_dtype, tuned=tuned)
 
 
-from tests.dsv41_helpers import (
+from tests.sm90_fp8_helpers import (
     assert_exact,
     changed_graph,
     fp8_inputs,

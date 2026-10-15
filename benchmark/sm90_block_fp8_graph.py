@@ -16,7 +16,7 @@ import triton
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flag_gems.ops._w8a8_block_fp8_configs import _H100_MIDRANGE_FP8_CONFIGS
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
-from tests.dsv41_helpers import assert_exact, fp8_inputs
+from tests.sm90_fp8_helpers import assert_exact, fp8_inputs
 
 
 def cases(quick):
