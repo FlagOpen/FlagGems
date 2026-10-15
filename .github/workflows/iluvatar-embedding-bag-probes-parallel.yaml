@@ -18,9 +18,8 @@ on:
     paths:
       - '.github/workflows/iluvatar-embedding-bag-probes.yaml'
       - '.github/workflows/iluvatar-embedding-bag-probes-parallel.yaml'
-      - '.github/scripts/test_iluvatar_async_errors.py'
+      - '.github/scripts/test_iluvatar_embedding_bag_performance.py'
       - '.github/scripts/iluvatar-embedding-bag-async-warmup.patch'
-      - '.github/scripts/ix_embedding_bag_baseline.py'
 
 permissions:
   contents: read
@@ -126,68 +125,19 @@ jobs:
             python3 -c 'import inspect, flag_gems; print(flag_gems.__file__); print(inspect.getfile(flag_gems._embedding_bag)); print(inspect.getfile(flag_gems._embedding_bag_backward))'
             python3 -m pip freeze > ../ix-results/environment.txt
           } 2>&1 | tee ../ix-results/setup.stdout.log
-      - name: Run isolated pytest exception checks
-        id: probes
-        continue-on-error: true
-        timeout-minutes: 20
-        working-directory: operator-source
-        shell: bash --login -e -o pipefail {0}
-        run: |
-          ulimit -c 0
-          python3 -m pytest -c /dev/null -s -vv ../.github/scripts/test_iluvatar_async_errors.py --durations=0 --junitxml=../ix-results/probes.xml 2>&1 | tee ../ix-results/probes.stdout.log
-      - name: Upload probe evidence before precision tests
-        if: ${{ always() && steps.probes.outcome != 'skipped' && steps.setup.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: ix-embedding-bag-probes-${{ github.run_id }}
-          path: |
-            ix-results/probes.stdout.log
-            ix-results/probes.xml
-            ix-results/environment.txt
-            ix-results/operator-sha.txt
-            ix-results/candidate.patch
-          if-no-files-found: warn
-      - name: Run IX embedding bag precision coverage
-        id: accuracy
-        continue-on-error: true
-        timeout-minutes: 45
-        working-directory: operator-source
-        shell: bash --login -e -o pipefail {0}
-        run: |
-          ulimit -c 0
-          python3 -m pytest tests/test_embedding_bag.py tests/test_embedding_bag_backward.py -q --tb=short --durations=0 --junitxml=../ix-results/accuracy.xml 2>&1 | tee ../ix-results/accuracy.stdout.log
-      - name: Compare pinned and candidate performance after accuracy passes
+      # Accuracy and exception coverage passed on n23 in run 38542625945.
+      # This phase investigates performance only; do not rerun those suites.
+      - name: Diagnose IX forward timing and runtime overhead
         id: performance
-        if: ${{ !cancelled() && steps.probes.outcome == 'success' && steps.accuracy.outcome == 'success' }}
-        continue-on-error: true
-        timeout-minutes: 40
+        timeout-minutes: 35
         working-directory: operator-source
         shell: bash --login -e -o pipefail {0}
         run: |
-          export PYTHONPATH="$GITHUB_WORKSPACE/.github/scripts${PYTHONPATH:+:$PYTHONPATH}"
-          for repetition in 1 2 3; do
-            variants="baseline candidate"
-            if [[ "$repetition" == 2 ]]; then variants="candidate baseline"; fi
-            for variant in $variants; do
-              plugin=()
-              if [[ "$variant" == baseline ]]; then plugin=(-p ix_embedding_bag_baseline); fi
-              python3 -m pytest benchmark/test_embedding_bag.py benchmark/test_embedding_bag_backward.py \
-                "${plugin[@]}" -q -s --tb=short --record=json \
-                --output="../ix-results/performance-$variant-$repetition.json" \
-                2>&1 | tee "../ix-results/performance-$variant-$repetition.stdout.log"
-            done
-          done
-      - name: Require both diagnostic phases to pass
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        shell: bash
-        env:
-          PROBES_OUTCOME: ${{ steps.probes.outcome }}
-          ACCURACY_OUTCOME: ${{ steps.accuracy.outcome }}
-          PERFORMANCE_OUTCOME: ${{ steps.performance.outcome }}
-        run: |
-          test "$PROBES_OUTCOME" = success
-          test "$ACCURACY_OUTCOME" = success
-          test "$PERFORMANCE_OUTCOME" = success
+          ulimit -c 0
+          python3 -m pytest -c /dev/null -s -vv \
+            ../.github/scripts/test_iluvatar_embedding_bag_performance.py \
+            --durations=0 --junitxml=../ix-results/performance-probes.xml \
+            2>&1 | tee ../ix-results/performance-probes.stdout.log
       - name: Preserve diagnostics even when assertions fail
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
