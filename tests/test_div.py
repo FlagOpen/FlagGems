@@ -529,7 +529,7 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
     else:
         inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         # avoid divide-by-zero for floor/trunc modes
-        inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+        inp2 = torch.where(inp2 >= 0, inp2 + 1e-3, inp2 - 1e-3)
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
@@ -629,7 +629,7 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
         inp2 = _make_nonzero_float_tensor(shape, dtype)
     else:
         inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        inp2 = inp2 + torch.sign(inp2).clamp(min=1) * 1e-3
+        inp2 = torch.where(inp2 >= 0, inp2 + 1e-3, inp2 - 1e-3)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
