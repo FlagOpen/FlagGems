@@ -8817,7 +8817,7 @@ ops:
   stages:
   - beta: '5.4'
 - id: gru_cell
-  description: Fused single-step GRU cell implemented as one Triton kernel covering both gate GEMMs and the reset/update/new gate chain.
+  description: A gated recurrent unit (GRU) cell.
   for:
   - gru_cell
   labels:
