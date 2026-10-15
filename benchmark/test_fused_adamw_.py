@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import logging
-import math
 
 import pytest
 import torch
@@ -22,10 +19,7 @@ import torch
 import flag_gems
 
 from . import base
-from .conftest import TEST_RESULTS, Config, emit_record_logger
 from .consts import BenchmarkCasePlan
-
-LOGGER = logging.getLogger(__name__)
 
 # Both native overloads unconditionally reject the call in this vendor source:
 # https://github.com/MooreThreads/torch_musa/blob/
@@ -98,41 +92,6 @@ class FusedAdamWBenchmark(base.GenericBenchmark):
         if user_desired_dtypes and self.dtypes[0] not in user_desired_dtypes:
             pytest.skip(f"{self.dtypes[0]} was not selected by --dtypes")
         self.to_bench_dtypes = self.dtypes
-
-    def _emit_result(self, dtype, metrics):
-        result = super()._emit_result(dtype, metrics)
-        expected_ids = {case.case_id for case in self.get_case_iter(dtype)}
-        observed_ids = {metric.case_id for metric in metrics}
-        summary = {
-            "backend": flag_gems.vendor_name,
-            "overload": self.op_name,
-            "dtype": str(dtype),
-            "mode": Config.mode.value,
-            "timing_method": Config.mode.value,
-            "level": Config.bench_level.value,
-            "expected_cases": len(expected_ids),
-            "measured_cases": len(metrics),
-            "geomean_speedup": None,
-        }
-        if observed_ids != expected_ids or len(metrics) != len(expected_ids):
-            summary["status"] = "INCOMPLETE"
-        elif any(
-            metric.latency_base is None or metric.latency is None for metric in metrics
-        ):
-            summary["status"] = "NO_NATIVE_COMPARISON"
-        else:
-            ratios = [metric.latency_base / metric.latency for metric in metrics]
-            if any(not math.isfinite(ratio) or ratio <= 0 for ratio in ratios):
-                pytest.fail("AdamW timings must give finite positive speedups")
-            summary["status"] = "COMPLETE"
-            summary["geomean_speedup"] = math.exp(
-                math.fsum(math.log(ratio) for ratio in ratios) / len(ratios)
-            )
-        LOGGER.info("AdamW performance summary: %s", json.dumps(summary))
-        emit_record_logger(json.dumps(summary))
-        if Config.record_json:
-            TEST_RESULTS[self.op_name].setdefault("geomean", {})[str(dtype)] = summary
-        return result
 
 
 def _case_fn(workload_index, dtype):
