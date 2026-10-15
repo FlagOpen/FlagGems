@@ -39,8 +39,10 @@ into a compile-time constant and the loop is unrolled (``tl.static_range``),
 which lets the per-step masks constant-fold and lets the scheduler overlap
 the non-dependent parts of adjacent steps.
 
-Numerics: the factorization always runs in fp32 (inputs and intermediates),
-and the solution is cast back to the declared dtype only at the final store.
+Numerics: the elimination runs in the input's own floating-point type, so an
+fp64 system is factorised in fp64 instead of being narrowed first.  Narrower
+inputs are widened to fp32, which is what keeps the pivot divisions meaningful
+at those widths; the solution is cast to the output dtype at the final store.
 """
 
 import torch
@@ -69,6 +71,7 @@ def _tensorsolve_kernel(
     UNROLL: tl.constexpr,  # statically unroll the pivot loop
     N: tl.constexpr,  # pow2 >= P
     STRIDED: tl.constexpr,
+    ACC: tl.constexpr,  # floating type the elimination runs in
 ):
     i = tl.arange(0, N)
     j = tl.arange(0, N)
@@ -81,13 +84,13 @@ def _tensorsolve_kernel(
     else:
         a_off = i[:, None] * P + j[None, :]
 
-    A = tl.load(A_ptr + a_off, mask=am, other=0.0).to(tl.float32)
+    A = tl.load(A_ptr + a_off, mask=am, other=0.0).to(ACC)
     # Padding corner (rows/cols >= P) becomes an identity block, so the
     # padded unknowns decouple and every inner step needs no mask.
     A = tl.where(am, A, tl.where(i[:, None] == j[None, :], 1.0, 0.0))
 
     bm = i < P
-    b = tl.load(B_ptr + i, mask=bm, other=0.0).to(tl.float32)
+    b = tl.load(B_ptr + i, mask=bm, other=0.0).to(ACC)
 
     # Delayed pivoting: no row of ``A`` (or of ``b``) is ever physically
     # moved.  ``used[i]`` marks a row already consumed as a pivot row (rows
@@ -217,6 +220,11 @@ def linalg_tensorsolve(self, other, dims=None):
     unroll = P <= 32
     pc = P if unroll else 1
 
+    # Eliminate in the input's own precision: narrowing an fp64 system to fp32
+    # costs ~1e-5 relative error, far past what fp64 tolerance allows. Narrower
+    # inputs are widened so the pivot divisions stay meaningful.
+    acc = tl.float64 if Ap.dtype == torch.float64 else tl.float32
+
     if Ap.is_contiguous():
         _tensorsolve_kernel[(1,)](
             Ap,
@@ -229,6 +237,7 @@ def linalg_tensorsolve(self, other, dims=None):
             UNROLL=unroll,
             N=N,
             STRIDED=False,
+            ACC=acc,
             num_warps=nw,
         )
     else:
@@ -267,6 +276,7 @@ def linalg_tensorsolve(self, other, dims=None):
             UNROLL=unroll,
             N=N,
             STRIDED=True,
+            ACC=acc,
             num_warps=nw,
         )
 

@@ -268,6 +268,27 @@ def test_linalg_tensorsolve_fp64_preserved():
 
 
 @pytest.mark.linalg_tensorsolve
+def test_linalg_tensorsolve_fp64_accuracy_is_double_grade():
+    """The fp64 solve is accurate to fp64, not merely stored as fp64.
+
+    ``test_linalg_tensorsolve_fp64_preserved`` checks the dtype, but the
+    harness tolerance there is loose enough that a system eliminated in fp32
+    and widened at the store would still pass. Eliminating at fp32 leaves a
+    relative error no better than fp32 epsilon (~2e-7 here, and worse as the
+    system grows), while a true fp64 elimination lands near 1e-15 -- so a
+    bound between the two separates them.
+    """
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    lhs, rhs, expected = _system((9, 9), (9,), dtype=torch.float64)
+    res = flag_gems.linalg_tensorsolve(lhs, rhs)
+    assert res.dtype == torch.float64
+
+    rel = (res - expected).abs().max() / expected.abs().max()
+    assert rel < 1e-10, "fp64 solve carries fp32-grade error: %.3e" % rel
+
+
+@pytest.mark.linalg_tensorsolve
 def test_linalg_tensorsolve_autograd_input_is_detached():
     """A grad-requiring input is accepted; the forward kernel builds no graph."""
     lhs, rhs, _ = _system((4, 4), (4,))
