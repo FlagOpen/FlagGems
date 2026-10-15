@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 APPLY_DTYPES = [torch.float16, torch.bfloat16]
 
@@ -31,6 +32,9 @@ APPLY_CASES = [
 ]
 
 
+# aten has no CPU kernel for this op, so the CPU-reference (quick-cpu) mode
+# cannot compute a reference; the suite runs in normal mode only.
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.underscore_sparse_semi_structured_apply
 @pytest.mark.parametrize("M,K", APPLY_CASES)
 @pytest.mark.parametrize("dtype", APPLY_DTYPES)
@@ -39,7 +43,9 @@ def test__sparse_semi_structured_apply(M, K, dtype):
     thread_masks = torch.randint(
         0, 256, (M // 8, K // 8, 8), dtype=torch.uint8, device=flag_gems.device
     )
-    ref0, ref1 = torch.ops.aten._sparse_semi_structured_apply(x, thread_masks)
+    ref_x = utils.to_reference(x)
+    ref_thread_masks = utils.to_reference(thread_masks)
+    ref0, ref1 = torch.ops.aten._sparse_semi_structured_apply(ref_x, ref_thread_masks)
     res0, res1 = flag_gems._sparse_semi_structured_apply(x, thread_masks)
     assert res0.shape == ref0.shape
     assert res1.shape == ref1.shape

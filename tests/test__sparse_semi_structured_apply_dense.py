@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 from . import kernelgen_test_utils as tu
 
 # aten::_sparse_semi_structured_apply_dense(input, threads_masks) selects each
@@ -224,6 +225,7 @@ def _offset_input(rows, cols, layout, dtype, value_range):
 
 @pytest.mark.sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape,dtype,value_range,layout,mask_pattern", _MAIN_CASES)
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense(
     shape, dtype, value_range, layout, mask_pattern
 ):
@@ -243,6 +245,7 @@ def test__sparse_semi_structured_apply_dense(
 
 @pytest.mark.sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("dtype,scenario,mask_pattern", _SPECIAL_CASES)
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense_special_values(
     dtype, scenario, mask_pattern
 ):
@@ -274,6 +277,7 @@ def test__sparse_semi_structured_apply_dense_special_values(
 
 @pytest.mark.sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape,layout,dtype", _MASK_LAYOUT_CASES)
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense_mask_layout(shape, layout, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -292,6 +296,7 @@ def test__sparse_semi_structured_apply_dense_mask_layout(shape, layout, dtype):
 
 @pytest.mark.sparse_semi_structured_apply_dense
 @pytest.mark.parametrize("shape,layout,operand,dtype", _VIEW_CASES)
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 def test__sparse_semi_structured_apply_dense_offset_views(
     shape, layout, operand, dtype
 ):

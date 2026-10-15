@@ -46,7 +46,7 @@ def _make_sparse_coo(shape, sparse_dim, nnz, dtype, device, seed=0):
 @pytest.mark.parametrize("dtype", CLEAR_DTYPES)
 def test_sparse_resize_and_clear_(size, sparse_dim, dense_dim, new_size, dtype):
     inp = _make_sparse_coo(size, sparse_dim, 64, dtype, flag_gems.device)
-    ref = inp.clone()
+    ref = utils.to_reference(inp.clone())
     torch.ops.aten.sparse_resize_and_clear_(ref, new_size, sparse_dim, dense_dim)
     res = flag_gems.sparse_resize_and_clear_(inp, new_size, sparse_dim, dense_dim)
     assert res is inp
