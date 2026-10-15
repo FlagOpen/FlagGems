@@ -107,7 +107,9 @@ def addr_kernel(
     # Compute in fp32 (matches the accuracy the earlier explicit `.to(tl.float32)`
     # kernels achieved) and store back in the output dtype.
     y = beta * x + alpha * (s * w)
-    tl.store(out_ptr + i0 * out_s0 + i1 * out_s1, y.to(out_ptr.dtype.element_ty), mask=mask)
+    tl.store(
+        out_ptr + i0 * out_s0 + i1 * out_s1, y.to(out_ptr.dtype.element_ty), mask=mask
+    )
 
 
 def _broadcast_strides(tensor, task_shape):
@@ -196,5 +198,9 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
                 msg in str(exc) for msg in _STACK_ERRORS
             ):
                 raise
-            logger.debug("GEMS_KUNLUNXIN ADDR: tile %d rejected (%s); retrying smaller", tile, exc)
+            logger.debug(
+                "GEMS_KUNLUNXIN ADDR: tile %d rejected (%s); retrying smaller",
+                tile,
+                exc,
+            )
             tile = max(_TILE_RETRY_FLOOR, tile // 2)

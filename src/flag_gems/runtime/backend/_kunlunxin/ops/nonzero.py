@@ -89,6 +89,7 @@ _TLE_CTYPE = {
 
 _TLE_CACHE = {}
 
+
 # # `_nz_count_kernel`'s tail mask is unreliable on this backend: for a partial
 # last block the `(w != 0) & (cols < n)` predicate is *not* applied (measured
 # on (200,300) int16: partial[last] == 128 with only 96 valid lanes, i.e. the
@@ -571,9 +572,7 @@ def nonzero(inp, *, as_tuple=False):
                 out_full = torch.empty(
                     n_elements, inp_ndim, dtype=torch.int64, device=inp.device
                 )
-                _tle_stub(key + (inp_ndim,))[(_TLE_GRID,)](
-                    out_full, view, prefix, meta
-                )
+                _tle_stub(key + (inp_ndim,))[(_TLE_GRID,)](out_full, view, prefix, meta)
                 nnz = int(total[0].item())
             out = out_full[:nnz]
             return _unbind_views(out) if as_tuple else out
@@ -599,16 +598,10 @@ def nonzero(inp, *, as_tuple=False):
 
     num_nonzeros, plan = _count_plan(inp, n_elements)
 
-    if (
-        inp_ndim >= 1
-        and num_nonzeros == n_elements
-        and num_nonzeros * inp_ndim < 2**31
-    ):
+    if inp_ndim >= 1 and num_nonzeros == n_elements and num_nonzeros * inp_ndim < 2**31:
         return _dense_result(inp, num_nonzeros, as_tuple)
 
-    return _sparse_result(
-        inp, inp_ndim, n_elements, num_nonzeros, as_tuple, plan=plan
-    )
+    return _sparse_result(inp, inp_ndim, n_elements, num_nonzeros, as_tuple, plan=plan)
 
 
 @libentry()
@@ -676,9 +669,7 @@ def _dense_result(inp, num_nonzeros, as_tuple):
     return out
 
 
-def _sparse_result(
-    inp, inp_ndim, n_elements, num_nonzeros, as_tuple=False, plan=None
-):
+def _sparse_result(inp, inp_ndim, n_elements, num_nonzeros, as_tuple=False, plan=None):
     out = torch.empty(num_nonzeros, inp_ndim, dtype=torch.int64, device=inp.device)
     if num_nonzeros == 0:
         return _unbind_views(out) if as_tuple else out
@@ -705,8 +696,14 @@ def _sparse_result(
         )
         for d in range(inp_ndim):
             _nz_delin_dim_kernel[dgrid](
-                ws, out, num_nonzeros, strides[d], shape[d],
-                D=d, NDIM=inp_ndim, BLOCK=block,
+                ws,
+                out,
+                num_nonzeros,
+                strides[d],
+                shape[d],
+                D=d,
+                NDIM=inp_ndim,
+                BLOCK=block,
             )
 
     if as_tuple:
