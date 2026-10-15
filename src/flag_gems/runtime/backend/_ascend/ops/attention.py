@@ -61,7 +61,9 @@ def _attn_fwd_inner(
 ):
     # range of values handled by this stage
     if STAGE == 1:
-        lo, hi = 0, start_m * BLOCK_M
+        # Bounded by KV_CTX so that an empty varlen block (KV_CTX == 0) skips
+        # the off-band loop; for dense causal attention the bound is a no-op.
+        lo, hi = 0, tl.minimum(start_m * BLOCK_M, KV_CTX)
     elif STAGE == 2:
         lo, hi = start_m * BLOCK_M, (start_m + 1) * BLOCK_M
     # causal = False
@@ -176,6 +178,30 @@ LARGE_HEAD_DIM_CONFIGS = [
 ]
 configs += LARGE_HEAD_DIM_CONFIGS
 
+# Ascend rejects a launch whose flattened grid exceeds this many blocks.
+_ASCEND_MAX_CORE_DIM = 65535
+# Unified Buffer a kernel may use, as the compiler counts it.
+_ASCEND_UB_BITS = 1572864
+
+
+def _pre_block_for(head_dim):
+    """Rows per program in _attn_bwd_preprocess that still fit the UB.
+
+    The kernel holds o, do and their float32 product as (rows, head_dim)
+    tiles, so a fixed 256 rows overflows once the head grows:
+
+        ub overflow, requires 3145728 bits while 1572864 bits available
+
+    Budget half the UB -- the compiler needs the rest for multi-buffering --
+    and round down to a power of two.
+    """
+    rows = _ASCEND_UB_BITS // 2 // (3 * 32 * head_dim)
+    return max(16, min(256, 1 << (max(rows, 1).bit_length() - 1)))
+
+
+# The varlen forward sizes its launches for the smallest BLOCK_M on offer.
+_MIN_FWD_BLOCK_M = min(cfg.kwargs["BLOCK_M"] for cfg in configs)
+
 
 def _prune_attn_fwd_configs(candidates, args, **kwargs):
     head_dim = args["HEAD_DIM"]
@@ -204,6 +230,8 @@ def _attn_fwd(
     sm_scale,
     M,
     Out,  #
+    cu_seqlens_q,
+    cu_seqlens_k,
     stride_q_batch,
     stride_q_head,
     stride_q_seqlen,
@@ -230,36 +258,70 @@ def _attn_fwd(
     GROUP_HEAD: tl.constexpr,
     Q_CTX,
     KV_CTX,
+    HZ_BASE,
+    stride_m_head,
     HEAD_DIM: tl.constexpr,
     ACTUAL_HEAD_DIM: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
+    IS_VARLEN: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
+    off_hz = tl.program_id(1) + HZ_BASE
     batch_id = off_hz // q_head_num
     head_id = off_hz % q_head_num
     kv_head_id = head_id // GROUP_HEAD
 
-    q_offset = (
-        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
-    )
-    o_offset = (
-        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
-    )
-    kv_offset = (
-        batch_id.to(tl.int64) * stride_k_batch + kv_head_id.to(tl.int64) * stride_k_head
-    )
+    if IS_VARLEN:
+        # Packed (thd) layout: sequence `batch_id` owns rows
+        # [cu_seqlens[batch_id], cu_seqlens[batch_id + 1]) of Q/K/V/Out, and
+        # Q_CTX / KV_CTX are the longest sequence lengths.
+        q_start = tl.load(cu_seqlens_q + batch_id)
+        q_len = tl.load(cu_seqlens_q + batch_id + 1) - q_start
+        kv_start = tl.load(cu_seqlens_k + batch_id)
+        kv_len = tl.load(cu_seqlens_k + batch_id + 1) - kv_start
+        # A block past the end of a shorter sequence has no rows to compute.
+        kv_len = tl.where(start_m * BLOCK_M < q_len, kv_len, 0)
+        q_offset = (
+            q_start.to(tl.int64) * stride_q_seqlen
+            + head_id.to(tl.int64) * stride_q_head
+        )
+        o_offset = (
+            q_start.to(tl.int64) * stride_o_seqlen
+            + head_id.to(tl.int64) * stride_o_head
+        )
+        kv_offset = (
+            kv_start.to(tl.int64) * stride_k_seqlen
+            + kv_head_id.to(tl.int64) * stride_k_head
+        )
+        # M is (q_head_num, total_q), the layout of the flash-attn varlen lse.
+        m_offset = head_id.to(tl.int64) * stride_m_head + q_start
+    else:
+        q_len = Q_CTX
+        kv_len = KV_CTX
+        q_offset = (
+            batch_id.to(tl.int64) * stride_q_batch
+            + head_id.to(tl.int64) * stride_q_head
+        )
+        o_offset = (
+            batch_id.to(tl.int64) * stride_o_batch
+            + head_id.to(tl.int64) * stride_o_head
+        )
+        kv_offset = (
+            batch_id.to(tl.int64) * stride_k_batch
+            + kv_head_id.to(tl.int64) * stride_k_head
+        )
+        m_offset = off_hz * Q_CTX
 
     offs_headsize = tl.arange(0, HEAD_DIM)
 
     # initialize offsets
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    q_load_mask = offs_m < Q_CTX
+    q_load_mask = offs_m < q_len
     offs_n = tl.arange(0, BLOCK_N)
 
     Q_block_ptr = (
@@ -339,7 +401,7 @@ def _attn_fwd(
             4 - STAGE,
             offs_m,
             offs_n,
-            KV_CTX,
+            kv_len,
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
@@ -369,7 +431,7 @@ def _attn_fwd(
             2,
             offs_m,
             offs_n,
-            KV_CTX,
+            kv_len,
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
@@ -377,7 +439,7 @@ def _attn_fwd(
     # epilogue
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
-    m_ptrs = M + off_hz * Q_CTX + offs_m
+    m_ptrs = M + m_offset + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
     tl.store(
         O_block_ptr,
@@ -482,8 +544,9 @@ def _attn_bwd_dkdv(
             mask &= offs_m[None, :] >= offs_n[:, None]
         pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
-        do = tl.load(do_ptrs)
-        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
+        # (BLOCK_M1, BLOCK_DMODEL); the tail block of a sequence whose length is
+        # not a whole number of tiles reads past the end without the mask.
+        do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0)
 
         # Compute dV.
         dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
@@ -574,12 +637,49 @@ def _attn_bwd_dq(
 
 
 config_backward = runtime.get_tuned_config("attention_bwd")
+# _attn_bwd tiles the sequence by whole blocks, so the fused path only takes
+# lengths that are a multiple of every block size it may tile with.
+_FUSED_BWD_SEQ_ALIGN = max(
+    [
+        max(cfg.kwargs[k] for k in ("BLOCK_M1", "BLOCK_N1", "BLOCK_M2", "BLOCK_N2"))
+        for cfg in config_backward
+    ],
+    default=128,
+)
+
+
+# _attn_bwd crashes bishengir-compile on CANN 9.0.1 for every shape it
+# accepts, from (1, 8, 128, 64) up:
+#
+#     [ConvertLinalgIRToBinary] encounters error:
+#     PLEASE submit a bug report to https://github.com/llvm/llvm-project
+#
+# It is not a tile budget -- the UB overflow that used to mask this is fixed
+# above, and the crash survives every block size on offer. Until the toolchain
+# handles the kernel, the matrix derivative path takes every case; flip this
+# back to true to re-enable it.
+_USE_FUSED_BWD = False
+
+
+def _prune_attn_bwd_configs(candidates, args, **kwargs):
+    # dk and dv are float32 accumulators of BLOCK_N1 x head_dim, so the tile
+    # that fits the UB shrinks as the head grows. Pruning here rather than
+    # letting the tuner try a config that cannot be compiled at all.
+    # BLOCK_DMODEL reaches the kernel as a keyword, so it is in kwargs rather
+    # than in the positional args the way HEAD_DIM is for the forward.
+    head_dim = kwargs.get("BLOCK_DMODEL", args.get("BLOCK_DMODEL"))
+    if head_dim is None:
+        return candidates
+    limit = 32 if head_dim >= 128 else 64
+    kept = [cfg for cfg in candidates if cfg.kwargs["BLOCK_N1"] <= limit]
+    return kept or candidates
 
 
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
+    prune_configs_by={"early_config_prune": _prune_attn_bwd_configs},
 )
 @triton.jit
 def _attn_bwd(
@@ -885,6 +985,8 @@ def scaled_dot_product_attention_forward(
             sm_scale,
             M,
             o,  #
+            None,
+            None,  # cu_seqlens_q / cu_seqlens_k
             query.stride(0),
             query.stride(1),
             query.stride(2),
@@ -911,12 +1013,121 @@ def scaled_dot_product_attention_forward(
             q_head_num // kv_head_num,  # group_head
             query.shape[2],  #
             key.shape[2],  #
+            0,  # HZ_BASE
+            query.shape[2],  # stride_m_head
             max(16, triton.next_power_of_2(HEAD_DIM_K)),
             HEAD_DIM_K,
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
+            IS_VARLEN=False,
             sync_solver=True,
         )
+    return o, M
+
+
+def _varlen_attention_forward(
+    query,
+    key,
+    value,
+    cu_seqlens_q,
+    cu_seqlens_k,
+    max_seqlen_q,
+    max_seqlen_k,
+    is_causal,
+    sm_scale,
+):
+    """Attention over packed (thd) sequences.
+
+    query is (total_q, q_heads, head_dim) and key/value are
+    (total_k, kv_heads, head_dim); sequence i owns rows
+    [cu_seqlens[i], cu_seqlens[i + 1]). Returns the output in the query layout
+    and the base-2 logsumexp M as (q_heads, total_q).
+    """
+    HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
+    HEAD_DIM_V = value.shape[-1]
+    assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
+    assert 0 < HEAD_DIM_K <= 256, f"Unsupported attention head dimension: {HEAD_DIM_K}"
+
+    total_q, q_head_num, _ = query.shape
+    kv_head_num = key.shape[1]
+    assert (
+        q_head_num % kv_head_num == 0
+    ), f"q_head_num {q_head_num} is not a multiple of kv_head_num {kv_head_num}"
+    num_seqs = cu_seqlens_q.numel() - 1
+    assert cu_seqlens_k.numel() == num_seqs + 1
+    max_seqlen_q = int(max_seqlen_q)
+    max_seqlen_k = int(max_seqlen_k)
+    # K and V share one base offset in the kernel.
+    if key.stride() != value.stride():
+        key, value = key.contiguous(), value.contiguous()
+
+    o = torch.empty_like(query, dtype=value.dtype)
+    M = torch.empty((q_head_num, total_q), device=query.device, dtype=torch.float32)
+    if total_q == 0 or num_seqs == 0 or max_seqlen_q == 0:
+        return o, M
+
+    cu_seqlens_q = cu_seqlens_q.to(torch.int32).contiguous()
+    cu_seqlens_k = cu_seqlens_k.to(torch.int32).contiguous()
+
+    # Split the (sequence, head) axis so that no launch exceeds the core limit.
+    m_blocks = triton.cdiv(max_seqlen_q, _MIN_FWD_BLOCK_M)
+    assert m_blocks <= _ASCEND_MAX_CORE_DIM, f"max_seqlen_q {max_seqlen_q} is too long"
+    hz_per_launch = _ASCEND_MAX_CORE_DIM // m_blocks
+    total_hz = num_seqs * q_head_num
+
+    with torch_device_fn.device(query.device):
+        for hz_base in range(0, total_hz, hz_per_launch):
+            hz_count = min(hz_per_launch, total_hz - hz_base)
+            grid = lambda args, hz_count=hz_count: (
+                triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
+                hz_count,
+                1,
+            )
+            _attn_fwd[grid](
+                query,
+                key,
+                value,
+                None,
+                sm_scale,
+                M,
+                o,  #
+                cu_seqlens_q,
+                cu_seqlens_k,
+                0,
+                query.stride(1),
+                query.stride(0),
+                query.stride(2),  #
+                0,
+                key.stride(1),
+                key.stride(0),
+                key.stride(2),  #
+                0,
+                value.stride(1),
+                value.stride(0),
+                value.stride(2),  #
+                1,
+                1,
+                1,
+                1,  # attn_mask strides
+                0,
+                o.stride(1),
+                o.stride(0),
+                o.stride(2),  #
+                num_seqs,
+                q_head_num,
+                kv_head_num,  #
+                q_head_num // kv_head_num,  # group_head
+                max_seqlen_q,  #
+                max_seqlen_k,  #
+                hz_base,
+                total_q,  # stride_m_head
+                max(16, triton.next_power_of_2(HEAD_DIM_K)),
+                HEAD_DIM_K,
+                STAGE=3 if is_causal else 1,  #
+                HAS_ATTN_MASK=False,  #
+                IS_VARLEN=True,
+                sync_solver=True,
+            )
     return o, M
 
 
@@ -942,11 +1153,13 @@ def _attention_backward_math(do, query, key, value, attn_mask, is_causal, scale)
     d_probs = torch.matmul(do.float(), value_expanded.float().transpose(-2, -1))
     d_scores = probs * (d_probs - (probs * d_probs).sum(dim=-1, keepdim=True))
     dq = (torch.matmul(d_scores, key_expanded.float()) * scale).to(query.dtype)
-    dk = (torch.matmul(d_scores.transpose(-2, -1), query.float()) * scale)
+    dk = torch.matmul(d_scores.transpose(-2, -1), query.float()) * scale
     dv = torch.matmul(probs.transpose(-2, -1), do.float())
     if group_size > 1:
         dk = dk.reshape(key.shape[0], kv_heads, group_size, *key.shape[2:]).sum(dim=2)
-        dv = dv.reshape(value.shape[0], kv_heads, group_size, *value.shape[2:]).sum(dim=2)
+        dv = dv.reshape(value.shape[0], kv_heads, group_size, *value.shape[2:]).sum(
+            dim=2
+        )
     return dq, dk.to(key.dtype), dv.to(value.dtype)
 
 
@@ -979,7 +1192,17 @@ def scaled_dot_product_attention_backward(
 
     # The fused backward requires power-of-two head sizes; use the existing
     # matrix derivative path for heads such as the vision encoder's 72 as well.
-    if HEAD_DIM_K not in {16, 32, 64, 128}:
+    # _attn_bwd also only implements the causal backward of an unmasked,
+    # block-aligned square attention, so everything else takes that path too.
+    q_ctx, kv_ctx = query.shape[2], key.shape[2]
+    if (
+        not _USE_FUSED_BWD
+        or HEAD_DIM_K not in {16, 32, 64, 128}
+        or not is_causal
+        or attn_mask is not None
+        or q_ctx != kv_ctx
+        or q_ctx % _FUSED_BWD_SEQ_ALIGN != 0
+    ):
         return _attention_backward_math(
             do, query, key, value, attn_mask, is_causal, sm_scale
         )
@@ -1007,8 +1230,7 @@ def scaled_dot_product_attention_backward(
     RCP_LN2 = 1.0 / math.log(2)
 
     arg_k = key * (sm_scale * RCP_LN2)
-    # PRE_BLOCK = 128
-    PRE_BLOCK = 256
+    PRE_BLOCK = _pre_block_for(BLOCK_DMODEL)
 
     # PRE_BLOCK = 32
     # assert N_CTX % PRE_BLOCK == 0
@@ -1043,12 +1265,17 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
+    # One program id tiles both halves of _attn_bwd -- dk/dv by BLOCK_N1 over
+    # the kv axis, dq by BLOCK_M2 over the q axis -- so the grid has to cover
+    # whichever needs more programs. The surplus programs store nothing.
+    grid = lambda args: (  # noqa: E731
+        max(
+            triton.cdiv(KV_CTX, args["BLOCK_N1"]),
+            triton.cdiv(Q_CTX, args["BLOCK_M2"]),
+        ),
+        1,
+        BATCH * Q_HEAD,
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
     # logger.info(f"{triton.cdiv(Q_CTX, BLOCK_N1)=}")
     # logger.info(f"{M.shape=}")
 
@@ -1091,6 +1318,209 @@ def scaled_dot_product_attention_backward(
         dv = dv.sum(dim=2)
 
     return dq, dk, dv
+
+
+# The matrix derivative path materializes several (batch, heads, q, kv) float32
+# tensors, so batching uniform sequences is capped by how large one of those is
+# allowed to get rather than by the sequence count.
+_VARLEN_BWD_SCORE_BUDGET = 64 * 1024 * 1024
+
+
+def _uniform_seqlen(cu_seqlens_q, cu_seqlens_k):
+    """The (q, kv) length every sequence shares, or None if they differ."""
+    lens_q = cu_seqlens_q[1:] - cu_seqlens_q[:-1]
+    lens_k = cu_seqlens_k[1:] - cu_seqlens_k[:-1]
+    if lens_q.numel() == 0:
+        return None
+    s_q, s_k = int(lens_q[0]), int(lens_k[0])
+    if s_q == 0 or s_k == 0:
+        return None
+    if not bool((lens_q == s_q).all()) or not bool((lens_k == s_k).all()):
+        return None
+    return s_q, s_k
+
+
+def _varlen_attention_backward(
+    do, query, key, value, o, M, cu_seqlens_q, cu_seqlens_k, is_causal, sm_scale
+):
+    """Backward of _varlen_attention_forward.
+
+    Runs each packed sequence through the dense backward, which picks the
+    fused kernel or the matrix derivative path for it. Sequences of one
+    uniform length -- the frames of a vision tower, say -- go through as a
+    single batch instead of one call each.
+    """
+    uniform = _uniform_seqlen(cu_seqlens_q, cu_seqlens_k)
+    if uniform is not None:
+        s_q, s_k = uniform
+        heads, kv_heads, head_dim = query.shape[1], key.shape[1], query.shape[2]
+        n_seq = cu_seqlens_q.numel() - 1
+        per_seq = heads * s_q * s_k * 4
+        step = max(1, min(n_seq, _VARLEN_BWD_SCORE_BUDGET // max(per_seq, 1)))
+
+        dq, dk, dv = (torch.empty_like(t) for t in (query, key, value))
+
+        def to_bhsd(t, lo, hi, seqlen, n_heads):
+            return (
+                t[lo * seqlen : hi * seqlen]
+                .reshape(hi - lo, seqlen, n_heads, head_dim)
+                .transpose(1, 2)
+                .contiguous()
+            )
+
+        for lo in range(0, n_seq, step):
+            hi = min(lo + step, n_seq)
+            grads = scaled_dot_product_attention_backward(
+                to_bhsd(do, lo, hi, s_q, heads),
+                to_bhsd(query, lo, hi, s_q, heads),
+                to_bhsd(key, lo, hi, s_k, kv_heads),
+                to_bhsd(value, lo, hi, s_k, kv_heads),
+                to_bhsd(o, lo, hi, s_q, heads),
+                M[:, lo * s_q : hi * s_q]
+                .reshape(heads, hi - lo, s_q)
+                .transpose(0, 1)
+                .contiguous(),
+                attn_mask=None,
+                dropout_p=0.0,
+                is_causal=is_causal,
+                scale=sm_scale,
+                enable_gqa=True,
+            )
+            for g, out, seqlen, n_heads in (
+                (grads[0], dq, s_q, heads),
+                (grads[1], dk, s_k, kv_heads),
+                (grads[2], dv, s_k, kv_heads),
+            ):
+                out[lo * seqlen : hi * seqlen] = g.transpose(1, 2).reshape(
+                    (hi - lo) * seqlen, n_heads, head_dim
+                )
+        return dq, dk, dv
+
+    dq = torch.zeros_like(query)
+    dk = torch.zeros_like(key)
+    dv = torch.zeros_like(value)
+    cu_q = cu_seqlens_q.tolist()
+    cu_k = cu_seqlens_k.tolist()
+
+    def to_bhsd(t, start, end):
+        return t[start:end].transpose(0, 1).unsqueeze(0).contiguous()
+
+    for i in range(len(cu_q) - 1):
+        qs, qe, ks, ke = cu_q[i], cu_q[i + 1], cu_k[i], cu_k[i + 1]
+        if qe == qs or ke == ks:
+            continue
+        dq_i, dk_i, dv_i = scaled_dot_product_attention_backward(
+            to_bhsd(do, qs, qe),
+            to_bhsd(query, qs, qe),
+            to_bhsd(key, ks, ke),
+            to_bhsd(value, ks, ke),
+            to_bhsd(o, qs, qe),
+            M[:, qs:qe].unsqueeze(0).contiguous(),
+            attn_mask=None,
+            dropout_p=0.0,
+            is_causal=is_causal,
+            scale=sm_scale,
+            enable_gqa=True,
+        )
+        dq[qs:qe] = dq_i[0].transpose(0, 1)
+        dk[ks:ke] = dk_i[0].transpose(0, 1)
+        dv[ks:ke] = dv_i[0].transpose(0, 1)
+    return dq, dk, dv
+
+
+def _check_varlen_support(
+    cumulative_sequence_length_q,
+    cumulative_sequence_length_k,
+    dropout_p,
+    is_causal,
+    window_size_left=None,
+    window_size_right=None,
+    **unsupported,
+):
+    if cumulative_sequence_length_k is None:
+        raise ValueError("varlen attention needs both cu_seqlens_q and cu_seqlens_k")
+    missing = [name for name, value in unsupported.items() if value]
+    if dropout_p != 0.0:
+        missing.append("dropout")
+    if window_size_left not in (None, -1) or window_size_right not in (None, -1):
+        missing.append("sliding window")
+    if missing:
+        raise NotImplementedError(
+            f"Ascend varlen flash attention does not support {', '.join(missing)}"
+        )
+    # The kernels align the causal mask to the top left, which is only the
+    # flash-attn (bottom right) convention when q and kv lengths match.
+    if (
+        is_causal
+        and cumulative_sequence_length_q is not cumulative_sequence_length_k
+        and not torch.equal(cumulative_sequence_length_q, cumulative_sequence_length_k)
+    ):
+        raise NotImplementedError(
+            "Ascend varlen flash attention supports causal masking only when "
+            "cu_seqlens_q equals cu_seqlens_k"
+        )
+
+
+def flash_attention_backward(
+    grad_out,
+    query,
+    key,
+    value,
+    out,
+    logsumexp,
+    cum_seq_q,
+    cum_seq_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    rng_state,
+    unused,
+    *,
+    scale=None,
+    window_size_left=None,
+    window_size_right=None,
+):
+    if cum_seq_q is None:
+        from flag_gems.ops.flash_attention_backward import (
+            flash_attention_backward as generic_flash_attention_backward,
+        )
+
+        return generic_flash_attention_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cum_seq_q,
+            cum_seq_k,
+            max_q,
+            max_k,
+            dropout_p,
+            is_causal,
+            rng_state,
+            unused,
+            scale=scale,
+            window_size_left=window_size_left,
+            window_size_right=window_size_right,
+        )
+
+    logger.debug("GEMS_ASCEND FLASH_ATTENTION_BACKWARD (varlen)")
+    _check_varlen_support(
+        cum_seq_q,
+        cum_seq_k,
+        dropout_p,
+        is_causal,
+        window_size_left,
+        window_size_right,
+    )
+    sm_scale = scale if scale is not None else 1.0 / (query.shape[-1] ** 0.5)
+    # Back to the base-2 logsumexp that the kernels work with.
+    M = logsumexp.float() * (1.0 / math.log(2))
+    return _varlen_attention_backward(
+        grad_out, query, key, value, out, M, cum_seq_q, cum_seq_k, is_causal, sm_scale
+    )
 
 
 class ScaleDotProductAttention(torch.autograd.Function):
@@ -1189,9 +1619,40 @@ def flash_attention_forward(
     disable_splitkv=False,
 ):
     logger.debug("GEMS_ASCEND FLASH_ATTENTION_FORWARD")
+    if cumulative_sequence_length_q is not None:
+        _check_varlen_support(
+            cumulative_sequence_length_q,
+            cumulative_sequence_length_k,
+            dropout_p,
+            is_causal,
+            window_size_left,
+            window_size_right,
+            softcap=softcap,
+            seqused_k=seqused_k is not None,
+            alibi_slopes=alibi_slopes is not None,
+            return_debug_mask=return_debug_mask,
+        )
+        sm_scale = scale if scale is not None else 1.0 / (query.shape[-1] ** 0.5)
+        out, M = _varlen_attention_forward(
+            query,
+            key,
+            value,
+            cumulative_sequence_length_q,
+            cumulative_sequence_length_k,
+            max_q,
+            max_k,
+            is_causal,
+            sm_scale,
+        )
+        # Natural-log logsumexp of shape (q_heads, total_q), as flash-attn.
+        lse = M * math.log(2)
+        empty = torch.empty(0, dtype=torch.int64, device=query.device)
+        debug_mask = torch.empty(0, dtype=query.dtype, device=query.device)
+        return (out, lse, empty, empty, debug_mask)
+
     assert (
-        cumulative_sequence_length_q is None and cumulative_sequence_length_k is None
-    ), "varlen is not supported yet."
+        cumulative_sequence_length_k is None
+    ), "cumulative_sequence_length_k is given without cumulative_sequence_length_q."
 
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     HEAD_DIM_V = value.shape[-1]

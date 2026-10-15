@@ -30,6 +30,30 @@ attention:
   - true
   - false
 
+# Without this section the loader falls back to the NVIDIA tiles, whose
+# BLOCK_N1/BLOCK_M2 of 128 do not fit the 192 KB Ascend UB: the dk and dv
+# float32 accumulators alone are 2*128*128*4 = 128 KB at head_dim 128, and
+# key/value take the remaining 64 KB, so the kernel fails to compile with
+# [ConvertLinalgIRToBinary] encounters error.
+# Every config keeps BLOCK_N1 == BLOCK_M2 because one program id tiles both
+# the dk/dv and the dq halves of _attn_bwd.
+attention_bwd:
+- gen: true
+  param_map:
+    META: metas
+    num_warps: warps
+    num_stages: stages
+  # BLOCK_M1 and BLOCK_N2 stay at 32 or more: BLK_SLICE_FACTOR halves them for
+  # the diagonal blocks, and a tl.dot side below 16 is not supported.
+  metas:
+  - {BLOCK_M1: 32, BLOCK_N1: 64, BLOCK_M2: 64, BLOCK_N2: 32}
+  - {BLOCK_M1: 32, BLOCK_N1: 32, BLOCK_M2: 32, BLOCK_N2: 32}
+  warps:
+  - 4
+  stages:
+  - 1
+  - 2
+
 bmm:
 - META:
     TILE_M: 64

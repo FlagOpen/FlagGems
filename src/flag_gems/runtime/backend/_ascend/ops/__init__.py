@@ -26,6 +26,7 @@ from .argmin import argmin
 from .argsort import argsort
 from .attention import (
     ScaleDotProductAttention,
+    flash_attention_backward,
     flash_attention_forward,
     flash_attn_varlen_func,
     scaled_dot_product_attention,
@@ -226,6 +227,7 @@ __all__ = [
     "fill_scalar_",
     "fill_tensor",
     "fill_tensor_",
+    "flash_attention_backward",
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
