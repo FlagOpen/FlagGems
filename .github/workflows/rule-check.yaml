@@ -73,6 +73,8 @@ jobs:
         with:
           fetch-depth: 0
           ssh-key: ${{ secrets.CI_SSH_KEY }}
+          # Fetch the PR base SHA too so base...head diffs in ci_checks resolve.
+          base-ref: ${{ github.event.pull_request.base.sha }}
           # Each round is a connect probe (fast reject of a wedged link) then a
           # throughput-judged fetch, so a slow-but-moving link finishes in round 1
           # instead of being clock-killed. fetch-depth 0 pulls full history, so

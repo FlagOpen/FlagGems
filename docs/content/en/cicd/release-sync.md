@@ -64,12 +64,45 @@ shared reusable workflow
 (`flagos-ai/build-infra/.github/workflows/sync-to-remote.yaml`), so the
 project stays available on domestic Git hosting mirrors.
 
+## `build-deb.yml` and `build-rpm.yml` — distribution packages
+
+**Trigger:** `push` of a `v*` tag; `pull_request` against `master` that
+touches `packaging/debian/**` (or `packaging/rpm/**`) or
+`packaging/verify-installed-package.py`; also manual `workflow_dispatch`.
+
+Unlike `release.yaml`, these use the broad `v*` tag pattern, so pre-release
+tags build packages too (they are not published, only attached as
+artifacts). The `pull_request` path filter is deliberate: a source-only PR
+has no consumer for a `.deb` or `.rpm`, so those changes are covered by the
+repository's own tests instead.
+
+Each workflow builds its package in a `manylinux_2_28_x86_64` container,
+then smoke-tests the result by installing it into a clean `ubuntu:22.04`
+(`.deb`) or `fedora:43` (`.rpm`) image and running
+`packaging/verify-installed-package.py`. That step exists because a package
+can install cleanly and still be broken: a bare `Depends:`/`Requires:` can
+resolve to a too-old distro version, and a subpackage missing an
+`__init__.py` is silently dropped by `find_packages()`. Both only surface at
+import time, long after `dpkg -l` or `rpm -q` reports success.
+
+Artifacts are uploaded as `flag-gems-amd64-packages` and
+`flag-gems-amd64-rpm-packages` (7-day retention).
+
+## `upload-nexus.yml` — upload release artifacts to Nexus
+
+**Trigger:** `push` of a `v*` tag; also manual `workflow_dispatch` with an
+optional `run_id` input (blank uses the latest successful run).
+
+A thin caller for the shared workflow at
+`flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main`; the upload
+logic lives there. This exact file, with no per-repo edits, is placed in
+every FlagOS component repository, and org-level secrets reach it through
+`secrets: inherit`.
+
 ## Other operational workflows
 
-- **`probe-node.yaml`** — manual `workflow_dispatch` to check a self-hosted
-  runner (e.g. `h100`, `a100`) is online and healthy.
-- **`random-test.yaml`** — manual `workflow_dispatch` to run an arbitrary
-  set of operators against arbitrary GPUs on a chosen runner, for ad-hoc
-  investigation.
-- **`review-stats.yaml`** — manual `workflow_dispatch` to generate PR review
-  statistics for a date range.
+The manually dispatched tools that do not touch releases — `probe-node.yaml`,
+`random-test.yaml`, `review-stats.yaml`, plus the comment-triggered
+`fix-sort.yaml` — are documented in
+[Scheduled and on-demand testing](/FlagGems/cicd/scheduled/), which owns
+everything you start by hand.

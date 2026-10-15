@@ -85,6 +85,26 @@ def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
     on the base branch after the PR was created. This matches the semantics of
     GitHub's "Files changed" view.
     """
+    # Fail early with a clear message if either endpoint isn't a local commit.
+    # Otherwise `git diff base...head` reports the internal "Invalid symmetric
+    # difference expression", which looks like a syntax error but actually means
+    # the SHA's commit object is absent (e.g. robust-checkout didn't fetch the
+    # base). git's own wording misleads whoever reads the CI log.
+    for label, sha in (("base", base_sha), ("head", head_sha)):
+        probe = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode != 0:
+            print(
+                f"::error::{label} SHA {sha} is not present in the local repo "
+                f"(its commit object was never fetched), so base...head diffs "
+                f"cannot resolve. Ensure the checkout fetches this ref.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
     try:
         result = subprocess.run(
             [
