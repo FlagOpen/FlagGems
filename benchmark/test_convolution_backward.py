@@ -1,17 +1,11 @@
-import csv
-import json
-import os
-import tempfile
 from functools import partial
-from pathlib import Path
 
 import pytest
 import torch
 
 import flag_gems
 
-from . import base, consts
-from .conftest import Config
+from . import base
 
 
 @pytest.fixture(autouse=True)
@@ -26,61 +20,6 @@ def _strict_convolution_precision():
         yield
 
 
-def _ascend_kernel_latency(fn, metadata):
-    import torch_npu
-
-    # Older vendor do_bench_npu averages individual rows and removes every
-    # ReduceSum kernel. Convolution backward is a multi-kernel operation whose
-    # bias gradient itself uses ReduceSum, so profile complete invocations.
-    warmup, repetitions = 5, 30
-    for _ in range(warmup):
-        fn()
-        torch.npu.synchronize()
-    profile_root = os.getenv("FLAGGEMS_CONV_PROFILE_DIR")
-    with tempfile.TemporaryDirectory(dir=profile_root) as directory:
-        config = torch_npu.profiler._ExperimentalConfig(
-            aic_metrics=torch_npu.profiler.AiCMetrics.PipeUtilization,
-            profiler_level=torch_npu.profiler.ProfilerLevel.Level1,
-            l2_cache=False,
-            data_simplification=False,
-        )
-        with torch_npu.profiler.profile(
-            activities=[torch_npu.profiler.ProfilerActivity.NPU],
-            on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(directory),
-            record_shapes=False,
-            profile_memory=False,
-            with_stack=False,
-            with_flops=False,
-            with_modules=False,
-            experimental_config=config,
-        ):
-            for _ in range(repetitions):
-                fn()
-                torch.npu.synchronize()
-        files = list(Path(directory).rglob("kernel_details.csv"))
-        if len(files) != 1:
-            raise RuntimeError("Expected exactly one NPU kernel profile")
-        with files[0].open() as source:
-            rows = list(csv.DictReader(source))
-        if not rows:
-            raise RuntimeError("NPU profiler returned no kernel timings")
-        samples = [float(row["Duration(us)"]) for row in rows]
-        if profile_root:
-            with (Path(profile_root) / "samples.jsonl").open("a") as output:
-                output.write(
-                    json.dumps(
-                        {
-                            "case": metadata,
-                            "repetitions": repetitions,
-                            "kernels": [row["Name"] for row in rows],
-                            "duration_us": samples,
-                        }
-                    )
-                    + "\n"
-                )
-        return sum(samples) / repetitions / 1000
-
-
 class ConvolutionBackwardBenchmark(base.GenericBenchmark):
     # batch, input channels, output channels, spatial extent, groups
     DEFAULT_SHAPES = [
@@ -91,27 +30,6 @@ class ConvolutionBackwardBenchmark(base.GenericBenchmark):
         (4, 16, 32, (32, 32), 16),
         (2, 3, 5, (17, 19), 1),
     ]
-
-    def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name == "ascend" and Config.mode == consts.BenchMode.KERNEL:
-            fn, _ = self._benchmark_callable(op, *args, **kwargs)
-            return _ascend_kernel_latency(
-                fn,
-                {
-                    "op": str(op),
-                    "shape": (
-                        args[1].shape[0],
-                        args[1].shape[1],
-                        args[0].shape[1],
-                        tuple(args[1].shape[2:]),
-                        args[9],
-                    ),
-                    "dtype": str(args[0].dtype),
-                    "transposed": args[7],
-                    "mask": args[-1],
-                },
-            )
-        return super().get_latency(op, *args, **kwargs)
 
     def set_more_shapes(self):
         return []
