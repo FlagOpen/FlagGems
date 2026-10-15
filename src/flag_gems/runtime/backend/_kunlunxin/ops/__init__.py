@@ -314,7 +314,6 @@ from .grid_sample import grid_sample
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
-from .gru import gru, gru_data
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
@@ -1108,8 +1107,6 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
-    "gru",
-    "gru_data",
     "gt",
     "gt_scalar",
     "gt_scalar_",
