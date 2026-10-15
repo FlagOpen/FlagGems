@@ -37,108 +37,34 @@ def _histc_combine(partial_ptr, out_ptr, bins, TC: tl.constexpr):
     tl.store(out_ptr + b, tl.sum(vals, axis=0))
 
 
-def _histc_tle_payload():
-    return r"""
-#include "xpu/kernel/xtdk.h"
-#include "xpu/kernel/xtdk_simd.h"
-#define TILE 512
-#define BINS_MAX 128
-#define GRID 12
-extern "C" __device__ void histc_lm_raw(_global_ptr_ float *partial,
-    _global_ptr_ const float *inp, int N, int bins, float minv, float maxv) {
-  __simd__ float lv0[TILE];          // double-buffered input: async-prefetch the
-  __simd__ float lv1[TILE];          // next chunk while binning the current one
-  __local__ int   lh[BINS_MAX + 1];  // +1: trash slot (index `bins`) for OOB lanes
-  __local__ float lf[BINS_MAX];
-  float *bufs[2] = {lv0, lv1};
-  for (int b = 0; b <= bins; ++b) lh[b] = 0;
-  int ncore = core_num();
-  int gcore = cluster_id() * ncore + core_id();
-  int tc = GRID * ncore;
-  // Per-core chunk sized to spread N over *all* tc cores.  A fixed TILE block
-  // leaves only ceil(N/TILE) cores busy for small N, so each busy core runs a
-  // full TILE-sized serial chain (~121 cyc/elem) and small N costs as much as
-  // a TILE-sized N.  chunk is rounded to 16 floats (64 B) for DMA granularity
-  // and capped at TILE so large N degenerates to the old block-strided walk.
-  int chunk = (N + tc - 1) / tc;
-  if (chunk < 16) chunk = 16;
-  chunk = (chunk + 15) & ~15;
-  if (chunk > TILE) chunk = TILE;
-  long nchunks = ((long)N + chunk - 1) / chunk;
-  float scale = (float)bins / (maxv - minv);
-  int bmax = bins - 1;
-  int cur = 0;
-  long c = gcore;
-  if (c < nchunks) {  // prime: async-load this core's first chunk
-    long s0 = c * chunk;
-    int l0 = (N - s0 < chunk) ? (int)(N - s0) : chunk;
-    GM2LM_ASYNC(inp + s0, bufs[cur], l0 * sizeof(float));
-  }
-  for (; c < nchunks; c += tc) {
-    long start = c * chunk;
-    int len = (N - start < chunk) ? (int)(N - start) : chunk;
-    mfence_lm_gm();  // bufs[cur] load now complete
-    long cn = c + tc;  // async-prefetch next chunk, overlapping the compute below
-    if (cn < nchunks) {
-      long sn = cn * chunk;
-      int ln = (N - sn < chunk) ? (int)(N - sn) : chunk;
-      GM2LM_ASYNC(inp + sn, bufs[1 - cur], ln * sizeof(float));
-    }
-    float *buf = bufs[cur];
-    int *lvi = (int *)buf;
-    // SIMD bin-ID compute (16 lanes/step); only the final lh[bin]++ stays scalar.
-    // The (v-minv)*scale arithmetic, the float->int convert (vfloat2fix_rd ==
-    // floor == scalar (int) over the in-range f>=0 domain), the [0,bins-1] clamp
-    // and the out-of-range / NaN / v==maxv handling are all vectorised.  OOB lanes
-    // (incl NaN/inf) are redirected to a trash slot (index `bins`), so the scalar
-    // increment loop stays branchless (`lh[bin]++`, trash discarded).  Masks come
-    // straight out of the compare intrinsics as packed ints and feed the `_mh`
-    // merges directly -- no lane extract / mask->vector sign-extend (both of which
-    // fail to lower on this backend).
-    int j = 0;
-    for (; j + 16 <= len; j += 16) {
-      float32x16_t v = vload_lm_float32x16(buf + j);
-      float32x16_t f = svmul_float32x16(scale, svadd_float32x16(-minv, v));
-      int32x16_t bi = vfloat2fix_rd(f);                 // floor -> int32
-      bi = svmax_int32x16(0, bi);                       // clamp low
-      bi = svmin_int32x16(bmax, bi);                    // clamp high -> [0,bins-1]
-      int ge_min = svle_float32x16(minv, v);            // v >= minv
-      int above = svlt_float32x16(maxv, v);             // v >  maxv
-      int oob = ((~ge_min) | above) & 0xffff;           // out of range (NaN/inf too)
-      int32x16_t bz = vvxor_int32x16_mh(bi, bi, bi, oob);  // oob ? 0 : bi
-      bi = svadd_int32x16_mh(bins, bz, bi, oob);           // oob ? bins : bi
-      vstore_lm_int32x16(lvi + j, bi);
-    }
-    mfence();  // SIMD LM writes above must be visible to the scalar reads below
-    for (; j < len; ++j) {  // scalar tail (len % 16), identical semantics
-      float v = buf[j];
-      int bin = (int)((v - minv) * scale);
-      bin = (bin < 0) ? 0 : bin;
-      bin = (bin > bmax) ? bmax : bin;
-      int in_range = (int)((v >= minv) & (v <= maxv));
-      lvi[j] = in_range ? bin : bins;
-    }
-    for (j = 0; j < len; ++j) lh[lvi[j]] += 1;  // branchless scalar increment
-    cur = 1 - cur;
-  }
-  // LM2GM DMA write of the per-core histogram: ~18x faster than a per-core
-  // scalar store loop (44us -> 2.4us for 512 cores x 100 bins, device-measured).
-  for (int b = 0; b < bins; ++b) lf[b] = (float)lh[b];
-  LM2GM(lf, partial + (long)gcore * bins, bins * sizeof(float));
-  mfence();
-}
-"""
-
-
 def _histc_tle_init():
     if _HISTC_TLE["init"]:
         return _HISTC_TLE["ok"]
     _HISTC_TLE["init"] = True
     try:
+        import os as _os
+
         import triton as _triton
         import triton.experimental.tle as _tle
 
-        @_tle.raw.dialect("xpu3", source=_histc_tle_payload())
+        # Precompiled, secrecy-hardened device object (packed from
+        # payload/src/histc_lm_raw.xpu via
+        # docs/xpu3/how_to_pack_payload/pack_payload.py --obj-dir).  We ship the
+        # .o (not the .xpu source): the stub name must equal the entry symbol
+        # and the signature must match the C++ ABI.  In object= mode the
+        # merge-time signature check is skipped (the payload isn't in IR), so a
+        # wrong signature fails at runtime, not compile -- keep the stub in
+        # lockstep with the C++.  Re-pack after editing the .xpu: the
+        # compile-cache key is the .o content digest, so a stale .o silently
+        # keeps the old code.
+        _obj = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+            "payload",
+            "obj",
+            "histc.o",
+        )
+
+        @_tle.raw.dialect("xpu3", object=_obj, arch=3)
         def histc_lm_raw(partial, inp, N, bins, minv, maxv):
             ...
 
