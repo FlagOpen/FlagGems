@@ -15,7 +15,6 @@
 import json
 import logging
 import math
-import statistics
 
 import pytest
 import torch
@@ -24,7 +23,7 @@ import flag_gems
 
 from . import base
 from .conftest import TEST_RESULTS, Config, emit_record_logger
-from .consts import BenchmarkCasePlan, BenchMode
+from .consts import BenchmarkCasePlan
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,40 +88,6 @@ ADAMW_DTYPES = (
 
 
 class FusedAdamWBenchmark(base.GenericBenchmark):
-    def _time_callable(self, fn, xs):
-        if flag_gems.vendor_name != "ascend" or Config.mode != BenchMode.KERNEL:
-            return super()._time_callable(fn, xs)
-        # Ascend do_bench_npu averages CSV kernel rows, which does not measure
-        # a multi-launch optimizer call. Device events enclose every launch of
-        # the complete native/candidate operation on the same stream. Timings
-        # include stream gaps between launches; no per-kernel mean is used.
-        for _ in range(5):
-            fn()
-        torch.npu.synchronize()
-        start = torch.npu.Event(enable_timing=True)
-        end = torch.npu.Event(enable_timing=True)
-        start.record()
-        for _ in range(5):
-            fn()
-        end.record()
-        end.synchronize()
-        estimate_ms = start.elapsed_time(end) / 5
-        if not math.isfinite(estimate_ms) or estimate_ms <= 0:
-            pytest.fail("AdamW NPU event timing must be finite and positive")
-        for _ in range(max(1, int(Config.warm_up / estimate_ms))):
-            fn()
-        torch.npu.synchronize()
-        repetitions = max(1, int(Config.repetition / (20 * estimate_ms)))
-        samples = []
-        for _ in range(20):
-            start.record()
-            for _ in range(repetitions):
-                fn()
-            end.record()
-            end.synchronize()
-            samples.append(start.elapsed_time(end) / repetitions)
-        return statistics.median(samples)
-
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(range(len(ADAMW_WORKLOADS)))
         self.shape_desc = "parameter tensor list, AMSGrad"
@@ -143,11 +108,7 @@ class FusedAdamWBenchmark(base.GenericBenchmark):
             "overload": self.op_name,
             "dtype": str(dtype),
             "mode": Config.mode.value,
-            "timing_method": (
-                "npu_event_whole_operation"
-                if flag_gems.vendor_name == "ascend" and Config.mode == BenchMode.KERNEL
-                else Config.mode.value
-            ),
+            "timing_method": Config.mode.value,
             "level": Config.bench_level.value,
             "expected_cases": len(expected_ids),
             "measured_cases": len(metrics),

@@ -12,16 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import csv
-import json
-import math
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
 import torch
-import triton
 
 import flag_gems
 
@@ -81,84 +73,6 @@ class UpsampleBilinear2dBackwardBenchmark(base.Benchmark):
         self.align_corners = align_corners
         self.out_variant = out_variant
 
-    def get_latency(self, op, *args, **kwargs):
-        if (
-            flag_gems.vendor_name != "ascend"
-            or base.Config.mode != base.consts.BenchMode.KERNEL
-        ):
-            return super().get_latency(op, *args, **kwargs)
-        if _CANN_VERSION != "9.0.0":
-            raise RuntimeError(
-                f"Unverified CANN {_CANN_VERSION} profiler contract; "
-                "expected CANN 9.0.0 with 5 warmup and 30 active calls"
-            )
-
-        # A call can contain multiple kernels or an SDMA copy without a kernel.
-        # Aggregate every device task, including copies, for the complete call.
-        profile_root = Path(
-            os.environ.get("FLAGGEMS_ASCEND_PROFILE_DIR", "outputs/ascend_profiles")
-        )
-        profile_root.mkdir(parents=True, exist_ok=True)
-        implementation = "native" if op is self.torch_op else "gems"
-        prefix = (
-            f"{self.op_name}-{self.case[0]}-{args[0].dtype}-"
-            f"align{int(self.align_corners)}-{implementation}-"
-        )
-        profile_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=profile_root))
-        triton.backends.ascend.testing.do_bench_npu(
-            lambda: op(*args, **kwargs),
-            warmup=5,
-            active=30,
-            prof_dir=str(profile_dir),
-            keep_res=True,
-        )
-        csv_paths = list(profile_dir.rglob("task_time_*.csv"))
-        if len(csv_paths) != 1:
-            raise RuntimeError(f"Expected one device task_time CSV in {profile_dir}")
-        with csv_paths[0].open(newline="") as stream:
-            raw_rows = list(csv.DictReader(stream))
-            rows = sorted(
-                (
-                    row
-                    for row in raw_rows
-                    if row["kernel_type"]
-                    not in ("PROFILING_ENABLE", "PROFILING_DISABLE")
-                ),
-                key=lambda row: float(row["task_start(us)"]),
-            )
-        if not rows or len(rows) % 35:
-            raise RuntimeError(f"Incomplete 35-call profile: {csv_paths[0]}")
-        width = len(rows) // 35
-        sequence = [(row["kernel_name"], row["kernel_type"]) for row in rows[:width]]
-        durations = []
-        for start in range(0, len(rows), width):
-            group = rows[start : start + width]
-            if [(row["kernel_name"], row["kernel_type"]) for row in group] != sequence:
-                raise RuntimeError(f"Device task sequence changed: {csv_paths[0]}")
-            task_durations = [float(row["task_time(us)"]) for row in group]
-            if any(not math.isfinite(value) or value <= 0 for value in task_durations):
-                raise RuntimeError(f"Invalid device task duration: {csv_paths[0]}")
-            durations.append(math.fsum(task_durations))
-        latency = math.fsum(durations[5:]) / 30 / 1000
-        (profile_dir / "aggregation.json").write_text(
-            json.dumps(
-                {
-                    "csv": str(csv_paths[0]),
-                    "tasks_per_call": width,
-                    "task_sequence": sequence,
-                    "raw_rows": len(raw_rows),
-                    "excluded_profiler_events": len(raw_rows) - len(rows),
-                    "call_duration_us": durations,
-                    "warmup_calls": 5,
-                    "active_calls": 30,
-                    "latency_ms": latency,
-                },
-                indent=2,
-            )
-            + "\n"
-        )
-        return latency
-
     def get_input_iter(self, dtype):
         _, input_size, output_size, sh, sw, layout = self.case
         n, c, ih, iw = input_size
@@ -191,7 +105,7 @@ class UpsampleBilinear2dBackwardBenchmark(base.Benchmark):
 @pytest.mark.upsample_bilinear2d_backward
 @pytest.mark.skipif(
     _CANN_850,
-    reason="CANN 8.5.0 is accuracy-only: its dynamic profiler iteration count does not satisfy the 35-call contract",
+    reason="CANN 8.5.0 is accuracy-only: benchmark execution has not been validated",
 )
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("align_corners", [False, True])
@@ -213,7 +127,7 @@ def test_upsample_bilinear2d_backward(case, align_corners, dtype):
 @pytest.mark.upsample_bilinear2d_backward_grad_input
 @pytest.mark.skipif(
     _CANN_850,
-    reason="CANN 8.5.0 is accuracy-only: its dynamic profiler iteration count does not satisfy the 35-call contract",
+    reason="CANN 8.5.0 is accuracy-only: benchmark execution has not been validated",
 )
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("align_corners", [False, True])
