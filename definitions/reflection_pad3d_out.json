@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "reflection_pad3d_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `reflection_pad3d()` that writes the padded result into the `out`\ntensor.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

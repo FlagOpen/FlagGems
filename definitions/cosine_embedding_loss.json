@@ -1,0 +1,46 @@
+{
+  "api_version": "v6.0",
+  "name": "cosine_embedding_loss",
+  "requires_triton_kernel": true,
+  "description": "Compute the cosine embedding loss.",
+  "parameters": [
+    {
+      "name": "input1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "input2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "margin",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

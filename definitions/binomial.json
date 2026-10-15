@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "binomial",
+  "requires_triton_kernel": true,
+  "description": "Draws samples from a binomial distribution parameterized by `count` and `prob`.",
+  "parameters": [
+    {
+      "name": "count",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "prob",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "generator",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

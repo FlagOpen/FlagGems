@@ -30,10 +30,23 @@ class AdaptiveMaxPool2dBenchmark(base.Benchmark):
         ]
         self.shape_desc = "N, C, H, W, OUT_H, OUT_W"
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for n, c, h, w, out_h, out_w in self.shapes:
-            inp = torch.randn((n, c, h, w), dtype=cur_dtype, device=self.device)
-            yield inp, (out_h, out_w)
+    def get_case_iter(self, cur_dtype) -> Generator:
+        for ordinal, (n, c, h, w, out_h, out_w) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [n, c, h, w]},
+                    params={"output_size": [out_h, out_w]},
+                    builder_args=(n, c, h, w, out_h, out_w),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        n, c, h, w, out_h, out_w = plan.builder_args
+        inp = torch.randn((n, c, h, w), dtype=case.dtype, device=self.device)
+        return inp, (out_h, out_w)
 
 
 @pytest.mark.adaptive_max_pool2d

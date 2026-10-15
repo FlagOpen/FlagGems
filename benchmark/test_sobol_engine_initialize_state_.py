@@ -31,23 +31,27 @@ SOBOL_INIT_SHAPES = [
 MAXBIT = 30
 
 
-def sobol_init_input_fn(shape, dtype, device):
-    dimension = shape[0]
-    state = torch.zeros((dimension, MAXBIT), dtype=torch.int64, device=device)
-    yield state, dimension
-
-
 class SobolInitBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = SOBOL_INIT_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            dimension = shape[0]
-            state = torch.zeros(
-                (dimension, MAXBIT), dtype=torch.int64, device=self.device
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"state": [shape[0], MAXBIT]},
+                    params={"dimension": shape[0]},
+                    builder_args=(shape,),
+                ),
             )
-            yield state, dimension
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        dimension = shape[0]
+        state = torch.zeros((dimension, MAXBIT), dtype=torch.int64, device=self.device)
+        return state, dimension
 
 
 @pytest.mark.sobol_engine_initialize_state_

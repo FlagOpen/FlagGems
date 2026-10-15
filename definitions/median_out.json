@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "median_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `median()` with the `out` argument.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

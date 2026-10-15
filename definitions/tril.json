@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "tril",
+  "requires_triton_kernel": true,
+  "description": "Returns the lower triangular part of the matrix (2-D tensor) or batch of matrices\n`input`, the other elements of the result tensor are set to 0.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "diagonal",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

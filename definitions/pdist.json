@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "pdist",
+  "requires_triton_kernel": true,
+  "description": "Computes the p-norm distance between every pair of row vectors in the input.\nInput must be a 2-D tensor of shape (N, M). Returns a tensor of shape\n(N*(N-1)//2,) containing pairwise distances.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

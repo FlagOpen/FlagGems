@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "fractional_max_pool2d_backward",
+  "requires_triton_kernel": true,
+  "description": "The backward version of `fractional_max_pool2d()`. Scatters the output gradient\nback to the input positions recorded in `indices`.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

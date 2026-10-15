@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "conj_physical",
+  "requires_triton_kernel": true,
+  "description": "Computes the element-wise conjugate of the given `input` tensor.\nIf `input` has a non-complex dtype, this function just returns `input`.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

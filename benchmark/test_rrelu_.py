@@ -35,10 +35,22 @@ def test_rrelu_():
 class RreluTrainBenchmark(base.UnaryPointwiseBenchmark):
     """Benchmark the training-mode path, which also samples the random slopes."""
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-            yield inp, 0.125, 1.0 / 3.0, True, None
+    def get_case_iter(self, cur_dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        return inp, 0.125, 1.0 / 3.0, True, None
 
 
 @pytest.mark.rrelu_

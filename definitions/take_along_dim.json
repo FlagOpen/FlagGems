@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "take_along_dim",
+  "requires_triton_kernel": true,
+  "description": "Selects values from `input` at the 1-dimensional `indices` along the\ngiven `dim`. Reduces to a broadcasted gather; if `dim` is None the input\nis treated as flattened to 1-D.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

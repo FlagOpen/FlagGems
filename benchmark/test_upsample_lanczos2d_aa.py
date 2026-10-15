@@ -102,16 +102,31 @@ def _scale(shape):
     return 2.0 if shape[-2] < 64 else 0.5
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     scale = _scale(shape)
     output_size = (int(shape[-2] * scale), int(shape[-1] * scale))
-    yield torch.randn(shape, device=device, dtype=dtype), output_size, False, None, None
+    return (
+        torch.randn(shape, device=device, dtype=dtype),
+        output_size,
+        False,
+        None,
+        None,
+    )
 
 
 @pytest.mark.upsample_lanczos2d_aa
 def test_upsample_lanczos2d_aa():
     bench = UpsampleLanczosBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="upsample_lanczos2d_aa",
         torch_op=_composite_reference,
         gems_op=_upsample_lanczos2d_aa,
@@ -120,18 +135,20 @@ def test_upsample_lanczos2d_aa():
     bench.run()
 
 
-def _input_fn_out(shape, dtype, device):
+def _build_inputs_fn_out(plan, dtype, device):
+    (shape,) = plan.builder_args
     scale = _scale(shape)
     output_size = (int(shape[-2] * scale), int(shape[-1] * scale))
     input = torch.randn(shape, device=device, dtype=dtype)
     out = torch.empty((*shape[:2], *output_size), device=device, dtype=dtype)
-    yield input, output_size, False, None, None, {"out": out}
+    return input, output_size, False, None, None, {"out": out}
 
 
 @pytest.mark.upsample_lanczos2d_aa_out
 def test_upsample_lanczos2d_aa_out():
     bench = UpsampleLanczosBenchmark(
-        input_fn=_input_fn_out,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn_out,
         op_name="upsample_lanczos2d_aa_out",
         torch_op=_composite_reference_out,
         gems_op=_upsample_lanczos2d_aa_out,
@@ -140,15 +157,17 @@ def test_upsample_lanczos2d_aa_out():
     bench.run()
 
 
-def _input_fn_vec(shape, dtype, device):
+def _build_inputs_fn_vec(plan, dtype, device):
+    (shape,) = plan.builder_args
     scale = _scale(shape)
-    yield torch.randn(shape, device=device, dtype=dtype), None, False, (scale, scale)
+    return torch.randn(shape, device=device, dtype=dtype), None, False, (scale, scale)
 
 
 @pytest.mark.upsample_lanczos2d_aa_vec
 def test_upsample_lanczos2d_aa_vec():
     bench = UpsampleLanczosBenchmark(
-        input_fn=_input_fn_vec,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn_vec,
         op_name="upsample_lanczos2d_aa_vec",
         torch_op=_composite_reference_vec,
         gems_op=_upsample_lanczos2d_aa_vec,

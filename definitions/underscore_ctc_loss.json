@@ -1,0 +1,48 @@
+{
+  "api_version": "v6.0",
+  "name": "underscore_ctc_loss",
+  "requires_triton_kernel": true,
+  "description": "The private `aten::_ctc_loss` overload. Returns the negative log likelihood\ntogether with the forward log-alpha lattice.",
+  "parameters": [
+    {
+      "name": "log_probs",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "targets",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "target_lengths",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "blank",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "zero_infinity",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "neg_log_likelihood",
+    "log_alpha"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

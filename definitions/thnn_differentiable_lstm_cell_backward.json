@@ -1,0 +1,59 @@
+{
+  "api_version": "v6.0",
+  "name": "thnn_differentiable_lstm_cell_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the differentiable backward pass for an LSTM cell, returning\ngradients for the input gates, hidden gates, cell state, and optional biases.",
+  "parameters": [
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "grad_cy",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_gates",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "hidden_gates",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "hidden_bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "cx",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "cy",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "grad_input_gates",
+    "grad_hidden_gates",
+    "grad_cx",
+    "grad_input_bias",
+    "grad_hidden_bias"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

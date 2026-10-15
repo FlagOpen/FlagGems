@@ -5,11 +5,22 @@ from . import base, consts
 
 
 class SpecialGammalnOutBenchmark(base.UnaryPointwiseOutBenchmark):
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            inp = base.generate_tensor_input(shape, cur_dtype, self.device)
-            out = torch.empty_like(inp)
-            yield inp, {"out": out}
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape), "out": list(shape)},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        inp = base.generate_tensor_input(shape, case.dtype, self.device)
+        out = torch.empty_like(inp)
+        return inp, {"out": out}
 
 
 @pytest.mark.special_gammaln

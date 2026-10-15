@@ -20,10 +20,18 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "target": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     target = (torch.randint(0, 2, shape, device=device).to(dtype) * 2) - 1
-    yield inp, target
+    return inp, target
 
 
 @pytest.mark.hinge_embedding_loss
@@ -32,7 +40,8 @@ def _input_fn(shape, dtype, device):
 )
 def test_hinge_embedding_loss():
     bench = base.GenericBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="hinge_embedding_loss",
         torch_op=torch.ops.aten.hinge_embedding_loss,
         dtypes=consts.FLOAT_DTYPES,

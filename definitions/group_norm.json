@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "group_norm",
+  "requires_triton_kernel": true,
+  "description": "Applies group normalization over a mini-batch of inputs, splitting the channel\ndimension into `num_groups` groups that are normalized independently.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "num_groups",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1e-05
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

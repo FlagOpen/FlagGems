@@ -20,10 +20,18 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, cur_dtype, device):
+def _case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = base.generate_tensor_input(shape, cur_dtype, device)
     boundaries = torch.tensor([1.0, 3.0, 5.0, 7.0, 9.0], device=device, dtype=cur_dtype)
-    yield inp, boundaries
+    return inp, boundaries
 
 
 @pytest.mark.bucketize
@@ -35,7 +43,8 @@ def test_bucketize_perf():
 
     bench = base.GenericBenchmark(
         op_name="bucketize",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.bucketize,
         dtypes=dtypes,
     )

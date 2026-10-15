@@ -47,32 +47,74 @@ def _tensor_input(shape, dtype, device):
     yield inp, q, -1
 
 
-def _scalar_input(shape, dtype, device):
-    yield _make_input(shape, dtype, device), 0.37, -1
+def _scalar_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"q": 0.37, "dim": -1},
+        builder_args=(shape,),
+    )
 
 
-def _tensor_out_input(shape, dtype, device):
+def _scalar_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return _make_input(shape, dtype, device), 0.37, -1
+
+
+def _tensor_out_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"dim": -1},
+        builder_args=(shape,),
+    )
+
+
+def _tensor_out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = _make_input(shape, dtype, device)
     q = torch.tensor([0.1, 0.5, 0.9], dtype=dtype, device=device)
     out_shape = (q.numel(), *shape[:-1])
-    yield inp, q, -1, False, {"out": torch.empty(out_shape, dtype=dtype, device=device)}
+    return (
+        inp,
+        q,
+        -1,
+        False,
+        {"out": torch.empty(out_shape, dtype=dtype, device=device)},
+    )
 
 
-def _scalar_out_input(shape, dtype, device):
+def _scalar_out_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"q": 0.37, "dim": -1},
+        builder_args=(shape,),
+    )
+
+
+def _scalar_out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = _make_input(shape, dtype, device)
-    yield inp, 0.37, -1, False, {
-        "out": torch.empty(shape[:-1], dtype=dtype, device=device)
-    }
+    return (
+        inp,
+        0.37,
+        -1,
+        False,
+        {"out": torch.empty(shape[:-1], dtype=dtype, device=device)},
+    )
 
 
-def _run(op_name, input_fn, torch_op, gems_op):
-    bench = NanquantileBenchmark(
+def _run(op_name, torch_op, gems_op, input_fn=None, case_fn=None, build_inputs_fn=None):
+    kwargs = dict(
         op_name=op_name,
-        input_fn=input_fn,
         torch_op=torch_op,
         gems_op=gems_op,
         dtypes=[torch.float32],
     )
+    if case_fn is not None:
+        kwargs["case_fn"] = case_fn
+        kwargs["build_inputs_fn"] = build_inputs_fn
+    else:
+        kwargs["input_fn"] = input_fn
+    bench = NanquantileBenchmark(**kwargs)
     bench.run()
 
 
@@ -80,9 +122,9 @@ def _run(op_name, input_fn, torch_op, gems_op):
 def test_nanquantile():
     _run(
         "nanquantile",
-        _tensor_input,
         torch.ops.aten.nanquantile.default,
         flag_gems.nanquantile,
+        input_fn=_tensor_input,
     )
 
 
@@ -90,9 +132,10 @@ def test_nanquantile():
 def test_nanquantile_scalar():
     _run(
         "nanquantile_scalar",
-        _scalar_input,
         torch.ops.aten.nanquantile.scalar,
         flag_gems.nanquantile_scalar,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn,
     )
 
 
@@ -100,9 +143,10 @@ def test_nanquantile_scalar():
 def test_nanquantile_out():
     _run(
         "nanquantile_out",
-        _tensor_out_input,
         torch.ops.aten.nanquantile.out,
         flag_gems.nanquantile_out,
+        case_fn=_tensor_out_case_fn,
+        build_inputs_fn=_tensor_out_build_inputs_fn,
     )
 
 
@@ -110,7 +154,8 @@ def test_nanquantile_out():
 def test_nanquantile_scalar_out():
     _run(
         "nanquantile_scalar_out",
-        _scalar_out_input,
         torch.ops.aten.nanquantile.scalar_out,
         flag_gems.nanquantile_scalar_out,
+        case_fn=_scalar_out_case_fn,
+        build_inputs_fn=_scalar_out_build_inputs_fn,
     )

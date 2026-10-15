@@ -33,10 +33,24 @@ class PadCircularBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
-        for shape, pad in self.shapes:
-            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            yield inp, pad
+    def get_case_iter(self, dtype):
+        for ordinal, (shape, pad) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"pad": pad},
+                    builder_args=(shape, pad),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, pad = plan.builder_args
+        cur_dtype = case.dtype
+        inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
+        return inp, pad
 
 
 @pytest.mark.pad_circular

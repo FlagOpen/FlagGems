@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "feature_dropout",
+  "requires_triton_kernel": true,
+  "description": "Applies feature dropout to the `input` tensor. Randomly zeroes out entire channels of the `input` tensor with probability `p`.\nEach batch element has its own independent channel mask.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "train",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

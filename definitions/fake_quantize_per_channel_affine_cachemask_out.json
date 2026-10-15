@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "fake_quantize_per_channel_affine_cachemask_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `fake_quantize_per_channel_affine_cachemask` that assigns the results to the provided output tensors.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "axis",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_min",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_max",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out0",
+      "kind": "keyword_only",
+      "required": true
+    },
+    {
+      "name": "out1",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "output",
+    "mask"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

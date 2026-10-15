@@ -92,19 +92,29 @@ def test_slice_copy_out():
     def torch_op(inp, dim, start, end, step, out=None):
         return torch.ops.aten.slice_copy.Tensor_out(inp, dim, start, end, step, out=out)
 
-    def _input_fn_out(shape, dtype, device):
-        inp = torch.randn(shape, dtype=dtype, device=device)
+    def _case_fn_out(shape, dtype):
         for dim in _BENCH_DIMS:
             start, end, step = _slice_params(shape, dim)
-            out_shape = list(shape)
-            out_shape[dim] = max(0, (end - start + step - 1) // step)
-            out = torch.empty(out_shape, dtype=dtype, device=device)
-            yield inp, dim, start, end, step, {"out": out}
+            yield base.BenchmarkCasePlan(
+                shape={"input": list(shape)},
+                params={"dim": dim, "start": start, "end": end, "step": step},
+                builder_args=(shape, dim),
+            )
+
+    def _build_inputs_fn_out(plan, dtype, device):
+        shape, dim = plan.builder_args
+        inp = torch.randn(shape, dtype=dtype, device=device)
+        start, end, step = _slice_params(shape, dim)
+        out_shape = list(shape)
+        out_shape[dim] = max(0, (end - start + step - 1) // step)
+        out = torch.empty(out_shape, dtype=dtype, device=device)
+        return inp, dim, start, end, step, {"out": out}
 
     bench = SliceCopyBenchmark(
         op_name="slice_copy_out",
         torch_op=torch_op,
-        input_fn=_input_fn_out,
+        case_fn=_case_fn_out,
+        build_inputs_fn=_build_inputs_fn_out,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )

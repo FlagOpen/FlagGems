@@ -46,20 +46,30 @@ def _make_common_inputs(shape, dtype, device):
     return inp, weight, bias
 
 
-def _default_input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _default_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp, weight, bias = _make_common_inputs(shape, dtype, device)
     channels = shape[1]
     running_mean = torch.zeros(channels, dtype=dtype, device=device)
     running_var = torch.ones(channels, dtype=dtype, device=device)
-    yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
+    return inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
 
 
-def _no_stats_input_fn(shape, dtype, device):
+def _no_stats_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp, weight, bias = _make_common_inputs(shape, dtype, device)
-    yield inp, weight, bias, True, 0.1, 1e-5
+    return inp, weight, bias, True, 0.1, 1e-5
 
 
-def _out_input_fn(shape, dtype, device):
+def _out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp, weight, bias = _make_common_inputs(shape, dtype, device)
     channels = shape[1]
     stats_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
@@ -70,10 +80,11 @@ def _out_input_fn(shape, dtype, device):
         "save_mean": torch.empty(channels, dtype=stats_dtype, device=device),
         "save_invstd": torch.empty(channels, dtype=stats_dtype, device=device),
     }
-    yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5, outputs
+    return inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5, outputs
 
 
-def _no_stats_out_input_fn(shape, dtype, device):
+def _no_stats_out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp, weight, bias = _make_common_inputs(shape, dtype, device)
     channels = shape[1]
     stats_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
@@ -82,12 +93,13 @@ def _no_stats_out_input_fn(shape, dtype, device):
         "save_mean": torch.empty(channels, dtype=stats_dtype, device=device),
         "save_invstd": torch.empty(channels, dtype=stats_dtype, device=device),
     }
-    yield inp, weight, bias, True, 0.1, 1e-5, outputs
+    return inp, weight, bias, True, 0.1, 1e-5, outputs
 
 
-def _run_benchmark(op_name, torch_op, gems_op, input_fn):
+def _run_benchmark(op_name, torch_op, gems_op, build_inputs_fn):
     bench = NormBenchmark(
-        input_fn=input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=build_inputs_fn,
         op_name=op_name,
         torch_op=torch_op,
         dtypes=consts.FLOAT_DTYPES,
@@ -102,7 +114,7 @@ def test_native_batch_norm_legit():
         "native_batch_norm_legit",
         torch.ops.aten._native_batch_norm_legit.default,
         _native_batch_norm_legit,
-        _default_input_fn,
+        _default_build_inputs_fn,
     )
 
 
@@ -112,7 +124,7 @@ def test_native_batch_norm_legit_no_stats():
         "native_batch_norm_legit_no_stats",
         torch.ops.aten._native_batch_norm_legit.no_stats,
         _native_batch_norm_legit_no_stats,
-        _no_stats_input_fn,
+        _no_stats_build_inputs_fn,
     )
 
 
@@ -122,7 +134,7 @@ def test_native_batch_norm_legit_out():
         "native_batch_norm_legit_out",
         torch.ops.aten._native_batch_norm_legit.out,
         _native_batch_norm_legit_out,
-        _out_input_fn,
+        _out_build_inputs_fn,
     )
 
 
@@ -132,5 +144,5 @@ def test_native_batch_norm_legit_no_stats_out():
         "native_batch_norm_legit_no_stats_out",
         torch.ops.aten._native_batch_norm_legit.no_stats_out,
         _native_batch_norm_legit_no_stats_out,
-        _no_stats_out_input_fn,
+        _no_stats_out_build_inputs_fn,
     )

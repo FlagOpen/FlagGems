@@ -20,59 +20,91 @@ import torch
 from . import base, consts, utils
 
 
-def avg_pool3d_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    # Common case
-    yield inp, {
-        "kernel_size": 3,
-        "stride": 2,
-        "padding": 1,
-        "ceil_mode": False,
-        "count_include_pad": True,
-        "divisor_override": None,
-    }
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        # With count_include_pad=False
-        yield inp, {
+def _avg_pool3d_kwargs(shape):
+    """Enumerate the avg_pool3d kwargs variants for a shape without allocating."""
+    variants = [
+        {
             "kernel_size": 3,
             "stride": 2,
             "padding": 1,
             "ceil_mode": False,
-            "count_include_pad": False,
-            "divisor_override": None,
-        }
-        # With ceil_mode
-        yield inp, {
-            "kernel_size": 3,
-            "stride": 2,
-            "padding": 1,
-            "ceil_mode": True,
             "count_include_pad": True,
             "divisor_override": None,
         }
+    ]
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        # With count_include_pad=False
+        variants.append(
+            {
+                "kernel_size": 3,
+                "stride": 2,
+                "padding": 1,
+                "ceil_mode": False,
+                "count_include_pad": False,
+                "divisor_override": None,
+            }
+        )
+        # With ceil_mode
+        variants.append(
+            {
+                "kernel_size": 3,
+                "stride": 2,
+                "padding": 1,
+                "ceil_mode": True,
+                "count_include_pad": True,
+                "divisor_override": None,
+            }
+        )
         # With divisor_override
         if shape[-3] >= 2 and shape[-2] >= 2 and shape[-1] >= 2:
-            yield inp, {
-                "kernel_size": 2,
-                "stride": 1,
-                "padding": 0,
-                "ceil_mode": False,
-                "count_include_pad": True,
-                "divisor_override": 3,
-            }
+            variants.append(
+                {
+                    "kernel_size": 2,
+                    "stride": 1,
+                    "padding": 0,
+                    "ceil_mode": False,
+                    "count_include_pad": True,
+                    "divisor_override": 3,
+                }
+            )
+    return variants
+
+
+def avg_pool3d_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    for kwargs in _avg_pool3d_kwargs(shape):
+        yield inp, kwargs
+
+
+_AVG_POOL3D_SHAPES_5D = [
+    (4, 3, 16, 56, 56),
+    (8, 64, 8, 28, 28),
+    (16, 128, 4, 14, 14),
+    (32, 256, 4, 7, 7),
+]
 
 
 class AvgPool3dBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        shapes_5d = [
-            (4, 3, 16, 56, 56),
-            (8, 64, 8, 28, 28),
-            (16, 128, 4, 14, 14),
-            (32, 256, 4, 7, 7),
-        ]
+    def get_case_iter(self, dtype) -> Generator:
+        ordinal = 0
+        for shape in _AVG_POOL3D_SHAPES_5D:
+            for variant, kwargs in enumerate(_avg_pool3d_kwargs(shape)):
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params={"variant": variant},
+                        builder_args=(shape, variant),
+                    ),
+                )
+                ordinal += 1
 
-        for shape in shapes_5d:
-            yield from self.input_fn(shape, dtype, self.device)
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, variant = plan.builder_args
+        items = list(self.input_fn(shape, case.dtype, self.device))
+        return items[variant]
 
 
 @pytest.mark.avg_pool3d

@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "bilinear",
+  "requires_triton_kernel": true,
+  "description": "Applies a bilinear transformation to the incoming data: y = x1^T A x2 + b.",
+  "parameters": [
+    {
+      "name": "input1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

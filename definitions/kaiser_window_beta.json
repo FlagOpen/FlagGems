@@ -1,0 +1,54 @@
+{
+  "api_version": "v6.0",
+  "name": "kaiser_window_beta",
+  "requires_triton_kernel": true,
+  "description": "The `beta` overload of `kaiser_window()`, computing the Kaiser window function\nwith an explicit shape parameter `beta`.",
+  "parameters": [
+    {
+      "name": "window_length",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "periodic",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "beta",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": "strided"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

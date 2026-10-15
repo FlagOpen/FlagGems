@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "sobol_engine_initialize_state_",
+  "requires_triton_kernel": true,
+  "description": "Initializes Sobol quasi-random number generator state with direction numbers.\nThis is a low-level operation that fills a (dimension, 30) state tensor with\npre-computed Sobol direction numbers used for generating low-discrepancy sequences.",
+  "parameters": [
+    {
+      "name": "state",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "dimension",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "state"
+    ],
+    "returns_alias_of": {
+      "out": "state"
+    }
+  }
+}

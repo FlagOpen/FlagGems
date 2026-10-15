@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "pdist_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of pairwise distance computation.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "pdist",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

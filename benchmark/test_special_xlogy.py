@@ -18,17 +18,26 @@ import torch
 from . import base, consts, utils
 
 
-def _binary_input_fn(shape, cur_dtype, device):
+def _binary_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "other": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _binary_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp1 = utils.generate_tensor_input(shape, cur_dtype, device)
     inp2 = utils.generate_tensor_input(shape, cur_dtype, device)
-    yield inp1, inp2
+    return inp1, inp2
 
 
 @pytest.mark.special_xlogy
 def test_special_xlogy():
     bench = base.GenericBenchmark(
         op_name="special_xlogy",
-        input_fn=_binary_input_fn,
+        case_fn=_binary_case_fn,
+        build_inputs_fn=_binary_build_inputs_fn,
         torch_op=torch.special.xlogy,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -39,7 +48,8 @@ def test_special_xlogy():
 def test_special_xlogy_():
     bench = base.GenericBenchmark(
         op_name="special_xlogy_",
-        input_fn=_binary_input_fn,
+        case_fn=_binary_case_fn,
+        build_inputs_fn=_binary_build_inputs_fn,
         torch_op=lambda x, y: torch.ops.aten.xlogy_(x, y),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,

@@ -18,8 +18,8 @@ import torch
 from . import base, consts
 
 
-def _transform_bias_rescale_qkv_input_fn(shape, dtype, device):
-    """Generate inputs for _transform_bias_rescale_qkv benchmark.
+def _transform_bias_rescale_qkv_case_fn(shape, dtype):
+    """Enumerate cases for _transform_bias_rescale_qkv benchmark.
 
     shape is expected to be (batch, seq_len, num_heads, head_dim)
     """
@@ -27,6 +27,14 @@ def _transform_bias_rescale_qkv_input_fn(shape, dtype, device):
     if len(shape) != 4:
         return
 
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _transform_bias_rescale_qkv_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     batch, seq_len, num_heads, head_dim = shape
     hidden_dim = num_heads * head_dim
     total_dim = 3 * hidden_dim
@@ -34,7 +42,7 @@ def _transform_bias_rescale_qkv_input_fn(shape, dtype, device):
     qkv = torch.randn(batch, seq_len, total_dim, dtype=dtype, device=device)
     bias = torch.randn(total_dim, dtype=dtype, device=device)
 
-    yield qkv, bias, num_heads
+    return qkv, bias, num_heads
 
 
 class TransformBiasRescaleQKVBenchmark(base.GenericBenchmark):
@@ -69,7 +77,8 @@ def test__transform_bias_rescale_qkv():
         op_name="transform_bias_rescale_qkv",
         torch_op=torch_op,
         dtypes=consts.FLOAT_DTYPES,
-        input_fn=_transform_bias_rescale_qkv_input_fn,
+        case_fn=_transform_bias_rescale_qkv_case_fn,
+        build_inputs_fn=_transform_bias_rescale_qkv_build_inputs_fn,
         custom_shapes=custom_shapes,
         shape_desc="batch, seq_len, num_heads, head_dim",
     )

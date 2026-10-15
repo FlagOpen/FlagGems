@@ -20,10 +20,19 @@ import flag_gems
 from . import base, consts
 
 
-def native_norm_input_fn(shape, dtype, device):
+def native_norm_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"p": 2},
+        builder_args=(shape,),
+    )
+
+
+def native_norm_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     # p=2 for L2 norm
-    yield inp, 2
+    return inp, 2
 
 
 def torch_native_norm(inp, p):
@@ -40,7 +49,8 @@ def test_native_norm():
     # than the kernel for every small shape.
     bench = base.GenericBenchmark2DOnly(
         op_name="native_norm",
-        input_fn=native_norm_input_fn,
+        case_fn=native_norm_case_fn,
+        build_inputs_fn=native_norm_build_inputs_fn,
         torch_op=torch_native_norm,
         gems_op=flag_gems.native_norm,
         dtypes=consts.FLOAT_DTYPES,

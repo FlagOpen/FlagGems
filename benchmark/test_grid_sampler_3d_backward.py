@@ -23,29 +23,43 @@ class GridSampler3dBackwardBenchmark(base.Benchmark):
             (1, 128, 32, 32, 32, 16, 16, 16),
         ]
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for config in self.shapes:
-            N, C, iD, iH, iW, oD, oH, oW = config
-            grad_output = torch.randn(
-                N, C, oD, oH, oW, device=self.device, dtype=cur_dtype
+    def get_case_iter(self, cur_dtype) -> Generator:
+        for ordinal, config in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"config": list(config)},
+                    params={
+                        "interpolation_mode": 0,
+                        "padding_mode": 0,
+                        "align_corners": True,
+                        "output_mask": [True, True],
+                    },
+                    builder_args=(config,),
+                ),
             )
-            input_tensor = torch.randn(
-                N, C, iD, iH, iW, device=self.device, dtype=cur_dtype
-            )
-            # Grid values in [-1, 1]
-            grid = (
-                torch.rand(N, oD, oH, oW, 3, device=self.device, dtype=cur_dtype) * 2
-                - 1
-            )
-            yield (
-                grad_output,
-                input_tensor,
-                grid,
-                0,  # interpolation_mode: bilinear
-                0,  # padding_mode: zeros
-                True,  # align_corners
-                [True, True],  # output_mask
-            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (config,) = plan.builder_args
+        cur_dtype = case.dtype
+        N, C, iD, iH, iW, oD, oH, oW = config
+        grad_output = torch.randn(N, C, oD, oH, oW, device=self.device, dtype=cur_dtype)
+        input_tensor = torch.randn(
+            N, C, iD, iH, iW, device=self.device, dtype=cur_dtype
+        )
+        # Grid values in [-1, 1]
+        grid = torch.rand(N, oD, oH, oW, 3, device=self.device, dtype=cur_dtype) * 2 - 1
+        return (
+            grad_output,
+            input_tensor,
+            grid,
+            0,  # interpolation_mode: bilinear
+            0,  # padding_mode: zeros
+            True,  # align_corners
+            [True, True],  # output_mask
+        )
 
 
 @pytest.mark.grid_sampler_3d_backward

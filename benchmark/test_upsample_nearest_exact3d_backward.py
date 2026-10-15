@@ -35,34 +35,47 @@ class UpsampleNearestExact3dBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
-        for input_size, output_size, scales in self.shapes:
-            grad_output = torch.randn(
-                (*input_size[:2], *output_size),
-                dtype=cur_dtype,
-                device=self.device,
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (input_size, output_size, scales) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [*input_size[:2], *output_size]},
+                    builder_args=(input_size, output_size, scales),
+                ),
             )
-            yield grad_output, output_size, input_size, *scales
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        input_size, output_size, scales = plan.builder_args
+        grad_output = torch.randn(
+            (*input_size[:2], *output_size),
+            dtype=case.dtype,
+            device=self.device,
+        )
+        return grad_output, output_size, input_size, *scales
 
 
 class UpsampleNearestExact3dBackwardGradInputBenchmark(
     UpsampleNearestExact3dBackwardBenchmark
 ):
-    def get_input_iter(self, cur_dtype):
-        for input_size, output_size, scales in self.shapes:
-            grad_output = torch.randn(
-                (*input_size[:2], *output_size),
-                dtype=cur_dtype,
-                device=self.device,
-            )
-            grad_input = torch.empty(input_size, dtype=cur_dtype, device=self.device)
-            yield (
-                grad_output,
-                output_size,
-                input_size,
-                *scales,
-                {"grad_input": grad_input},
-            )
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        input_size, output_size, scales = plan.builder_args
+        grad_output = torch.randn(
+            (*input_size[:2], *output_size),
+            dtype=case.dtype,
+            device=self.device,
+        )
+        grad_input = torch.empty(input_size, dtype=case.dtype, device=self.device)
+        return (
+            grad_output,
+            output_size,
+            input_size,
+            *scales,
+            {"grad_input": grad_input},
+        )
 
 
 @pytest.mark.upsample_nearest_exact3d_backward

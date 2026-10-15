@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "diagonal_scatter",
+  "requires_triton_kernel": true,
+  "description": "Scatter source values into the diagonal of a tensor with optional offset.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "src",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "offset",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "dim1",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "dim2",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

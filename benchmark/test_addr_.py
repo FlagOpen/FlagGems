@@ -11,10 +11,22 @@ class AddrInplaceBenchmark(base.BlasBenchmark):
     def set_more_shapes(self):
         return []
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
             m, n = shape[0], shape[1]
-            yield from self.input_fn(m, n, dtype, self.device)
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [m, n]},
+                    builder_args=(m, n),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        m, n = plan.builder_args
+        return next(iter(self.input_fn(m, n, case.dtype, self.device)))
 
 
 def _input_fn(m, n, cur_dtype, device):

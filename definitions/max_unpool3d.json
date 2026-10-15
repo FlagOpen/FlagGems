@@ -1,0 +1,50 @@
+{
+  "api_version": "v6.0",
+  "name": "max_unpool3d",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for max_unpool3d.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

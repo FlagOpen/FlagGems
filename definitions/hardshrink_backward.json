@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "hardshrink_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of the Hard Shrink activation function with respect to its input\nduring backpropagation. The gradient is passed through where the input magnitude is\nstrictly greater than the threshold lambd, and is zero elsewhere.",
+  "parameters": [
+    {
+      "name": "grad_out",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "self_t",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "lambd",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.5
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

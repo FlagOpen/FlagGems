@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "reflection_pad3d_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of reflection_pad3d with respect to the input tensor.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

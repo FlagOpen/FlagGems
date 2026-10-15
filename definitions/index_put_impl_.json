@@ -1,0 +1,46 @@
+{
+  "api_version": "v6.0",
+  "name": "index_put_impl_",
+  "requires_triton_kernel": true,
+  "description": "An internal C++ function that handles the heavy lifting for placing values into a tensor at specific indices.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "accumulate",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "unsafe",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "inp"
+    ],
+    "returns_alias_of": {
+      "out": "inp"
+    }
+  }
+}

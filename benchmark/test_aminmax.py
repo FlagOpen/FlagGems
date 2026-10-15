@@ -20,21 +20,41 @@ import flag_gems
 from . import base, consts, utils
 
 
-def aminmax_input_fn(shape, cur_dtype, device):
-    inp = utils.generate_tensor_input(shape, cur_dtype, device)
-    # Test dim=None (whole tensor reduction)
-    yield inp,
-    # Test dim=-1 (last dimension)
-    yield inp, {"dim": -1}
-    # Test dim=0 (first dimension)
+def _aminmax_variants(shape):
+    # Test dim=None (whole tensor reduction); dim=-1; and dim=0 when ndim > 1.
+    variants = [{}, {"dim": -1}]
     if len(shape) > 1:
-        yield inp, {"dim": 0}
+        variants.append({"dim": 0})
+    return variants
+
+
+def _aminmax_build(shape, kwargs, cur_dtype, device):
+    inp = utils.generate_tensor_input(shape, cur_dtype, device)
+    if kwargs:
+        return inp, kwargs
+    return (inp,)
 
 
 class AminmaxBenchmark(base.UnaryReductionBenchmark):
-    def get_input_iter(self, dtype):
+    def get_case_iter(self, dtype):
+        ordinal = 0
         for shape in self.shapes:
-            yield from aminmax_input_fn(shape, dtype, self.device)
+            for kwargs in _aminmax_variants(shape):
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": shape},
+                        params=dict(kwargs),
+                        builder_args=(shape, kwargs),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, kwargs = plan.builder_args
+        return _aminmax_build(shape, kwargs, case.dtype, self.device)
 
 
 @pytest.mark.aminmax
@@ -60,30 +80,47 @@ def test_aminmax():
 # ---------------------------------------------------------------------------
 
 
-def _aminmax_input_fn(shape, cur_dtype, device):
-    inp = utils.generate_tensor_input(shape, cur_dtype, device)
-    # ``_aminmax`` reduces the whole tensor; there is no dim argument.
-    yield inp,
-
-
-def _aminmax_out_input_fn(shape, cur_dtype, device):
-    inp = utils.generate_tensor_input(shape, cur_dtype, device)
-    min_out = torch.empty((), dtype=cur_dtype, device=device)
-    max_out = torch.empty((), dtype=cur_dtype, device=device)
-    # The aten ``.out`` overload takes keyword-only ``out0``/``out1``.
-    yield inp, {"out0": min_out, "out1": max_out}
-
-
 class AminmaxAllReduceBenchmark(base.UnaryReductionBenchmark):
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            yield from _aminmax_input_fn(shape, cur_dtype, self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        # ``_aminmax`` reduces the whole tensor; there is no dim argument.
+        return (inp,)
 
 
 class AminmaxOutBenchmark(base.UnaryReductionBenchmark):
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            yield from _aminmax_out_input_fn(shape, cur_dtype, self.device)
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        cur_dtype = case.dtype
+        inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+        min_out = torch.empty((), dtype=cur_dtype, device=self.device)
+        max_out = torch.empty((), dtype=cur_dtype, device=self.device)
+        # The aten ``.out`` overload takes keyword-only ``out0``/``out1``.
+        return inp, {"out0": min_out, "out1": max_out}
 
 
 @pytest.mark.underscore_aminmax

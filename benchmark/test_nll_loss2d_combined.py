@@ -36,16 +36,29 @@ class NllLoss2dCombinedBenchmark(base.GenericBenchmark4DOnly):
         return None
 
 
-def nll_loss2d_input_fn(shape, cur_dtype, device):
-    N, C, H, W = shape
-    inp = utils.generate_tensor_input(shape, cur_dtype, device)
-    target = torch.randint(0, C, (N, H, W), device=device)
+def nll_loss2d_case_fn(shape, dtype):
     # reduction=1 (mean), no weight, default ignore_index.
-    yield inp, target, None, 1, -100
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"weighted": False, "reduction": 1, "ignore_index": -100},
+        builder_args=(shape, False, 1, -100),
+    )
 
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        weight = torch.randn(C, dtype=cur_dtype, device=device)
-        yield inp, target, weight, 0, 1
+    if base.Config.bench_level.value == consts.BenchLevel.COMPREHENSIVE.value:
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"weighted": True, "reduction": 0, "ignore_index": 1},
+            builder_args=(shape, True, 0, 1),
+        )
+
+
+def nll_loss2d_build_inputs_fn(plan, dtype, device):
+    shape, weighted, reduction, ignore_index = plan.builder_args
+    N, C, H, W = shape
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    target = torch.randint(0, C, (N, H, W), device=device)
+    weight = torch.randn(C, dtype=dtype, device=device) if weighted else None
+    return inp, target, weight, reduction, ignore_index
 
 
 @pytest.mark.nll_loss2d
@@ -53,7 +66,8 @@ def test_nll_loss2d():
     # aten.nll_loss2d is the combined op (returns only the loss). F.nll_loss on a
     # 4D input decomposes to nll_loss2d_forward, so call the aten op directly.
     bench = NllLoss2dCombinedBenchmark(
-        input_fn=nll_loss2d_input_fn,
+        case_fn=nll_loss2d_case_fn,
+        build_inputs_fn=nll_loss2d_build_inputs_fn,
         op_name="nll_loss2d",
         torch_op=torch.ops.aten.nll_loss2d,
         dtypes=consts.FLOAT_DTYPES,

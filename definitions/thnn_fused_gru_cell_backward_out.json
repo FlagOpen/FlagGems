@@ -1,0 +1,67 @@
+{
+  "api_version": "v6.0",
+  "name": "thnn_fused_gru_cell_backward_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `thnn_fused_gru_cell_backward()` that writes the five gradients into\nthe provided `out0` through `out4` tensors.",
+  "parameters": [
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "workspace",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "has_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "out0",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out1",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out2",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out3",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "out4",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input_gates",
+    "grad_hidden_gates",
+    "grad_hx",
+    "grad_input_bias",
+    "grad_hidden_bias"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

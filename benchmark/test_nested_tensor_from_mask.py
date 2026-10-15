@@ -33,13 +33,28 @@ class NestedTensorFromMaskBenchmark(base.Benchmark):
             (128, 512, 128),
         ]
 
-    def get_input_iter(self, cur_dtype):
-        for N, L, D in self.shapes:
-            t = torch.randn(N, L, D, dtype=cur_dtype, device=self.device)
-            lengths = torch.randint(0, L + 1, (N,), device=self.device)
-            idx = torch.arange(L, device=self.device).unsqueeze(0)
-            mask = idx < lengths.unsqueeze(1)
-            yield t, mask
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            N, L, D = shape
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [N, L, D]},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        N, L, D = shape
+        cur_dtype = case.dtype
+        t = torch.randn(N, L, D, dtype=cur_dtype, device=self.device)
+        lengths = torch.randint(0, L + 1, (N,), device=self.device)
+        idx = torch.arange(L, device=self.device).unsqueeze(0)
+        mask = idx < lengths.unsqueeze(1)
+        return t, mask
 
 
 @pytest.mark.nested_tensor_from_mask

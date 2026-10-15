@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "float_power_scalar_tensor_out",
+  "requires_triton_kernel": true,
+  "description": "Out variant of float_power.Scalar.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "exponent",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

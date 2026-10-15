@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "functional_sym_constrain_range_for_size",
+  "requires_triton_kernel": true,
+  "description": "A low-level function used in symbolic shape analysis to restrict the possible numerical range\n(min/max) of an unbacked symbolic integer.",
+  "parameters": [
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "min",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "max",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "dep_token",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

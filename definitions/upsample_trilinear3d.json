@@ -1,0 +1,54 @@
+{
+  "api_version": "v6.0",
+  "name": "upsample_trilinear3d",
+  "requires_triton_kernel": true,
+  "description": "Upsamples the input (NCDHW) using trilinear interpolation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tuple[int, int, int]"
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scales_d",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_h",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_w",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

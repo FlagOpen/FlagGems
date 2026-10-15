@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "clip_",
+  "requires_triton_kernel": true,
+  "description": "This is identical to `clamp_()`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mini",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "maxi",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

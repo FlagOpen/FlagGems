@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "norm_except_dim",
+  "requires_triton_kernel": true,
+  "description": "Computes the p-norm of a tensor over all dimensions except the given one, keeping that dimension so the result broadcasts against the input.",
+  "parameters": [
+    {
+      "name": "v",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "pow",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

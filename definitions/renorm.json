@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "renorm",
+  "requires_triton_kernel": true,
+  "description": "Returns a tensor where each sub-tensor along the given dimension is normalized such that the p-norm is lower than a max norm value.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "maxnorm",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

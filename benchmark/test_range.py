@@ -26,9 +26,22 @@ class RangeBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = RANGE_SIZES
 
-    def get_input_iter(self, cur_dtype):
-        for end in self.shapes:
-            yield {"start": 0, "end": end, "dtype": cur_dtype},
+    def get_case_iter(self, cur_dtype):
+        for ordinal, end in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"end": end},
+                    params={"start": 0, "end": end},
+                    builder_args=(end,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (end,) = plan.builder_args
+        return ({"start": 0, "end": end, "dtype": case.dtype},)
 
 
 @pytest.mark.range

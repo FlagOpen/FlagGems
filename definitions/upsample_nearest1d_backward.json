@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "upsample_nearest1d_backward",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for upsample_nearest1d_backward.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[int]"
+    },
+    {
+      "name": "input_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[int]"
+    },
+    {
+      "name": "scales",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

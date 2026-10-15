@@ -37,9 +37,23 @@ class ReflectionPad3dBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, dtype):
-        for config in self.shapes:
-            yield from _input_fn(config, dtype, self.device)
+    def get_case_iter(self, dtype):
+        for ordinal, config in enumerate(self.shapes):
+            shape, padding = config
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"padding": list(padding)},
+                    builder_args=(config,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (config,) = plan.builder_args
+        return next(_input_fn(config, case.dtype, self.device))
 
 
 @pytest.mark.reflection_pad3d

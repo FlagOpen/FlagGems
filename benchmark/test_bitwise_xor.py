@@ -39,10 +39,18 @@ def test_bitwise_xor_inplace():
     bench.run()
 
 
-def _scalar_input_fn(shape, dtype, device):
+def _scalar_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _scalar_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     scalar = True if dtype == torch.bool else 0x00FF
-    yield inp, scalar
+    return inp, scalar
 
 
 @pytest.mark.bitwise_xor_scalar
@@ -50,22 +58,25 @@ def test_bitwise_xor_scalar():
     bench = base.GenericBenchmark(
         op_name="bitwise_xor_scalar",
         torch_op=torch.bitwise_xor,
-        input_fn=_scalar_input_fn,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn,
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
 
 
-def _scalar_input_fn_inplace(shape, dtype, device):
+def _scalar_build_inputs_fn_inplace(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     scalar = True if dtype == torch.bool else 0x5A
-    yield inp, scalar
+    return inp, scalar
 
 
 @pytest.mark.bitwise_xor_scalar_
 def test_bitwise_xor_scalar_():
     bench = base.GenericBenchmark(
-        input_fn=_scalar_input_fn_inplace,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn_inplace,
         op_name="bitwise_xor_scalar_",
         torch_op=lambda a, b: a.bitwise_xor_(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
@@ -74,10 +85,11 @@ def test_bitwise_xor_scalar_():
     bench.run()
 
 
-def scalar_tensor_input_fn(shape, cur_dtype, device):
+def scalar_tensor_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     scalar = 0x00FF if cur_dtype != torch.bool else True
     tensor = utils.generate_tensor_input(shape, cur_dtype, device)
-    yield scalar, tensor
+    return scalar, tensor
 
 
 @pytest.mark.bitwise_xor_scalar_tensor
@@ -86,6 +98,7 @@ def test_bitwise_xor_scalar_tensor():
         op_name="bitwise_xor_scalar_tensor",
         torch_op=torch.bitwise_xor,
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
-        input_fn=scalar_tensor_input_fn,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=scalar_tensor_build_inputs_fn,
     )
     bench.run()

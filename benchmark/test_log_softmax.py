@@ -71,15 +71,23 @@ def test_log_softmax_out():
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_log_softmax_backward_data():
-    def log_softmax_backward_data_input_fn(shape, dtype, device):
-        inp = torch.randn(shape, dtype=dtype, device=device)
+    def log_softmax_backward_data_case_fn(shape, cur_dtype):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            builder_args=(shape,),
+        )
+
+    def log_softmax_backward_data_build_inputs_fn(plan, cur_dtype, device):
+        (shape,) = plan.builder_args
+        inp = torch.randn(shape, dtype=cur_dtype, device=device)
         output = torch._log_softmax(inp, dim=-1, half_to_float=False)
         grad_output = torch.randn_like(output)
-        yield grad_output, output, -1, dtype
+        return grad_output, output, -1, cur_dtype
 
     bench = base.GenericBenchmark2DOnly(
         op_name="log_softmax_backward_data",
-        input_fn=log_softmax_backward_data_input_fn,
+        case_fn=log_softmax_backward_data_case_fn,
+        build_inputs_fn=log_softmax_backward_data_build_inputs_fn,
         torch_op=torch._log_softmax_backward_data,
         dtypes=consts.FLOAT_DTYPES,
     )

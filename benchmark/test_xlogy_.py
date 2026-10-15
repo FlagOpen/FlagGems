@@ -18,11 +18,19 @@ import torch
 from . import base, consts
 
 
-def xlogy_input_fn(shape, dtype, device):
+def _xlogy_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "other": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _xlogy_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp1 = torch.randn(shape, dtype=dtype, device=device)
     # keep ``other`` positive so ``log`` stays finite
     inp2 = torch.rand(shape, dtype=dtype, device=device) * 5.0 + 0.01
-    yield inp1, inp2
+    return inp1, inp2
 
 
 @pytest.mark.xlogy_
@@ -30,16 +38,26 @@ def test_xlogy_():
     bench = base.GenericBenchmark(
         op_name="xlogy_",
         torch_op=lambda a, b: a.xlogy_(b),
-        input_fn=xlogy_input_fn,
+        case_fn=_xlogy_case_fn,
+        build_inputs_fn=_xlogy_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )
     bench.run()
 
 
-def xlogy_scalar_other_input_fn(shape, dtype, device):
+def _xlogy_scalar_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"other": 3.5},
+        builder_args=(shape,),
+    )
+
+
+def _xlogy_scalar_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
-    yield inp, 3.5
+    return inp, 3.5
 
 
 @pytest.mark.xlogy_scalar_other_
@@ -47,7 +65,8 @@ def test_xlogy_scalar_other_():
     bench = base.GenericBenchmark(
         op_name="xlogy_scalar_other_",
         torch_op=lambda a, b: a.xlogy_(b),
-        input_fn=xlogy_scalar_other_input_fn,
+        case_fn=_xlogy_scalar_case_fn,
+        build_inputs_fn=_xlogy_scalar_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
     )

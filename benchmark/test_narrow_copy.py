@@ -39,12 +39,21 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
         return shapes
 
 
-def narrow_copy_input_fn(shape, cur_dtype, device):
+def narrow_copy_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"dim": 0},
+        builder_args=(shape,),
+    )
+
+
+def narrow_copy_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
     dim = 0
     start = shape[dim] // 4
     length = shape[dim] // 2
-    yield inp, dim, start, length
+    return inp, dim, start, length
 
 
 def narrow_copy_gbps(bench_fn_args, latency):
@@ -60,7 +69,8 @@ def test_narrow_copy_perf():
     bench = TensorSelectBenchmark(
         op_name="narrow_copy",
         torch_op=torch.narrow_copy,
-        input_fn=narrow_copy_input_fn,
+        case_fn=narrow_copy_case_fn,
+        build_inputs_fn=narrow_copy_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=narrow_copy_gbps,
     )

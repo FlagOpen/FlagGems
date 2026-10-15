@@ -38,26 +38,38 @@ class PadPackedSequenceBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = PAD_PACKED_SEQUENCE_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, max_length in self.shapes:
-            np.random.seed(42)
-            lengths = np.random.randint(1, max_length + 1, size=batch_size).tolist()
-            lengths = sorted(lengths, reverse=True)
-
-            max_len = max(lengths)
-            batch_sizes = torch.tensor(
-                [
-                    int(sum(1 for length in lengths if length > t))
-                    for t in range(max_len)
-                ],
-                dtype=torch.int64,
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch_size, max_length) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"batch_size": batch_size, "max_length": max_length},
+                    params={"batch_first": False, "padding_value": 0.0},
+                    builder_args=(batch_size, max_length),
+                ),
             )
-            total = int(batch_sizes.sum().item())
-            # Fixed feature width of 128 keeps the packed tensor 2D and memory
-            # traffic representative of typical RNN hidden sizes.
-            data = torch.randn(total, 128, dtype=cur_dtype, device=self.device)
 
-            yield data, batch_sizes, False, 0.0, max_length
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        batch_size, max_length = plan.builder_args
+        cur_dtype = case.dtype
+
+        np.random.seed(42)
+        lengths = np.random.randint(1, max_length + 1, size=batch_size).tolist()
+        lengths = sorted(lengths, reverse=True)
+
+        max_len = max(lengths)
+        batch_sizes = torch.tensor(
+            [int(sum(1 for length in lengths if length > t)) for t in range(max_len)],
+            dtype=torch.int64,
+        )
+        total = int(batch_sizes.sum().item())
+        # Fixed feature width of 128 keeps the packed tensor 2D and memory
+        # traffic representative of typical RNN hidden sizes.
+        data = torch.randn(total, 128, dtype=cur_dtype, device=self.device)
+
+        return data, batch_sizes, False, 0.0, max_length
 
 
 @pytest.mark.pad_packed_sequence

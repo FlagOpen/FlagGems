@@ -1,0 +1,24 @@
+{
+  "api_version": "v6.0",
+  "name": "silu_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `silu()`.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "input"
+    ],
+    "returns_alias_of": {
+      "out": "input"
+    }
+  }
+}

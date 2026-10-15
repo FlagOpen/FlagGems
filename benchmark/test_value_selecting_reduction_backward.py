@@ -28,10 +28,6 @@ class ValueSelectingReductionBackwardBenchmark(base.GenericBenchmark):
         self.shapes = list(range(len(_VALUE_SELECTING_REDUCTION_BACKWARD_CASES)))
         self.shape_desc = "case"
 
-    def get_input_iter(self, dtype):
-        for case in self.shapes:
-            yield from self.input_fn(case, dtype, self.device)
-
 
 # (grad_shape, input sizes, dim, keepdim) benchmark cases
 _VALUE_SELECTING_REDUCTION_BACKWARD_CASES = [
@@ -44,12 +40,22 @@ _VALUE_SELECTING_REDUCTION_BACKWARD_CASES = [
 ]
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
     grad_shape, sizes, dim, keepdim = _VALUE_SELECTING_REDUCTION_BACKWARD_CASES[shape]
+    yield base.BenchmarkCasePlan(
+        shape={"grad": list(grad_shape)},
+        params={"dim": dim, "sizes": list(sizes), "keepdim": keepdim},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (idx,) = plan.builder_args
+    grad_shape, sizes, dim, keepdim = _VALUE_SELECTING_REDUCTION_BACKWARD_CASES[idx]
     grad = torch.randn(grad_shape, dtype=dtype, device=device)
     # indices must be valid positions along the reduced dimension
     indices = torch.randint(0, sizes[dim], grad_shape, device=device)
-    yield grad, dim, indices, list(sizes), keepdim
+    return grad, dim, indices, list(sizes), keepdim
 
 
 @pytest.mark.value_selecting_reduction_backward
@@ -57,7 +63,8 @@ def test_value_selecting_reduction_backward():
     bench = ValueSelectingReductionBackwardBenchmark(
         op_name="value_selecting_reduction_backward",
         torch_op=torch.ops.aten.value_selecting_reduction_backward,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.value_selecting_reduction_backward)

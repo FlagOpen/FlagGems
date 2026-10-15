@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "infinitely_differentiable_gelu_backward",
+  "requires_triton_kernel": true,
+  "description": "The smooth (erf-based) GELU gradient used by higher-order autograd, computed as `grad * (0.5 * erf(x / sqrt(2)) + 0.5 + x * exp(-x * x / 2) / sqrt(2 * pi))`.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self_input",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

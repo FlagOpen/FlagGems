@@ -44,18 +44,31 @@ class LinalgInvExBenchmark(base.Benchmark):
             (16, 32, 32),
         ]
 
-    def get_input_iter(self, dtype):
-        for inp_shape in self.shapes:
+    def get_case_iter(self, cur_dtype):
+        for ordinal, inp_shape in enumerate(self.shapes):
             inp_shape = tuple(inp_shape)
-            n = inp_shape[-1]
-            # Generate well-conditioned invertible matrix using diagonal dominance
-            # Use CPU tensor creation then move to device to avoid FlagGems
-            # operator interference during input generation
-            A = torch.randn(inp_shape, dtype=dtype, device="cpu")
-            for i in range(n):
-                A[..., i, i] = A[..., i, i] + n
-            A = A.to(self.device)
-            yield A, {}
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(inp_shape)},
+                    builder_args=(inp_shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (inp_shape,) = plan.builder_args
+        inp_shape = tuple(inp_shape)
+        n = inp_shape[-1]
+        # Generate well-conditioned invertible matrix using diagonal dominance
+        # Use CPU tensor creation then move to device to avoid FlagGems
+        # operator interference during input generation
+        A = torch.randn(inp_shape, dtype=case.dtype, device="cpu")
+        for i in range(n):
+            A[..., i, i] = A[..., i, i] + n
+        A = A.to(self.device)
+        return A, {}
 
 
 @pytest.mark.linalg_inv_ex

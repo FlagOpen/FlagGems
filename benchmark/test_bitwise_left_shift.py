@@ -26,13 +26,25 @@ class BitwiseLeftShiftBenchmark(base.Benchmark):
         sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + sp_shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            inp1 = utils.generate_tensor_input(shape, dtype, self.device)
-            shift_amount = torch.randint(0, 8, shape, dtype=dtype, device="cpu").to(
-                self.device
+    def get_case_iter(self, dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape), "shift": list(shape)},
+                    builder_args=(shape,),
+                ),
             )
-            yield inp1, shift_amount
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        inp1 = utils.generate_tensor_input(shape, case.dtype, self.device)
+        shift_amount = torch.randint(0, 8, shape, dtype=case.dtype, device="cpu").to(
+            self.device
+        )
+        return inp1, shift_amount
 
 
 @pytest.mark.bitwise_left_shift

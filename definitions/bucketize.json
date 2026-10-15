@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "bucketize",
+  "requires_triton_kernel": true,
+  "description": "Returns the indices of the buckets to which each input value belongs.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "boundaries",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out_int32",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "right",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

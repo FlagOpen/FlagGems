@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "narrow_copy",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for narrow_copy.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "start",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "length",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

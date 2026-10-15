@@ -44,10 +44,19 @@ class UnbindCopyBenchmark(base.GenericBenchmark):
         return io_amount * 1e-9 / (latency * 1e-3)
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"dim": 0},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     dim = 0
-    yield inp, dim
+    return inp, dim
 
 
 @pytest.mark.unbind_copy
@@ -55,7 +64,8 @@ def test_unbind_copy():
     bench = UnbindCopyBenchmark(
         op_name="unbind_copy",
         torch_op=torch.unbind_copy,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

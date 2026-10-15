@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "norm_scalaropt_dim",
+  "requires_triton_kernel": true,
+  "description": "A variant of `norm` that computes the norm along specified dimensions.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

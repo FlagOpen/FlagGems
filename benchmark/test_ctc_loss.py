@@ -69,42 +69,42 @@ def _make_targets(batch, max_target, classes, device, target_layout):
     return targets, target_lengths
 
 
-def ctc_loss_input_fn(shape, dtype, device):
+def ctc_loss_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"log_probs": [shape[0], shape[1], shape[2]]},
+        params={"layout": "padded", "reduction": "mean"},
+        builder_args=(shape, "padded", "mean"),
+    )
+    yield base.BenchmarkCasePlan(
+        shape={"log_probs": [shape[0], shape[1], shape[2]]},
+        params={"layout": "concatenated", "reduction": "mean"},
+        builder_args=(shape, "concatenated", "mean"),
+    )
+    if base.Config.bench_level.value == consts.BenchLevel.COMPREHENSIVE.value:
+        yield base.BenchmarkCasePlan(
+            shape={"log_probs": [shape[0], shape[1], shape[2]]},
+            params={"layout": "concatenated", "reduction": "sum"},
+            builder_args=(shape, "concatenated", "sum"),
+        )
+
+
+def ctc_loss_build_inputs_fn(plan, dtype, device):
+    shape, target_layout, reduction = plan.builder_args
     t_steps, batch, classes, max_target = shape
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = raw.log_softmax(-1).to(dtype)
     input_lengths = torch.full((batch,), t_steps, dtype=torch.long, device=device)
 
     targets, target_lengths = _make_targets(
-        batch, max_target, classes, device, "padded"
+        batch, max_target, classes, device, target_layout
     )
-    yield (
+    return (
         log_probs,
         targets,
         input_lengths,
         target_lengths,
-        {"blank": 0, "reduction": "mean", "zero_infinity": False},
+        {"blank": 0, "reduction": reduction, "zero_infinity": False},
     )
-
-    targets, target_lengths = _make_targets(
-        batch, max_target, classes, device, "concatenated"
-    )
-    yield (
-        log_probs,
-        targets,
-        input_lengths,
-        target_lengths,
-        {"blank": 0, "reduction": "mean", "zero_infinity": False},
-    )
-
-    if base.Config.bench_level.value == consts.BenchLevel.COMPREHENSIVE.value:
-        yield (
-            log_probs,
-            targets,
-            input_lengths,
-            target_lengths,
-            {"blank": 0, "reduction": "sum", "zero_infinity": False},
-        )
 
 
 class CtcLossBenchmark(base.GenericBenchmark):
@@ -124,7 +124,8 @@ class CtcLossBenchmark(base.GenericBenchmark):
 def test_ctc_loss():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",
-        input_fn=ctc_loss_input_fn,
+        case_fn=ctc_loss_case_fn,
+        build_inputs_fn=ctc_loss_build_inputs_fn,
         torch_op=_ctc_loss_reference,
         dtypes=CTC_DTYPES,
     )
@@ -136,7 +137,8 @@ def test_ctc_loss():
 def test_ctc_loss_backward():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",
-        input_fn=ctc_loss_input_fn,
+        case_fn=ctc_loss_case_fn,
+        build_inputs_fn=ctc_loss_build_inputs_fn,
         torch_op=_ctc_loss_reference,
         dtypes=CTC_DTYPES,
         is_backward=True,

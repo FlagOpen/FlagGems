@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "logcumsumexp_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `logcumsumexp` that allows the output to be assigned to an `out` tensor.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

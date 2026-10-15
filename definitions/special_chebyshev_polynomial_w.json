@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "special_chebyshev_polynomial_w",
+  "requires_triton_kernel": true,
+  "description": "Computes the Chebyshev polynomial of the fourth kind `W_n(x)`.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

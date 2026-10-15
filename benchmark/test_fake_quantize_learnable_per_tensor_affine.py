@@ -22,11 +22,20 @@ QUANT_MIN = 0
 QUANT_MAX = 255
 
 
-def fake_quantize_learnable_per_tensor_affine_input_fn(shape, cur_dtype, device):
+def _case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"quant_min": QUANT_MIN, "quant_max": QUANT_MAX},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=cur_dtype, device=device) * 5
     scale = torch.tensor([0.1], dtype=torch.float32, device=device)
     zero_point = torch.tensor([127], dtype=torch.int32, device=device)
-    yield inp, scale, zero_point, QUANT_MIN, QUANT_MAX
+    return inp, scale, zero_point, QUANT_MIN, QUANT_MAX
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
@@ -34,7 +43,8 @@ def test_fake_quantize_learnable_per_tensor_affine():
     bench = base.GenericBenchmark(
         op_name="fake_quantize_learnable_per_tensor_affine",
         torch_op=torch.ops.aten._fake_quantize_learnable_per_tensor_affine,
-        input_fn=fake_quantize_learnable_per_tensor_affine_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

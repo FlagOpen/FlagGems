@@ -1,0 +1,26 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_vander",
+  "requires_triton_kernel": true,
+  "description": "Computes the Vandermonde matrix of a given vector.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "N",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

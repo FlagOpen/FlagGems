@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "diff",
+  "requires_triton_kernel": true,
+  "description": "Computes the n-th forward difference along the given dimension.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": -1
+    },
+    {
+      "name": "prepend",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "append",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

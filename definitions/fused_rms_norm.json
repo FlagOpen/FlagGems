@@ -1,0 +1,38 @@
+{
+  "api_version": "v6.0",
+  "name": "fused_rms_norm",
+  "requires_triton_kernel": true,
+  "description": "Fused RMS normalization returning the normalized output and inverse RMS.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "normalized_shape",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1e-05
+    }
+  ],
+  "outputs": [
+    "out",
+    "inv_rms"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

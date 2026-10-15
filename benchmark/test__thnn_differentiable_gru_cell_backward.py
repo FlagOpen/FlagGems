@@ -47,25 +47,39 @@ class DifferentiableGRUCellBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return list(COMPREHENSIVE_SHAPES)
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, hidden_size, has_bias in self.shapes:
-            grad_hy = torch.randn(
-                batch_size, hidden_size, dtype=cur_dtype, device=self.device
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch_size, hidden_size, has_bias) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"grad_hy": [batch_size, hidden_size]},
+                    params={"has_bias": has_bias},
+                    builder_args=(batch_size, hidden_size, has_bias),
+                ),
             )
-            input_gates = torch.randn(
-                batch_size, 3 * hidden_size, dtype=cur_dtype, device=self.device
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        batch_size, hidden_size, has_bias = plan.builder_args
+        cur_dtype = case.dtype
+        grad_hy = torch.randn(
+            batch_size, hidden_size, dtype=cur_dtype, device=self.device
+        )
+        input_gates = torch.randn(
+            batch_size, 3 * hidden_size, dtype=cur_dtype, device=self.device
+        )
+        hidden_gates = torch.randn_like(input_gates)
+        hx = torch.randn_like(grad_hy)
+        if has_bias:
+            input_bias = torch.randn(
+                3 * hidden_size, dtype=cur_dtype, device=self.device
             )
-            hidden_gates = torch.randn_like(input_gates)
-            hx = torch.randn_like(grad_hy)
-            if has_bias:
-                input_bias = torch.randn(
-                    3 * hidden_size, dtype=cur_dtype, device=self.device
-                )
-                hidden_bias = torch.randn_like(input_bias)
-            else:
-                input_bias = None
-                hidden_bias = None
-            yield grad_hy, input_gates, hidden_gates, hx, input_bias, hidden_bias
+            hidden_bias = torch.randn_like(input_bias)
+        else:
+            input_bias = None
+            hidden_bias = None
+        return grad_hy, input_gates, hidden_gates, hx, input_bias, hidden_bias
 
 
 @pytest.mark.thnn_differentiable_gru_cell_backward

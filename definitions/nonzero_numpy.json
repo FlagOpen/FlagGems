@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "nonzero_numpy",
+  "requires_triton_kernel": true,
+  "description": "Returns a tuple of 1-D tensors, one for each dimension, containing the indices of\nthe nonzero elements in the input tensor (NumPy-style).",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

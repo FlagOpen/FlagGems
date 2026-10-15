@@ -9,17 +9,26 @@ class HeavisideBenchmark(base.GenericBenchmark):
         return None
 
 
-def heaviside_input_fn(shape, dtype, device):
+def heaviside_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "values": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def heaviside_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     values = torch.randn(shape, dtype=dtype, device=device)
-    yield inp, values
+    return inp, values
 
 
-def heaviside_out_input_fn(shape, dtype, device):
+def heaviside_out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
     values = torch.randn(shape, dtype=dtype, device=device)
     out_buf = torch.empty_like(inp)
-    yield inp, values, out_buf
+    return inp, values, out_buf
 
 
 def _heaviside_out_torch_op(inp, values, out_buf):
@@ -29,7 +38,8 @@ def _heaviside_out_torch_op(inp, values, out_buf):
 @pytest.mark.heaviside
 def test_heaviside():
     bench = HeavisideBenchmark(
-        input_fn=heaviside_input_fn,
+        case_fn=heaviside_case_fn,
+        build_inputs_fn=heaviside_build_inputs_fn,
         op_name="heaviside",
         torch_op=torch.ops.aten.heaviside,
         dtypes=consts.FLOAT_DTYPES,
@@ -40,7 +50,8 @@ def test_heaviside():
 @pytest.mark.heaviside
 def test_heaviside_out():
     bench = HeavisideBenchmark(
-        input_fn=heaviside_out_input_fn,
+        case_fn=heaviside_case_fn,
+        build_inputs_fn=heaviside_out_build_inputs_fn,
         op_name="heaviside",
         torch_op=_heaviside_out_torch_op,
         dtypes=consts.FLOAT_DTYPES,

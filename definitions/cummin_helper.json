@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "cummin_helper",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for `_cummin_helper`, the out-of-place helper used\nby `aten::cummin` / `aten::cummin.out`. It writes the cumulative minimum of\nelements of `input` along `dim` into the pre-allocated `values` tensor and the\nindex location of each minimum value into the pre-allocated `indices` tensor.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "values",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

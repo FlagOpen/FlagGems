@@ -49,6 +49,18 @@ def _torch_tril_inplace(inp, diagonal=0):
     return inp.tril_(diagonal)
 
 
+def _tril_inplace_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _tril_inplace_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
+    return (utils.generate_tensor_input(shape, cur_dtype, device),)
+
+
 @pytest.mark.tril
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -113,7 +125,8 @@ def test_tril_out_sliced():
 )
 def test_tril_inplace():
     bench = base.GenericBenchmarkExcluse1D(
-        input_fn=utils.unary_input_fn,
+        case_fn=_tril_inplace_case_fn,
+        build_inputs_fn=_tril_inplace_build_inputs_fn,
         op_name="tril_",
         torch_op=_torch_tril_inplace,
         dtypes=consts.FLOAT_DTYPES,

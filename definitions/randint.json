@@ -1,0 +1,67 @@
+{
+  "api_version": "v6.0",
+  "name": "randint",
+  "requires_triton_kernel": true,
+  "description": "Returns a tensor filled with random integers generated uniformly between low (inclusive) and high (exclusive).",
+  "parameters": [
+    {
+      "name": "high",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "generator",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": "int64"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "requires_grad",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

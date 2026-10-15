@@ -82,7 +82,16 @@ def test_cumprod_():
     bench.run()
 
 
-def cumprod_backward_input_fn(shape, dtype, device):
+def cumprod_backward_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"grad": list(shape), "input": list(shape)},
+        params={"dim": 1},
+        builder_args=(shape,),
+    )
+
+
+def cumprod_backward_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     # Use well-conditioned input in [0.75, 1.25] rather than randn(). A running
     # product of standard-normal values underflows to exactly 0.0 within a few
     # dozen steps, so for long reduction axes (e.g. 4096 or 65536) most of the
@@ -101,14 +110,15 @@ def cumprod_backward_input_fn(shape, dtype, device):
     # samples normal * 10, which can overflow fp16, so draw a bounded gradient.
     grad = torch.randn(shape, dtype=dtype, device=device)
     output = torch.cumprod(inp, dim=1)
-    yield grad, inp, 1, output
+    return grad, inp, 1, output
 
 
 @pytest.mark.cumprod_backward
 def test_cumprod_backward():
     bench = base.GenericBenchmark2DOnly(
         op_name="cumprod_backward",
-        input_fn=cumprod_backward_input_fn,
+        case_fn=cumprod_backward_case_fn,
+        build_inputs_fn=cumprod_backward_build_inputs_fn,
         torch_op=torch.ops.aten.cumprod_backward,
         dtypes=consts.FLOAT_DTYPES,
     )

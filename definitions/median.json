@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "median",
+  "requires_triton_kernel": true,
+  "description": "Returns the median of all elements in the `inp` tensor.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "addcdiv_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `addcdiv()`. Performs the element-wise division of\n`tensor1` by `tensor2`, multiplies the result by the scalar `value` and adds\nit to `input`, storing the result in `input`.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "tensor1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "tensor2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "inp"
+    ],
+    "returns_alias_of": {
+      "out": "inp"
+    }
+  }
+}

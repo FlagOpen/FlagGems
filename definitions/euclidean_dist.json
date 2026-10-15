@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "euclidean_dist",
+  "requires_triton_kernel": true,
+  "description": "Computes pairwise Euclidean distances between rows of two 2D tensors.",
+  "parameters": [
+    {
+      "name": "x1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "x2",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

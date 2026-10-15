@@ -18,12 +18,24 @@ class SpecialLegendrePolynomialPBenchmark(base.Benchmark):
         sp_shapes_3d = [(64, 64, 2**i) for i in range(0, 15, 4)]
         return special_shapes_2d + sp_shapes_3d
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            # x is the input tensor, n is the polynomial degree (scalar)
-            x = base.generate_tensor_input(shape, cur_dtype, self.device)
-            n = 3
-            yield x, n
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"n": 3},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        # x is the input tensor, n is the polynomial degree (scalar)
+        shape = case.builder_args[0].builder_args[0]
+        x = base.generate_tensor_input(shape, case.dtype, self.device)
+        n = 3
+        return x, n
 
     def get_tflops(self, op, *args, **kwargs):
         shape = list(args[0].shape)

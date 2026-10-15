@@ -20,12 +20,20 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "tensor1": list(shape), "tensor2": list(shape)},
+        params={"value": 0.5},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp1 = torch.randn(shape, dtype=dtype, device=device)
     inp2 = torch.randn(shape, dtype=dtype, device=device)
     inp3 = torch.randn(shape, dtype=dtype, device=device)
-
-    yield inp1, inp2, inp3, {"value": 0.5}
+    return inp1, inp2, inp3, {"value": 0.5}
 
 
 @pytest.mark.addcmul_
@@ -35,7 +43,8 @@ def _input_fn(shape, dtype, device):
 def test_addcmul_():
     bench = base.GenericBenchmark(
         op_name="addcmul_",
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.addcmul_,
         dtypes=consts.FLOAT_DTYPES,
     )

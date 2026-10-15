@@ -1,0 +1,29 @@
+{
+  "api_version": "v6.0",
+  "name": "xlogy_scalar_other_",
+  "requires_triton_kernel": true,
+  "description": "Scalar-`other` overload of `xlogy_()`: computes `A * log(B)` element-wise in place\non `A` for a scalar `B`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

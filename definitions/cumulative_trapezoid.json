@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "cumulative_trapezoid",
+  "requires_triton_kernel": true,
+  "description": "Cumulatively integrate y using the composite trapezoidal rule with uniform spacing dx along the given dimension.",
+  "parameters": [
+    {
+      "name": "y",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dx",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "dim",
+      "kind": "keyword_only",
+      "required": false,
+      "default": -1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

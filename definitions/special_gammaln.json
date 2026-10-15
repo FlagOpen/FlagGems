@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "special_gammaln",
+  "requires_triton_kernel": true,
+  "description": "Computes the logarithm of the absolute value of the Gamma function on input.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

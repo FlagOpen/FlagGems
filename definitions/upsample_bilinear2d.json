@@ -1,0 +1,48 @@
+{
+  "api_version": "v6.0",
+  "name": "upsample_bilinear2d",
+  "requires_triton_kernel": true,
+  "description": "Upsamples the input, using bilinear mode.\nThe input has to be 4 dimensional, and the `output_size` is a tuple of 2 ints.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tuple[int]"
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scales_h",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_w",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

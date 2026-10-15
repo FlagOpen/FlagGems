@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "fmax_out",
+  "requires_triton_kernel": true,
+  "description": "Computes the element-wise maximum of input and other, ignoring NaNs (out variant).",
+  "parameters": [
+    {
+      "name": "a",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "b",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

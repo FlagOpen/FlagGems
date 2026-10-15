@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "bitwise_xor_tensor",
+  "requires_triton_kernel": true,
+  "description": "Computes the element-wise bitwise XOR of tensor `input` and tensor `other`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

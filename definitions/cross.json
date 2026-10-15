@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "cross",
+  "requires_triton_kernel": true,
+  "description": "Computes the cross product of two 3-dimensional vectors along a dimension of size 3.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

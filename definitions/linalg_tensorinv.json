@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_tensorinv",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for linalg_tensorinv.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "ind",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

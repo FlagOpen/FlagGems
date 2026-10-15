@@ -1,0 +1,98 @@
+{
+  "api_version": "v6.0",
+  "name": "mkldnn_rnn_layer",
+  "requires_triton_kernel": true,
+  "description": "Applies a single-layer unidirectional LSTM (oneDNN mkldnn_rnn_layer, mode=2)\nto the input sequence, returning the output sequence and the final hidden and\ncell states.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight0",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight3",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "hx_",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "cx_",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "reverse",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "batch_sizes",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mode",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "hidden_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "num_layers",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "has_biases",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "bidirectional",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "batch_first",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "train",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "output",
+    "hy",
+    "cy",
+    "workspace"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

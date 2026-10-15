@@ -65,7 +65,8 @@ class UpsampleLinear1dBackwardBenchmark(base.Benchmark):
         shapes_2d = [(16, 2**i) for i in range(6, 16, 2)]
         return shapes + shapes_3d + shapes_2d
 
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, cur_dtype):
+        ordinal = 0
         for shape in self.shapes:
             if len(shape) == 1:
                 shape_3d = (1, 1, shape[0])
@@ -81,12 +82,37 @@ class UpsampleLinear1dBackwardBenchmark(base.Benchmark):
                     if n * c * max(w_in, w_out) >= 2**30:
                         continue
 
-                    grad = torch.randn(
-                        [n, c, w_out],
-                        device=self.device,
-                        dtype=cur_dtype,
+                    yield self._case_from_plan(
+                        cur_dtype,
+                        ordinal,
+                        base.BenchmarkCasePlan(
+                            shape={"grad": [n, c, w_out]},
+                            params={
+                                "align_corners": align_corners,
+                                "scale_factor": scale_factor,
+                            },
+                            builder_args=(
+                                n,
+                                c,
+                                w_in,
+                                w_out,
+                                align_corners,
+                                scale_factor,
+                            ),
+                        ),
                     )
-                    yield grad, [w_out], [n, c, w_in], align_corners, scale_factor
+                    ordinal += 1
+
+    def build_inputs(self, case):
+        n, c, w_in, w_out, align_corners, scale_factor = case.builder_args[
+            0
+        ].builder_args
+        grad = torch.randn(
+            [n, c, w_out],
+            device=self.device,
+            dtype=case.dtype,
+        )
+        return grad, [w_out], [n, c, w_in], align_corners, scale_factor
 
     def get_tflops(self, op, *args, **kwargs):
         grad = args[0]

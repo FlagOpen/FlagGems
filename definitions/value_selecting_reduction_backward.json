@@ -1,0 +1,45 @@
+{
+  "api_version": "v6.0",
+  "name": "value_selecting_reduction_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of a value-selecting reduction (such as `max.dim`\nor `min.dim`) by scattering the upstream gradient to the positions\ngiven by the indices of the selected values in the original input.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "sizes",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[int]"
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

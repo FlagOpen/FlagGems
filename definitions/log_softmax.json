@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "log_softmax",
+  "requires_triton_kernel": true,
+  "description": "Applies `log_softmax` along dimension `dim`, i.e. `log(softmax(input))`, computed\nin a numerically stable way.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "half_to_float",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

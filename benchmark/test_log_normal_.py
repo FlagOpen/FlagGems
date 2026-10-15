@@ -18,12 +18,25 @@ import torch
 from . import base, consts
 
 
+def _case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
+    return (base.generate_tensor_input(shape, cur_dtype, device),)
+
+
 @pytest.mark.log_normal_
 def test_log_normal_():
     bench = base.GenericBenchmark(
         op_name="log_normal_",
         torch_op=torch.Tensor.log_normal_,
-        input_fn=base.unary_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

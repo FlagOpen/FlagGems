@@ -1,5 +1,3 @@
-from typing import Generator
-
 import pytest
 import torch
 
@@ -9,26 +7,41 @@ from . import base, consts, utils
 
 
 class FractionalMaxPool2dBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            yield from self.input_fn(shape, dtype, self.device)
+    pass
 
 
-def fractional_max_pool2d_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, {"kernel_size": 2, "output_size": (shape[2] // 2, shape[3] // 2)}
+def fractional_max_pool2d_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"kernel_size": 2, "output_size": (shape[2] // 2, shape[3] // 2)},
+        builder_args=(shape, 2),
+    )
     if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
         if shape[-2] > 5 and shape[-1] > 5:
-            yield inp, {
-                "kernel_size": 2,
-                "output_size": (shape[2] // 4, shape[3] // 4),
-            }
+            yield base.BenchmarkCasePlan(
+                shape={"input": list(shape)},
+                params={
+                    "kernel_size": 2,
+                    "output_size": (shape[2] // 4, shape[3] // 4),
+                },
+                builder_args=(shape, 4),
+            )
+
+
+def fractional_max_pool2d_build_inputs_fn(plan, dtype, device):
+    shape, divisor = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, {
+        "kernel_size": 2,
+        "output_size": (shape[2] // divisor, shape[3] // divisor),
+    }
 
 
 @pytest.mark.fractional_max_pool2d
 def test_fractional_max_pool2d():
     bench = FractionalMaxPool2dBenchmark(
-        input_fn=fractional_max_pool2d_input_fn,
+        case_fn=fractional_max_pool2d_case_fn,
+        build_inputs_fn=fractional_max_pool2d_build_inputs_fn,
         op_name="fractional_max_pool2d",
         torch_op=torch.nn.functional.fractional_max_pool2d,
         dtypes=consts.FLOAT_DTYPES,
@@ -37,7 +50,16 @@ def test_fractional_max_pool2d():
     bench.run()
 
 
-def fractional_max_pool2d_backward_input_fn(shape, dtype, device):
+def fractional_max_pool2d_backward_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"kernel_size": 2, "output_size": (shape[2] // 2, shape[3] // 2)},
+        builder_args=(shape,),
+    )
+
+
+def fractional_max_pool2d_backward_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     inp.requires_grad_(True)
     output_size = (shape[2] // 2, shape[3] // 2)
@@ -45,11 +67,15 @@ def fractional_max_pool2d_backward_input_fn(shape, dtype, device):
         inp, kernel_size=2, output_size=output_size
     )
     grad_output = torch.randn_like(output)
-    yield grad_output, inp, {
-        "kernel_size": 2,
-        "output_size": output_size,
-        "indices": indices,
-    }
+    return (
+        grad_output,
+        inp,
+        {
+            "kernel_size": 2,
+            "output_size": output_size,
+            "indices": indices,
+        },
+    )
 
 
 def torch_fractional_max_pool2d_backward_wrapper(grad_output, input, **kwargs):
@@ -65,7 +91,8 @@ def torch_fractional_max_pool2d_backward_wrapper(grad_output, input, **kwargs):
 @pytest.mark.fractional_max_pool2d_backward
 def test_fractional_max_pool2d_backward():
     bench = FractionalMaxPool2dBenchmark(
-        input_fn=fractional_max_pool2d_backward_input_fn,
+        case_fn=fractional_max_pool2d_backward_case_fn,
+        build_inputs_fn=fractional_max_pool2d_backward_build_inputs_fn,
         op_name="fractional_max_pool2d_backward",
         torch_op=torch_fractional_max_pool2d_backward_wrapper,
         dtypes=consts.FLOAT_DTYPES,

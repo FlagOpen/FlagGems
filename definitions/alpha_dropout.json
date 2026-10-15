@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "alpha_dropout",
+  "requires_triton_kernel": true,
+  "description": "Applies alpha dropout to the input. Alpha Dropout is a type of Dropout\nthat maintains the self-normalizing property by scaling activations\nwith SELU activation function parameters.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.5
+    },
+    {
+      "name": "train",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

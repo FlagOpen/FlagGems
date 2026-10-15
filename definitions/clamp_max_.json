@@ -1,0 +1,29 @@
+{
+  "api_version": "v6.0",
+  "name": "clamp_max_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `clamp_max()`.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "max_value",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

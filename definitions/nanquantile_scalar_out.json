@@ -1,0 +1,49 @@
+{
+  "api_version": "v6.0",
+  "name": "nanquantile_scalar_out",
+  "requires_triton_kernel": true,
+  "description": "Scalar-q out overload of `nanquantile`.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "q",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    },
+    {
+      "name": "interpolation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": "linear"
+    },
+    {
+      "name": "out",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

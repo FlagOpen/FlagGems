@@ -39,16 +39,28 @@ class CholeskyBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = CHOLESKY_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            n = shape[-1]
-            # Create positive-definite matrix
-            B = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            A = (
-                B @ B.transpose(-2, -1)
-                + torch.eye(n, dtype=cur_dtype, device=self.device) * 0.1
+    def get_case_iter(self, cur_dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    builder_args=(shape,),
+                ),
             )
-            yield (A,)
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        n = shape[-1]
+        # Create positive-definite matrix
+        B = torch.randn(shape, dtype=case.dtype, device=self.device)
+        A = (
+            B @ B.transpose(-2, -1)
+            + torch.eye(n, dtype=case.dtype, device=self.device) * 0.1
+        )
+        return (A,)
 
 
 @pytest.mark.linalg_cholesky

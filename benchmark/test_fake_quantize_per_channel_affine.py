@@ -39,23 +39,39 @@ def test_fake_quantize_per_channel_affine():
         def set_shapes(self, shape_file_path=None):
             self.shapes = self.DEFAULT_SHAPES
 
-        def get_input_iter(self, dtype):
+        def get_case_iter(self, dtype):
+            ordinal = 0
             for shape in self.shapes:
                 for axis in self.axis_configs:
                     if axis >= len(shape):
                         continue
-                    inp = torch.randn(shape, dtype=dtype, device="cuda")
-                    n_channels = shape[axis]
-                    scale = (
-                        torch.rand(n_channels, dtype=torch.float32, device="cuda") * 0.1
-                        + 0.01
+                    yield self._case_from_plan(
+                        dtype,
+                        ordinal,
+                        base.BenchmarkCasePlan(
+                            shape={"input": list(shape)},
+                            params={
+                                "axis": axis,
+                                "quant_min": 0,
+                                "quant_max": 255,
+                            },
+                            builder_args=(shape, axis),
+                        ),
                     )
-                    zero_point = torch.zeros(
-                        n_channels, dtype=torch.int32, device="cuda"
-                    )
-                    quant_min = 0
-                    quant_max = 255
-                    yield inp, scale, zero_point, axis, quant_min, quant_max
+                    ordinal += 1
+
+        def build_inputs(self, case):
+            plan = case.builder_args[0]
+            shape, axis = plan.builder_args
+            inp = torch.randn(shape, dtype=case.dtype, device="cuda")
+            n_channels = shape[axis]
+            scale = (
+                torch.rand(n_channels, dtype=torch.float32, device="cuda") * 0.1 + 0.01
+            )
+            zero_point = torch.zeros(n_channels, dtype=torch.int32, device="cuda")
+            quant_min = 0
+            quant_max = 255
+            return inp, scale, zero_point, axis, quant_min, quant_max
 
         def forward(self, inp, scale, zero_point, axis, quant_min, quant_max):
             return torch.fake_quantize_per_channel_affine(

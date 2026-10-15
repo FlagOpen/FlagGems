@@ -25,22 +25,33 @@ class UpsampleNearest1dBackwardBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return []
 
-    def get_input_iter(self, cur_dtype):
-        for batch, channels, input_w, output_w in self.shapes:
-            grad_output = torch.randn(
-                (batch, channels, output_w),
-                dtype=cur_dtype,
-                device=self.device,
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch, channels, input_w, output_w) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [batch, channels, output_w]},
+                    builder_args=((batch, channels, input_w, output_w),),
+                ),
             )
-            yield grad_output, (output_w,), (batch, channels, input_w)
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (batch, channels, input_w, output_w) = plan.builder_args[0]
+        grad_output = torch.randn(
+            (batch, channels, output_w),
+            dtype=case.dtype,
+            device=self.device,
+        )
+        return grad_output, (output_w,), (batch, channels, input_w)
 
 
 class UpsampleNearest1dBackwardOutBenchmark(UpsampleNearest1dBackwardBenchmark):
-    def get_input_iter(self, cur_dtype):
-        for args in super().get_input_iter(cur_dtype):
-            grad_output, output_size, input_size = args
-            grad_input = torch.empty(input_size, dtype=cur_dtype, device=self.device)
-            yield grad_output, output_size, input_size, {"grad_input": grad_input}
+    def build_inputs(self, case):
+        grad_output, output_size, input_size = super().build_inputs(case)
+        grad_input = torch.empty(input_size, dtype=case.dtype, device=self.device)
+        return grad_output, output_size, input_size, {"grad_input": grad_input}
 
 
 @pytest.mark.upsample_nearest1d_backward

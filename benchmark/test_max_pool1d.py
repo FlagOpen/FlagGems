@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
@@ -21,8 +19,8 @@ from . import base, consts, utils
 
 
 class MaxPool1dBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        shapes_3d = [
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
             (4, 3, 224),
             (16, 64, 128),
             (32, 128, 64),
@@ -30,46 +28,66 @@ class MaxPool1dBenchmark(base.GenericBenchmark):
             (128, 512, 16),
         ]
 
-        for shape in shapes_3d:
-            yield from self.input_fn(shape, dtype, self.device)
 
-
-def max_pool1d_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-
+def max_pool1d_case_fn(shape, dtype):
     # Common case
-    yield inp, {
-        "kernel_size": [3],
-        "stride": [2],
-        "padding": [1],
-        "dilation": [1],
-        "ceil_mode": False,
-    }
-
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        # With dilation
-        yield inp, {
-            "kernel_size": [3],
-            "stride": [2],
-            "padding": [1],
-            "dilation": [2],
-            "ceil_mode": False,
-        }
-
-        # With ceil_mode
-        yield inp, {
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={
             "kernel_size": [3],
             "stride": [2],
             "padding": [1],
             "dilation": [1],
-            "ceil_mode": True,
-        }
+            "ceil_mode": False,
+        },
+        builder_args=(shape, [1], False),
+    )
+
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        # With dilation
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={
+                "kernel_size": [3],
+                "stride": [2],
+                "padding": [1],
+                "dilation": [2],
+                "ceil_mode": False,
+            },
+            builder_args=(shape, [2], False),
+        )
+
+        # With ceil_mode
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={
+                "kernel_size": [3],
+                "stride": [2],
+                "padding": [1],
+                "dilation": [1],
+                "ceil_mode": True,
+            },
+            builder_args=(shape, [1], True),
+        )
+
+
+def max_pool1d_build_inputs_fn(plan, dtype, device):
+    shape, dilation, ceil_mode = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, {
+        "kernel_size": [3],
+        "stride": [2],
+        "padding": [1],
+        "dilation": dilation,
+        "ceil_mode": ceil_mode,
+    }
 
 
 @pytest.mark.max_pool1d
 def test_max_pool1d():
     bench = MaxPool1dBenchmark(
-        input_fn=max_pool1d_input_fn,
+        case_fn=max_pool1d_case_fn,
+        build_inputs_fn=max_pool1d_build_inputs_fn,
         op_name="max_pool1d",
         torch_op=torch.ops.aten.max_pool1d,
         dtypes=consts.FLOAT_DTYPES,

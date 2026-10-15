@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "binary_cross_entropy_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of binary cross entropy loss with respect to the input, with optional per-element weight.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

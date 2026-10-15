@@ -1,0 +1,58 @@
+{
+  "api_version": "v6.0",
+  "name": "grid_sampler_3d_backward",
+  "requires_triton_kernel": true,
+  "description": "Backward pass for 3D grid sampling with bilinear/nearest interpolation and multiple padding modes.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "grid",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "interpolation_mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "padding_mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "output_mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list"
+    }
+  ],
+  "outputs": [
+    "grad_input",
+    "grad_grid"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

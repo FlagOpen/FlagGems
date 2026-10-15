@@ -18,16 +18,26 @@ import torch
 from . import base, consts, utils
 
 
-def fake_quantize_per_tensor_affine_cachemask_input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"scale": 0.125, "zero_point": 3, "quant_min": 0, "quant_max": 255},
+        builder_args=(shape,),
+    )
+
+
+def fake_quantize_per_tensor_affine_cachemask_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     input = utils.generate_tensor_input(shape, dtype, device)
-    yield input, 0.125, 3, 0, 255
+    return input, 0.125, 3, 0, 255
 
 
-def fake_quantize_per_tensor_affine_cachemask_out_input_fn(shape, dtype, device):
+def fake_quantize_per_tensor_affine_cachemask_out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     input = utils.generate_tensor_input(shape, dtype, device)
     out0 = torch.empty_like(input)
     out1 = torch.empty_like(input, dtype=torch.bool)
-    yield input, 0.125, 3, 0, 255, {"out0": out0, "out1": out1}
+    return input, 0.125, 3, 0, 255, {"out0": out0, "out1": out1}
 
 
 class BenchmarkFakeQuantizePerTensorAffineCachemask(base.GenericBenchmark):
@@ -53,7 +63,8 @@ def test_fake_quantize_per_tensor_affine_cachemask():
     bench = BenchmarkFakeQuantizePerTensorAffineCachemask(
         op_name="fake_quantize_per_tensor_affine_cachemask",
         torch_op=torch.ops.aten.fake_quantize_per_tensor_affine_cachemask,
-        input_fn=fake_quantize_per_tensor_affine_cachemask_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=fake_quantize_per_tensor_affine_cachemask_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -64,7 +75,8 @@ def test_fake_quantize_per_tensor_affine_cachemask_out():
     bench = BenchmarkFakeQuantizePerTensorAffineCachemask(
         op_name="fake_quantize_per_tensor_affine_cachemask_out",
         torch_op=torch.ops.aten.fake_quantize_per_tensor_affine_cachemask.out,
-        input_fn=fake_quantize_per_tensor_affine_cachemask_out_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=fake_quantize_per_tensor_affine_cachemask_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

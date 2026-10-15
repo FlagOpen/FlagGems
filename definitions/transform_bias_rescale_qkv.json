@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "transform_bias_rescale_qkv",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for _transform_bias_rescale_qkv.",
+  "parameters": [
+    {
+      "name": "qkv",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "qkv_bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "num_heads",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "q",
+    "k",
+    "v"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

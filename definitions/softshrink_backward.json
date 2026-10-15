@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "softshrink_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of the `softshrink` activation. Gradients flow through\nonly where the magnitude of the original input exceeds `lambd`; elsewhere\nthe gradient is zero.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "lambd",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

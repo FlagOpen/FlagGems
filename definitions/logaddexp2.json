@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "logaddexp2",
+  "requires_triton_kernel": true,
+  "description": "Computes the element-wise base-2 logarithm of the sum of base-2 exponentiations of two input tensors.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

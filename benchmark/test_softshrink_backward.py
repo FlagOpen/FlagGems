@@ -20,17 +20,27 @@ import torch
 from . import base, consts, utils
 
 
-def _softshrink_backward_input_fn(shape, cur_dtype, device):
+def _softshrink_backward_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": list(shape), "input": list(shape)},
+        params={"lambd": 0.5},
+        builder_args=(shape,),
+    )
+
+
+def _softshrink_backward_build_inputs_fn(plan, cur_dtype, device):
+    (shape,) = plan.builder_args
     grad_output = utils.generate_tensor_input(shape, cur_dtype, device)
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
-    yield grad_output, inp, 0.5
+    return grad_output, inp, 0.5
 
 
 @pytest.mark.softshrink_backward
 def test_softshrink_backward():
     bench = base.GenericBenchmark(
         op_name="softshrink_backward",
-        input_fn=_softshrink_backward_input_fn,
+        case_fn=_softshrink_backward_case_fn,
+        build_inputs_fn=_softshrink_backward_build_inputs_fn,
         torch_op=torch.ops.aten.softshrink_backward,
         dtypes=consts.FLOAT_DTYPES,
     )

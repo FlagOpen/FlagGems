@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "mish_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of Mish activation with respect to the input.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

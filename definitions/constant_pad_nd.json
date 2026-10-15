@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "constant_pad_nd",
+  "requires_triton_kernel": true,
+  "description": "Pads the input tensor boundaries with a constant value.\nThis is an IR representation, not a public API.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "pad_list",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -20,16 +20,26 @@ import torch
 from . import base, consts, utils
 
 
-def _input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
+def _case_fn(shape, dtype):
     # alpha_dropout_ takes (input, p, train) — p defaults to 0.5
-    yield inp, 0.5, True
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"p": 0.5, "train": True},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, 0.5, True
 
 
 @pytest.mark.alpha_dropout_
 def test_alpha_dropout_():
     bench = base.GenericBenchmarkExcluse1D(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="alpha_dropout_",
         torch_op=lambda inp, p, train: torch.alpha_dropout_(inp, p, train),
         dtypes=consts.FLOAT_DTYPES,

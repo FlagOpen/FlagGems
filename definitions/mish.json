@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "mish",
+  "requires_triton_kernel": true,
+  "description": "Applies the Mish activation function element-wise.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

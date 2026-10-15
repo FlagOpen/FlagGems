@@ -20,14 +20,23 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"mode": 3, "value": 1.5},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, device=device, dtype=dtype)
     rank = inp.ndim
     # mode 3 == constant (see aten padding_mode enum: 0 reflect, 1 replicate,
     # 2 circular, 3 constant). Constant padding works for any rank/shape, so it
     # is the representative case for the benchmark sweep.
     pad = [3 for _ in range(rank * 2)]
-    yield inp, pad, 3, 1.5
+    return inp, pad, 3, 1.5
 
 
 @pytest.mark.pad_enum
@@ -36,7 +45,8 @@ def _input_fn(shape, dtype, device):
 )
 def test_pad_enum():
     bench = base.GenericBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="pad_enum",
         torch_op=torch.ops.aten._pad_enum,
         dtypes=consts.FLOAT_DTYPES,

@@ -1,0 +1,29 @@
+{
+  "api_version": "v6.0",
+  "name": "fmod_scalar_",
+  "requires_triton_kernel": true,
+  "description": "In-place version of fmod with a scalar divisor.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "uniform_",
+  "requires_triton_kernel": true,
+  "description": "Fills `self` in place with numbers sampled from the continuous uniform distribution.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "from_",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0
+    },
+    {
+      "name": "to",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0
+    },
+    {
+      "name": "generator",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

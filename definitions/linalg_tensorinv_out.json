@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_tensorinv_out",
+  "requires_triton_kernel": true,
+  "description": "Out-of-place variant of linalg_tensorinv: computes the tensor inverse\nand writes the result into the provided out tensor.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "ind",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

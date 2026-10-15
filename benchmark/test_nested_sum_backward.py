@@ -52,7 +52,7 @@ def _get_gbps(args, latency):
     return total_bytes / latency / 1e9
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
     ndim = len(shape)
 
     for dim in [0, ndim // 2, -1]:
@@ -62,17 +62,27 @@ def _input_fn(shape, dtype, device):
             continue
 
         for keepdim in (True, False):
-            if keepdim:
-                grad_shape = list(shape)
-                grad_shape[actual_dim] = 1
-            else:
-                grad_shape = list(shape)
-                grad_shape.pop(actual_dim)
+            yield base.BenchmarkCasePlan(
+                shape={"input": list(shape)},
+                params={"dim": actual_dim, "keepdim": keepdim},
+                builder_args=(shape, actual_dim, keepdim),
+            )
 
-            self_tensor = torch.randn(shape, dtype=dtype, device=device)
-            grad = torch.randn(grad_shape, dtype=dtype, device=device)
 
-            yield grad, self_tensor, [actual_dim], keepdim
+def _build_inputs_fn(plan, dtype, device):
+    shape, actual_dim, keepdim = plan.builder_args
+
+    if keepdim:
+        grad_shape = list(shape)
+        grad_shape[actual_dim] = 1
+    else:
+        grad_shape = list(shape)
+        grad_shape.pop(actual_dim)
+
+    self_tensor = torch.randn(shape, dtype=dtype, device=device)
+    grad = torch.randn(grad_shape, dtype=dtype, device=device)
+
+    return grad, self_tensor, [actual_dim], keepdim
 
 
 @pytest.mark.nested_sum_backward
@@ -81,7 +91,8 @@ def test_nested_sum_backward():
         op_name="nested_sum_backward",
         torch_op=_torch_nested_sum_backward,
         gems_op=flag_gems._nested_sum_backward,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )

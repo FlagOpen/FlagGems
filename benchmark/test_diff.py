@@ -22,9 +22,17 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
-    yield (inp,)
+    return (inp,)
 
 
 class DiffBenchmark(base.GenericBenchmark2DOnly):
@@ -48,7 +56,8 @@ def test_diff():
     bench = DiffBenchmark(
         op_name="diff",
         torch_op=torch.diff,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -62,7 +71,8 @@ def test_diff_n2():
     bench = DiffBenchmark(
         op_name="diff",
         torch_op=functools.partial(torch.diff, n=2),
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

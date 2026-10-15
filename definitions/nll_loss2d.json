@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "nll_loss2d",
+  "requires_triton_kernel": true,
+  "description": "Negative log likelihood loss for a 4D input (N, C, H, W) of log-probabilities\nand a 3D integer target (N, H, W). Returns only the loss tensor, applying the\nrequested reduction (none/mean/sum) with optional per-class weights and an\nignore_index.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "ignore_index",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": -100
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

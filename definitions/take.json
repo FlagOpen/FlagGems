@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "take",
+  "requires_triton_kernel": true,
+  "description": "Returns a new tensor with the elements of `input` at the given flat\n`index`. The input is treated as a flattened 1-D tensor and the result\ntakes the shape of `index`. Negative indices are supported.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

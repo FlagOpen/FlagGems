@@ -106,16 +106,28 @@ class SparseSemiStructuredMMBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = SPARSE_SEMI_STRUCTURED_MM_SHAPES
 
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, cur_dtype):
         K4 = 32  # K = 4 * K4
-        for shape in self.shapes:
+        for ordinal, shape in enumerate(self.shapes):
             M, N = shape
-            mat1 = torch.randn(M, 4 * K4, dtype=cur_dtype, device=self.device)
-            mat1_meta = torch.randint(
-                0, 2, (M, K4), dtype=torch.bool, device=self.device
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"mat1": [M, 4 * K4], "mat2": [4 * K4, N]},
+                    builder_args=(shape,),
+                ),
             )
-            mat2 = torch.randn(4 * K4, N, dtype=cur_dtype, device=self.device)
-            yield mat1, mat1_meta, mat2, *_to_aten_compressed(mat1, mat1_meta, mat2)
+
+    def build_inputs(self, case):
+        K4 = 32  # K = 4 * K4
+        shape = case.builder_args[0].builder_args[0]
+        cur_dtype = case.dtype
+        M, N = shape
+        mat1 = torch.randn(M, 4 * K4, dtype=cur_dtype, device=self.device)
+        mat1_meta = torch.randint(0, 2, (M, K4), dtype=torch.bool, device=self.device)
+        mat2 = torch.randn(4 * K4, N, dtype=cur_dtype, device=self.device)
+        return mat1, mat1_meta, mat2, *_to_aten_compressed(mat1, mat1_meta, mat2)
 
 
 class _AtenSparseMMAdapter:

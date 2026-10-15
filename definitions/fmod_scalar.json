@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "fmod_scalar",
+  "requires_triton_kernel": true,
+  "description": "Computes the element-wise remainder of division of input by a scalar divisor.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

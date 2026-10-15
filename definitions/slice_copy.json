@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "slice_copy",
+  "requires_triton_kernel": true,
+  "description": "Returns a copy of the slice of `inp` selected along `dim` by `start`, `end` and\n`step`, materializing the result instead of returning a view.",
+  "parameters": [
+    {
+      "name": "inp",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "start",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "end",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "step",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

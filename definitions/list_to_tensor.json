@@ -1,0 +1,20 @@
+{
+  "api_version": "v6.0",
+  "name": "list_to_tensor",
+  "requires_triton_kernel": true,
+  "description": "Constructs a 1-D int32 tensor from a Python list of integers. This is an\nIR/prim operator; the FlagGems implementation copies the values into the\noutput tensor with a Triton kernel.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

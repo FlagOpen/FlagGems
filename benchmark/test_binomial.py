@@ -20,10 +20,18 @@ import flag_gems
 from . import base, consts
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"count": list(shape), "prob": list(shape)},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     count = torch.randint(1, 100, shape, device=device).to(dtype)
     prob = torch.rand(shape, dtype=dtype, device=device)
-    yield (count, prob)
+    return (count, prob)
 
 
 @pytest.mark.binomial
@@ -34,7 +42,8 @@ def test_binomial():
     bench = base.GenericBenchmark2DOnly(
         op_name="binomial",
         torch_op=torch.binomial,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -52,7 +61,8 @@ def test_binomial_out():
     bench = base.GenericBenchmark2DOnly(
         op_name="binomial_out",
         torch_op=out_op,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

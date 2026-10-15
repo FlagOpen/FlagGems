@@ -62,11 +62,23 @@ def test_silu_inplace():
 
 
 class SiluBackwardBenchmark(base.UnaryPointwiseBenchmark):
-    def get_input_iter(self, dtype: torch.dtype) -> Generator:
-        for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, dtype, self.device)
-            grad_out = torch.randn_like(inp)
-            yield grad_out, inp
+    def get_case_iter(self, dtype: torch.dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        grad_out = torch.randn_like(inp)
+        return grad_out, inp
 
 
 @pytest.mark.silu_backward

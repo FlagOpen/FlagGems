@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "bernoulli_",
+  "requires_triton_kernel": true,
+  "description": "The in-place version of `bernoulli()`. Fills `self` with independent samples from\na Bernoulli distribution parameterized by `p`.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.5
+    },
+    {
+      "name": "generator",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

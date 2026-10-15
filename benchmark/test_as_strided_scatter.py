@@ -30,11 +30,23 @@ class AsStridedScatterBenchmark(base.Benchmark):
         ]
         self.shape_desc = "ROWS, COLS, ROW_STRIDE, COL_STRIDE, OFFSET, STORAGE_SIZE"
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for rows, cols, row_stride, col_stride, offset, storage_size in self.shapes:
-            inp = torch.randn(storage_size, dtype=cur_dtype, device=self.device)
-            src = torch.randn((rows, cols), dtype=cur_dtype, device=self.device)
-            yield inp, src, (rows, cols), (row_stride, col_stride), offset
+    def get_case_iter(self, cur_dtype) -> Generator:
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        rows, cols, row_stride, col_stride, offset, storage_size = plan.builder_args
+        inp = torch.randn(storage_size, dtype=case.dtype, device=self.device)
+        src = torch.randn((rows, cols), dtype=case.dtype, device=self.device)
+        return inp, src, (rows, cols), (row_stride, col_stride), offset
 
 
 @pytest.mark.as_strided_scatter

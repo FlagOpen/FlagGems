@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "log_softmax_backward_data_out",
+  "requires_triton_kernel": true,
+  "description": "A variant of `log_softmax_backward_data()` that writes the gradient into the\n`out` tensor.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_dtype",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

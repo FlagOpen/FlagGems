@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "max_pool2d_with_indices",
+  "requires_triton_kernel": true,
+  "description": "Applies 2D max pooling over an input signal and also returns the indices of the\nmaximal values, which the backward pass uses to scatter gradients.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "values",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

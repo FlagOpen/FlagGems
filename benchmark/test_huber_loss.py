@@ -18,22 +18,36 @@ import torch
 from . import base, consts, utils
 
 
-def huber_loss_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    target = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, target
+def huber_loss_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "target": list(shape)},
+        builder_args=(shape, None),
+    )
 
     if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield inp, target, {"reduction": "mean"}
-        yield inp, target, {"reduction": "sum"}
-        yield inp, target, {"reduction": "none"}
+        for reduction in ("mean", "sum", "none"):
+            yield base.BenchmarkCasePlan(
+                shape={"input": list(shape), "target": list(shape)},
+                params={"reduction": reduction},
+                builder_args=(shape, reduction),
+            )
+
+
+def huber_loss_build_inputs_fn(plan, dtype, device):
+    shape, reduction = plan.builder_args
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    target = utils.generate_tensor_input(shape, dtype, device)
+    if reduction is None:
+        return inp, target
+    return inp, target, {"reduction": reduction}
 
 
 @pytest.mark.huber_loss
 def test_huber_loss():
     bench = base.GenericBenchmark2DOnly(
         op_name="huber_loss",
-        input_fn=huber_loss_input_fn,
+        case_fn=huber_loss_case_fn,
+        build_inputs_fn=huber_loss_build_inputs_fn,
         torch_op=torch.nn.functional.huber_loss,
         dtypes=consts.FLOAT_DTYPES,
     )

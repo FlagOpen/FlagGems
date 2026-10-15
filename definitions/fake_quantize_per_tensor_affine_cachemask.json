@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "fake_quantize_per_tensor_affine_cachemask",
+  "requires_triton_kernel": true,
+  "description": "Fake-quantizes the `input` tensor with a per-tensor affine scheme and also returns\nthe mask of elements that fall inside the quantization range.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_min",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_max",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "output",
+    "mask"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

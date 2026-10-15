@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "upsample_linear1d_backward",
+  "requires_triton_kernel": true,
+  "description": "A backward case for `upsample_linear1d()`.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "input_size",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scale_factors",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

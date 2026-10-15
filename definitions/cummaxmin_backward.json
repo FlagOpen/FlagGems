@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "cummaxmin_backward",
+  "requires_triton_kernel": true,
+  "description": "Backward pass shared by `cummax` and `cummin`. Scatter-adds the output gradient back to the\ninput positions selected during the forward pass (given by `indices`), accumulating in\nfloat32 for numerical stability. Equivalent to `grad_input.scatter_add_(dim, indices, grad_output)`.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

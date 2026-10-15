@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "affine_grid_generator",
+  "requires_triton_kernel": true,
+  "description": "Generates a 2D or 3D flow field (sampling grid), given a batch of affine matrices theta.",
+  "parameters": [
+    {
+      "name": "theta",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Size"
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

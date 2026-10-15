@@ -23,7 +23,15 @@ from . import base
 CTC_DTYPES = [torch.float32, torch.float64]
 
 
-def ctc_loss_internal_input_fn(shape, dtype, device):
+def ctc_loss_internal_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"log_probs": [shape[0], shape[1], shape[2]]},
+        builder_args=(shape,),
+    )
+
+
+def ctc_loss_internal_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
 
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
@@ -34,7 +42,7 @@ def ctc_loss_internal_input_fn(shape, dtype, device):
     input_lengths = [t_steps] * batch
     target_lengths = [max_target] * batch
 
-    yield log_probs, targets, input_lengths, target_lengths, {"blank": 0}
+    return log_probs, targets, input_lengths, target_lengths, {"blank": 0}
 
 
 class CtcLossInternalBenchmark(base.GenericBenchmark):
@@ -54,7 +62,8 @@ class CtcLossInternalBenchmark(base.GenericBenchmark):
 def test_perf__ctc_loss():
     bench = CtcLossInternalBenchmark(
         op_name="_ctc_loss",
-        input_fn=ctc_loss_internal_input_fn,
+        case_fn=ctc_loss_internal_case_fn,
+        build_inputs_fn=ctc_loss_internal_build_inputs_fn,
         torch_op=torch.ops.aten._ctc_loss,
         dtypes=CTC_DTYPES,
     )
@@ -62,26 +71,32 @@ def test_perf__ctc_loss():
     bench.run()
 
 
-def ctc_loss_internal_out_input_fn(shape, dtype, device):
+def ctc_loss_internal_out_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"log_probs": [shape[0], shape[1], shape[2]]},
+        builder_args=(shape,),
+    )
+
+
+def ctc_loss_internal_out_build_inputs_fn(plan, dtype, device):
     """Same inputs as the base variant, plus the two preallocated outputs."""
+    (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
 
-    for item in ctc_loss_internal_input_fn(shape, dtype, device):
-        *args, kwargs = item
-        # _ctc_loss returns (neg_log_likelihood, log_alpha), so out0 is per
-        # batch entry and out1 spans the (T, 2S + 1) alpha lattice.
-        out0 = torch.empty(batch, dtype=dtype, device=device)
-        out1 = torch.empty(
-            batch, t_steps, 2 * max_target + 1, dtype=dtype, device=device
-        )
-        yield (*args, {**kwargs, "out0": out0, "out1": out1})
+    *args, kwargs = ctc_loss_internal_build_inputs_fn(plan, dtype, device)
+    # _ctc_loss returns (neg_log_likelihood, log_alpha), so out0 is per
+    # batch entry and out1 spans the (T, 2S + 1) alpha lattice.
+    out0 = torch.empty(batch, dtype=dtype, device=device)
+    out1 = torch.empty(batch, t_steps, 2 * max_target + 1, dtype=dtype, device=device)
+    return (*args, {**kwargs, "out0": out0, "out1": out1})
 
 
 @pytest.mark.ctc_loss_out
 def test_perf__ctc_loss_out():
     bench = CtcLossInternalBenchmark(
         op_name="_ctc_loss_out",
-        input_fn=ctc_loss_internal_out_input_fn,
+        case_fn=ctc_loss_internal_out_case_fn,
+        build_inputs_fn=ctc_loss_internal_out_build_inputs_fn,
         torch_op=torch.ops.aten._ctc_loss.out,
         dtypes=CTC_DTYPES,
     )

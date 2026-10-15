@@ -25,11 +25,25 @@ class SpecialLogSoftmaxBenchmark(base.Benchmark):
         # Additional shapes for --level more
         return [(1024, 2**i) for i in range(0, 21, 4)]
 
-    def get_input_iter(self, cur_dtype):
+    def get_case_iter(self, cur_dtype):
+        ordinal = 0
         for shape in self.shapes:
             if len(shape) >= 2:
-                inp = base.generate_tensor_input(shape, cur_dtype, self.device)
-                yield inp, -1
+                yield self._case_from_plan(
+                    cur_dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params={"dim": -1},
+                        builder_args=(shape,),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        inp = base.generate_tensor_input(shape, case.dtype, self.device)
+        return inp, -1
 
 
 @pytest.mark.special_log_softmax

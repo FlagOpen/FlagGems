@@ -1,0 +1,45 @@
+{
+  "api_version": "v6.0",
+  "name": "fake_quantize_per_channel_affine",
+  "requires_triton_kernel": true,
+  "description": "Applies fake quantization per channel with affine parameters (scale and zero_point).",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "axis",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_min",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "quant_max",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

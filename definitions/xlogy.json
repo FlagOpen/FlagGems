@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "xlogy",
+  "requires_triton_kernel": true,
+  "description": "Computes `input * log(other)` element-wise, returning zero where `input` is zero (following PyTorch's `xlogy` semantics).",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

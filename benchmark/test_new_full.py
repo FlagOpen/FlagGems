@@ -18,14 +18,26 @@ import torch
 from . import base
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"fill_value": 3.1415926},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=dtype, device=device)
-    yield inp, shape, 3.1415926  # self, size, fill_value
+    return inp, shape, 3.1415926  # self, size, fill_value
 
 
 @pytest.mark.new_full
 def test_new_full():
     bench = base.GenericBenchmark(
-        op_name="new_full", input_fn=_input_fn, torch_op=torch.Tensor.new_full
+        op_name="new_full",
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        torch_op=torch.Tensor.new_full,
     )
     bench.run()

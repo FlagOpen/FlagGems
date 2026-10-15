@@ -34,16 +34,30 @@ class MaxUnpool2dBenchmark(base.Benchmark):
     def set_more_shapes(self):
         return None
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
             n, c, h, w = shape
-            # Create input tensor
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            # Apply max_pool2d to get pooled output and indices
-            pool = torch.nn.MaxPool2d(2, stride=2, return_indices=True)
-            pooled, indices = pool(x.contiguous())
-            output_size = [h, w]
-            yield pooled, indices.to(torch.int64), output_size
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"output_size": [h, w]},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        n, c, h, w = shape
+        # Create input tensor
+        x = torch.randn(shape, dtype=case.dtype, device=self.device)
+        # Apply max_pool2d to get pooled output and indices
+        pool = torch.nn.MaxPool2d(2, stride=2, return_indices=True)
+        pooled, indices = pool(x.contiguous())
+        output_size = [h, w]
+        return pooled, indices.to(torch.int64), output_size
 
     def get_tflops(self, op, *args, **kwargs):
         pooled, indices, output_size = args

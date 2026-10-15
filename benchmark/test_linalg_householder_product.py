@@ -20,12 +20,24 @@ class LinalgHouseholderProductBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = LINALG_HOUSEHOLDER_SHAPES
 
-    def get_input_iter(self, cur_dtype):
-        for m, n in self.shapes:
-            # Use geqrf to generate valid (h, tau) pair
-            A = torch.randn(m, n, dtype=cur_dtype, device=self.device)
-            h, tau = torch.geqrf(A)
-            yield h, tau
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (m, n) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [m, n]},
+                    builder_args=((m, n),),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (m, n) = plan.builder_args[0]
+        # Use geqrf to generate valid (h, tau) pair
+        A = torch.randn(m, n, dtype=case.dtype, device=self.device)
+        h, tau = torch.geqrf(A)
+        return h, tau
 
 
 @pytest.mark.linalg_householder_product

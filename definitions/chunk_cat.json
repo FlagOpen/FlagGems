@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "chunk_cat",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for _chunk_cat.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "List[torch.Tensor]"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "num_chunks",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

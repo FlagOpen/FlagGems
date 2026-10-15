@@ -1,0 +1,36 @@
+{
+  "api_version": "v6.0",
+  "name": "sparse_semi_structured_mm",
+  "requires_triton_kernel": true,
+  "description": "Performs a sparse semi-structured matrix multiplication of a dense matrix with a 2:4 sparsity pattern against a dense matrix.",
+  "parameters": [
+    {
+      "name": "mat1",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mat1_meta",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "out_dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

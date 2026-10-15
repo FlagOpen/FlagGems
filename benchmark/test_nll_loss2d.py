@@ -29,22 +29,38 @@ class NllLoss2dBenchmark(base.GenericBenchmark4DOnly):
         self.shapes = [s for s in self.shapes if math.prod(s) <= MAX_ELEMENTS]
 
 
-def nll_loss_input_fn(shape, cur_dtype, device):
+def nll_loss_case_fn(shape, cur_dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"variant": "default"},
+        builder_args=(shape, "default"),
+    )
+
+    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"variant": "weighted"},
+            builder_args=(shape, "weighted"),
+        )
+
+
+def nll_loss_build_inputs_fn(plan, cur_dtype, device):
+    shape, variant = plan.builder_args
     inp = utils.generate_tensor_input(shape, cur_dtype, device)
     target_shape = list(shape)
     del target_shape[1]
     target = torch.randint(0, shape[-1], target_shape, device=device)
-    yield inp, target
-
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        weight = torch.randn(shape[1], dtype=cur_dtype, device=device)
-        yield inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
+    if variant == "default":
+        return inp, target
+    weight = torch.randn(shape[1], dtype=cur_dtype, device=device)
+    return inp, target, {"weight": weight, "ignore_index": 1, "reduction": "none"}
 
 
 @pytest.mark.nll_loss2d_forward
 def test_nll_loss2d_forward():
     bench = NllLoss2dBenchmark(
-        input_fn=nll_loss_input_fn,
+        case_fn=nll_loss_case_fn,
+        build_inputs_fn=nll_loss_build_inputs_fn,
         op_name="nll_loss2d_forward",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,
@@ -55,7 +71,8 @@ def test_nll_loss2d_forward():
 @pytest.mark.nll_loss2d_backward
 def test_nll_loss2d_backward():
     bench = NllLoss2dBenchmark(
-        input_fn=nll_loss_input_fn,
+        case_fn=nll_loss_case_fn,
+        build_inputs_fn=nll_loss_build_inputs_fn,
         op_name="nll_loss2d_backward",
         torch_op=torch.nn.functional.nll_loss,
         dtypes=consts.FLOAT_DTYPES,

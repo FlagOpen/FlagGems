@@ -55,16 +55,29 @@ class FusedGRUCellBackwardBenchmark(base.Benchmark):
         if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             self.shapes += list(COMPREHENSIVE_SHAPES)
 
-    def get_input_iter(self, cur_dtype):
-        for batch_size, hidden_size, has_bias in self.shapes:
-            workspace = _make_workspace(batch_size, hidden_size, cur_dtype, self.device)
-            grad_hy = torch.randn(
-                batch_size,
-                hidden_size,
-                dtype=cur_dtype,
-                device=self.device,
+    def get_case_iter(self, cur_dtype):
+        for ordinal, (batch_size, hidden_size, has_bias) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                cur_dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"grad_hy": [batch_size, hidden_size]},
+                    params={"has_bias": has_bias},
+                    builder_args=(batch_size, hidden_size, has_bias),
+                ),
             )
-            yield grad_hy, workspace, has_bias
+
+    def build_inputs(self, case):
+        batch_size, hidden_size, has_bias = case.builder_args[0].builder_args
+        cur_dtype = case.dtype
+        workspace = _make_workspace(batch_size, hidden_size, cur_dtype, self.device)
+        grad_hy = torch.randn(
+            batch_size,
+            hidden_size,
+            dtype=cur_dtype,
+            device=self.device,
+        )
+        return grad_hy, workspace, has_bias
 
 
 def _fused_gru_cell_backward_out(

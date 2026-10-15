@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_sum_backward",
+  "requires_triton_kernel": true,
+  "description": "Triton kernel implementation for `_nested_sum_backward`, the backward of\na (nested) tensor `sum` over a single dimension. It broadcasts the\ngradient back to the shape of the original input along the reduced dim.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
