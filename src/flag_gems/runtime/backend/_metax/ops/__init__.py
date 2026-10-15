@@ -18,7 +18,6 @@ from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
-from .cudnn_convolution import cudnn_convolution
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
@@ -70,7 +69,18 @@ from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .min import min, min_dim
 from .mm import mm, mm_out
-from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
+
+try:
+    from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
+except ImportError:
+    # mm_w8a8_int8 is the only module in this package that requires the MetaX
+    # triton backend (``triton.backends.metax`` / ``triton.experimental.tle``)
+    # at import time.  The package is also reached from non-MetaX backends: the
+    # generic ``_nested_view_from_buffer_copy`` forwards to its MetaX
+    # implementation, and importing that submodule executes this package first.
+    # Skip the MetaX-only module when its backend is absent; the other modules
+    # import normally and MetaX behaviour is unchanged.
+    pass
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -91,6 +101,7 @@ from .repeat_interleave import repeat_interleave_self_tensor
 from .replication_pad3d_backward import replication_pad3d_backward
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
+from .rnn_tanh import rnn_tanh
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -158,7 +169,6 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
-    "cudnn_convolution",
     "erfinv",
     "erfinv_",
     "exponential_",
@@ -254,6 +264,7 @@ __all__ = [
     "replication_pad3d_backward",
     "resolve_conj",
     "rms_norm_w8a16_fp8",
+    "rnn_tanh",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
