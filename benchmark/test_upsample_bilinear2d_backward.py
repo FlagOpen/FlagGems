@@ -102,8 +102,6 @@ class UpsampleBilinear2dBackwardBenchmark(base.Benchmark):
                     yield (*args, {"grad_input": output})
                 else:
                     yield args
-                # Preserve the former per-case pytest cache cleanup boundary.
-                flag_gems.runtime.torch_device_fn.empty_cache()
 
 
 @pytest.mark.upsample_bilinear2d_backward
