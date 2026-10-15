@@ -145,6 +145,12 @@ def _flat_positions(size, nnz, *, ordered):
 
 
 def _make_sparse(size, nnz, dtype, *, recorded, ordered, values=None, value_range=None):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        and nnz > 0
+    ):
+        pytest.skip("Ascend cannot construct nonempty FP8 sparse values")
     indices = _flat_positions(size, nnz, ordered=ordered)
     if values is None:
         values = tu.make_input(dtype, (nnz,), list(value_range or ("-1", "1")))
@@ -245,6 +251,11 @@ def test_is_coalesced_reports_recorded_bit(size, nnz, dtype):
 @pytest.mark.parametrize("size,nnz,recorded", _SPECIAL_SIZES)
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test_is_coalesced_special_values(size, nnz, recorded, dtype, scenario):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip("Ascend cannot construct nonempty FP8 sparse values")
     payload = tu.make_special_input(dtype, scenario)
     values = payload.repeat((nnz + payload.numel() - 1) // payload.numel())[:nnz]
     inp = _make_sparse(

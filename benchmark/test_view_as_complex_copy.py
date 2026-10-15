@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -77,20 +79,38 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ViewAsComplexCopyBenchmark(OperatorBenchmark):
+    empty_input = None
+
     def set_shapes(self, shape_file_path=None):
         # A caller-supplied shape file still wins; these scales are the fallback
         # because no shared default shape is a valid input for this operator.
         super().set_shapes(shape_file_path, default_shapes=VIEW_AS_COMPLEX_COPY_SHAPES)
+        if self.empty_input is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if (math.prod(shape) == 0) == self.empty_input
+            ]
+            if not self.shapes:
+                pytest.skip("No workloads in this input-emptiness group")
 
 
 @pytest.mark.view_as_complex_copy
-def test_view_as_complex_copy():
+@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_COPY_DTYPES, ids=str)
+@pytest.mark.parametrize(
+    "empty_input", [False, True], ids=["nonempty-input", "empty-input"]
+)
+def test_view_as_complex_copy(dtype, empty_input):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float16 and not empty_input:
+        pytest.skip("Ascend copy does not support complex32 output")
+
     bench = ViewAsComplexCopyBenchmark(
         op_name="view_as_complex_copy",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.view_as_complex_copy,
         gems_op=getattr(flag_gems, "view_as_complex_copy", None),
-        dtypes=VIEW_AS_COMPLEX_COPY_DTYPES,
+        dtypes=[dtype],
+        empty_input=empty_input,
     )
     bench.run()

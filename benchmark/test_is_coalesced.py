@@ -141,13 +141,20 @@ class IsCoalescedBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.is_coalesced
-def test_is_coalesced():
+@pytest.mark.parametrize("dtype", BENCH_DTYPES, ids=str)
+def test_is_coalesced(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip("Ascend zero_ does not support FP8 sparse values")
+
     bench = IsCoalescedBenchmark(
         op_name="is_coalesced",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_coalesced,
         gems_op=getattr(flag_gems, "is_coalesced", None),
-        dtypes=BENCH_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()

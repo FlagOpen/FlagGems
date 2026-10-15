@@ -30,8 +30,8 @@ from . import test_utils as tu
 # every dtype the native validator accepts is exercised through it.
 #
 # Every dtype list below is built once at import time from the static backend
-# capability flags that accuracy_utils re-exports; nothing here probes a device
-# and nothing is filtered, skipped or xfailed at runtime.
+# capability flags that accuracy_utils re-exports; nothing here probes a device.
+# Targeted Ascend input-construction skips are applied below.
 VALUES_DTYPES = [
     torch.float32,
     torch.float16,
@@ -115,7 +115,14 @@ def _make_csr(
 
     crow_indices = crow.repeat(batches).reshape(batch + (rows + 1,))
     col_indices = col.repeat(batches).reshape(batch + (nnz,))
-    values = tu.make_input(dtype, batch + (nnz,) + tuple(dense_dims), list(value_range))
+    values_shape = batch + (nnz,) + tuple(dense_dims)
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        and math.prod(values_shape) > 0
+    ):
+        pytest.skip("Ascend cannot construct nonempty FP8 CSR values")
+    values = tu.make_input(dtype, values_shape, list(value_range))
     return crow_indices, col_indices, values, list(size)
 
 
@@ -442,6 +449,11 @@ SPECIAL_VALUE_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype,scenario", SPECIAL_VALUE_CASES)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_special_values(dtype, scenario, index_dtype):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip("Ascend cannot construct nonempty FP8 CSR values")
     device = flag_gems.device
     values = tu.make_special_input(dtype, scenario).reshape(-1)
     nnz = values.numel()
@@ -613,6 +625,11 @@ def test_validate_sparse_csr_tensor_args_values_shape_mismatch(
 @pytest.mark.validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("dtype", NON_INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_non_integer_index_rejected(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        pytest.skip("Ascend zero_ cannot construct FP8 index-test inputs")
     device = flag_gems.device
     crow_indices = torch.zeros(4, dtype=dtype, device=device)
     col_indices = torch.zeros(3, dtype=dtype, device=device)

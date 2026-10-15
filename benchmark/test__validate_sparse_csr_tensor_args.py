@@ -208,18 +208,39 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ValidateSparseCsrTensorArgsBenchmark(OperatorBenchmark):
+    empty_values = None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=DEFAULT_CSR_SHAPES)
+        if self.empty_values is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if (0 in _normalize_size(shape)) == self.empty_values
+            ]
+            if not self.shapes:
+                pytest.skip("No CSR workloads in this values-emptiness group")
 
 
 @pytest.mark.validate_sparse_csr_tensor_args
-def test_validate_sparse_csr_tensor_args():
+@pytest.mark.parametrize("dtype", BENCH_VALUES_DTYPES, ids=str)
+@pytest.mark.parametrize(
+    "empty_values", [False, True], ids=["nonempty-values", "empty-values"]
+)
+def test_validate_sparse_csr_tensor_args(dtype, empty_values):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+        and not empty_values
+    ):
+        pytest.skip("Ascend cannot construct nonempty FP8 CSR values")
     bench = ValidateSparseCsrTensorArgsBenchmark(
         op_name="_validate_sparse_csr_tensor_args",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._validate_sparse_csr_tensor_args,
         gems_op=getattr(flag_gems, "_validate_sparse_csr_tensor_args", None),
-        dtypes=BENCH_VALUES_DTYPES,
+        dtypes=[dtype],
+        empty_values=empty_values,
     )
     bench.run()

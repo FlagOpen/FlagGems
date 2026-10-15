@@ -99,6 +99,11 @@ def _input_state(inp):
 
 
 def _make_layout_input(kind, shape, dtype):
+    if flag_gems.vendor_name == "ascend" and kind in (
+        "channels_last",
+        "channels_last_3d",
+    ):
+        pytest.skip("Ascend cannot construct channels-last input layouts")
     # Values are decorative for this predicate; only the layout matters.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     if kind == "plain":
