@@ -19,6 +19,8 @@ import flag_gems
 
 from . import test_utils as tu
 
+pytestmark = pytest.mark.usefixtures("skip_ascend_complex_input")
+
 # The operator validates the arguments of a CSC tensor and returns nothing:
 #   _validate_sparse_csc_tensor_args(Tensor ccol_indices, Tensor row_indices,
 #                                    Tensor values, int[] size) -> ()
@@ -256,6 +258,11 @@ def _strided_last_dim(tensor, stride):
 def _make_csc_inputs(
     size, nnz, index_dtype, value_dtype, value_range, dense_ndim=0, layout="plain"
 ):
+    # values has batch + nnz + dense axes, i.e. len(size) - 1 dimensions.
+    if flag_gems.vendor_name == "ascend" and len(size) - 1 > 8:
+        pytest.skip(
+            "Ascend input generation does not support values with more than 8 dimensions"
+        )
     ccol, row = _csc_indices(size, nnz, index_dtype, dense_ndim)
     batch, _, _, dense = _split_size(size, dense_ndim)
     values = tu.make_input(value_dtype, batch + (nnz,) + dense, value_range)

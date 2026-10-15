@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Keep non-complex cases active; Ascend complex input generation is unsupported.
+pytestmark = pytest.mark.usefixtures("skip_ascend_complex_input")
+
 # aten::view_as_real_copy returns a complex tensor's real components as a fresh
 # contiguous real tensor whose trailing dimension is 2. The native kernels only
 # accept complex inputs, so the real / bool / integer dtypes below are negative
@@ -237,6 +240,10 @@ def test_view_as_real_copy_conjugate_layouts(layout, dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("real_dtype, scenario", _SPECIAL_CASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input construction is unsupported",
+)
 def test_view_as_real_copy_special_values(real_dtype, scenario):
     # The shared generator supplies the payload shape (one value per scenario
     # entry), so no extra shape parameter is advertised here.
@@ -332,6 +339,10 @@ def test_view_as_real_copy_rejects_unsupported_dtypes(dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("out_dtype", _WRONG_OUT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input construction is unsupported",
+)
 def test_view_as_real_copy_out_rejects_wrong_dtype(out_dtype):
     inp = tu.make_input(torch.complex64, (4, 5), ["-1", "1"])
     out = torch.zeros(4, 5, 2, dtype=out_dtype, device=flag_gems.device)

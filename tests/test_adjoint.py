@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Keep non-complex cases active; Ascend complex input generation is unsupported.
+pytestmark = pytest.mark.usefixtures("skip_ascend_complex_input")
+
 # adjoint swaps the last two dimensions and toggles the conjugate bit for
 # complex inputs. The result shares storage with the input.
 _ADJOINT_DTYPES = (

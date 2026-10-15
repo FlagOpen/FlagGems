@@ -51,13 +51,17 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.is_conj
-def test_is_conj():
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES)
+def test_is_conj(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        pytest.skip("Ascend normal_ does not support complex input dtypes")
+
     bench = base.GenericBenchmark(
         op_name="is_conj",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_conj,
         gems_op=getattr(flag_gems, "is_conj", None),
-        dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()

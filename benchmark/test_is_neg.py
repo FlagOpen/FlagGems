@@ -56,13 +56,17 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.is_neg
-def test_is_neg():
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES + [torch.complex64])
+def test_is_neg(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        pytest.skip("Ascend normal_ does not support complex input dtypes")
+
     bench = base.GenericBenchmark(
         op_name="is_neg",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_neg,
         gems_op=getattr(flag_gems, "is_neg", None),
-        dtypes=consts.FLOAT_DTYPES + [torch.complex64],
+        dtypes=[dtype],
     )
     bench.run()

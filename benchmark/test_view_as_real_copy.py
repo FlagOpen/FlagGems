@@ -76,6 +76,9 @@ class ViewAsRealCopyBenchmark(OperatorBenchmark):
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("dtype", VIEW_AS_REAL_COPY_DTYPES)
 def test_view_as_real_copy_bench(dtype):
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend normal_ does not support complex input dtypes")
+
     bench = ViewAsRealCopyBenchmark(
         op_name="view_as_real_copy",
         case_fn=_case_fn,

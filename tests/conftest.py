@@ -48,6 +48,16 @@ QUICK_MODE = False
 
 device = flag_gems.device
 
+
+@pytest.fixture
+def skip_ascend_complex_input(request):
+    """Opt-in input capability guard for generated operator test modules."""
+    callspec = getattr(request.node, "callspec", None)
+    dtype = callspec.params.get("dtype") if callspec is not None else None
+    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
+        pytest.skip("Ascend complex input/reference support is incomplete")
+
+
 TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = "accuracy_result.json"
 

@@ -30,6 +30,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Keep non-complex cases active; Ascend complex input generation is unsupported.
+pytestmark = pytest.mark.usefixtures("skip_ascend_complex_input")
+
 _FP64_SUPPORTED = utils.fp64_is_supported
 
 # int8/uint8/FP8/bool carry the flag like any other dtype, so only the dtypes

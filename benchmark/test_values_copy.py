@@ -225,13 +225,17 @@ class ValuesCopyBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.values_copy
-def test_values_copy():
+@pytest.mark.parametrize("dtype", _BENCH_DTYPES)
+def test_values_copy(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        pytest.skip("Ascend normal_ does not support complex input dtypes")
+
     bench = ValuesCopyBenchmark(
         op_name="values_copy",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.values_copy,
         gems_op=getattr(flag_gems, "values_copy", None),
-        dtypes=_BENCH_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()
