@@ -125,6 +125,10 @@ def test_avg_pool3d_backward(
     divisor_override,
     dtype,
 ):
+    if flag_gems.vendor_name == "kunlunxin" and ceil_mode:
+        pytest.skip(
+            "torch_xmlir XPU native avg_pool3d_backward does not support ceil_mode"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
