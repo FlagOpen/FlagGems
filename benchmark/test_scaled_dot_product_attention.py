@@ -89,3 +89,46 @@ def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
         ],
     )
     bench.run()
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.parametrize("dropout_p", [0.0])
+@pytest.mark.parametrize("is_causal", [True, False])
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="Issue #6908: benchmark coverage added for kunlunxin; "
+    "other vendors pending their own validation",
+)
+def test_scaled_dot_product_attention_forward(dropout_p, is_causal):
+    def scaled_dot_product_attention_kwargs(shape, dtype, device):
+        query = torch.randn(shape, device=device, dtype=dtype)
+        key = torch.randn(shape, device=device, dtype=dtype)
+        value = torch.randn(shape, device=device, dtype=dtype)
+        yield query, key, value, None, dropout_p, is_causal
+
+    def sdpa_flash(
+        query, key, value, attn_mask=None, dropout_p=dropout_p, is_causal=is_causal
+    ):
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+
+        with sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION]):
+            torch.nn.functional.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+            )
+
+    bench = AttentionBenchmark(
+        op_name="scaled_dot_product_attention_forward",
+        input_fn=scaled_dot_product_attention_kwargs,
+        torch_op=sdpa_flash,
+        gems_op=flag_gems.scaled_dot_product_attention,
+        dtypes=[
+            torch.float16,
+            torch.bfloat16,
+        ],
+    )
+    bench.run()
