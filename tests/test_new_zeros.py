@@ -40,6 +40,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 gems_device = flag_gems.device
 
@@ -76,6 +77,16 @@ SOURCE_SHAPES = [(), (1,), (4, 5)]
 SPARSE_LAYOUTS = [torch.sparse_coo, torch.sparse_csr, torch.sparse_csc]
 
 
+def _ref_new_zeros(src, size, **kwargs):
+    """Native oracle, moved to the reference device in quick-cpu mode.
+
+    gems_assert_equal asserts the reference is already on CPU when the suite
+    runs with --ref=cpu, so the oracle must be built (or moved) there.
+    """
+    expected = torch.ops.aten.new_zeros.default(src, size, **kwargs)
+    return expected.to("cpu") if TO_CPU else expected
+
+
 def _assert_zero(result, expected_shape, expected_dtype):
     assert tuple(result.shape) == tuple(
         expected_shape
@@ -104,7 +115,7 @@ def _assert_zero(result, expected_shape, expected_dtype):
 def test_new_zeros(size, dtype):
     """Size/dtype grid: the result carries the requested shape and every bit is 0."""
     src = torch.empty(SOURCE_SHAPES[1], dtype=dtype, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, list(size))
+    expected = _ref_new_zeros(src, list(size))
 
     result = flag_gems.new_zeros(src, list(size))
 
@@ -117,7 +128,7 @@ def test_new_zeros(size, dtype):
 def test_new_zeros_inherits_metadata(size):
     """Without overrides the result inherits self's dtype/device/layout."""
     src = torch.empty((2, 3), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, list(size))
+    expected = _ref_new_zeros(src, list(size))
 
     result = flag_gems.new_zeros(src, list(size))
 
@@ -138,8 +149,10 @@ def test_new_zeros_source_is_not_read_or_mutated(source_shape):
 
     result = flag_gems.new_zeros(src, [2, 3])
 
-    utils.gems_assert_equal(result, torch.zeros(2, 3, device=gems_device))
-    utils.gems_assert_equal(src, before, equal_nan=True)
+    expected = torch.zeros(2, 3, device=gems_device)
+    utils.gems_assert_equal(result, expected.to("cpu") if TO_CPU else expected)
+    before_ref = before.to("cpu") if TO_CPU else before
+    utils.gems_assert_equal(src, before_ref, equal_nan=True)
 
 
 @pytest.mark.new_zeros
@@ -147,7 +160,7 @@ def test_new_zeros_source_is_not_read_or_mutated(source_shape):
 def test_new_zeros_dtype_override(dtype):
     """An explicit dtype overrides the inherited one; values stay zero."""
     src = torch.empty((2,), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, [4, 2], dtype=dtype)
+    expected = _ref_new_zeros(src, [4, 2], dtype=dtype)
 
     result = flag_gems.new_zeros(src, [4, 2], dtype=dtype)
 
@@ -161,7 +174,7 @@ def test_new_zeros_dtype_override(dtype):
 def test_new_zeros_explicit_device(size):
     """An explicit device override keeps the result zero-filled on that device."""
     src = torch.empty((2, 3), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, list(size), device=gems_device)
+    expected = _ref_new_zeros(src, list(size), device=gems_device)
 
     result = flag_gems.new_zeros(src, list(size), device=gems_device)
 
@@ -177,7 +190,7 @@ def test_new_zeros_sparse_layout(layout):
     src = torch.empty((2, 3), dtype=torch.float32, device=gems_device)
     size = [4, 5]
 
-    expected = torch.ops.aten.new_zeros.default(src, size, layout=layout)
+    expected = _ref_new_zeros(src, size, layout=layout)
     result = flag_gems.new_zeros(src, size, layout=layout)
 
     assert result.layout == layout
@@ -209,7 +222,7 @@ def test_new_zeros_sparse_layout(layout):
 def test_new_zeros_size_argument_forms(size):
     """torch.Size, list, tuple and 1-D integer tensor size forms all work."""
     src = torch.empty((2, 3), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, list(size))
+    expected = _ref_new_zeros(src, list(size))
 
     for size_arg in (torch.Size(size), list(size), tuple(size), torch.tensor(size)):
         result = flag_gems.new_zeros(src, size_arg)
@@ -222,7 +235,7 @@ def test_new_zeros_size_argument_forms(size):
 def test_new_zeros_bool_extent(extent):
     """A bool extent coerces to 0/1 exactly like the native schema."""
     src = torch.empty((2,), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, [extent, 2])
+    expected = _ref_new_zeros(src, [extent, 2])
 
     result = flag_gems.new_zeros(src, [extent, 2])
 
@@ -235,7 +248,7 @@ def test_new_zeros_bool_extent(extent):
 def test_new_zeros_out(size):
     """The out= overload returns and writes the caller's buffer."""
     src = torch.empty((2,), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, list(size))
+    expected = _ref_new_zeros(src, list(size))
 
     buf = torch.full(size, 7.0, dtype=torch.float32, device=gems_device)
     result = flag_gems.new_zeros(src, list(size), out=buf)
@@ -249,7 +262,7 @@ def test_new_zeros_out(size):
 def test_new_zeros_out_resizes_buffer():
     """A too-small out buffer is resized, matching the native out overload."""
     src = torch.empty((2,), dtype=torch.float32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, [3, 4])
+    expected = _ref_new_zeros(src, [3, 4])
 
     buf = torch.full((2,), 7.0, dtype=torch.float32, device=gems_device)
     result = flag_gems.new_zeros(src, [3, 4], out=buf)
@@ -271,8 +284,9 @@ def test_new_zeros_out_writes_through_strided_buffer():
     assert result is buf
     _assert_zero(result, (4, 3), torch.float32)
     # The unwritten odd columns keep their sentinel value.
+    expected_pad = torch.full((4, 3), 7.0, device=gems_device)
     utils.gems_assert_equal(
-        parent[:, 1::2], torch.full((4, 3), 7.0, device=gems_device)
+        parent[:, 1::2], expected_pad.to("cpu") if TO_CPU else expected_pad
     )
 
 
@@ -280,7 +294,7 @@ def test_new_zeros_out_writes_through_strided_buffer():
 def test_new_zeros_empty_source_still_supplies_defaults():
     """A zero-extent self contributes its dtype/device defaults."""
     src = torch.empty(0, dtype=torch.int32, device=gems_device)
-    expected = torch.ops.aten.new_zeros.default(src, [2, 3])
+    expected = _ref_new_zeros(src, [2, 3])
 
     result = flag_gems.new_zeros(src, [2, 3])
 
