@@ -246,7 +246,7 @@ def _ms_tle_init():
             _MS_TLE["stage2"][elt] = _mk()
         _MS_TLE["ok"] = True
     except Exception as _e:  # pragma: no cover - keep backend importable
-        logger.debug("masked_scatter tle.raw init failed: %r", _e)
+        logger.debug("GEMS_KUNLUNXIN MASKED_SCATTER tle.raw init failed: %r", _e)
         _MS_TLE["ok"] = False
     return _MS_TLE["ok"]
 
@@ -312,7 +312,7 @@ def _tle_ms_where(out, inp, mask, src, N):
             s2[(_MS_GRID,)](O, I, u8mask, S, tcnt, ctot, N, inp.element_size())
         return out
     except Exception as _e:  # pragma: no cover - never break correctness
-        logger.debug("masked_scatter tle path deferred: %r", _e)
+        logger.debug("GEMS_KUNLUNXIN MASKED_SCATTER tle path deferred: %r", _e)
         return None
 
 

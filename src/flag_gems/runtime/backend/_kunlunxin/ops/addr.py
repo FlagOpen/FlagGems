@@ -196,5 +196,5 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
                 msg in str(exc) for msg in _STACK_ERRORS
             ):
                 raise
-            logger.debug("addr: tile %d rejected (%s); retrying smaller", tile, exc)
+            logger.debug("GEMS_KUNLUNXIN ADDR: tile %d rejected (%s); retrying smaller", tile, exc)
             tile = max(_TILE_RETRY_FLOOR, tile // 2)
