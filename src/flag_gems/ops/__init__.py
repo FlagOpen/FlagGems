@@ -1176,6 +1176,7 @@ from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
 from flag_gems.ops.range import range
+from flag_gems.ops.ravel import run as ravel
 from flag_gems.ops.real import real, real_conjugate, real_device
 from flag_gems.ops.reciprocal import reciprocal, reciprocal_
 from flag_gems.ops.reflection_pad1d import reflection_pad1d, reflection_pad1d_out
@@ -2712,6 +2713,7 @@ __all__ = [
     "randn_like",
     "randperm",
     "range",
+    "ravel",
     "real",
     "real_conjugate",
     "real_device",
