@@ -3210,7 +3210,7 @@ ops:
   kind:
   - Sparse
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: col_indices_copy_out
   description: A variant of `col_indices_copy()` that writes the column indices
     copy into the `out` tensor.
@@ -3222,7 +3222,7 @@ ops:
   kind:
   - Sparse
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: column_stack
   description: 'Creates a new tensor by horizontally stacking the tensors in tensors.
     Equivalent to
