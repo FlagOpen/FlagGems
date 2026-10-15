@@ -242,3 +242,42 @@ def test_linalg_eigvalsh_autograd_input_is_detached():
     inp = _symmetric(4).requires_grad_(True)
     res = flag_gems.linalg_eigvalsh(inp)
     assert not res.requires_grad
+
+
+@pytest.mark.linalg_eigvalsh_out
+@pytest.mark.parametrize("uplo", ["L", "U"])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_linalg_eigvalsh_out(uplo, dtype):
+    """The out overload writes in place, returns ``out`` and matches ATen."""
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inp = _symmetric(5, batch=(2,), dtype=dtype)
+    ref_inp = utils.to_reference(inp, True)
+    ref_out = torch.empty(2, 5, dtype=ref_inp.dtype, device=ref_inp.device)
+    torch.ops.aten.linalg_eigvalsh.out(ref_inp, uplo, out=ref_out)
+
+    res_out = torch.empty(2, 5, dtype=dtype, device=DEVICE)
+    returned = flag_gems.ops.linalg_eigvalsh_out(inp, uplo, out=res_out)
+
+    assert returned.data_ptr() == res_out.data_ptr()
+    utils.gems_assert_close(res_out, ref_out.to(dtype), dtype, reduce_dim=5)
+
+
+@pytest.mark.linalg_eigvalsh_out
+def test_linalg_eigvalsh_out_resize():
+    """An empty ``out`` is resized to the eigenvalue shape."""
+    inp = _symmetric(6)
+    res_out = torch.empty(0, dtype=torch.float32, device=DEVICE)
+    flag_gems.ops.linalg_eigvalsh_out(inp, out=res_out)
+    assert res_out.shape == (6,)
+    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    utils.gems_assert_close(res_out, ref.to(torch.float32), torch.float32, reduce_dim=6)
+
+
+@pytest.mark.linalg_eigvalsh_out
+def test_linalg_eigvalsh_out_rejects_mismatched_dtype():
+    """Like ATen, an ``out`` of the wrong dtype is an error, not a silent cast."""
+    inp = _symmetric(4)
+    out = torch.empty(4, dtype=torch.int32, device=DEVICE)
+    with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
+        flag_gems.ops.linalg_eigvalsh_out(inp, out=out)

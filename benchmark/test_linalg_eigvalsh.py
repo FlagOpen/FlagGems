@@ -42,10 +42,15 @@ class LinalgEigvalshBenchmark(base.Benchmark):
         self.shapes = CASES
 
     def get_input_iter(self, dtype):
+        with_out = self.op_name == "linalg_eigvalsh_out"
         for case in self.shapes:
             batch_shape, n, uplo = case
             raw = torch.randn(*batch_shape, n, n, dtype=dtype, device=self.device)
-            yield raw + raw.transpose(-1, -2), {"UPLO": uplo}
+            if with_out:
+                out = torch.empty(*batch_shape, n, dtype=dtype, device=self.device)
+                yield raw + raw.transpose(-1, -2), {"UPLO": uplo, "out": out}
+            else:
+                yield raw + raw.transpose(-1, -2), {"UPLO": uplo}
 
 
 @pytest.mark.linalg_eigvalsh
@@ -60,4 +65,19 @@ def test_linalg_eigvalsh():
         ),
     )
     bench.set_gems(flag_gems.linalg_eigvalsh)
+    bench.run()
+
+
+@pytest.mark.linalg_eigvalsh_out
+def test_linalg_eigvalsh_out():
+    bench = LinalgEigvalshBenchmark(
+        op_name="linalg_eigvalsh_out",
+        torch_op=torch.ops.aten.linalg_eigvalsh.out,
+        dtypes=(
+            [torch.float32, torch.float64]
+            if flag_gems.runtime.device.support_fp64
+            else [torch.float32]
+        ),
+    )
+    bench.set_gems(flag_gems.linalg_eigvalsh_out)
     bench.run()

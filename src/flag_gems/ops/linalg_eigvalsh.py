@@ -212,4 +212,23 @@ def linalg_eigvalsh(self, UPLO="L"):
     return out.reshape(self.shape[:-2] + (n,))
 
 
-__all__ = ["linalg_eigvalsh"]
+def linalg_eigvalsh_out(self, UPLO="L", *, out):
+    """Out overload of ``linalg_eigvalsh``.
+
+    ``linalg_eigvalsh.out`` decomposes to ``_linalg_eigh`` rather than to the
+    default overload, so without this entry an ``out=`` call never reaches the
+    kernel above.  Like ATen, a mismatched ``out`` dtype is rejected instead of
+    being cast, and a wrongly-shaped ``out`` is resized.
+    """
+    result = linalg_eigvalsh(self, UPLO)
+    if out.dtype != result.dtype:
+        raise RuntimeError(
+            "Expected out tensor to have dtype %s, but got %s instead"
+            % (result.dtype, out.dtype)
+        )
+    out.resize_(result.shape)
+    out.copy_(result)
+    return out
+
+
+__all__ = ["linalg_eigvalsh", "linalg_eigvalsh_out"]
