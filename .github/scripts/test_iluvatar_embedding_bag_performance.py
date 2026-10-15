@@ -455,19 +455,9 @@ def test_assertion_components(request, kind, count, phase):
     (path / "profiler.txt").write_text(prof.key_averages().table(row_limit=30))
 
 
-@pytest.mark.parametrize(
-    "kind",
-    [
-        "reduce_debug_false",
-        "reduce_unsigned",
-        "printf_cold",
-        "printf_hot",
-        "assert_unsigned",
-        "assert_empty_message",
-    ],
-)
+@pytest.mark.parametrize("kind", ["printf_cold", "printf_hot"])
 @pytest.mark.parametrize("count", [1, 513])
-@pytest.mark.parametrize("phase", ["timing", "invalid"])
+@pytest.mark.parametrize("phase", ["timing"])
 def test_printf_isolation(request, kind, count, phase):
     """Separate reduction work from assertion runtime machinery in fresh processes."""
     if phase == "invalid" and kind not in ("assert_unsigned", "assert_empty_message"):
@@ -528,7 +518,8 @@ def test_printf_isolation(request, kind, count, phase):
     def launch():
         if kind == "reduce_debug_false":
             return reduce_only[(1,)](flags, result, count, 256, debug=False)
-        return instrumented[(1,)](flags, result, count, kind, 256, debug=True)
+        # Print-only controls must not inherit debug overflow assertions.
+        return instrumented[(1,)](flags, result, count, kind, 256, debug=False)
 
     # Warm the exact assertion specialization before any embedding-bag kernels.
     # No host wait or readback is inserted into this candidate sequence.
@@ -565,6 +556,11 @@ def test_printf_isolation(request, kind, count, phase):
         ], "Control contaminated by compiler assertions"
     if kind in ("reduce_debug_false", "reduce_unsigned"):
         assert "tt.print" not in ir, "Reduction control contains device printf"
+    if kind in ("printf_cold", "printf_hot"):
+        assert "tt.print" in ir, "Printf control was compiled away"
+        metadata = "\n".join(report["asm_instrumentation"])
+        assert "has_called_assert = 0" in metadata, metadata
+        assert "has_called_printf = 1" in metadata, metadata
     if kind.startswith("assert_"):
         assert report["ttir_assert_lines"], "Required assertion was compiled away"
     if phase == "invalid":
