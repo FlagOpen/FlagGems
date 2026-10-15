@@ -36,25 +36,34 @@ _LU_SMALL_MAX_MN = 65536
 _LU_BATCH_MAX_MN = 1024
 
 if _HAS_TLE:
-    _LU_SMALL_OBJ = os.path.join(os.path.dirname(_HERE), "payload", "obj", "lu_small.o")
+    try:
+        _LU_SMALL_OBJ = os.path.join(
+            os.path.dirname(_HERE), "payload", "obj", "lu_small.o"
+        )
 
-    @_tle.raw.dialect("xpu3", object=_LU_SMALL_OBJ, arch=3)
-    def lu_small_factor(lu, pivots, m, n, k): ...
+        @_tle.raw.dialect("xpu3", object=_LU_SMALL_OBJ, arch=3)
+        def lu_small_factor(lu, pivots, m, n, k): ...
 
-    @triton.jit(do_not_specialize=["m", "n", "k"])
-    def _lu_small_factor_kernel(LU, PIVOTS, m, n, k):
-        _tle.raw.call(lu_small_factor, (LU, PIVOTS, m, n, k))
+        @triton.jit(do_not_specialize=["m", "n", "k"])
+        def _lu_small_factor_kernel(LU, PIVOTS, m, n, k):
+            _tle.raw.call(lu_small_factor, (LU, PIVOTS, m, n, k))
 
-    _LU_SMALL_BATCHED_OBJ = os.path.join(
-        os.path.dirname(_HERE), "payload", "obj", "lu_small_batched.o"
-    )
+        _LU_SMALL_BATCHED_OBJ = os.path.join(
+            os.path.dirname(_HERE), "payload", "obj", "lu_small_batched.o"
+        )
 
-    @_tle.raw.dialect("xpu3", object=_LU_SMALL_BATCHED_OBJ, arch=3)
-    def lu_small_batched(lu, pivots, m, n, k, batch): ...
+        @_tle.raw.dialect("xpu3", object=_LU_SMALL_BATCHED_OBJ, arch=3)
+        def lu_small_batched(lu, pivots, m, n, k, batch): ...
 
-    @triton.jit(do_not_specialize=["m", "n", "k", "batch"])
-    def _lu_small_batched_kernel(LU, PIVOTS, m, n, k, batch):
-        _tle.raw.call(lu_small_batched, (LU, PIVOTS, m, n, k, batch))
+        @triton.jit(do_not_specialize=["m", "n", "k", "batch"])
+        def _lu_small_batched_kernel(LU, PIVOTS, m, n, k, batch):
+            _tle.raw.call(lu_small_batched, (LU, PIVOTS, m, n, k, batch))
+
+    except TypeError:
+        # Older flagtree builds ship a tle.raw.RawJITFunction that does not
+        # accept `object=`, so the payload cannot be registered; fall back to
+        # the plain pointer path instead of failing at import time.
+        _HAS_TLE = False
 
 
 @triton.jit
