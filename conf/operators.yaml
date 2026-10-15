@@ -8826,7 +8826,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: gru_data
   description: Gated recurrent unit (GRU) over packed-sequence data.
   for:
