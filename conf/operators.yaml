@@ -12102,7 +12102,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: lt
   description: Computes that `input` is less than `other` element-wise.
   for:
