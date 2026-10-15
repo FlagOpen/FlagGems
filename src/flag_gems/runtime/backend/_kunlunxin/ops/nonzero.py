@@ -63,9 +63,19 @@ except Exception:  # pragma: no cover - non-XPU triton
 
 _TLE_GRID = 8  # 8 clusters; GRID=16/24 silently drops data on this backend.
 _TLE_NW = 512  # host-chosen worker count, independent of core_num()
-_TLE_TILE_BYTES = 2048
-_TLE_OUT_BYTES = 2048
-
+# (element bytes, is_float) -> entry-symbol stem.  One `.xpu` per stem lives in
+# ../payload/src/ and the merged object ../payload/obj/nonzero.o holds every
+# entry symbol; `_tle_stub` / `_tle_count_stub` resolve them by name at runtime.
+# The table also fixes which (element size, floatness) pairs the payload covers.
+_TLE_SYM = {
+    (1, False): "1i",
+    (2, False): "2i",
+    (2, True): "2f",
+    (4, False): "4i",
+    (4, True): "4f",
+    (8, False): "8i",
+    (8, True): "8f",
+}
 # (element bytes, is_float) -> (C type, unsigned C type, nonzero bit mask)
 _TLE_CTYPE = {
     (1, False): ("char", "unsigned char", "0xFFu"),
@@ -77,139 +87,33 @@ _TLE_CTYPE = {
     (8, True): ("long", "unsigned long", "0x7FFFFFFFFFFFFFFFUL"),
 }
 
-_TLE_PAYLOAD = r"""
-#include "xpu/kernel/xtdk.h"
-#include "xpu/kernel/xtdk_simd.h"
-#define GRID %(grid)d
-#define NW   %(nw)d
-#define TB   %(tb)d
-#define OBR  %(obr)d
-#define NDIM %(ndim)d
-#define NZMASK %(mask)s
-extern "C" __device__ void %(name)s(_global_ptr_ long *out,
-                                    _global_ptr_ const %(ct)s *inp,
-                                    _global_ptr_ const int *prefix,
-                                    _global_ptr_ const long *meta) {
-  __simd__ long mt[16];
-  __simd__ int  pb[16];
-  __simd__ %(ct)s ib[TB];
-  __simd__ long ob[OBR * NDIM];
-  GM2LM(meta, mt, 16 * sizeof(long));
-  int n = (int)mt[0];
-  int ch = (int)mt[1];
-  int ncore = core_num();
-  for (int w = cluster_id() * ncore + core_id(); w < NW; w += GRID * ncore) {
-    int beg = w * ch;
-    if (beg >= n) continue;
-    int end = beg + ch;
-    if (end > n) end = n;
-    int wi = w & 15;
-    GM2LM(prefix + (w - wi), pb, 16 * sizeof(int));
-    int wbase = pb[wi];
-    int cnt = 0;
-#if NDIM == 1
-    int c0 = beg;
-#elif NDIM == 2
-    int s1 = (int)mt[4];
-    int c0 = beg / s1, c1 = beg - c0 * s1;
-#else
-    int sh[NDIM], cur[NDIM];
-    {
-      int t = beg;
-      for (int d = NDIM - 1; d >= 0; --d) {
-        sh[d] = (int)mt[3 + d];
-        cur[d] = t %% sh[d];
-        t /= sh[d];
-      }
-    }
-#endif
-    for (int b = beg; b < end; b += TB) {
-      int len = (end - b < TB) ? (end - b) : TB;
-      GM2LM(inp + b, ib, (unsigned long)len * sizeof(%(ct)s));
-      for (int j = 0; j < len; ++j) {
-        if ((%(ut)s)ib[j] & NZMASK) {
-          long *o = ob + cnt * NDIM;
-#if NDIM == 1
-          o[0] = (long)c0;
-#elif NDIM == 2
-          o[0] = (long)c0;
-          o[1] = (long)c1;
-#else
-          for (int d = 0; d < NDIM; ++d) o[d] = (long)cur[d];
-#endif
-          if (++cnt == OBR) {
-            LM2GM(ob, out + (long)wbase * NDIM,
-                  (unsigned long)OBR * NDIM * sizeof(long));
-            wbase += OBR;
-            cnt = 0;
-          }
-        }
-#if NDIM == 1
-        ++c0;
-#elif NDIM == 2
-        if (++c1 == s1) { c1 = 0; ++c0; }
-#else
-        for (int d = NDIM - 1; d >= 0; --d) {
-          if (++cur[d] < sh[d]) break;
-          cur[d] = 0;
-        }
-#endif
-      }
-    }
-    if (cnt) {
-      LM2GM(ob, out + (long)wbase * NDIM,
-            (unsigned long)cnt * NDIM * sizeof(long));
-    }
-  }
-  mfence();
-}
-"""
-
 _TLE_CACHE = {}
 
-# `_nz_count_kernel`'s tail mask is unreliable on this backend: for a partial
+# # `_nz_count_kernel`'s tail mask is unreliable on this backend: for a partial
 # last block the `(w != 0) & (cols < n)` predicate is *not* applied (measured
 # on (200,300) int16: partial[last] == 128 with only 96 valid lanes, i.e. the
 # full tile is counted, and OOB lanes read live heap data).  The count is
-# therefore produced by a `tle.raw` payload with exact C bounds instead.
-_TLE_COUNT_PAYLOAD = r"""
-#include "xpu/kernel/xtdk.h"
-#include "xpu/kernel/xtdk_simd.h"
-#define GRID %(grid)d
-#define NW   %(nw)d
-#define TB   %(tb)d
-#define NZMASK %(mask)s
-extern "C" __device__ void %(name)s(_global_ptr_ int *pcount,
-                                    _global_ptr_ const %(ct)s *inp,
-                                    _global_ptr_ const long *meta) {
-  __simd__ long mt[16];
-  __simd__ int cb[16];
-  __simd__ %(ct)s ib[TB];
-  GM2LM(meta, mt, 16 * sizeof(long));
-  int n = (int)mt[0];
-  int ch = (int)mt[1];
-  int ncore = core_num();
-  for (int t = 0; t < 16; ++t) cb[t] = 0;
-  for (int w = cluster_id() * ncore + core_id(); w < NW; w += GRID * ncore) {
-    int beg = w * ch;
-    int cnt = 0;
-    if (beg < n) {
-      int end = beg + ch;
-      if (end > n) end = n;
-      for (int b = beg; b < end; b += TB) {
-        int len = (end - b < TB) ? (end - b) : TB;
-        GM2LM(inp + b, ib, (unsigned long)len * sizeof(%(ct)s));
-        for (int j = 0; j < len; ++j) {
-          if ((%(ut)s)ib[j] & NZMASK) ++cnt;
-        }
-      }
-    }
-    cb[0] = cnt;
-    LM2GM(cb, pcount + w * 16, 16 * sizeof(int));
-  }
-  mfence();
-}
-"""
+# therefore produced by a `tle.raw` payload with exact C bounds instead
+# (payload/src/nz_cnt_*.xpu -> payload/obj/nonzero.o, entry `nz_cnt_<tag>`).
+def _tle_payload_obj():
+    """Absolute path of the packed, secrecy-hardened payload object.
+
+    The count and compaction entry symbols all live in this one merged object
+    (per-entry `.o` from docs/xpu3/how_to_pack_payload/pack_payload.py, joined
+    with `ld.lld -r`); in object= mode the loader resolves each stub by its
+    entry-symbol name, so one .o holding every symbol works like the old
+    per-kernel files.  Re-pack after editing any payload/src/*.xpu: the
+    compile-cache key is the .o content digest, so a stale .o silently keeps
+    the old code.
+    """
+    import os as _os
+
+    return _os.path.join(
+        _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+        "payload",
+        "obj",
+        "nonzero.o",
+    )
 
 
 @libentry()
@@ -230,24 +134,14 @@ def _tle_stub(key):
     if key in _TLE_CACHE:
         return _TLE_CACHE[key]
     esize, is_float, ndim = key
-    ct, ut, mask = _TLE_CTYPE[(esize, is_float)]
-    tb = max(64, _TLE_TILE_BYTES // esize)
-    obr = max(4, _TLE_OUT_BYTES // (8 * ndim))
-    name = "nz_pack_%d%s_d%d" % (esize, "f" if is_float else "i", ndim)
-    src = _TLE_PAYLOAD % dict(
-        grid=_TLE_GRID,
-        nw=_TLE_NW,
-        tb=tb,
-        obr=obr,
-        ndim=ndim,
-        mask=mask,
-        name=name,
-        ct=ct,
-        ut=ut,
-    )
-    ns = {"tle": _tle, "triton": triton, "SRC": src}
+    name = "nz_pack_%s_d%d" % (_TLE_SYM[(esize, is_float)], ndim)
+    # Stub name == entry symbol, stub signature == the C++ ABI.  In object=
+    # mode the merge-time signature check is skipped (the payload isn't in IR),
+    # so a mismatched stub fails at runtime, not at compile -- keep them in
+    # lockstep with the C++ in ../payload/src/.
+    ns = {"tle": _tle, "triton": triton, "_OBJ": _tle_payload_obj()}
     exec(
-        "@tle.raw.dialect('xpu3', source=SRC)\n"
+        "@tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
         "def %s(out, inp, prefix, meta):\n"
         "    ...\n" % name,
         ns,
@@ -268,15 +162,10 @@ def _tle_count_stub(key):
     if ck in _TLE_CACHE:
         return _TLE_CACHE[ck]
     esize, is_float = key
-    ct, ut, mask = _TLE_CTYPE[(esize, is_float)]
-    tb = max(64, _TLE_TILE_BYTES // esize)
-    name = "nz_cnt_%d%s" % (esize, "f" if is_float else "i")
-    src = _TLE_COUNT_PAYLOAD % dict(
-        grid=_TLE_GRID, nw=_TLE_NW, tb=tb, mask=mask, name=name, ct=ct, ut=ut
-    )
-    ns = {"tle": _tle, "triton": triton, "SRC": src}
+    name = "nz_cnt_%s" % _TLE_SYM[(esize, is_float)]
+    ns = {"tle": _tle, "triton": triton, "_OBJ": _tle_payload_obj()}
     exec(
-        "@tle.raw.dialect('xpu3', source=SRC)\n"
+        "@tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
         "def %s(pcount, inp, meta):\n"
         "    ...\n" % name,
         ns,
