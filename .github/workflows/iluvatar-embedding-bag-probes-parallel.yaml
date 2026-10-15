@@ -127,7 +127,7 @@ jobs:
           } 2>&1 | tee ../ix-results/setup.stdout.log
       # Accuracy and exception coverage passed on n23 in run 38542625945.
       # This phase investigates performance only; do not rerun those suites.
-      - name: Isolate IX assertion and reduction overhead
+      - name: Isolate IX printf and assertion runtime overhead
         id: performance
         timeout-minutes: 35
         working-directory: operator-source
@@ -135,7 +135,7 @@ jobs:
         run: |
           ulimit -c 0
           python3 -m pytest -c /dev/null -s -vv \
-            ../.github/scripts/test_iluvatar_embedding_bag_performance.py -k assertion_components \
+            ../.github/scripts/test_iluvatar_embedding_bag_performance.py -k printf_isolation \
             --durations=0 --junitxml=../ix-results/performance-probes.xml \
             2>&1 | tee ../ix-results/performance-probes.stdout.log
       - name: Preserve diagnostics even when assertions fail
