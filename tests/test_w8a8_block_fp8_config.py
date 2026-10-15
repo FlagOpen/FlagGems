@@ -70,3 +70,33 @@ def test_missing_block32_shape_uses_default(monkeypatch):
         == "generic"
     )
     get_w8a8_block_fp8_configs.cache_clear()
+
+
+def test_sm90_full_decode_matrix_is_finite_and_preserves_baseline():
+    from flag_gems.ops._w8a8_block_fp8_configs import (
+        BLOCK_FP8_SM90_ABI,
+        _BASE_CONFIGS,
+        _H100_MIDRANGE_FP8_CONFIGS,
+    )
+
+    assert BLOCK_FP8_SM90_ABI == 1
+    assert len(_H100_MIDRANGE_FP8_CONFIGS) == 162
+    for (m, n, k), (baseline, candidate) in _H100_MIDRANGE_FP8_CONFIGS.items():
+        native = _BASE_CONFIGS.get((n, k))
+        expected = (
+            native[min(native, key=lambda row: abs(row - m))]
+            if native
+            else dict(
+                BLOCK_SIZE_M=64,
+                BLOCK_SIZE_N=32,
+                BLOCK_SIZE_K=32,
+                GROUP_SIZE_M=32,
+                num_warps=4,
+                num_stages=3,
+            )
+        )
+        assert baseline == expected
+        assert candidate["BLOCK_SIZE_K"] == 32
+        split = candidate.get("SPLIT_K", 1)
+        assert split > 0 and split & (split - 1) == 0
+        assert k % 32 == 0 and m > 0 and n > 0

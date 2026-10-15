@@ -18,12 +18,11 @@ import math
 import os
 from typing import Any
 
+import flag_gems
 import torch
 import triton
 import triton.language as tl
 import yaml
-
-import flag_gems
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +243,8 @@ def w8a8_block_fp8_matmul(
     Bs: torch.Tensor,
     block_size: list[int],
     output_dtype: torch.dtype = torch.bfloat16,
+    *,
+    tuned: bool = True,
 ) -> torch.Tensor:
     assert len(block_size) == 2
     block_n, block_k = block_size[0], block_size[1]
@@ -263,6 +264,25 @@ def w8a8_block_fp8_matmul(
     N, K = B.shape
     assert triton.cdiv(N, block_n) == Bs.shape[0]
     assert triton.cdiv(K, block_k) == Bs.shape[1]
+
+    # Exact SM90 schedules use the same public matrix/numeric-scale API.
+    # All other devices, dtypes, group sizes and shapes keep the prior path.
+    if (
+        A.is_cuda
+        and A.ndim == 2
+        and (block_n, block_k) == (32, 32)
+        and A.dtype == B.dtype == torch.float8_e4m3fn
+        and As.dtype == Bs.dtype == torch.float32
+        and B.is_contiguous()
+        and output_dtype in (torch.bfloat16, torch.float32)
+        and torch.cuda.get_device_capability(A.device) == (9, 0)
+    ):
+        from ._w8a8_block_fp8_configs import _H100_MIDRANGE_FP8_CONFIGS
+
+        if (M, N, K) in _H100_MIDRANGE_FP8_CONFIGS:
+            from ._w8a8_block_fp8_sm90 import block_fp8_matmul_sm90
+
+            return block_fp8_matmul_sm90(A, B, As, Bs, output_dtype, tuned=tuned)
 
     C_shape = A.shape[:-1] + (N,)
     C = A.new_empty(C_shape, dtype=output_dtype)
