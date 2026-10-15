@@ -125,8 +125,8 @@ def _ms_tle_init():
 
             def _mk(callee=callee):
                 @_triton.jit
-                def _k(O, I, M, S, T, C, N, ELT):
-                    _tle.raw.call(callee, (O, I, M, S, T, C, N, ELT))
+                def _k(OUT, INP, M, S, T, C, N, ELT):
+                    _tle.raw.call(callee, (OUT, INP, M, S, T, C, N, ELT))
 
                 return _k
 
@@ -191,12 +191,12 @@ def _tle_ms_where(out, inp, mask, src, N):
         with torch_device_fn.device(inp.device):
             _MS_TLE["stage1"][(_MS_GRID,)](tcnt, ctot, u8mask, N)
             if elt == "int":
-                O, I, S = out, inp, src
+                OUT, INP, S = out, inp, src
             else:
-                O = out.view(torch.int16)
-                I = inp.view(torch.int16)
+                OUT = out.view(torch.int16)
+                INP = inp.view(torch.int16)
                 S = src.view(torch.int16)
-            s2[(_MS_GRID,)](O, I, u8mask, S, tcnt, ctot, N, inp.element_size())
+            s2[(_MS_GRID,)](OUT, INP, u8mask, S, tcnt, ctot, N, inp.element_size())
         return out
     except Exception as _e:  # pragma: no cover - never break correctness
         logger.debug("GEMS_KUNLUNXIN MASKED_SCATTER tle path deferred: %r", _e)
