@@ -40,25 +40,73 @@ try:
 
     @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
     def bn_bwd_f32(
-        grad, inp, mean_f32, invstd_f32, weight, dx, dw, db,
-        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+        grad,
+        inp,
+        mean_f32,
+        invstd_f32,
+        weight,
+        dx,
+        dw,
+        db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
     ): ...
 
     @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
     def bn_bwd_f16(
-        grad, inp, mean_f32, invstd_f32, weight, dx, dw, db,
-        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+        grad,
+        inp,
+        mean_f32,
+        invstd_f32,
+        weight,
+        dx,
+        dw,
+        db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
     ): ...
 
     @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
     def bn_bwd_bf16(
-        grad, inp, mean_f32, invstd_f32, weight, dx, dw, db,
-        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+        grad,
+        inp,
+        mean_f32,
+        invstd_f32,
+        weight,
+        dx,
+        dw,
+        db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
     ): ...
 
     _BN_RAW_DNS = [
-        "batch", "feat", "spatial", "count",
-        "has_weight", "need_ig", "need_wg", "need_bg",
+        "batch",
+        "feat",
+        "spatial",
+        "count",
+        "has_weight",
+        "need_ig",
+        "need_wg",
+        "need_bg",
     ]
     # Flat replay binds one CompiledKernel and replays it on freshly-allocated
     # pointers whose alignment class varies call to call. Without this the bound
@@ -67,37 +115,133 @@ try:
     # flat fast path. Nothing in the payload reads pointer alignment.
     _BN_RAW_DNA = ["Grad", "Inp", "Mean", "Invstd", "Weight", "Dx", "Dw", "Db"]
 
-    @triton.jit(do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA)
+    @triton.jit(
+        do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA
+    )
     def _bn_bwd_raw_kernel_f32(
-        Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
-        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+        Grad,
+        Inp,
+        Mean,
+        Invstd,
+        Weight,
+        Dx,
+        Dw,
+        Db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
     ):
         _tle.raw.call(
             bn_bwd_f32,
-            (Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
-             batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg),
+            (
+                Grad,
+                Inp,
+                Mean,
+                Invstd,
+                Weight,
+                Dx,
+                Dw,
+                Db,
+                batch,
+                feat,
+                spatial,
+                count,
+                has_weight,
+                need_ig,
+                need_wg,
+                need_bg,
+            ),
         )
 
-    @triton.jit(do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA)
+    @triton.jit(
+        do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA
+    )
     def _bn_bwd_raw_kernel_f16(
-        Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
-        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+        Grad,
+        Inp,
+        Mean,
+        Invstd,
+        Weight,
+        Dx,
+        Dw,
+        Db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
     ):
         _tle.raw.call(
             bn_bwd_f16,
-            (Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
-             batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg),
+            (
+                Grad,
+                Inp,
+                Mean,
+                Invstd,
+                Weight,
+                Dx,
+                Dw,
+                Db,
+                batch,
+                feat,
+                spatial,
+                count,
+                has_weight,
+                need_ig,
+                need_wg,
+                need_bg,
+            ),
         )
 
-    @triton.jit(do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA)
+    @triton.jit(
+        do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA
+    )
     def _bn_bwd_raw_kernel_bf16(
-        Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
-        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+        Grad,
+        Inp,
+        Mean,
+        Invstd,
+        Weight,
+        Dx,
+        Dw,
+        Db,
+        batch,
+        feat,
+        spatial,
+        count,
+        has_weight,
+        need_ig,
+        need_wg,
+        need_bg,
     ):
         _tle.raw.call(
             bn_bwd_bf16,
-            (Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
-             batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg),
+            (
+                Grad,
+                Inp,
+                Mean,
+                Invstd,
+                Weight,
+                Dx,
+                Dw,
+                Db,
+                batch,
+                feat,
+                spatial,
+                count,
+                has_weight,
+                need_ig,
+                need_wg,
+                need_bg,
+            ),
         )
 
     _BN_RAW_KERNELS = {
@@ -123,7 +267,6 @@ def _flat_launchers():
     if _BN_FLAT is _BN_FLAT_MISS:
         _BN_FLAT = getattr(driver.active, "flat_launchers", None)
     return _BN_FLAT
-
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:

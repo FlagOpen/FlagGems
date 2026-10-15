@@ -115,15 +115,21 @@ try:
     _LN_DXWB_DNS = ["M", "N", "wb_cols"]
     _LN_DXWB_DNA = ["Dy", "X", "W", "Mean", "Rstd", "Dx", "Dw", "Db"]
 
-    @triton.jit(do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA)
+    @triton.jit(
+        do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA
+    )
     def _ln_dxwb_raw_kernel_f32(Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols):
         _tle.raw.call(ln_dxwb_f32, (Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols))
 
-    @triton.jit(do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA)
+    @triton.jit(
+        do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA
+    )
     def _ln_dxwb_raw_kernel_f16(Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols):
         _tle.raw.call(ln_dxwb_f16, (Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols))
 
-    @triton.jit(do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA)
+    @triton.jit(
+        do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA
+    )
     def _ln_dxwb_raw_kernel_bf16(Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols):
         _tle.raw.call(ln_dxwb_bf16, (Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols))
 
@@ -962,7 +968,9 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     return y, mean, rstd
 
 
-def _ln_dx_triton(grad_out, input, weight, mean, rstd, in_grad, M, N, br, bc, need_mask):
+def _ln_dx_triton(
+    grad_out, input, weight, mean, rstd, in_grad, M, N, br, bc, need_mask
+):
     """Original triton dx path: dx_row (grid==M, mask-free pow2 tile) for small M,
     else the 2D-tile kernel. Fallback for shapes the SIMD payload doesn't cover."""
     import builtins
@@ -993,6 +1001,7 @@ def _ln_dx_triton(grad_out, input, weight, mean, rstd, in_grad, M, N, br, bc, ne
                 NEED_MASK=False,
                 isCloseUnrollControl=True,
             )
+
         with torch_device_fn.device(input.device):
             if has_w:
                 key = (input.dtype, N, tile_n, grid[0])
@@ -1087,13 +1096,19 @@ def layer_norm_backward(
     # wave (M+wb_blocks <= 12) or N is large enough that the SIMD dx beats triton
     # anyway (>=4096). At small N + large M (2 waves, tiny per-item work) the
     # two-launch path is faster, so exclude that corner.
-    _dxwb_blocks = (N + _LN_DXWB_WB_COLS - 1) // _LN_DXWB_WB_COLS
+    _dxwb_blocks = (
+        (N + _LN_DXWB_WB_COLS - 1) // _LN_DXWB_WB_COLS if _HAS_LN_DX_RAW else 0
+    )
     if (
-        output_mask[0] and output_mask[1] and output_mask[2]
+        output_mask[0]
+        and output_mask[1]
+        and output_mask[2]
         and _HAS_LN_DX_RAW
         and input.dtype in _LN_DXWB_RAW_KERNELS
-        and weight is not None and bias is not None
-        and mean.dtype == torch.float32 and rstd.dtype == torch.float32
+        and weight is not None
+        and bias is not None
+        and mean.dtype == torch.float32
+        and rstd.dtype == torch.float32
         and M <= _DX_ROW_M_MAX
         and _LN_DXWB_MIN_N <= N <= _LN_BWD_N_MAX
         and (M + _dxwb_blocks <= 12 or N >= 4096)
@@ -1113,16 +1128,33 @@ def layer_norm_backward(
 
         def _dxwb_compile():
             return raw_kernel[grid](
-                grad_out, input, weight, mean, rstd, in_grad, weight_grad,
-                bias_grad, M, N, _LN_DXWB_WB_COLS,
+                grad_out,
+                input,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                weight_grad,
+                bias_grad,
+                M,
+                N,
+                _LN_DXWB_WB_COLS,
             )
+
         with torch_device_fn.device(input.device):
             key = (input.dtype, M, N)
             operands = (
-                grad_out.data_ptr(), input.data_ptr(), weight.data_ptr(),
-                mean.data_ptr(), rstd.data_ptr(), in_grad.data_ptr(),
-                weight_grad.data_ptr(), bias_grad.data_ptr(),
-                M, N, _LN_DXWB_WB_COLS,
+                grad_out.data_ptr(),
+                input.data_ptr(),
+                weight.data_ptr(),
+                mean.data_ptr(),
+                rstd.data_ptr(),
+                in_grad.data_ptr(),
+                weight_grad.data_ptr(),
+                bias_grad.data_ptr(),
+                M,
+                N,
+                _LN_DXWB_WB_COLS,
             )
             _flat_call(raw_kernel, grid, key, _dxwb_compile, operands)
         return in_grad, weight_grad, bias_grad
@@ -1131,7 +1163,6 @@ def layer_norm_backward(
         in_grad = torch.empty_strided(
             input.size(), input.stride(), dtype=input.dtype, device=input.device
         )
-        import builtins
 
         # SIMD dx (float32x16 tle.raw payload): one launch, grid == M. Only when
         # stats are fp32 (the kernel reads mean/rstd as float*) and dtype is
@@ -1165,6 +1196,7 @@ def layer_norm_backward(
                     N,
                     1,
                 )
+
             with torch_device_fn.device(input.device):
                 key = (input.dtype, M, N)
                 operands = (
@@ -1181,7 +1213,16 @@ def layer_norm_backward(
                 _flat_call(raw_kernel, grid, key, _simd_compile, operands)
         else:
             _ln_dx_triton(
-                grad_out, input, weight, mean, rstd, in_grad, M, N, br, bc,
+                grad_out,
+                input,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                M,
+                N,
+                br,
+                bc,
                 need_mask,
             )
     else:
@@ -1231,6 +1272,7 @@ def layer_norm_backward(
                 DIRECT=True,
                 isCloseUnrollControl=True,
             )
+
         with torch_device_fn.device(input.device):
             if weight_grad is not None and bias_grad is not None:
                 key = (input.dtype, wb_c, bm, wb_need_tail, wb_grid[0])
