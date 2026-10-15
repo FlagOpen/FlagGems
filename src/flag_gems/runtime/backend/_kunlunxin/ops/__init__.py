@@ -27,6 +27,27 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_binary_scalar import (  # noqa: F401
+    _foreach_add__ScalarList,
+    _foreach_clamp_max__Scalar,
+    _foreach_clamp_max__ScalarList,
+    _foreach_clamp_max_Scalar,
+    _foreach_clamp_max_ScalarList,
+    _foreach_clamp_min__Scalar,
+    _foreach_clamp_min__ScalarList,
+    _foreach_clamp_min_Scalar,
+    _foreach_clamp_min_ScalarList,
+    _foreach_maximum__Scalar,
+    _foreach_maximum__ScalarList,
+    _foreach_maximum_Scalar,
+    _foreach_maximum_ScalarList,
+    _foreach_minimum__Scalar,
+    _foreach_minimum__ScalarList,
+    _foreach_minimum_Scalar,
+    _foreach_minimum_ScalarList,
+    _foreach_mul__Scalar,
+    _foreach_sub__Scalar,
+)
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
