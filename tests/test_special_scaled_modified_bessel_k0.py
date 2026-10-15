@@ -32,12 +32,13 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # ---------------------------------------------------------------------------
 # Shared value-range / shape helpers (mirrors the operator-test spec
 # conventions; QUICK_MODE selects the reduced sets via pytest --quick).
 # ---------------------------------------------------------------------------
-QUICK_MODE = False
+QUICK_MODE = utils.QUICK_MODE
 
 
 def selected_cases(cases, *, quick=()):
@@ -157,6 +158,11 @@ def to_reference(inp, upcast=False):
         )
         if inp.is_conj():
             reference = reference.conj()
+    # In quick-cpu mode the reference runs on CPU and gems_assert_close
+    # asserts the reference is already there. .to() preserves size, stride
+    # and storage offset, so the view metadata survives the move.
+    if TO_CPU:
+        reference = reference.to("cpu")
     reference.requires_grad_(inp.requires_grad)
     return reference
 
