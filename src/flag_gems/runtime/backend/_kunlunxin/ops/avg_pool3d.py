@@ -107,9 +107,7 @@ def _avg_pool3d_kernel(
                 safe_d = tl.minimum(tl.maximum(input_d, 0), D - 1)
                 safe_h = tl.minimum(tl.maximum(input_h, 0), H - 1)
                 safe_w = tl.minimum(tl.maximum(input_w, 0), W - 1)
-                input_offset = (
-                    (channel_batch * D + safe_d) * H + safe_h
-                ) * W + safe_w
+                input_offset = ((channel_batch * D + safe_d) * H + safe_h) * W + safe_w
                 value = tl.load(input_ptr + input_offset).to(tl.float32)
                 accumulator += tl.where(in_bounds, value, 0.0)
                 valid_count += tl.where(in_bounds, 1, 0)
