@@ -11467,7 +11467,7 @@ ops:
   kind:
   - LinearAlg
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: linalg_vander
   description: Computes the Vandermonde matrix of a given vector.
   for:
