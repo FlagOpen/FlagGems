@@ -261,6 +261,7 @@ upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 _linalg_eigh: test_linalg_eigh
 _flash_attention_forward: test_flash_attention
 
+cudnn_batch_norm_out: test_cudnn_batch_norm
 fused_adamw_: test__fused_adamw_
 fused_adamw__tensor_lr: test__fused_adamw_
 
