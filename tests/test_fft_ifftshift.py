@@ -77,10 +77,13 @@ def test_fft_ifftshift_scalar(dtype):
     # aten raises here ("`shifts` required" / "tensor has no dimensions"), so
     # there is no reference to compare against: assert the clone semantics.
     res_inp = torch.randn((), dtype=dtype, device=flag_gems.device)
+    # The comparison value must go through to_reference: under --ref=cpu the
+    # reference side has to live on the CPU, and res_inp is still on device.
+    ref_inp = utils.to_reference(res_inp)
 
     res_out = flag_gems.fft_ifftshift(res_inp)
 
     assert res_out.shape == ()
     assert res_out.dtype == dtype
     assert res_out is not res_inp
-    utils.gems_assert_close(res_out, res_inp, dtype)
+    utils.gems_assert_close(res_out, ref_inp, dtype)
