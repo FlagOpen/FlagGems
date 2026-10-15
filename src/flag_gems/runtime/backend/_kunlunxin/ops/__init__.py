@@ -304,6 +304,10 @@ from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
+from .hardshrink_backward import (  # noqa: F401
+    hardshrink_backward,
+    hardshrink_backward_grad_input,
+)
 from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
@@ -565,6 +569,7 @@ from .sgn import sgn, sgn_out
 from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .sign import sign, sign_out
+from .sign_ import sign_  # noqa: F401
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
@@ -1016,6 +1021,8 @@ __all__ = [
     "gt_tensor_",
     "hadamard_transform",
     "hardshrink",
+    "hardshrink_backward",
+    "hardshrink_backward_grad_input",
     "hardshrink_out",
     "hardsigmoid",
     "hardsigmoid_",
@@ -1341,6 +1348,7 @@ __all__ = [
     "sigmoid_",
     "sigmoid_backward",
     "sign",
+    "sign_",
     "sign_out",
     "signbit",
     "signbit_out",
