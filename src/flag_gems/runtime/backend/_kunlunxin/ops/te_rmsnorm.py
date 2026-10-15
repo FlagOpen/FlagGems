@@ -156,6 +156,7 @@ def _te_rmsnorm_fwd_flat_kernel(
     INV_RMS,
     X,
     W,
+    M,
     eps: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -163,16 +164,18 @@ def _te_rmsnorm_fwd_flat_kernel(
 
     The per-row kernel would launch one (tiny) program per element, which is
     launch-bound for e.g. [10000, 1]; a flat BLOCK-lane kernel amortizes the
-    launch cost the same way rms_norm_flat_kernel does.
+    launch cost the same way rms_norm_flat_kernel does.  Bound-masked so the
+    last tile does not read/write past the end when M % BLOCK != 0.
     """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
-    x = tl.load(X + offs).to(tl.float32)
+    mask = offs < M
+    x = tl.load(X + offs, mask=mask, other=0.0).to(tl.float32)
     rrms = 1.0 / tl.sqrt(x * x + eps)
     w = tl.load(W)
     y = (x * rrms).to(Y.dtype.element_ty) * w
-    tl.store(Y + offs, y)
-    tl.store(INV_RMS + offs, rrms)
+    tl.store(Y + offs, y, mask=mask)
+    tl.store(INV_RMS + offs, rrms, mask=mask)
 
 
 @triton.jit
@@ -270,7 +273,7 @@ def te_rmsnorm_fwd(
     with torch_device_fn.device(x.device):
         if N == 1:
             _te_rmsnorm_fwd_flat_kernel[(triton.cdiv(M, 4096),)](
-                y, rsigma, x, w, eps, 4096
+                y, rsigma, x, w, M, eps, 4096
             )
         else:
             tile_m = _fwd_tile_m(N, M)
