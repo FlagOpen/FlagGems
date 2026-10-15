@@ -31,8 +31,11 @@ container_volumes:
   - /mnt/data1:/data
 
 # Container options for this backends
+# NOTE: do not add --network=host here. GitHub Actions always attaches job
+# containers to its own user-defined network, and Docker rejects combining a
+# user-defined network with host mode ("cannot attach both user-defined and
+# non-user-defined network-modes").
 container_options: >-
-  --network=host
   --device=/dev/alixpu
   --device=/dev/alixpu_ctl
   --device=/dev/alixpu_ppu0
