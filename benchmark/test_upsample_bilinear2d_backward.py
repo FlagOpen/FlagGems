@@ -67,39 +67,41 @@ CASES = [
 
 
 class UpsampleBilinear2dBackwardBenchmark(base.Benchmark):
-    def __init__(self, case, align_corners, out_variant, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.case = case
-        self.align_corners = align_corners
-        self.out_variant = out_variant
+    out_variant = False
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = CASES
 
     def get_input_iter(self, dtype):
-        _, input_size, output_size, sh, sw, layout = self.case
-        n, c, ih, iw = input_size
-        oh, ow = output_size
-        grad = torch.randn(
-            (n, c, oh, ow * 2 if layout == "strided" else ow),
-            device=self.device,
-            dtype=dtype,
-        )
-        if layout == "strided":
-            grad = grad[..., ::2]
-        if layout == "channels_last":
-            grad = grad.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
-        args = (grad, output_size, input_size, self.align_corners, sh, sw)
-        if self.out_variant:
-            output = torch.empty(
-                (n, c, ih, iw * 2 if layout == "strided" else iw),
-                device=self.device,
-                dtype=dtype,
-            )
-            if layout == "strided":
-                output = output[..., ::2]
-            if layout == "channels_last":
-                output = output.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
-            yield (*args, {"grad_input": output})
-        else:
-            yield args
+        for _, input_size, output_size, sh, sw, layout in self.shapes:
+            for align_corners in (False, True):
+                n, c, ih, iw = input_size
+                oh, ow = output_size
+                grad = torch.randn(
+                    (n, c, oh, ow * 2 if layout == "strided" else ow),
+                    device=self.device,
+                    dtype=dtype,
+                )
+                if layout == "strided":
+                    grad = grad[..., ::2]
+                if layout == "channels_last":
+                    grad = grad.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
+                args = (grad, output_size, input_size, align_corners, sh, sw)
+                if self.out_variant:
+                    output = torch.empty(
+                        (n, c, ih, iw * 2 if layout == "strided" else iw),
+                        device=self.device,
+                        dtype=dtype,
+                    )
+                    if layout == "strided":
+                        output = output[..., ::2]
+                    if layout == "channels_last":
+                        output = (
+                            output.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
+                        )
+                    yield (*args, {"grad_input": output})
+                else:
+                    yield args
 
 
 @pytest.mark.upsample_bilinear2d_backward
@@ -108,13 +110,8 @@ class UpsampleBilinear2dBackwardBenchmark(base.Benchmark):
     reason="CANN 8.5.0 is accuracy-only: benchmark execution has not been validated",
 )
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("align_corners", [False, True])
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case[0])
-def test_upsample_bilinear2d_backward(case, align_corners, dtype):
+def test_upsample_bilinear2d_backward(dtype):
     bench = UpsampleBilinear2dBackwardBenchmark(
-        case,
-        align_corners,
-        False,
         op_name="upsample_bilinear2d_backward",
         torch_op=torch.ops.aten.upsample_bilinear2d_backward.default,
         gems_op=flag_gems.ops.upsample_bilinear2d_backward,
@@ -130,16 +127,12 @@ def test_upsample_bilinear2d_backward(case, align_corners, dtype):
     reason="CANN 8.5.0 is accuracy-only: benchmark execution has not been validated",
 )
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("align_corners", [False, True])
-@pytest.mark.parametrize("case", CASES, ids=lambda case: case[0])
-def test_upsample_bilinear2d_backward_grad_input(case, align_corners, dtype):
+def test_upsample_bilinear2d_backward_grad_input(dtype):
     bench = UpsampleBilinear2dBackwardBenchmark(
-        case,
-        align_corners,
-        True,
         op_name="upsample_bilinear2d_backward.grad_input",
         torch_op=torch.ops.aten.upsample_bilinear2d_backward.grad_input,
         gems_op=flag_gems.ops.upsample_bilinear2d_backward_grad_input,
         dtypes=[dtype],
+        out_variant=True,
     )
     bench.run()

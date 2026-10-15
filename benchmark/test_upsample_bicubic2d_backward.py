@@ -82,67 +82,60 @@ CASES = [
 
 
 class UpsampleBicubic2dBackwardBenchmark(base.Benchmark):
-    case = None
-    align_corners = False
     out_variant = False
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [self.case]
+        self.shapes = CASES
 
     def get_input_iter(self, cur_dtype):
-        _, shape, output_size, sh, sw, layout = self.case
-        n, c = shape[:2]
-        oh, ow = output_size
-        if layout == "strided":
-            grad_output = torch.randn(
-                (n, c, oh, ow * 2), device=self.device, dtype=cur_dtype
-            )[..., ::2]
-        else:
-            grad_output = torch.randn(
-                (n, c, oh, ow), device=self.device, dtype=cur_dtype
-            )
-        args = (grad_output, output_size, shape, self.align_corners, sh, sw)
-        if self.out_variant:
-            if layout == "strided":
-                out = torch.empty(
-                    (*shape[:-1], shape[-1] * 2), device=self.device, dtype=cur_dtype
-                )[..., ::2]
-            else:
-                out = torch.empty(shape, device=self.device, dtype=cur_dtype)
-            yield (*args, {"grad_input": out})
-        else:
-            yield args
+        for _, shape, output_size, sh, sw, layout in self.shapes:
+            for align_corners in (False, True):
+                n, c = shape[:2]
+                oh, ow = output_size
+                if layout == "strided":
+                    grad_output = torch.randn(
+                        (n, c, oh, ow * 2), device=self.device, dtype=cur_dtype
+                    )[..., ::2]
+                else:
+                    grad_output = torch.randn(
+                        (n, c, oh, ow), device=self.device, dtype=cur_dtype
+                    )
+                args = (grad_output, output_size, shape, align_corners, sh, sw)
+                if self.out_variant:
+                    if layout == "strided":
+                        out = torch.empty(
+                            (*shape[:-1], shape[-1] * 2),
+                            device=self.device,
+                            dtype=cur_dtype,
+                        )[..., ::2]
+                    else:
+                        out = torch.empty(shape, device=self.device, dtype=cur_dtype)
+                    yield (*args, {"grad_input": out})
+                else:
+                    yield args
 
 
 @pytest.mark.upsample_bicubic2d_backward
-@pytest.mark.parametrize("case", CASES, ids=[case[0] for case in CASES])
-@pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("dtype", DTYPES, ids=["f32", "f64", "f16", "b16"])
-def test_upsample_bicubic2d_backward(case, align_corners, dtype):
+def test_upsample_bicubic2d_backward(dtype):
     bench = UpsampleBicubic2dBackwardBenchmark(
         op_name="upsample_bicubic2d_backward",
         torch_op=torch.ops.aten.upsample_bicubic2d_backward.default,
         gems_op=flag_gems.ops.upsample_bicubic2d_backward,
         dtypes=[dtype],
-        case=case,
-        align_corners=align_corners,
     )
     bench.run()
 
 
 @pytest.mark.upsample_bicubic2d_backward
-@pytest.mark.parametrize("case", CASES, ids=[case[0] for case in CASES])
-@pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize("dtype", DTYPES, ids=["f32", "f64", "f16", "b16"])
 @pytest.mark.upsample_bicubic2d_backward_grad_input
-def test_upsample_bicubic2d_backward_grad_input(case, align_corners, dtype):
+def test_upsample_bicubic2d_backward_grad_input(dtype):
     bench = UpsampleBicubic2dBackwardBenchmark(
         op_name="upsample_bicubic2d_backward.grad_input",
         torch_op=torch.ops.aten.upsample_bicubic2d_backward.grad_input,
         gems_op=flag_gems.ops.upsample_bicubic2d_backward_grad_input,
         dtypes=[dtype],
-        case=case,
-        align_corners=align_corners,
         out_variant=True,
     )
     bench.run()
