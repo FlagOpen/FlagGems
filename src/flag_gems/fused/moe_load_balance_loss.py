@@ -93,10 +93,9 @@ def _topk_count_kernel(
         # only portable elementwise/reduction operations and also reduces
         # global atomics from one per valid token/rank to one per expert/program.
         expert_histogram += tl.sum(
-            (
-                valid_tokens[:, None]
-                & (selected[:, None] == expert_offsets[None, :])
-            ).to(tl.float32),
+            (valid_tokens[:, None] & (selected[:, None] == expert_offsets[None, :])).to(
+                tl.float32
+            ),
             axis=0,
         )
         logits = tl.where(
