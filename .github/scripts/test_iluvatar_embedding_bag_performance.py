@@ -654,3 +654,144 @@ def test_printf_isolation(request, kind, count, phase):
         torch.cuda.synchronize()
     prof.export_chrome_trace(str(path / "trace.json"))
     (path / "profiler.txt").write_text(prof.key_averages().table(row_limit=30))
+
+
+@pytest.mark.parametrize("count", [1, 513])
+@pytest.mark.parametrize("phase", ["timing", "invalid"])
+def test_sdk_direct(request, count, phase):
+    """Separate reduction work from assertion runtime machinery in fresh processes."""
+    if _isolated(request):
+        return
+    import importlib
+    import json
+    import statistics
+    import time
+
+    import torch
+    import triton
+    import triton.language as tl
+
+    backend = importlib.import_module(
+        "flag_gems.runtime.backend._iluvatar.ops.embedding_bag"
+    )
+    sdk_assert = backend._embedding_bag_corex_assert
+    library = backend._corex_assert_library()
+
+    @triton.jit(do_not_specialize=["count"])
+    def check(flags, count, block: tl.constexpr):
+        lane = tl.arange(0, block)
+        bad = tl.full((), 0, tl.int32)
+        for base in range(0, count, block):
+            values = tl.load(flags + base + lane, base + lane < count, other=0)
+            bad |= tl.max(values, 0)
+        sdk_assert(bad)
+
+    path = Path("../ix-results/sdk-direct") / request.node.name
+    path.mkdir(parents=True, exist_ok=True)
+    flags = torch.zeros(count, dtype=torch.int32, device="cuda")
+    (path / "sdk-adapter.ll").write_text(Path(library).read_text())
+
+    def launch():
+        return check[(1,)](
+            flags,
+            count,
+            256,
+            debug=False,
+            extern_libs={"embedding_bag_assert": library},
+        )
+
+    # Warm the exact assertion specialization before any embedding-bag kernels.
+    # No host wait or readback is inserted into this candidate sequence.
+    compiled = launch()
+    for name, code in compiled.asm.items():
+        if isinstance(code, str):
+            (path / (name + ".txt")).write_text(code)
+    report = {
+        "kind": "sdk_direct",
+        "count": count,
+        "phase": phase,
+        "torch": torch.__version__,
+        "triton": triton.__version__,
+        "kernel_hash": compiled.hash,
+    }
+
+    def save():
+        (path / "results.json").write_text(json.dumps(report, indent=2))
+
+    report["asm_instrumentation"] = [
+        line
+        for line in compiled.asm.get("asm", "").splitlines()
+        if "has_called_assert" in line or "has_called_printf" in line
+    ]
+    save()
+    if phase == "invalid":
+        backend = importlib.import_module(
+            "flag_gems.runtime.backend._iluvatar.ops.embedding_bag"
+        )
+        backward = importlib.import_module(
+            "flag_gems.runtime.backend._iluvatar.ops.embedding_bag_backward"
+        )
+        weight = torch.ones((16, 8), device="cuda")
+        indices = torch.tensor([1, 2, 3, 4], device="cuda")
+        offsets = torch.tensor([0, 2], device="cuda")
+        output, mapping, sizes, maxima = backend._embedding_bag(
+            weight, indices, offsets
+        )
+        backward._embedding_bag_backward(
+            torch.ones_like(output),
+            indices,
+            offsets,
+            mapping,
+            sizes,
+            maxima,
+            16,
+            False,
+            0,
+            False,
+        )
+        # Preserve the asynchronous forward/backward-to-check sequence.
+        flags[-1:].fill_(1)
+        try:
+            launch()
+            torch.cuda.synchronize()
+        except Exception as error:
+            report["exception_type"] = type(error).__name__
+            report["exception"] = str(error)
+            report["caught"] = "assert" in str(error).lower()
+        else:
+            report["caught"] = False
+        save()
+        assert report["caught"], report
+        return
+
+    for _ in range(5):
+        launch()
+    torch.cuda.synchronize()
+    report["triton_ms"] = [
+        triton.testing.do_bench(launch, warmup=20, rep=60, return_mode="median")
+        for _ in range(3)
+    ]
+    report["median_ms"] = statistics.median(report["triton_ms"])
+    start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(
+        enable_timing=True
+    )
+    start.record()
+    begin = time.perf_counter()
+    for _ in range(50):
+        launch()
+    report["submit_ms"] = (time.perf_counter() - begin) * 1000 / 50
+    end.record()
+    end.synchronize()
+    report["batch_event_ms"] = start.elapsed_time(end) / 50
+    save()
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
+    ) as prof:
+        for _ in range(5):
+            launch()
+        torch.cuda.synchronize()
+    prof.export_chrome_trace(str(path / "trace.json"))
+    (path / "profiler.txt").write_text(prof.key_averages().table(row_limit=30))
