@@ -12093,7 +12093,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: lstm_cell
-  description: Fused single-step LSTM cell implemented as one Triton kernel covering both gate GEMMs, the gate chain and the cell update.
+  description: A long short-term memory (LSTM) cell.
   for:
   - lstm_cell
   labels:
