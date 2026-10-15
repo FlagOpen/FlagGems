@@ -78,9 +78,7 @@ def _pick_swiglu_config(dtype, M, N_OUT):
                 return 1, 4096, 8
             else:
                 return 1, 2048, 8
-        # fp16: BLOCK_N=2048/num_warps=8 measured 2.3x faster than the old
-        # 1024/4 fallback at N_OUT=2048 (0.71ms -> 0.31ms @ [4096,4096]).
-        return 8, 2048, 8
+        return 8, 1024, 4
     if N_OUT <= 64:
         if M < 256:
             return 1, 1024, 4
