@@ -807,3 +807,124 @@ def test_sdk_direct(request, count, phase):
         torch.cuda.synchronize()
     prof.export_chrome_trace(str(path / "trace.json"))
     (path / "profiler.txt").write_text(prof.key_averages().table(row_limit=30))
+
+
+@pytest.mark.parametrize("variant", ["_embedding_bag", "_embedding_bag_forward_only"])
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize("invalid", ["index", "offset"])
+def test_native_error_path(request, variant, mode, invalid):
+    """Measure native valid launches before observing one isolated invalid call."""
+    if _isolated(request):
+        return
+    import json
+    import statistics
+    import time
+    import warnings
+
+    import torch
+    import triton
+
+    path = Path("../ix-results/native-error-path") / request.node.name
+    path.mkdir(parents=True, exist_ok=True)
+    torch.manual_seed(1234)
+    rows, dim, bags, length = 128, 16, 8, 4
+    weight = torch.randn((rows, dim), device="cuda", dtype=torch.float32)
+    indices = torch.randint(1, rows, (bags * length,), device="cuda")
+    offsets = torch.arange(0, bags * length, length, device="cuda")
+    native = getattr(torch.ops.aten, variant).default
+
+    def call(index, offset):
+        return native(weight, index, offset, False, mode, False, None, False, 0)
+
+    report = {
+        "variant": variant,
+        "mode": mode,
+        "invalid": invalid,
+        "torch": torch.__version__,
+        "triton": triton.__version__,
+        "device": torch.cuda.get_device_name(),
+        "shape": [rows, dim, bags, length],
+        "dtype": "float32",
+        "CUDA_LAUNCH_BLOCKING": os.environ.get("CUDA_LAUNCH_BLOCKING"),
+    }
+
+    def save():
+        (path / "results.json").write_text(json.dumps(report, indent=2))
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for _ in range(5):
+            call(indices, offsets)
+        torch.cuda.synchronize()
+    report["warnings"] = [str(w.message) for w in caught]
+    save()
+    if any(
+        "fallback" in msg.lower().replace("fall back", "fallback")
+        and "cpu" in msg.lower()
+        for msg in report["warnings"]
+    ):
+        pytest.skip("Native CPU fallback: performance comparison is not applicable")
+    report["valid_triton_ms"] = [
+        triton.testing.do_bench(
+            lambda: call(indices, offsets), warmup=20, rep=60, return_mode="median"
+        )
+        for _ in range(3)
+    ]
+    report["valid_median_ms"] = statistics.median(report["valid_triton_ms"])
+    start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(
+        enable_timing=True
+    )
+    start.record()
+    begin = time.perf_counter()
+    for _ in range(50):
+        call(indices, offsets)
+    report["valid_submit_ms"] = (time.perf_counter() - begin) * 1000 / 50
+    end.record()
+    end.synchronize()
+    report["valid_batch_event_ms"] = start.elapsed_time(end) / 50
+    save()
+    with torch.profiler.profile(
+        activities=[
+            torch.profiler.ProfilerActivity.CPU,
+            torch.profiler.ProfilerActivity.CUDA,
+        ]
+    ) as prof:
+        for _ in range(5):
+            call(indices, offsets)
+        torch.cuda.synchronize()
+    prof.export_chrome_trace(str(path / "valid-trace.json"))
+    (path / "valid-profiler.txt").write_text(prof.key_averages().table(row_limit=40))
+
+    bad_indices, bad_offsets = indices.clone(), offsets.clone()
+    if invalid == "index":
+        bad_indices[-1:].fill_(rows)
+    else:
+        bad_offsets[-1:].fill_(indices.numel() + 1)
+    # Establish a clean test boundary before timing the invalid operator itself.
+    # This synchronization belongs only to the diagnostic harness.
+    torch.cuda.synchronize()
+    report["error_stage"] = None
+    stage = "operator_call"
+    begin = time.perf_counter()
+    try:
+        call(bad_indices, bad_offsets)
+        report["invalid_call_ms"] = (time.perf_counter() - begin) * 1000
+        stage = "synchronize"
+        sync_begin = time.perf_counter()
+        torch.cuda.synchronize()
+        report["invalid_sync_ms"] = (time.perf_counter() - sync_begin) * 1000
+    except Exception as error:
+        finish = time.perf_counter()
+        report["error_stage"] = stage
+        report["exception_type"] = type(error).__name__
+        report["exception"] = str(error)
+        report["invalid_total_ms"] = (finish - begin) * 1000
+        if stage == "operator_call":
+            report["invalid_call_ms"] = report["invalid_total_ms"]
+        else:
+            report["invalid_sync_ms"] = (finish - sync_begin) * 1000
+    save()
+    # A missing native check is evidence, not an accepted validation baseline.
+    assert (
+        report["error_stage"] is not None
+    ), "Native accepted invalid input; see results.json"
