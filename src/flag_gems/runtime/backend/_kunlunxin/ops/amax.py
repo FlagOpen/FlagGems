@@ -78,6 +78,11 @@ _BLOCK_N_MAX = 8192
 _SMALL_M = 4096
 _HUGE_N = 262144
 _SMALL_BLOCK_M = 8
+# Largest [BLOCK_M, BLOCK_N] tile TritonXPULegalize can assign a layout to for
+# the in-loop reduction. 16384 lanes is the widest that compiles for every
+# (block_m, block_n) split the launcher produces; [4096, 256] already fails at
+# 32768.
+_MAX_TILE = 16384
 
 
 @libentry()
@@ -171,6 +176,14 @@ def amax(inp, dim=None, keepdim=False):
         # tiny M, so no shape gains a masked row block vs the default.
         if M <= _SMALL_M and N >= _HUGE_N:
             block_m = min(block_m, _SMALL_BLOCK_M)
+        # TritonXPULegalize cannot lay out the in-loop `tl.max` reduction once the
+        # [BLOCK_M, BLOCK_N] tile grows past _MAX_TILE lanes; it rejects the
+        # convert_layout with "requires the same shape for all operands and
+        # results" (e.g. [4096, 256] -> block_m 512, block_n 256).  Shrink the row
+        # block until the tile fits -- the reduction result is unaffected, only
+        # how many rows one program owns.
+        while block_m > 1 and block_m * block_n > _MAX_TILE:
+            block_m //= 2
         grid = (triton.cdiv(M, block_m),)
         with torch_device_fn.device(inp.device):
             amax_kernel[grid](inp, out, M, N, block_m, block_n, buffer_size_limit=2048)
