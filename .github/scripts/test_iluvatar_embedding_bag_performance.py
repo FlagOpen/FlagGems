@@ -674,8 +674,20 @@ def test_sdk_direct(request, count, phase):
     backend = importlib.import_module(
         "flag_gems.runtime.backend._iluvatar.ops.embedding_bag"
     )
-    sdk_assert = backend._embedding_bag_corex_assert
     library = backend._corex_assert_library()
+
+    @tl.core.builtin
+    def sdk_assert(code, _semantic=None):
+        # Build a real Python list outside JIT AST lowering. CoreX Triton 3.6
+        # extern_elementwise calls args.copy(), which a TL tuple cannot provide.
+        return tl.core.extern_elementwise(
+            "",
+            "",
+            [code],
+            {(tl.int32,): ("flaggems_corex_assert", tl.int32)},
+            is_pure=False,
+            _semantic=_semantic,
+        )
 
     @triton.jit(do_not_specialize=["count"])
     def check(flags, count, block: tl.constexpr):
