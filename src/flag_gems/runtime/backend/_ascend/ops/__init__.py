@@ -38,6 +38,7 @@ from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
 from .count_nonzero import count_nonzero
+from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
@@ -108,6 +109,7 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mode import mode
 from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -205,6 +207,7 @@ __all__ = [
     "cholesky_solve_out",
     "concat",
     "count_nonzero",
+    "cudnn_convolution",
     "cummax",
     "cummin",
     "cumsum",
@@ -304,6 +307,7 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mode",
     "mul",
     "multinomial",
     "nanmedian",
