@@ -59,158 +59,49 @@ def masked_scatter_single_block_kernel(
 
 
 _MS_GRID = 12  # 12 physical clusters; grid=16/24 would drop clusters -> never exceed
-_MS_WT = {"int": 1024, "short": 1024}  # elements staged per DMA chunk
-_MS_KT = {"int": 256, "short": 512}  # rolling source-window chunk (elements)
 _MS_TLE = {"init": False, "ok": False, "stage1": None, "stage2": {}}
 
 
-def _ms_stage1_payload():
-    """Count Trues per 768-thread contiguous partition + intra-cluster prefix.
-
-    Writes tcnt[768] (per-thread True count; core0 of each cluster writes its 64
-    counts as one 256 B LM2GM) and ctot[12*16] (per-cluster total, padded to a
-    64 B store).  Both stores are >= 64 B -- a sub-64 B store to a _global_ptr_
-    wedges the card.  Every thread (incl. empty partitions, c=0) reaches sync_all.
-    """
-    return rf"""
-#include "xpu/kernel/xtdk.h"
-#define WT {_MS_WT["int"]}
-#define GRID {_MS_GRID}
-extern "C" __device__ void ms_stage1(_global_ptr_ int *tcnt,
-    _global_ptr_ int *ctot, _global_ptr_ const unsigned char *mask, int N) {{
-  __local__ __attribute__((aligned(64))) unsigned char lmask[WT];
-  __shared__ int sm[64];
-  int ncore = core_num();
-  int cl = cluster_id();
-  int co = core_id();
-  int nthreads = GRID * ncore;
-  int tid = cl * ncore + co;
-  long nunit = ((long)N + 63) / 64;
-  long upt = nunit / nthreads;
-  long rem = nunit - upt * nthreads;
-  long ustart = (long)tid * upt + (tid < rem ? tid : rem);
-  long usize = upt + (tid < rem ? 1 : 0);
-  long start = ustart * 64;
-  long end = start + usize * 64;
-  if (end > (long)N) end = (long)N;
-  int c = 0;
-  for (long p = start; p < end; p += WT) {{
-    int w = (end - p < WT) ? (int)(end - p) : WT;
-    GM2LM(mask + p, lmask, w);
-    __local__ unsigned int *w4 = (__local__ unsigned int *)lmask;
-    int nw = w >> 2;
-    for (int k = 0; k < nw; ++k) {{
-      unsigned int v = w4[k];
-      c += (v & 0xff) + ((v >> 8) & 0xff) + ((v >> 16) & 0xff) + (v >> 24);
-    }}
-  }}
-  sm[co] = c;
-  mfence();
-  sync_all();
-  if (co == 0) {{
-    __local__ int lt[64];
-    __local__ int ct[16];
-    int acc = 0;
-    for (int i = 0; i < ncore; ++i) {{ lt[i] = sm[i]; acc += sm[i]; }}
-    for (int i = ncore; i < 64; ++i) lt[i] = 0;
-    LM2GM(lt, tcnt + cl * 64, 64 * 4);
-    for (int i = 0; i < 16; ++i) ct[i] = 0;
-    ct[0] = acc;
-    LM2GM(ct, ctot + cl * 16, 16 * 4);
-  }}
-  mfence();
-}}
-"""
-
-
-def _ms_stage2_payload(elt, wt, kt, name):
-    """Scatter each 768-thread contiguous partition; single-buffered.
-
-    global src base = sum(ctot[0..cl-1]) + intra-cluster prefix(tcnt).  The
-    rolling source window advances across the WHOLE partition (not per block),
-    capped by this thread's own True count ctid so src reads never exceed the
-    valid [gbase, gbase+ctid) range.  Nothing writes a _global_ptr_ scalar; the
-    output store is one contiguous LM2GM per WT chunk (chunks are 64-aligned).
-    """
-    return rf"""
-#include "xpu/kernel/xtdk.h"
-#define WT {wt}
-#define KT {kt}
-#define GRID {_MS_GRID}
-extern "C" __device__ void {name}(_global_ptr_ {elt} *out,
-    _global_ptr_ const {elt} *inp,
-    _global_ptr_ const unsigned char *mask,
-    _global_ptr_ const {elt} *src,
-    _global_ptr_ const int *tcnt,
-    _global_ptr_ const int *ctot,
-    int N, int ELT) {{
-  __local__ {elt} lout[WT];
-  __local__ __attribute__((aligned(64))) unsigned char lmask[WT];
-  __local__ {elt} lsrc[KT];
-  __local__ int lct[GRID * 16];
-  __local__ int ltc[64];
-  int ncore = core_num();
-  int cl = cluster_id();
-  int co = core_id();
-  int nthreads = GRID * ncore;
-  int tid = cl * ncore + co;
-  long nunit = ((long)N + 63) / 64;
-  long upt = nunit / nthreads;
-  long rem = nunit - upt * nthreads;
-  long ustart = (long)tid * upt + (tid < rem ? tid : rem);
-  long usize = upt + (tid < rem ? 1 : 0);
-  long start = ustart * 64;
-  long end = start + usize * 64;
-  if (end > (long)N) end = (long)N;
-  if (start < end) {{
-    GM2LM(ctot, lct, GRID * 16 * 4);
-    GM2LM(tcnt + cl * ncore, ltc, ncore * 4);
-    int gbase = 0;
-    for (int c = 0; c < cl; ++c) gbase += lct[c * 16];
-    for (int j = 0; j < co; ++j) gbase += ltc[j];
-    int ctid = ltc[co];
-    int gcons = 0, bufpos = 0;
-    int buflen = (ctid < KT) ? ctid : KT;
-    if (buflen > 0) GM2LM(src + gbase, lsrc, buflen * ELT);
-    for (long p = start; p < end; p += WT) {{
-      int w = (end - p < WT) ? (int)(end - p) : WT;
-      GM2LM(inp + p, lout, w * ELT);
-      GM2LM(mask + p, lmask, w);
-      for (int i = 0; i < w; ++i) {{
-        if (lmask[i]) {{
-          if (bufpos == buflen) {{
-            gcons += buflen;
-            int rem2 = ctid - gcons;
-            buflen = (rem2 < KT) ? rem2 : KT;
-            bufpos = 0;
-            if (buflen > 0) GM2LM(src + gbase + gcons, lsrc, buflen * ELT);
-          }}
-          lout[i] = lsrc[bufpos];
-          ++bufpos;
-        }}
-      }}
-      LM2GM(lout, out + p, w * ELT);
-    }}
-  }}
-  mfence();
-}}
-"""
-
-
+# ---------------------------------------------------------------------------
+# tle.raw payload sources live in ../payload/src/*.xpu and ship as the
+# secrecy-hardened device object ../payload/obj/masked_scatter.o (packed with
+# docs/xpu3/how_to_pack_payload/pack_payload.py --obj-dir, then merged from the
+# per-entry .o with `ld.lld -r`).  The C++ is deliberately NOT kept in this
+# file.  Entry symbols (stub name == entry symbol, signature == C++ ABI):
+#   ms_stage1        <- payload/src/ms_stage1.xpu
+#   ms_stage2_int    <- payload/src/ms_stage2_int.xpu    (elt=int,   WT=1024, KT=256)
+#   ms_stage2_short  <- payload/src/ms_stage2_short.xpu  (elt=short, WT=1024, KT=512)
+# ---------------------------------------------------------------------------
 def _ms_tle_init():
     if _MS_TLE["init"]:
         return _MS_TLE["ok"]
     _MS_TLE["init"] = True
     try:
+        import os as _os
+
         import triton as _triton
         import triton.experimental.tle as _tle
 
-        s1ns = {"_tle": _tle}
+        # We ship the .o (not the .xpu source): the stub name must equal the
+        # entry symbol and the signature must match the C++ ABI.  In object=
+        # mode the merge-time signature check is skipped (the payload isn't in
+        # IR), so a wrong signature fails at runtime, not compile -- keep the
+        # stub in lockstep with the C++.  Re-pack after editing any .xpu: the
+        # compile-cache key is the .o content digest, so a stale .o silently
+        # keeps the old code.
+        _PAY_OBJ = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+            "payload",
+            "obj",
+        )
+        # Both stages live in one merged object, so one path serves every stub.
+        _MS_OBJ = _os.path.join(_PAY_OBJ, "masked_scatter.o")
+
+        s1ns = {"_tle": _tle, "_OBJ": _MS_OBJ}
         exec(
-            "@_tle.raw.dialect('xpu3', source=_SRC)\n"
+            "@_tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
             "def ms_stage1(tcnt, ctot, mask, N):\n"
             "    ...\n",
-            {"_tle": _tle, "_SRC": _ms_stage1_payload()},
             s1ns,
         )
         _s1callee = s1ns["ms_stage1"]
@@ -223,15 +114,11 @@ def _ms_tle_init():
 
         for elt in ("int", "short"):
             sym = f"ms_stage2_{elt}"
-            ns = {"_tle": _tle}
+            ns = {"_tle": _tle, "_OBJ": _MS_OBJ}
             exec(
-                "@_tle.raw.dialect('xpu3', source=_SRC)\n"
+                "@_tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
                 f"def {sym}(out, inp, mask, src, tcnt, ctot, N, ELT):\n"
                 "    ...\n",
-                {
-                    "_tle": _tle,
-                    "_SRC": _ms_stage2_payload(elt, _MS_WT[elt], _MS_KT[elt], sym),
-                },
                 ns,
             )
             callee = ns[sym]
