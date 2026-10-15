@@ -501,6 +501,7 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
 from .ones import ones
 from .ones_like import ones_like
@@ -1267,6 +1268,7 @@ __all__ = [
     "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
+    "normal_functional",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
