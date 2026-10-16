@@ -31,6 +31,17 @@ from . import conftest as cfg
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
+# The GCU torch build does not register several operators this module relies on:
+# `aten::_flash_attention_forward` (the reference oracle for the dense tests),
+# `torch.gather` on the expanded sparse index tensor, and the `add` broadcast in
+# attn_bias_from_alibi_slopes. They either raise NotImplementedError or abort the
+# process (TOPSATEN_STATUS_NOT_SUPPORT), and one of them is used by six of the
+# seven tests here, so the module is skipped on enflame as a whole.
+pytestmark = pytest.mark.skipif(
+    vendor_name == "enflame",
+    reason="enflame GCU does not support the operators this module uses",
+)
+
 # Representative dense configs cover square/non-square inputs and 64/128 head sizes.
 # Other shape families below keep their existing QUICK_MODE reductions.
 if cfg.QUICK_MODE:
