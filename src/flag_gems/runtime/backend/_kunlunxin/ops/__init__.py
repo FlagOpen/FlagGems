@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .__iand__ import __iand___scalar, __iand___tensor  # noqa: F401
 from .__irshift__ import __irshift__  # noqa: F401
+from .__rshift__ import __rshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -26,6 +28,29 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_binary_scalar import (  # noqa: F401
+    _foreach_add__ScalarList,
+    _foreach_clamp_max__Scalar,
+    _foreach_clamp_max__ScalarList,
+    _foreach_clamp_max_Scalar,
+    _foreach_clamp_max_ScalarList,
+    _foreach_clamp_min__Scalar,
+    _foreach_clamp_min__ScalarList,
+    _foreach_clamp_min_Scalar,
+    _foreach_clamp_min_ScalarList,
+    _foreach_maximum__Scalar,
+    _foreach_maximum__ScalarList,
+    _foreach_maximum_Scalar,
+    _foreach_maximum_ScalarList,
+    _foreach_minimum__Scalar,
+    _foreach_minimum__ScalarList,
+    _foreach_minimum_Scalar,
+    _foreach_minimum_ScalarList,
+    _foreach_mul__Scalar,
+    _foreach_sub__Scalar,
+)
+from ._foreach_sigmoid import _foreach_sigmoid
+from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -58,6 +83,7 @@ from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .acosh import acosh, acosh_  # noqa: F401
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -74,6 +100,8 @@ from .addr import addr
 from .affine_grid_generator import affine_grid_generator  # noqa: F401
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
+from .alpha_dropout import alpha_dropout  # noqa: F401
+from .alpha_dropout_ import alpha_dropout_  # noqa: F401
 from .amax import amax
 from .amin import amin, amin_
 from .aminmax import aminmax
@@ -244,6 +272,16 @@ from .exponential import exponential  # noqa: F401
 from .exponential_ import exponential_
 from .eye import eye
 from .eye_m import eye_m
+from .fake_quantize_per_channel_affine import (  # noqa: F401
+    fake_quantize_per_channel_affine,
+)
+from .fake_quantize_per_channel_affine_cachemask import (  # noqa: F401
+    fake_quantize_per_channel_affine_cachemask,
+    fake_quantize_per_channel_affine_cachemask_out,
+)
+from .fake_quantize_per_channel_affine_cachemask_backward import (  # noqa: F401
+    fake_quantize_per_channel_affine_cachemask_backward,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -293,7 +331,11 @@ from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
-from .hardsigmoid import hardsigmoid, hardsigmoid_out
+from .hardshrink_backward import (  # noqa: F401
+    hardshrink_backward,
+    hardshrink_backward_grad_input,
+)
+from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
@@ -317,6 +359,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -432,6 +475,7 @@ from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
+from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
@@ -461,9 +505,11 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
 from .ones import ones
 from .ones_like import ones_like
+from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .pairwise_distance import pairwise_distance
@@ -530,7 +576,6 @@ from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
 from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
-from .scaled_mm import scaled_mm, scaled_mm_out
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
@@ -554,6 +599,7 @@ from .sgn import sgn, sgn_out
 from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .sign import sign, sign_out
+from .sign_ import sign_  # noqa: F401
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
@@ -593,6 +639,7 @@ from .special_gammaincc import special_gammaincc
 from .special_gammaln import special_gammaln
 from .special_gammaln_out import special_gammaln_out
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_i0 import special_i0, special_i0_out  # noqa: F401
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out  # noqa: F401
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
@@ -602,6 +649,10 @@ from .special_log_ndtr import special_log_ndtr, special_log_ndtr_
 from .special_log_softmax import special_log_softmax
 from .special_logit import special_logit, special_logit_out  # noqa: F401
 from .special_logsumexp import special_logsumexp
+from .special_modified_bessel_i0 import (  # noqa: F401
+    special_modified_bessel_i0,
+    special_modified_bessel_i0_out,
+)
 from .special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
@@ -610,6 +661,10 @@ from .special_multigammaln import special_multigammaln
 from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
+from .special_scaled_modified_bessel_k1 import (  # noqa: F401
+    special_scaled_modified_bessel_k1,
+    special_scaled_modified_bessel_k1_out,
+)
 from .special_shifted_chebyshev_polynomial_t import (
     special_shifted_chebyshev_polynomial_t,
 )
@@ -692,7 +747,11 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "__iand___scalar",
+    "__iand___tensor",
     "__irshift__",
+    "__rshift__",
+    "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
@@ -705,6 +764,8 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_sigmoid",
+    "_foreach_sigmoid_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -768,6 +829,8 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "alpha_dropout",
+    "alpha_dropout_",
     "amax",
     "amin",
     "amin_",
@@ -939,6 +1002,10 @@ __all__ = [
     "exponential_",
     "eye",
     "eye_m",
+    "fake_quantize_per_channel_affine",
+    "fake_quantize_per_channel_affine_cachemask",
+    "fake_quantize_per_channel_affine_cachemask_backward",
+    "fake_quantize_per_channel_affine_cachemask_out",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -1000,8 +1067,11 @@ __all__ = [
     "gt_tensor_",
     "hadamard_transform",
     "hardshrink",
+    "hardshrink_backward",
+    "hardshrink_backward_grad_input",
     "hardshrink_out",
     "hardsigmoid",
+    "hardsigmoid_",
     "hardsigmoid_out",
     "histc",
     "hstack",
@@ -1022,6 +1092,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "ior_tensor",
     "isclose",
     "isfinite",
     "isin",
@@ -1177,6 +1248,7 @@ __all__ = [
     "narrow_copy",
     "native_batch_norm",
     "native_batch_norm_legit_no_training",
+    "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",
@@ -1206,6 +1278,7 @@ __all__ = [
     "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
+    "normal_functional",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
@@ -1213,6 +1286,7 @@ __all__ = [
     "not_equal_scalar",
     "ones",
     "ones_like",
+    "or_tensor",
     "ormqr",
     "outplace_fused_experts",
     "pad",
@@ -1296,8 +1370,6 @@ __all__ = [
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",
     "scaled_dot_product_efficient_attention_backward",
-    "scaled_mm",
-    "scaled_mm_out",
     "scaled_softmax_backward",
     "scaled_softmax_forward",
     "ScaleDotProductAttention",
@@ -1325,6 +1397,7 @@ __all__ = [
     "sigmoid_",
     "sigmoid_backward",
     "sign",
+    "sign_",
     "sign_out",
     "signbit",
     "signbit_out",
@@ -1376,6 +1449,8 @@ __all__ = [
     "special_gammaln",
     "special_gammaln_out",
     "special_hermite_polynomial_h",
+    "special_i0",
+    "special_i0_out",
     "special_i0e",
     "special_i0e_out",
     "special_legendre_polynomial_p",
@@ -1387,6 +1462,8 @@ __all__ = [
     "special_logit",
     "special_logit_out",
     "special_logsumexp",
+    "special_modified_bessel_i0",
+    "special_modified_bessel_i0_out",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
@@ -1394,6 +1471,8 @@ __all__ = [
     "special_ndtri",
     "special_round",
     "special_round_out",
+    "special_scaled_modified_bessel_k1",
+    "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_u_",
