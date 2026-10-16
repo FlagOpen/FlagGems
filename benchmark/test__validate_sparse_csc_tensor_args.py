@@ -233,6 +233,8 @@ class ValidateSparseCscTensorArgsBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=WORKLOADS)
         if self.high_dimensional is not None:
+            # _plan_for returns (size, ...). Values replace the two sparse matrix
+            # axes with one nnz axis, so their rank is len(size) - 1.
             self.shapes = [
                 shape
                 for shape in self.shapes

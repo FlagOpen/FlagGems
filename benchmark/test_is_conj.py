@@ -58,12 +58,13 @@ class IsConjBenchmark(base.GenericBenchmark):
 
     def set_dtypes(self, user_desired_dtypes):
         super().set_dtypes(user_desired_dtypes)
-        if self.partition_dtype is not None:
-            if self.partition_dtype not in self.dtypes:
-                raise ValueError("partition_dtype must belong to the operator's dtypes")
-            if self.partition_dtype not in self.to_bench_dtypes:
-                pytest.skip(f"Dtype {self.partition_dtype} was not requested")
-            self.to_bench_dtypes = [self.partition_dtype]
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
 
 
 @pytest.mark.is_conj

@@ -218,18 +218,18 @@ _BENCH_DTYPES = _gated_dtypes(
 
 
 class ValuesCopyBenchmark(OperatorBenchmark):
-
     # Keep the full operator dtype set for validation; execute only this node.
     partition_dtype = None
 
     def set_dtypes(self, user_desired_dtypes):
         super().set_dtypes(user_desired_dtypes)
-        if self.partition_dtype is not None:
-            if self.partition_dtype not in self.dtypes:
-                raise ValueError("partition_dtype must belong to the operator's dtypes")
-            if self.partition_dtype not in self.to_bench_dtypes:
-                pytest.skip(f"Dtype {self.partition_dtype} was not requested")
-            self.to_bench_dtypes = [self.partition_dtype]
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
 
     # values_copy is a sparse accessor: core_shapes.yaml carries dense shapes that
     # this operator rejects, so benchmark dedicated compressed-sparse cases.

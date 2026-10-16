@@ -130,6 +130,8 @@ _VAC_WRONG_OUT_DTYPES = [torch.float32] + (
 @pytest.fixture
 def _skip_ascend_complex32_output(request, dtype):
     # Only successful-copy tests opt in; invalid-input tests still execute.
+    # Tests without a shape parameter construct fixed, nonempty inputs below.
+    # A parameterized empty shape must remain runnable.
     shape = request.node.callspec.params.get("shape")
     if (
         flag_gems.vendor_name == "ascend"
