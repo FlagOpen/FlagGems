@@ -184,6 +184,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .bucketize import bucketize
 from .cat import cat, cat_out
+from .cauchy import cauchy, cauchy_  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
@@ -343,6 +344,8 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
+from .i0 import i0, i0_out  # noqa: F401
+from .i0_ import i0_  # noqa: F401
 from .igamma_ import igamma_  # noqa: F401
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
@@ -909,6 +912,8 @@ __all__ = [
     "bucketize",
     "cat",
     "cat_out",
+    "cauchy",
+    "cauchy_",
     "ceil",
     "ceil_",
     "ceil_out",
@@ -1078,6 +1083,9 @@ __all__ = [
     "hypot",
     "hypot_",
     "hypot_out",
+    "i0",
+    "i0_",
+    "i0_out",
     "igammac",
     "igammac_",
     "igammac_out",
