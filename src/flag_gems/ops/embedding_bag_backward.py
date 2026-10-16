@@ -634,6 +634,7 @@ def _embedding_bag_backward_impl(
     launch_fn=_launch_backward,
     max_fn=None,
     reuse_accumulator=False,
+    ignore_device_errors=False,
 ):
     """ATen embedding-bag backward, with FP32 accumulation for reduced dtypes.
 
@@ -721,6 +722,15 @@ def _embedding_bag_backward_impl(
         )
         if result is not None:
             return result
+
+    if ignore_device_errors and sparse and num_weights == 0:
+        return torch.sparse_coo_tensor(
+            torch.empty((1, 0), dtype=torch.int64, device=grad.device),
+            torch.empty((0, d), dtype=grad.dtype, device=grad.device),
+            (0, d),
+            device=grad.device,
+            dtype=grad.dtype,
+        )
 
     compact = sparse and padding_idx >= 0 and n > 0
     device_assert = device_assert_enabled and not sparse
@@ -842,13 +852,18 @@ def _embedding_bag_backward_impl(
             if ranked:
                 # One metadata transfer supplies both the recoverable error code
                 # and exact COO size; only chunk counts need a global scan.
-                invalid, nnz = error.tolist()
+                if ignore_device_errors:
+                    # Dynamic sparse size only; never read the validation flag.
+                    nnz = int(error[1].item())
+                else:
+                    invalid, nnz = error.tolist()
                 prefix = keep
             else:
                 prefix = cumsum(keep, 0) if compact else keep
                 nnz = int(prefix[-1].item()) if compact else n
-            out_indices = torch.empty((1, nnz), dtype=torch.int64, device=grad.device)
-            values = torch.empty((nnz, d), dtype=grad.dtype, device=grad.device)
+            allocate = torch.zeros if ignore_device_errors else torch.empty
+            out_indices = allocate((1, nnz), dtype=torch.int64, device=grad.device)
+            values = allocate((nnz, d), dtype=grad.dtype, device=grad.device)
             if nnz:
                 launch_fn(
                     _eb_backward_sparse,
@@ -955,7 +970,9 @@ def _embedding_bag_backward_impl(
         if device_assert:
             return result
         # Other backends report recoverable errors after enqueueing computation.
-        if not ranked:
+        if ignore_device_errors:
+            invalid = 0
+        elif not ranked:
             invalid = error.item()
         if invalid:
             if invalid & 1:

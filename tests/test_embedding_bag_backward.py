@@ -475,6 +475,41 @@ def test_embedding_bag_backward_invalid(error):
         mode = 0
         psw = torch.ones_like(indices, dtype=torch.float16)
     grad = torch.ones_like(out)
+    if flag_gems.vendor_name == "iluvatar" and error in (
+        "index",
+        "offset",
+        "mapping",
+        "size",
+        "maximum",
+    ):
+        actual = _embedding_bag_backward(
+            grad,
+            indices,
+            offsets,
+            mapping,
+            sizes,
+            maximum,
+            8,
+            False,
+            mode,
+            False,
+            psw,
+        )
+        expected = torch.zeros((8, grad.shape[1]), dtype=grad.dtype)
+        host_indices, host_mapping = indices.cpu().tolist(), mapping.cpu().tolist()
+        host_sizes, host_maximum = sizes.cpu().tolist(), maximum.cpu()
+        if mode == 2:
+            for bag in range(grad.shape[0]):
+                for feature in range(grad.shape[1]):
+                    row = int(host_maximum[bag, feature])
+                    if 0 <= row < 8 and host_sizes[bag] > 0:
+                        expected[row, feature] += 1
+        else:
+            for row, bag in zip(host_indices, host_mapping):
+                if 0 <= row < 8 and 0 <= bag < grad.shape[0]:
+                    expected[row] += 1 / max(host_sizes[bag], 1)
+        torch.testing.assert_close(actual.cpu(), expected)
+        return
     _mark_invalid_call("_embedding_bag_backward")
     with pytest.raises(RuntimeError):
         _embedding_bag_backward(
@@ -625,3 +660,163 @@ def test_embedding_bag_backward_empty_table(op, mode, dim, num_bags):
             assert result._nnz() == 0
         else:
             assert result.numel() == 0
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "iluvatar", reason="CoreX masked MAX specialization"
+)
+@pytest.mark.embedding_bag_backward
+@pytest.mark.parametrize("dtype_name", ["float16", "float32", "bfloat16"])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (8, 16, 128, 4),
+        (32, 64, 1024, 8),
+        (128, 128, 4096, 16),
+        (256, 256, 4096, 32),
+        (1024, 64, 16384, 64),
+        (128, 512, 4096, 8),
+        (5, 33, 8, 7),
+        (4, 0, 8, 3),
+    ],
+)
+def test_embedding_bag_backward_iluvatar_max(dtype_name, shape):
+    """Only the changed MAX paths: strides, ties, NaNs and masked indirect loads."""
+    import torch
+
+    import flag_gems
+
+    if dtype_name == "bfloat16" and not flag_gems.runtime.device.support_bf16:
+        pytest.skip("Device does not support bfloat16")
+    dtype = getattr(torch, dtype_name)
+    bags, dim, rows, length = shape
+    device = flag_gems.device
+    torch.manual_seed(5764)
+    weight = torch.randn((rows, dim * 2), dtype=dtype)[:, ::2]
+    values = torch.randint(1, rows, (bags * length,), dtype=torch.int64)
+    # Invalid rows and padding must have exactly the same masking as before.
+    values[::11] = rows + 100
+    values[1::13] = -2
+    values[2::17] = 0
+    values[:length] = rows
+    offsets = torch.arange(0, values.numel() + 1, length, dtype=torch.int64)
+    if dim == 33:
+        values[length : 2 * length] = torch.tensor([1, 2, 3, 4, 4, 5, 6])
+        values[2 * length : 3 * length] = torch.tensor([2, 1, 3, 4, 4, 5, 6])
+        offsets[4] = offsets[3]  # An empty bag before the final bag.
+        weight[1, :4] = float("nan")
+        weight[2, :4] = float("inf")
+        weight[3, :4] = float("-inf")
+        weight[4:, 4:8] = 0
+    expected = torch.zeros((bags, dim), dtype=dtype)
+    winners = torch.full((bags, dim), -1, dtype=torch.int64)
+    counts = torch.zeros(bags, dtype=torch.int64)
+    for bag in range(bags):
+        valid = values[offsets[bag].item() : offsets[bag + 1].item()]
+        valid = valid[(valid > 0) & (valid < rows)]
+        counts[bag] = valid.numel()
+        for position, row in enumerate(valid.tolist()):
+            replace = (
+                torch.ones(dim, dtype=torch.bool)
+                if position == 0
+                else weight[row] > expected[bag]
+            )
+            expected[bag] = torch.where(replace, weight[row], expected[bag])
+            winners[bag] = torch.where(replace, row, winners[bag])
+    # Transfer the backing storage then slice, retaining noncontiguous strides.
+    weight_gpu = torch.empty((rows, dim * 2), dtype=dtype, device=device)[:, ::2]
+    weight_gpu.copy_(weight)
+    indices_gpu, offsets_gpu = values.to(device), offsets.to(device)
+    grad = torch.randn((bags, dim * 2), dtype=dtype)[:, ::2]
+    grad_gpu = torch.empty((bags, dim * 2), dtype=dtype, device=device)[:, ::2]
+    grad_gpu.copy_(grad)
+    for variant in ("_embedding_bag",):
+        out, mapping, sizes, maximum = getattr(flag_gems, variant)(
+            weight_gpu,
+            indices_gpu,
+            offsets_gpu,
+            mode=2,
+            include_last_offset=True,
+            padding_idx=0,
+        )
+        torch.testing.assert_close(out.cpu(), expected, equal_nan=True, rtol=0, atol=0)
+        torch.testing.assert_close(maximum.cpu(), winners, rtol=0, atol=0)
+        # IX keeps one bag_size entry per offset, including a zero terminal
+        # entry when include_last_offset=True. Check the complete ABI tensor.
+        expected_sizes = torch.cat((counts, counts.new_zeros(1)))
+        torch.testing.assert_close(sizes.cpu(), expected_sizes, rtol=0, atol=0)
+        # Include malformed saved rows; every atomic destination remains masked.
+        invalid_max = winners.clone()
+        if dim:
+            invalid_max[1, 0] = rows + 100
+            invalid_max[2, 0] = -2
+        expected_grad = torch.zeros((rows, dim), dtype=torch.float32)
+        feature = torch.arange(dim)[None, :].expand(bags, dim)
+        valid = (invalid_max > 0) & (invalid_max < rows) & (counts[:, None] > 0)
+        destination = invalid_max * dim + feature
+        expected_grad.view(-1).index_add_(0, destination[valid], grad.float()[valid])
+        actual_grad = flag_gems._embedding_bag_backward(
+            grad_gpu,
+            indices_gpu,
+            offsets_gpu,
+            mapping,
+            sizes,
+            invalid_max.to(device),
+            rows,
+            True,
+            2,
+            False,
+            None,
+            0,
+        )
+        torch.testing.assert_close(actual_grad.cpu(), expected_grad.to(dtype))
+    flag_gems.runtime.torch_device_fn.synchronize()
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "iluvatar", reason="CoreX masks invalid embedding rows"
+)
+@pytest.mark.embedding_bag_backward
+@pytest.mark.parametrize("dtype_name", ["float16", "float32", "float64", "bfloat16"])
+@pytest.mark.parametrize("index_dtype", ["int32", "int64"])
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize("sparse", [False, True])
+@pytest.mark.parametrize("padding", [-1, 0])
+def test_embedding_bag_backward_iluvatar_masked_indices(
+    dtype_name, index_dtype, mode, sparse, padding
+):
+    """Invalid rows act like padding, including all-invalid and empty bags."""
+    import torch
+
+    import flag_gems
+
+    if dtype_name == "bfloat16" and not flag_gems.runtime.device.support_bf16:
+        pytest.skip("Device does not support bfloat16")
+    if dtype_name == "float64" and not flag_gems.runtime.device.support_fp64:
+        pytest.skip("Device does not support float64")
+    dtype = getattr(torch, dtype_name)
+    idtype = getattr(torch, index_dtype)
+    device = flag_gems.device
+    weight = torch.arange(24, device=device, dtype=dtype).reshape(6, 4)
+    indices = torch.tensor([1, -2, 6, 2, -100, 100], device=device, dtype=idtype)
+    offsets = torch.tensor([0, 4, 6, 6], device=device, dtype=idtype)
+    # Reference uses an explicit padding row, not native's unsafe OOB behavior.
+    safe = torch.tensor([1, 0, 0, 2, 0, 0], device=device, dtype=idtype)
+    for variant in ("_embedding_bag",):
+        op = getattr(flag_gems, variant)
+        actual = op(weight, indices, offsets, mode=mode, padding_idx=padding)
+        expected = op(weight, safe, offsets, mode=mode, padding_idx=0)
+        for got, ref in zip(actual, expected):
+            torch.testing.assert_close(got, ref)
+        grad = torch.ones_like(actual[0])
+        backward = flag_gems._embedding_bag_backward
+        got = backward(
+            grad, indices, offsets, *actual[1:], 6, False, mode, sparse, None, padding
+        )
+        ref = backward(
+            grad, safe, offsets, *expected[1:], 6, False, mode, sparse, None, 0
+        )
+        torch.testing.assert_close(
+            got.to_dense() if sparse else got, ref.to_dense() if sparse else ref
+        )
+    flag_gems.runtime.torch_device_fn.synchronize()
