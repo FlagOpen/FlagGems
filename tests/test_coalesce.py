@@ -166,7 +166,11 @@ def test_coalesce(case, dtype):
     assert not inp.is_coalesced()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.coalesce(ref_inp)
+    # CPU FP16 rounds intermediate sums; FP32 accumulation matches the NPU
+    # reference without widening the comparison tolerance.
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU and dtype == torch.float16:
+        ref_inp = ref_inp.float()
+    ref_out = torch.ops.aten.coalesce(ref_inp).to(dtype)
     res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype)
@@ -219,7 +223,11 @@ def test_coalesce_value_ranges(value_range, dtype, case):
     assert not inp.is_coalesced()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.coalesce(ref_inp)
+    # CPU FP16 rounds intermediate sums; FP32 accumulation matches the NPU
+    # reference without widening the comparison tolerance.
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU and dtype == torch.float16:
+        ref_inp = ref_inp.float()
+    ref_out = torch.ops.aten.coalesce(ref_inp).to(dtype)
     res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype)
@@ -257,7 +265,11 @@ def test_coalesce_nan_inf(case, dtype, scenario):
     assert not inp.is_coalesced()
     ref_inp = tu.to_reference(inp)
 
-    ref_out = torch.ops.aten.coalesce(ref_inp)
+    # CPU FP16 rounds intermediate sums; FP32 accumulation matches the NPU
+    # reference without widening the comparison tolerance.
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU and dtype == torch.float16:
+        ref_inp = ref_inp.float()
+    ref_out = torch.ops.aten.coalesce(ref_inp).to(dtype)
     res_out = flag_gems.coalesce(inp)
 
     _assert_coalesced(res_out, ref_out, dtype, equal_nan=True)
