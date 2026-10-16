@@ -84,20 +84,18 @@ def test_zero__non_contiguous_view(dtype, view):
     so a strided view used to be zeroed outside its own memory while part of the
     view was left untouched.
     """
-    base = torch.ones((4, 8), dtype=dtype, device=flag_gems.device)
-    ref = base.clone()
-    act = base.clone()
+    act = torch.ones((4, 8), dtype=dtype, device=flag_gems.device)
+    ref = utils.to_reference(act.clone())
 
     if view == "cols":
-        ref_view, act_view = ref[:, 3:], act[:, 3:]
+        act_view, ref_view = act[:, 3:], ref[:, 3:]
     elif view == "step":
-        ref_view, act_view = ref[:, ::2], act[:, ::2]
+        act_view, ref_view = act[:, ::2], ref[:, ::2]
     else:
-        ref_view, act_view = ref[:, 5], act[:, 5]
+        act_view, ref_view = act[:, 5], ref[:, 5]
     assert not act_view.is_contiguous()
 
     ref_view.zero_()
-    with flag_gems.use_gems():
-        act_view.zero_()
+    flag_gems.zero_(act_view)
 
     utils.gems_assert_equal(act, ref)
