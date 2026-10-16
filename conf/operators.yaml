@@ -9398,6 +9398,19 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: has_same_storage_numel
+  description: 'Returns True if the two tensors have the same number of elements in their
+    underlying storages.
+    '
+  for:
+  - _has_same_storage_numel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: hash_tensor
   description: 'Reduces the input tensor by XOR-ing the raw 64-bit representations
     of its elements over the given dims (an empty dim list reduces over all elements).
