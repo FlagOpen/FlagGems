@@ -253,8 +253,8 @@ class FusedMoEBenchmark(base.Benchmark):
 # vLLM does not recognise that raises NotImplementedError from
 # ``vllm/platforms/interface.py`` (UnspecifiedPlatform) before any kernel is
 # reached.  vLLM's own Triton MoE kernel also fails on XPU when the missing
-# glue ops are supplied (illegal memory access at M=8; TritonSDNNLegalize
-# compile failure at M=1), and its shipped .so files are NVIDIA-only.
+# glue ops are supplied (illegal memory access at M=8; a compile failure at
+# M=1), and its shipped .so files are NVIDIA-only.
 #
 # Therefore, for kunlunxin only, the number reported here is measured against a
 # SUBSTITUTED device baseline: a straightforward unfused per-expert

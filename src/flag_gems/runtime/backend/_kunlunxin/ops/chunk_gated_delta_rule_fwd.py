@@ -23,7 +23,7 @@ kernel body (``src/flag_gems/fused/FLA/fused_cumsum_kkt_solve_tril.py``), and
 neither is reachable by changing tiles/blocks:
 
 1. ``tl.cumsum`` (line 78) lowers to ``tt.scan`` -> an unregistered
-   ``ttx.cumsum``.  The SDNN bufferize pass then rejects the
+   ``ttx.cumsum``.  A later pass then rejects the
    ``memref.reinterpret_cast`` it materialises:
    ``expected the number of 'strides' to match the number of dynamic entries
    in 'static_strides' (0 vs 2)``.  The ``loc("b_g_diff")`` at line 102 is

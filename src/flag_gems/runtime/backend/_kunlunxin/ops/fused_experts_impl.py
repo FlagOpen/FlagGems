@@ -182,11 +182,10 @@ def fused_experts_impl(
     # ------------------------------------------------------------------
     # Narrow stale-cache guard (2026-10-09).
     #
-    # The vendor g_fg_moe_cache (liblaunch_shared.so) is keyed on
-    # (routing-pointer, S, E) with NO content check, so it replays stale
-    # lod/count/sid whenever an address is reused with different routing.
-    # v2 targeted this by gating ALL bf16 off the vendor handler, which cost
-    # ~930x on bf16 (4.5 ms -> 4206 ms at (64,8,4096,14336,2)).
+    # The vendor MoE cache is keyed on (routing-pointer, S, E) with NO content
+    # check, so it replays stale lod/count/sid whenever an address is reused
+    # with different routing. An earlier version gated ALL bf16 off the vendor
+    # path, which cost ~930x on bf16 (4.5 ms -> 4206 ms at (64,8,4096,14336,2)).
     #
     # The hazard is address-reuse-with-changed-content, not the dtype. Detect
     # exactly that: record the routing version seen at each (pointer, numel)

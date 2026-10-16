@@ -293,9 +293,8 @@ def conv_transpose2d(
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
     # fp16 + bias, when the C cast pipeline above is NOT already selected, runs
-    # the launch table's fp16 fusion entry
-    # (conv2d_transpose_fusion_v2<fp16, fp16, fp16, fp16>), whose accumulator is
-    # fp16.  The reduction cancels on some outputs and the fp16 partial sums
+    # the fp16 fusion entry, whose accumulator is fp16.  The reduction cancels
+    # on some outputs and the fp16 partial sums
     # then lose several ULPs of the *result* (measured 2026-10-08 on
     # test_conv_transpose1d_bias[dtype1-0-2-shape1-kernel1]: the vendor fp16
     # convolution returns -0.15625 where the correctly rounded value is
@@ -307,8 +306,8 @@ def conv_transpose2d(
     # reference exactly.  Only the *bias* path is affected: every no-bias fp16
     # case in the official matrices passes, and both official benchmarks call
     # with bias=None, so this reride costs nothing on the measured shapes.
-    # (The underlying defect is the fp16 accumulator in the shared
-    # liblaunch_shared.so launch table; that artifact is not ours to rebuild.)
+    # (The underlying defect is the fp16 accumulator in the shared vendor
+    # library; that artifact is not ours to rebuild.)
     fp32_reride = orig_dtype == torch.float16 and bias is not None and not use_cast_ride
     scratch_x = scratch_w = None
     if use_cast_ride:
@@ -316,8 +315,8 @@ def conv_transpose2d(
         scratch_w = _scratch_buf(weight.shape, weight.device)
     elif fp32_reride:
         # feeding fp32 operands makes the launcher report the fp32 type index,
-        # which the launch table routes to the accurate conv2d_transpose_v2
-        # entry; the result is rounded back to fp16 once, at the end.
+        # which routes to the accurate fp32 entry; the result is rounded back
+        # to fp16 once, at the end.
         input = _fast_cast(input, torch.float32)
         weight = _fast_cast(weight, torch.float32)
 

@@ -50,9 +50,9 @@ def conv3d_output_size(
     return conv2d_output_size(in_size, kernel_size, stride, padding, dilation)
 
 
-# Runtime (non-constexpr) arguments, in signature order. The XHPC launch
-# handler `handle_conv3d_forward` decodes the generated kernelParams table by
-# ORIGINAL triton argument index (0..40) and expects:
+# Runtime (non-constexpr) arguments, in signature order. The launcher decodes
+# the generated kernelParams table by ORIGINAL triton argument index (0..40)
+# and expects:
 #   0-3 pointers, 4 in_n, 5-7 input dims, 8 out_c, 9-11 out dims,
 #   12-26 tensor strides, 27 weight_c, 28-30 weight dims, 31-33 strides,
 #   34-36 paddings, 37-39 dilations, 40 groups.

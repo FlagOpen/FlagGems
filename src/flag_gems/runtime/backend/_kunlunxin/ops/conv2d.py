@@ -1096,7 +1096,7 @@ def _vendor_launch(
     dw,
     groups,
 ):
-    """One plain launch of the ABI carrier (the vendor handler intercepts it).
+    """One plain launch of the ABI carrier (intercepted and replaced).
 
     Kept separate so the cache can capture a launcher-level replay of exactly
     this call: the Triton JITFunction binder costs ~60 us per launch on this
@@ -1162,13 +1162,11 @@ def _vendor_replay(rec, input, weight, bias):
 
 
 def _vendor_conv2d_forward(input, weight, bias, stride, padding, dilation, groups):
-    """Bind the vendor conv2d_fusion kernel through the XHPC launch table.
+    """Bind the vendor conv2d_fusion kernel through the launcher.
 
-    The launch table matches a Triton kernel by NAME SUBSTRING
-    ("conv2d_forward"), so `conv2d_forward_kernel` is intercepted by
-    `handle_conv2d_forward` in launch_extra.cpp and routed to the vendor
-    conv2d_fusion instead of executing the (scalar-gather) fallback body.
-    The handler decodes the emitted kernelParams table by ORIGINAL triton
+    A kernel whose symbol name contains "conv2d_forward" is intercepted and
+    routed to the vendor conv2d_fusion instead of executing the (scalar-gather)
+    fallback body. The emitted kernelParams table is decoded by ORIGINAL triton
     argument index 0..31, so the carrier's parameter ORDER *is* the ABI: it is
     the ABI-matched carrier already validated for the depthwise case, imported
     here rather than duplicated.
@@ -1323,7 +1321,7 @@ def conv2d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         return vendor_out
     # The former `_square_pad_conv2d` workaround padded the smaller spatial
     # extent up to the larger one (O(L^2) for the conv1d-shaped (N, C, L, 1)
-    # input) because the xhpc handler was believed to require square extents.
+    # input) because the launcher was believed to require square extents.
     # The Triton path does not: it derives hout/wout from the actual extents,
     # so the pad is pure waste and is dropped.
     logger.debug("GEMS_KUNLUNXIN CONV2D")

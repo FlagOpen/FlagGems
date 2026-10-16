@@ -39,11 +39,9 @@ def lstm_stub_kernel(
     wx_max_ptr,
     wh_max_ptr,
 ):
-    # kunlunxin launch-table binding: this launch is intercepted by
-    # try_launch_table (liblaunch_shared.so) and dispatched to the xhpc
-    # whole-sequence fused LSTM (baidu::xpu::api::lstm_inference). The body
-    # below never executes; it only needs to compile on the normal pipeline
-    # (no tl.dot / no tensor-denominator division, see sdnn.h:2550).
+    # This launch is intercepted and replaced by a fused whole-sequence
+    # implementation. The body below never executes; it only needs to compile
+    # on the normal pipeline (no tl.dot / no tensor-denominator division).
     tl.program_id(0)
 
 
@@ -53,9 +51,8 @@ def _run_fusion(x, init_h, init_c, wx, wh, bx, bh, y, last_h, last_c, is_reverse
     # int16 TGEMM quantization scales (maxptr args of lstm_inference)
     wx_max = wx.abs().amax().float().reshape(1)
     wh_max = wh.abs().amax().float().reshape(1)
-    # xhpc lstm_inference contract: bias is always `const float*` (4B/elem)
-    # even for fp16/bf16 inputs (launch_extra.cpp launch_fg_lstm fp16 branch
-    # casts t.ptr[5]/t.ptr[6] to const float*). Upcast non-fp32 bias so the
+    # The fused entry point always reads bias as 4-byte floats, even for
+    # fp16/bf16 inputs. Upcast non-fp32 bias so the
     # handler does not read fp16 (2B) as float (4B) -> OOB garbage (fp16+bias
     # maxdiff 0.674 before this fix).
     if bx is not None and bx.dtype != torch.float32:
@@ -95,7 +92,7 @@ def _run_fusion_layer(
     batch_size,
     hidden_size,
 ):
-    """Run one direction of one layer through the xhpc fused LSTM."""
+    """Run one direction of one layer through the fused LSTM."""
     state_idx = layer * num_directions + direction
     if has_biases:
         w_ih, w_hh, b_ih, b_hh = params[4 * state_idx : 4 * state_idx + 4]
@@ -110,9 +107,8 @@ def _run_fusion_layer(
         # stack; reverse = flip-input -> forward -> flip-output (verified
         # 8.8e-5 vs torch bidir+2layer).
         x_in = torch.flip(input, dims=[0]).contiguous()
-    # bf16: xhpc lstm_inference has no bf16 instantiation (launch_fg_lstm
-    # type_index 7 -> default no-op) -> upcast to fp32, run fp32 fused kernel,
-    # downcast outputs.
+    # bf16: the fused entry point has no bf16 instantiation, so upcast to
+    # fp32, run the fp32 fused kernel, and downcast the outputs.
     if out_dtype == torch.bfloat16:
         x_in = x_in.float().contiguous()
         w_ih_f = w_ih.float().contiguous()
@@ -160,10 +156,9 @@ def _run_fusion_layer(
 
 
 def _lstm_fused(input, hx, params, has_biases, num_layers, bidirectional, batch_first):
-    """Multi-layer (optionally bidirectional) LSTM via the xhpc fused kernel.
+    """Multi-layer (optionally bidirectional) LSTM via the fused kernel.
 
-    Each direction is a single fused launch (lstm_stub_kernel -> launch table
-    -> fg_lstm -> baidu::xpu::api::lstm_inference); layers/directions are
+    Each direction is a single fused launch; layers/directions are
     composed in Python (same math as PyTorch). Raises on any failure so the
     caller can fall back to composite.
     """
@@ -217,15 +212,15 @@ def lstm(
     bidirectional,
     batch_first,
 ):
-    """aten::lstm through the XHPC fused launch-table binding.
+    """aten::lstm through the fused binding.
 
-    The fused path (launch table fg_lstm -> lstm_inference) gives near-native
+    The fused path gives near-native
     performance (one launch per direction); reverse uses flip+fwd+flip because
     is_reverse=1 is wrong in this stack. Vendor failures are propagated rather
     than hidden by an unapproved native/composite fallback.
     """
     if train:
-        raise NotImplementedError("XHPC fused LSTM inference does not support training")
+        raise NotImplementedError("fused LSTM inference does not support training")
     return _lstm_fused(
         input, hx, params, has_biases, num_layers, bidirectional, batch_first
     )

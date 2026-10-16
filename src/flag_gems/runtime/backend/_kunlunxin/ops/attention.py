@@ -1249,9 +1249,8 @@ def efficient_attention_backward(
 
 def _sdpa_attn_fwd_grid(args):
     # Module-level (stable identity) launch grid for ``_attn_fwd``. A per-call
-    # ``lambda`` grid forces a full recompile on every launch (~160-180 ms/call);
-    # reading the shape from the kernel args keeps the math identical while
-    # making the callable stable.
+    # callable is not cache-stable; reading the shape from the kernel args keeps
+    # the math identical while making the callable stable.
     return (
         triton.cdiv(args["Q_CTX"], args["BLOCK_M"]),
         args["Z"] * args["q_head_num"],
@@ -1804,7 +1803,7 @@ _TILED_GRID_CACHE = {}
 
 
 def _tiled_grid_for(seq_q, batch_heads):
-    """Stable grid callable per shape (a per-call callable forces recompiles)."""
+    """Stable grid callable per shape."""
     key = (seq_q, batch_heads)
     fn = _TILED_GRID_CACHE.get(key)
     if fn is None:

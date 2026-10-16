@@ -119,7 +119,7 @@ class InplaceFusedExpertsBenchmark(base.Benchmark):
 #     to launch, but that kernel then fails on XPU both ways: at M=8 it compiles,
 #     launches and faults with an illegal memory access (XPU status 700); at M=1
 #     (naive_block_assignment, which bypasses the align helper) it fails to
-#     compile -- PassManager::run failed ... [TritonSDNNLegalize], vLLM
+#     compile -- PassManager::run failed, vLLM
 #     fused_moe.py:315.
 #
 # Therefore the number reported here is measured against a SUBSTITUTED device

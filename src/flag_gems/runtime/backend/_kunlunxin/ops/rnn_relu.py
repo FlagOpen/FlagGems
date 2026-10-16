@@ -130,7 +130,7 @@ def rnn_relu(
     )
 
     # Fused path is gated to pow2 hidden_size <= 128 and non-bf16: taller
-    # tiles exhaust uni_sram during XPU compilation, and for bf16 the Triton
+    # tiles exceed the on-chip memory budget during compilation, and for bf16 the Triton
     # tiled matmul's reduction tree rounds differently from native torch.mm,
     # accumulating error beyond the 1e-4 atol over time steps.
     # BF16 uses the native-chain path with fp32 recurrence instead (see below).
@@ -280,8 +280,8 @@ class KunlunxinRnnReluFunction(torch.autograd.Function):
 
     The generic RnnReluFunction cannot be used on XPU because:
     (1) its forward calls rnn_relu_kernel_forward (generic Triton kernel)
-        which fails to compile on XPU (2D weight-tile + masked reads overflow
-        uni_sram / hit TritonXPUCoreTiling failures);
+        which fails to compile on XPU (2D weight-tile + masked reads exceed the
+        on-chip memory budget / hit core-tiling failures);
     (2) its backward uses torch.addmm which was historically problematic
         (though currently compiles at small shapes, the generic forward is
         the primary blocker).

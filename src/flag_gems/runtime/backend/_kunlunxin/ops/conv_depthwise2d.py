@@ -46,15 +46,15 @@ def _zero_bias(out_c, device):
 
 
 # ---------------------------------------------------------------------------
-# [2026-10-09] XHPC launch-table carrier for the depthwise (groups == C) case.
+# [2026-10-09] ABI-matched carrier for the depthwise (groups == C) case.
 #
 # The gate in conv2d.Conv2d.forward requires reduction >= 64 to pick a tiled
 # kernel, and depthwise has reduction == kh*kw (4..25), so it always fell back
 # to the scalar-gather _forward: measured 15.9-107 ms against a 9.4-45 us
 # device F.conv2d baseline (aggregate 0.0235).
 #
-# The vendor conv2d_fusion handler is reachable from the launch table by name
-# substring ("conv2d_forward") and handles groups itself (case 31 does
+# The vendor conv2d_fusion kernel is reachable by name substring
+# ("conv2d_forward") and handles groups itself (case 31 does
 # c *= groups, with case 22 the per-group weight_c).  This is the ABI-matched
 # carrier from PR #6914 for conv2d, reused verbatim: the parameter ORDER is
 # the ABI, every scalar is do_not_specialize'd so a value of 1 is not folded
@@ -133,7 +133,7 @@ def conv2d_forward_kernel(
     HAS_BIAS: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    # Generic scalar-gather fallback; only executes if the vendor handler
+    # Generic scalar-gather fallback; only executes if the vendor path
     # declines the launch (it returns INT_MIN for a non-matching signature).
     m = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     plane = hout * wout

@@ -28,14 +28,13 @@ BLOCK_SIZE_M = 128
 BLOCK_SIZE_N = 128
 BLOCK_SIZE_K = 32
 
-# KLX quirk (2026-09-07): the xpu ttsdnnir pass chain rewrites any kernel
-# whose symbol name starts with "matmul_bias_activation_kernel" into the
-# sdnn hardware GEMM fusion, whose bf16 accumulation loses ~0.42 rms at
+# Kernels whose symbol name starts with "matmul_bias_activation_kernel" are
+# rewritten into a fused GEMM path whose bf16 accumulation loses ~0.42 rms at
 # K=4096 (exceeds the 1e-4*K tolerance; only bf16 is affected -- fp16/fp32
-# stay within tolerance). Keep the fast sdnn path under the original name,
-# and route large-K bf16 to the un-hijacked generic kernel. Remove this
-# split once the vendor fixes sdnn accumulation precision.
-SDNN_PRECISE_MIN_K = 4096
+# stay within tolerance). Keep the fast path under the original name, and
+# route large-K bf16 to the generic kernel. Remove this split once the fused
+# path's bf16 accumulation precision is fixed.
+PRECISE_MIN_K = 4096
 
 
 @libentry()
@@ -255,7 +254,7 @@ def matmul_bias_activation(input, weight, bias):
             bias = bias.reshape(-1)
             kernel = (
                 fused_mba_kernel
-                if input.dtype == torch.bfloat16 and K >= SDNN_PRECISE_MIN_K
+                if input.dtype == torch.bfloat16 and K >= PRECISE_MIN_K
                 else matmul_bias_activation_kernel
             )
             kernel[grid](
