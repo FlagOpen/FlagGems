@@ -537,12 +537,19 @@ def _snapshot_sparse(tensor):
     return (_sparse_meta(tensor), [part.clone() for part in _sparse_parts(tensor)])
 
 
+def _assert_unchanged(current, snapshot):
+    """Compare a local snapshot using the selected reference device."""
+    if utils.TO_CPU:
+        snapshot = snapshot.cpu()
+    tu.assert_result_equal(current, snapshot)
+
+
 def _assert_sparse_unchanged(tensor, snapshot):
     """The candidate must leave its sparse operand exactly as it found it."""
     meta, parts = snapshot
     assert _sparse_meta(tensor) == meta
     for part, before in zip(_sparse_parts(tensor), parts):
-        tu.assert_result_equal(part, before)
+        _assert_unchanged(part, before)
 
 
 def _assert_sparse_result(res_out, ref_out, layout, shape, dtype):
@@ -701,11 +708,11 @@ def test_to_dense_backward_grad_view(base_shape, size, stride, offset):
 
     assert res_out.shape == tuple(size)
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(grad, grad_before)
+    _assert_unchanged(grad, grad_before)
     # The view shares storage with base, so the whole parent is compared as
     # well: a candidate writing outside the view's window would otherwise go
     # unnoticed.
-    tu.assert_result_equal(base, base_before)
+    _assert_unchanged(base, base_before)
     tu.assert_result_equal(inp, ref_inp)
 
 
@@ -740,7 +747,7 @@ def test_to_dense_backward_ignores_input_metadata(
     tu.assert_result_equal(inp, ref_inp)
     # The non-contiguous row is a slice of base, so the part of the parent
     # storage outside the slice is checked too.
-    tu.assert_result_equal(base, base_before)
+    _assert_unchanged(base, base_before)
 
 
 @pytest.mark.to_dense_backward
