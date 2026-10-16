@@ -16,13 +16,49 @@ import logging
 
 import torch
 import triton
+import triton.language as tl
 
-from flag_gems.ops.logit import _to_triton_dtype, logit_kernel
 from flag_gems.runtime import torch_device_fn
 
-from .copy import copy_ as _gems_copy_
+logger = logging.getLogger(__name__)
 
-logger = logging.getLogger("flag_gems.ops.logit")
+BLOCK_SIZE = 8192
+
+
+@triton.jit
+def logit_kernel(
+    x_ptr,
+    y_ptr,
+    n_elements,
+    eps,
+    HAS_EPS: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    x = tl.load(x_ptr + offsets, mask=mask, other=0)
+    x_f32 = x.to(tl.float32)
+
+    if HAS_EPS:
+        lo = eps
+        hi = 1.0 - eps
+        x_f32 = tl.minimum(tl.maximum(x_f32, lo), hi)
+
+    y = tl.log(x_f32 / (1.0 - x_f32))
+    tl.store(y_ptr + offsets, y.to(OUT_DTYPE), mask=mask)
+
+
+def _to_triton_dtype(dtype):
+    if dtype == torch.float32:
+        return tl.float32
+    if dtype == torch.float16:
+        return tl.float16
+    if dtype == torch.bfloat16:
+        return tl.bfloat16
+    return None
 
 
 def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
@@ -56,7 +92,7 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
             work_out = out
 
         n_elements = in_kernel.numel()
-        BLOCK_SIZE = 1024
+        # Concrete tuple grid: a callable grid recompiles on every launch on XPU.
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
         triton_dtype = _to_triton_dtype(work_out.dtype)
@@ -72,7 +108,7 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
             )
 
         if need_copy_back:
-            _gems_copy_(out, work_out)
+            out.copy_(work_out.to(out.dtype))
         return out
 
     desired_dtype = input.dtype
@@ -84,7 +120,6 @@ def _logit_impl(input: torch.Tensor, eps=None, out: torch.Tensor = None):
         work_out = torch.empty_like(input, dtype=torch.float32)
 
     n_elements = in_kernel.numel()
-    BLOCK_SIZE = 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     triton_dtype = _to_triton_dtype(work_out.dtype)
