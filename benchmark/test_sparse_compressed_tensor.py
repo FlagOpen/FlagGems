@@ -56,7 +56,7 @@ class SparseCompressedTensorBenchmark(base.Benchmark):
 def test_sparse_compressed_tensor():
     bench = SparseCompressedTensorBenchmark(
         op_name="sparse_compressed_tensor",
-        torch_op=torch.ops.aten.sparse_compressed_tensor,
+        torch_op=torch.sparse_csr_tensor,
         gems_op=flag_gems.sparse_compressed_tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
