@@ -15,9 +15,21 @@ logger = logging.getLogger(__name__)
 device = device.name
 
 
-_ROW_MAX_N = 4096
+_ROW_MAX_N = 1024
 
-_FLAT_TM = {2: 8, 4: 8, 8: 8, 16: 8, 32: 8, 64: 8, 128: 8, 256: 4, 512: 2}
+_FLAT_TM = {
+    2: 8,
+    4: 8,
+    8: 8,
+    16: 8,
+    32: 8,
+    64: 8,
+    128: 8,
+    256: 4,
+    512: 2,
+    1024: 4,
+    2048: 2,
+}
 
 _TL_DTYPES = {
     torch.float16: tl.float32,
@@ -266,88 +278,10 @@ def _scan_rows_into(inp, out, M, N):
             buffer_size_limit=2048,
         )
     else:
-        inp = inp.reshape(M, N)
-        out = out.reshape(M, N)
-        BN = 4096
-        C_full = N // BN
-        T = N - C_full * BN
-        C = C_full + (1 if T else 0)
-        acc_tl = _TL_DTYPES.get(inp.dtype, tl.float32)
-        if inp.dtype == torch.float64:
-            sums_dtype = torch.float64
-        elif inp.dtype.is_floating_point:
-            sums_dtype = torch.float32
-        elif inp.dtype in (torch.int64, torch.uint64):
-            sums_dtype = inp.dtype
-        else:
-            sums_dtype = torch.int64
-        if C > 4096:
-            S = C
-        else:
-            S = max(64, triton.next_power_of_2(C))
-        with torch_device_fn.device(inp.device):
-            sums = torch.zeros(M, S, dtype=sums_dtype, device=inp.device)
-        grid = (M * C_full,)
-        cumsum_chunk_scan_kernel[grid](
-            inp,
-            out,
-            sums,
-            N,
-            C_full,
-            S,
-            ACC_DTYPE=acc_tl,
-            BN=BN,
-            num_warps=8,
-            buffer_size_limit=2048,
-        )
-        if T:
-            TL = max(64, triton.next_power_of_2(T))
-            tail_dtype = (
-                torch.int32
-                if inp.dtype in (torch.bool, torch.int8, torch.uint8)
-                else inp.dtype
-            )
-            tail_buf = torch.empty(M, TL, dtype=tail_dtype, device=inp.device)
-            tail_buf.fill_(0)
-            tail_buf[:, :T] = inp[:, C_full * BN :]
-            cumsum_chunk_tail_kernel[(M, 1, 1)](
-                tail_buf,
-                tail_buf,
-                ACC_DTYPE=acc_tl,
-                TL=TL,
-                num_warps=8,
-                buffer_size_limit=2048,
-            )
-            sums[:, C - 1] = tail_buf[:, T - 1]
-        if C > 4096:
-            _scan_rows_into(sums, sums, M, C)
-        else:
-            cumsum_row_kernel[(M,)](
-                sums,
-                sums,
-                N=S,
-                TILE_N=S,
-                NEED_MASK=0,
-                num_warps=8 if S > 2048 else 4,
-                buffer_size_limit=2048,
-            )
-        if C_full > 1:
-            cumsum_chunk_prefix_kernel[grid](
-                out,
-                sums,
-                N,
-                C_full,
-                S,
-                BN=BN,
-                num_warps=8,
-                buffer_size_limit=2048,
-            )
-        if T:
-            pref_tail = sums[:, C_full - 1]
-            out[:, C_full * BN :] = tail_buf[:, :T] + pref_tail[:, None]
+        _scan_rows_group_into(inp, out, M, N)
 
 
-_GROUP = 4096
+_GROUP = 1024
 
 
 @libentry()
@@ -403,6 +337,62 @@ def scan_group_add_kernel(
     tl.store(out + pid_r * N + offs, r)
 
 
+def _scan_rows_group_into(inp, out, M, N):
+    """K == 1, N > _ROW_MAX_N: two-stage group scan.
+
+    Replaces the former chunk-scan + prefix-add path (``cumsum_chunk_*``).
+    That path made two full-tensor passes over the data -- one scan+sum pass
+    writing ``out`` and ``sums``, then a second read-modify-write prefix-add
+    pass over ``out`` -- for ~4N memory traffic.  Here ``scan_group_add_kernel``
+    folds the per-group prefix (read directly from the pre-scanned ``sums``)
+    into the single-shot group scan, so the data is touched once to sum
+    (group_sum: read N) and once to scan+add (group_add: read N, write N) for
+    ~3N traffic.  When N is an exact multiple of GROUP there is no partial
+    group, so the scan runs straight on ``inp``/``out`` with no zero-pad buffer
+    (the common benchmark case 1024x65536 = 16*4096 hits this).  Non-multiples
+    fall back to the zero-padded buffer that _scan_mid_into also uses, which
+    keeps every load fully in-bounds and unmasked (the one construct this
+    backend mis-compiles -- see cumsum_chunk_scan_kernel's note) and carries
+    the per-group prefix across kernels rather than inside one program (the
+    other backend corner).  bf16/fp16 keep their fp32 accumulation (the group
+    kernels up-cast then the fp32 result is cast back on store to ``out``)."""
+    inp = inp.reshape(M, N)
+    out = out.reshape(M, N)
+    GROUP = _GROUP
+    n_groups = (N + GROUP - 1) // GROUP
+    Np = n_groups * GROUP
+    sums_dtype = torch.float32 if inp.dtype.is_floating_point else torch.int64
+    with torch_device_fn.device(inp.device):
+        sums = torch.empty(M, n_groups, dtype=sums_dtype, device=inp.device)
+        if Np == N:
+            scan_group_sum_kernel[(M, n_groups)](
+                inp, sums, N, n_groups, GROUP, num_warps=8, buffer_size_limit=2048
+            )
+            _scan_rows_into(sums, sums, M, n_groups)
+            scan_group_add_kernel[(M, n_groups)](
+                inp, out, sums, N, n_groups, GROUP, num_warps=8, buffer_size_limit=2048
+            )
+        else:
+            xp = torch.zeros(M, Np, dtype=inp.dtype, device=inp.device)
+            xp[:, :N] = inp
+            out_t = torch.empty(M, Np, dtype=out.dtype, device=out.device)
+            scan_group_sum_kernel[(M, n_groups)](
+                xp, sums, Np, n_groups, GROUP, num_warps=8, buffer_size_limit=2048
+            )
+            _scan_rows_into(sums, sums, M, n_groups)
+            scan_group_add_kernel[(M, n_groups)](
+                xp,
+                out_t,
+                sums,
+                Np,
+                n_groups,
+                GROUP,
+                num_warps=8,
+                buffer_size_limit=2048,
+            )
+            out[:, :N] = out_t[:, :N]
+
+
 def _scan_mid_into(inp, out, M, N, K):
     """ "(M, N, K) -> (M, K, N) -> padded group scan -> transpose back."""
     R = M * K
@@ -427,7 +417,11 @@ def _scan_mid_into(inp, out, M, N, K):
             xp, out_t, sums, Np, n_groups, _GROUP, num_warps=8, buffer_size_limit=2048
         )
     src_t = out_t[:, :N].reshape(M, K, N).permute(0, 2, 1)
-    if not tle_copy(src_t, out.view(M, N, K)):
+    try:
+        ok = tle_copy(src_t, out.view(M, N, K))
+    except Exception:
+        ok = False  # e.g. mainline tle lacks UNI_SRAM (same family as the tril fix)
+    if not ok:
         torch.ops.aten._copy_from(
             out_t[:, :N].reshape(M, K, N).permute(0, 2, 1), out.view(M, N, K), False
         )
@@ -543,6 +537,60 @@ def normed_cumsum_div_kernel(y, K, ACC_DTYPE: tl.constexpr, BLOCK: tl.constexpr)
         tl.store(y + row * K + offs, x / total, mask=mask)
 
 
+_NORMED_MM_MAX_K = 512
+_NORMED_U_CACHE = {}
+
+
+def _normed_tri_u(TK, dev):
+    key = (TK, dev)
+    u = _NORMED_U_CACHE.get(key)
+    if u is None:
+        u = torch.triu(torch.ones(TK, TK, dtype=torch.float32, device=dev))
+        _NORMED_U_CACHE[key] = u
+    return u
+
+
+@libentry()
+@triton.jit
+def normed_cumsum_mm_kernel(inp, out, u_ptr, M, K, TK: tl.constexpr, BM: tl.constexpr):
+    """normed_cumsum as a prefix-sum matmul: Y = X @ U with U upper-triangular
+    ones gives Y[m,k] = sum_{j<=k} X[m,j] (the cumulative sum), vectorized across
+    BM rows by a single tl.dot (ieee -> fp32-exact); normed = Y / row_total. This
+    turns the launch-bound many-row / short-K corner (one scan per row -> millions
+    of programs) into a few GEMM tiles.
+    NOTE: TK is the next MULTIPLE OF 16 >= K, NOT next_pow2 -- an oversized pow2
+    contraction with many zero-padded lanes makes tl.dot drop terms on this
+    backend (verified: K=100/TK=128 wrong, K=100/TK=112 correct)."""
+    pid = ext.program_id(0)
+    rm = pid * BM + tl.arange(0, BM)
+    mmask = rm < M
+    kk = tl.arange(0, TK)
+    kmask = kk < K
+    x = tl.load(
+        inp + rm[:, None] * K + kk[None, :],
+        mask=mmask[:, None] & kmask[None, :],
+        other=0.0,
+    ).to(tl.float32)
+    jj = tl.arange(0, TK)
+    u = tl.load(u_ptr + jj[:, None] * TK + kk[None, :]).to(tl.float32)
+    y = tl.dot(x, u, input_precision="ieee")
+    inv = 1.0 / tl.sum(x, axis=1)
+    r = y * inv[:, None]
+    tl.store(
+        out + rm[:, None] * K + kk[None, :],
+        r.to(out.dtype.element_ty),
+        mask=mmask[:, None] & kmask[None, :],
+    )
+
+
+def _normed_mm(inp, out, M, K):
+    TK = ((K + 15) // 16) * 16
+    BM = 64 if K <= 256 else 32
+    u = _normed_tri_u(TK, inp.device)
+    grid = (triton.cdiv(M, BM),)
+    normed_cumsum_mm_kernel[grid](inp, out, u, M, K, TK=TK, BM=BM, num_warps=4)
+
+
 def normed_cumsum(inp, dim=-1):
     logger.debug("GEMS_KUNLUNXIN NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
@@ -551,17 +599,30 @@ def normed_cumsum(inp, dim=-1):
     if inp.numel() == 0:
         return torch.empty_like(inp)
     K = inp.size(dim)
+    # Short-K prefix-sum-as-matmul fast path (see normed_cumsum_mm_kernel): the
+    # many-row / short-K shapes are launch-bound as one-scan-per-row; a GEMM over
+    # BM rows collapses that. fp64 and K > cap fall through to the scan path.
+    use_mm = (1 < K <= _NORMED_MM_MAX_K) and inp.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    )
     if inp.stride(dim) != 1:
-        K = inp.size(dim)
         M = inp.numel() // K
         inp_t = inp.movedim(dim, -1).contiguous()
         out_t = torch.empty_like(inp_t)
         with torch_device_fn.device(inp.device):
-            _scan_rows_into(inp_t, out_t, M, K)
-            adj = out_t / out_t.narrow(-1, K - 1, 1)
-        return adj.movedim(-1, dim)
+            if use_mm:
+                _normed_mm(inp_t, out_t, M, K)
+            else:
+                _scan_rows_into(inp_t, out_t, M, K)
+                out_t = out_t / out_t.narrow(-1, K - 1, 1)
+        return out_t.movedim(-1, dim)
     M = inp.numel() // K
     out = torch.empty_like(inp)
     with torch_device_fn.device(inp.device):
+        if use_mm:
+            _normed_mm(inp, out, M, K)
+            return out
         _scan_rows_into(inp, out, M, K)
         return out / out.narrow(-1, K - 1, 1)
