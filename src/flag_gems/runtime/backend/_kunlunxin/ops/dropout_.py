@@ -14,7 +14,6 @@
 
 import logging
 
-import torch
 import triton
 import triton.language as tl
 
@@ -26,17 +25,22 @@ from flag_gems.utils.random_utils import (
 
 logger = logging.getLogger(__name__)
 
+UNROLL = 4
+
 
 @triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
 def dropout_inplace_kernel(
     X,
-    N,
     p,
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
 ):
-    UNROLL: tl.constexpr = 4  # philox generates 128 random bits at a time
+    # Processes one full ``BLOCK * UNROLL``-element tile with no boundary mask.
+    # The host launches exactly ``N // (BLOCK * UNROLL)`` programs, so every
+    # load/store address below is guaranteed in-bounds and the compiler keeps
+    # the contiguous DMA path.
+    UNROLL: tl.constexpr = 4
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -61,33 +65,67 @@ def dropout_inplace_kernel(
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
 
-    x0 = tl.load(X + off_0, mask=off_0 < N, other=0.0)
-    x1 = tl.load(X + off_1, mask=off_1 < N, other=0.0)
-    x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0)
-    x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0)
+    x0 = tl.load(X + off_0)
+    x1 = tl.load(X + off_1)
+    x2 = tl.load(X + off_2)
+    x3 = tl.load(X + off_3)
 
     y0 = x0 * p * mask0
     y1 = x1 * p * mask1
     y2 = x2 * p * mask2
     y3 = x3 * p * mask3
 
-    tl.store(X + off_0, y0, mask=off_0 < N)
-    tl.store(X + off_1, y1, mask=off_1 < N)
-    tl.store(X + off_2, y2, mask=off_2 < N)
-    tl.store(X + off_3, y3, mask=off_3 < N)
+    tl.store(X + off_0, y0)
+    tl.store(X + off_1, y1)
+    tl.store(X + off_2, y2)
+    tl.store(X + off_3, y3)
 
 
-UNROLL = 4
+@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset", "start"])
+def dropout_inplace_tail_kernel(
+    X,
+    N,
+    start,
+    p,
+    philox_seed,
+    philox_offset,
+    BLOCK: tl.constexpr,
+):
+    # Handles the remaining ``[start, N)`` elements with a single masked tile.
+    # ``philox_offset`` is advanced past the full-tile kernel's counters so the
+    # random stream stays continuous.
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    c0 += i4
+    _O = c0 * 0
+    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+    r0 = uint_to_uniform_float(r0)
+
+    mask = r0 > p
+    p = 1.0 / (1.0 - p)
+
+    off = start + i4
+    x = tl.load(X + off, mask=off < N, other=0.0)
+    y = x * p * mask
+    tl.store(X + off, y, mask=off < N)
 
 
 def dropout_(input, p=0.5, train=True):
     """In-place dropout (aten::dropout_) on kunlunxin / XPU.
 
-    Same semantics as the generic op, but the launch uses a precomputed tuple
-    grid instead of a ``lambda meta: ...`` callable grid.  On XPU a callable
-    grid makes triton re-specialize the launch on every call (~190ms/launch,
-    measured the same way as take_along_dim), so BLOCK/num_warps are computed
-    here and passed explicitly.
+    Same semantics as the generic op, but the launch uses precomputed tuple
+    grids instead of a ``lambda meta: ...`` callable grid.  On XPU a callable
+    grid makes triton re-specialize the launch on every call (~190ms/launch),
+    so BLOCK/num_warps are computed here and passed explicitly.
+
+    The bulk is handled by a full-tile ``UNROLL=4`` kernel (four contiguous
+    loads/stores per program, no boundary mask) and the remainder by a single
+    masked-tile kernel.  This keeps the fast unrolled path for the bulk while
+    avoiding the XPU tail-store bug where fully out-of-range sibling loads
+    cause the partially-masked tail store to be dropped.
     """
     logger.debug("GEMS DROPOUT_")
     if not train or p == 0.0:
@@ -108,32 +146,32 @@ def dropout_(input, p=0.5, train=True):
     else:
         num_warps = 16
 
-    grid = (triton.cdiv(N, block * UNROLL),)
-    # Advance the Philox state by the number of 128-bit draws this launch
-    # consumes so successive calls do not reuse the same random stream.
-    increment = triton.cdiv(N, UNROLL)
+    tile = block * UNROLL
+    n_full = N // tile
+    rem = N - n_full * tile
+    n_tail = triton.cdiv(rem, block) if rem > 0 else 0
+
+    # Advance the Philox state by the exact number of counter draws consumed by
+    # the full-tile and tail kernels so successive calls never reuse a stream.
+    increment = n_full * block + n_tail * block
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
-        dropout_inplace_kernel[grid](
-            input, N, p, philox_seed, philox_offset, BLOCK=block, num_warps=num_warps
-        )
+        if n_full > 0:
+            dropout_inplace_kernel[(n_full,)](
+                input, p, philox_seed, philox_offset, BLOCK=block, num_warps=num_warps
+            )
+        if n_tail > 0:
+            dropout_inplace_tail_kernel[(n_tail,)](
+                input,
+                N,
+                n_full * tile,
+                p,
+                philox_seed,
+                philox_offset + n_full * block,
+                BLOCK=block,
+                num_warps=num_warps,
+            )
     return input
 
 
-def _patch_generic_wrapper():
-    """Route ``flag_gems.ops.dropout_`` to this backend-local override."""
-    import sys
-
-    try:
-        _generic_module = sys.modules.get("flag_gems.ops.dropout_")
-        if _generic_module is not None:
-            _generic_module.dropout_ = dropout_
-            _generic_module.dropout_inplace_kernel = dropout_inplace_kernel
-    except ImportError:
-        pass
-
-
-_patch_generic_wrapper()
-
-
-__all__ = ["dropout_", "dropout_inplace_kernel"]
+__all__ = ["dropout_", "dropout_inplace_kernel", "dropout_inplace_tail_kernel"]
