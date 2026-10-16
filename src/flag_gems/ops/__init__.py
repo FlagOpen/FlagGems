@@ -626,6 +626,7 @@ from flag_gems.ops.cumsum import cumsum, cumsum_out, normed_cumsum
 from flag_gems.ops.cumsum_ import cumsum_
 from flag_gems.ops.cumulative_trapezoid import cumulative_trapezoid
 from flag_gems.ops.deg2rad import deg2rad, deg2rad_, deg2rad_out
+from flag_gems.ops.dense_dim import dense_dim
 from flag_gems.ops.dequantize import dequantize
 from flag_gems.ops.det import det
 from flag_gems.ops.detach_copy import detach_copy
@@ -637,6 +638,7 @@ from flag_gems.ops.diagonal_scatter import diagonal_scatter
 from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.dim import dim
+from flag_gems.ops.dim_arange import _dim_arange as dim_arange
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
@@ -1274,6 +1276,7 @@ from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.slogdet import slogdet
+from flag_gems.ops.slow_conv_transpose2d import slow_conv_transpose2d
 from flag_gems.ops.smm import smm
 from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss,
@@ -2127,6 +2130,7 @@ __all__ = [
     "deg2rad",
     "deg2rad_",
     "deg2rad_out",
+    "dense_dim",
     "dequantize",
     "det",
     "detach_copy",
@@ -2139,6 +2143,7 @@ __all__ = [
     "digamma",
     "digamma_",
     "dim",
+    "dim_arange",
     "dist",
     "div_mode",
     "div_mode_",
@@ -2845,6 +2850,7 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv_transpose2d",
     "smm",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
