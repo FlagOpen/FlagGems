@@ -4372,6 +4372,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: dense_dim
+  description: 'Returns the number of dense dimensions of a tensor: dim() for strided
+    tensors, dim() - sparse_dim for sparse layouts.
+
+    '
+  for:
+  - dense_dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dequantize
   description: 'Returns an fp32 Tensor by dequantizing a quantized Tensor.
 
@@ -4569,6 +4583,19 @@ ops:
     '
   for:
   - dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: dim_arange
+  description: 'Returns a 1-D int64 tensor containing 0..n-1 where n is the size of `like`
+    along `dim`, mirroring `aten::_dim_arange`.
+    '
+  for:
+  - _dim_arange
   labels:
   - aten
   - KernelGen
@@ -17476,6 +17503,23 @@ ops:
     kernel.
   for:
   - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_transpose2d
+  description: |
+    Applies a 2D transposed convolution operator over an input image composed of
+    several input planes, sometimes also called a fractionally-strided
+    convolution or a deconvolution. It can be seen as the gradient of `Conv2d`
+    with respect to its input: the input is promoted to 4D, scattered onto the
+    output grid according to `stride`, `padding`, `output_padding` and
+    `dilation`, and correlated with the `(C_in, C_out, kH, kW)` weight.
+  for:
+  - slow_conv_transpose2d
   labels:
   - aten
   - KernelGen
