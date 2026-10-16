@@ -53,10 +53,15 @@ def le_func(x, y):
 
 def le(A, B):
     logger.debug("GEMS_KUNLUNXIN LE")
-    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    # NOTE: do not enable TRITONXPU_COMPARE_FUSION here. The flagtree compiler
+    # on the CI runner lowers the generic pointwise bool store as
+    # cmpf(i1) + extui(i8) + store and then fuses it into a 32-bit
+    # triton_xpu.cmpf result (tensor<65536xui32>), which the op verifier
+    # rejects and blows uni_sram (OutOfResources) on the fp16 1024x1024 case.
+    # TRITONXPU_FP16_FAST is kept: it only strips the .to(fp32) so the compare
+    # runs as a native fp16 vcmpf (32-lane) instead of widening to fp32.
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = le_func(A, B)
-    del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
