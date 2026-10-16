@@ -436,6 +436,7 @@ from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor, logical_xor_
+from .logit import logit, logit_out  # noqa: F401  (registered via _FULL_CONFIG)
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
@@ -1207,6 +1208,8 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logical_xor_",
+    "logit",
+    "logit_out",
     "logspace",
     "logsumexp",
     "lt",
