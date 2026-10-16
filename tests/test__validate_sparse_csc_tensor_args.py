@@ -19,14 +19,15 @@ import flag_gems
 
 from . import test_utils as tu
 
+_ASCEND_VALUES_RANK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend input generation does not support values with more than 8 dimensions",
+)
 
-@pytest.fixture(autouse=True)
-def _skip_ascend_complex_input(request):
-    """Keep non-complex cases active on Ascend."""
-    callspec = getattr(request.node, "callspec", None)
-    dtype = callspec.params.get("dtype") if callspec is not None else None
-    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
-        pytest.skip("Ascend complex input/reference support is incomplete")
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
 
 
 # The operator validates the arguments of a CSC tensor and returns nothing:
@@ -267,10 +268,6 @@ def _make_csc_inputs(
     size, nnz, index_dtype, value_dtype, value_range, dense_ndim=0, layout="plain"
 ):
     # values has batch + nnz + dense axes, i.e. len(size) - 1 dimensions.
-    if flag_gems.vendor_name == "ascend" and len(size) - 1 > 8:
-        pytest.skip(
-            "Ascend input generation does not support values with more than 8 dimensions"
-        )
     ccol, row = _csc_indices(size, nnz, index_dtype, dense_ndim)
     batch, _, _, dense = _split_size(size, dense_ndim)
     values = tu.make_input(value_dtype, batch + (nnz,) + dense, value_range)
@@ -370,9 +367,21 @@ def _schema_defect_args(defect, ccol, row, values, call_size):
 
 
 @pytest.mark.validate_sparse_csc_tensor_args
-@pytest.mark.parametrize("dtype", VALUE_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in VALUE_DTYPES
+    ],
+)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("size", SIZE_SHAPES)
+@pytest.mark.parametrize(
+    "size",
+    [
+        pytest.param(size, marks=_ASCEND_VALUES_RANK_SKIP if len(size) - 1 > 8 else ())
+        for size in SIZE_SHAPES
+    ],
+)
 def test__validate_sparse_csc_tensor_args(size, value_range, dtype):
     # One stored entry per column of every matrix in the batch, always within the
     # nrows * ncols capacity.
@@ -395,7 +404,20 @@ def test__validate_sparse_csc_tensor_args(size, value_range, dtype):
 
 @pytest.mark.validate_sparse_csc_tensor_args
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("size,nnz,dense_ndim,index_dtype,layout", STRUCTURE_CASES)
+@pytest.mark.parametrize(
+    "size,nnz,dense_ndim,index_dtype,layout",
+    [
+        pytest.param(
+            size,
+            nnz,
+            dense_ndim,
+            index_dtype,
+            layout,
+            marks=_ASCEND_VALUES_RANK_SKIP if len(size) - 1 > 8 else (),
+        )
+        for size, nnz, dense_ndim, index_dtype, layout in STRUCTURE_CASES
+    ],
+)
 def test__validate_sparse_csc_tensor_args_structure(
     size, nnz, dense_ndim, index_dtype, layout, value_range
 ):
@@ -414,7 +436,15 @@ def test__validate_sparse_csc_tensor_args_structure(
 
 
 @pytest.mark.validate_sparse_csc_tensor_args
-@pytest.mark.parametrize("dtype,scenario", SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
+        )
+        for dtype, scenario in SPECIAL_CASES
+    ],
+)
 def test__validate_sparse_csc_tensor_args_special_values(dtype, scenario):
     values = tu.make_special_input(dtype, scenario)
     ccol, row = _csc_indices(SPECIAL_SIZE, values.numel(), INDEX_DTYPE_LONG)
@@ -432,7 +462,18 @@ def test__validate_sparse_csc_tensor_args_special_values(dtype, scenario):
 
 
 @pytest.mark.validate_sparse_csc_tensor_args
-@pytest.mark.parametrize("defect,size,nnz", INVALID_ROWS)
+@pytest.mark.parametrize(
+    "defect,size,nnz",
+    [
+        pytest.param(
+            defect,
+            size,
+            nnz,
+            marks=_ASCEND_VALUES_RANK_SKIP if len(size) - 1 > 8 else (),
+        )
+        for defect, size, nnz in INVALID_ROWS
+    ],
+)
 def test__validate_sparse_csc_tensor_args_invalid(defect, size, nnz):
     ccol, row, values, call_size = _invalid_csc_inputs(defect, size, nnz)
     # Only the candidate is called: the native result is the reference contract,

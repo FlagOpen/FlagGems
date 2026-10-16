@@ -20,14 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-
-@pytest.fixture(autouse=True)
-def _skip_ascend_complex_input(request):
-    """Keep non-complex cases active on Ascend."""
-    callspec = getattr(request.node, "callspec", None)
-    dtype = callspec.params.get("dtype") if callspec is not None else None
-    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
-        pytest.skip("Ascend complex input/reference support is incomplete")
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
 
 
 # adjoint swaps the last two dimensions and toggles the conjugate bit for
@@ -61,7 +57,13 @@ def _assert_view_semantics(res_out, ref_out, inp):
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize("shape", _ADJOINT_SHAPES)
-@pytest.mark.parametrize("dtype", _ADJOINT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _ADJOINT_DTYPES
+    ],
+)
 def test_adjoint(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -88,7 +90,15 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize("shape", _ADJOINT_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype, value_range, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_adjoint_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -102,7 +112,13 @@ def test_adjoint_value_ranges(shape, value_range, dtype):
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize("shape", [(8, 16, 32), (4, 8, 16, 32)])
-@pytest.mark.parametrize("dtype", _ADJOINT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _ADJOINT_DTYPES
+    ],
+)
 def test_adjoint_non_contiguous(shape, dtype):
     base = tu.make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -119,7 +135,13 @@ def test_adjoint_non_contiguous(shape, dtype):
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize("shape", [(16, 32), (4, 8, 16)])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in utils.FLOAT_DTYPES + utils.COMPLEX_DTYPES
+    ],
+)
 def test_adjoint_toggle(shape, dtype):
     # An already-conjugated input must produce an unconjugated view.
     base = tu.make_input(dtype, shape, ["-1", "1"])
@@ -138,7 +160,13 @@ def test_adjoint_toggle(shape, dtype):
 
 
 @pytest.mark.adjoint
-@pytest.mark.parametrize("dtype", tu.selected_cases(utils.ALL_FLOAT_DTYPES))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in tu.selected_cases(utils.ALL_FLOAT_DTYPES)
+    ],
+)
 def test_adjoint_special_values(dtype):
     values = torch.tensor(
         [
@@ -168,7 +196,13 @@ def test_adjoint_special_values(dtype):
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize("shape", [(16, 32), (4, 8, 16)])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in utils.FLOAT_DTYPES
+    ],
+)
 def test_adjoint_mutation(shape, dtype):
     # Writing through the returned view must update the input.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -189,9 +223,12 @@ def test_adjoint_mutation(shape, dtype):
 @pytest.mark.parametrize("shape", [(16, 64), (7, 13, 29)])
 @pytest.mark.parametrize(
     "dtype",
-    tu.selected_cases(
-        [d for d in _ADJOINT_DTYPES if d.is_floating_point or d.is_complex]
-    ),
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in tu.selected_cases(
+            [d for d in _ADJOINT_DTYPES if d.is_floating_point or d.is_complex]
+        )
+    ],
 )
 def test_adjoint_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
@@ -212,7 +249,13 @@ def test_adjoint_backward(shape, dtype):
 
 
 @pytest.mark.adjoint
-@pytest.mark.parametrize("dtype", _ADJOINT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _ADJOINT_DTYPES
+    ],
+)
 def test_adjoint_0d(dtype):
     # ATen accepts scalars as a lazy conj(), with a deprecation warning.
     inp = tu.make_input(dtype, (), ["-1", "1"])
@@ -226,7 +269,13 @@ def test_adjoint_0d(dtype):
 
 
 @pytest.mark.adjoint
-@pytest.mark.parametrize("dtype", [torch.float32, torch.complex64])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in [torch.float32, torch.complex64]
+    ],
+)
 def test_adjoint_1d_raises(dtype):
     inp = tu.make_input(dtype, (5,), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -247,7 +296,15 @@ def test_adjoint_rejects_non_tensor():
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(_ADJOINT_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_ADJOINT_DTYPES)
+        )
+    ],
 )
 def test_adjoint_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)

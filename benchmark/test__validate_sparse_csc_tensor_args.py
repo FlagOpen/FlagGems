@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_VALUES_RANK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support values with more than 8 dimensions",
+)
+
 # Workloads as (size, nnz, dense_ndim, index dtype name). The op reads CSC index
 # metadata instead of a dense shape, so no entry of core_shapes.yaml describes it;
 # a caller-supplied shape file still takes precedence over these descriptors.
@@ -246,15 +251,18 @@ class ValidateSparseCscTensorArgsBenchmark(OperatorBenchmark):
 
 @pytest.mark.validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
-    "high_dimensional", [False, True], ids=["values-rank-le8", "values-rank-gt8"]
+    "high_dimensional",
+    [
+        pytest.param(
+            high_dimensional, marks=_ASCEND_VALUES_RANK_SKIP if high_dimensional else ()
+        )
+        for high_dimensional in [False, True]
+    ],
+    ids=["values-rank-le8", "values-rank-gt8"],
 )
 def test__validate_sparse_csc_tensor_args(high_dimensional):
     # A skip in the builder would abort the entire benchmark node, including
     # supported shapes. Isolate the high-rank inputs in their own pytest node.
-    if flag_gems.vendor_name == "ascend" and high_dimensional:
-        pytest.skip(
-            "Ascend normal_ does not support values with more than 8 dimensions"
-        )
     # Both implementations return None, so the benchmark records the call
     # latency only. gems_op stays None until a candidate is injected, which keeps
     # --list-cases usable before a candidate exists.

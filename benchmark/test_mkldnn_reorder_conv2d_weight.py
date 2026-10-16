@@ -27,6 +27,15 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_CPU_FP16_SKIP = pytest.mark.skipif(
+    not torch.ops.mkldnn._is_mkldnn_fp16_supported(),
+    reason="Host CPU does not support the MKLDNN FP16 reorder path",
+)
+_CPU_BF16_SKIP = pytest.mark.skipif(
+    not torch.ops.mkldnn._is_mkldnn_bf16_supported(),
+    reason="Host CPU does not support the MKLDNN BF16 reorder path",
+)
+
 # Representative conv2d weight geometries (out_channels, in_channels / groups, kh, kw).
 DEFAULT_WEIGHT_SHAPES = [
     (32, 16, 3, 3),
@@ -88,12 +97,22 @@ class MkldnnReorderConv2dWeightBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-@pytest.mark.parametrize("dtype", _DTYPES, ids=str)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                (_CPU_FP16_SKIP,)
+                if dtype == torch.float16
+                else (_CPU_BF16_SKIP,) if dtype == torch.bfloat16 else ()
+            ),
+        )
+        for dtype in _DTYPES
+    ],
+    ids=str,
+)
 def test_mkldnn_reorder_conv2d_weight(dtype):
-    if dtype == torch.float16 and not torch.ops.mkldnn._is_mkldnn_fp16_supported():
-        pytest.skip("Host CPU does not support the MKLDNN FP16 reorder path")
-    if dtype == torch.bfloat16 and not torch.ops.mkldnn._is_mkldnn_bf16_supported():
-        pytest.skip("Host CPU does not support the MKLDNN BF16 reorder path")
     bench = MkldnnReorderConv2dWeightBenchmark(
         op_name="mkldnn_reorder_conv2d_weight",
         case_fn=_case_fn,

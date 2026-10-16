@@ -39,6 +39,11 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_SPARSE_MASK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend to_dense_backward cannot mask a nonempty sparse input",
+)
+
 # Sentinel meaning: call the operator without the optional argument.
 OMITTED = "omitted"
 
@@ -267,12 +272,16 @@ class ToDenseBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
     "nonempty_masked_sparse",
-    [False, True],
+    [
+        pytest.param(
+            nonempty_masked_sparse,
+            marks=_ASCEND_SPARSE_MASK_SKIP if nonempty_masked_sparse else (),
+        )
+        for nonempty_masked_sparse in [False, True]
+    ],
     ids=["other-workloads", "nonempty-masked-sparse"],
 )
 def test_to_dense_backward(nonempty_masked_sparse):
-    if flag_gems.vendor_name == "ascend" and nonempty_masked_sparse:
-        pytest.skip("Ascend to_dense_backward cannot mask a nonempty sparse input")
     bench = ToDenseBackwardBenchmark(
         op_name="to_dense_backward",
         case_fn=partial(_case_fn, nonempty_masked_sparse=nonempty_masked_sparse),

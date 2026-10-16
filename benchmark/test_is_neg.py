@@ -28,6 +28,11 @@ import flag_gems
 
 from . import base, consts, utils
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
 BENCH_DTYPES = consts.FLOAT_DTYPES + [torch.complex64]
 
 _VARIANTS = ("plain", "neg", "double_neg")
@@ -73,10 +78,14 @@ class IsNegBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.is_neg
-@pytest.mark.parametrize("dtype", BENCH_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in BENCH_DTYPES
+    ],
+)
 def test_is_neg(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
-        pytest.skip("Ascend normal_ does not support complex input dtypes")
 
     bench = IsNegBenchmark(
         op_name="is_neg",

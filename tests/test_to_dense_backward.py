@@ -38,6 +38,19 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot cast nonempty test inputs to FP8",
+)
+_ASCEND_FP8_FILL_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend fill cannot construct FP8 test inputs, including empty tensors",
+)
+_ASCEND_SPARSE_MASK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend to_dense_backward cannot mask a nonempty sparse input",
+)
+
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 
@@ -369,31 +382,28 @@ def _count(shape):
     return total
 
 
-def _skip_ascend_fp8_input(dtype, shape, *, fill=False):
-    if flag_gems.vendor_name != "ascend" or dtype not in _FP8_DTYPES:
-        return
-    # FP8 casts accept empty tensors; fill fails even when the shape is empty.
-    if fill:
-        pytest.skip(
-            "Ascend fill cannot construct FP8 test inputs, including empty tensors"
-        )
-    if _count(shape) > 0:
-        pytest.skip("Ascend cannot cast nonempty test inputs to FP8")
+def _fp8_input_marks(dtype, shape, value_range=("-1", "1")):
+    if dtype not in _FP8_DTYPES:
+        return ()
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if low == high:
+        return (_ASCEND_FP8_FILL_SKIP,)
+    return (_ASCEND_FP8_CAST_SKIP,) if _count(shape) > 0 else ()
 
 
-def _make_input(dtype, shape, value_range):
-    if dtype in _FP8_DTYPES:
-        low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
-        _skip_ascend_fp8_input(dtype, shape, fill=low == high)
-    return tu.make_input(dtype, shape, value_range)
+def _masking_enabled(masked_grad):
+    return masked_grad in (OMITTED, None) or bool(masked_grad)
 
 
-def _skip_ascend_nonempty_sparse_mask(inp, masked_grad):
-    # Omitted and None both enable masking. The condition is structural:
-    # stored zero values still count toward nnz and reach the unsupported path.
-    masking = masked_grad in (OMITTED, None) or bool(masked_grad)
-    if flag_gems.vendor_name == "ascend" and inp._nnz() > 0 and masking:
-        pytest.skip("Ascend to_dense_backward cannot mask a nonempty sparse input")
+def _sparse_mask_marks(shape, nnz, masked_grad):
+    # Compressed cases use the fixed mask builder: every nonempty domain has
+    # stored entries. COO cases record nnz explicitly, including zero.
+    nonempty = nnz > 0 if nnz is not None else _count(shape) > 0
+    return (
+        (_ASCEND_SPARSE_MASK_SKIP,)
+        if nonempty and _masking_enabled(masked_grad)
+        else ()
+    )
 
 
 def _cast_grad(shape, dtype):
@@ -595,16 +605,24 @@ _DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.to_dense_backward
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
-@pytest.mark.parametrize("shape", tu.selected_shapes())
+@pytest.mark.parametrize(
+    "shape,dtype,value_range",
+    [
+        pytest.param(
+            shape, dtype, value_range, marks=_fp8_input_marks(dtype, shape, value_range)
+        )
+        for shape in tu.selected_shapes()
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_to_dense_backward_dense_layout(shape, value_range, dtype):
     """Strided path: the result is grad in the scalar type of input.
 
     Both operands share the dtype here, so the operator is a value-preserving
     copy and the comparison is exact.
     """
-    grad = _make_input(dtype, shape, value_range)
-    inp = _make_input(dtype, shape, value_range)
+    grad = tu.make_input(dtype, shape, value_range)
+    inp = tu.make_input(dtype, shape, value_range)
     ref_grad = tu.to_reference(grad)
     ref_inp = tu.to_reference(inp)
 
@@ -642,12 +660,25 @@ def test_to_dense_backward_dense_layout_extra_dtypes(shape, dtype):
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
     "grad_dtype,input_dtype,shape",
-    tu.selected_cases(CROSS_DTYPE_CASES, quick=QUICK_CROSS_DTYPE_CASES),
+    [
+        pytest.param(
+            grad_dtype,
+            input_dtype,
+            shape,
+            marks=(
+                *_fp8_input_marks(grad_dtype, shape),
+                *_fp8_input_marks(input_dtype, shape),
+            ),
+        )
+        for grad_dtype, input_dtype, shape in tu.selected_cases(
+            CROSS_DTYPE_CASES, quick=QUICK_CROSS_DTYPE_CASES
+        )
+    ],
 )
 def test_to_dense_backward_cross_dtype_cast(grad_dtype, input_dtype, shape):
     """Differing dtypes: the result is grad converted to the input dtype."""
-    grad = _make_input(grad_dtype, shape, ["-1", "1"])
-    inp = _make_input(input_dtype, shape, ["-1", "1"])
+    grad = tu.make_input(grad_dtype, shape, ["-1", "1"])
+    inp = tu.make_input(input_dtype, shape, ["-1", "1"])
     ref_grad = tu.to_reference(grad)
     ref_inp = tu.to_reference(inp)
 
@@ -664,12 +695,19 @@ def test_to_dense_backward_cross_dtype_cast(grad_dtype, input_dtype, shape):
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
     "shape,grad_dtype,input_dtype",
-    tu.selected_cases(CAST_CASES, quick=QUICK_CAST_CASES),
+    [
+        pytest.param(
+            shape, grad_dtype, input_dtype, marks=_fp8_input_marks(input_dtype, shape)
+        )
+        for shape, grad_dtype, input_dtype in tu.selected_cases(
+            CAST_CASES, quick=QUICK_CAST_CASES
+        )
+    ],
 )
 def test_to_dense_backward_cast_boundaries(shape, grad_dtype, input_dtype):
     """Sign, magnitude and truncation boundaries of the conversion."""
     grad = _cast_grad(shape, grad_dtype)
-    inp = _make_input(input_dtype, shape, ["-1", "1"])
+    inp = tu.make_input(input_dtype, shape, ["-1", "1"])
     ref_grad = tu.to_reference(grad)
     ref_inp = tu.to_reference(inp)
 
@@ -798,7 +836,22 @@ def test_to_dense_backward_masked_grad_integer(shape, dtype, masked_grad):
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
     "layout,shape,nnz,dtype,value_range,masked_grad,dense_dim,block",
-    tu.selected_cases(SPARSE_CASES, quick=QUICK_SPARSE_CASES),
+    [
+        pytest.param(
+            layout,
+            shape,
+            nnz,
+            dtype,
+            value_range,
+            masked_grad,
+            dense_dim,
+            block,
+            marks=_sparse_mask_marks(shape, nnz, masked_grad),
+        )
+        for layout, shape, nnz, dtype, value_range, masked_grad, dense_dim, block in tu.selected_cases(
+            SPARSE_CASES, quick=QUICK_SPARSE_CASES
+        )
+    ],
 )
 def test_to_dense_backward_sparse_input(
     layout, shape, nnz, dtype, value_range, masked_grad, dense_dim, block
@@ -812,7 +865,6 @@ def test_to_dense_backward_sparse_input(
     """
     grad = tu.make_input(dtype, shape, value_range)
     inp = _sparse_operand(layout, shape, nnz, dtype, dense_dim, block)
-    _skip_ascend_nonempty_sparse_mask(inp, masked_grad)
     snapshot = _snapshot_sparse(inp)
     ref_grad = tu.to_reference(grad)
     ref_inp = tu.to_reference(inp)
@@ -857,7 +909,22 @@ def test_to_dense_backward_sparse_empty_domain(shape, masked_grad):
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
     "shape,indices,values,masked_grad",
-    tu.selected_cases(SPARSE_UNCOALESCED_CASES, quick=[]),
+    [
+        pytest.param(
+            shape,
+            indices,
+            values,
+            masked_grad,
+            marks=(
+                _ASCEND_SPARSE_MASK_SKIP
+                if len(values) > 0 and _masking_enabled(masked_grad)
+                else ()
+            ),
+        )
+        for shape, indices, values, masked_grad in tu.selected_cases(
+            SPARSE_UNCOALESCED_CASES, quick=[]
+        )
+    ],
 )
 def test_to_dense_backward_sparse_uncoalesced(shape, indices, values, masked_grad):
     """An input with duplicate coordinates is merged into the native result.
@@ -871,7 +938,6 @@ def test_to_dense_backward_sparse_uncoalesced(shape, indices, values, masked_gra
         shape,
         device=flag_gems.device,
     )
-    _skip_ascend_nonempty_sparse_mask(inp, masked_grad)
     grad = tu.make_input(torch.float32, shape, ["-1", "1"])
     snapshot = _snapshot_sparse(inp)
     ref_grad = tu.to_reference(grad)
@@ -888,7 +954,18 @@ def test_to_dense_backward_sparse_uncoalesced(shape, indices, values, masked_gra
 
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
-    "mask_dtype,grad_dtype,masked_grad", tu.selected_cases(FP8_MASK_CASES, quick=[])
+    "mask_dtype,grad_dtype,masked_grad",
+    [
+        pytest.param(
+            mask_dtype,
+            grad_dtype,
+            masked_grad,
+            marks=_ASCEND_FP8_FILL_SKIP if mask_dtype in _FP8_DTYPES else (),
+        )
+        for mask_dtype, grad_dtype, masked_grad in tu.selected_cases(
+            FP8_MASK_CASES, quick=[]
+        )
+    ],
 )
 def test_to_dense_backward_fp8_mask_unmasked(mask_dtype, grad_dtype, masked_grad):
     """Unmasked branch with an FP8 mask: the result is grad.to_sparse().
@@ -900,7 +977,6 @@ def test_to_dense_backward_fp8_mask_unmasked(mask_dtype, grad_dtype, masked_grad
     """
     shape = (4, 4)
     nnz = 4
-    _skip_ascend_fp8_input(mask_dtype, (nnz,), fill=True)
     inp = torch.sparse_coo_tensor(
         _coo_indices(shape, nnz, flag_gems.device),
         torch.ones(nnz, dtype=mask_dtype, device=flag_gems.device),
@@ -924,12 +1000,16 @@ def test_to_dense_backward_fp8_mask_unmasked(mask_dtype, grad_dtype, masked_grad
 
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(SPECIAL_VALUE_CASES, quick=[])
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype, scenario, marks=_ASCEND_FP8_CAST_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype, scenario in tu.selected_cases(SPECIAL_VALUE_CASES, quick=[])
+    ],
 )
 def test_to_dense_backward_special_values(dtype, scenario):
     """nan, inf and mixed operands are propagated exactly on the dense path."""
-    # The shared special-value builder casts a nonempty FP32 payload.
-    _skip_ascend_fp8_input(dtype, (5,))
     grad = tu.make_special_input(dtype, scenario)
     inp = tu.make_special_input(dtype, scenario)
     ref_grad = tu.to_reference(grad)
@@ -946,7 +1026,21 @@ def test_to_dense_backward_special_values(dtype, scenario):
 
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
-    "shape,grad_dtype,input_dtype", tu.selected_cases(BACKWARD_CASES, quick=[])
+    "shape,grad_dtype,input_dtype",
+    [
+        pytest.param(
+            shape,
+            grad_dtype,
+            input_dtype,
+            marks=(
+                *_fp8_input_marks(grad_dtype, shape),
+                *_fp8_input_marks(input_dtype, shape),
+            ),
+        )
+        for shape, grad_dtype, input_dtype in tu.selected_cases(
+            BACKWARD_CASES, quick=[]
+        )
+    ],
 )
 def test_to_dense_backward_backward(shape, grad_dtype, input_dtype):
     """The operator is linear in grad and the derivative carries the grad dtype.
@@ -956,8 +1050,8 @@ def test_to_dense_backward_backward(shape, grad_dtype, input_dtype):
     input dtype, so a wider grad keeps its own precision: an fp16 input with an
     fp32 grad produces an fp32 derivative.
     """
-    grad = _make_input(grad_dtype, shape, ["-1", "1"]).requires_grad_(True)
-    inp = _make_input(input_dtype, shape, ["-1", "1"])
+    grad = tu.make_input(grad_dtype, shape, ["-1", "1"]).requires_grad_(True)
+    inp = tu.make_input(input_dtype, shape, ["-1", "1"])
     upstream = _ramp(input_dtype, grad.numel()).reshape(shape)
     ref_grad = tu.to_reference(grad)
     ref_inp = tu.to_reference(inp)
@@ -979,7 +1073,18 @@ def test_to_dense_backward_backward(shape, grad_dtype, input_dtype):
 
 @pytest.mark.to_dense_backward
 @pytest.mark.parametrize(
-    "masked_grad", tu.selected_cases(SPARSE_BACKWARD_CASES, quick=[])
+    "masked_grad",
+    [
+        pytest.param(
+            masked_grad,
+            marks=(
+                _ASCEND_SPARSE_MASK_SKIP
+                if SPARSE_BACKWARD_NNZ > 0 and _masking_enabled(masked_grad)
+                else ()
+            ),
+        )
+        for masked_grad in tu.selected_cases(SPARSE_BACKWARD_CASES, quick=[])
+    ],
 )
 def test_to_dense_backward_backward_sparse_input(masked_grad):
     """Sparse input: the derivative is an exact scatter into the mask positions.
@@ -993,7 +1098,6 @@ def test_to_dense_backward_backward_sparse_input(masked_grad):
     shape = SPARSE_BACKWARD_SHAPE
     nnz = SPARSE_BACKWARD_NNZ
     inp = _sparse_operand(torch.sparse_coo, shape, nnz, torch.float32, 0, None)
-    _skip_ascend_nonempty_sparse_mask(inp, masked_grad)
     grad = tu.make_input(torch.float32, shape, ["-1", "1"]).requires_grad_(True)
     upstream = _backward_upstream(shape, nnz, masked_grad)
     snapshot = _snapshot_sparse(inp)

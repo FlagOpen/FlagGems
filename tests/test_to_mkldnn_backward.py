@@ -19,6 +19,11 @@ import flag_gems
 
 from . import test_utils as tu
 
+_ASCEND_OPAQUE_CROSS_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16",
+)
+
 # aten::to_mkldnn_backward converts grad to dense with input.dtype. A dense
 # same-dtype grad is returned by identity; an opaque oneDNN grad is materialized
 # on CPU. Only input.dtype/layout matter, not its shape or device. The input
@@ -506,15 +511,23 @@ def test_to_mkldnn_backward_opaque_grad(dtype, shape, value_range):
 
 
 @pytest.mark.to_mkldnn_backward
-@pytest.mark.parametrize("source,target", MKLDNN_CAST_PAIRS)
-def test_to_mkldnn_backward_opaque_dtype_conversion(source, target):
-    if flag_gems.vendor_name == "ascend" and (source, target) in (
-        (torch.float16, torch.bfloat16),
-        (torch.bfloat16, torch.float16),
-    ):
-        pytest.skip(
-            "Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16"
+@pytest.mark.parametrize(
+    "source,target",
+    [
+        pytest.param(
+            source,
+            target,
+            marks=(
+                _ASCEND_OPAQUE_CROSS_CAST_SKIP
+                if (source, target)
+                in ((torch.float16, torch.bfloat16), (torch.bfloat16, torch.float16))
+                else ()
+            ),
         )
+        for source, target in MKLDNN_CAST_PAIRS
+    ],
+)
+def test_to_mkldnn_backward_opaque_dtype_conversion(source, target):
     dense = tu.make_input(source, (2, 3), ["-1", "1"]).cpu()
     grad = dense.to_mkldnn()
     ref_grad = dense.clone().to_mkldnn()

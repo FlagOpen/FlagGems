@@ -20,14 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-
-@pytest.fixture(autouse=True)
-def _skip_ascend_complex_input(request):
-    """Keep non-complex cases active on Ascend."""
-    callspec = getattr(request.node, "callspec", None)
-    dtype = callspec.params.get("dtype") if callspec is not None else None
-    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
-        pytest.skip("Ascend complex input/reference support is incomplete")
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
 
 
 # aten::is_conj(Tensor self) -> bool only reads the tensor's lazy conjugate bit,
@@ -118,7 +114,15 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.is_conj
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype, value_range, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_is_conj(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -167,7 +171,13 @@ _STATE_CASES = tu.selected_cases(
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES + [torch.float32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _COMPLEX_DTYPES + [torch.float32]
+    ],
+)
 @pytest.mark.parametrize("state,shape", _STATE_CASES)
 def test_is_conj_state(state, shape, dtype):
     base = tu.make_input(dtype, shape, tu.selected_ranges()[0])
@@ -189,7 +199,13 @@ _BOUNDARY_DTYPES = _COMPLEX_DTYPES + [torch.float32, torch.int64, torch.bool]
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype", _BOUNDARY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _BOUNDARY_DTYPES
+    ],
+)
 @pytest.mark.parametrize("state", ["plain", "conj"])
 @pytest.mark.parametrize("shape", [(), (1,), (0,), (3, 0)])
 def test_is_conj_boundary_shapes(shape, state, dtype):
@@ -217,7 +233,15 @@ _SPECIAL_CASES = tu.selected_cases(
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 @pytest.mark.parametrize("state", ["plain", "conj"])
 def test_is_conj_special_values(state, dtype, scenario):
     base = tu.make_special_input(dtype, scenario).to(flag_gems.device)
@@ -234,7 +258,13 @@ def test_is_conj_special_values(state, dtype, scenario):
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES + [torch.float32])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _COMPLEX_DTYPES + [torch.float32]
+    ],
+)
 @pytest.mark.parametrize("shape", [(256,), (20, 320, 15)])
 def test_is_conj_query_leaves_input_untouched(shape, dtype):
     # Querying a lazy-conj view must neither resolve the flag nor touch the
@@ -270,7 +300,13 @@ def test_is_conj_query_leaves_input_untouched(shape, dtype):
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _COMPLEX_DTYPES
+    ],
+)
 @pytest.mark.parametrize("shape", [(1024, 1024)])
 def test_is_conj_flag_is_per_tensor_not_per_storage(shape, dtype):
     base = tu.make_input(dtype, shape, tu.selected_ranges()[0])

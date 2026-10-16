@@ -22,6 +22,11 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_FP8_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend zero_ does not support FP8 sparse values",
+)
+
 # A metadata query reads the bit recorded on a sparse COO tensor, so a workload
 # is (logical size, nnz, recorded bit). Explicit descriptors join the shared
 # shape grid read from the shape file; a plain shape from that grid expands into
@@ -154,13 +159,22 @@ class IsCoalescedBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.is_coalesced
-@pytest.mark.parametrize("dtype", BENCH_DTYPES, ids=str)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_FP8_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else ()
+            ),
+        )
+        for dtype in BENCH_DTYPES
+    ],
+    ids=str,
+)
 def test_is_coalesced(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    ):
-        pytest.skip("Ascend zero_ does not support FP8 sparse values")
 
     bench = IsCoalescedBenchmark(
         op_name="is_coalesced",

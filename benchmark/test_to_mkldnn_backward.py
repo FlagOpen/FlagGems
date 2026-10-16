@@ -22,6 +22,11 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_OPAQUE_CROSS_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16",
+)
+
 # Both native-valid call forms are timed for every shape: matching dtypes (the
 # operator hands `grad` back untouched) and a dtype cast (a fresh tensor cast to
 # input.dtype).  Only dtypes are read, so the payloads stay uninitialized and
@@ -203,30 +208,37 @@ class ToMkldnnBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize(
     "dtype,case_group",
-    [(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
-    + [
-        (dtype, OPAQUE_GROUP)
-        for dtype in (
-            torch.float32,
-            torch.float16,
-            torch.bfloat16,
-            torch.int8,
-            torch.uint8,
+    [
+        pytest.param(
+            dtype,
+            case_group,
+            marks=(
+                _ASCEND_OPAQUE_CROSS_CAST_SKIP
+                if case_group == OPAQUE_CROSS_CAST_GROUP
+                else ()
+            ),
         )
-        if dtype in BENCH_DTYPES
-    ]
-    + [
-        (dtype, OPAQUE_CROSS_CAST_GROUP)
-        for dtype in (torch.float16, torch.bfloat16)
-        if dtype in BENCH_DTYPES
+        for dtype, case_group in [(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
+        + [
+            (dtype, OPAQUE_GROUP)
+            for dtype in (
+                torch.float32,
+                torch.float16,
+                torch.bfloat16,
+                torch.int8,
+                torch.uint8,
+            )
+            if dtype in BENCH_DTYPES
+        ]
+        + [
+            (dtype, OPAQUE_CROSS_CAST_GROUP)
+            for dtype in (torch.float16, torch.bfloat16)
+            if dtype in BENCH_DTYPES
+        ]
     ],
     ids=str,
 )
 def test_to_mkldnn_backward(dtype, case_group):
-    if flag_gems.vendor_name == "ascend" and case_group == OPAQUE_CROSS_CAST_GROUP:
-        pytest.skip(
-            "Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16"
-        )
     bench = ToMkldnnBackwardBenchmark(
         op_name="to_mkldnn_backward",
         torch_op=torch.ops.aten.to_mkldnn_backward,

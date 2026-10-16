@@ -20,14 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-
-@pytest.fixture(autouse=True)
-def _skip_ascend_complex_input(request):
-    """Keep non-complex cases active on Ascend."""
-    callspec = getattr(request.node, "callspec", None)
-    dtype = callspec.params.get("dtype") if callspec is not None else None
-    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
-        pytest.skip("Ascend complex input/reference support is incomplete")
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
 
 
 # aten::view_as_real_copy returns a complex tensor's real components as a fresh
@@ -131,7 +127,13 @@ def _assert_copy_contract(res_out, ref_out, inp, ref_inp, allocating=True):
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _COMPLEX_DTYPES
+    ],
+)
 def test_view_as_real_copy(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -145,7 +147,13 @@ def test_view_as_real_copy(shape, value_range, dtype):
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _COMPLEX_DTYPES
+    ],
+)
 def test_view_as_real_copy_out(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -164,7 +172,13 @@ def test_view_as_real_copy_out(shape, value_range, dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", _OFFSET_BUFFER_SHAPES)
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_out_offset_buffer(shape, dtype):
     # The out buffer is a non-contiguous, offset slice of a wider real tensor:
     # the components must land at that buffer's own offsets, the sentinel
@@ -190,7 +204,13 @@ def test_view_as_real_copy_out_offset_buffer(shape, dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_out_from_non_contiguous_input(dtype):
     base = tu.make_input(dtype, (8, 16, 32), ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -211,7 +231,13 @@ def test_view_as_real_copy_out_from_non_contiguous_input(dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", _CONJUGATE_SHAPES)
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_conjugate_input(shape, dtype):
     # Unlike aten::view_as_real, this kernel resolves a lazily conjugated input
     # rather than raising, so the values are checked against a resolved
@@ -228,7 +254,13 @@ def test_view_as_real_copy_conjugate_input(shape, dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("layout", _CONJUGATE_LAYOUTS)
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_conjugate_layouts(layout, dtype):
     values = _distinct_complex((4, 6), dtype)
     if layout == "offset":
@@ -265,7 +297,13 @@ def test_view_as_real_copy_special_values(real_dtype, scenario):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("layout", _NON_CONTIGUOUS_LAYOUTS)
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_non_contiguous(layout, dtype):
     # Reading the input's storage as if it were packed would be wrong for these
     # layouts, so the candidate has to copy element-wise.
@@ -286,7 +324,13 @@ def test_view_as_real_copy_non_contiguous(layout, dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", _EMPTY_SHAPES)
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_empty(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -299,7 +343,13 @@ def test_view_as_real_copy_empty(shape, dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", _MUTATION_SHAPES)
-@pytest.mark.parametrize("dtype", _DEFAULT_ONLY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _DEFAULT_ONLY_DTYPES
+    ],
+)
 def test_view_as_real_copy_result_is_independent_storage(shape, dtype):
     # A write on either side must not reach the other one.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -317,7 +367,13 @@ def test_view_as_real_copy_result_is_independent_storage(shape, dtype):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("shape", _BACKWARD_SHAPES)
-@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _COMPLEX_DTYPES
+    ],
+)
 def test_view_as_real_copy_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
     grad = tu.make_input(_COMPLEX_TO_REAL[dtype], shape + (2,), ["-1", "1"])
@@ -337,7 +393,13 @@ def test_view_as_real_copy_backward(shape, dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _UNSUPPORTED_DTYPES
+    ],
+)
 def test_view_as_real_copy_rejects_unsupported_dtypes(dtype):
     inp = tu.make_input(dtype, (4, 5), ["-1", "1"])
     with pytest.raises(RuntimeError):

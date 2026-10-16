@@ -22,6 +22,11 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_CROSS_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend host MKLDNN cannot convert between FP16 and BF16",
+)
+
 # aten::to_mkldnn converts a dense CPU tensor into an opaque oneDNN (mkldnn)
 # tensor and has no accelerator kernel, so the workload stays on CPU and the
 # candidate is measured against the same native call. Allocation happens in the
@@ -136,13 +141,16 @@ class ToMkldnnBenchmark(OperatorBenchmark):
         for dtype in TO_MKLDNN_DTYPES
     ]
     + [
-        pytest.param(dtype, True, id=f"{dtype}-fp16-bf16-conversion")
+        pytest.param(
+            dtype,
+            True,
+            marks=_ASCEND_CROSS_CAST_SKIP,
+            id=f"{dtype}-fp16-bf16-conversion",
+        )
         for dtype in (torch.float16, torch.bfloat16)
     ],
 )
 def test_to_mkldnn(dtype, cross_cast):
-    if flag_gems.vendor_name == "ascend" and cross_cast:
-        pytest.skip("Ascend host MKLDNN cannot convert between FP16 and BF16")
     bench = ToMkldnnBenchmark(
         op_name="to_mkldnn",
         case_fn=partial(_case_fn, cross_cast=cross_cast),

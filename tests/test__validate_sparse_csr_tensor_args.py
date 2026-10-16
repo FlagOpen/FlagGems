@@ -22,6 +22,22 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_VALUES_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct nonempty FP8 CSR values",
+)
+_ASCEND_FP8_INDEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend zero_ cannot construct FP8 index-test inputs",
+)
+
+
+def _has_csr_values(case):
+    size, row_entries, dense_dims = case
+    batch = size[: len(size) - 2 - len(dense_dims)]
+    return math.prod(batch) * sum(row_entries) * math.prod(dense_dims) > 0
+
+
 # `aten::_validate_sparse_csr_tensor_args(Tensor, Tensor, Tensor, int[]) -> ()`
 # is a host-side structural validator. Its schema returns `()`, so there is no
 # elementwise result to compare, no broadcast workload and no backward, and its
@@ -116,12 +132,6 @@ def _make_csr(
     crow_indices = crow.repeat(batches).reshape(batch + (rows + 1,))
     col_indices = col.repeat(batches).reshape(batch + (nnz,))
     values_shape = batch + (nnz,) + tuple(dense_dims)
-    if (
-        flag_gems.vendor_name == "ascend"
-        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
-        and math.prod(values_shape) > 0
-    ):
-        pytest.skip("Ascend cannot construct nonempty FP8 CSR values")
     values = tu.make_input(dtype, values_shape, list(value_range))
     return crow_indices, col_indices, values, list(size)
 
@@ -202,8 +212,24 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
-@pytest.mark.parametrize("case", SIZE_CASES)
+@pytest.mark.parametrize(
+    "case,dtype,value_range",
+    [
+        pytest.param(
+            case,
+            dtype,
+            value_range,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                and _has_csr_values(case)
+                else ()
+            ),
+        )
+        for case in SIZE_CASES
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_validate_sparse_csr_tensor_args(case, value_range, dtype, index_dtype):
     crow_indices, col_indices, values, size = _make_csr(
         case, index_dtype=index_dtype, dtype=dtype, value_range=value_range
@@ -446,14 +472,23 @@ SPECIAL_VALUE_CASES = tu.selected_cases(
 
 
 @pytest.mark.validate_sparse_csr_tensor_args
-@pytest.mark.parametrize("dtype,scenario", SPECIAL_VALUE_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else ()
+            ),
+        )
+        for dtype, scenario in SPECIAL_VALUE_CASES
+    ],
+)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 def test_validate_sparse_csr_tensor_args_special_values(dtype, scenario, index_dtype):
-    if flag_gems.vendor_name == "ascend" and dtype in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    ):
-        pytest.skip("Ascend cannot construct nonempty FP8 CSR values")
     device = flag_gems.device
     values = tu.make_special_input(dtype, scenario).reshape(-1)
     nnz = values.numel()
@@ -623,13 +658,21 @@ def test_validate_sparse_csr_tensor_args_values_shape_mismatch(
 
 
 @pytest.mark.validate_sparse_csr_tensor_args
-@pytest.mark.parametrize("dtype", NON_INDEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_FP8_INDEX_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else ()
+            ),
+        )
+        for dtype in NON_INDEX_DTYPES
+    ],
+)
 def test_validate_sparse_csr_tensor_args_non_integer_index_rejected(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype in (
-        torch.float8_e4m3fn,
-        torch.float8_e5m2,
-    ):
-        pytest.skip("Ascend zero_ cannot construct FP8 index-test inputs")
     device = flag_gems.device
     crow_indices = torch.zeros(4, dtype=dtype, device=device)
     col_indices = torch.zeros(3, dtype=dtype, device=device)

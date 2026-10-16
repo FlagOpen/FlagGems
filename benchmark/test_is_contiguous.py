@@ -26,6 +26,11 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_LAYOUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct channels-last input layouts",
+)
+
 CORE_SHAPES = list(
     dict.fromkeys(
         consts.DEFAULT_SHAPES
@@ -136,14 +141,25 @@ class IsContiguousBenchmark(OperatorBenchmark):
 @pytest.mark.is_contiguous
 @pytest.mark.parametrize(
     "input_layout",
-    ["plain", "transposed", "column_step", "channels_last", "channels_last_3d"],
+    [
+        pytest.param(
+            input_layout,
+            marks=(
+                _ASCEND_LAYOUT_SKIP
+                if input_layout in ("channels_last", "channels_last_3d")
+                else ()
+            ),
+        )
+        for input_layout in [
+            "plain",
+            "transposed",
+            "column_step",
+            "channels_last",
+            "channels_last_3d",
+        ]
+    ],
 )
 def test_is_contiguous(input_layout):
-    if flag_gems.vendor_name == "ascend" and input_layout in (
-        "channels_last",
-        "channels_last_3d",
-    ):
-        pytest.skip("Ascend cannot construct channels-last input layouts")
     bench = IsContiguousBenchmark(
         op_name="is_contiguous",
         case_fn=partial(_case_fn, input_layout=input_layout),

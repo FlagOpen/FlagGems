@@ -32,35 +32,33 @@ import flag_gems
 
 from . import test_utils as tu
 
-
-@pytest.fixture(autouse=True)
-def _skip_unsupported_cpu_reorder_dtype(request):
-    params = getattr(getattr(request.node, "callspec", None), "params", {})
-    dtype = params.get("dtype")
-    if dtype == torch.float16 and not torch.ops.mkldnn._is_mkldnn_fp16_supported():
-        pytest.skip("Host CPU does not support the MKLDNN FP16 reorder path")
-    if dtype == torch.bfloat16 and not torch.ops.mkldnn._is_mkldnn_bf16_supported():
-        pytest.skip("Host CPU does not support the MKLDNN BF16 reorder path")
-
-
-@pytest.fixture
-def _skip_affected_int8_materialization(dtype):
-    # Even tiny weights can overrun the dense buffer without crashing: the
-    # reordered descriptor's compensation storage survives to_public().
-    # Keep reorder-only benchmarks and other CPU builds outside this guard.
-    if (
-        dtype == torch.int8
-        and platform.machine().lower() in ("aarch64", "arm64")
-        and str(torch.__version__).split("+", 1)[0] == "2.9.0"
-        and "MKL-DNN v3.7.1 " in torch.__config__.show()
-    ):
-        pytest.skip(
-            "PyTorch 2.9.0/oneDNN 3.7.1 on ARM overwrites the dense buffer "
-            "when materializing INT8 reordered weights"
-        )
+_CPU_FP16_SKIP = pytest.mark.skipif(
+    not torch.ops.mkldnn._is_mkldnn_fp16_supported(),
+    reason="Host CPU does not support the MKLDNN FP16 reorder path",
+)
+_CPU_BF16_SKIP = pytest.mark.skipif(
+    not torch.ops.mkldnn._is_mkldnn_bf16_supported(),
+    reason="Host CPU does not support the MKLDNN BF16 reorder path",
+)
+_UNSAFE_INT8_SKIP = pytest.mark.skipif(
+    platform.machine().lower() in ("aarch64", "arm64")
+    and str(torch.__version__).split("+", 1)[0] == "2.9.0"
+    and "MKL-DNN v3.7.1 " in torch.__config__.show(),
+    reason="PyTorch 2.9.0/oneDNN 3.7.1 on ARM overwrites the dense buffer when materializing INT8 reordered weights",
+)
 
 
-# Native callable dtype grid, measured with a valid rank-4 weight. The fixtures
+def _reorder_marks(dtype, *, materializes=False):
+    if dtype == torch.float16:
+        return (_CPU_FP16_SKIP,)
+    if dtype == torch.bfloat16:
+        return (_CPU_BF16_SKIP,)
+    if dtype == torch.int8 and materializes:
+        return (_UNSAFE_INT8_SKIP,)
+    return ()
+
+
+# Native callable dtype grid, measured with a valid rank-4 weight. The parameter marks
 # above separately guard CPU capabilities and unsafe INT8 materialization;
 # bit-exact values alone do not establish memory safety.
 #   float32 / float16 / bfloat16 / int8 -> accepted by the reorder API
@@ -94,8 +92,13 @@ def assert_reordered(res_out, ref_out, operand):
 @pytest.mark.mkldnn_reorder_conv2d_weight
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
-@pytest.mark.usefixtures("_skip_affected_int8_materialization")
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_reorder_marks(dtype, materializes=True))
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_mkldnn_reorder_conv2d_weight(shape, value_range, dtype):
     dense = tu.make_input(dtype, shape, value_range).cpu()
     inp = dense.to_mkldnn()
@@ -126,8 +129,13 @@ _INFERRED_ROWS = [
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
 @pytest.mark.parametrize("shape,expected_shape", _INFERRED_ROWS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
-@pytest.mark.usefixtures("_skip_affected_int8_materialization")
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_reorder_marks(dtype, materializes=True))
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_mkldnn_reorder_conv2d_weight_size_inferred(shape, expected_shape, dtype):
     dense = tu.make_input(dtype, shape, ["-1", "1"]).cpu()
     inp = dense.to_mkldnn()
@@ -164,8 +172,13 @@ _PARAM_ROWS = [
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
 @pytest.mark.parametrize("params", _PARAM_ROWS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
-@pytest.mark.usefixtures("_skip_affected_int8_materialization")
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_reorder_marks(dtype, materializes=True))
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_mkldnn_reorder_conv2d_weight_params(params, dtype):
     dense = tu.make_input(dtype, _WEIGHT_SHAPE, ["-1", "1"]).cpu()
     inp = dense.to_mkldnn()
@@ -189,8 +202,13 @@ _OUT_ROWS = [
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-@pytest.mark.parametrize("shape,dtype", _OUT_ROWS)
-@pytest.mark.usefixtures("_skip_affected_int8_materialization")
+@pytest.mark.parametrize(
+    "shape,dtype",
+    [
+        pytest.param(shape, dtype, marks=_reorder_marks(dtype, materializes=True))
+        for shape, dtype in _OUT_ROWS
+    ],
+)
 def test_mkldnn_reorder_conv2d_weight_out(shape, dtype):
     dense = tu.make_input(dtype, shape, ["-1", "1"]).cpu()
     inp = dense.to_mkldnn()
@@ -215,7 +233,13 @@ _SPECIAL_ROWS = tu.selected_cases(
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_ROWS)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(dtype, scenario, marks=_reorder_marks(dtype, materializes=False))
+        for dtype, scenario in _SPECIAL_ROWS
+    ],
+)
 def test_mkldnn_reorder_conv2d_weight_special_values(dtype, scenario):
     # The shared generator's 5-element payload, shaped as a rank-4 weight.
     dense = tu.make_special_input(dtype, scenario).cpu().reshape(5, 1, 1, 1)
@@ -305,7 +329,13 @@ def test_mkldnn_reorder_conv2d_weight_dense_operand():
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_reorder_marks(dtype, materializes=False))
+        for dtype in [torch.float32, torch.float16, torch.bfloat16]
+    ],
+)
 def test_mkldnn_reorder_conv2d_weight_rejects_backward(dtype):
     inp = (
         tu.make_input(dtype, (8, 4, 3, 3), ["-1", "1"])

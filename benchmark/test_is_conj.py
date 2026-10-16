@@ -19,6 +19,11 @@ import flag_gems
 
 from . import base, consts, utils
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
 BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
 
 # aten::is_conj(Tensor self) -> bool only reads the lazy conjugate bit and runs no
@@ -68,10 +73,14 @@ class IsConjBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype", BENCH_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in BENCH_DTYPES
+    ],
+)
 def test_is_conj(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
-        pytest.skip("Ascend normal_ does not support complex input dtypes")
 
     bench = IsConjBenchmark(
         op_name="is_conj",

@@ -22,6 +22,11 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_COMPLEX32_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend copy does not support complex32 output",
+)
+
 # aten::view_as_complex_copy needs rank >= 1, a last dimension of size 2 with
 # stride 1 and an even element storage offset, which no shape in the shared
 # default shape set satisfies, so the suite declares its own scales below. Each
@@ -108,13 +113,24 @@ class ViewAsComplexCopyBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_COMPLEX_COPY_DTYPES, ids=str)
 @pytest.mark.parametrize(
-    "empty_input", [False, True], ids=["nonempty-input", "empty-input"]
+    "empty_input,dtype",
+    [
+        pytest.param(
+            empty_input,
+            dtype,
+            marks=(
+                _ASCEND_COMPLEX32_SKIP
+                if dtype == torch.float16 and not empty_input
+                else ()
+            ),
+            id=f"{'empty-input' if empty_input else 'nonempty-input'}-{dtype}",
+        )
+        for empty_input in (False, True)
+        for dtype in VIEW_AS_COMPLEX_COPY_DTYPES
+    ],
 )
 def test_view_as_complex_copy(dtype, empty_input):
-    if flag_gems.vendor_name == "ascend" and dtype == torch.float16 and not empty_input:
-        pytest.skip("Ascend copy does not support complex32 output")
 
     bench = ViewAsComplexCopyBenchmark(
         op_name="view_as_complex_copy",

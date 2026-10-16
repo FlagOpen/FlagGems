@@ -25,6 +25,11 @@ import flag_gems
 
 from . import test_utils as tu
 
+_ASCEND_LAYOUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct channels-last input layouts",
+)
+
 SUPPORTED_DTYPES = list(tu.REQUIRED_DTYPES) + [
     torch.float64,
     torch.bool,
@@ -99,11 +104,6 @@ def _input_state(inp):
 
 
 def _make_layout_input(kind, shape, dtype):
-    if flag_gems.vendor_name == "ascend" and kind in (
-        "channels_last",
-        "channels_last_3d",
-    ):
-        pytest.skip("Ascend cannot construct channels-last input layouts")
     # Values are decorative for this predicate; only the layout matters.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     if kind == "plain":
@@ -176,7 +176,18 @@ def test_is_contiguous(shape, value_range, dtype):
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize(
     "kind,shape",
-    [(kind, shape) for _, kind, shape in _LAYOUT_ROWS],
+    [
+        pytest.param(
+            kind,
+            shape,
+            marks=(
+                _ASCEND_LAYOUT_SKIP
+                if kind in ("channels_last", "channels_last_3d")
+                else ()
+            ),
+        )
+        for kind, shape in [(kind, shape) for _, kind, shape in _LAYOUT_ROWS]
+    ],
     ids=[label for label, _, _ in _LAYOUT_ROWS],
 )
 def test_is_contiguous_layout(kind, shape, dtype):
@@ -193,7 +204,21 @@ def test_is_contiguous_layout(kind, shape, dtype):
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize(
     "kind,shape,memory_format",
-    [(kind, shape, fmt) for _, kind, shape, fmt in _MEMORY_FORMAT_ROWS],
+    [
+        pytest.param(
+            kind,
+            shape,
+            memory_format,
+            marks=(
+                _ASCEND_LAYOUT_SKIP
+                if kind in ("channels_last", "channels_last_3d")
+                else ()
+            ),
+        )
+        for kind, shape, memory_format in [
+            (kind, shape, fmt) for _, kind, shape, fmt in _MEMORY_FORMAT_ROWS
+        ]
+    ],
     ids=[label for label, _, _, _ in _MEMORY_FORMAT_ROWS],
 )
 def test_is_contiguous_memory_format(kind, shape, memory_format, dtype):

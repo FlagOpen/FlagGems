@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
 BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
 
 # aten::adjoint conjugates and swaps the last two dimensions of a matrix or
@@ -82,10 +87,14 @@ class AdjointBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.adjoint
-@pytest.mark.parametrize("dtype", BENCH_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in BENCH_DTYPES
+    ],
+)
 def test_adjoint(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
-        pytest.skip("Ascend normal_ does not support complex input dtypes")
 
     bench = AdjointBenchmark(
         op_name="adjoint",

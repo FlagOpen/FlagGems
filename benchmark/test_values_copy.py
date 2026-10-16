@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 _LAYOUTS = {
     "csr": torch.sparse_csr_tensor,
@@ -238,10 +243,14 @@ class ValuesCopyBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.values_copy
-@pytest.mark.parametrize("dtype", _BENCH_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _BENCH_DTYPES
+    ],
+)
 def test_values_copy(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
-        pytest.skip("Ascend normal_ does not support complex input dtypes")
 
     bench = ValuesCopyBenchmark(
         op_name="values_copy",

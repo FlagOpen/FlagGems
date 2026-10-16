@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_LOW_PRECISION_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend glu_jvp baseline falls back to CPU without FP16/BF16 support",
+)
+
 _SUPPORT_BF16 = flag_gems.runtime.device.support_bf16
 
 # Timed family follows consts.FLOAT_DTYPES with the bf16 capability flag applied;
@@ -91,12 +96,22 @@ class GluJvpBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.glu_jvp
-@pytest.mark.parametrize("dtype", _BENCH_DTYPES, ids=str)
-def test_glu_jvp(dtype):
-    if flag_gems.vendor_name == "ascend" and dtype in (torch.float16, torch.bfloat16):
-        pytest.skip(
-            f"Ascend glu_jvp baseline falls back to CPU without {dtype} support"
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
         )
+        for dtype in _BENCH_DTYPES
+    ],
+    ids=str,
+)
+def test_glu_jvp(dtype):
     bench = GluJvpBenchmark(
         op_name="glu_jvp",
         case_fn=_case_fn,

@@ -20,6 +20,11 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_FP8_VALUES_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct nonempty FP8 CSR values",
+)
+
 # benchmark/core_shapes.yaml has no entry for this operator, so these are the
 # default CSR sizes: the growing square scales, the rectangular and batched
 # shapes of the original workload, and the zero-extent boundaries. A
@@ -235,17 +240,25 @@ class ValidateSparseCsrTensorArgsBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.validate_sparse_csr_tensor_args
-@pytest.mark.parametrize("dtype", BENCH_VALUES_DTYPES, ids=str)
 @pytest.mark.parametrize(
-    "empty_values", [False, True], ids=["nonempty-values", "empty-values"]
+    "empty_values,dtype",
+    [
+        pytest.param(
+            empty_values,
+            dtype,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                and not empty_values
+                else ()
+            ),
+            id=f"{'empty-values' if empty_values else 'nonempty-values'}-{dtype}",
+        )
+        for empty_values in (False, True)
+        for dtype in BENCH_VALUES_DTYPES
+    ],
 )
 def test_validate_sparse_csr_tensor_args(dtype, empty_values):
-    if (
-        flag_gems.vendor_name == "ascend"
-        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
-        and not empty_values
-    ):
-        pytest.skip("Ascend cannot construct nonempty FP8 CSR values")
     bench = ValidateSparseCsrTensorArgsBenchmark(
         op_name="_validate_sparse_csr_tensor_args",
         case_fn=_case_fn,
