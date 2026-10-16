@@ -49,18 +49,17 @@ if cfg.QUICK_MODE:
         (2, 5),
     ]
 else:
-    # (input_shape,) tuples; covers 0-dim (-> real (2,)), 1-D/2-D/3-D/5-D
-    # inputs and empty tensors.
+    # (input_shape,) tuples; covers 0-dim (-> real (2,)), 1-D/2-D/3-D/4-D
+    # inputs. Empty and 0-dim inputs are covered by the dedicated tests
+    # below; non-contiguous inputs that need the strided kernel's stride
+    # slots by test_accuracy_view_as_real_copy_high_rank_noncontiguous.
     VIEW_AS_REAL_SHAPES = [
-        (),
         (8,),
         (4, 6),
         (10, 8),
         (2, 5, 7),
         (2, 3, 4),
         (2, 2, 2, 3),
-        (0,),
-        (3, 0),
         (1,),
     ]
 
@@ -74,10 +73,19 @@ def _as_float32(t):
 
 
 def _assert_matches(res, ref, inp):
+    # dtype -- the reinterpret must produce the mapping complex32/64/128 ->
+    # float16/32/64; pinned explicitly so a wrong out dtype fails here first.
     assert res.dtype == ref.dtype, f"dtype {res.dtype} != {ref.dtype}"
+    # shape -- self.shape + (2,); a wrong rank/extent is a wrong reinterpret
+    # even if values match.
     assert tuple(res.shape) == tuple(ref.shape)
+    # is_contiguous -- the output must be a fresh contiguous tensor like aten.
     assert res.is_contiguous()
+    # _is_alias_of -- the copy must never share storage with the input;
+    # gems_assert_equal below compares values only and would pass for an
+    # aliased view, so this is not redundant with it.
     assert not torch._C._is_alias_of(res, inp)
+    # values -- full elementwise equality against the reference.
     utils.gems_assert_equal(_as_float32(res), _as_float32(ref))
 
 
@@ -144,6 +152,33 @@ def test_accuracy_view_as_real_copy_transposed(dtype):
     ref_out = torch.ops.aten.view_as_real_copy(ref_inp)
     res_out = flag_gems.view_as_real_copy(inp)
     _assert_matches(res_out, ref_out, inp)
+
+
+@pytest.mark.view_as_real_copy
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+def test_accuracy_view_as_real_copy_high_rank_noncontiguous(dtype):
+    # 3-D/4-D/5-D non-contiguous inputs: only non-contiguous inputs reach
+    # _view_as_real_copy_strided_kernel, whose leading-dim stride slots are
+    # the rank-dependent code path. Every VIEW_AS_REAL_SHAPES entry is
+    # contiguous and takes the flat, rank-independent contig kernel, so this
+    # is the only coverage of the strided decomposition for rank > 2 (the
+    # highest rank accepted is 5, i.e. rank == _MAX_LEAD_RANK).
+    base3 = torch.randn(6, 4, 8, dtype=dtype, device=flag_gems.device)
+    base4 = torch.randn(4, 8, 6, 4, dtype=dtype, device=flag_gems.device)
+    base5 = torch.randn(4, 6, 8, 6, 4, dtype=dtype, device=flag_gems.device)
+    inputs = [
+        base3[:, ::2, :],  # 3-D stride-2
+        base4.transpose(1, 2),  # 4-D transposed
+        base4[:, ::2, :, :],  # 4-D strided
+        base5.transpose(1, 2),  # 5-D transposed (highest accepted rank)
+        base5[:, ::2, :, ::2, :],  # 5-D strided
+    ]
+    for inp in inputs:
+        assert not inp.is_contiguous()
+        ref_inp = utils.to_reference(inp)
+        ref_out = torch.ops.aten.view_as_real_copy(ref_inp)
+        res_out = flag_gems.view_as_real_copy(inp)
+        _assert_matches(res_out, ref_out, inp)
 
 
 @pytest.mark.view_as_real_copy
@@ -245,3 +280,11 @@ def test_accuracy_view_as_real_copy_error_paths():
             )
         with pytest.raises(RuntimeError):
             flag_gems.view_as_real_copy(torch.zeros(4, dtype=bad_dtype, device=dev))
+
+    # rank > _MAX_LEAD_RANK (5): a 6-D input. The guard lives on the
+    # non-contiguous branch, so use a non-contiguous 6-D input; 5-D is the
+    # highest accepted rank (covered by the high-rank strided test).
+    rank6 = torch.randn(*([2] * 6), dtype=torch.complex64, device=dev).transpose(1, 2)
+    assert not rank6.is_contiguous()
+    with pytest.raises(RuntimeError, match="at most 5 dimensions"):
+        flag_gems.view_as_real_copy(rank6)
