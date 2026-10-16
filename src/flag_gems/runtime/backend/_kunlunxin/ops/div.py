@@ -97,13 +97,16 @@ def div_complex_kernel(ar, ai, br, bi):
     real = tl.where(use_br, real_br, real_bi)
     imag = tl.where(use_br, imag_br, imag_bi)
 
-    # The tensor CPU reference used by the accuracy suite returns a complex NaN
-    # for an exact zero denominator (its vectorized complex path differs from
-    # scalar division here).  Half-precision random tensors hit exact zero often
-    # enough for large shapes, so make this edge explicit and deterministic.
-    zero = tl.abs(br) + tl.abs(bi)
-    nan = zero / zero
-    return tl.where(zero_denominator, nan, real), tl.where(zero_denominator, nan, imag)
+    # An exact zero denominator must keep the IEEE result of the plain division,
+    # which is what PyTorch returns: (3+4j)/0 -> inf+infj, (-2+0j)/0 -> -inf+nanj,
+    # 0j/0 -> nan+nanj. Smith's method divides by the substituted 1.0 there, so
+    # recover the sign-carrying quotient instead of forcing NaN on both parts.
+    real_zero = ar / 0.0
+    imag_zero = ai / 0.0
+    return (
+        tl.where(zero_denominator, real_zero, real),
+        tl.where(zero_denominator, imag_zero, imag),
+    )
 
 
 @pointwise_dynamic(
@@ -119,11 +122,9 @@ def div_complex_real_tensor_kernel(ar, ai, denominator):
     ar = ar.to(tl.float32)
     ai = ai.to(tl.float32)
     denominator = denominator.to(tl.float32)
-    real = ar / denominator
-    imag = ai / denominator
-    is_zero = denominator == 0
-    nan = float("nan")
-    return tl.where(is_zero, nan, real), tl.where(is_zero, nan, imag)
+    # A zero denominator keeps the IEEE quotient on each component, matching
+    # PyTorch: (3+4j)/0.0 -> inf+infj, (-2+0j)/0.0 -> -inf+nanj, 0j/0.0 -> nan.
+    return ar / denominator, ai / denominator
 
 
 @pointwise_dynamic(

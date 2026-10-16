@@ -103,10 +103,18 @@ def avg_pool2d_forward_kernel(
             w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
 
-            input_offset = h_in * in_stride_h + w_in * in_stride_w
-            current_val = tl.load(
-                input_base_ptr + input_offset, mask=in_mask, other=0.0
-            )
+            # A masked `tl.load` whose mask has any out-of-range lane drops the
+            # whole block transfer on this XPU: the padding taps of the last
+            # window (h_in == in_h, reached only when the input extent makes the
+            # window overhang, e.g. 15x15 with k=3 s=2 p=1) left the last output
+            # row and column never written, while 16x16 was fine. Clamp the
+            # address into range so the load is unconditional, then apply the
+            # mask with `tl.where` -- the clamped lanes read a real boundary
+            # value, so zeroing them here is what keeps the sum correct.
+            h_safe = tl.minimum(tl.maximum(h_in, 0), in_h - 1)
+            w_safe = tl.minimum(tl.maximum(w_in, 0), in_w - 1)
+            input_offset = h_safe * in_stride_h + w_safe * in_stride_w
+            current_val = tl.load(input_base_ptr + input_offset)
 
             sum_acc += tl.where(in_mask, current_val, 0.0)
             count_acc += in_mask.to(tl.int32)
@@ -114,9 +122,16 @@ def avg_pool2d_forward_kernel(
     count_divisor = count_acc.to(tl.float32)
 
     if COUNT_INCLUDE_PAD:
-        default_divisor = tl.where(
-            count_divisor >= 0, float(kernel_h * kernel_w), count_divisor
-        )
+        # ATen's pool_size: the window is truncated at `in + padding` but keeps
+        # the negative padding at its start, so a window that overhangs the
+        # padded edge (only reachable with ceil_mode) divides by less than the
+        # full kernel. The previous `count_divisor >= 0` test is always true and
+        # collapsed this to a constant kernel_h * kernel_w.
+        h_start = h_out_offsets[:, None] * stride_h - padding_h
+        w_start = w_out_offsets[None, :] * stride_w - padding_w
+        h_extent = tl.minimum(h_start + kernel_h, in_h + padding_h) - h_start
+        w_extent = tl.minimum(w_start + kernel_w, in_w + padding_w) - w_start
+        default_divisor = (h_extent * w_extent).to(tl.float32)
     else:
         default_divisor = count_divisor
 

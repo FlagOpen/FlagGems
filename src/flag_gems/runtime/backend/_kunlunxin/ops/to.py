@@ -282,6 +282,21 @@ def to_copy(
             memory_format=target_memory_format,
         )
 
+    # Narrow integers hit a toolchain gap on the way to float: int8 -> fp16
+    # silently produces garbage for all but the smallest tiles, and int16 ->
+    # fp16 / fp32 aborts the MLIR pipeline outright.  int32 is the only integer
+    # width the cast lowers correctly from, so widen first and let the int32
+    # handling below finish the conversion.
+    if x.dtype in (torch.int8, torch.uint8, torch.int16) and target_dtype in (
+        torch.float16,
+        torch.float32,
+    ):
+        intermediate = _allocate_preserve_format(
+            x, {"dtype": torch.int32, "device": x.device}
+        )
+        _to_copy_func(x, out0=intermediate)
+        x = intermediate
+
     # Direct int32 -> fp16/bf16 casts can abort during XPU LLVM lowering, while
     # XDNN's dtype-converting copy kernel is unavailable on some runtimes
     # (cudaErrorInvalidDeviceFunction).  Split the cast into two supported

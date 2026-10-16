@@ -25,6 +25,10 @@ from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
+
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -96,17 +100,29 @@ def _is_e8m0(tensor: torch.Tensor) -> bool:
     return hasattr(torch, "float8_e8m0fnu") and tensor.dtype is torch.float8_e8m0fnu
 
 
-def _validate_triton_copy(dst: torch.Tensor, src: torch.Tensor) -> None:
+def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
+    """Whether the Triton paths below can express this copy.
+
+    Anything they cannot express is redispatched to PyTorch rather than
+    raised on: `--ref cpu` testing copies device tensors to CPU through
+    `copy_`, so a hard failure here breaks every op's reference comparison.
+    """
     if dst.layout != torch.strided or src.layout != torch.strided:
-        raise NotImplementedError("copy_ only supports strided tensors on Kunlunxin")
+        return False
+    if dst.device != src.device:
+        return False
     if dst.is_quantized or src.is_quantized:
-        raise NotImplementedError(
-            "copy_ for quantized tensors is not supported on Kunlunxin"
-        )
+        return False
     if src.is_complex() or dst.is_complex():
-        raise NotImplementedError(
-            "copy_ for complex tensors is not supported on Kunlunxin"
-        )
+        # Triton on kunlunxin does not support complex dtypes.
+        return False
+    return True
+
+
+def _fallback_copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool):
+    return torch.ops.aten.copy_.default.redispatch(
+        _FALLBACK_KEYSET, dst, src, non_blocking
+    )
 
 
 def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
@@ -147,25 +163,12 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     ):
         return dst
 
-    if dst.device != src.device:
-        raise NotImplementedError("copy_ across devices is not supported on Kunlunxin")
+    if not _can_use_triton(dst, src):
+        return _fallback_copy_(dst, src, non_blocking)
 
-    _validate_triton_copy(dst, src)
-    logger.debug("GEMS_KUNLUNXIN COPY_")
-
-    if src.shape != dst.shape:
-        try:
-            src.expand(dst.shape)
-        except RuntimeError:
-            try:
-                broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
-            except RuntimeError as exc:
-                raise RuntimeError(str(exc)) from exc
-            raise RuntimeError(
-                f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
-            ) from None
     if dst.numel() == 0:
-        return dst
+        # Respect PyTorch behaviour: empty tensors still validate broadcast.
+        return _fallback_copy_(dst, src, non_blocking)
 
     logger.debug("GEMS_KUNLUNXIN COPY_")
 
@@ -198,9 +201,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
                 BLOCK_SIZE=block_size,
             )
             return dst
-        raise NotImplementedError(
-            "copy_ from float8_e8m0fnu only supports float8_e8m0fnu and contiguous float32 destinations on Kunlunxin"
-        )
+        return _fallback_copy_(dst, src, non_blocking)
 
     if (
         not aliases

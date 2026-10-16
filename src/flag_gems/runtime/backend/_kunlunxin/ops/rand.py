@@ -20,16 +20,25 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import volume
 
 from ._fp64_compat import empty_fp64
 
 logger = logging.getLogger(__name__)
 device_ = device
+
+
+# The shared flag_gems.utils.random_utils version branches on `x.dtype` through
+# `tl.constexpr(...)`, which this Triton build rejects with "'dtype' is not in
+# list" (it surfaces as a CompilationError from any caller, e.g. torch.polar's
+# fp64 inputs built by torch.rand). The uint32 -> [0, 1) mapping below is the
+# only one the kernels here need.
+@triton.jit
+def uint_to_uniform_float(x):
+    x = x.to(tl.int32, bitcast=True)
+    x = tl.where(x < 0, -x - 1, x)
+    return x * 4.6566127342e-10
 
 
 @triton.heuristics(runtime.get_heuristic_config("rand"))
@@ -87,7 +96,7 @@ def rand_kernel_1(
     i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     c0 += i4
     _O = c0 * 0
-    r0 = tl.philox(philox_seed, c0, c1, _O, _O)
+    r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
     r0 = uint_to_uniform_float(r0)
     off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
     tl.store(out_ptr + off_0, r0, mask=off_0 < N, eviction_policy="evict_first")

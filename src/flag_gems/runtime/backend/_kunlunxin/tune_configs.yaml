@@ -123,6 +123,19 @@ bmm:
     GROUP_M: 2
   num_warps: 4
   num_stages: 3
+# Without an entry here baddbmm falls back to the generic 12-config space,
+# whose smallest tiles overrun the launch watchdog on this backend: a 32x32
+# tile puts [4, 495, 71] x [4, 71, 5333] at 10688 programs and the shape
+# aborted with "the launch timed out and was terminated". 64x64 keeps every
+# tested shape under 2s.
+baddbmm:
+- META:
+    TILE_M: 64
+    TILE_N: 64
+    TILE_K: 32
+    GROUP_M: 2
+  num_warps: 4
+  num_stages: 1
 argmax:
 - META:
     BLOCK_M: 8
