@@ -18267,7 +18267,8 @@ ops:
 
     '
   for:
-  - sparse_bsr_tensor
+  - sparse_bsr_tensor.crow_col_value
+  - sparse_bsr_tensor.crow_col_value_size
   labels:
   - aten
   - KernelGen
