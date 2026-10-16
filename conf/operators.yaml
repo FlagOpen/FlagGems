@@ -18267,7 +18267,8 @@ ops:
 
     '
   for:
-  - sparse_compressed_tensor
+  - sparse_compressed_tensor.comp_plain_value
+  - sparse_compressed_tensor.comp_plain_value_size
   labels:
   - aten
   - KernelGen
