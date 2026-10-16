@@ -21264,7 +21264,7 @@ ops:
   description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view.
     '
   for:
-  - values
+  - _values
   labels:
   - aten
   - KernelGen

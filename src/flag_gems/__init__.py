@@ -581,6 +581,12 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    (
+        "_values",
+        values,
+        None,
+        (AUTOGRAD_DISPATCH_KEY,),
+    ),
     ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
@@ -1930,12 +1936,6 @@ _FULL_CONFIG = (
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
-    (
-        "values",
-        values,
-        None,
-        (AUTOGRAD_DISPATCH_KEY,),
-    ),
     ("vander", vander),
     ("var", var),
     ("var.correction", var_correction),
