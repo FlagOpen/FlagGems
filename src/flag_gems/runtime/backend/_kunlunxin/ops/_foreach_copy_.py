@@ -32,7 +32,9 @@ logger = logging.getLogger("flag_gems.ops._foreach_binary")
 
 _META_BLOCK = 8192
 _META_NUM_WARPS = 8
-_META_BYTES_LIMIT = 4 * 1024 * 1024  # total source bytes: below this, one meta launch beats 16 flat launches
+_META_BYTES_LIMIT = (
+    4 * 1024 * 1024
+)  # total source bytes: below this, one meta launch beats 16 flat launches
 
 
 @triton.jit
