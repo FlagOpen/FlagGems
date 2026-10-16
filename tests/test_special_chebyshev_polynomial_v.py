@@ -22,23 +22,64 @@ from . import accuracy_utils as utils
 
 @pytest.mark.special_chebyshev_polynomial_v
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize(
-    "dtype",
-    # torch reference only supports float32 on CUDA
-    [torch.float32],
-)
-def test_special_chebyshev_polynomial_v(shape, dtype):
-    # Clamp x to [-0.99, 0.99] to avoid division by zero at x=-1
-    # and numerical instability near x=-1
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_chebyshev_polynomial_v_tensor_degree(shape, dtype):
+    torch.manual_seed(0)
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device).clamp(-0.99, 0.99)
-    # n is the degree of the polynomial, use small positive integers
-    n = torch.randint(0, 5, shape, dtype=dtype, device=flag_gems.device)
-
+    degree = torch.randint(0, 5, shape, dtype=torch.int64, device=flag_gems.device)
     ref_x = utils.to_reference(x, True)
-    ref_n = utils.to_reference(n, True)
+    ref_degree = utils.to_reference(degree, False)
 
-    ref_out = torch.special.chebyshev_polynomial_v(ref_x, ref_n)
-    with flag_gems.use_gems():
-        res_out = torch.special.chebyshev_polynomial_v(x, n)
+    ref_out = torch.ops.aten.special_chebyshev_polynomial_v.default(
+        ref_x, ref_degree
+    )
+    res_out = flag_gems.special_chebyshev_polynomial_v(x, degree)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out.shape == x.shape
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.special_chebyshev_polynomial_v
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_chebyshev_polynomial_v_degree_boundaries(dtype):
+    x = torch.tensor(
+        [-0.99, -0.75, -0.25, 0.25, 0.75],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    degree = torch.tensor([0, 1, 2, 3, 4], dtype=torch.int64, device=flag_gems.device)
+    ref_x = utils.to_reference(x, True)
+    ref_degree = utils.to_reference(degree, False)
+
+    ref_out = torch.ops.aten.special_chebyshev_polynomial_v.default(
+        ref_x, ref_degree
+    )
+    res_out = flag_gems.special_chebyshev_polynomial_v(x, degree)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.special_chebyshev_polynomial_v
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_chebyshev_polynomial_v_registered_dispatch(dtype, caplog):
+    x = torch.tensor(
+        [-0.75, -0.25, 0.25, 0.75], dtype=dtype, device=flag_gems.device
+    )
+    degree = torch.tensor([0, 1, 2, 4], dtype=torch.int64, device=flag_gems.device)
+    ref_x = utils.to_reference(x, True)
+    ref_degree = utils.to_reference(degree, False)
+    ref_out = torch.ops.aten.special_chebyshev_polynomial_v.default(
+        ref_x, ref_degree
+    )
+
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_chebyshev_polynomial_v"):
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.special_chebyshev_polynomial_v.default(x, degree)
+
+    expected = (
+        f"{utils.gems_log_prefix(flag_gems.special_chebyshev_polynomial_v)} "
+        "SPECIAL_CHEBYSHEV_POLYNOMIAL_V"
+    )
+    assert expected in caplog.text
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

@@ -1,0 +1,69 @@
+{
+  "api_version": "v6.0",
+  "name": "scaled_dot_product_efficient_attention",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_scaled_dot_product_efficient_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_bias, bool compute_log_sumexp, float dropout_p=0.0, bool is_causal=False, *, float? scale=None) -> (Tensor output, Tensor log_sumexp, Tensor philox_seed, Tensor philox_offset). Tests cover causal and noncausal attention, additive bias, deterministic inputs, numerical output and log-sum-exp validation, opaque RNG-state metadata, and the current dropout rejection contract.",
+  "parameters": [
+    {
+      "name": "query",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "attn_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "compute_log_sumexp",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "dropout_p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "is_causal",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scale",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "float?"
+    }
+  ],
+  "outputs": [
+    "output",
+    "log_sum_exp",
+    "philox_seed",
+    "philox_offset"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

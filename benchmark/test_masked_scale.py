@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
@@ -28,36 +26,41 @@ class MaskedScaleBenchmark(base.Benchmark):
         shapes_3d = [(64, 64, 2**i) for i in range(0, 20, 4)]
         return special_shapes_2d + shapes_3d
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-            if flag_gems.vendor_name == "cambricon":
-                # Cambricon torch.randint currently does not support uint8 generation.
-                mask = torch.randint(0, 2, shape, dtype=torch.uint8, device="cpu").to(
-                    self.device
-                )
-            else:
-                mask = torch.randint(0, 2, shape, dtype=torch.uint8, device=self.device)
-            scale = 2.0
-            yield inp, mask, scale
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            dims = tuple(shape)
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(dims), "mask": list(dims)},
+                    params={"scale": 2.0},
+                    builder_args=(dims,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape = plan.builder_args[0]
+        torch.manual_seed(0)
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        if flag_gems.vendor_name == "cambricon":
+            mask = torch.randint(0, 2, shape, dtype=torch.uint8, device="cpu").to(
+                self.device
+            )
+        else:
+            mask = torch.randint(0, 2, shape, dtype=torch.uint8, device=self.device)
+        return inp, mask, plan.params["scale"]
 
     def get_tflops(self, op, *args, **kwargs):
-        shape = list(args[0].shape)
-        return torch.tensor(shape).prod().item()
-
-
-# _masked_scale only supports float32 on most backends.
-# CUDA reference does not support float16/bf16 for this private op.
-FLOAT_DTYPES = [torch.float32]
+        return args[0].numel()
 
 
 @pytest.mark.masked_scale
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_masked_scale(dtype):
-    torch_op = lambda inp, mask, scale: torch.ops.aten._masked_scale(inp, mask, scale)
+def test_masked_scale():
     bench = MaskedScaleBenchmark(
         op_name="masked_scale",
-        torch_op=torch_op,
-        dtypes=[dtype],
+        torch_op=torch.ops.aten._masked_scale,
+        dtypes=[torch.float32],
     )
     bench.run()

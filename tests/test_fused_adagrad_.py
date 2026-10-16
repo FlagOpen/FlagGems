@@ -50,6 +50,11 @@ TOLS = {
 ADAGRAD_DTYPES = [torch.float32, torch.float16, torch.bfloat16, torch.float64]
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_seed():
+    torch.manual_seed(0)
+
+
 def _native_reference(params, grads, state_sums, steps, **kwargs):
     """Run the native ``torch._fused_adagrad_`` on clones and return the results.
 
@@ -68,7 +73,7 @@ def _native_reference(params, grads, state_sums, steps, **kwargs):
 def _assert_close(got, expected, dtype):
     atol = TOLS[dtype]
     utils.gems_assert_close(
-        utils.to_reference(got), utils.to_reference(expected), dtype, atol=atol
+        utils.to_reference(got, True), utils.to_reference(expected, True), dtype, atol=atol
     )
 
 
@@ -632,3 +637,67 @@ def test_fused_adagrad__internal_overlap_rejected():
             eps=1e-10,
             maximize=False,
         )
+
+
+def _layout_snapshot(tensors):
+    return [(tensor, tensor.data_ptr(), tensor.stride(), tensor.storage_offset()) for tensor in tensors]
+
+
+def _assert_layout_preserved(tensors, snapshots):
+    for tensor, (original, pointer, stride, offset) in zip(tensors, snapshots):
+        assert tensor is original
+        assert tensor.data_ptr() == pointer
+        assert tensor.stride() == stride
+        assert tensor.storage_offset() == offset
+
+
+@pytest.mark.fused_adagrad_
+@pytest.mark.parametrize("found_inf_value", [0.0, 1.0, 2.0])
+def test_fused_adagrad__mutation_identity_and_storage(found_inf_value):
+    """All list elements keep identity/storage while native-declared mutations match."""
+    torch.manual_seed(17)
+    device = flag_gems.device
+    dtype = torch.float32
+    shapes = [(19,), (4, 7), (0,)]
+    params = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
+    grads = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
+    state_sums = [torch.rand(shape, dtype=dtype, device=device) + 0.25 for shape in shapes]
+    state_steps = [
+        torch.tensor([float(i + 1)], dtype=torch.float32, device=device)
+        for i in range(len(shapes))
+    ]
+    refs = [params, grads, state_sums, state_steps]
+    layouts = [_layout_snapshot(values) for values in refs]
+    before = [[tensor.clone() for tensor in values] for values in refs]
+    opts = dict(
+        lr=0.03,
+        lr_decay=0.2,
+        weight_decay=0.01,
+        eps=1e-10,
+        maximize=True,
+        grad_scale=torch.tensor(4.0, device=device),
+        found_inf=torch.tensor(found_inf_value, device=device),
+    )
+    ref_params, ref_sums = _native_reference(
+        params, grads, state_sums, state_steps, **opts
+    )
+
+    result = flag_gems._fused_adagrad_(
+        params, grads, state_sums, state_steps, **opts
+    )
+
+    assert result is None
+    for values, snapshots in zip(refs, layouts):
+        _assert_layout_preserved(values, snapshots)
+    for got, expected in zip(params, ref_params):
+        _assert_close(got, expected, dtype)
+    for got, expected in zip(state_sums, ref_sums):
+        _assert_close(got, expected, dtype)
+    for got, expected in zip(grads, before[1]):
+        utils.gems_assert_equal(got, expected)
+    for got, expected in zip(state_steps, before[3]):
+        utils.gems_assert_equal(got, expected)
+    if found_inf_value == 1.0:
+        for values, originals in ((params, before[0]), (state_sums, before[2])):
+            for got, expected in zip(values, originals):
+                utils.gems_assert_equal(got, expected)

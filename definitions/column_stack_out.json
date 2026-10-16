@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "column_stack_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::column_stack.out(Tensor[] tensors, *, Tensor(a!) out) -> Tensor(a!). Writes the column-stack result into the keyword-only out tensor, mutates that buffer, and returns the same tensor object and storage. The correctness suite retains the legacy one-, two-, mixed-, and three-dimensional cases, adds scalar and zero-sized inputs, and explicitly checks output contents, shape, dtype, object/storage identity, resize from an empty buffer, accepted safe output casting, and rejection of an unsafe output cast.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

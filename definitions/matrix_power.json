@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "matrix_power",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::matrix_power(Tensor self, int n) -> Tensor. Raises each square matrix to an integer power. Tests cover identity, single, even and odd repeated-squaring powers, negative powers, unbatched and batched matrices, output metadata, non-mutation, and autograd.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

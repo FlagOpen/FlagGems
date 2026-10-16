@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "pinverse",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::pinverse(Tensor self, float rcond=1e-15) -> Tensor. Computes a Moore-Penrose pseudoinverse without mutating or aliasing self. Tests cover rectangular, square, batched, noncontiguous, empty, rank-deficient, ill-conditioned and nonfinite inputs, explicit rcond values, large batches, Moore-Penrose identities, supported float32, invalid rank/dtypes, and the implementation's explicit autograd rejection.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "rcond",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1e-15,
+      "type_hint": "float"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "dequantize",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::dequantize.self(Tensor self) -> Tensor. Converts a per-tensor quantized tensor to floating point. Tests cover representative shapes, scales, zero points, exact output metadata, and the documented unsupported Cambricon path.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

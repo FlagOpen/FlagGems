@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "special_chebyshev_polynomial_t_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_chebyshev_polynomial_t.out(Tensor x, Tensor n, *, Tensor(a!) out) -> Tensor(a!). The suite also covers the FlagGems scalar-degree wrapper corresponding to the n_scalar_out overload. It writes first-kind Chebyshev polynomial values into out, resizes empty and wrong-shape buffers to the broadcast result, accepts a float16 output cast from float32 computation, rejects an incompatible integer output buffer, mutates out, and returns the identical Python tensor object and its current storage.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

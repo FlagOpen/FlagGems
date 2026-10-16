@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "igamma",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::igamma(Tensor self, Tensor other) -> Tensor. Computes the regularized lower incomplete gamma function elementwise without mutating either input. Tests cover deterministic equal-shape and broadcast floating inputs, zero-sized and noncontiguous tensors, boundary values, input non-mutation, output metadata, and rejection of non-broadcastable shapes.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

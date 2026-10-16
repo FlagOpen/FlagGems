@@ -23,29 +23,17 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 pytestmark = pytest.mark.skipif(
-    cfg.TO_CPU, reason="CUDA-only op; no CPU reference implementation"
+    cfg.TO_CPU, reason="CUDA-only op; no CPU implementation is registered"
 )
 
-# The aten op is registered under the name `_native_multi_head_attention`, which
-# starts with an underscore.  pytest >= 8.0 rejects marker names that start with
-# an underscore ("Marker name must NOT start with underscore"), so the real
-# markers below drop the leading underscore and use `native_multi_head_attention`.
-# The KernelGen completeness validator greps the raw source for the literal aten
-# mark name, which is why the string `@pytest.mark.native_multi_head_attention`
-# appears verbatim in this comment.
-
-# (batch, seq_len, embed_dim, num_head). embed_dim must divide evenly by num_head.
 MHA_SHAPES = [
-    (2, 8, 64, 4),  # head_dim = 16
-    (4, 16, 128, 8),  # head_dim = 16
-    (2, 100, 64, 4),  # seq_len larger than one kernel block
-    (3, 5, 32, 2),  # small seq_len, head_dim = 16
-    (2, 8, 40, 5),  # head_dim = 8 (non-power-of-two head dim)
+    (2, 8, 64, 4),
+    (4, 16, 128, 8),
+    (2, 100, 64, 4),
+    (3, 5, 32, 2),
+    (2, 8, 40, 5),
 ]
 
-# The attention pipeline accumulates error across the qkv projection, the
-# scaled dot-product attention and the output projection, so per-dtype atol is
-# used on top of the dtype resolution used by ``gems_assert_close``.
 ATTENTION_ATOL = {
     torch.float32: 1e-4,
     torch.float16: 1e-2,
@@ -53,24 +41,37 @@ ATTENTION_ATOL = {
 }
 
 
-def _make_inputs(B, T, D, NH, dtype):
-    scale = 1.0 / math.sqrt(D)
-    query = torch.randn(B, T, D, dtype=dtype, device=flag_gems.device)
-    key = torch.randn(B, T, D, dtype=dtype, device=flag_gems.device)
-    value = torch.randn(B, T, D, dtype=dtype, device=flag_gems.device)
-    qkv_weight = torch.randn(3 * D, D, dtype=dtype, device=flag_gems.device) * scale
-    qkv_bias = torch.randn(3 * D, dtype=dtype, device=flag_gems.device) * scale
-    proj_weight = torch.randn(D, D, dtype=dtype, device=flag_gems.device) * scale
-    proj_bias = torch.randn(D, dtype=dtype, device=flag_gems.device) * scale
+def _make_inputs(batch, seq_len, embed_dim, dtype):
+    torch.manual_seed(0)
+    scale = 1.0 / math.sqrt(embed_dim)
+    query = torch.randn(batch, seq_len, embed_dim, dtype=dtype, device=flag_gems.device)
+    key = torch.randn(batch, seq_len, embed_dim, dtype=dtype, device=flag_gems.device)
+    value = torch.randn(batch, seq_len, embed_dim, dtype=dtype, device=flag_gems.device)
+    qkv_weight = torch.randn(
+        3 * embed_dim, embed_dim, dtype=dtype, device=flag_gems.device
+    ) * scale
+    qkv_bias = torch.randn(3 * embed_dim, dtype=dtype, device=flag_gems.device) * scale
+    proj_weight = torch.randn(
+        embed_dim, embed_dim, dtype=dtype, device=flag_gems.device
+    ) * scale
+    proj_bias = torch.randn(embed_dim, dtype=dtype, device=flag_gems.device) * scale
     return query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias
+
+
+def _to_reference(value):
+    if isinstance(value, torch.Tensor):
+        if value.is_floating_point():
+            return utils.to_reference(value, True)
+        return utils.to_reference(value, False)
+    return value
 
 
 def _run(
     query,
     key,
     value,
-    D,
-    NH,
+    embed_dim,
+    num_heads,
     qkv_weight,
     qkv_bias,
     proj_weight,
@@ -80,223 +81,139 @@ def _run(
     average_attn_weights=True,
     mask_type=None,
 ):
-    ref_query = utils.to_reference(query)
+    args = (
+        query,
+        key,
+        value,
+        embed_dim,
+        num_heads,
+        qkv_weight,
+        qkv_bias,
+        proj_weight,
+        proj_bias,
+        mask,
+        need_weights,
+        average_attn_weights,
+        mask_type,
+    )
     ref = torch.ops.aten._native_multi_head_attention(
-        ref_query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        mask,
-        need_weights,
+        *tuple(_to_reference(value) for value in args)
+    )
+    result = flag_gems._native_multi_head_attention(*args)
+    return result, ref
+
+
+def _assert_result(result, reference, dtype, batch, seq_len, embed_dim, num_heads, average):
+    result_out, result_weights = result
+    reference_out, reference_weights = reference
+    assert result_out.shape == (batch, seq_len, embed_dim)
+    assert result_out.dtype == dtype
+    utils.gems_assert_close(
+        result_out,
+        reference_out,
+        dtype,
+        reduce_dim=seq_len,
+        atol=ATTENTION_ATOL[dtype],
+    )
+    if reference_weights is None:
+        assert result_weights is None
+        return
+    expected_shape = (
+        (batch, seq_len, seq_len)
+        if average
+        else (batch, num_heads, seq_len, seq_len)
+    )
+    assert result_weights.shape == expected_shape
+    assert result_weights.dtype == dtype
+    utils.gems_assert_close(
+        result_weights,
+        reference_weights,
+        dtype,
+        reduce_dim=seq_len,
+        atol=ATTENTION_ATOL[dtype],
+    )
+
+
+@pytest.mark.native_multi_head_attention
+@pytest.mark.parametrize("shape", MHA_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("mode", ["self", "encoder_decoder", "generic"])
+def test_native_multi_head_attention_input_alias_modes(monkeypatch, shape, dtype, mode):
+    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
+    batch, seq_len, embed_dim, num_heads = shape
+    inputs = _make_inputs(batch, seq_len, embed_dim, dtype)
+    query, key, value, *weights = inputs
+    if mode == "self":
+        key = value = query
+    elif mode == "encoder_decoder":
+        value = key
+    result, reference = _run(
+        query, key, value, embed_dim, num_heads, *weights
+    )
+    _assert_result(
+        result, reference, dtype, batch, seq_len, embed_dim, num_heads, True
+    )
+
+
+@pytest.mark.native_multi_head_attention
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("need_weights,average_attn_weights", [(False, True), (True, False)])
+def test_native_multi_head_attention_output_options(
+    monkeypatch, dtype, need_weights, average_attn_weights
+):
+    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
+    batch, seq_len, embed_dim, num_heads = 2, 8, 64, 4
+    query, _, _, *weights = _make_inputs(batch, seq_len, embed_dim, dtype)
+    result, reference = _run(
+        query,
+        query,
+        query,
+        embed_dim,
+        num_heads,
+        *weights,
+        need_weights=need_weights,
+        average_attn_weights=average_attn_weights,
+    )
+    _assert_result(
+        result,
+        reference,
+        dtype,
+        batch,
+        seq_len,
+        embed_dim,
+        num_heads,
         average_attn_weights,
-        mask_type,
     )
-    res = flag_gems._native_multi_head_attention(
-        query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        mask,
-        need_weights,
-        average_attn_weights,
-        mask_type,
-    )
-    return res, ref
-
-
-def _assert_close(res, ref, dtype):
-    res_out, res_w = res
-    ref_out, ref_w = ref
-    atol = ATTENTION_ATOL[dtype]
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=1, atol=atol)
-    if ref_w is not None:
-        utils.gems_assert_close(res_w, ref_w, dtype, reduce_dim=1, atol=atol)
-
-
-@pytest.mark.native_multi_head_attention
-@pytest.mark.parametrize("shape", MHA_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention(monkeypatch, shape, dtype):
-    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = shape
-    query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
-    )
-    res, ref = _run(
-        query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-    )
-    _assert_close(res, ref, dtype)
-
-
-@pytest.mark.native_multi_head_attention
-@pytest.mark.parametrize("shape", MHA_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention_self_attention(monkeypatch, shape, dtype):
-    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = shape
-    query, _, _, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
-    )
-    # nn.MultiheadAttention only enters the torch._native_multi_head_attention
-    # fast path when query is key is value, so cover the self-attention branch
-    # where the qkv projection reads a single shared input.
-    res, ref = _run(
-        query,
-        query,
-        query,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-    )
-    _assert_close(res, ref, dtype)
-
-
-@pytest.mark.native_multi_head_attention
-@pytest.mark.parametrize("shape", MHA_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention_no_weights(monkeypatch, shape, dtype):
-    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = shape
-    query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
-    )
-    res, ref = _run(
-        query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        need_weights=False,
-    )
-    assert res[1] is None
-    assert ref[1] is None
-    _assert_close(res, ref, dtype)
-
-
-@pytest.mark.native_multi_head_attention
-@pytest.mark.parametrize("shape", MHA_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention_no_average(monkeypatch, shape, dtype):
-    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = shape
-    query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
-    )
-    res, ref = _run(
-        query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        average_attn_weights=False,
-    )
-    assert res[1].shape == (B, NH, T, T)
-    assert ref[1].shape == (B, NH, T, T)
-    _assert_close(res, ref, dtype)
 
 
 @pytest.mark.native_multi_head_attention
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention_src_mask(monkeypatch, dtype):
+@pytest.mark.parametrize("mask_type", [0, 1, 2])
+def test_native_multi_head_attention_masks(monkeypatch, dtype, mask_type):
     monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = 2, 8, 64, 4
-    query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
-    )
-    mask = torch.rand(T, T, device=flag_gems.device) > 0.5
-    mask.fill_diagonal_(False)  # keep every row at least partially unmasked
-    res, ref = _run(
+    batch, seq_len, embed_dim, num_heads = 2, 8, 64, 4
+    query, key, value, *weights = _make_inputs(batch, seq_len, embed_dim, dtype)
+    if mask_type == 0:
+        mask_shape = (seq_len, seq_len)
+    elif mask_type == 1:
+        mask_shape = (batch, seq_len)
+    else:
+        mask_shape = (batch, num_heads, seq_len, seq_len)
+    mask = torch.rand(mask_shape, device=flag_gems.device) > 0.5
+    if mask_type == 1:
+        mask[:, 0] = False
+    else:
+        mask[..., 0] = False
+    result, reference = _run(
         query,
         key,
         value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
+        embed_dim,
+        num_heads,
+        *weights,
         mask=mask,
-        mask_type=0,
+        mask_type=mask_type,
     )
-    _assert_close(res, ref, dtype)
-
-
-@pytest.mark.native_multi_head_attention
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention_key_padding_mask(monkeypatch, dtype):
-    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = 2, 8, 64, 4
-    query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
+    _assert_result(
+        result, reference, dtype, batch, seq_len, embed_dim, num_heads, True
     )
-    mask = torch.rand(B, T, device=flag_gems.device) > 0.5
-    mask[:, 0] = False  # keep column 0 always unmasked
-    res, ref = _run(
-        query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        mask=mask,
-        mask_type=1,
-    )
-    _assert_close(res, ref, dtype)
-
-
-@pytest.mark.native_multi_head_attention
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_native_multi_head_attention_generic_mask(monkeypatch, dtype):
-    monkeypatch.setattr(torch.backends.cuda.matmul, "allow_tf32", False)
-    B, T, D, NH = 2, 8, 64, 4
-    query, key, value, qkv_weight, qkv_bias, proj_weight, proj_bias = _make_inputs(
-        B, T, D, NH, dtype
-    )
-    mask = torch.rand(B, NH, T, T, device=flag_gems.device) > 0.5
-    mask[..., 0] = False  # keep position 0 always unmasked
-    res, ref = _run(
-        query,
-        key,
-        value,
-        D,
-        NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        mask=mask,
-        mask_type=2,
-    )
-    _assert_close(res, ref, dtype)

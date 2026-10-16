@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "hardsigmoid_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::hardsigmoid_backward(Tensor grad_output, Tensor self) -> Tensor. Computes the hard-sigmoid input gradient without mutating or aliasing grad_output or self. Tests cover deterministic floating inputs, legacy pointwise shapes, zero-sized and noncontiguous tensors, exact threshold neighborhoods around -3 and 3, infinities and NaN, output metadata, input non-mutation, and invalid nonbroadcastable shapes.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

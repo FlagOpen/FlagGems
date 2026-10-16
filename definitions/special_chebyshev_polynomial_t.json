@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "special_chebyshev_polynomial_t",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_chebyshev_polynomial_t(Tensor x, Tensor n) -> Tensor. The correctness suite also covers the n_scalar overload with Python integer degrees. It computes the Chebyshev polynomial of the first kind elementwise, including degrees 0, 1, 2 and 5, tensor degrees, inputs inside and outside [-1, 1], and rejection of unsupported compute dtypes. The operation does not mutate or alias either input.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

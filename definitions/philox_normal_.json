@@ -1,0 +1,45 @@
+{
+  "api_version": "v6.0",
+  "name": "philox_normal_",
+  "requires_triton_kernel": true,
+  "description": "PyTorch 2.12+ aten::_philox_normal_ fills self in place with normally distributed samples from the stateless Philox stream identified by the uint64 (seed, offset) key. Reusing an unchanged key deterministically replays the same stream; mean and std scale the generated values.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mean",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "std",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0,
+      "type_hint": "float"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

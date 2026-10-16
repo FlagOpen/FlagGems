@@ -1,0 +1,32 @@
+{
+  "api_version": "v6.0",
+  "name": "leaky_relu_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::leaky_relu_(Tensor(a!) self, Scalar negative_slope=0.01) -> Tensor(a!). Applies leaky ReLU in place, mutates self, and returns the same Tensor object and storage. Tests cover multiple negative slopes, floating dtypes, zero-sized and noncontiguous tensors, identity, and autograd through a non-leaf input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "negative_slope",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.01,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

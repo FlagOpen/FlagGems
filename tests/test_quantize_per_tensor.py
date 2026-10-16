@@ -49,6 +49,7 @@ ZERO_POINTS = [0, 10, 64]
 def _make_input(shape, device="cuda"):
     # Spread values across a wide range so that clamping to the integer range
     # is exercised alongside ordinary in-range values.
+    torch.manual_seed(0)
     return torch.randn(shape, dtype=torch.float32, device=device) * 3.0
 
 
@@ -87,11 +88,15 @@ def test_quantize_per_tensor_out(shape, in_dtype, scale, zero_point):
     ref_r = torch.ops.aten.quantize_per_tensor.out(
         ref_inp, scale, zero_point, in_dtype, out=ref_out
     )
+    original_ptr = res_out.data_ptr()
+    original_stride = res_out.stride()
     res_r = flag_gems.quantize_per_tensor_out(
         res_inp, scale, zero_point, in_dtype, out=res_out
     )
 
     assert res_r is res_out
+    assert res_out.data_ptr() == original_ptr
+    assert res_out.stride() == original_stride
     utils.gems_assert_equal(res_r.int_repr(), ref_r.int_repr())
     assert res_r.q_scale() == ref_r.q_scale()
     assert res_r.q_zero_point() == ref_r.q_zero_point()
@@ -151,6 +156,7 @@ def test_quantize_per_tensor_non_contiguous(in_dtype, layout):
 @pytest.mark.parametrize("bad_dtype", [torch.float64, torch.float16, torch.bfloat16])
 def test_quantize_per_tensor_rejects_non_float32(bad_dtype):
     # ATen raises "Quantize only works on Float Tensor" rather than upcasting.
+    torch.manual_seed(0)
     inp = torch.randn(32, dtype=bad_dtype, device="cuda")
     with pytest.raises(RuntimeError, match="torch.float32"):
         flag_gems.quantize_per_tensor(inp, 0.1, 0, torch.quint8)
@@ -204,6 +210,7 @@ def test_quantize_per_tensor_memory_format(memory_format, shape):
     # allocates the quantized output in that same format, so a channels-last
     # input yields a channels-last int_repr. Check both the values and the
     # resulting strides against the native op.
+    torch.manual_seed(0)
     utils.init_seed(0)
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).contiguous(
         memory_format=memory_format
@@ -244,6 +251,7 @@ def test_quantize_per_tensor_public_entry_keeps_layout(memory_format, shape):
     a channels-last input yields a channels-last ``int_repr`` on native, and
     the public entry point is what the memory-format contract has to hold on.
     """
+    torch.manual_seed(0)
     utils.init_seed(0)
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device).contiguous(
         memory_format=memory_format
@@ -310,6 +318,7 @@ def test_quantize_per_tensor_zero_point_range(dtype, zp, word):
 @pytest.mark.parametrize("shape", [(2, 3, 4, 5), (2, 3, 4, 5, 6)], ids=["4d", "5d"])
 def test_quantize_per_tensor_contiguous_unchanged(shape):
     # A default-layout input must keep producing default-layout output.
+    torch.manual_seed(0)
     utils.init_seed(0)
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_int_repr = torch.quantize_per_tensor(
@@ -328,6 +337,7 @@ def _cuda_input(shape, dtype=torch.float32):
     dependence on how many draws happened earlier), and no value derived from
     ``hash()`` is used, since Python randomises that per process.
     """
+    torch.manual_seed(0)
     gen = torch.Generator(device="cuda").manual_seed(20250918)
     return torch.randn(shape, dtype=dtype, device="cuda", generator=gen) * 3.0
 
@@ -491,6 +501,7 @@ def test_quantize_per_tensor_out_rejects_per_channel_out():
     over a per-channel tensor, so the rejection that native ``copy_`` supplied
     is raised directly.
     """
+    torch.manual_seed(0)
     inp = _cuda_input((8, 8))
     per_channel = torch.quantize_per_channel(
         torch.randn(8, 8, device="cuda"),

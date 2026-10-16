@@ -52,8 +52,8 @@ def test_embedding_sparse_backward(
     num_weights = embeddingsize
     # aten does not support scale_grad_by_freq for sparse gradients.
     scale_grad_by_freq = False
-    ref_grad_output = utils.to_reference(grad_output)
-    ref_indices = utils.to_reference(indices)
+    ref_grad_output = utils.to_reference(grad_output, True)
+    ref_indices = utils.to_reference(indices, False)
     ref_out = torch.ops.aten.embedding_sparse_backward(
         ref_grad_output,
         ref_indices,

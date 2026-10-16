@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "addmm_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::addmm_(Tensor(a!) self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1) -> Tensor(a!). Preserves legacy matrix shapes, floating dtypes, scalar alpha/beta coverage, and column-major benchmark cases. Tests verify in-place mutation, Python return identity, and storage preservation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "beta",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

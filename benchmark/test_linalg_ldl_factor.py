@@ -15,45 +15,49 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
 
-# LDL Factorization benchmark
-class LdlFactorBenchmark(base.Benchmark):
-    def __init__(self, op_name, torch_op, dtypes):
-        super().__init__(op_name=op_name, torch_op=torch_op, dtypes=dtypes)
+LDL_FACTOR_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32), (64, 64)]
 
+
+class LdlFactorBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # LDL factorization shapes (square matrices only)
-        self.shapes = [
-            (4, 4),
-            (8, 8),
-            (16, 16),
-            (32, 32),
-            (64, 64),
-        ]
+        self.shapes = LDL_FACTOR_SHAPES
+        self.shape_desc = "N, N"
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            n = shape[0]
-            # Create symmetric positive definite matrix
-            A = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            A = (
-                A @ A.transpose(-2, -1)
-                + torch.eye(n, dtype=cur_dtype, device=self.device) * n
-            )
-            yield (A,)
 
-    def get_gems_input_iter(self, cur_dtype):
-        return self.get_input_iter(cur_dtype)
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"hermitian": False},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    n = shape[-1]
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    inp = inp @ inp.transpose(-2, -1) + n * torch.eye(
+        n, dtype=dtype, device=device
+    )
+    return inp, {"hermitian": False}
 
 
 @pytest.mark.linalg_ldl_factor
 def test_linalg_ldl_factor():
-    bench = LdlFactorBenchmark(
+    LdlFactorBenchmark(
         op_name="linalg_ldl_factor",
         torch_op=torch.linalg.ldl_factor,
-        # torch.linalg.ldl_factor on CUDA supports float32/float64 for this path.
+        gems_op=flag_gems.ldl_factor,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32, torch.float64],
-    )
-    bench.run()
+    ).run()

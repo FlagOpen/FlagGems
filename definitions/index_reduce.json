@@ -1,0 +1,52 @@
+{
+  "api_version": "v6.0",
+  "name": "index_reduce",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::index_reduce(Tensor self, int dim, Tensor index, Tensor source, str reduce, *, bool include_self=True) -> Tensor. Applies prod, mean, amax, or amin from source into a functional result. Tests cover include_self, negative dimensions, int32/int64 indices, duplicate and empty indices, noncontiguous tensors, invalid reductions, input non-mutation, and shared index_reduce_ identity coverage.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "source",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "reduce",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "str"
+    },
+    {
+      "name": "include_self",
+      "kind": "keyword_only",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -18,39 +18,56 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-def matmuladd_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
-    inp1 = torch.randn([m, k], dtype=cur_dtype, device=device)
-    inp2 = torch.randn([k, n], dtype=cur_dtype, device=device)
-    bias = torch.randn(
-        [
-            n,
-        ],
-        dtype=cur_dtype,
-        device=device,
+_CASES = [
+    (384, 384, 384, "vector"),
+    (1024, 1024, 1024, "vector"),
+    (2048, 2048, 2048, "vector"),
+    (128, 256, 512, "matrix"),
+    (256, 1024, 4096, "vector"),
+]
+
+
+class MatmuladdBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=_CASES)
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    m, n, k, bias_kind = shape
+    bias_shape = [n] if bias_kind == "vector" else [m, n]
+    yield base.BenchmarkCasePlan(
+        shape={"input": [m, k], "other": [k, n], "bias": bias_shape},
+        params={"M": m, "N": n, "K": k, "bias_kind": bias_kind},
+        builder_args=(m, n, k, bias_kind),
     )
-    yield inp1, inp2, bias
 
 
-def matmuladd_torch_wrapper(inp1, inp2, bias):
-    """Wrapper to use torch.matmul + bias as reference for MatMulAdd"""
-    return torch.matmul(inp1, inp2) + bias
+def _build_inputs_fn(plan, dtype, device):
+    m, n, k, bias_kind = plan.builder_args
+    torch.manual_seed(0)
+    input_tensor = torch.randn((m, k), dtype=dtype, device=device)
+    other = torch.randn((k, n), dtype=dtype, device=device)
+    bias_shape = (n,) if bias_kind == "vector" else (m, n)
+    bias = torch.randn(bias_shape, dtype=dtype, device=device)
+    return input_tensor, other, bias
 
 
-class MatMulAddBenchmark(base.BlasBenchmark):
-    def get_tflops(self, op, *args, **kwargs):
-        # MatMulAdd computes MxN dot products plus one bias add per output element.
-        return args[0].shape[0] * args[1].shape[1] * (args[0].shape[1] * 2 + 1)
+def _reference(input_tensor, other, bias):
+    return torch.matmul(input_tensor, other) + bias
 
 
 @pytest.mark.matmuladd
 def test_matmuladd():
-    bench = MatMulAddBenchmark(
-        input_fn=matmuladd_input_fn,
+    bench = MatmuladdBenchmark(
         op_name="matmuladd",
-        torch_op=matmuladd_torch_wrapper,
+        torch_op=_reference,
+        gems_op=flag_gems.matmuladd,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.matmuladd)
     bench.run()

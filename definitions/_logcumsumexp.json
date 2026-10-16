@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "_logcumsumexp",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_logcumsumexp(Tensor self, int dim) -> Tensor. Computes the cumulative log-sum-exp along dim without mutating or aliasing self. The correctness suite covers ordinary and long rows, every dimension position, scalar, empty, noncontiguous, fp64 and complex inputs, wide dynamic ranges, NaN and infinity propagation, invalid dimensions, and the aten::_logcumsumexp.out overload including returned-buffer identity, storage preservation, resize, noncontiguous output, and dtype/device errors.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

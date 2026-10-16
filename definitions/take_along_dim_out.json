@@ -2,36 +2,43 @@
   "api_version": "v6.0",
   "name": "take_along_dim_out",
   "requires_triton_kernel": true,
-  "description": "A variant of `take_along_dim()` that writes the gathered values into the `out`\ntensor.",
+  "description": "Representative ATen schema: aten::take_along_dim.out(Tensor self, Tensor indices, int? dim=None, *, Tensor(a!) out) -> Tensor(a!). Tests cover the full real dtype set, positive/negative/None dimensions, broadcast shapes, exact out identity, saved storage and stride for correct and noncontiguous outputs, empty-buffer resize, and dtype rejection.",
   "parameters": [
     {
-      "name": "input",
+      "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "indices",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "dim",
       "kind": "positional_or_keyword",
       "required": false,
-      "default": null
+      "default": null,
+      "type_hint": "int?"
     },
     {
       "name": "out",
       "kind": "keyword_only",
       "required": true,
-      "type_hint": "torch.Tensor"
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [
     "out"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
   }
 }

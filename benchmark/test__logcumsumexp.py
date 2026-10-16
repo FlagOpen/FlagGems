@@ -16,36 +16,75 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-def _logcumsumexp_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
-    yield inp, 1
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    dim = 1
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims)},
+        params={"dim": dim},
+        builder_args=(dims, dim),
+    )
+
+
+def _out_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    dim = 1
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims), "out": list(dims)},
+        params={"dim": dim},
+        builder_args=(dims, dim),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, dim = plan.builder_args
+    torch.manual_seed(0)
+    return torch.randn(shape, dtype=dtype, device=device), dim
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    shape, dim = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    out = torch.empty(shape, dtype=dtype, device=device)
+    return inp, dim, {"out": out}
+
+
+class LogCumsumExpBenchmark(base.GenericBenchmark2DOnly, OperatorBenchmark):
+    """Preserve the legacy 2-D shape policy with case-listing inputs."""
+
+    def supports_cases(self):
+        return True
+
+    get_case_iter = OperatorBenchmark.get_case_iter
+    build_inputs = OperatorBenchmark.build_inputs
 
 
 @pytest.mark.underscore_logcumsumexp
 def test__logcumsumexp():
-    bench = base.GenericBenchmark2DOnly(
+    bench = LogCumsumExpBenchmark(
         op_name="_logcumsumexp",
-        input_fn=_logcumsumexp_input_fn,
         torch_op=torch._logcumsumexp,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-def _logcumsumexp_out_input_fn(shape, cur_dtype, device):
-    inp = torch.randn(shape, dtype=cur_dtype, device=device)
-    out = torch.empty_like(inp)
-    yield inp, 1, {"out": out}
-
-
 @pytest.mark.underscore_logcumsumexp_out
 def test__logcumsumexp_out():
-    bench = base.GenericBenchmark2DOnly(
+    bench = LogCumsumExpBenchmark(
         op_name="_logcumsumexp_out",
-        input_fn=_logcumsumexp_out_input_fn,
         torch_op=torch.ops.aten._logcumsumexp.out,
+        case_fn=_out_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()

@@ -21,73 +21,69 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-logger = logging.getLogger(__name__)
-
 
 @pytest.mark.adaptive_max_pool1d
 @pytest.mark.parametrize("shape", [(2, 3, 16), (4, 8, 32), (1, 16, 64)])
 @pytest.mark.parametrize("output_size", [8, 4, 1])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32, torch.float64])
-def test_adaptive_max_pool1d_accuracy(shape, output_size, dtype, caplog):
-    """Test adaptive_max_pool1d accuracy."""
+def test_adaptive_max_pool1d(shape, output_size, dtype, caplog):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-
-    # Reference output
+    ref_inp = utils.to_reference(inp, True)
     with caplog.at_level(logging.DEBUG):
-        ref_out, ref_indices = torch.nn.functional.adaptive_max_pool1d(
+        expected, expected_indices = torch.nn.functional.adaptive_max_pool1d(
             ref_inp, output_size, return_indices=True
         )
+        actual, actual_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
 
-    # FlagGems output - direct dispatch test
-    with caplog.at_level(logging.DEBUG):
-        res_out, res_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
-
-    # Verify dispatch
     assert (
         f"{utils.gems_log_prefix(flag_gems.adaptive_max_pool1d)} ADAPTIVE_MAX_POOL1D"
         in caplog.text
     )
-
-    # Verify output values
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-    # Verify indices (exact match for max pooling)
-    utils.gems_assert_equal(res_indices, ref_indices)
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    assert actual_indices.shape == expected_indices.shape
+    assert actual_indices.dtype == torch.int64
+    utils.gems_assert_close(actual, expected, dtype)
+    utils.gems_assert_equal(actual_indices, expected_indices)
 
 
 @pytest.mark.adaptive_max_pool1d
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_adaptive_max_pool1d_list_output_size(dtype):
-    """Test adaptive_max_pool1d with list output_size."""
-    inp = torch.randn(2, 4, 20, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-
-    output_size = [10]
-
-    ref_out, ref_indices = torch.nn.functional.adaptive_max_pool1d(
-        ref_inp, output_size, return_indices=True
+    torch.manual_seed(0)
+    inp = torch.randn((2, 4, 20), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    expected, expected_indices = torch.nn.functional.adaptive_max_pool1d(
+        ref_inp, [10], return_indices=True
     )
+    actual, actual_indices = flag_gems.adaptive_max_pool1d(inp, [10])
 
-    res_out, res_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_equal(res_indices, ref_indices)
+    utils.gems_assert_close(actual, expected, dtype)
+    utils.gems_assert_equal(actual_indices, expected_indices)
 
 
 @pytest.mark.adaptive_max_pool1d
-def test_adaptive_max_pool1d_edge_cases():
-    """Test edge cases: output_size=1 (global pooling)."""
-    inp = torch.randn(1, 3, 100, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-
-    output_size = 1
-
-    ref_out, ref_indices = torch.nn.functional.adaptive_max_pool1d(
-        ref_inp, output_size, return_indices=True
+def test_adaptive_max_pool1d_global_pooling():
+    torch.manual_seed(0)
+    inp = torch.randn((1, 3, 100), dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+    expected, expected_indices = torch.nn.functional.adaptive_max_pool1d(
+        ref_inp, 1, return_indices=True
     )
+    actual, actual_indices = flag_gems.adaptive_max_pool1d(inp, 1)
 
-    res_out, res_indices = flag_gems.adaptive_max_pool1d(inp, output_size)
+    utils.gems_assert_close(actual, expected, torch.float32)
+    utils.gems_assert_equal(actual_indices, expected_indices)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
-    utils.gems_assert_equal(res_indices, ref_indices)
+@pytest.mark.adaptive_max_pool1d
+def test_adaptive_max_pool1d_explicit_autograd_rejection():
+    torch.manual_seed(0)
+    inp = torch.randn(
+        (2, 3, 16), dtype=torch.float32, device=flag_gems.device, requires_grad=True
+    )
+    actual, _ = flag_gems.adaptive_max_pool1d(inp, 4)
+
+    assert not actual.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(actual.sum(), inp)

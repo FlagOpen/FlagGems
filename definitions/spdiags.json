@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "spdiags",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_spdiags(Tensor diagonals, Tensor offsets, int[] shape, Layout? layout=None) -> Tensor. Constructs a sparse matrix from diagonals and offsets with optional COO/CSR/CSC layout; inputs are not mutated. Tests preserve reviewed legacy sparse layout, dtype, shape, special-case, and error behavior.",
+  "parameters": [
+    {
+      "name": "diagonals",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "offsets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "shape",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int[]"
+    },
+    {
+      "name": "layout",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Layout | None",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "api_version": "v6.0",
+  "name": "batch_norm_with_update",
+  "requires_triton_kernel": true,
+  "description": "Run training batch normalization while updating running_mean and running_var in place; returns output, saved mean, saved inverse standard deviation, and reserve.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "running_mean",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "running_var",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    }
+  ],
+  "outputs": [
+    "out",
+    "save_mean",
+    "save_invstd",
+    "reserve"
+  ],
+  "effects": {
+    "mutates": [
+      "running_mean",
+      "running_var"
+    ],
+    "returns_alias_of": {}
+  }
+}

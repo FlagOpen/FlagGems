@@ -47,6 +47,7 @@ _U32_MAX = np.uint64(0xFFFFFFFF)
 # loop), and a couple of multi-dimensional cases.
 _EXTRA_SHAPES = [(1,), (1024,), (997,), (16, 33), (2, 3, 5, 7)]
 SHAPES = utils.DISTRIBUTION_SHAPES + _EXTRA_SHAPES
+_HAS_NATIVE_PHILOX = hasattr(torch.ops.aten, "_philox_normal_")
 
 
 def _mulhilo32(a, b):
@@ -166,6 +167,33 @@ def _make_key(seed, offset, device):
     return torch.tensor([seed, offset], dtype=torch.uint64, device=device)
 
 
+def _assert_close(actual, expected, dtype):
+    reference = utils.to_reference(expected, True)
+    utils.gems_assert_close(actual, reference, dtype)
+
+
+def _run_candidate(inp, key, mean=0.0, std=1.0):
+    key_before = key.clone()
+    key_pointer = key.untyped_storage().data_ptr()
+    key_stride = key.stride()
+    key_offset = key.storage_offset()
+    input_pointer = inp.untyped_storage().data_ptr()
+    input_stride = inp.stride()
+    input_offset = inp.storage_offset()
+
+    result = flag_gems._philox_normal_(inp, key, mean, std)
+
+    assert result is inp
+    assert result.untyped_storage().data_ptr() == input_pointer
+    assert result.stride() == input_stride
+    assert result.storage_offset() == input_offset
+    utils.gems_assert_equal(key, key_before)
+    assert key.untyped_storage().data_ptr() == key_pointer
+    assert key.stride() == key_stride
+    assert key.storage_offset() == key_offset
+    return result
+
+
 @pytest.mark.philox_normal_
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -175,14 +203,14 @@ def test_philox_normal_(shape, dtype):
     key = _make_key(seed, offset, flag_gems.device)
     numel = torch.Size(shape).numel()
 
-    res_out = flag_gems._philox_normal_(
+    res_out = _run_candidate(
         torch.empty(shape, dtype=dtype, device=flag_gems.device), key, mean, std
     )
 
     ref_out = _reference_normal(
         numel, seed, offset, mean, std, dtype, flag_gems.device
     ).reshape(shape)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.philox_normal_
@@ -193,14 +221,14 @@ def test_philox_normal_default_params(shape, dtype):
     key = _make_key(seed, offset, flag_gems.device)
     numel = torch.Size(shape).numel()
 
-    res_out = flag_gems._philox_normal_(
+    res_out = _run_candidate(
         torch.empty(shape, dtype=dtype, device=flag_gems.device), key
     )
 
     ref_out = _reference_normal(
         numel, seed, offset, 0.0, 1.0, dtype, flag_gems.device
     ).reshape(shape)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.philox_normal_
@@ -213,12 +241,12 @@ def test_philox_normal_mean_std(dtype, mean, std):
     key = _make_key(seed, offset, flag_gems.device)
     numel = 4096
 
-    res_out = flag_gems._philox_normal_(
+    res_out = _run_candidate(
         torch.empty(numel, dtype=dtype, device=flag_gems.device), key, mean, std
     )
 
     ref_out = _reference_normal(numel, seed, offset, mean, std, dtype, flag_gems.device)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.philox_normal_
@@ -228,11 +256,11 @@ def test_philox_normal_inplace_semantics():
     inp = torch.empty(128, dtype=torch.float32, device=flag_gems.device)
     original_ptr = inp.data_ptr()
 
-    res_out = flag_gems._philox_normal_(inp, key, 1.0, 2.0)
+    res_out = _run_candidate(inp, key, 1.0, 2.0)
 
     assert res_out.data_ptr() == original_ptr
     ref_out = _reference_normal(128, 99, 0, 1.0, 2.0, torch.float32, flag_gems.device)
-    utils.gems_assert_close(inp, ref_out, torch.float32)
+    _assert_close(inp, ref_out, torch.float32)
 
 
 @pytest.mark.philox_normal_
@@ -240,17 +268,22 @@ def test_philox_normal_non_contiguous():
     """A non-contiguous output is filled through a contiguous staging buffer."""
     torch_dtype = torch.float32
     key = _make_key(5150, 32, flag_gems.device)
-    base = torch.empty((32, 64), dtype=torch_dtype, device=flag_gems.device)
-    inp = base.t()
+    base = torch.empty((34, 66), dtype=torch_dtype, device=flag_gems.device)
+    inp = base[1:33, 1:65:2]
     assert not inp.is_contiguous()
+    assert inp.storage_offset() != 0
+    base_before = base.clone()
+    outside_view = torch.ones_like(base, dtype=torch.bool)
+    outside_view[1:33, 1:65:2] = False
 
-    res_out = flag_gems._philox_normal_(inp, key, 0.0, 1.0)
+    res_out = _run_candidate(inp, key, 0.0, 1.0)
 
     assert res_out.data_ptr() == inp.data_ptr()
     ref_out = _reference_normal(
         inp.numel(), 5150, 32, 0.0, 1.0, torch_dtype, flag_gems.device
     ).reshape(inp.shape)
-    utils.gems_assert_close(inp, ref_out, torch_dtype)
+    _assert_close(inp, ref_out, torch_dtype)
+    utils.gems_assert_equal(base[outside_view], base_before[outside_view])
 
 
 @pytest.mark.philox_normal_
@@ -259,7 +292,7 @@ def test_philox_normal_empty():
     key = _make_key(1, 0, flag_gems.device)
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
 
-    res_out = flag_gems._philox_normal_(inp, key)
+    res_out = _run_candidate(inp, key)
 
     assert res_out.data_ptr() == inp.data_ptr()
     assert res_out.numel() == 0
@@ -282,7 +315,7 @@ def test_philox_normal_batched_key():
         (num_keys, elems_per_key), dtype=torch_dtype, device=flag_gems.device
     )
 
-    res_out = flag_gems._philox_normal_(out, key, 0.0, 1.0)
+    res_out = _run_candidate(out, key, 0.0, 1.0)
 
     expected = torch.cat(
         [
@@ -292,7 +325,7 @@ def test_philox_normal_batched_key():
             for s, o in keys
         ]
     ).reshape(num_keys, elems_per_key)
-    utils.gems_assert_close(res_out, expected, torch_dtype)
+    _assert_close(res_out, expected, torch_dtype)
 
 
 @pytest.mark.philox_normal_
@@ -302,10 +335,10 @@ def test_philox_normal_stream_continuity():
     key_a = _make_key(4242, 0, flag_gems.device)
     key_b = _make_key(4242, 32, flag_gems.device)
 
-    first = flag_gems._philox_normal_(
+    first = _run_candidate(
         torch.empty(128, dtype=torch_dtype, device=flag_gems.device), key_a
     )
-    second = flag_gems._philox_normal_(
+    second = _run_candidate(
         torch.empty(128, dtype=torch_dtype, device=flag_gems.device), key_b
     )
 
@@ -315,8 +348,8 @@ def test_philox_normal_stream_continuity():
     expected_second = _reference_normal(
         128, 4242, 32, 0.0, 1.0, torch_dtype, flag_gems.device
     )
-    utils.gems_assert_close(first, expected_first, torch_dtype)
-    utils.gems_assert_close(second, expected_second, torch_dtype)
+    _assert_close(first, expected_first, torch_dtype)
+    _assert_close(second, expected_second, torch_dtype)
 
 
 @pytest.mark.philox_normal_
@@ -327,14 +360,90 @@ def test_philox_normal_large_offset():
     offset = (1 << 40) + 12345
     key = _make_key(seed, offset, flag_gems.device)
 
-    res_out = flag_gems._philox_normal_(
+    res_out = _run_candidate(
         torch.empty(256, dtype=torch_dtype, device=flag_gems.device), key
     )
 
     ref_out = _reference_normal(
         256, seed, offset, 0.0, 1.0, torch_dtype, flag_gems.device
     )
-    utils.gems_assert_close(res_out, ref_out, torch_dtype)
+    _assert_close(res_out, ref_out, torch_dtype)
+
+
+@pytest.mark.philox_normal_
+def test_philox_normal_replay_is_deterministic():
+    """Reusing one key replays the same stateless stream without mutating it."""
+    torch_dtype = torch.float32
+    key = _make_key(271828, 4096, flag_gems.device)
+
+    first = _run_candidate(
+        torch.empty(1024, dtype=torch_dtype, device=flag_gems.device), key
+    )
+    second = _run_candidate(
+        torch.empty(1024, dtype=torch_dtype, device=flag_gems.device), key
+    )
+
+    _assert_close(second, first, torch_dtype)
+
+
+@pytest.mark.philox_normal_
+@pytest.mark.skipif(
+    not _HAS_NATIVE_PHILOX,
+    reason="aten::_philox_normal_ is available in PyTorch 2.12 and newer",
+)
+def test_philox_normal_matches_native_operator():
+    """Compare directly with the version-gated upstream ATen implementation."""
+    torch_dtype = torch.float32
+    mean, std = -0.75, 1.5
+    native_key = _make_key(314159, 2048, flag_gems.device)
+    candidate_key = native_key.clone()
+    native_input = torch.empty(513, dtype=torch_dtype, device=flag_gems.device)
+    candidate_input = torch.empty_like(native_input)
+
+    native_op = getattr(torch.ops.aten, "_philox_normal_")
+    native = native_op(native_input, native_key, mean, std)
+    with flag_gems.use_gems(include=["philox_normal_"]):
+        candidate = native_op(candidate_input, candidate_key, mean, std)
+
+    assert candidate is candidate_input
+    _assert_close(candidate, native, torch_dtype)
+    utils.gems_assert_equal(candidate_key, native_key)
+
+
+@pytest.mark.philox_normal_
+def test_philox_normal_rejects_non_floating_self():
+    inp = torch.empty(8, dtype=torch.int32, device=flag_gems.device)
+    key = _make_key(1, 0, flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="floating point tensor"):
+        flag_gems._philox_normal_(inp, key)
+
+
+@pytest.mark.philox_normal_
+def test_philox_normal_rejects_non_uint64_key():
+    inp = torch.empty(8, dtype=torch.float32, device=flag_gems.device)
+    key = torch.tensor([1, 0], dtype=torch.int64, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="key must have dtype uint64"):
+        flag_gems._philox_normal_(inp, key)
+
+
+@pytest.mark.philox_normal_
+def test_philox_normal_rejects_invalid_key_tail_shape():
+    inp = torch.empty(8, dtype=torch.float32, device=flag_gems.device)
+    key = torch.zeros(3, dtype=torch.uint64, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="key must have shape"):
+        flag_gems._philox_normal_(inp, key)
+
+
+@pytest.mark.philox_normal_
+def test_philox_normal_rejects_nonbroadcastable_batched_key():
+    inp = torch.empty((2, 3), dtype=torch.float32, device=flag_gems.device)
+    key = torch.zeros((3, 1, 2), dtype=torch.uint64, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError, match="not broadcastable"):
+        flag_gems._philox_normal_(inp, key)
 
 
 @pytest.mark.philox_normal_
@@ -350,7 +459,7 @@ def test_philox_normal_statistics(dtype):
     numel = 1 << 16
     key = _make_key(31337, 4, flag_gems.device)
 
-    res_out = flag_gems._philox_normal_(
+    res_out = _run_candidate(
         torch.empty(numel, dtype=dtype, device=flag_gems.device), key, mean, std
     )
 

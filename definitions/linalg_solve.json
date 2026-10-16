@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_solve",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_solve(Tensor A, Tensor B, *, bool left=True) -> Tensor. Solves AX=B without mutating or aliasing A or B. Tests preserve unbatched and batched float32/float64 coverage and add noncontiguous, empty-batch, metadata, non-mutation, invalid-shape, and the current kernel left=False rejection contracts.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "left",
+      "kind": "keyword_only",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

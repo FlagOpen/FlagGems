@@ -1,0 +1,54 @@
+{
+  "api_version": "v6.0",
+  "name": "sparse_semi_structured_linear",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_sparse_semi_structured_linear(Tensor input, Tensor weight, Tensor meta, *, Tensor? bias=None, str? activation=None, ScalarType? out_dtype=None) -> Tensor. 2:4 semi-structured linear operation with optional bias, activation, and output dtype; inputs are not mutated. Tests preserve reviewed legacy sparse layout, dtype, shape, special-case, and error behavior.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "meta",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "activation",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "str | None",
+      "default": null
+    },
+    {
+      "name": "out_dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "ScalarType | None",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

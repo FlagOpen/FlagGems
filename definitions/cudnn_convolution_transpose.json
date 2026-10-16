@@ -1,0 +1,75 @@
+{
+  "api_version": "v6.0",
+  "name": "cudnn_convolution_transpose",
+  "requires_triton_kernel": true,
+  "description": "Compute a cuDNN transposed convolution for 2-D inputs with explicit stride, padding, output padding, dilation, groups, and execution flags.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "output_padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "groups",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "benchmark",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "deterministic",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "allow_tf32",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

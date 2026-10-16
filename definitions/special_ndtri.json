@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "special_ndtri",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_ndtri(Tensor self) -> Tensor. Computes the inverse standard-normal cumulative distribution function elementwise without mutating or aliasing the input. The correctness suite covers all legacy pointwise shapes, float32 and supported float64 execution, probability boundaries and out-of-domain NaN behavior, noncontiguous tensors, and the NotImplementedError contract for float16 and bfloat16.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

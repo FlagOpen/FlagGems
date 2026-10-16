@@ -1,0 +1,61 @@
+{
+  "api_version": "v6.0",
+  "name": "hamming_window_periodic_alpha",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::hamming_window.periodic_alpha(int window_length, bool periodic, float alpha, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None) -> Tensor. Constructs a strided floating-point Hamming window using the explicit periodic flag and alpha coefficient; the beta coefficient remains the overload-defined 0.46. Tests cover zero and singleton lengths, periodic and symmetric windows, legacy lengths and coefficients, coefficient boundaries, default dtype, pin_memory=False, Python requires_grad dispatch, and invalid length, dtype, and layout.",
+  "parameters": [
+    {
+      "name": "window_length",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "periodic",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "alpha",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "ScalarType?"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": "strided",
+      "type_hint": "Layout?"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Device?"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "bool?"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

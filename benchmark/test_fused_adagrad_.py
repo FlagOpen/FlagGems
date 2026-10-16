@@ -15,92 +15,63 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# The two registered ATen variants are ``aten::_fused_adagrad`` (out-of-place)
-# and ``aten::_fused_adagrad_`` (in-place).  pytest forbids marker names that
-# start with ``_``, so the leading-underscore ATen names cannot be used as
-# marks; the stripped, pytest-legal marks (``fused_adagrad`` /
-# ``fused_adagrad_``) are applied to the benchmark functions below, matching
-# the ``fused_adam`` convention.
-
-# Shapes representing realistic optimizer parameter sizes:
-# small embedding / attention weights / MLP weights / large embedding.
-_FUSED_ADAGRAD_SHAPES = [
-    (256, 256),
-    (512, 512),
-    (1024, 256),
-    (2048, 512),
-    (4096, 256),
-    (65536,),
-]
-
-# Common optimizer hyper-parameters used by both the torch native and the
-# FlagGems implementations so the comparison is like-for-like.
-_LR = 0.01
-_LR_DECAY = 0.0
-_WEIGHT_DECAY = 0.0
-_EPS = 1e-10
-_MAXIMIZE = False
+SHAPES = [(256, 256), (1024, 256), (2048, 512), (65536,)]
 
 
-class FusedAdagradBenchmark(base.GenericBenchmark):
-    # fused_adagrad uses 4 tensors per case (param, grad, state_sum, step)
-    # so shapes are kept moderate to avoid OOM on CI GPUs.
-    DEFAULT_SHAPES = _FUSED_ADAGRAD_SHAPES
-
-    def set_shapes(self, shape_file=None):
-        self.shapes = list(_FUSED_ADAGRAD_SHAPES)
+class FusedAdagradBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "optimizer parameter shape"
 
 
-def fused_adagrad_input_fn(shape, dtype, device):
-    param = torch.randn(shape, dtype=dtype, device=device)
-    grad = torch.randn(shape, dtype=dtype, device=device)
-    state_sum = torch.zeros(shape, dtype=dtype, device=device)
-    state_step = torch.tensor([3.0], dtype=torch.float32, device=device)
-    yield param, grad, state_sum, state_step
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for mode, lr_decay, weight_decay, maximize in (
+        ("plain", 0.0, 0.0, False),
+        ("options", 0.2, 0.01, True),
+    ):
+        yield base.BenchmarkCasePlan(
+            shape={"param": list(dims)},
+            params={
+                "mode": mode,
+                "lr_decay": lr_decay,
+                "weight_decay": weight_decay,
+                "maximize": maximize,
+            },
+            builder_args=(dims, lr_decay, weight_decay, maximize),
+        )
 
 
-def torch_op(param, grad, state_sum, state_step):
-    """Native torch fused Adagrad step (in-place)."""
-    torch._fused_adagrad_(
-        [param],
-        [grad],
-        [state_sum],
-        [state_step],
-        lr=_LR,
-        lr_decay=_LR_DECAY,
-        weight_decay=_WEIGHT_DECAY,
-        eps=_EPS,
-        maximize=_MAXIMIZE,
-    )
-    return param
+def _build_inputs_fn(plan, dtype, device):
+    shape, lr_decay, weight_decay, maximize = plan.builder_args
+    torch.manual_seed(0)
+    params = [torch.randn(shape, dtype=dtype, device=device)]
+    grads = [torch.randn(shape, dtype=dtype, device=device)]
+    state_sums = [torch.rand(shape, dtype=dtype, device=device) + 0.25]
+    state_steps = [torch.tensor([3.0], dtype=torch.float32, device=device)]
+    kwargs = {
+        "lr": 0.01,
+        "lr_decay": lr_decay,
+        "weight_decay": weight_decay,
+        "eps": 1e-10,
+        "maximize": maximize,
+        "grad_scale": None,
+        "found_inf": None,
+    }
+    return params, grads, state_sums, state_steps, kwargs
 
 
 @pytest.mark.fused_adagrad_
 def test_fused_adagrad_():
-    def gems_op(param, grad, state_sum, state_step):
-        flag_gems._fused_adagrad_(
-            [param],
-            [grad],
-            [state_sum],
-            [state_step],
-            lr=_LR,
-            lr_decay=_LR_DECAY,
-            weight_decay=_WEIGHT_DECAY,
-            eps=_EPS,
-            maximize=_MAXIMIZE,
-        )
-        return param
-
-    bench = FusedAdagradBenchmark(
-        input_fn=fused_adagrad_input_fn,
+    FusedAdagradBenchmark(
         op_name="fused_adagrad_",
-        torch_op=torch_op,
-        # _fused_adagrad only supports float32 for optimizer state precision
+        torch_op=torch._fused_adagrad_,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
-    )
-    bench.set_gems(gems_op)
-    bench.run()
+        fresh_inputs=True,
+    ).run()

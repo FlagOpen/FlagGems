@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "_adaptive_avg_pool3d_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_adaptive_avg_pool3d_backward(Tensor grad_output, Tensor self) -> Tensor. Computes the input gradient for three-dimensional adaptive average pooling. Coverage includes batched channel layouts, downsampling, equal-size pooling and strong upsampling where one input position receives contributions from more than two output positions per spatial dimension. The result has self's shape and dtype; neither input is mutated or aliased.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

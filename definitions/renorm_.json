@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "renorm_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::renorm_(Tensor(a!) self, Scalar p, int dim, Scalar maxnorm) -> Tensor(a!). Renormalizes slices of self in place so their p-norm does not exceed maxnorm, returning the same Tensor object and storage. Tests cover multiple ranks, dimensions, p values, norm limits, zero-sized and noncontiguous tensors, identity, and invalid p or dimension values.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "maxnorm",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

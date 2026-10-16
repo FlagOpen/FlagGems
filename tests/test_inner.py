@@ -36,6 +36,11 @@ INNER_SHAPES = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    utils.init_seed(0)
+
+
 @pytest.mark.inner
 @pytest.mark.parametrize("input_shape,other_shape", INNER_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

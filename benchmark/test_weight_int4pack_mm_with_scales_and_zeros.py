@@ -1,5 +1,16 @@
-import gc
-from dataclasses import asdict
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import pytest
 import torch
@@ -7,163 +18,67 @@ import torch
 import flag_gems
 
 from . import base, consts
-from .conftest import Config, emit_record_logger, update_result
-from .consts import BenchmarkMetrics, BenchmarkResult, OperationAttribute
+from .generated_operator_utils import OperatorBenchmark
 
-# Representative shapes for the int4 matmul with scales and zeros.
-# (M, K, N) where K must be even and K % qGroupSize == 0.
-MM_SHAPES = [
-    (4, 16, 8),
-    (8, 32, 16),
-    (4, 64, 16),
-    (8, 128, 32),
-]
-
-
+SHAPES = [(4, 16, 8), (8, 32, 16), (4, 64, 16), (8, 128, 32)]
 QGROUP_SIZES = (2, 4, 8, 16)
 
 
-def _naive_dequant_mm(A, mat2, qGroupSize, qScale, qZeros):
-    """Baseline: naive dequantize then matmul in PyTorch."""
-    M, K = A.shape
-    N = mat2.shape[0]
-
-    # Build dequantized weight matrix
-    W_f32 = torch.empty((K, N), dtype=torch.float32, device=A.device)
-    for k in range(K):
-        byte_idx = k // 2
-        group = k // qGroupSize
-        bytes_val = mat2[:, byte_idx].to(torch.int32)
-        if k % 2 == 0:
-            int4_vals = bytes_val & 0xF
-        else:
-            int4_vals = (bytes_val >> 4) & 0xF
-        scales = qScale[group, :]
-        zeros = qZeros[group, :]
-        w_k = (int4_vals.to(torch.float32) - zeros) * scales
-        W_f32[k, :] = w_k
-
-    return torch.mm(A.to(torch.float32), W_f32).to(A.dtype)
+def _reference_mm(a, mat2, q_group_size, q_scale, q_zeros):
+    k = a.shape[1]
+    packed = mat2.to(torch.int32)
+    values = torch.empty((k, mat2.shape[0]), dtype=torch.float32, device=a.device)
+    for index in range(k):
+        byte = packed[:, index // 2]
+        nibble = byte & 0xF if index % 2 == 0 else (byte >> 4) & 0xF
+        group = index // q_group_size
+        values[index] = (nibble.to(torch.float32) - q_zeros[group]) * q_scale[group]
+    return torch.mm(a.to(torch.float32), values).to(a.dtype)
 
 
-def _gems_op(A, mat2, qGroupSize, qScale, qZeros):
-    """Call the GEMS registered operator within use_gems context."""
-    with flag_gems.use_gems():
-        return torch.ops.aten._weight_int4pack_mm_with_scales_and_zeros(
-            A, mat2, qGroupSize, qScale, qZeros
-        )
+def _gems_op(a, mat2, q_group_size, q_scale, q_zeros):
+    return flag_gems._weight_int4pack_mm_with_scales_and_zeros(
+        a, mat2, q_group_size, q_scale, q_zeros
+    )
 
 
-class WeightInt4packMmWithScalesAndZerosBenchmark(base.Benchmark):
-    """Benchmark for _weight_int4pack_mm_with_scales_and_zeros."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.gems_op = _gems_op
-
+class WeightInt4Benchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = MM_SHAPES
+        self.shapes = list(SHAPES)
+        self.shape_desc = "M, K, N"
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            yield from _input_fn(shape, self.device, cur_dtype)
 
-    def run(self):
-        if Config.query:
-            self.init_default_config()
-            attri = OperationAttribute(
-                op_name=self.op_name,
-                recommended_core_shapes=self.shapes,
-                shape_desc=self.shape_desc,
+def _case_fn(shape, dtype):
+    del dtype
+    m, k, n = tuple(shape)
+    for q_group_size in QGROUP_SIZES:
+        if k % q_group_size == 0:
+            yield base.BenchmarkCasePlan(
+                shape={"self": [m, k], "mat2": [n, k // 2]},
+                params={"qGroupSize": q_group_size},
+                builder_args=(m, k, n, q_group_size),
             )
-            print(attri)
-            emit_record_logger(attri.to_dict())
-            return
-
-        self.init_user_config()
-        for dtype in self.to_bench_dtypes:
-            metrics = []
-            input_iter = self.get_input_iter(dtype)
-            done = False
-            while not done:
-                try:
-                    input_item = next(input_iter)
-                except StopIteration:
-                    done = True
-                    continue
-                except (RuntimeError, Exception) as e:
-                    print(
-                        f"\033[31mFAILED\033[0m: Operator={self.op_name} "
-                        f"dtype={dtype} err=<<<{e}>>>"
-                    )
-                    pytest.fail(str(e))
-
-                metric = BenchmarkMetrics()
-                try:
-                    args = input_item
-                    metric.shape_detail = self.record_shapes(*args)
-                    if "latency_base" in self.to_bench_metrics:
-                        metric.latency_base = self.get_latency(self.torch_op, *args)
-                    if "latency" in self.to_bench_metrics:
-                        metric.latency = self.get_latency(self.gems_op, *args)
-                    if "speedup" in self.to_bench_metrics:
-                        metric.speedup = metric.latency_base / metric.latency
-                except (RuntimeError, Exception) as e:
-                    metric.error_msg = str(e)
-                    pytest.fail(str(e))
-
-                metrics.append(metric)
-                gc.collect()
-
-            result = BenchmarkResult(
-                level=Config.bench_level.value,
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode=Config.mode.value,
-                result=metrics,
-            )
-            print(result)
-            update_result(self.op_name, asdict(result))
-            emit_record_logger(result.to_json())
 
 
-def _input_fn(shape, device, dtype):
-    """Yield inputs for the benchmark from a valid random test case."""
-    M, K, N = shape
-    K2 = K // 2
-
-    for qGroupSize in QGROUP_SIZES:
-        if K % qGroupSize != 0:
-            continue
-
-        A = torch.randn((M, K), dtype=dtype, device=device) * 0.1
-
-        W_int32 = torch.randint(0, 16, (K, N), dtype=torch.int32, device=device)
-        mat2 = torch.empty((N, K2), dtype=torch.uint8, device=device)
-        for k in range(K):
-            byte_idx = k // 2
-            if k % 2 == 0:
-                mat2[:, byte_idx] = (W_int32[k, :].to(torch.uint8) & 0xF).to(
-                    torch.uint8
-                )
-            else:
-                mat2[:, byte_idx] = (
-                    mat2[:, byte_idx].to(torch.int32)
-                    | ((W_int32[k, :].to(torch.uint8) & 0xF).to(torch.int32) << 4)
-                ).to(torch.uint8)
-
-        G = K // qGroupSize
-        qScale = torch.randn((G, N), dtype=dtype, device=device).abs() + 0.01
-        qZeros = torch.randn((G, N), dtype=dtype, device=device) * 2.0
-
-        yield A, mat2, qGroupSize, qScale, qZeros
+def _build_inputs_fn(plan, dtype, device):
+    m, k, n, q_group_size = plan.builder_args
+    torch.manual_seed(0)
+    a = torch.randn((m, k), dtype=dtype, device=device) * 0.1
+    raw = torch.randint(0, 16, (k, n), dtype=torch.int32, device=device)
+    mat2 = ((raw[1::2] << 4) | raw[0::2]).t().contiguous().to(torch.uint8)
+    groups = k // q_group_size
+    q_scale = torch.randn((groups, n), dtype=dtype, device=device).abs() + 0.01
+    q_zeros = torch.randn((groups, n), dtype=dtype, device=device) * 2.0
+    return a, mat2, q_group_size, q_scale, q_zeros
 
 
 @pytest.mark.weight_int4pack_mm_with_scales_and_zeros
 def test_weight_int4pack_mm_with_scales_and_zeros():
-    bench = WeightInt4packMmWithScalesAndZerosBenchmark(
+    WeightInt4Benchmark(
         op_name="weight_int4pack_mm_with_scales_and_zeros",
-        torch_op=_naive_dequant_mm,
+        torch_op=_reference_mm,
+        gems_op=_gems_op,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

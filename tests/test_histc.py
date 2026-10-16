@@ -17,8 +17,9 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import conftest as cfg
-from .accuracy_utils import gems_assert_close, to_reference
+
 
 if cfg.QUICK_MODE:
     HISTC_SHAPES = [(64,), (100, 100)]
@@ -29,12 +30,13 @@ else:
 HISTC_DTYPES = [torch.float32]
 
 
-def make_histc_input(
+def _make_histc_input(
     shape,
     dtype,
     device,
-    min_val,
-    max_val,
+    min_value,
+    max_value,
+    *,
     include_endpoints=False,
     include_outliers=False,
 ):
@@ -42,20 +44,20 @@ def make_histc_input(
     for dim in shape:
         numel *= dim
 
-    # Keep values deterministic and away from histc bin boundaries, where tiny
-    # rounding differences can move one element into an adjacent bin.
     bucket_ids = torch.arange(numel, device=device) % 100
-    inp = min_val + (bucket_ids.to(dtype) + 0.5) * ((max_val - min_val) / 100)
+    inp = min_value + (bucket_ids.to(dtype) + 0.5) * (
+        (max_value - min_value) / 100
+    )
     inp = inp.reshape(shape)
 
     if include_endpoints and numel >= 2:
         flat = inp.reshape(-1)
-        flat[0] = min_val
-        flat[1] = max_val
+        flat[0] = min_value
+        flat[1] = max_value
     elif include_outliers and numel >= 2:
         flat = inp.reshape(-1)
-        flat[0] = min_val - 0.5
-        flat[1] = max_val + 0.5
+        flat[0] = min_value - 0.5
+        flat[1] = max_value + 0.5
 
     return inp
 
@@ -64,25 +66,74 @@ def make_histc_input(
 @pytest.mark.parametrize("shape", HISTC_SHAPES)
 @pytest.mark.parametrize("bins", HISTC_BINS)
 @pytest.mark.parametrize("dtype", HISTC_DTYPES)
-def test_accuracy_histc(shape, bins, dtype):
-    inp = make_histc_input(
+def test_histc_automatic_range(shape, bins, dtype):
+    inp = _make_histc_input(
         shape, dtype, flag_gems.device, 0.0, 10.0, include_endpoints=True
     )
-    ref_inp = to_reference(inp)
+    inp_before = inp.clone()
+    ref_inp = utils.to_reference(inp, True)
+
     ref_out = torch.histc(ref_inp, bins=bins, min=0, max=0)
     res_out = flag_gems.histc(inp, bins=bins, min=0, max=0)
-    gems_assert_close(res_out, ref_out, dtype)
+
+    assert res_out.shape == (bins,)
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_equal(inp, inp_before)
 
 
 @pytest.mark.histc
 @pytest.mark.parametrize("shape", HISTC_SHAPES)
 @pytest.mark.parametrize("bins", HISTC_BINS)
 @pytest.mark.parametrize("dtype", HISTC_DTYPES)
-def test_accuracy_histc_with_range(shape, bins, dtype):
-    inp = make_histc_input(
+def test_histc_explicit_range(shape, bins, dtype):
+    inp = _make_histc_input(
         shape, dtype, flag_gems.device, 0.0, 10.0, include_outliers=True
     )
-    ref_inp = to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
+
     ref_out = torch.histc(ref_inp, bins=bins, min=0, max=10)
     res_out = flag_gems.histc(inp, bins=bins, min=0, max=10)
-    gems_assert_close(res_out, ref_out, dtype)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.histc
+def test_histc_empty_input():
+    inp = torch.empty((0,), dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.histc(ref_inp, bins=10, min=0, max=10)
+    res_out = flag_gems.histc(inp, bins=10, min=0, max=10)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.histc
+def test_histc_noncontiguous_input():
+    inp = _make_histc_input((12, 10), torch.float32, flag_gems.device, 0.0, 10.0)
+    inp = inp.transpose(0, 1)
+    assert not inp.is_contiguous()
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.histc(ref_inp, bins=20, min=0, max=10)
+    res_out = flag_gems.histc(inp, bins=20, min=0, max=10)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.histc
+@pytest.mark.parametrize("bins", [0, -1])
+def test_histc_rejects_nonpositive_bins(bins):
+    inp = torch.ones((16,), dtype=torch.float32, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.histc(inp, bins=bins, min=0, max=10)
+
+
+@pytest.mark.histc
+def test_histc_rejects_reversed_range():
+    inp = torch.ones((16,), dtype=torch.float32, device=flag_gems.device)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.histc(inp, bins=10, min=2, max=1)

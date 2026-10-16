@@ -44,6 +44,11 @@ MASK_SHAPES = (
 MASK_DTYPES = [torch.float32]
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_seed():
+    torch.manual_seed(0)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.fill_mem_eff_dropout_mask_
@@ -56,11 +61,29 @@ def test_fill_mem_eff_dropout_mask_(shape, seed_offset):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten._fill_mem_eff_dropout_mask_(ref_inp, 0.0, seed, offset)
+    pointer = inp.data_ptr()
+    stride = inp.stride()
+    storage_offset = inp.storage_offset()
     res_out = flag_gems._fill_mem_eff_dropout_mask_(inp, 0.0, seed, offset)
 
+    assert res_out is inp
+    assert inp.data_ptr() == pointer
+    assert inp.stride() == stride
+    assert inp.storage_offset() == storage_offset
+
     # In-place semantics: the returned tensor aliases the input.
-    utils.gems_assert_close(inp, ref_inp, torch.float32, atol=1e-6)
-    utils.gems_assert_close(res_out, ref_out, torch.float32, atol=1e-6)
+    utils.gems_assert_close(
+        utils.to_reference(inp, True),
+        utils.to_reference(ref_inp, True),
+        torch.float32,
+        atol=1e-6,
+    )
+    utils.gems_assert_close(
+        utils.to_reference(res_out, True),
+        utils.to_reference(ref_out, True),
+        torch.float32,
+        atol=1e-6,
+    )
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
@@ -89,6 +112,46 @@ def test_fill_mem_eff_dropout_mask__inplace(shape):
     res_ret = flag_gems._fill_mem_eff_dropout_mask_(inp, 0.0, 42, 0)
 
     # The returned tensor is the same object as the input (in-place semantics).
+    assert res_ret is inp
     assert res_ret.data_ptr() == inp.data_ptr()
-    utils.gems_assert_close(inp, ref_inp, torch.float32, atol=1e-6)
-    utils.gems_assert_close(res_ret, ref_ret, torch.float32, atol=1e-6)
+    utils.gems_assert_close(
+        utils.to_reference(inp, True),
+        utils.to_reference(ref_inp, True),
+        torch.float32,
+        atol=1e-6,
+    )
+    utils.gems_assert_close(
+        utils.to_reference(res_ret, True),
+        utils.to_reference(ref_ret, True),
+        torch.float32,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
+@pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@pytest.mark.fill_mem_eff_dropout_mask_
+def test_fill_mem_eff_dropout_mask__dropout_p_is_ignored():
+    first = torch.empty((1, 2, 5, 8), dtype=torch.float32, device=flag_gems.device)
+    second = torch.empty_like(first)
+    first_result = flag_gems._fill_mem_eff_dropout_mask_(first, 0.0, 17, 12)
+    second_result = flag_gems._fill_mem_eff_dropout_mask_(second, 0.75, 17, 12)
+    assert first_result is first
+    assert second_result is second
+    utils.gems_assert_equal(first_result, second_result)
+
+
+@pytest.mark.fill_mem_eff_dropout_mask_
+@pytest.mark.parametrize("bad_kind", ["rank", "dtype", "layout"])
+def test_fill_mem_eff_dropout_mask__rejects_invalid_self(bad_kind):
+    if bad_kind == "rank":
+        inp = torch.empty((2, 3, 4), dtype=torch.float32, device=flag_gems.device)
+        match = "4D"
+    elif bad_kind == "dtype":
+        inp = torch.empty((1, 2, 3, 4), dtype=torch.float16, device=flag_gems.device)
+        match = "float32"
+    else:
+        inp = torch.empty((1, 2, 3, 4), dtype=torch.float32, device=flag_gems.device).transpose(-1, -2)
+        match = "contiguous"
+    with pytest.raises(AssertionError, match=match):
+        flag_gems._fill_mem_eff_dropout_mask_(inp, 0.0, 1, 0)

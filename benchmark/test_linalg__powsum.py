@@ -16,35 +16,45 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+CORE_SHAPES = [(1024,), (256, 256), (1024, 1024), (64, 512, 256)]
+COMPREHENSIVE_SHAPES = [(2048, 2048), (128, 1024, 512)]
 
 
-class LinalgPowsumBenchmark(base.Benchmark):
-    CORE_SHAPES = [(1024,), (256, 256), (1024, 1024), (64, 512, 256)]
-    COMPREHENSIVE_SHAPES = [(2048, 2048), (128, 1024, 512)]
-
-    def __init__(self, *args, ord, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ord = ord
-
+class LinalgPowsumBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(self.CORE_SHAPES)
+        self.shapes = list(CORE_SHAPES)
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            self.shapes += self.COMPREHENSIVE_SHAPES
+            self.shapes.extend(COMPREHENSIVE_SHAPES)
+        self.shape_desc = "reduction input shape"
 
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=dtype, device=self.device)
-            dim = None if len(shape) == 1 else [-1]
-            yield inp, self.ord, dim, False
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    dim = None if len(dims) == 1 else [-1]
+    for ord_value in (1, 2, 3):
+        yield base.BenchmarkCasePlan(
+            shape={"self": list(dims)},
+            params={"ord": ord_value, "dim": dim, "keepdim": False},
+            builder_args=(dims, ord_value, dim),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, ord_value, dim = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return inp, ord_value, dim, False
 
 
 @pytest.mark.linalg__powsum
-@pytest.mark.parametrize("ord", [1, 2, 3])
-def test_linalg__powsum(ord):
-    bench = LinalgPowsumBenchmark(
+def test_linalg__powsum():
+    LinalgPowsumBenchmark(
         op_name="linalg__powsum",
         torch_op=torch.ops.aten.linalg__powsum.default,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-        ord=ord,
-    )
-    bench.run()
+    ).run()

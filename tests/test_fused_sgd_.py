@@ -52,6 +52,11 @@ SGD_CASES = [
 SHAPES = utils.POINTWISE_SHAPES
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_seed():
+    torch.manual_seed(0)
+
+
 def _skip_if_cpu_ref():
     """Skip when the CPU reference path is requested.
 
@@ -661,3 +666,73 @@ def test_fused_sgd__cuda_graph_capture_tensor_lr():
         utils.gems_assert_close(got_p[i], exp_p[i], torch.float32)
         utils.gems_assert_close(got_g[i], exp_g[i], torch.float32)
         utils.gems_assert_close(got_mb[i], exp_mb[i], torch.float32)
+
+
+def _layout_snapshot(tensors):
+    return [(tensor, tensor.data_ptr(), tensor.stride(), tensor.storage_offset()) for tensor in tensors]
+
+
+def _assert_layout_preserved(tensors, snapshots):
+    for tensor, (original, pointer, stride, offset) in zip(tensors, snapshots):
+        assert tensor is original
+        assert tensor.data_ptr() == pointer
+        assert tensor.stride() == stride
+        assert tensor.storage_offset() == offset
+
+
+@pytest.mark.fused_sgd_
+@pytest.mark.parametrize("lr_kind", ["scalar", "tensor"])
+@pytest.mark.parametrize("found_inf_value", [0.0, 1.0, 2.0])
+def test_fused_sgd__mutation_identity_storage_and_lr_overloads(
+    lr_kind, found_inf_value
+):
+    """Both LR overloads preserve every list element while matching all mutations."""
+    _skip_if_cpu_ref()
+    torch.manual_seed(23)
+    device = flag_gems.device
+    dtype = torch.float32
+    shapes = [(17,), (4, 9), (1,)]
+    params = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
+    grads = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
+    momentum_bufs = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
+    collections = [params, grads, momentum_bufs]
+    layouts = [_layout_snapshot(values) for values in collections]
+    lr = 0.07 if lr_kind == "scalar" else torch.tensor(0.07, device=device)
+    opts = dict(
+        weight_decay=0.01,
+        momentum=0.9,
+        lr=lr,
+        dampening=0.2,
+        nesterov=True,
+        maximize=True,
+        is_first_step=False,
+        grad_scale=torch.tensor(4.0, device=device),
+        found_inf=torch.tensor(found_inf_value, device=device),
+    )
+    ref_params = [tensor.clone() for tensor in params]
+    ref_grads = [tensor.clone() for tensor in grads]
+    ref_momentum = [tensor.clone() for tensor in momentum_bufs]
+    if lr_kind == "scalar":
+        ref_op = torch._fused_sgd_
+        gems_op = flag_gems._fused_sgd_
+    else:
+        ref_op = torch.ops.aten._fused_sgd_.tensor_lr
+        gems_op = flag_gems._fused_sgd__tensor_lr
+    _run_ref(ref_op, ref_params, ref_grads, ref_momentum, **opts)
+
+    result = gems_op(params, grads, momentum_bufs, **opts)
+
+    assert result is None
+    for values, snapshots in zip(collections, layouts):
+        _assert_layout_preserved(values, snapshots)
+    for got_list, expected_list in (
+        (params, ref_params),
+        (grads, ref_grads),
+        (momentum_bufs, ref_momentum),
+    ):
+        for got, expected in zip(got_list, expected_list):
+            utils.gems_assert_close(
+                utils.to_reference(got, True),
+                utils.to_reference(expected, True),
+                dtype,
+            )

@@ -1,0 +1,30 @@
+{
+  "api_version": "v6.0",
+  "name": "cholesky_inverse",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::cholesky_inverse(Tensor self, bool upper=False) -> Tensor. Computes the inverse from lower- or upper-triangular Cholesky factors without mutating self. The FlagGems empty-input fast path returns self with Python and storage identity, while nonempty paths materialize independent output and explicitly do not support autograd. Tests cover unbatched and batched positive-definite systems, both upper modes, float32 and supported float64, empty alias/gradient semantics, and the documented Kunlunxin float64 limitation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "upper",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "special_shifted_chebyshev_polynomial_w",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_shifted_chebyshev_polynomial_w(Tensor x, Tensor n) -> Tensor. The correctness suite preserves int32 tensor degrees, covers the complete supported degree range [0, 10], and verifies the exported wrapper rejects degrees above 10. The operation does not mutate or alias either input.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

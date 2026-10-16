@@ -12,59 +12,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+SHAPES = [(16, 16, 64), (32, 64, 56, 56)]
 
 
-class NormBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        return [
-            # 3D shapes represented as [batch_size, channels, hidden_size]
-            (16, 16, 64),
-            (16, 32, 1024),
-            (32, 64, 2048),
-            # 4D shapes represented as [batch_size, channels, H, W]
-            (32, 64, 56, 56),
-            (64, 128, 28, 28),
-            (16, 256, 14, 14),
-            (8, 512, 7, 7),
-        ]
+class OperatorCaseBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "operator-specific shape"
 
 
-def batch_norm_gather_stats_with_counts_input_fn(shape, dtype, device):
-    C = shape[1]
-    N = shape[0]
-    spatial = 1
-    for s in shape[2:]:
-        spatial *= s
-    count_per_segment = N * spatial
-    # Typical distributed training uses 4 GPU segments
-    num_segments = 4
-
-    input_t = torch.randn(shape, dtype=dtype, device=device)
-    mean = torch.randn(num_segments, C, dtype=torch.float32, device=device)
-    invstd = torch.rand(num_segments, C, dtype=torch.float32, device=device) + 0.1
-    running_mean = torch.randn(C, dtype=torch.float32, device=device)
-    running_var = torch.rand(C, dtype=torch.float32, device=device) + 0.1
-    counts = torch.full(
-        (num_segments,), count_per_segment, dtype=torch.float32, device=device
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={}, builder_args=(dims,)
     )
 
-    yield input_t, mean, invstd, running_mean, running_var, 0.1, 1e-5, counts
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    channels = shape[1]
+    count = shape[0] * math.prod(shape[2:])
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    mean = torch.randn((4, channels), dtype=torch.float32, device=device)
+    invstd = torch.rand((4, channels), dtype=torch.float32, device=device) + 0.1
+    running_mean = torch.randn(channels, dtype=torch.float32, device=device)
+    running_var = torch.rand(channels, dtype=torch.float32, device=device) + 0.1
+    counts = torch.full((4,), count, dtype=torch.float32, device=device)
+    return inp, mean, invstd, running_mean, running_var, 0.1, 1e-5, counts
 
 
 @pytest.mark.batch_norm_gather_stats_with_counts
 def test_batch_norm_gather_stats_with_counts():
-    bench = NormBenchmark(
-        input_fn=batch_norm_gather_stats_with_counts_input_fn,
+    OperatorCaseBenchmark(
         op_name="batch_norm_gather_stats_with_counts",
         torch_op=torch.batch_norm_gather_stats_with_counts,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.set_gems(flag_gems.batch_norm_gather_stats_with_counts)
-
-    bench.run()
+        fresh_inputs=True,
+    ).run()

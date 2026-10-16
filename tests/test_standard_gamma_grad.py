@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -6,111 +20,98 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.standard_gamma_grad
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_standard_gamma_grad(shape, dtype):
-    # Generate positive values for alpha (self_grad) and output
-    # since gamma distribution parameters must be positive
-    res_self_grad = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
-    res_output = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
 
-    ref_self_grad = utils.to_reference(res_self_grad, True)
-    ref_output = utils.to_reference(res_output, True)
 
-    ref_out = torch._standard_gamma_grad(ref_self_grad, ref_output)
-    res_out = flag_gems.standard_gamma_grad(res_self_grad, res_output)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+_REGIMES = [
+    pytest.param((0.5, 4.5), (0.5, 4.5), id="general"),
+    pytest.param((10.0, 50.0), (0.9, 1.1), id="large-near-mode"),
+    pytest.param((10.0, 50.0), (0.5, 0.85), id="large-below-mode"),
+    pytest.param((10.0, 50.0), (1.15, 1.5), id="large-above-mode"),
+    pytest.param((0.5, 4.5), (0.01, 0.71), id="small-output"),
+]
 
 
 @pytest.mark.standard_gamma_grad
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_standard_gamma_grad_near_mode(shape, dtype):
-    # Large alpha (> 8) with output near the distribution mode exercises the
-    # well-conditioned near-mode sub-case of the Rice saddle-point branch.
-    res_self_grad = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device) * 40.0 + 10.0
+@pytest.mark.parametrize("alpha_range,output_range", _REGIMES)
+def test_standard_gamma_grad_regimes(shape, dtype, alpha_range, output_range):
+    torch.manual_seed(0)
+    alpha_lo, alpha_hi = alpha_range
+    out_lo, out_hi = output_range
+    alpha = (
+        torch.rand(shape, dtype=dtype, device=flag_gems.device)
+        * (alpha_hi - alpha_lo)
+        + alpha_lo
     )
-    res_output = res_self_grad * (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device) * 0.2 + 0.9
-    )
+    if alpha_lo >= 10.0:
+        output = alpha * (
+            torch.rand(shape, dtype=dtype, device=flag_gems.device)
+            * (out_hi - out_lo)
+            + out_lo
+        )
+    else:
+        output = (
+            torch.rand(shape, dtype=dtype, device=flag_gems.device)
+            * (out_hi - out_lo)
+            + out_lo
+        )
+    alpha_before = alpha.clone()
+    output_before = output.clone()
+    ref_alpha = utils.to_reference(alpha, True)
+    ref_output = utils.to_reference(output, True)
 
-    ref_self_grad = utils.to_reference(res_self_grad, True)
-    ref_output = utils.to_reference(res_output, True)
+    reference = torch._standard_gamma_grad(ref_alpha, ref_output)
+    result = flag_gems.standard_gamma_grad(alpha, output)
 
-    ref_out = torch._standard_gamma_grad(ref_self_grad, ref_output)
-    res_out = flag_gems.standard_gamma_grad(res_self_grad, res_output)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert result.shape == shape
+    assert result.dtype == dtype
+    utils.gems_assert_close(result, reference, dtype)
+    utils.gems_assert_equal(alpha, alpha_before)
+    utils.gems_assert_equal(output, output_before)
 
 
 @pytest.mark.standard_gamma_grad
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_standard_gamma_grad_away_from_mode(shape, dtype):
-    # Large alpha (> 8) with output away from the mode (below 0.9 * alpha and
-    # above 1.1 * alpha) exercises the away-from-mode sub-case of the Rice
-    # saddle-point branch, which the near-mode test does not reach.
-    res_self_grad = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device) * 40.0 + 10.0
-    )
-    # Scale factor in [0.5, 0.85) U [1.15, 1.5): strictly outside [0.9, 1.1].
-    scale = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 0.35
-    below = 0.5 + scale
-    above = 1.15 + scale
-    pick_above = torch.rand(shape, device=flag_gems.device) < 0.5
-    factor = torch.where(pick_above, above, below)
-    res_output = res_self_grad * factor
+def test_standard_gamma_grad_noncontiguous(dtype):
+    torch.manual_seed(0)
+    alpha = (torch.rand((7, 5), dtype=dtype, device=flag_gems.device) + 0.5).T
+    output = (torch.rand((7, 5), dtype=dtype, device=flag_gems.device) + 0.1).T
+    assert not alpha.is_contiguous()
+    ref_alpha = utils.to_reference(alpha, True)
+    ref_output = utils.to_reference(output, True)
 
-    ref_self_grad = utils.to_reference(res_self_grad, True)
-    ref_output = utils.to_reference(res_output, True)
+    reference = torch._standard_gamma_grad(ref_alpha, ref_output)
+    result = flag_gems.standard_gamma_grad(alpha, output)
 
-    ref_out = torch._standard_gamma_grad(ref_self_grad, ref_output)
-    res_out = flag_gems.standard_gamma_grad(res_self_grad, res_output)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(result, reference, dtype)
 
 
 @pytest.mark.standard_gamma_grad
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
-def test_standard_gamma_grad_small_output(shape, dtype):
-    # Small output (< 0.8) exercises the Taylor-series branch.
-    res_self_grad = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
-    res_output = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 0.7 + 0.01
-
-    ref_self_grad = utils.to_reference(res_self_grad, True)
-    ref_output = utils.to_reference(res_output, True)
-
-    ref_out = torch._standard_gamma_grad(ref_self_grad, ref_output)
-    res_out = flag_gems.standard_gamma_grad(res_self_grad, res_output)
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.standard_gamma_grad
-def test_standard_gamma_grad_mismatched_dtype_raises():
-    # Native _standard_gamma_grad requires matching floating dtypes and does not
-    # promote mixed dtypes; the FlagGems op must reject the same inputs.
-    self_grad = torch.rand((8,), dtype=torch.float32, device=flag_gems.device) + 0.5
+def test_standard_gamma_grad_rejects_mismatched_dtype():
+    alpha = torch.rand((8,), dtype=torch.float32, device=flag_gems.device) + 0.5
     output = torch.rand((8,), dtype=torch.float64, device=flag_gems.device) + 0.5
 
     with pytest.raises(RuntimeError):
-        torch._standard_gamma_grad(self_grad, output)
-    with pytest.raises(RuntimeError):
-        flag_gems.standard_gamma_grad(self_grad, output)
+        flag_gems.standard_gamma_grad(alpha, output)
 
 
 @pytest.mark.standard_gamma_grad
-def test_standard_gamma_grad_integer_dtype_raises():
-    # Integer inputs are unsupported by native _standard_gamma_grad; the FlagGems
-    # op must reject them rather than promoting them to a floating dtype.
-    self_grad = torch.ones((8,), dtype=torch.int64, device=flag_gems.device)
+def test_standard_gamma_grad_rejects_integer_inputs():
+    alpha = torch.ones((8,), dtype=torch.int64, device=flag_gems.device)
     output = torch.ones((8,), dtype=torch.int64, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
-        torch._standard_gamma_grad(self_grad, output)
+        flag_gems.standard_gamma_grad(alpha, output)
+
+
+@pytest.mark.standard_gamma_grad
+def test_standard_gamma_grad_rejects_nonbroadcastable_shape():
+    alpha = torch.ones((2, 3), device=flag_gems.device)
+    output = torch.ones((4,), device=flag_gems.device)
+
     with pytest.raises(RuntimeError):
-        flag_gems.standard_gamma_grad(self_grad, output)
+        flag_gems.standard_gamma_grad(alpha, output)

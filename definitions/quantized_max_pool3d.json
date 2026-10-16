@@ -1,0 +1,55 @@
+{
+  "api_version": "v6.0",
+  "name": "quantized_max_pool3d",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::quantized_max_pool3d(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False) -> Tensor. Performs exact max pooling over the integer representation of a per-tensor quantized input while preserving its quantization parameters. The suite covers supported quantized dtypes, pooling geometry, padding, dilation, ceil mode, layouts, invalid parameters, and output contracts.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

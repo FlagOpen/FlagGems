@@ -2,35 +2,40 @@
   "api_version": "v6.0",
   "name": "nanquantile",
   "requires_triton_kernel": true,
-  "description": "Tensor-`q` overload of `nanquantile`. Computes the q-th quantiles along `dim`,\nignoring `NaN` values.",
+  "description": "Representative ATen schema: aten::nanquantile(Tensor self, Tensor q, int? dim=None, bool keepdim=False, *, str interpolation=\"linear\") -> Tensor. Computes quantiles while ignoring NaNs without mutation or aliasing. Tests also cover scalar q, tensor/scalar out overloads, all interpolation modes, large tiled paths, all-NaN slices, noncontiguous output, special values, shapes, and errors.",
   "parameters": [
     {
-      "name": "inp",
+      "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "q",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "dim",
       "kind": "positional_or_keyword",
       "required": false,
-      "default": null
+      "default": null,
+      "type_hint": "Optional[int]"
     },
     {
       "name": "keepdim",
       "kind": "positional_or_keyword",
       "required": false,
-      "default": false
+      "default": false,
+      "type_hint": "bool"
     },
     {
       "name": "interpolation",
-      "kind": "positional_or_keyword",
+      "kind": "keyword_only",
       "required": false,
-      "default": "linear"
+      "default": "linear",
+      "type_hint": "str"
     }
   ],
   "outputs": [

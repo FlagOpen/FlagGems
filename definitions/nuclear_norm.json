@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "nuclear_norm",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::nuclear_norm(Tensor self, bool keepdim=False) -> Tensor. Computes the nuclear norm without mutation or aliasing. Tests preserve reviewed legacy shapes, dtype limits, batching and layout behavior and add protocol-specific output checks where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "api_version": "v6.0",
+  "name": "_flash_attention_forward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema through PyTorch 2.11: aten::_flash_attention_forward(Tensor query, Tensor key, Tensor value, Tensor? cum_seq_q, Tensor? cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, bool return_debug_mask, *, float? scale=None, SymInt? window_size_left=None, SymInt? window_size_right=None, Tensor? seqused_k=None, Tensor? alibi_slopes=None) -> (Tensor output, Tensor softmax_logsumexp, Tensor rng_state, Tensor unused, Tensor debug_attn_mask). Tests cover BSHD Q/K/V, causal and noncausal masks, default and explicit scale, non-square lengths, GQA, sliding windows, ALiBi, variable-length cumulative metadata, dropout/debug-mask state, every output, and invalid dtype/metadata contracts. PyTorch 2.12 adds block_table and num_splits options that are outside the registered FlagGems callable represented here.",
+  "parameters": [
+    {
+      "name": "query",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cum_seq_q",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "cum_seq_k",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "max_q",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "max_k",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "dropout_p",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "is_causal",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "return_debug_mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scale",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "float | None"
+    },
+    {
+      "name": "window_size_left",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "SymInt | None"
+    },
+    {
+      "name": "window_size_right",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "SymInt | None"
+    },
+    {
+      "name": "seqused_k",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "alibi_slopes",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    }
+  ],
+  "outputs": [
+    "output",
+    "softmax_logsumexp",
+    "rng_state",
+    "unused",
+    "debug_attn_mask"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

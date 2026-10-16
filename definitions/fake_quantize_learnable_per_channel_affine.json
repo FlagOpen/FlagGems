@@ -1,0 +1,58 @@
+{
+  "api_version": "v6.0",
+  "name": "fake_quantize_learnable_per_channel_affine",
+  "requires_triton_kernel": true,
+  "description": "Representative schema: aten::_fake_quantize_learnable_per_channel_affine(Tensor self, Tensor scale, Tensor zero_point, int axis, int quant_min, int quant_max, float grad_factor=1.0) -> Tensor. Applies learnable affine fake quantization independently along one channel axis. Tests cover multiple ranks and positive or negative axes, signed and unsigned bounds, grad-factor forward invariance, input preservation, output metadata, invalid dtypes, and autograd gradients for input, scale, and zero point.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "axis",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "quant_min",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "quant_max",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "grad_factor",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float",
+      "default": 1.0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

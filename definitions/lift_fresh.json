@@ -1,0 +1,23 @@
+{
+  "api_version": "v6.0",
+  "name": "lift_fresh",
+  "requires_triton_kernel": false,
+  "description": "Representative ATen schema: aten::lift_fresh(Tensor(a) self) -> Tensor(a). Returns a lifted tensor alias of self; storage layout and write-through behavior are preserved without materializing data. Tests retain the reviewed legacy coverage and add protocol-specific alias, metadata or case-planning checks where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

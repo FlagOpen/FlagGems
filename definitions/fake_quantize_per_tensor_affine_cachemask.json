@@ -2,32 +2,37 @@
   "api_version": "v6.0",
   "name": "fake_quantize_per_tensor_affine_cachemask",
   "requires_triton_kernel": true,
-  "description": "Fake-quantizes the `input` tensor with a per-tensor affine scheme and also returns\nthe mask of elements that fall inside the quantization range.",
+  "description": "Representative schema: aten::fake_quantize_per_tensor_affine_cachemask(Tensor self, float scale, int zero_point, int quant_min, int quant_max) -> (Tensor output, Tensor mask). Fake-quantizes with scalar affine parameters and returns the dequantized tensor plus an exact boolean in-range mask. Tests cover signed and unsigned bounds, zero scale and special values, empty and noncontiguous inputs, input preservation, invalid qparams, and the out overload identity, resize, dtype, storage, stride, and offset contracts.",
   "parameters": [
     {
-      "name": "input",
+      "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "scale",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "float"
     },
     {
       "name": "zero_point",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "int"
     },
     {
       "name": "quant_min",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "int"
     },
     {
       "name": "quant_max",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "int"
     }
   ],
   "outputs": [

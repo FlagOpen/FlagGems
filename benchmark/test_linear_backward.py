@@ -18,55 +18,62 @@ import torch
 import flag_gems
 
 from . import base
-
-# Shapes for linear_backward benchmark
-LINEAR_BACKWARD_SHAPES = [
-    (64, 512),
-    (128, 1024),
-    (256, 2048),
-    (512, 4096),
-]
+from .generated_operator_utils import OperatorBenchmark
 
 
-class LinearBackwardBenchmark(base.Benchmark):
+LINEAR_BACKWARD_SHAPES = [(64, 512), (128, 1024), (256, 2048), (512, 4096)]
+
+
+class LinearBackwardBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = LINEAR_BACKWARD_SHAPES
-
-    def get_input_iter(self, cur_dtype):
-        for batch, in_features in self.shapes:
-            out_features = in_features * 2  # out_features = 2 * in_features
-            input = torch.randn(batch, in_features, dtype=cur_dtype, device=self.device)
-            weight = torch.randn(
-                out_features, in_features, dtype=cur_dtype, device=self.device
-            )
-            grad_output = torch.randn(
-                batch, out_features, dtype=cur_dtype, device=self.device
-            )
-            yield input, grad_output, weight, (True, True, True)
+        self.shape_desc = "batch, in_features"
 
 
-class _AtenLinearBackwardAdapter:
-    """aten::linear_backward has no CUDA kernel in stock PyTorch (Meta-only
-    registration); PyTorch's own linear autograd composes the backward from
-    basic ops. Adapt the benchmark args to that native composition so the
-    baseline measures real aten CUDA kernels."""
+def _case_fn(shape, dtype):
+    del dtype
+    batch, in_features = shape
+    out_features = in_features * 2
+    yield base.BenchmarkCasePlan(
+        shape={
+            "input": [batch, in_features],
+            "grad_output": [batch, out_features],
+            "weight": [out_features, in_features],
+        },
+        params={"output_mask": [True, True, True]},
+        builder_args=(batch, in_features, out_features),
+    )
 
-    def __call__(self, input, grad_output, weight, output_mask):
-        grad_input = torch.mm(grad_output, weight) if output_mask[0] else None
-        grad_weight = (
-            torch.mm(grad_output.transpose(-2, -1), input) if output_mask[1] else None
-        )
-        grad_bias = grad_output.sum(dim=0) if output_mask[2] else None
-        return grad_input, grad_weight, grad_bias
+
+def _build_inputs_fn(plan, dtype, device):
+    batch, in_features, out_features = plan.builder_args
+    torch.manual_seed(0)
+    input_tensor = torch.randn(
+        (batch, in_features), dtype=dtype, device=device
+    )
+    weight = torch.randn(
+        (out_features, in_features), dtype=dtype, device=device
+    )
+    grad_output = torch.randn(
+        (batch, out_features), dtype=dtype, device=device
+    )
+    return input_tensor, grad_output, weight, (True, True, True)
+
+
+def _reference(input_tensor, grad_output, weight, output_mask):
+    grad_input = grad_output @ weight if output_mask[0] else None
+    grad_weight = grad_output.transpose(-2, -1) @ input_tensor if output_mask[1] else None
+    grad_bias = grad_output.sum(dim=0) if output_mask[2] else None
+    return grad_input, grad_weight, grad_bias
 
 
 @pytest.mark.linear_backward
 def test_linear_backward():
-    bench = LinearBackwardBenchmark(
+    LinearBackwardBenchmark(
         op_name="linear_backward",
-        torch_op=_AtenLinearBackwardAdapter(),
-        # Keep the worktree benchmark dtype set; this backward benchmark uses only fp32/fp16 core cases.
+        torch_op=_reference,
+        gems_op=flag_gems.linear_backward,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32, torch.float16],
-    )
-    bench.set_gems(flag_gems.linear_backward)
-    bench.run()
+    ).run()

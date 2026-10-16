@@ -7,7 +7,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 @pytest.mark.cudnn_batch_norm_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -25,6 +24,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_cudnn_batch_norm_backward(shape, dtype, affine):
+    torch.manual_seed(0)
     C = shape[1]
     # Create input and weight tensors (no requires_grad for backward kernel test)
     res_inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)

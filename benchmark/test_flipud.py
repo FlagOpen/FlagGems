@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 FLIPUD_SHAPES = [
     (4,),
@@ -30,13 +29,23 @@ FLIPUD_SHAPES = [
 ]
 
 
-class FlipudBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = FLIPUD_SHAPES
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={}, builder_args=(dims,)
+    )
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            yield utils.generate_tensor_input(shape, dtype, self.device), {}
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    return (utils.generate_tensor_input(shape, dtype, device),)
+
+
+class FlipudBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=FLIPUD_SHAPES)
 
 
 @pytest.mark.flipud
@@ -44,6 +53,8 @@ def test_flipud():
     bench = FlipudBenchmark(
         op_name="flipud",
         torch_op=torch.flipud,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

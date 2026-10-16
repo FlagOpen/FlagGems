@@ -15,51 +15,45 @@
 import pytest
 import torch
 
-from benchmark.base import Benchmark
+from . import base, consts
 
 
-class AdaptiveMaxPool1dBenchmark(Benchmark):
-    """Benchmark for adaptive_max_pool1d operator."""
+SHAPES = [(8, 64, 128), (16, 128, 256), (32, 256, 512), (64, 512, 1024)]
 
-    def set_default_shapes(self):
-        """Set default shapes for adaptive_max_pool1d (N, C, L)."""
-        self.shapes = [
-            (8, 64, 128),
-            (16, 128, 256),
-            (32, 256, 512),
-            (64, 512, 1024),
-        ]
+
+class AdaptiveMaxPool1DBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SHAPES
         self.shape_desc = "N, C, L"
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.set_default_shapes()
+    def supports_cases(self):
+        return True
 
-    def init_user_config(self):
-        """Override to prevent loading shapes from YAML."""
-        super().init_user_config()
-        self.set_default_shapes()
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            output_size = shape[-1] // 2
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"self": list(shape)},
+                    params={"output_size": [output_size]},
+                    builder_args=(tuple(shape), output_size),
+                ),
+            )
 
-    def get_input_iter(self, cur_dtype):
-        """Generate test inputs."""
-        for cur_shape in self.shapes:
-            N, C, L = cur_shape
-            inp = torch.randn(cur_shape, dtype=cur_dtype, device=self.device)
-            # Output size is half of input length
-            output_size = L // 2
-            yield inp, {"output_size": output_size}
-
-    def torch_forward(self, inp, output_size):
-        return torch.nn.functional.adaptive_max_pool1d(
-            inp, output_size, return_indices=True
-        )
+    def build_inputs(self, case):
+        torch.manual_seed(0)
+        plan = case.builder_args[0]
+        shape, output_size = plan.builder_args
+        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
+        return inp, {"output_size": [output_size]}
 
 
 @pytest.mark.adaptive_max_pool1d
-def test_perf_adaptive_max_pool1d():
-    bench = AdaptiveMaxPool1dBenchmark(
+def test_adaptive_max_pool1d():
+    AdaptiveMaxPool1DBenchmark(
         op_name="adaptive_max_pool1d",
         torch_op=torch.ops.aten.adaptive_max_pool1d,
-        arg_func=None,
-    )
-    bench.run()
+        dtypes=consts.FLOAT_DTYPES,
+    ).run()

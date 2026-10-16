@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "index_select_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::index_select_backward(Tensor grad, SymInt[] self_sizes, int dim, Tensor index) -> Tensor. Tests cover every dimension of legacy 1D/2D/3D shapes, enlarged destination dimensions, repeated indices, deterministic scatter accumulation, shape, and dtype.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self_sizes",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_self"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

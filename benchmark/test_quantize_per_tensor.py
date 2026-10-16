@@ -15,52 +15,88 @@
 import pytest
 import torch
 
-from . import base
+import flag_gems
 
-# ``quantize_per_tensor`` only accepts float32 tensors, so the benchmark input is
-# always float32; the produced quantized tensor is ``torch.quint8`` (the most
-# common per-tensor quantization dtype). ``scale``/``zero_point`` are fixed so
-# the comparison against the Torch reference is apples-to-apples.
+from . import base
+from .generated_operator_utils import OperatorBenchmark
+
+SHAPES = [(1024, 1024), (20, 320, 15), (16, 128, 64, 60)]
 SCALE = 0.1
 ZERO_POINT = 10
 Q_DTYPE = torch.quint8
 
 
-def _input_fn(shape, dtype, device):
-    inp = torch.randn(shape, dtype=torch.float32, device=device)
-    yield inp, SCALE, ZERO_POINT, Q_DTYPE
+class QuantizeBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "shape"
 
 
-def _input_fn_out(shape, dtype, device):
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims)},
+        params={"scale": SCALE, "zero_point": ZERO_POINT, "dtype": "quint8"},
+        builder_args=(dims,),
+    )
+
+
+def _out_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims), "out": list(dims)},
+        params={"scale": SCALE, "zero_point": ZERO_POINT, "dtype": "quint8"},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    del dtype
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    return torch.randn(shape, dtype=torch.float32, device=device), SCALE, ZERO_POINT, Q_DTYPE
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    del dtype
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=torch.float32, device=device)
-    out = torch.quantize_per_tensor(inp, 0.5, 100, Q_DTYPE)
-    yield inp, SCALE, ZERO_POINT, Q_DTYPE, {"out": out}
+    out = torch._empty_affine_quantized(
+        shape, scale=0.5, zero_point=100, dtype=Q_DTYPE, device=device
+    )
+    return inp, SCALE, ZERO_POINT, Q_DTYPE, {"out": out}
+
+
+def _torch_out(inp, scale, zero_point, dtype, out=None):
+    return torch.ops.aten.quantize_per_tensor.out(
+        inp, scale, zero_point, dtype, out=out
+    )
 
 
 @pytest.mark.quantize_per_tensor
 def test_quantize_per_tensor():
-    bench = base.GenericBenchmarkExcluse1D(
+    QuantizeBenchmark(
         op_name="quantize_per_tensor",
-        input_fn=_input_fn,
-        # quantize_per_tensor only accepts float32 on the quantized CUDA backend.
-        dtypes=[torch.float32],
         torch_op=torch.quantize_per_tensor,
-    )
-    bench.run()
+        gems_op=flag_gems.quantize_per_tensor,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.float32],
+    ).run()
 
 
 @pytest.mark.quantize_per_tensor_out
 def test_quantize_per_tensor_out():
-    def torch_op(a, scale, zero_point, dtype, out=None):
-        return torch.ops.aten.quantize_per_tensor.out(
-            a, scale, zero_point, dtype, out=out
-        )
-
-    bench = base.GenericBenchmarkExcluse1D(
+    QuantizeBenchmark(
         op_name="quantize_per_tensor_out",
-        input_fn=_input_fn_out,
-        # quantize_per_tensor only accepts float32 on the quantized CUDA backend.
+        torch_op=_torch_out,
+        gems_op=flag_gems.quantize_per_tensor_out,
+        case_fn=_out_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
         dtypes=[torch.float32],
-        torch_op=torch_op,
-    )
-    bench.run()
+        is_inplace=True,
+        fresh_inputs=True,
+    ).run()

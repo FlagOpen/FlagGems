@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_multi_dot_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_multi_dot.out(Tensor[] tensors, *, Tensor(a!) out) -> Tensor(a!). Computes a matrix-chain product into out. Tests cover empty-output resize, output identity, vector endpoint shapes, noncontiguous output storage, and matrix chains of several lengths, accepted floating dtype conversion, and rejected integer output buffers.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[Tensor]"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "result"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "result": "out"
+    }
+  }
+}

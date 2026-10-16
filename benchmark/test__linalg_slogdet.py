@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,51 +14,47 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
-from flag_gems import _linalg_slogdet
+import flag_gems
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# ``_linalg_slogdet`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._linalg_slogdet`` and ``-m
-# _linalg_slogdet`` both work.
-setattr(
-    pytest.mark,
-    "_linalg_slogdet",
-    MarkDecorator(Mark("_linalg_slogdet", (), {}, _ispytest=True), _ispytest=True),
-)
-
-# Use linalg-specific square-matrix shapes: one batched small case covers
-# the (*, n, n) interface, and 4x4 through 32x32 covers the small/medium
-# matrices targeted by this single-program LU implementation.
-SLOGDET_SHAPES = [
-    (2, 3, 3),
-    (4, 4),
-    (8, 8),
-    (16, 16),
-    (32, 32),
-]
+SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
 
 
-class SlogdetBenchmark(base.Benchmark):
+class OperatorCaseBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = SLOGDET_SHAPES
-
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            A = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            yield (A,)
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(*B), M, N"
 
 
-@pytest.mark._linalg_slogdet
-def test__linalg_slogdet():
-    bench = SlogdetBenchmark(
-        op_name="_linalg_slogdet",
-        torch_op=torch.ops.aten._linalg_slogdet,
-        # _linalg_slogdet generated kernel only supports float32 on CUDA.
-        dtypes=[torch.float32],
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={},
+        builder_args=(dims,),
     )
-    bench.set_gems(_linalg_slogdet)
-    bench.run()
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    inp = inp + torch.eye(shape[-1], dtype=dtype, device=device) * shape[-1]
+    return (inp,)
+
+
+@pytest.mark.underscore_linalg_slogdet
+@pytest.mark.linalg_slogdet
+def test__linalg_slogdet():
+    OperatorCaseBenchmark(
+        op_name="_linalg_slogdet",
+        torch_op=torch.ops.aten._linalg_slogdet.default,
+        gems_op=flag_gems._linalg_slogdet,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.float32],
+    ).run()

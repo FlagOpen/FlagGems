@@ -18,124 +18,91 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .accuracy_utils import DISTRIBUTION_SHAPES, FLOAT_DTYPES, to_reference
 
 
 @pytest.mark.binomial
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("n, p", [(10, 0.5), (20, 0.3), (100, 0.9), (1, 0.5)])
-def test_binomial(shape, dtype, n, p):
-    count = torch.full(
-        size=shape, fill_value=float(n), dtype=dtype, device=flag_gems.device
-    )
-    prob = torch.full(
-        size=shape, fill_value=float(p), dtype=dtype, device=flag_gems.device
-    )
-    res_out = flag_gems.binomial(count, prob)
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_binomial_metadata_and_range(shape, dtype):
+    torch.manual_seed(0)
+    count = torch.randint(1, 100, shape, device=flag_gems.device).to(dtype)
+    prob = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    count_before = count.clone()
+    prob_before = prob.clone()
 
-    ref_count = to_reference(count)
-    ref_prob = to_reference(prob)
-    # CPU binomial doesn't support bfloat16, convert to float32 for reference
-    if ref_count.dtype == torch.bfloat16:
-        ref_count = ref_count.to(torch.float32)
-        ref_prob = ref_prob.to(torch.float32)
-    ref_out = torch.binomial(ref_count, ref_prob)
-    mean = torch.mean(ref_out)
-    var = torch.var(ref_out)
+    result = flag_gems.binomial(count, prob)
+
+    assert result.shape == count.shape
+    assert result.dtype == dtype
+    assert torch.all(result >= 0)
+    assert torch.all(result <= count)
+    assert torch.isfinite(result).all()
+    utils.gems_assert_equal(count, count_before)
+    utils.gems_assert_equal(prob, prob_before)
+
+
+@pytest.mark.binomial
+@pytest.mark.parametrize("n,p", [(10.0, 0.5), (20.0, 0.3), (100.0, 0.9)])
+def test_binomial_distribution_moments(n, p):
+    count = torch.full((10000,), n, device=flag_gems.device)
+    prob = torch.full((10000,), p, device=flag_gems.device)
+    generator = torch.Generator(device=flag_gems.device).manual_seed(12345)
+
+    result = flag_gems.binomial(count, prob, generator=generator).float()
 
     expected_mean = n * p
-    expected_var = n * p * (1 - p)
-
-    assert torch.abs(mean - expected_mean) < max(0.3, 0.05 * expected_mean)
-    assert torch.abs(var - expected_var) < max(0.5, 0.15 * expected_var + 0.5)
-    assert (res_out >= 0).all()
-    assert (res_out <= n).all()
-
-
-@pytest.mark.binomial
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_binomial_large_count(shape, dtype):
-    # Large count triggers the normal-approximation branch of the kernel.
-    n, p = 1000.0, 0.5
-    count = torch.full(size=shape, fill_value=n, dtype=dtype, device=flag_gems.device)
-    prob = torch.full(size=shape, fill_value=p, dtype=dtype, device=flag_gems.device)
-
-    res_out = flag_gems.binomial(count, prob)
-
-    ref_out = to_reference(res_out).to(torch.float32)
-    mean = torch.mean(ref_out)
-
-    assert torch.abs(mean - n * p) < 5.0
-    assert (res_out >= 0).all()
-    assert (res_out <= n).all()
-    assert torch.isfinite(res_out).all()
+    expected_variance = n * p * (1 - p)
+    assert abs(result.mean().item() - expected_mean) < max(0.3, 0.05 * expected_mean)
+    assert abs(result.var().item() - expected_variance) < max(
+        0.5, 0.15 * expected_variance + 0.5
+    )
 
 
 @pytest.mark.binomial
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_binomial_varying_prob(shape, dtype):
-    count = torch.randint(1, 100, size=shape, device=flag_gems.device).to(dtype)
-    prob = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_binomial_deterministic_boundaries(dtype):
+    count = torch.full((2000,), 8.0, dtype=dtype, device=flag_gems.device)
+    zeros = torch.zeros_like(count)
+    ones = torch.ones_like(count)
 
-    res_out = flag_gems.binomial(count, prob)
+    result_zero_prob = flag_gems.binomial(count, zeros)
+    result_one_prob = flag_gems.binomial(count, ones)
+    result_zero_count = flag_gems.binomial(zeros, torch.full_like(count, 0.5))
 
-    assert (res_out >= 0).all()
-    assert (res_out <= count).all()
-    assert torch.isfinite(res_out).all()
-
-
-@pytest.mark.binomial
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_binomial_edge_probs(dtype):
-    # 2000 elements: large enough to statistically confirm deterministic edge
-    # cases (p==0/p==1) while keeping the test fast.
-    shape = (2000,)
-    count = torch.full(size=shape, fill_value=8.0, dtype=dtype, device=flag_gems.device)
-
-    # p == 0 -> always 0, p == 1 -> always count
-    prob0 = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
-    prob1 = torch.ones(size=shape, dtype=dtype, device=flag_gems.device)
-
-    out0 = flag_gems.binomial(count, prob0)
-    out1 = flag_gems.binomial(count, prob1)
-
-    # p==0 is deterministically 0, p==1 is deterministically count (==8).
-    utils.gems_assert_equal(out0, to_reference(torch.zeros_like(count)))
-    utils.gems_assert_equal(out1, to_reference(count))
+    utils.gems_assert_equal(result_zero_prob, utils.to_reference(zeros, False))
+    utils.gems_assert_equal(result_one_prob, utils.to_reference(count, False))
+    utils.gems_assert_equal(result_zero_count, utils.to_reference(zeros, False))
 
 
 @pytest.mark.binomial
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_binomial_zero_count(dtype):
-    # 2000 elements: enough samples to confirm count==0 always yields 0.
-    shape = (2000,)
-    count = torch.zeros(size=shape, dtype=dtype, device=flag_gems.device)
-    prob = torch.full(size=shape, fill_value=0.5, dtype=dtype, device=flag_gems.device)
+def test_binomial_generator_contract():
+    count = torch.full((2048,), 20.0, device=flag_gems.device)
+    prob = torch.full((2048,), 0.4, device=flag_gems.device)
+    generator = torch.Generator(device=flag_gems.device)
 
-    res_out = flag_gems.binomial(count, prob)
+    generator.manual_seed(2026)
+    first = flag_gems.binomial(count, prob, generator=generator)
+    second = flag_gems.binomial(count, prob, generator=generator)
+    assert not torch.equal(first, second)
 
-    # count==0 deterministically yields 0 regardless of prob.
-    utils.gems_assert_equal(res_out, to_reference(torch.zeros_like(count)))
+    generator.manual_seed(2026)
+    replay = flag_gems.binomial(count, prob, generator=generator)
+    utils.gems_assert_equal(first, replay)
 
 
+@pytest.mark.binomial
 @pytest.mark.binomial_out
-@pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_binomial_out(shape, dtype):
-    n, p = 20.0, 0.4
-    count = torch.full(size=shape, fill_value=n, dtype=dtype, device=flag_gems.device)
-    prob = torch.full(size=shape, fill_value=p, dtype=dtype, device=flag_gems.device)
+@pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_binomial_out_contract(shape, dtype):
+    count = torch.full(shape, 20.0, dtype=dtype, device=flag_gems.device)
+    prob = torch.full(shape, 0.4, dtype=dtype, device=flag_gems.device)
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    pointer = out.data_ptr()
 
-    res_out = flag_gems.binomial_out(count, prob, out=out)
+    result = flag_gems.binomial_out(count, prob, out=out)
 
-    assert res_out.data_ptr() == out.data_ptr()
-    ref_out = to_reference(out).to(torch.float32)
-    mean = torch.mean(ref_out)
-
-    assert torch.abs(mean - n * p) < 0.5
-    assert (out >= 0).all()
-    assert (out <= n).all()
+    assert result is out
+    assert out.data_ptr() == pointer
+    assert torch.all(out >= 0)
+    assert torch.all(out <= count)

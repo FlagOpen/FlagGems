@@ -46,6 +46,7 @@ def _reference_convolution(
 @pytest.mark.parametrize("bias", [True, False])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_convolution_overrideable(shape, kernel, groups, stride, padding, bias, dtype):
+    torch.manual_seed(0)
     torch.backends.cudnn.allow_tf32 = False
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -94,6 +95,7 @@ def test_convolution_overrideable(shape, kernel, groups, stride, padding, bias, 
 @pytest.mark.convolution_overrideable
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_convolution_overrideable_transposed(dtype):
+    torch.manual_seed(0)
     torch.backends.cudnn.allow_tf32 = False
     inp = torch.randn((2, 16, 8, 8), dtype=dtype, device=flag_gems.device)
     # transposed weight layout: (in_channels, out_channels/groups, kH, kW)
@@ -137,45 +139,31 @@ def test_convolution_overrideable_transposed(dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
 
 
-@pytest.mark.convolution_overrideable_out
-@pytest.mark.parametrize("shape, kernel, groups", CONV_SHAPES)
+@pytest.mark.convolution_overrideable
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_convolution_overrideable_out(shape, kernel, groups, dtype):
-    torch.backends.cudnn.allow_tf32 = False
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    bias_tensor = torch.randn([kernel[0]], dtype=dtype, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_bias = utils.to_reference(bias_tensor, True)
-
-    ref_out = _reference_convolution(
-        ref_inp,
-        ref_weight,
-        ref_bias,
-        [1, 1],
-        [1, 1],
-        [1, 1],
-        False,
-        [0, 0],
-        groups,
+def test_convolution_overrideable_noncontiguous(dtype):
+    torch.manual_seed(0)
+    base = torch.randn((2, 32, 9, 11), dtype=dtype, device=flag_gems.device)
+    inp = base[:, ::2, :, :]
+    weight = torch.randn((8, 16, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref = _reference_convolution(
+        utils.to_reference(inp, True), utils.to_reference(weight, True), None,
+        [2, 2], [1, 1], [1, 1], False, [0, 0], 1
     ).to(dtype)
-
-    out = torch.empty_like(ref_out.to(flag_gems.device))
-    res_out = flag_gems.convolution_overrideable_out(
-        inp,
-        weight,
-        bias_tensor,
-        [1, 1],
-        [1, 1],
-        [1, 1],
-        False,
-        [0, 0],
-        groups,
-        out=out,
+    result = flag_gems.convolution_overrideable(
+        inp, weight, None, [2, 2], [1, 1], [1, 1], False, [0, 0], 1
     )
+    utils.gems_assert_close(result, ref, dtype, reduce_dim=144)
+    assert result.shape == ref.shape
+    assert result.dtype == dtype
 
-    reduce_dim = max((kernel[1]) * kernel[2] * kernel[3], 1)
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
-    assert res_out.data_ptr() == out.data_ptr()
+
+@pytest.mark.convolution_overrideable
+def test_convolution_overrideable_invalid_groups():
+    torch.manual_seed(0)
+    inp = torch.randn((1, 16, 8, 8), device=flag_gems.device)
+    weight = torch.randn((8, 8, 3, 3), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.convolution_overrideable(
+            inp, weight, None, [1, 1], [0, 0], [1, 1], False, [0, 0], 3
+        )

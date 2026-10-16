@@ -16,38 +16,45 @@ import pytest
 import torch
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# `_fill_mem_eff_dropout_mask_` only accepts 4D float32 tensors of shape
-# (batch, heads, queries, keys); representative attention mask shapes.
-# The ATen op is hard-coded to float32 (curand uniform), so only float32 is benchmarked.
-MASK_DTYPES = [torch.float32]
+SHAPES = [
+    (1, 1, 16, 8),
+    (2, 3, 32, 64),
+    (4, 8, 64, 64),
+]
 
 
-def _fill_mem_eff_dropout_mask_input_fn(shape, dtype, device):
+class FillDropoutMaskBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "B, H, Q, K"
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for seed, offset in ((42, 0), (7, 1024)):
+        yield base.BenchmarkCasePlan(
+            shape={"mask": list(dims)},
+            params={"dropout_p": 0.0, "seed": seed, "offset": offset},
+            builder_args=(dims, seed, offset),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, seed, offset = plan.builder_args
     mask = torch.empty(shape, dtype=dtype, device=device)
-    # dropout_p is unused by the kernel but kept for API compatibility.
-    yield mask, {"dropout_p": 0.0, "seed": 42, "offset": 0}
-
-
-class FillMemEffDropoutMaskBenchmark(base.GenericBenchmark4DOnly):
-    DEFAULT_SHAPE_DESC = "B, H, Q, K"
-
-    def set_more_shapes(self):
-        return []
-
-    def init_user_config(self):
-        super().init_user_config()
-        # The kernel indexes flat elements with int32 arithmetic, so cap total
-        # numel below 2**31 to avoid overflow on the largest 4D shapes.
-        self.shapes = [s for s in self.shapes if 1 < s[0] * s[1] * s[2] * s[3] < 2**31]
+    return mask, 0.0, seed, offset
 
 
 @pytest.mark.fill_mem_eff_dropout_mask_
 def test_fill_mem_eff_dropout_mask_():
-    bench = FillMemEffDropoutMaskBenchmark(
+    FillDropoutMaskBenchmark(
         op_name="fill_mem_eff_dropout_mask_",
-        input_fn=_fill_mem_eff_dropout_mask_input_fn,
         torch_op=torch.ops.aten._fill_mem_eff_dropout_mask_,
-        dtypes=MASK_DTYPES,
-    )
-    bench.run()
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.float32],
+        fresh_inputs=True,
+    ).run()

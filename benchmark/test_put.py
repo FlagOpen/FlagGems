@@ -1,121 +1,92 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
 import torch
 
 from . import base, consts
-
-# Cover 1-D, multi-D and large flatten spans. Mirrors `test_put_.py`.
-PUT_BENCH_SHAPES = [
-    (16,),
-    (64, 64),
-    (20, 320, 15),
-    (16, 128, 64, 60),
-]
-
-# The out-of-place `put.out` variant allocates an extra `out` tensor the same size
-# as `self`, so peak memory is ~3x self (self + out + source). The default core
-# shapes include 1G-element tensors (~4 GiB each in fp32), which push the peak
-# past the CI runner's free memory and OOM at ~16 GiB. Cap the element count at
-# 2**28 (256 MiB -> ~1 GiB fp32 per tensor) so the peak stays well under budget.
-PUT_MAX_NUMEL = 2**28
+from .generated_operator_utils import OperatorBenchmark
 
 
-class PutBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        self.shapes = PUT_BENCH_SHAPES
-        return None
+DEFAULT_SHAPES = [(16,), (64, 64), (20, 320, 15), (16, 128, 64, 60)]
+MAX_NUMEL = 2**28
 
+
+class PutBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
-        self.shapes = [s for s in self.shapes if math.prod(s) < PUT_MAX_NUMEL]
+        super().set_shapes(shape_file_path, default_shapes=DEFAULT_SHAPES)
+        self.shapes = [shape for shape in self.shapes if math.prod(shape) < MAX_NUMEL]
 
 
-class PutOutBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        self.shapes = PUT_BENCH_SHAPES
-        return None
+def _case_fn_factory(accumulate, use_out=False):
+    def _case_fn(shape, dtype):
+        del dtype
+        dims = tuple(shape)
+        count = max(1, min(math.prod(dims) // 2, 2**20))
+        shape_meta = {"self": list(dims), "index": [count], "source": [count]}
+        if use_out:
+            shape_meta["out"] = list(dims)
+        yield base.BenchmarkCasePlan(
+            shape=shape_meta,
+            params={"accumulate": accumulate, "out": use_out},
+            builder_args=(dims, count, accumulate, use_out),
+        )
 
-    def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
-        self.shapes = [s for s in self.shapes if math.prod(s) < PUT_MAX_NUMEL]
-
-
-def put_input_fn(accumulate):
-    def inner(shape, dtype, device):
-        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=False)
-        numel = inp.numel()
-        # Write into roughly half of the positions, capped so the core-level
-        # 1G shape does not allocate ~512M indices and dominate the run.
-        count = max(1, min(numel // 2, 2**20))
-        # Allow duplicate indices only when accumulating; keep them unique
-        # otherwise so the overwrite path is deterministic.
-        if accumulate:
-            index = torch.randint(0, numel, (count,), dtype=torch.int64, device=device)
-        else:
-            index = torch.randperm(numel, device=device)[:count].to(torch.int64)
-        source = torch.randn(count, dtype=dtype, device=device, requires_grad=False)
-        yield inp, index, source, accumulate
-
-    return inner
+    return _case_fn
 
 
-def put_out_input_fn(accumulate):
-    def inner(shape, dtype, device):
-        inp = torch.randn(shape, dtype=dtype, device=device, requires_grad=False)
-        numel = inp.numel()
-        count = max(1, min(numel // 2, 2**20))
-        if accumulate:
-            index = torch.randint(0, numel, (count,), dtype=torch.int64, device=device)
-        else:
-            index = torch.randperm(numel, device=device)[:count].to(torch.int64)
-        source = torch.randn(count, dtype=dtype, device=device, requires_grad=False)
-        out = torch.empty_like(inp)
-        # `put.out` takes (self, index, source, accumulate, *, out)
-        yield inp, index, source, accumulate, {"out": out}
-
-    return inner
+def _build_inputs_fn(plan, dtype, device):
+    shape, count, accumulate, use_out = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    index = (
+        torch.randint(0, inp.numel(), (count,), dtype=torch.int64, device=device)
+        if accumulate
+        else torch.randperm(inp.numel(), device=device)[:count].to(torch.int64)
+    )
+    source = torch.randn((count,), dtype=dtype, device=device)
+    if use_out:
+        return inp, index, source, accumulate, {"out": torch.empty_like(inp)}
+    return inp, index, source, {"accumulate": accumulate}
 
 
 @pytest.mark.put
-def test_put():
+@pytest.mark.parametrize("accumulate", (False, True))
+def test_put(accumulate):
     bench = PutBenchmark(
         op_name="put",
-        torch_op=torch.ops.aten.put,
-        input_fn=put_input_fn(accumulate=False),
+        torch_op=torch.put,
+        case_fn=_case_fn_factory(accumulate),
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.put
-def test_put_accumulate():
+# Preserve the consolidated legacy put.out benchmark family.
+@pytest.mark.put_out
+@pytest.mark.parametrize("accumulate", (False, True))
+def test_put_out_shared_family(accumulate):
     bench = PutBenchmark(
-        op_name="put",
-        torch_op=torch.ops.aten.put,
-        input_fn=put_input_fn(accumulate=True),
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.put_out
-def test_put_out():
-    bench = PutOutBenchmark(
         op_name="put_out",
         torch_op=torch.ops.aten.put.out,
-        input_fn=put_out_input_fn(accumulate=False),
+        case_fn=_case_fn_factory(accumulate, use_out=True),
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.put_out
-def test_put_out_accumulate():
-    bench = PutOutBenchmark(
-        op_name="put_out",
-        torch_op=torch.ops.aten.put.out,
-        input_fn=put_out_input_fn(accumulate=True),
-        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
     )
     bench.run()

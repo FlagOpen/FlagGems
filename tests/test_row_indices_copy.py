@@ -37,6 +37,7 @@ INDEX_DTYPES = [torch.int32, torch.int64]
 
 
 def _make_csc(shape, index_dtype, device):
+    torch.manual_seed(0)
     rows, cols, nnz = shape
     if nnz == 0:
         ccol = torch.zeros(cols + 1, dtype=index_dtype, device=device)
@@ -78,6 +79,7 @@ def _make_csc(shape, index_dtype, device):
 
 
 def _make_bsc(shape, blocksize, index_dtype, device):
+    torch.manual_seed(0)
     rows, cols = shape
     nblock_rows = rows // blocksize
     nblock_cols = cols // blocksize
@@ -141,6 +143,7 @@ def test_row_indices_copy_batched():
     rows, cols, batches, nnz = 8, 16, 2, 20
 
     def _make_batched(index_dtype):
+        torch.manual_seed(0)
         ccol = torch.zeros(batches, cols + 1, dtype=index_dtype, device="cpu")
         row = torch.zeros(batches, nnz, dtype=index_dtype, device="cpu")
         gen = torch.Generator(device="cpu")
@@ -227,9 +230,13 @@ def test_row_indices_copy_out(shape, index_dtype):
     torch.row_indices_copy(ref_csc, out=ref_out)
 
     res_out = torch.empty(csc.row_indices().numel(), dtype=index_dtype, device=device)
+    original_ptr = res_out.data_ptr()
+    original_stride = res_out.stride()
     res_result = flag_gems.row_indices_copy_out(csc, out=res_out)
 
-    assert res_result.data_ptr() == res_out.data_ptr()
+    assert res_result is res_out
+    assert res_out.data_ptr() == original_ptr
+    assert res_out.stride() == original_stride
     utils.gems_assert_equal(res_out.to("cpu"), ref_out)
 
 
@@ -247,9 +254,16 @@ def test_row_indices_copy_out_non_contiguous():
     torch.row_indices_copy(ref_csc, out=ref_buffer[::2])
 
     res_buffer = torch.zeros(n * 2, dtype=torch.int64, device=device)
-    res_out = flag_gems.row_indices_copy_out(csc, out=res_buffer[::2])
+    out = res_buffer[::2]
+    original_ptr = out.data_ptr()
+    original_stride = out.stride()
+    original_offset = out.storage_offset()
+    res_out = flag_gems.row_indices_copy_out(csc, out=out)
 
-    assert res_out.data_ptr() == res_buffer.data_ptr()
+    assert res_out is out
+    assert res_out.data_ptr() == original_ptr
+    assert res_out.stride() == original_stride
+    assert res_out.storage_offset() == original_offset
     assert not res_out.is_contiguous()
     assert res_out.numel() == n
     utils.gems_assert_equal(res_buffer[::2].to("cpu"), ref_buffer[::2])
@@ -269,7 +283,7 @@ def test_row_indices_copy_out_resize():
     res_out = torch.empty(0, dtype=torch.int64, device=device)
     res_result = flag_gems.row_indices_copy_out(csc, out=res_out)
 
-    assert res_result.data_ptr() == res_out.data_ptr()
+    assert res_result is res_out
     assert res_out.numel() == csc.row_indices().numel()
     utils.gems_assert_equal(res_out.to("cpu"), ref_out)
 

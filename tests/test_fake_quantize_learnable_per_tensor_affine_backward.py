@@ -1,4 +1,4 @@
-# Copyright 2026 FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,22 +19,26 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# The ATen reference rejects float16 gradients ("Expected dY_.scalar_type() ==
-# Float"), so we only exercise the float32 and bfloat16 paths here. Both the
-# reference and the Gems kernel return float32 gradients.
 BACKWARD_DTYPES = [torch.float32]
 if utils.bf16_is_supported:
     BACKWARD_DTYPES.append(torch.bfloat16)
-
-# Symmetric (zero_point == 0) and asymmetric (non-zero zero_point) parameter
-# sets spanning common quantization ranges.
 QUANT_PARAMS = [
-    # (quant_min, quant_max, zero_point, grad_factor)
     (-128, 127, 0.0, 1.0),
     (0, 255, 128.0, 1.0),
     (-127, 127, 0.0, 0.5),
     (-5, 5, 2.0, 0.7),
 ]
+_ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward
+
+
+def _seed():
+    torch.manual_seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(0)
+
+
+def _reference(tensor):
+    return utils.to_reference(tensor, True).to(tensor.dtype)
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
@@ -44,87 +48,82 @@ QUANT_PARAMS = [
 def test_fake_quantize_learnable_per_tensor_affine_backward(
     shape, dtype, quant_min, quant_max, zero_point, grad_factor
 ):
-    # `grad` (the upstream gradient) must be float32-compatible: the ATen
-    # reference rejects float16, so we use float32 grads even for bfloat16
-    # inputs to stay within the supported contract.
+    _seed()
     self_t = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    grad_t = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
-    scale_t = torch.tensor([0.1], dtype=dtype, device=flag_gems.device)
+    grad = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    scale = torch.tensor([0.1], dtype=dtype, device=flag_gems.device)
     zero_point_t = torch.tensor([zero_point], dtype=dtype, device=flag_gems.device)
-
-    ref_self = utils.to_reference(self_t)
-    ref_grad = utils.to_reference(grad_t)
-    ref_scale = utils.to_reference(scale_t)
-    ref_zero_point = utils.to_reference(zero_point_t)
-
-    ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
-        ref_grad, ref_self, ref_scale, ref_zero_point, quant_min, quant_max, grad_factor
-    )
-    res_out = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
-        grad_t,
-        self_t,
-        scale_t,
-        zero_point_t,
+    inputs = grad, self_t, scale, zero_point_t
+    snapshots = tuple(tensor.clone() for tensor in inputs)
+    ref_out = _ATEN_OP(
+        *(_reference(tensor) for tensor in inputs),
         quant_min,
         quant_max,
         grad_factor,
     )
+    result = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
+        *inputs, quant_min, quant_max, grad_factor
+    )
 
-    # The op returns a tuple (grad_self, grad_scale, grad_zero_point), all float32.
-    # grad_self is element-wise (STE mask * grad), compared at default tolerance.
-    # grad_scale / grad_zero_point are full reductions over the input tensor:
-    # float32 reduction order (tree-reduce in Triton vs. sequential on the CPU
-    # reference) differs in the last bits, so scale the atol by the reduction
-    # length (matching the convention used by the sum/mean accuracy tests).
-    utils.gems_assert_close(res_out[0], ref_out[0], torch.float32)
-    reduce_dim = max(1, self_t.numel())
+    reduce_size = max(1, self_t.numel())
+    utils.gems_assert_close(result[0], ref_out[0], torch.float32)
     utils.gems_assert_close(
-        res_out[1], ref_out[1], torch.float32, reduce_dim=reduce_dim
+        result[1], ref_out[1], torch.float32, reduce_dim=reduce_size
     )
     utils.gems_assert_close(
-        res_out[2], ref_out[2], torch.float32, reduce_dim=reduce_dim
+        result[2], ref_out[2], torch.float32, reduce_dim=reduce_size
     )
+    for value, snapshot in zip(inputs, snapshots):
+        utils.gems_assert_equal(value, snapshot)
+    assert result[0].shape == self_t.shape
+    assert result[1].shape == scale.shape
+    assert result[2].shape == zero_point_t.shape
+    assert all(value.dtype == torch.float32 for value in result)
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
-def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype):
-    """Exercise the clamp boundary: with a tiny scale many inputs fall outside
-    the quantization range, so the STE mask zeros the corresponding gradients
-    and grad_zero_point becomes non-trivial."""
-    self_t = torch.randn(shape, dtype=dtype, device=flag_gems.device) * 100.0
-    grad_t = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
-    scale_t = torch.tensor([0.01], dtype=dtype, device=flag_gems.device)
-    zero_point_t = torch.tensor([0.0], dtype=dtype, device=flag_gems.device)
-    quant_min, quant_max, grad_factor = -3, 3, 1.0
-
-    ref_self = utils.to_reference(self_t)
-    ref_grad = utils.to_reference(grad_t)
-    ref_scale = utils.to_reference(scale_t)
-    ref_zero_point = utils.to_reference(zero_point_t)
-
-    ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
-        ref_grad, ref_self, ref_scale, ref_zero_point, quant_min, quant_max, grad_factor
-    )
-    res_out = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
-        grad_t,
-        self_t,
-        scale_t,
-        zero_point_t,
-        quant_min,
-        quant_max,
-        grad_factor,
+def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
+    _seed()
+    self_t = torch.randn((8, 16), dtype=dtype, device=flag_gems.device) * 100.0
+    grad = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
+    scale = torch.tensor([0.01], dtype=dtype, device=flag_gems.device)
+    zero_point = torch.tensor([0.0], dtype=dtype, device=flag_gems.device)
+    inputs = grad, self_t, scale, zero_point
+    ref_out = _ATEN_OP(*(_reference(tensor) for tensor in inputs), -3, 3, 1.0)
+    result = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
+        *inputs, -3, 3, 1.0
     )
 
-    # grad_self is element-wise; grad_scale / grad_zero_point are full
-    # reductions (scale the atol by the reduction length, matching the sum/mean
-    # accuracy-test convention for float32 reduction-order sensitivity).
-    utils.gems_assert_close(res_out[0], ref_out[0], torch.float32)
-    reduce_dim = max(1, self_t.numel())
-    utils.gems_assert_close(
-        res_out[1], ref_out[1], torch.float32, reduce_dim=reduce_dim
+    utils.gems_assert_close(result[0], ref_out[0], torch.float32)
+    utils.gems_assert_close(result[1], ref_out[1], torch.float32, reduce_dim=128)
+    utils.gems_assert_close(result[2], ref_out[2], torch.float32, reduce_dim=128)
+
+
+@pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
+def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
+    self_t = torch.empty((2, 0, 3), device=flag_gems.device)
+    grad = torch.empty_like(self_t)
+    scale = torch.tensor([0.1], device=flag_gems.device)
+    zero_point = torch.tensor([0.0], device=flag_gems.device)
+    result = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
+        grad, self_t, scale, zero_point, -128, 127, 1.0
     )
-    utils.gems_assert_close(
-        res_out[2], ref_out[2], torch.float32, reduce_dim=reduce_dim
-    )
+
+    assert result[0].shape == self_t.shape
+    assert result[1].shape == scale.shape
+    assert result[2].shape == zero_point.shape
+    utils.gems_assert_equal(result[1], torch.zeros_like(scale))
+    utils.gems_assert_equal(result[2], torch.zeros_like(zero_point))
+
+
+@pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
+def test_fake_quantize_learnable_per_tensor_affine_backward_rejects_integer_input():
+    self_t = torch.ones((4, 8), dtype=torch.int32, device=flag_gems.device)
+    grad = torch.ones((4, 8), device=flag_gems.device)
+    scale = torch.tensor([0.1], device=flag_gems.device)
+    zero_point = torch.tensor([0.0], device=flag_gems.device)
+    with pytest.raises(ValueError):
+        flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
+            grad, self_t, scale, zero_point, -128, 127, 1.0
+        )

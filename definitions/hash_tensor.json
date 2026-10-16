@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "hash_tensor",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen signature: aten::hash_tensor(Tensor self, int[1] dim=[], *, bool keepdim=False, int mode=0) -> Tensor. XOR-reduces the widened 64-bit bit representations over the selected dimensions; an empty dimension list reduces all dimensions. The output is a non-differentiable uint64 tensor, mode is 0, and the operation neither mutates nor aliases self.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "keepdim",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "mode",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

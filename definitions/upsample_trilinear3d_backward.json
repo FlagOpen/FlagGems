@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "upsample_trilinear3d_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::upsample_trilinear3d_backward(Tensor grad_output, SymInt[3] output_size, SymInt[5] input_size, bool align_corners, float? scales_d=None, float? scales_h=None, float? scales_w=None) -> Tensor. Tests preserve legacy shape, dtype, layout, scaling and error coverage. Inputs are not mutated and outputs do not alias inputs.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "input_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "align_corners",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scales_d",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float | None",
+      "default": null
+    },
+    {
+      "name": "scales_h",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float | None",
+      "default": null
+    },
+    {
+      "name": "scales_w",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float | None",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

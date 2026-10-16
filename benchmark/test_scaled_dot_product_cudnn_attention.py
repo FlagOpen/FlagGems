@@ -18,89 +18,48 @@ import torch
 import flag_gems
 
 from . import base
-from .consts import FLOAT_DTYPES
+from .generated_operator_utils import OperatorBenchmark
 
-# cuDNN attention only supports fp16/bf16, not fp32
-CUDNN_ATTENTION_DTYPES = [dt for dt in FLOAT_DTYPES if dt != torch.float32]
-
-
-class AttentionBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        # self.shapes is a list of tuples, each containing four elements:
-        # (batch, num_heads, seq_len, head_size).
-        return []
+SHAPES = [(1, 4, 64, 64), (2, 8, 128, 64), (4, 8, 256, 64)]
+DTYPES = [torch.float16, torch.bfloat16]
 
 
-def torch_cudnn_attention(
-    query,
-    key,
-    value,
-    attn_bias=None,
-    compute_log_sumexp=True,
-    dropout_p=0.0,
-    is_causal=False,
-    return_debug_mask=False,
-    scale=None,
-):
-    # Use PyTorch's scaled_dot_product_attention as reference
-    return torch.nn.functional.scaled_dot_product_attention(
-        query,
-        key,
-        value,
-        attn_mask=attn_bias,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        scale=scale,
-    )
+class AttentionBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(batch, heads, sequence, head_dim)"
 
 
-def gems_cudnn_attention(
-    query,
-    key,
-    value,
-    attn_bias=None,
-    compute_log_sumexp=True,
-    dropout_p=0.0,
-    is_causal=False,
-    return_debug_mask=False,
-    scale=None,
-):
-    result = flag_gems.ops._scaled_dot_product_cudnn_attention(
-        query,
-        key,
-        value,
-        attn_bias=attn_bias,
-        compute_log_sumexp=compute_log_sumexp,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        return_debug_mask=return_debug_mask,
-        scale=scale,
-    )
-    return result[0]  # Return only the output tensor
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for is_causal in (False, True):
+        yield base.BenchmarkCasePlan(
+            shape={"query": list(dims), "key": list(dims), "value": list(dims)},
+            params={"is_causal": is_causal},
+            builder_args=(dims, is_causal),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, is_causal = plan.builder_args
+    torch.manual_seed(0)
+    query = torch.randn(shape, dtype=dtype, device=device)
+    key = torch.randn(shape, dtype=dtype, device=device)
+    value = torch.randn(shape, dtype=dtype, device=device)
+    return query, key, value, None, True, 0.0, is_causal, False
 
 
 @pytest.mark.scaled_dot_product_cudnn_attention
 @pytest.mark.skipif(
     flag_gems.device != "cuda",
-    reason="_scaled_dot_product_cudnn_attention is a CUDA-only operator (cuDNN)",
+    reason="aten::_scaled_dot_product_cudnn_attention requires CUDA/cuDNN",
 )
-@pytest.mark.parametrize("is_causal", [True, False])
-def test_scaled_dot_product_cudnn_attention(is_causal):
-    """Benchmark for _scaled_dot_product_cudnn_attention."""
-
-    def scaled_dot_product_cudnn_attention_kwargs(shape, dtype, device):
-        query = torch.randn(shape, device=device, dtype=dtype)
-        key = torch.randn(shape, device=device, dtype=dtype)
-        value = torch.randn(shape, device=device, dtype=dtype)
-        head_size = shape[-1]
-        scale = 1.0 / (head_size**0.5)
-        yield query, key, value, None, True, 0.0, is_causal, False, scale
-
-    bench = AttentionBenchmark(
+def test_scaled_dot_product_cudnn_attention():
+    AttentionBenchmark(
         op_name="scaled_dot_product_cudnn_attention",
-        input_fn=scaled_dot_product_cudnn_attention_kwargs,
-        torch_op=torch_cudnn_attention,
-        gems_op=gems_cudnn_attention,
-        dtypes=CUDNN_ATTENTION_DTYPES,
-    )
-    bench.run()
+        torch_op=torch.ops.aten._scaled_dot_product_cudnn_attention,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=DTYPES,
+    ).run()

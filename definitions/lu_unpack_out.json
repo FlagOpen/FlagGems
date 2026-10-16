@@ -1,0 +1,69 @@
+{
+  "api_version": "v6.0",
+  "name": "lu_unpack_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::lu_unpack.out(Tensor LU_data, Tensor LU_pivots, bool unpack_data=True, bool unpack_pivots=True, *, Tensor(a!) P, Tensor(b!) L, Tensor(c!) U) -> (Tensor(a!) P, Tensor(b!) L, Tensor(c!) U). Writes the unpacked permutation, lower-triangular and upper-triangular factors into caller-provided buffers. Coverage validates returned object identity, output resize, accepted floating casts, noncontiguous storage and stride preservation, and rejected integral outputs. LU_data and LU_pivots are not mutated; P, L and U are mutated and returned as their corresponding aliases.",
+  "parameters": [
+    {
+      "name": "LU_data",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "LU_pivots",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "unpack_data",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "unpack_pivots",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "P",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "L",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "U",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "P",
+    "L",
+    "U"
+  ],
+  "effects": {
+    "mutates": [
+      "P",
+      "L",
+      "U"
+    ],
+    "returns_alias_of": {
+      "P": "P",
+      "L": "L",
+      "U": "U"
+    }
+  }
+}

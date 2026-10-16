@@ -2,30 +2,36 @@
   "api_version": "v6.0",
   "name": "replication_pad2d_out",
   "requires_triton_kernel": true,
-  "description": "A variant of `replication_pad2d()` that writes the padded result into the `out`\ntensor.",
+  "description": "Representative ATen schema: aten::replication_pad2d.out(Tensor self, SymInt[4] padding, *, Tensor(a!) out) -> Tensor(a!). Tests preserve legacy shape, dtype, layout, scaling and error coverage. The supplied output buffer is mutated and returned by identity.",
   "parameters": [
     {
-      "name": "input",
+      "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "padding",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "list[int]"
     },
     {
       "name": "out",
       "kind": "keyword_only",
       "required": true,
-      "type_hint": "torch.Tensor"
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [
     "out"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
   }
 }

@@ -1,42 +1,58 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-# Attention benchmark shapes: (batch, heads, seq_len, head_dim)
-# Cover small-to-medium configurations typical in unit and integration tests
-ATTENTION_BENCHMARK_SHAPES = [
-    (1, 2, 8, 16),
-    (2, 4, 16, 32),
-    (4, 8, 32, 64),
-    (8, 16, 64, 64),
-]
+SHAPES = [(1, 2, 64, 32), (2, 4, 128, 64), (4, 8, 256, 64)]
 
 
-class ScaledDotProductEfficientAttentionBenchmark(base.Benchmark):
+class AttentionBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = ATTENTION_BENCHMARK_SHAPES
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(batch, heads, sequence, head_dim)"
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            batch, num_heads, seq_len, head_dim = shape
-            query = torch.randn(
-                batch, num_heads, seq_len, head_dim, dtype=cur_dtype, device=self.device
-            )
-            key = torch.randn(
-                batch, num_heads, seq_len, head_dim, dtype=cur_dtype, device=self.device
-            )
-            value = torch.randn(
-                batch, num_heads, seq_len, head_dim, dtype=cur_dtype, device=self.device
-            )
-            yield query, key, value, None, False
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for is_causal in (False, True):
+        yield base.BenchmarkCasePlan(
+            shape={"query": list(dims), "key": list(dims), "value": list(dims)},
+            params={"is_causal": is_causal},
+            builder_args=(dims, is_causal),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, is_causal = plan.builder_args
+    torch.manual_seed(0)
+    query = torch.randn(shape, dtype=dtype, device=device)
+    key = torch.randn(shape, dtype=dtype, device=device)
+    value = torch.randn(shape, dtype=dtype, device=device)
+    return query, key, value, None, True, 0.0, is_causal
 
 
 @pytest.mark.scaled_dot_product_efficient_attention
 def test_scaled_dot_product_efficient_attention():
-    bench = ScaledDotProductEfficientAttentionBenchmark(
+    AttentionBenchmark(
         op_name="scaled_dot_product_efficient_attention",
         torch_op=torch.ops.aten._scaled_dot_product_efficient_attention,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

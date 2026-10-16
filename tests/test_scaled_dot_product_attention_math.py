@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -5,82 +19,65 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-device = flag_gems.device
+SDPA_MATH = torch.ops.aten._scaled_dot_product_attention_math
+CASES = [
+    (1, 2, 8, 8, 16, False, False, None),
+    (2, 4, 16, 16, 32, False, True, None),
+    (2, 4, 8, 16, 32, False, False, 0.5),
+    (2, 4, 16, 16, 32, True, False, 1.0),
+]
 
-# torch._scaled_dot_product_attention_math is exposed as an aten dispatch op;
-# call it via torch.ops.aten so flag_gems.use_gems() can intercept it and to
-# avoid depending on the private torch._... alias across PyTorch versions.
-sdpa_math = torch.ops.aten._scaled_dot_product_attention_math
 
-
-# Cases cover: (1) equal q/kv seq lens with and without causal masking, (2)
-# differing q/kv seq lens, (3) an explicit float attn_mask, and (4) custom
-# scale values. attn_mask is only used when is_causal=False because the aten
-# op rejects attn_mask+is_causal=True.
 @pytest.mark.scaled_dot_product_attention_math
 @pytest.mark.parametrize(
-    "batch, num_head, q_seq_len, kv_seq_len, head_size, use_mask, is_causal, scale",
-    [
-        # equal q/kv seq lens, both causal settings
-        (2, 4, 8, 8, 16, False, False, None),
-        (2, 4, 8, 8, 16, False, True, None),
-        (2, 4, 32, 32, 32, False, False, None),
-        (2, 4, 32, 32, 32, False, True, None),
-        (4, 8, 64, 64, 64, False, False, None),
-        (4, 8, 64, 64, 64, False, True, None),
-        (2, 4, 128, 128, 128, False, False, None),
-        (2, 4, 128, 128, 128, False, True, None),
-        (1, 2, 256, 256, 64, False, False, None),
-        (1, 2, 256, 256, 64, False, True, None),
-        # differing q/kv seq lens (causal=False only)
-        (2, 4, 32, 64, 32, False, False, None),
-        (4, 8, 64, 128, 64, False, False, None),
-        (2, 4, 128, 64, 64, False, False, None),
-        # explicit float attn_mask
-        (2, 4, 32, 32, 32, True, False, None),
-        (4, 8, 64, 64, 64, True, False, None),
-        # custom scale values
-        (2, 4, 32, 32, 32, False, False, 0.5),
-        (2, 4, 32, 32, 32, False, False, 1.0),
-        (2, 4, 32, 32, 32, False, False, 2.0),
-    ],
+    "batch,heads,q_len,kv_len,head_dim,use_mask,is_causal,scale", CASES
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_scaled_dot_product_attention_math(
-    batch,
-    num_head,
-    q_seq_len,
-    kv_seq_len,
-    head_size,
-    use_mask,
-    is_causal,
-    scale,
-    dtype,
+    batch, heads, q_len, kv_len, head_dim, use_mask, is_causal, scale, dtype
 ):
-    utils.init_seed(1234567890)
-
-    q = torch.randn(batch, num_head, q_seq_len, head_size, dtype=dtype, device=device)
-    k = torch.randn(batch, num_head, kv_seq_len, head_size, dtype=dtype, device=device)
-    v = torch.randn(batch, num_head, kv_seq_len, head_size, dtype=dtype, device=device)
+    torch.manual_seed(0)
+    query = torch.randn(batch, heads, q_len, head_dim, dtype=dtype, device=flag_gems.device)
+    key = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=flag_gems.device)
+    value = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=flag_gems.device)
     attn_mask = (
-        torch.randn(q_seq_len, kv_seq_len, dtype=dtype, device=device)
+        torch.randn(q_len, kv_len, dtype=dtype, device=flag_gems.device)
         if use_mask
         else None
     )
 
-    ref_q = utils.to_reference(q)
-    ref_k = utils.to_reference(k)
-    ref_v = utils.to_reference(v)
-    ref_mask = utils.to_reference(attn_mask)
-
-    ref_out, ref_weights = sdpa_math(
-        ref_q, ref_k, ref_v, attn_mask=ref_mask, is_causal=is_causal, scale=scale
+    ref_query = utils.to_reference(query, True)
+    ref_key = utils.to_reference(key, True)
+    ref_value = utils.to_reference(value, True)
+    ref_mask = utils.to_reference(attn_mask, True)
+    ref_output, ref_weights = SDPA_MATH(
+        ref_query,
+        ref_key,
+        ref_value,
+        attn_mask=ref_mask,
+        is_causal=is_causal,
+        scale=scale,
     )
 
     with flag_gems.use_gems():
-        res_out, res_weights = sdpa_math(
-            q, k, v, attn_mask=attn_mask, is_causal=is_causal, scale=scale
+        output, weights = SDPA_MATH(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            is_causal=is_causal,
+            scale=scale,
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
-    utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)
+    assert output.shape == (batch, heads, q_len, head_dim)
+    assert weights.shape == (batch, heads, q_len, kv_len)
+    utils.gems_assert_close(output, ref_output, dtype, atol=3e-2)
+    utils.gems_assert_close(weights, ref_weights, dtype, atol=3e-2)
+
+
+@pytest.mark.scaled_dot_product_attention_math
+def test_scaled_dot_product_attention_math_rejects_dropout():
+    torch.manual_seed(0)
+    query = torch.randn(1, 2, 8, 16, device=flag_gems.device)
+    with flag_gems.use_gems(), pytest.raises(AssertionError, match="dropout_p"):
+        SDPA_MATH(query, query, query, dropout_p=0.1)

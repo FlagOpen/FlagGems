@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_svdvals",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_svdvals(Tensor A, *, str? driver=None) -> Tensor. Computes singular values without mutating or aliasing A. Tests preserve reviewed legacy shapes, dtype limits, batching and layout behavior and add protocol-specific output checks where applicable.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "driver",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "str | None"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

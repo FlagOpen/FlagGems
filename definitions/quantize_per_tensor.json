@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "quantize_per_tensor",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::quantize_per_tensor(Tensor self, float scale, int zero_point, ScalarType dtype) -> Tensor. Quantizes a float32 tensor with one scale and zero point. The suite covers supported quantized dtypes, scalar and multidimensional shapes, clamping, tie rounding, memory formats, noncontiguous inputs, invalid parameters, and the quantize_per_tensor.out identity, storage, layout, and rejection contracts.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "dtype",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "ScalarType"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

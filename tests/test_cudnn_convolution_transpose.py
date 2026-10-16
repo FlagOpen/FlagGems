@@ -46,6 +46,7 @@ SHAPE_CONV_TRANSPOSE2D = [
 def test_cudnn_convolution_transpose(
     shape, kernel, stride, padding, dtype, dilation, groups
 ):
+    torch.manual_seed(0)
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 
@@ -80,7 +81,7 @@ def test_cudnn_convolution_transpose(
         allow_tf32=False,
     ).to(dtype)
 
-    res_out = torch.cudnn_convolution_transpose(
+    res_out = flag_gems.cudnn_convolution_transpose(
         inp,
         weight,
         padding=(padding, padding),

@@ -18,11 +18,37 @@ import torch
 from . import base, consts
 
 
+class LshiftBenchmark(base.BinaryPointwiseBenchmark):
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            dims = tuple(shape)
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(dims), "other": list(dims)},
+                    params={"shift_min": 0, "shift_max_exclusive": 8},
+                    builder_args=(dims,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        torch.manual_seed(0)
+        inp = torch.randint(0, 0x00FF, shape, dtype=case.dtype, device="cpu").to(
+            self.device
+        )
+        other = torch.randint(0, 8, shape, dtype=case.dtype, device="cpu").to(
+            self.device
+        )
+        return inp, other
+
+
 @pytest.mark.lshift
 def test_lshift():
-    bench = base.BinaryPointwiseBenchmark(
+    bench = LshiftBenchmark(
         op_name="lshift",
-        torch_op=torch.bitwise_left_shift,
+        torch_op=torch.ops.aten.__lshift__.Tensor,
         dtypes=consts.INT_DTYPES,
     )
     bench.run()

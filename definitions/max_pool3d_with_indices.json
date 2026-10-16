@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "max_pool3d_with_indices",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::max_pool3d_with_indices(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False) -> (Tensor output, Tensor indices). Applies three-dimensional max pooling and returns both values and flattened int64 spatial indices without mutating or aliasing self. Coverage includes cubic and non-cubic parameters, default stride, padding, dilation, ceil mode, noncontiguous input, output metadata, explicit storage non-aliasing, input-gradient comparison, invalid rank and invalid parameters.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "output",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

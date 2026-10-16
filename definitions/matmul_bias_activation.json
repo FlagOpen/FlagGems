@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "matmul_bias_activation",
+  "requires_triton_kernel": true,
+  "description": "FlagGems custom non-ATen fused callable flaggems::matmul_bias_activation(Tensor input, Tensor weight, Tensor bias) -> Tensor. Computes relu(input @ weight + bias) for two-dimensional matrices and a broadcastable vector or row bias. Returns fresh storage, leaves all inputs unchanged, and is not currently registered with autograd.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

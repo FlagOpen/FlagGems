@@ -1,0 +1,47 @@
+{
+  "api_version": "v6.0",
+  "name": "addbmm",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::addbmm(Tensor self, Tensor batch1, Tensor batch2, *, Scalar beta=1, Scalar alpha=1) -> Tensor. Preserves legacy matrix shapes, floating dtypes, scalar alpha/beta coverage, and column-major benchmark cases.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "batch1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "batch2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "beta",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

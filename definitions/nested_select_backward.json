@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_select_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_nested_select_backward(Tensor grad_output, Tensor self, int dim, SymInt index) -> Tensor. Scatters one selected component gradient into a newly materialized zero-filled jagged gradient; it does not mutate or alias an input. Tests retain the reviewed legacy coverage and add protocol-specific alias, metadata or case-planning checks where applicable.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

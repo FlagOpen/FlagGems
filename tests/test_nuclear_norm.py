@@ -59,9 +59,6 @@ SVD_ATOL = 2e-2
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_nuclear_norm(M, N, dtype, keepdim):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 nuclear_norm test on tsingmicro platform")
-
     A = _make_well_conditioned_matrix(M, N, dtype, flag_gems.device)
     ref_A = utils.to_reference(A, True)
 
@@ -77,9 +74,6 @@ def test_nuclear_norm(M, N, dtype, keepdim):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_nuclear_norm_batch(M, N, dtype):
     """Test nuclear_norm with batch dimensions"""
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 nuclear_norm test on tsingmicro platform")
-
     batch_size = 4
     A = torch.stack(
         [_make_well_conditioned_matrix(M, N, dtype, "cpu") for _ in range(batch_size)]
@@ -98,9 +92,6 @@ def test_nuclear_norm_batch(M, N, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_nuclear_norm_non_contiguous(M, N, dtype):
     """Test nuclear_norm with non-contiguous input"""
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 nuclear_norm test on tsingmicro platform")
-
     # Build a well-conditioned matrix then make it non-contiguous via transpose-slice
     A0 = _make_well_conditioned_matrix(N + 2, M + 2, dtype, flag_gems.device)
     big = A0.T
@@ -112,3 +103,15 @@ def test_nuclear_norm_non_contiguous(M, N, dtype):
     res_out = flag_gems.nuclear_norm(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+
+
+@pytest.mark.nuclear_norm
+def test_nuclear_norm_autograd_is_explicitly_unsupported():
+    A = _make_well_conditioned_matrix(4, 4, torch.float32, flag_gems.device)
+    A.requires_grad_(True)
+
+    result = flag_gems.nuclear_norm(A)
+
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result, A)

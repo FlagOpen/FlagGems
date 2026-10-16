@@ -20,9 +20,24 @@ import flag_gems
 from . import base
 
 
-def _input_fn(shape, dtype, device):
-    inp = torch.rand(shape, dtype=dtype, device=device) * 10
-    yield inp, {"bins": 100, "min": 0, "max": 10}
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"bins": 100, "min": 0.0, "max": 10.0},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape = plan.builder_args[0]
+    numel = 1
+    for dim in shape:
+        numel *= dim
+    values = (torch.arange(numel, device=device) % 100).to(dtype)
+    inp = ((values + 0.5) / 10.0).reshape(shape)
+    return inp, dict(plan.params)
 
 
 @pytest.mark.histc
@@ -31,7 +46,8 @@ def _input_fn(shape, dtype, device):
 )
 def test_histc():
     bench = base.GenericBenchmark2DOnly(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="histc",
         torch_op=torch.histc,
         dtypes=[torch.float32],

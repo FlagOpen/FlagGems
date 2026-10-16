@@ -1,0 +1,47 @@
+{
+  "api_version": "v6.0",
+  "name": "mixed_dtypes_linear",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_mixed_dtypes_linear(Tensor input, Tensor weight, Tensor scale, *, Tensor? bias=None, str? activation=None) -> Tensor. Computes a floating-point linear layer from uint8 weights interpreted as int8 or packed int4 values, with per-output scales and optional bias and activation. Tests cover both packing modes, relu/silu/no activation, batched inputs, output metadata, non-mutation, and invalid contracts.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "activation",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "str | None",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

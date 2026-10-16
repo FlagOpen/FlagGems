@@ -28,6 +28,7 @@ if not cfg.QUICK_MODE:
 
 
 def _make_args(shape, dtype, threshold=0.5):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) < threshold
     grad = torch.randn(int(mask.sum()), dtype=dtype, device=flag_gems.device)
@@ -62,6 +63,7 @@ def test_accuracy_masked_select_backward_kernel_boundaries(shape):
 @pytest.mark.parametrize("shape", [(32769,), (262145,)])
 @pytest.mark.parametrize("threshold", [0.0, 1.0])
 def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
+    torch.manual_seed(0)
     grad, inp, mask = _make_args(shape, torch.float32, threshold)
     # ATen accepts a source longer than the number of selected mask entries.
     grad = torch.cat((grad, torch.randn(3, device=flag_gems.device)))
@@ -73,6 +75,7 @@ def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
     "dtype", [torch.bool, torch.int32, torch.float64, torch.complex64]
 )
 def test_accuracy_masked_select_backward_extended_dtypes(dtype):
+    torch.manual_seed(0)
     shape = (73, 71)
     mask = torch.rand(shape, device=flag_gems.device) < 0.4
     if dtype == torch.bool:
@@ -95,6 +98,7 @@ def test_accuracy_masked_select_backward_extended_dtypes(dtype):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("case", ["input", "mask"])
 def test_accuracy_masked_select_backward_broadcast(case):
+    torch.manual_seed(0)
     inp_shape, mask_shape = ((1, 7), (5, 7)) if case == "input" else ((5, 7), (1, 7))
     inp = torch.randn(inp_shape, device=flag_gems.device)
     mask = torch.rand(mask_shape, device=flag_gems.device) < 0.5
@@ -106,6 +110,7 @@ def test_accuracy_masked_select_backward_broadcast(case):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("layout", ["transpose", "channels_last"])
 def test_accuracy_masked_select_backward_preserves_layout(layout):
+    torch.manual_seed(0)
     if layout == "transpose":
         inp = torch.randn((11, 7), device=flag_gems.device).T
     else:
@@ -128,6 +133,7 @@ def test_accuracy_masked_select_backward_preserves_layout(layout):
     ],
 )
 def test_masked_select_backward_broadcast_metadata(input_shape, mask_shape):
+    torch.manual_seed(0)
     inp = torch.randn(input_shape, device=flag_gems.device)
     mask = torch.rand(mask_shape, device=flag_gems.device) < 0.5
     count = int(torch.broadcast_tensors(inp, mask)[1].sum())
@@ -137,6 +143,7 @@ def test_masked_select_backward_broadcast_metadata(input_shape, mask_shape):
 
 @pytest.mark.masked_select_backward
 def test_masked_select_backward_broadcast_nonzero_storage_offset():
+    torch.manual_seed(0)
     inp = torch.randn((4, 5), device=flag_gems.device)[1:2]
     mask = (torch.rand((5, 4), device=flag_gems.device) < 0.5)[:, 1:].T
     grad = torch.randn(int(mask.sum()), device=flag_gems.device)
@@ -145,6 +152,7 @@ def test_masked_select_backward_broadcast_nonzero_storage_offset():
 
 @pytest.mark.masked_select_backward
 def test_masked_select_backward_incompatible_broadcast():
+    torch.manual_seed(0)
     inp = torch.randn((2, 3), device=flag_gems.device)
     mask = torch.ones((4, 3), dtype=torch.bool, device=flag_gems.device)
     grad = torch.ones(12, device=flag_gems.device)
@@ -158,6 +166,7 @@ def test_masked_select_backward_incompatible_broadcast():
 
 @pytest.mark.masked_select_backward
 def test_accuracy_masked_select_backward_noncontiguous_inputs():
+    torch.manual_seed(0)
     inp = torch.randn((67, 65), device=flag_gems.device)
     mask = (torch.rand((65, 67), device=flag_gems.device) < 0.5).T
     grad_storage = torch.randn(int(mask.sum()) * 2, device=flag_gems.device)
@@ -167,6 +176,7 @@ def test_accuracy_masked_select_backward_noncontiguous_inputs():
 
 @pytest.mark.masked_select_backward
 def test_masked_select_backward_errors():
+    torch.manual_seed(0)
     inp = torch.randn((8,), device=flag_gems.device)
     grad = torch.randn((4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):
@@ -198,6 +208,7 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_masked_select_backward_conjugated_grad(dtype):
+    torch.manual_seed(0)
     inp = torch.randn(73, dtype=dtype, device=flag_gems.device)
     mask = torch.arange(73, device=inp.device) % 2 == 0
     grad = torch.randn(int(mask.sum()), dtype=dtype, device=inp.device).conj()

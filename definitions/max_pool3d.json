@@ -1,0 +1,55 @@
+{
+  "api_version": "v6.0",
+  "name": "max_pool3d",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::max_pool3d(Tensor self, int[3] kernel_size, int[3] stride=[], int[3] padding=0, int[3] dilation=1, bool ceil_mode=False) -> Tensor. Applies three-dimensional max pooling to batched or unbatched inputs. Coverage includes cubic and non-cubic kernels, scalar and per-dimension arguments, default stride, padding, dilation, ceil mode, common 3D-CNN shapes and small inputs. This artifact intentionally excludes max_pool3d_with_indices, which is a separate canonical-name exception. The operation does not mutate or alias self. The current FlagGems implementation explicitly does not support autograd.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "kernel_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": [],
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int | Sequence[int]"
+    },
+    {
+      "name": "ceil_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

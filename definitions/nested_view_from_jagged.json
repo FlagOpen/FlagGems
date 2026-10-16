@@ -1,0 +1,63 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_view_from_jagged",
+  "requires_triton_kernel": false,
+  "description": "Representative ATen schema: aten::_nested_view_from_jagged(Tensor(a) self, Tensor offsets, Tensor dummy, Tensor? lengths=None, int ragged_idx=1, Tensor? min_seqlen=None, Tensor? max_seqlen=None) -> Tensor(a). Wraps the packed values buffer as a jagged nested-tensor view; out aliases self and writes through to its storage. Tests retain the reviewed legacy coverage and add protocol-specific alias, metadata or case-planning checks where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "offsets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dummy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "lengths",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "ragged_idx",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    },
+    {
+      "name": "min_seqlen",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "max_seqlen",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

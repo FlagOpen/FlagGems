@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "adaptive_max_pool1d",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::adaptive_max_pool1d(Tensor self, int[1] output_size) -> (Tensor, Tensor). Returns pooled values and exact int64 source indices for one-dimensional adaptive max pooling. Coverage spans several batch/channel/length shapes, scalar and one-element-list output sizes, multiple reduction ratios and global pooling. The operation does not mutate self and neither output aliases it. The current FlagGems implementation explicitly does not support autograd.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int | Sequence[int]"
+    }
+  ],
+  "outputs": [
+    "values",
+    "indices"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg__powsum",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg__powsum(Tensor self, Scalar ord=2, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None) -> Tensor. Computes the sum of absolute values raised to ord. Tests cover multiple dimensions, orders, keepdim modes, dtype override, integer and complex inputs, empty/noncontiguous/scalar inputs, special values, and invalid dimensions.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "ord",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 2,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "list[int] | None"
+    },
+    {
+      "name": "keepdim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "ScalarType | None"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

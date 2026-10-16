@@ -27,6 +27,7 @@ from .conftest import TO_CPU
 
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
+    torch.manual_seed(0)
     dev = torch_device_fn.current_device()
     set_philox_state(1234567890, 0, dev)
     Q = torch.empty(
@@ -71,8 +72,8 @@ def cudnn_attn_forward_native(
     )
     out_bhsd = results[0]
     lse_4d = results[1]
-    philox_seed = results[2]
-    philox_offset = results[3]
+    philox_seed = results[6]
+    philox_offset = results[7]
 
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
     lse = lse_4d.float()
@@ -111,7 +112,7 @@ def test_cudnn_attention_backward(
             "_cudnn_attention_backward is CUDA-only, " "cannot run in quick-cpu mode"
         )
     if is_causal and has_attn_bias:
-        pytest.skip("causal + attn_bias combination: skip")
+        pytest.skip("the cuDNN reference rejects causal attention with explicit bias")
 
     scale = float(1.0 / math.sqrt(head_size))
 
@@ -162,12 +163,12 @@ def test_cudnn_attention_backward(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
+    ref_lse = utils.to_reference(lse, True)
 
     (
         ref_dQ_bhsd,
@@ -345,12 +346,12 @@ def test_cudnn_attention_backward_dropout_neg_degrades_to_zero(dtype):
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
+    ref_lse = utils.to_reference(lse, True)
 
     # ATen reference computed with dropout_p=0.0: negative dropout_p takes the
     # no-dropout path, so the gradients must match the ATen no-dropout result.
@@ -470,12 +471,12 @@ def test_cudnn_attention_backward_scale(dtype, softmax_scale):
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
+    ref_lse = utils.to_reference(lse, True)
 
     (
         ref_dQ_bhsd,
@@ -620,12 +621,12 @@ def test_cudnn_attention_backward_attn_bias_shapes(dtype, batch, bias_shape):
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
+    ref_lse = utils.to_reference(lse, True)
 
     (
         ref_dQ_bhsd,
@@ -781,12 +782,12 @@ def test_cudnn_attention_backward_dual_dim_bias(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
+    ref_lse = utils.to_reference(lse, True)
 
     (
         ref_dQ_bhsd,
@@ -1075,12 +1076,12 @@ def test_cudnn_attention_backward_value_head_dim(dtype, head_size, value_head_si
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_dOut_bhsd = utils.to_reference(dOut_bhsd, True)
+    ref_Q_bhsd = utils.to_reference(Q_bhsd, True)
+    ref_K_bhsd = utils.to_reference(K_bhsd, True)
+    ref_V_bhsd = utils.to_reference(V_bhsd, True)
+    ref_out_bhsd = utils.to_reference(out_bhsd, True)
+    ref_lse = utils.to_reference(lse, True)
 
     (
         ref_dQ_bhsd,

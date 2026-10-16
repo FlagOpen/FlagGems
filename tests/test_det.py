@@ -64,6 +64,7 @@ DET_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else 
 
 
 def _scaled_randn(shape, dtype):
+    torch.manual_seed(0)
     n = shape[-1]
     return torch.randn(shape, dtype=dtype, device=flag_gems.device) / math.sqrt(n)
 
@@ -115,7 +116,7 @@ def test_det_random(shape, dtype):
     n = shape[-1]
     A = _scaled_randn(shape, dtype)
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -130,7 +131,7 @@ def test_det_random_batch(shape, dtype):
     n = shape[-1]
     A = _scaled_randn(shape, dtype)
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -142,12 +143,13 @@ def test_det_random_batch(shape, dtype):
 @pytest.mark.parametrize("shape", [(4, 4), (16, 16), (2, 32, 32)])
 @pytest.mark.parametrize("dtype", DET_DTYPES)
 def test_det_positive_definite(shape, dtype):
+    torch.manual_seed(0)
     n = shape[-1]
     B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     eye = torch.eye(n, dtype=dtype, device=flag_gems.device)
     A = (B @ B.transpose(-2, -1) + n * eye) / (2 * n)
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -165,7 +167,7 @@ def test_det_negative_determinant(shape, dtype):
     if len(shape) > 2:
         A = A.unsqueeze(0).expand(shape).contiguous()
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -184,7 +186,7 @@ def test_det_diagonal(shape, dtype):
     if len(shape) > 2:
         A = A.unsqueeze(0).expand(shape).contiguous()
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -199,7 +201,20 @@ def test_det_singular(shape, dtype):
     A = _scaled_randn(shape, dtype)
     A[..., 0, :] = A[..., 1, :]
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
+    ref_out = _ref_det(ref_A)
+
+    res_out = flag_gems.det(A)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.det
+@pytest.mark.parametrize("shape", [(0, 0), (3, 0, 0)])
+@pytest.mark.parametrize("dtype", DET_DTYPES)
+def test_det_empty(shape, dtype):
+    A = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -209,21 +224,15 @@ def test_det_singular(shape, dtype):
 
 @pytest.mark.det
 @pytest.mark.parametrize("dtype", DET_DTYPES)
-def test_det_empty(dtype):
-    for shape in [(0, 0), (3, 0, 0)]:
-        A = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-
-        ref_A = utils.to_reference(A)
-        ref_out = _ref_det(ref_A)
-
-        res_out = flag_gems.det(A)
-
-        utils.gems_assert_close(res_out, ref_out, dtype)
-
+def test_det_empty_batch(dtype):
     A = torch.empty((0, 3, 3), dtype=dtype, device=flag_gems.device)
-    res_out = flag_gems.det(A)
-    assert res_out.shape == (0,)
-    assert res_out.dtype == dtype
+    reference = _ref_det(utils.to_reference(A, True))
+
+    result = flag_gems.det(A)
+
+    utils.gems_assert_close(result, reference, dtype)
+    assert result.shape == (0,)
+    assert result.dtype == dtype
 
 
 @pytest.mark.det
@@ -234,7 +243,7 @@ def test_det_non_contiguous(dtype):
     A = base.transpose(-2, -1)
     assert not A.is_contiguous()
 
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
     ref_out = _ref_det(ref_A)
 
     res_out = flag_gems.det(A)
@@ -244,8 +253,22 @@ def test_det_non_contiguous(dtype):
 
 @pytest.mark.det
 def test_det_errors():
+    torch.manual_seed(0)
     with pytest.raises((RuntimeError, ValueError)):
         flag_gems.det(torch.randn(3, 4, device=flag_gems.device))
 
     with pytest.raises((RuntimeError, ValueError)):
         flag_gems.det(torch.randn(3, device=flag_gems.device))
+
+
+@pytest.mark.det
+def test_det_autograd_rejected():
+    matrix = _scaled_randn((4, 4), torch.float32).requires_grad_(True)
+
+    result = flag_gems.det(matrix)
+
+    # The LU kernels materialize a detached output and the implementation does
+    # not register a custom determinant backward.
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result, matrix)

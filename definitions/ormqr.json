@@ -1,0 +1,47 @@
+{
+  "api_version": "v6.0",
+  "name": "ormqr",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::ormqr(Tensor self, Tensor input2, Tensor input3, bool left=True, bool transpose=False) -> Tensor. Applies the orthogonal matrix represented by Householder reflectors in self and input2 to input3. Coverage spans square, rectangular and batched matrices, both left and right application, transpose and non-transpose modes, and invalid reflector dimensions. The operation does not mutate or alias its inputs.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input3",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "left",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "transpose",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_matmul",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_matmul(Tensor self, Tensor other) -> Tensor. Computes vector, matrix, batched, and broadcasted matrix products. Tests cover dimensional folding, batch broadcasting, noncontiguous and zero-sized inputs, input immutability, output metadata, first- and second-order gradients, and dtype and shape errors.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -34,8 +34,9 @@ def test_linalg_eig(shape, dtype):
     well defined: the (unordered) eigenvalue set and the reconstruction
     A @ V == V @ diag(eigenvalues).
     """
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
 
     ref_w, _ = torch.linalg.eig(ref_inp)
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
@@ -60,6 +61,7 @@ def test_linalg_eig(shape, dtype):
 @pytest.mark.parametrize("n", [4, 6])
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_eig_batched(batch, n, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(batch, n, n, dtype=dtype, device=flag_gems.device)
 
     res_w, res_v = flag_gems.ops.linalg_eig(inp)
@@ -67,3 +69,17 @@ def test_linalg_eig_batched(batch, n, dtype):
     a_c = inp.to(res_v.dtype)
     recon = a_c @ res_v - res_v @ torch.diag_embed(res_w)
     assert torch.linalg.norm(recon).item() < 1e-2 * (batch * n) ** 0.5
+
+
+@pytest.mark.linalg_eig
+def test_linalg_eig_autograd_is_explicitly_unsupported():
+    torch.manual_seed(0)
+    inp = torch.randn((4, 4), dtype=torch.float32, device=flag_gems.device)
+    inp.requires_grad_(True)
+
+    eigenvalues, eigenvectors = flag_gems.ops.linalg_eig(inp)
+
+    assert not eigenvalues.requires_grad
+    assert not eigenvectors.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(eigenvalues.abs().sum(), inp)

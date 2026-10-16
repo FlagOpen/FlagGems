@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "matrix_power_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::matrix_power.out(Tensor self, int n, *, Tensor(a!) out) -> Tensor(a!). Raises square matrices to an integer power and writes into out. Tests cover output identity, preallocated output storage, empty-output resize, unbatched and batched matrices, and identity, even, and odd powers, accepted floating dtype conversion, and rejected integer output buffers.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "result"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "result": "out"
+    }
+  }
+}

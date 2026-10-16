@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_eig",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_eig(Tensor self) -> (Tensor eigenvalues, Tensor eigenvectors). Computes a general eigendecomposition; outputs do not alias self. Tests preserve reviewed legacy shapes, dtype limits, batching and layout behavior and add protocol-specific output checks where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "eigenvalues",
+    "eigenvectors"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

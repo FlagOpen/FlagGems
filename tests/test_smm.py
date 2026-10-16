@@ -57,6 +57,7 @@ def _make_sparse_coo(M, K, dtype, device, density=0.3, seed=0):
 @pytest.mark.parametrize("density", SMM_DENSITIES)
 @pytest.mark.parametrize("dtype", SMM_DTYPES)
 def test_smm(M, K, N, density, dtype):
+    torch.manual_seed(0)
     res_sparse = _make_sparse_coo(M, K, dtype, flag_gems.device, density=density)
     res_mat = torch.randn(K, N, dtype=dtype, device=flag_gems.device)
 
@@ -64,16 +65,21 @@ def test_smm(M, K, N, density, dtype):
     # which is NYI on CUDA), so the reference must run on CPU. ``to_reference``
     # honors the ``TO_CPU`` flag and the trailing ``.cpu()`` forces CPU here
     # regardless, since CUDA has no ``torch.smm`` path.
-    ref_sparse = utils.to_reference(res_sparse).cpu()
-    ref_mat = utils.to_reference(res_mat).cpu()
+    ref_sparse = utils.to_reference(res_sparse, True).cpu()
+    ref_mat = utils.to_reference(res_mat, True).cpu()
     ref_out = torch.smm(ref_sparse, ref_mat)
 
     # GEMS on GPU: route through ``flag_gems.smm`` which dispatches to our kernel.
     res_out = flag_gems.smm(res_sparse, res_mat)
+    assert res_out.layout == torch.sparse_coo
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == res_sparse.device
+    assert res_out.is_coalesced() == ref_out.is_coalesced()
 
     # Compare the materialized dense results; sparse layouts/index ordering may
     # differ but the dense values must match.
-    res_dense = utils.to_reference(res_out.to_dense()).cpu()
+    res_dense = utils.to_reference(res_out.to_dense(), True).cpu()
     ref_dense = ref_out.to_dense()
     utils.gems_assert_close(res_dense, ref_dense, dtype=dtype, reduce_dim=K)
 
@@ -84,19 +90,20 @@ def test_smm(M, K, N, density, dtype):
 def test_smm_sparse_pattern(M, K, N, density):
     """The output sparse pattern must match ``torch.smm``: rows appearing in the
     input contribute all output columns."""
+    torch.manual_seed(0)
     dtype = torch.float32
     res_sparse = _make_sparse_coo(M, K, dtype, flag_gems.device, density=density)
     res_mat = torch.randn(K, N, dtype=dtype, device=flag_gems.device)
 
-    ref_sparse = utils.to_reference(res_sparse).cpu()
-    ref_mat = utils.to_reference(res_mat).cpu()
+    ref_sparse = utils.to_reference(res_sparse, True).cpu()
+    ref_mat = utils.to_reference(res_mat, True).cpu()
     ref_out = torch.smm(ref_sparse, ref_mat)
 
     res_out = flag_gems.smm(res_sparse, res_mat)
 
     # Compare the set of (row, col) indices.
     ref_idx = ref_out.coalesce().indices()
-    res_idx = utils.to_reference(res_out.coalesce().indices()).cpu()
+    res_idx = utils.to_reference(res_out.coalesce().indices(), False).cpu()
     assert set(zip(ref_idx[0].tolist(), ref_idx[1].tolist())) == set(
         zip(res_idx[0].tolist(), res_idx[1].tolist())
     ), "smm output sparse pattern mismatch"
@@ -110,7 +117,11 @@ def _ref_dense(sparse, mat):
 
 def _assert_matches_ref(sparse, mat, dtype=torch.float32, reduce_dim=None):
     res = flag_gems.smm(sparse, mat)
-    res_dense = utils.to_reference(res.to_dense()).cpu()
+    assert res.layout == torch.sparse_coo
+    assert res.shape == (sparse.shape[0], mat.shape[1])
+    assert res.dtype == dtype
+    assert res.device == sparse.device
+    res_dense = utils.to_reference(res.to_dense(), True).cpu()
     utils.gems_assert_close(
         res_dense, _ref_dense(sparse, mat), dtype=dtype, reduce_dim=reduce_dim
     )
@@ -121,6 +132,7 @@ def _assert_matches_ref(sparse, mat, dtype=torch.float32, reduce_dim=None):
 def test_smm_uncoalesced_duplicate_indices():
     """An uncoalesced input with duplicate ``(row, col)`` entries must have those
     duplicates summed, matching ``coalesce()`` semantics."""
+    torch.manual_seed(0)
     dtype = torch.float32
     indices = torch.tensor(
         [[0, 0, 1, 1, 1, 3], [2, 2, 0, 3, 0, 1]], device=flag_gems.device
@@ -138,6 +150,7 @@ def test_smm_uncoalesced_duplicate_indices():
 def test_smm_explicit_zero_values():
     """Explicitly stored zeros are part of the structure: they contribute no
     value but their rows still appear in the output pattern."""
+    torch.manual_seed(0)
     dtype = torch.float32
     indices = torch.tensor([[0, 1, 2], [1, 2, 3]], device=flag_gems.device)
     values = torch.tensor([0.0, 0.0, 3.0], dtype=dtype, device=flag_gems.device)
@@ -145,7 +158,9 @@ def test_smm_explicit_zero_values():
     mat = torch.randn(5, 3, dtype=dtype, device=flag_gems.device)
     res = _assert_matches_ref(sparse, mat, dtype=dtype, reduce_dim=5)
     # Rows 0 and 1 are structurally present despite their zero values.
-    res_rows = set(utils.to_reference(res.coalesce().indices()[0]).cpu().tolist())
+    res_rows = set(
+        utils.to_reference(res.coalesce().indices()[0], False).cpu().tolist()
+    )
     assert {0, 1, 2} <= res_rows
 
 
@@ -153,6 +168,7 @@ def test_smm_explicit_zero_values():
 @pytest.mark.parametrize("kind", ["stride2", "transposed", "offset"])
 def test_smm_non_contiguous_mat(kind):
     """The dense operand may be a view; the kernel must honor its strides."""
+    torch.manual_seed(0)
     dtype = torch.float32
     K, N = 8, 4
     sparse = _make_sparse_coo(6, K, dtype, flag_gems.device, density=0.4)
@@ -171,6 +187,7 @@ def test_smm_non_contiguous_mat(kind):
 @pytest.mark.parametrize("M, K, N", [(0, 8, 4), (4, 0, 4), (4, 8, 0), (0, 0, 0)])
 def test_smm_zero_sized(M, K, N):
     """Zero-sized dimensions produce a correctly shaped empty result."""
+    torch.manual_seed(0)
     dtype = torch.float32
     indices = torch.empty((2, 0), dtype=torch.int64, device=flag_gems.device)
     values = torch.empty((0,), dtype=dtype, device=flag_gems.device)
@@ -178,7 +195,7 @@ def test_smm_zero_sized(M, K, N):
     mat = torch.randn(K, N, dtype=dtype, device=flag_gems.device)
     res = flag_gems.smm(sparse, mat)
     assert res.shape == (M, N)
-    res_dense = utils.to_reference(res.to_dense()).cpu()
+    res_dense = utils.to_reference(res.to_dense(), True).cpu()
     assert res_dense.shape == _ref_dense(sparse, mat).shape
 
 
@@ -229,6 +246,7 @@ def test_smm_scales_with_nnz_not_dense_size():
 @pytest.mark.smm
 def test_smm_device_mismatch():
     """Mixed devices must raise rather than hand a foreign pointer to the kernel."""
+    torch.manual_seed(0)
     dtype = torch.float32
     sparse = _make_sparse_coo(6, 8, dtype, flag_gems.device, density=0.4)
     mat_cpu = torch.randn(8, 4, dtype=dtype)
@@ -246,6 +264,7 @@ def test_smm_device_mismatch():
 @pytest.mark.smm
 def test_smm_invalid_inputs():
     """Shape and layout validation, matching ``torch.smm``'s own messages."""
+    torch.manual_seed(0)
     dtype = torch.float32
     dev = flag_gems.device
     sparse = _make_sparse_coo(6, 8, dtype, dev, density=0.4)
@@ -270,6 +289,7 @@ def test_smm_invalid_inputs():
 @pytest.mark.smm
 def test_smm_edge_cases():
     """Edge cases: empty sparse input and all-rows-present input."""
+    torch.manual_seed(0)
     dtype = torch.float32
     M, K, N = 4, 3, 5
 
@@ -281,25 +301,25 @@ def test_smm_edge_cases():
     ).coalesce()
     res_mat = torch.randn(K, N, dtype=dtype, device=flag_gems.device)
 
-    ref_sparse = utils.to_reference(res_sparse).cpu()
-    ref_mat = utils.to_reference(res_mat).cpu()
+    ref_sparse = utils.to_reference(res_sparse, True).cpu()
+    ref_mat = utils.to_reference(res_mat, True).cpu()
     ref_out = torch.smm(ref_sparse, ref_mat)
 
     res_out = flag_gems.smm(res_sparse, res_mat)
 
     assert res_out._nnz() == 0
-    res_dense = utils.to_reference(res_out.to_dense()).cpu()
+    res_dense = utils.to_reference(res_out.to_dense(), True).cpu()
     ref_dense = ref_out.to_dense()
     utils.gems_assert_close(res_dense, ref_dense, dtype=dtype, reduce_dim=K)
 
     # Fully-populated sparse input -> output contains all M*N entries.
     res_sparse = _make_sparse_coo(M, K, dtype, flag_gems.device, density=1.0, seed=1)
     res_mat = torch.randn(K, N, dtype=dtype, device=flag_gems.device)
-    ref_sparse = utils.to_reference(res_sparse).cpu()
-    ref_mat = utils.to_reference(res_mat).cpu()
+    ref_sparse = utils.to_reference(res_sparse, True).cpu()
+    ref_mat = utils.to_reference(res_mat, True).cpu()
     ref_out = torch.smm(ref_sparse, ref_mat)
     res_out = flag_gems.smm(res_sparse, res_mat)
     assert res_out._nnz() == M * N
-    res_dense = utils.to_reference(res_out.to_dense()).cpu()
+    res_dense = utils.to_reference(res_out.to_dense(), True).cpu()
     ref_dense = ref_out.to_dense()
     utils.gems_assert_close(res_dense, ref_dense, dtype=dtype, reduce_dim=K)

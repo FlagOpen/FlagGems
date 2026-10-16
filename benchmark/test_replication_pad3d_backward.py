@@ -12,59 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+SHAPES = [(2,3,8,16,16,1,1,1,1,1,1),(2,8,16,32,32,2,1,1,2,3,1),(1,16,32,32,32,1,1,1,1,1,1)]
+
+def _case_fn(shape,dtype):
+    del dtype
+    n,c,d,h,w,*padding=shape; padding=tuple(padding)
+    left,right,top,bottom,front,back=padding
+    grad_shape=(n,c,d+front+back,h+top+bottom,w+left+right)
+    yield base.BenchmarkCasePlan(shape={"input":[n,c,d,h,w],"grad_output":list(grad_shape)},params={"padding":list(padding)},builder_args=((n,c,d,h,w),padding,grad_shape))
+
+def _build_inputs_fn(plan,dtype,device):
+    shape,padding,grad_shape=plan.builder_args; torch.manual_seed(0)
+    inp=torch.randn(shape,dtype=dtype,device=device)
+    grad=torch.randn(grad_shape,dtype=dtype,device=device)
+    return grad,inp,padding
 
 
-class ReplicationPad3dBackwardBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        # Volumetric feature maps with symmetric and asymmetric padding.
-        self.shapes = [
-            (2, 3, 8, 16, 16, 1, 1, 1, 1, 1, 1),
-            (2, 8, 16, 32, 32, 2, 1, 1, 2, 3, 1),
-            (1, 16, 32, 32, 32, 1, 1, 1, 1, 1, 1),
-        ]
-        self.shape_desc = "N, C, D, H, W, PAD_LEFT, PAD_RIGHT, PAD_TOP, PAD_BOTTOM, PAD_FRONT, PAD_BACK"
-
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for (
-            n,
-            c,
-            d,
-            h,
-            w,
-            pad_left,
-            pad_right,
-            pad_top,
-            pad_bottom,
-            pad_front,
-            pad_back,
-        ) in self.shapes:
-            inp = torch.randn((n, c, d, h, w), dtype=cur_dtype, device=self.device)
-            padding = (pad_left, pad_right, pad_top, pad_bottom, pad_front, pad_back)
-            grad_output = torch.randn(
-                (
-                    n,
-                    c,
-                    d + pad_front + pad_back,
-                    h + pad_top + pad_bottom,
-                    w + pad_left + pad_right,
-                ),
-                dtype=cur_dtype,
-                device=self.device,
-            )
-            yield grad_output, inp, padding
+class ScopedBenchmark(OperatorBenchmark):
+    def set_shapes(self,shape_file_path=None):
+        self.shapes=list(SHAPES)
 
 
 @pytest.mark.replication_pad3d_backward
 def test_replication_pad3d_backward():
-    bench = ReplicationPad3dBackwardBenchmark(
+    ScopedBenchmark(
         op_name="replication_pad3d_backward",
-        torch_op=torch.ops.aten.replication_pad3d_backward,
+        torch_op=torch.ops.aten.replication_pad3d_backward.default,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

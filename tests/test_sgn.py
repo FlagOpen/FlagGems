@@ -33,6 +33,11 @@ SGN_CASES = [
 ] + [(dtype, shape) for dtype in utils.COMPLEX_DTYPES for shape in COMPLEX_SHAPES]
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    utils.init_seed(0)
+
+
 def _make_input(shape, dtype):
     if dtype == torch.bool:
         return torch.randint(

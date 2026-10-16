@@ -1,44 +1,58 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# Shapes for linalg_svdvals benchmark
-SVD_BENCHMARK_SHAPES = [
-    (16, 16),
-    (32, 32),
-    (64, 64),
-    (128, 128),
-    (256, 256),
-    (512, 512),
-]
+SHAPES = [(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512)]
 
 
-class SvdBenchmark(base.GenericBenchmark2DOnly):
-    """
-    Benchmark for linalg_svdvals
-    """
+class OperatorCaseBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(*B), M, N"
 
-    def set_more_shapes(self):
-        return SVD_BENCHMARK_SHAPES
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return (inp)
 
 
 @pytest.mark.linalg_svdvals
 def test_linalg_svdvals():
-    def svd_input_fn(shape, cur_dtype, device):
-        m, n = shape
-        # Only float32 is supported for SVD on CUDA
-        inp = torch.randn([m, n], dtype=torch.float32, device=device)
-        yield inp,
-
-    bench = SvdBenchmark(
-        input_fn=svd_input_fn,
+    OperatorCaseBenchmark(
         op_name="linalg_svdvals",
         torch_op=torch.linalg.svdvals,
-        # Only float32 for SVD on CUDA (PyTorch limitation)
+        gems_op=flag_gems.linalg_svdvals,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
-    )
-    bench.set_gems(flag_gems.linalg_svdvals)
-    bench.run()
+    ).run()

@@ -2,43 +2,51 @@
   "api_version": "v6.0",
   "name": "nanmean_out",
   "requires_triton_kernel": true,
-  "description": "A variant of `nanmean()` that writes the result into the `out` tensor.",
+  "description": "Representative ATen schema: aten::nanmean.out(Tensor self, int[1]? dim=None, bool keepdim=False, *, ScalarType? dtype=None, Tensor(a!) out) -> Tensor(a!). Ignores NaNs and writes the reduction into out; tests verify identity, storage, resize, accepted output casts, noncontiguous output, NaN slices, and rejected explicit dtype/autograd combinations.",
   "parameters": [
     {
-      "name": "inp",
+      "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "dim",
       "kind": "positional_or_keyword",
       "required": false,
-      "default": null
+      "default": null,
+      "type_hint": "Optional[int | list[int]]"
     },
     {
       "name": "keepdim",
       "kind": "positional_or_keyword",
       "required": false,
-      "default": false
+      "default": false,
+      "type_hint": "bool"
     },
     {
       "name": "dtype",
       "kind": "keyword_only",
       "required": false,
-      "default": null
+      "default": null,
+      "type_hint": "Optional[ScalarType]"
     },
     {
       "name": "out",
       "kind": "keyword_only",
       "required": true,
-      "type_hint": "torch.Tensor"
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [
-    "out"
+    "result"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "result": "out"
+    }
   }
 }

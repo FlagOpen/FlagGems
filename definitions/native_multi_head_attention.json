@@ -1,0 +1,98 @@
+{
+  "api_version": "v6.0",
+  "name": "native_multi_head_attention",
+  "requires_triton_kernel": true,
+  "description": "Run the native multi-head attention fast path with fused QKV and output projections. Coverage includes self, encoder-decoder, and independent Q/K/V inputs, all three mask types, optional attention weights, and averaged or per-head weight outputs.",
+  "parameters": [
+    {
+      "name": "query",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "embed_dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "num_head",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "qkv_weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "qkv_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "proj_weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "proj_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "need_weights",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "average_attn_weights",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "mask_type",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "int?"
+    }
+  ],
+  "outputs": [
+    "output",
+    "attention_weights"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

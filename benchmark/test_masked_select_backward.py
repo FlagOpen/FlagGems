@@ -21,17 +21,12 @@ from flag_gems.utils import shape_utils
 from . import base, consts, utils
 
 
+SHAPES = [(1,), (1024,), (4096,), (4097,), (128, 128), (1024, 1024), (4096, 4096)]
+
+
 class MaskedSelectBackwardBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            (1,),
-            (1024,),
-            (4096,),
-            (4097,),
-            (128, 128),
-            (1024, 1024),
-            (4096, 4096),
-        ]
+        self.shapes = SHAPES
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             self.shapes += [(17, 17), (8192,), (256, 256), (8192, 4096)]
 
@@ -39,17 +34,28 @@ class MaskedSelectBackwardBenchmark(base.GenericBenchmark):
         return ["gbps"]
 
 
-def _input_fn(shape, dtype, device):
+def _case_fn(shape, dtype):
+    del dtype
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape), "mask": list(shape), "grad": ["selected"]},
+        params={"threshold": 0.5},
+        builder_args=(tuple(shape),),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    torch.manual_seed(0)
+    (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     mask = torch.rand(shape, device=device) < 0.5
     grad = utils.generate_tensor_input((int(mask.sum()),), dtype, device)
-    yield grad, inp, mask
+    return grad, inp, mask
 
 
-def _get_gbps(bench_fn_args, latency):
-    grad, inp, mask = bench_fn_args
-    io_amount = sum(shape_utils.size_in_bytes(item) for item in (grad, inp, mask, inp))
-    return io_amount * 1e-9 / (latency * 1e-3)
+def _get_gbps(args, latency):
+    grad, inp, mask = args
+    amount = sum(shape_utils.size_in_bytes(x) for x in (grad, inp, mask, inp))
+    return amount * 1e-9 / (latency * 1e-3)
 
 
 @pytest.mark.masked_select_backward
@@ -58,7 +64,8 @@ def test_masked_select_backward():
         op_name="masked_select_backward",
         torch_op=torch.ops.aten.masked_select_backward.default,
         gems_op=flag_gems.masked_select_backward,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )

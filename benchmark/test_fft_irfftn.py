@@ -1,66 +1,58 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
-from benchmark.consts import COMPLEX_DTYPES
+import flag_gems
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# COMPLEX_DTYPES are used instead of FLOAT_DTYPES because fft_irfftn
-# operates on complex input (half-Hermitian from rfftn).
-
-
-# FFT irfftn benchmark shapes (1D and N-D). The kernels use a direct O(N^2)
-# DFT; transformed dimensions are kept small.
-FFT_IRFFTN_SHAPES = [
-    (8,),
-    (16,),
-    (32,),
-    (64,),
-    (128,),
-    (256,),
-    (512,),
-    (1024,),
-    (4, 64),
-    (8, 128),
-    (2, 4, 32),
-    (4, 8, 64),
-]
+SHAPES = [(8,), (16,), (32,), (64,), (128,), (4, 64), (8, 128), (2, 4, 32), (4, 8, 64)]
 
 
-class FFTIRFFTNBenchmark(base.GenericBenchmark):
-    """Benchmark for 1D and N-D fft_irfftn."""
-
+class OperatorCaseBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = FFT_IRFFTN_SHAPES
-
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            # Generate a real input of shape = shape
-            real_input = torch.randn(shape, dtype=torch.float32, device=self.device)
-            # Get the half-Hermitian complex output from rfftn
-            complex_input = torch.fft.rfftn(real_input)
-            # Yield as single tensor; default s reconstructs original signal length
-            yield (complex_input,)
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(*B), M, N"
 
 
-def fft_irfftn_input_fn(shape, dtype, device):
-    """Generate input for fft_irfftn benchmark.
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={},
+        builder_args=(dims,),
+    )
 
-    The input should be the half-Hermitian output from rfftn.
-    """
-    # Generate a real input of shape = shape
-    real_input = torch.randn(shape, dtype=torch.float32, device=device)
-    # Get the half-Hermitian complex output from rfftn
-    complex_input = torch.fft.rfftn(real_input)
-    yield (complex_input,)
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    real = torch.randn(shape, dtype=torch.float32, device=device)
+    return (torch.fft.rfftn(real),)
 
 
 @pytest.mark.fft_irfftn
 def test_fft_irfftn():
-    bench = FFTIRFFTNBenchmark(
-        input_fn=fft_irfftn_input_fn,
+    OperatorCaseBenchmark(
         op_name="fft_irfftn",
         torch_op=torch.fft.irfftn,
-        dtypes=COMPLEX_DTYPES,
-    )
-    bench.run()
+        gems_op=flag_gems.fft_irfftn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.complex64],
+    ).run()

@@ -1,0 +1,150 @@
+{
+  "api_version": "v6.0",
+  "name": "cudnn_rnn_backward",
+  "requires_triton_kernel": true,
+  "description": "Compute the four output-mask-controlled gradient groups for the canonical aten::_cudnn_rnn_backward signature. The current implementation supports single-layer, unidirectional, non-projected LSTM inputs.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "weight_stride0",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "weight_buf",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "hx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "grad_cy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "hidden_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "proj_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "num_layers",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "batch_first",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "dropout",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "train",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "bidirectional",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "batch_sizes",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt[]"
+    },
+    {
+      "name": "dropout_state",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "reserve",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output_mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool[4]"
+    }
+  ],
+  "outputs": [
+    "grad_input",
+    "grad_hx",
+    "grad_cx",
+    "grad_weight"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

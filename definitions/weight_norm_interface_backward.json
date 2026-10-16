@@ -1,0 +1,46 @@
+{
+  "api_version": "v6.0",
+  "name": "weight_norm_interface_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative schema: aten::_weight_norm_interface_backward(Tensor grad_w, Tensor saved_v, Tensor saved_g, Tensor saved_norms, int dim) -> (Tensor, Tensor). Computes gradients for weight-normalization direction and magnitude without mutating saved inputs. Tests cover both outputs, supported floating dtypes, first/last dimensions, representative ranks, noncontiguous layout, output shape/dtype metadata, and valid norms produced by the paired forward interface.",
+  "parameters": [
+    {
+      "name": "grad_w",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "saved_v",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "saved_g",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "saved_norms",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "grad_v",
+    "grad_g"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

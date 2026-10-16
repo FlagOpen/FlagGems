@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -69,6 +83,7 @@ def _make_test_case(M, K, N, qGroupSize, dtype):
     Returns (A, mat2_uint8, qGroupSize, qScale, qZeros) that satisfy all
     the kernel's input conventions.
     """
+    torch.manual_seed(0)
     device = flag_gems.device
 
     # Activation
@@ -115,11 +130,11 @@ def test_weight_int4pack_mm_with_scales_and_zeros(M, K, N, qGroupSize, dtype):
 
     A, mat2, qgs, qScale, qZeros = _make_test_case(M, K, N, qGroupSize, dtype)
 
-    # Move everything to CPU for reference computation
-    ref_A = A.clone().to("cpu")
-    ref_mat2 = mat2.clone().to("cpu")
-    ref_qScale = qScale.clone().to("cpu")
-    ref_qZeros = qZeros.clone().to("cpu")
+    # Keep integer-packed weights exact and upcast floating reference inputs.
+    ref_A = utils.to_reference(A, True)
+    ref_mat2 = utils.to_reference(mat2, False)
+    ref_qScale = utils.to_reference(qScale, True)
+    ref_qZeros = utils.to_reference(qZeros, True)
 
     ref_out = reference_mm(ref_A, ref_mat2, qgs, ref_qScale, ref_qZeros)
 

@@ -18,9 +18,34 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class UpsampleBenchmark(base.GenericBenchmark):
+def _case_fn(shape, dtype, align_corners=False):
+    del dtype
+    batch, channel, height, width = shape
+    depth = 4
+    width = width // 4
+    new_height = height // depth
+    input_size = (batch, channel, depth, new_height, width)
+    output_size = (depth * 2, new_height * 2, width * 2)
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": [batch, channel, *output_size]},
+        params={"output_size": list(output_size), "input_size": list(input_size), "align_corners": align_corners},
+        builder_args=(input_size, output_size, align_corners),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    torch.manual_seed(0)
+    input_size, output_size, align_corners = plan.builder_args
+    grad_output = torch.randn(
+        (input_size[0], input_size[1], *output_size), device=device, dtype=dtype
+    )
+    return grad_output, output_size, input_size, align_corners, None, None, None
+
+
+class UpsampleBenchmark(OperatorBenchmark):
     def set_more_shapes(self):
         return None
 
@@ -31,29 +56,14 @@ class UpsampleBenchmark(base.GenericBenchmark):
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_upsample_trilinear3d_backward(align_corners):
-    def upsample_trilinear3d_backward_input_fn(shape, dtype, device):
-        batch, channel, height, width = shape
-        depth = 4
-        width = width // 4
-        new_height = height // depth
-        input_size = (batch, channel, depth, new_height, width)
-        scale_factors = (2.0, 2.0, 2.0)
-        output_size = (
-            int(depth * scale_factors[0]),
-            int(new_height * scale_factors[1]),
-            int(width * scale_factors[2]),
-        )
+    def case_fn(shape, dtype):
+        yield from _case_fn(shape, dtype, align_corners)
 
-        grad_output = torch.randn(
-            size=(batch, channel, *output_size), device=device, dtype=dtype
-        )
-
-        yield grad_output, output_size, input_size, align_corners, None, None, None
-
-    bench = UpsampleBenchmark(
-        input_fn=upsample_trilinear3d_backward_input_fn,
+    UpsampleBenchmark(
         op_name="upsample_trilinear3d_backward",
         torch_op=torch.ops.aten.upsample_trilinear3d_backward.default,
+        gems_op=flag_gems.upsample_trilinear3d_backward,
+        case_fn=case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

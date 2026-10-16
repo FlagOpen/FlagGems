@@ -1,11 +1,23 @@
-from typing import Generator
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-# (m, n, k): coefficients is (m, n), input is (n, k), output is (m, k).
 MNK_SHAPES = [
     (64, 64, 64),
     (128, 256, 512),
@@ -14,49 +26,36 @@ MNK_SHAPES = [
 ]
 
 
-class ComputeLinearCombinationBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        return MNK_SHAPES
-
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            if len(shape) != 3:
-                continue
-            m, n, k = shape
-            yield from self.input_fn(m, n, k, dtype, self.device)
+class ComputeLinearCombinationBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(MNK_SHAPES)
+        self.shape_desc = "(output combinations, input terms, flattened width)"
 
 
-def _input_fn(m, n, k, cur_dtype, device):
-    # input is (n, k); coefficients is (m, n); output is (m, k)
-    inp = torch.randn([n, k], dtype=cur_dtype, device=device)
-    coeffs = torch.randn([m, n], dtype=cur_dtype, device=device)
-    yield inp, coeffs
+def _case_fn(shape, dtype):
+    del dtype
+    m, n, k = map(int, shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": [n, k], "coefficients": [m, n]},
+        params={},
+        builder_args=(m, n, k),
+    )
 
 
-def _input_fn_out(m, n, k, cur_dtype, device):
-    inp = torch.randn([n, k], dtype=cur_dtype, device=device)
-    coeffs = torch.randn([m, n], dtype=cur_dtype, device=device)
-    out = torch.empty([m, k], dtype=cur_dtype, device=device)
-    yield inp, coeffs, {"out": out}
+def _build_inputs_fn(plan, dtype, device):
+    m, n, k = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn((n, k), dtype=dtype, device=device)
+    coefficients = torch.randn((m, n), dtype=dtype, device=device)
+    return inp, coefficients
 
 
 @pytest.mark.compute_linear_combination
 def test_compute_linear_combination():
-    bench = ComputeLinearCombinationBenchmark(
+    ComputeLinearCombinationBenchmark(
         op_name="compute_linear_combination",
-        input_fn=_input_fn,
         torch_op=torch._compute_linear_combination,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.compute_linear_combination_out
-def test_compute_linear_combination_out():
-    bench = ComputeLinearCombinationBenchmark(
-        op_name="compute_linear_combination_out",
-        input_fn=_input_fn_out,
-        torch_op=torch.ops.aten._compute_linear_combination.out,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

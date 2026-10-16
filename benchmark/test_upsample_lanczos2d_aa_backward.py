@@ -20,10 +20,10 @@ import torch
 
 from flag_gems.ops._upsample_lanczos2d_aa_backward import (
     upsample_lanczos2d_aa_backward,
-    upsample_lanczos2d_aa_backward_grad_input,
 )
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
 _WEIGHT_CACHE = OrderedDict()
 
@@ -80,32 +80,16 @@ def _composite_reference(
     return result.to(grad_output.dtype)
 
 
-def _composite_reference_out(
-    grad_output,
-    output_size,
-    input_size,
-    align_corners=False,
-    scales_h=None,
-    scales_w=None,
-    *,
-    grad_input,
-):
-    grad_input.copy_(
-        _composite_reference(
-            grad_output,
-            output_size,
-            input_size,
-            align_corners,
-            scales_h,
-            scales_w,
-        )
-    )
-    return grad_input
 
 
-class UpsampleLanczos2dAaBackwardBenchmark(base.Benchmark):
+class UpsampleLanczos2dAaBackwardBenchmark(OperatorBenchmark):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            *args,
+            case_fn=lambda shape, dtype: (),
+            build_inputs_fn=lambda plan, dtype, device: (),
+            **kwargs,
+        )
         # Includes practical small, channel-heavy, and larger image workloads.
         self._configs = [
             (1, 1, 8, 8, 16, 16),
@@ -114,19 +98,35 @@ class UpsampleLanczos2dAaBackwardBenchmark(base.Benchmark):
             (8, 32, 96, 128, 48, 64),
         ]
 
-    def get_input_iter(self, dtype):
-        for n, c, input_h, input_w, output_h, output_w in self._configs:
-            grad = torch.randn(
-                (n, c, output_h, output_w), device=self.device, dtype=dtype
+    def get_case_iter(self, dtype):
+        for ordinal, config in enumerate(self._configs):
+            n, c, input_h, input_w, output_h, output_w = config
+            plan = base.BenchmarkCasePlan(
+                shape={"grad_output": [n, c, output_h, output_w]},
+                params={
+                    "output_size": [output_h, output_w],
+                    "input_size": [n, c, input_h, input_w],
+                    "align_corners": False,
+                },
+                builder_args=(config,),
             )
-            yield (
-                grad,
-                (output_h, output_w),
-                (n, c, input_h, input_w),
-                False,
-                None,
-                None,
-            )
+            yield self._case_from_plan(dtype, ordinal, plan)
+
+    def build_inputs(self, case):
+        torch.manual_seed(0)
+        (config,) = case.builder_args[0].builder_args
+        n, c, input_h, input_w, output_h, output_w = config
+        grad = torch.randn(
+            (n, c, output_h, output_w), device=self.device, dtype=case.dtype
+        )
+        return (
+            grad,
+            (output_h, output_w),
+            (n, c, input_h, input_w),
+            False,
+            None,
+            None,
+        )
 
     def get_tflops(self, op, *args, **kwargs):
         grad_output, output_size, input_size = args[:3]
@@ -140,16 +140,6 @@ class UpsampleLanczos2dAaBackwardBenchmark(base.Benchmark):
         )
 
 
-class UpsampleLanczos2dAaBackwardOutBenchmark(UpsampleLanczos2dAaBackwardBenchmark):
-    def get_input_iter(self, dtype):
-        for args in super().get_input_iter(dtype):
-            grad_output, output_size, input_size, *rest = args
-            grad_input = torch.empty(input_size, device=self.device, dtype=dtype)
-            yield grad_output, output_size, input_size, *rest, {
-                "grad_input": grad_input
-            }
-
-
 @pytest.mark.upsample_lanczos2d_aa_backward
 def test_upsample_lanczos2d_aa_backward():
     bench = UpsampleLanczos2dAaBackwardBenchmark(
@@ -158,17 +148,6 @@ def test_upsample_lanczos2d_aa_backward():
         gems_op=upsample_lanczos2d_aa_backward,
         # The upstream CPU schema supports float/double; benchmark the two
         # primary accelerator dtypes while accuracy tests retain BF16/FP64.
-        dtypes=[torch.float16, torch.float32],
-    )
-    bench.run()
-
-
-@pytest.mark.upsample_lanczos2d_aa_backward_grad_input
-def test_upsample_lanczos2d_aa_backward_grad_input():
-    bench = UpsampleLanczos2dAaBackwardOutBenchmark(
-        op_name="upsample_lanczos2d_aa_backward_grad_input",
-        torch_op=_composite_reference_out,
-        gems_op=upsample_lanczos2d_aa_backward_grad_input,
         dtypes=[torch.float16, torch.float32],
     )
     bench.run()

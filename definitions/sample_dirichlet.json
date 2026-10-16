@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "sample_dirichlet",
+  "requires_triton_kernel": true,
+  "description": "Representative upstream schema: aten::_sample_dirichlet(Tensor self, Generator? generator=None) -> Tensor. The artifact maps to the private canonical base _sample_dirichlet and draws a simplex sample for every last-dimension concentration vector without mutating or aliasing self. Tests cover one- and multi-row inputs, K=1 and K>1024, positive and tiny concentrations, simplex normalization, symmetric and skewed distribution properties, generator reproducibility/state advancement, input preservation, and rejected non-floating inputs.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "generator",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Generator?"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

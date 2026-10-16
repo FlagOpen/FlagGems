@@ -18,38 +18,44 @@ import torch
 import flag_gems
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# Benchmark shapes for sym_numel - covering various tensor dimensionalities
-SYM_NUMEL_SHAPES = [(2, 3), (10, 20, 30), (5, 10), (100,), (1, 2, 3, 4)]
+_DEFAULT_SHAPES = [(2, 3), (10, 20, 30), (5, 10), (100,), (1, 2, 3, 4)]
 
 
-class SymNumelBenchmark(base.Benchmark):
-    """Custom benchmark for sym_numel - returns tensor metadata (numel), not a computed tensor."""
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={}, builder_args=(dims,)
+    )
 
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    return (torch.randn(shape, dtype=dtype, device=device),)
+
+
+class SymNumelBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = SYM_NUMEL_SHAPES
-
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=cur_dtype, device=flag_gems.device)
-            yield inp,
-
-    def get_bwd_input_iter(self, cur_dtype):
-        # sym_numel has no backward pass (returns scalar/int, not differentiable)
-        pass
+        super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
+        for shape in _DEFAULT_SHAPES:
+            if shape not in self.shapes:
+                self.shapes.append(shape)
 
     def set_more_shapes(self):
-        # No additional shapes needed for metadata operation
-        pass
+        return []
 
 
 @pytest.mark.sym_numel
-@pytest.mark.parametrize(
-    "op_name, torch_op, dtype",
-    [("sym_numel", torch.ops.aten.sym_numel, torch.float32)],
-)
-def test_perf_sym_numel(op_name, torch_op, dtype):
+def test_sym_numel():
     bench = SymNumelBenchmark(
-        op_name=op_name, torch_op=torch_op, dtypes=[dtype], mode="fwd"
+        op_name="sym_numel",
+        torch_op=torch.ops.aten.sym_numel,
+        gems_op=flag_gems.sym_numel,
+        dtypes=[torch.float32],
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
     )
     bench.run()

@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "le_scalar_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::le_.Scalar(Tensor(a!) self, Scalar other) -> Tensor(a!). Compares self with a scalar in place, stores zero-or-one values in self's dtype, and returns the same Tensor object and storage. Tests cover scalar boundaries, floating dtypes, zero-sized and noncontiguous tensors, mutation, exact values, and identity.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

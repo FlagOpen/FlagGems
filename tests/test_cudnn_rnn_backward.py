@@ -250,10 +250,10 @@ def test_cudnn_rnn_backward(shape, dtype):
     # ref_out order: (grad_input, grad_hx, grad_cx, grad_weight_list)
     res_grad_input, res_grad_hx, res_grad_cx, res_grad_weight = res_out
 
-    ref_grad_input = utils.to_reference(ref_grad_input)
-    ref_grad_hx = utils.to_reference(ref_grad_hx)
-    ref_grad_cx = utils.to_reference(ref_grad_cx)
-    ref_grad_weight = [utils.to_reference(w) for w in ref_grad_weight]
+    ref_grad_input = utils.to_reference(ref_grad_input, True)
+    ref_grad_hx = utils.to_reference(ref_grad_hx, True)
+    ref_grad_cx = utils.to_reference(ref_grad_cx, True)
+    ref_grad_weight = [utils.to_reference(w, True) for w in ref_grad_weight]
 
     # Gradients over a multi-step BPTT accumulate in a different order than
     # the autograd recomputation, so rounding differences compound into
@@ -282,3 +282,74 @@ def test_cudnn_rnn_backward(shape, dtype):
             res.dtype == ref.dtype
         ), f"Dtype mismatch at grad_weight[{i}]: {res.dtype} vs {ref.dtype}"
         utils.gems_assert_close(res, ref, dtype, atol=atol)
+
+
+@pytest.mark.cudnn_rnn_backward
+@pytest.mark.parametrize(
+    "output_mask",
+    [
+        (True, False, False, False),
+        (False, True, False, False),
+        (False, False, True, False),
+        (False, False, False, True),
+        (True, True, True, True),
+    ],
+)
+def test_cudnn_rnn_backward_output_mask(output_mask):
+    """Every output-mask bit controls exactly its corresponding gradient group."""
+    torch.manual_seed(0)
+    dev = flag_gems.device
+    dtype = torch.float32
+    seq_len, batch, input_size, hidden_size = 3, 2, 4, 5
+    input = torch.randn(seq_len, batch, input_size, dtype=dtype, device=dev)
+    hx = torch.randn(1, batch, hidden_size, dtype=dtype, device=dev)
+    cx = torch.randn_like(hx)
+    weight = [
+        torch.randn(4 * hidden_size, input_size, dtype=dtype, device=dev),
+        torch.randn(4 * hidden_size, hidden_size, dtype=dtype, device=dev),
+        torch.randn(4 * hidden_size, dtype=dtype, device=dev),
+        torch.randn(4 * hidden_size, dtype=dtype, device=dev),
+    ]
+    output, hy, cy, reserve, weight_buf = flag_gems.cudnn_rnn(
+        input, weight, 4, None, hx, cx, 2, hidden_size, 0, 1, False,
+        0.0, True, False, [], None,
+    )
+    result = flag_gems.cudnn_rnn_backward(
+        input, weight, 4, weight_buf, hx, cx, output,
+        torch.randn_like(output), torch.randn_like(hy), torch.randn_like(cy),
+        2, hidden_size, 0, 1, False, 0.0, True, False, [], None, reserve,
+        list(output_mask),
+    )
+    for enabled, value in zip(output_mask[:3], result[:3]):
+        assert (value is not None) == enabled
+    if output_mask[3]:
+        assert len(result[3]) == len(weight)
+        for gradient, parameter in zip(result[3], weight):
+            assert gradient.shape == parameter.shape
+            assert gradient.dtype == parameter.dtype
+    else:
+        assert result[3] == []
+
+
+@pytest.mark.cudnn_rnn_backward
+@pytest.mark.parametrize(
+    "mode,proj_size,num_layers,bidirectional,batch_sizes,message",
+    [
+        (0, 0, 1, False, [], "Only LSTM"),
+        (2, 0, 2, False, [], "single-layer"),
+        (2, 0, 1, True, [], "Bidirectional"),
+        (2, 4, 1, False, [], "Projection"),
+        (2, 0, 1, False, [2, 1], "Packed sequences"),
+    ],
+)
+def test_cudnn_rnn_backward_rejects_unsupported_contracts(
+    mode, proj_size, num_layers, bidirectional, batch_sizes, message
+):
+    dummy = torch.empty((1, 1, 1), device=flag_gems.device)
+    with pytest.raises(NotImplementedError, match=message):
+        flag_gems.cudnn_rnn_backward(
+            dummy, [dummy, dummy, dummy, dummy], 4, dummy, dummy, dummy,
+            dummy, dummy, dummy, dummy, mode, 1, proj_size, num_layers,
+            False, 0.0, True, bidirectional, batch_sizes, None, dummy,
+            [True, True, True, True],
+        )

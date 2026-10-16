@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "_weight_norm",
+  "requires_triton_kernel": true,
+  "description": "Representative schema: aten::_weight_norm(Tensor v, Tensor g, int dim=0) -> Tensor. Produces a newly allocated weight normalized along the selected first or last dimension without mutating its inputs. Tests cover supported floating dtypes, first/last dimensions, representative ranks, noncontiguous layout, zero norms, output metadata, gradients for v and g, and rejected integer or float64 inputs.",
+  "parameters": [
+    {
+      "name": "v",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "g",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

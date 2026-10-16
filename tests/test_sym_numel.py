@@ -19,22 +19,49 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Test shapes for sym_numel - covering various tensor dimensionalities
-SYM_NUMEL_SHAPES = [(2, 3), (10, 20, 30), (5, 10), (100,), (1, 2, 3, 4)]
+
+_SYM_NUMEL_SHAPES = [(), (0,), (2, 3), (10, 20, 30), (100,), (1, 2, 3, 4)]
+
+
+def _make_input(shape, dtype):
+    torch.manual_seed(0)
+    if dtype == torch.bool:
+        return torch.randint(0, 2, shape, device=flag_gems.device).to(dtype)
+    if dtype.is_floating_point:
+        return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    return torch.randint(-10, 10, shape, device=flag_gems.device).to(dtype)
+
+
+def _assert_numel_result(res_out, ref_out):
+    assert isinstance(res_out, int)
+    utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))
 
 
 @pytest.mark.sym_numel
-@pytest.mark.parametrize("shape", SYM_NUMEL_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", _SYM_NUMEL_SHAPES)
+@pytest.mark.parametrize(
+    "dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.bool]
+)
 def test_sym_numel(shape, dtype, caplog):
-    """Test sym_numel operator accuracy."""
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    inp = _make_input(shape, dtype)
+    ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.ops.aten.sym_numel(ref_inp)
     with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_numel"):
         res_out = flag_gems.sym_numel(inp)
 
     assert f"{utils.gems_log_prefix(flag_gems.sym_numel)} SYM_NUMEL" in caplog.text
-    # Compare numel results (convert to tensors for gems_assert_equal)
-    utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))
+    _assert_numel_result(res_out, ref_out)
+
+
+@pytest.mark.sym_numel
+def test_sym_numel_noncontiguous():
+    torch.manual_seed(0)
+    inp = torch.randn((3, 5, 7), device=flag_gems.device).transpose(0, 2)
+    assert not inp.is_contiguous()
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.ops.aten.sym_numel(ref_inp)
+    res_out = flag_gems.sym_numel(inp)
+
+    _assert_numel_result(res_out, ref_out)

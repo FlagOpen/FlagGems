@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "special_hermite_polynomial_h",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_hermite_polynomial_h(Tensor x, Tensor n) -> Tensor. The correctness suite covers the canonically registered default and n_scalar overloads, integer tensor and Python scalar degrees in [0, 9], float32/float64 computation, and scalar/tensor out-of-range errors. The operation does not mutate or alias either input.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

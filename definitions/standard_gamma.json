@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "standard_gamma",
+  "requires_triton_kernel": true,
+  "description": "Representative upstream schema: aten::_standard_gamma(Tensor self, Generator? generator=None) -> Tensor. The artifact name maps to the private ATen canonical base _standard_gamma. Draws Gamma(self, 1) samples without mutating or aliasing self. Tests cover shape/dtype/device metadata, positivity, distribution moments, tiny concentrations, generator reproducibility and state advancement, input preservation, and rejected non-floating or float64 inputs.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "generator",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Generator?"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

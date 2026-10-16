@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "linear_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linear_backward(Tensor self, Tensor grad_output, Tensor weight, bool[3] output_mask) -> (Tensor, Tensor, Tensor). Computes selected input, weight, and bias gradients for a linear layer according to a three-element output mask. Tests cover full and partial masks including all-false, multidimensional batches, None outputs, gradient metadata, input non-mutation, and invalid mask length.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output_mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "tuple[bool, bool, bool]"
+    }
+  ],
+  "outputs": [
+    "grad_input",
+    "grad_weight",
+    "grad_bias"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

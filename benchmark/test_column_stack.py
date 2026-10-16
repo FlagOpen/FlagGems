@@ -13,74 +13,46 @@
 # limitations under the License.
 
 import math
-from typing import Generator
 
 import pytest
 import torch
 
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 
-def _input_fn(shape, dtype, device):
-    inp1 = utils.generate_tensor_input(shape, dtype, device)
-    inp2 = utils.generate_tensor_input(shape, dtype, device)
-    inp3 = utils.generate_tensor_input(shape, dtype, device)
-
-    yield [inp1, inp2, inp3],
+_MAX_INPUT_ELEMENTS = 2**27
+_INPUT_COUNT = 3
 
 
-class ColumnStackBenchmark(base.Benchmark):
-    # column_stack creates 3 inputs + 1 output. Cap to avoid OOM on the
-    # inherited billion-element default shapes (matches vstack/stack/cat).
-    MAX_ELEMENTS = 2**29
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    if math.prod(dims) > _MAX_INPUT_ELEMENTS:
+        return
+    yield base.BenchmarkCasePlan(
+        shape={"inputs": [list(dims)] * _INPUT_COUNT},
+        params={"input_count": _INPUT_COUNT},
+        builder_args=(dims,),
+    )
 
-    def __init__(self, *args, **kwargs):
-        self.input_fn = kwargs.pop("input_fn", _input_fn)
-        super().__init__(*args, **kwargs)
 
-    def init_user_config(self):
-        super().init_user_config()
-        # Drop billion-element default shapes that OOM with 3 inputs + output.
-        self.shapes = [s for s in self.shapes if math.prod(s) <= self.MAX_ELEMENTS]
-
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            yield from self.input_fn(shape, dtype, self.device)
-
-    def set_more_shapes(self):
-        more_shapes_2d = [(1024, 2**i) for i in range(1, 11, 4)]
-        more_shapes_3d = [(64, 64, 2**i) for i in range(0, 8, 4)]
-
-        return more_shapes_2d + more_shapes_3d
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    tensors = [
+        utils.generate_tensor_input(shape, dtype, device) for _ in range(_INPUT_COUNT)
+    ]
+    return (tensors,)
 
 
 @pytest.mark.column_stack
 def test_column_stack():
-    bench = ColumnStackBenchmark(
+    bench = OperatorBenchmark(
         op_name="column_stack",
-        input_fn=_input_fn,
         torch_op=torch.column_stack,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-def _out_input_fn(shape, dtype, device):
-    inp1 = utils.generate_tensor_input(shape, dtype, device)
-    inp2 = utils.generate_tensor_input(shape, dtype, device)
-    inp3 = utils.generate_tensor_input(shape, dtype, device)
-    tensors = [inp1, inp2, inp3]
-
-    out = torch.column_stack(tensors)
-    yield tensors, {"out": out}
-
-
-@pytest.mark.column_stack_out
-def test_column_stack_out():
-    bench = ColumnStackBenchmark(
-        op_name="column_stack_out",
-        input_fn=_out_input_fn,
-        torch_op=torch.column_stack,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

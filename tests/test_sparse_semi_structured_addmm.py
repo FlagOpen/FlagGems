@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -83,6 +97,7 @@ def _aten_addmm_ref(input_tensor, mat1, meta, mat2, alpha=1.0, beta=1.0):
 @pytest.mark.parametrize("shape", [(64, 64), (128, 128), (256, 128)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_sparse_semi_structured_addmm(shape, dtype):
+    torch.manual_seed(0)
     if not _is_sm80_to_sm89():
         pytest.skip("aten._sparse_semi_structured_addmm only supports 8.x")
 
@@ -109,7 +124,10 @@ def test_sparse_semi_structured_addmm(shape, dtype):
     # not reachable on sm_90 (compute capability 8.x required).
     # In quick-cpu mode (TO_CPU) the CUTLASS ref must stay on GPU, so move only
     # the final ref_out to CPU here to honour the to_cpu() contract.
-    ref_out = utils.to_reference(ref_out)
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == input_tensor.device
+    ref_out = utils.to_reference(ref_out, True)
     if dtype == torch.bfloat16:
         utils.gems_assert_close(res_out, ref_out, dtype, atol=0.2)
     elif dtype == torch.float16:
@@ -122,6 +140,7 @@ def test_sparse_semi_structured_addmm(shape, dtype):
 @pytest.mark.parametrize("shape", [(64, 64), (128, 128)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_sparse_semi_structured_addmm_with_alpha_beta(shape, dtype):
+    torch.manual_seed(0)
     if not _is_sm80_to_sm89():
         pytest.skip("aten._sparse_semi_structured_addmm only supports 8.x")
 
@@ -152,7 +171,10 @@ def test_sparse_semi_structured_addmm_with_alpha_beta(shape, dtype):
     # not reachable on sm_90 (compute capability 8.x required).
     # In quick-cpu mode (TO_CPU) the CUTLASS ref must stay on GPU, so move only
     # the final ref_out to CPU here to honour the to_cpu() contract.
-    ref_out = utils.to_reference(ref_out)
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == input_tensor.device
+    ref_out = utils.to_reference(ref_out, True)
     if dtype == torch.bfloat16:
         utils.gems_assert_close(res_out, ref_out, dtype, atol=0.5)
     elif dtype == torch.float16:

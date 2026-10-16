@@ -18,55 +18,44 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-# (M, K, N) shapes for the sparse-dense matmul benchmark.
-SMM_SHAPES = [
-    (64, 64, 64),
-    (128, 128, 128),
-    (256, 256, 256),
-    (512, 128, 256),
-    (1024, 256, 512),
-]
-
-
-def _make_sparse_coo(M, K, dtype, device, density=0.3, seed=0):
-    torch.manual_seed(seed)
-    dense = torch.randn(M, K, dtype=dtype, device=device)
-    mask = (torch.rand(M, K, device=device) < density).to(torch.bool)
-    return (dense * mask).to_sparse().coalesce()
+SMM_SHAPES = [(64, 64, 64), (128, 128, 128), (256, 256, 256), (512, 128, 256), (1024, 256, 512)]
 
 
 def _torch_smm_ref(self, mat):
-    """A native-CUDA baseline for ``torch.smm``.
-
-    ``torch.smm`` has no native CUDA kernel (it decomposes to ``sspaddmm``,
-    which is NYI on CUDA), so the closest equivalent in native PyTorch is to
-    materialize the sparse operand to dense, run the dense matmul, then
-    re-sparsify (and coalesce) the result. This baseline performs the same
-    logical work as the GEMS kernel and is the meaningful comparison target.
-    """
     return (self.to_dense() @ mat).to_sparse().coalesce()
 
 
-class SmmBenchmark(base.Benchmark):
+def _case_fn(shape, dtype):
+    del dtype
+    m, k, n = shape
+    yield base.BenchmarkCasePlan(
+        shape={"sparse": [m, k], "dense": [k, n]},
+        params={"density": 0.3},
+        builder_args=(m, k, n, 0.3),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    m, k, n, density = plan.builder_args
+    torch.manual_seed(0)
+    dense_source = torch.randn(m, k, dtype=dtype, device=device)
+    mask = torch.rand(m, k, device=device) < density
+    sparse = (dense_source * mask).to_sparse().coalesce()
+    dense = torch.randn(k, n, dtype=dtype, device=device)
+    return sparse, dense
+
+
+class SmmBenchmark(OperatorBenchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = SMM_SHAPES
-
-    def get_input_iter(self, cur_dtype):
-        density = 0.3
-        for M, K, N in self.shapes:
-            sparse = _make_sparse_coo(M, K, cur_dtype, self.device, density=density)
-            dense = torch.randn(K, N, dtype=cur_dtype, device=self.device)
-            yield sparse, dense
+        self.shape_desc = "M, K, N"
 
     def get_tflops(self, op, *args, **kwargs):
-        sparse, dense = args[0], args[1]
-        # Each stored nonzero contributes one multiply-add to each of the N
-        # output columns, so the useful work is 2 * nnz * N. Using 2 * M * K * N
-        # would report the flops of the *dense* matmul and overstate throughput
-        # by 1 / density (100x at 1% density).
+        sparse, dense = args[:2]
         return 2 * sparse._nnz() * dense.shape[1]
 
 
@@ -76,9 +65,8 @@ def test_smm():
         op_name="smm",
         torch_op=_torch_smm_ref,
         gems_op=flag_gems.smm,
-        # ``torch.smm`` is only implemented for float32 on the CUDA backend, so the
-        # GEMS implementation mirrors that restriction; there is no
-        # ``consts.FLOAT_DTYPES`` parametrization here.
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
     )
     bench.run()

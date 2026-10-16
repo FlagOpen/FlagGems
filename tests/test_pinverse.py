@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
 DTYPES = [torch.float32]
 
 SHAPES = [(3, 2), (2, 3), (4, 4), (2, 5, 3), (2, 2, 4, 3)]
@@ -54,7 +60,7 @@ def _make_well_conditioned(shape, dtype, device):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_pinverse(shape, dtype):
     inp = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, True)
     reference = torch.pinverse(ref_inp)
 
     result = flag_gems.pinverse(inp)
@@ -65,7 +71,7 @@ def test_pinverse(shape, dtype):
 @pytest.mark.pinverse
 def test_pinverse_rcond():
     inp = _make_well_conditioned((2, 5, 3), torch.float32, flag_gems.device)
-    reference = torch.pinverse(utils.to_reference(inp), rcond=1e-4)
+    reference = torch.pinverse(utils.to_reference(inp, True), rcond=1e-4)
 
     result = flag_gems.pinverse(inp, rcond=1e-4)
 
@@ -76,7 +82,7 @@ def test_pinverse_rcond():
 def test_pinverse_batch_above_cuda_grid_y_limit():
     inp = torch.tensor([[2.0, 1.0], [0.0, 3.0]], device=flag_gems.device)
     inp = inp.expand(65536, 2, 2).contiguous()
-    reference = torch.pinverse(utils.to_reference(inp))
+    reference = torch.pinverse(utils.to_reference(inp, True))
     result = flag_gems.pinverse(inp)
     utils.gems_assert_close(result, reference, inp.dtype)
 
@@ -86,7 +92,7 @@ def test_pinverse_noncontiguous():
     base = _make_well_conditioned((2, 3, 5), torch.float32, flag_gems.device)
     inp = base.transpose(-2, -1)
     assert not inp.is_contiguous()
-    reference = torch.pinverse(utils.to_reference(inp))
+    reference = torch.pinverse(utils.to_reference(inp, True))
 
     result = flag_gems.pinverse(inp)
     utils.gems_assert_close(result, reference, inp.dtype, atol=PINVERSE_ATOL[inp.dtype])
@@ -113,7 +119,7 @@ def test_pinverse_rcond_and_rank_deficiency(rcond):
         with pytest.raises(NotImplementedError, match="negative rcond"):
             flag_gems.pinverse(inp, rcond=rcond)
         return
-    reference = torch.pinverse(utils.to_reference(inp), rcond=rcond)
+    reference = torch.pinverse(utils.to_reference(inp, True), rcond=rcond)
 
     result = flag_gems.pinverse(inp, rcond=rcond)
     utils.gems_assert_close(result, reference, inp.dtype, atol=5e-3)
@@ -172,7 +178,7 @@ def test_pinverse_autograd():
 @pytest.mark.parametrize("shape", [(48, 40), (40, 48), (4, 96, 40), (4, 40, 96)])
 def test_pinverse_large_multitile_and_moore_penrose(shape):
     inp = _make_well_conditioned(shape, torch.float32, flag_gems.device)
-    reference = torch.pinverse(utils.to_reference(inp), rcond=1e-5)
+    reference = torch.pinverse(utils.to_reference(inp, True), rcond=1e-5)
     result = flag_gems.pinverse(inp, rcond=1e-5)
     utils.gems_assert_close(result, reference, torch.float32, atol=5e-2)
 
@@ -198,7 +204,7 @@ def test_pinverse_non_diagonal_difficult_inputs(case):
         inp = (left @ torch.diag(singular) @ right.T).to(flag_gems.device)
         rcond = 1e-4
 
-    reference = torch.pinverse(utils.to_reference(inp), rcond=rcond)
+    reference = torch.pinverse(utils.to_reference(inp, True), rcond=rcond)
     result = flag_gems.pinverse(inp, rcond=rcond)
     torch.testing.assert_close(
         utils.to_cpu(result, reference), reference, atol=1e-1, rtol=2e-2

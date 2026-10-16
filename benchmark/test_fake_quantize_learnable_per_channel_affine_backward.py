@@ -1,4 +1,4 @@
-# Copyright 2026 FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,15 +16,8 @@ import pytest
 import torch
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# The aten op `_fake_quantize_learnable_per_channel_affine_backward` is always
-# computed in float32 (see its schema). We benchmark a representative set of
-# per-channel shapes where the quantization axis carries a moderate number of
-# channels, with the saturation factor tuned so that some channels saturate
-# (exercising the saturation branch of the backward kernel).
-ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_channel_affine_backward
-
-# (shape, axis, quant_min, quant_max, grad_factor)
 BENCH_CASES = [
     ((64, 1024), 0, -128, 127, 1.0),
     ((1024, 64), 1, -128, 127, 1.0),
@@ -37,39 +30,43 @@ BENCH_CASES = [
 ]
 
 
-class FakeQuantizeLearnablePerChannelAffineBackwardBenchmark(base.Benchmark):
+def _case_fn(case, dtype):
+    del dtype
+    shape, axis, quant_min, quant_max, grad_factor = case
+    yield base.BenchmarkCasePlan(
+        shape={"grad": list(shape), "self": list(shape), "scale": [shape[axis]], "zero_point": [shape[axis]]},
+        params={"axis": axis, "quant_min": quant_min, "quant_max": quant_max, "grad_factor": grad_factor},
+        builder_args=(tuple(shape), axis, quant_min, quant_max, grad_factor),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, axis, quant_min, quant_max, grad_factor = plan.builder_args
+    torch.manual_seed(0)
+    channels = shape[axis]
+    scale = torch.rand(channels, dtype=dtype, device=device) * 0.4 + 0.05
+    zero_point = torch.rand(channels, dtype=dtype, device=device) * (quant_max * 0.5)
+    grad = torch.randn(shape, dtype=dtype, device=device)
+    self_t = torch.randn(shape, dtype=dtype, device=device) * (float(quant_max) * 0.05)
+    return grad, self_t, scale, zero_point, axis, quant_min, quant_max, grad_factor
+
+
+class FakeQuantizeLearnablePerChannelAffineBackwardBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = BENCH_CASES
 
-    def get_input_iter(self, cur_dtype):
-        for shape, axis, quant_min, quant_max, grad_factor in self.shapes:
-            C = shape[axis]
-            scale = torch.rand(C, dtype=cur_dtype, device=self.device) * 0.4 + 0.05
-            zero_point = torch.rand(C, dtype=cur_dtype, device=self.device) * (
-                quant_max * 0.5
-            )
-            sat_factor = float(quant_max) * 0.05
-            grad = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            self_t = (
-                torch.randn(shape, dtype=cur_dtype, device=self.device) * sat_factor
-            )
-            yield grad, self_t, scale, zero_point, axis, quant_min, quant_max, grad_factor
-
     def get_tflops(self, op, *args, **kwargs):
-        # `args` = (grad, self, scale, zero_point, axis, qmin, qmax, grad_factor)
-        grad = args[0]
-        numel = 1
-        for s in grad.shape:
-            numel *= s
-        return torch.tensor(numel).item()
+        del op, kwargs
+        return args[0].numel()
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward():
     bench = FakeQuantizeLearnablePerChannelAffineBackwardBenchmark(
         op_name="fake_quantize_learnable_per_channel_affine_backward",
-        torch_op=ATEN_OP,
-        # The aten op operates in float32 only.
+        torch_op=torch.ops.aten._fake_quantize_learnable_per_channel_affine_backward,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
     )
     bench.run()

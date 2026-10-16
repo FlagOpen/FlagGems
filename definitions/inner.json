@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "inner",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::inner(Tensor self, Tensor other) -> Tensor. Computes the generalized inner product by contracting the final dimension of both operands. The correctness suite covers scalar, vector dot-product, matrix/vector, matrix/matrix, batched leading dimensions, zero-length contractions, noncontiguous inputs, dtype mismatch, contraction mismatch, and floating-point accumulation accuracy. The operation does not mutate or alias either input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

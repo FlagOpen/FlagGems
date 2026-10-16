@@ -16,35 +16,63 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-def empty_input_fn(shape, dtype, device):
-    yield shape
-
-
-def empty_permuted_input_fn(shape, dtype, device):
-    # Reverse the physical layout so the allocation exercises a non-contiguous
-    # memory ordering rather than the plain contiguous one.
-    yield shape, list(reversed(range(len(shape))))
-
-
-@pytest.mark.empty_permuted
-def test_empty_permuted():
-    bench = base.GenericBenchmark(
-        op_name="empty_permuted",
-        torch_op=torch.empty_permuted,
-        dtypes=consts.FLOAT_DTYPES,
-        input_fn=empty_permuted_input_fn,
+def _empty_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"output": list(dims)},
+        params={"memory_format": "contiguous_format"},
+        builder_args=(dims,),
     )
-    bench.run()
+
+
+def _empty_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return shape, {
+        "dtype": dtype,
+        "device": device,
+        "memory_format": torch.contiguous_format,
+    }
+
+
+def _empty_permuted_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    physical_layout = tuple(reversed(range(len(dims))))
+    yield base.BenchmarkCasePlan(
+        shape={"output": list(dims)},
+        params={"physical_layout": list(physical_layout)},
+        builder_args=(dims, physical_layout),
+    )
+
+
+def _empty_permuted_build_inputs_fn(plan, dtype, device):
+    shape, physical_layout = plan.builder_args
+    return shape, list(physical_layout), {"dtype": dtype, "device": device}
 
 
 @pytest.mark.empty
 def test_empty():
-    bench = base.GenericBenchmark(
+    bench = OperatorBenchmark(
         op_name="empty",
         torch_op=torch.empty,
+        case_fn=_empty_case_fn,
+        build_inputs_fn=_empty_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-        input_fn=empty_input_fn,
+    )
+    bench.run()
+
+
+@pytest.mark.empty_permuted
+def test_empty_permuted():
+    bench = OperatorBenchmark(
+        op_name="empty_permuted",
+        torch_op=torch.empty_permuted,
+        case_fn=_empty_permuted_case_fn,
+        build_inputs_fn=_empty_permuted_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 @pytest.mark.batch_norm_with_update
 @pytest.mark.parametrize(
     "shape",
@@ -37,6 +36,7 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_batch_norm_with_update(shape, dtype, affine):
+    torch.manual_seed(0)
     C = shape[1]
     inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
     weight = (
@@ -78,6 +78,8 @@ def test_batch_norm_with_update(shape, dtype, affine):
 
     res_running_mean = running_mean.clone()
     res_running_var = running_var.clone()
+    mean_ptr = res_running_mean.data_ptr()
+    var_ptr = res_running_var.data_ptr()
     (
         res_out,
         res_save_mean,
@@ -102,6 +104,8 @@ def test_batch_norm_with_update(shape, dtype, affine):
     utils.gems_assert_close(res_save_invstd, ref_save_invstd, acc_dtype)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_running_mean.data_ptr() == mean_ptr
+    assert res_running_var.data_ptr() == var_ptr
     utils.gems_assert_close(res_running_mean, ref_running_mean, dtype)
     utils.gems_assert_close(res_running_var, ref_running_var, dtype)
 
@@ -111,6 +115,7 @@ def test_batch_norm_with_update(shape, dtype, affine):
 def test_batch_norm_with_update_non_contiguous_params(dtype):
     # weight, bias and running stats are strided views; the kernel must
     # honor their strides when reading and updating them in place.
+    torch.manual_seed(0)
     C = 8
     shape = (32, C, 16)
     inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
@@ -132,6 +137,10 @@ def test_batch_norm_with_update_non_contiguous_params(dtype):
     assert not running_var.is_contiguous()
     odd_mean_before = mean_base[1::2].clone()
     odd_var_before = var_base[1::2].clone()
+    mean_ptr = running_mean.data_ptr()
+    var_ptr = running_var.data_ptr()
+    mean_stride = running_mean.stride()
+    var_stride = running_var.stride()
 
     momentum = 0.1
     eps = 1e-5
@@ -183,8 +192,10 @@ def test_batch_norm_with_update_non_contiguous_params(dtype):
 
     # The views are updated in place, and the elements they skip must keep
     # their original values.
-    assert running_mean.stride() == (2,)
-    assert running_var.stride() == (2,)
+    assert running_mean.data_ptr() == mean_ptr
+    assert running_var.data_ptr() == var_ptr
+    assert running_mean.stride() == mean_stride == (2,)
+    assert running_var.stride() == var_stride == (2,)
     utils.gems_assert_close(running_mean, ref_running_mean, dtype)
     utils.gems_assert_close(running_var, ref_running_var, dtype)
     # Untouched elements must be bit-identical to their original values.
@@ -196,6 +207,7 @@ def test_batch_norm_with_update_non_contiguous_params(dtype):
 def test_batch_norm_with_update_requires_running_stats():
     # The aten schema requires running_mean and running_var; missing
     # arguments must fail instead of silently corrupting the input.
+    torch.manual_seed(0)
     inp = torch.randn((8, 3, 4), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems._batch_norm_with_update(inp, None, None, None, None)
@@ -207,6 +219,7 @@ def test_batch_norm_with_update_requires_running_stats():
 def test_batch_norm_with_update_backward(dtype, affine):
     # The forward statistics feed native_batch_norm_backward; input, weight
     # and bias gradients must match the ATen reference.
+    torch.manual_seed(0)
     C = 8
     shape = (32, C, 16)
     inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
@@ -311,54 +324,44 @@ def test_batch_norm_with_update_backward(dtype, affine):
 
 @pytest.mark.batch_norm_with_update
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_batch_norm_with_update_param_size_mismatch(dtype):
-    # The kernel indexes the 1-D parameters by feature id, so a feature-count
-    # mismatch would read or write outside their storage.
+@pytest.mark.parametrize(
+    "param_name,delta",
+    [("weight", 1), ("weight", -1), ("bias", 1), ("running_mean", 1), ("running_var", -1)],
+)
+def test_batch_norm_with_update_param_size_mismatch(dtype, param_name, delta):
+    torch.manual_seed(0)
     C = 4
     inp = torch.randn((8, C, 5), dtype=dtype, device=flag_gems.device)
-    running_mean = torch.zeros(C, dtype=dtype, device=flag_gems.device)
-    running_var = torch.ones(C, dtype=dtype, device=flag_gems.device)
-
-    for kwargs in (
-        {"weight": torch.randn(C + 1, dtype=dtype, device=flag_gems.device)},
-        {"weight": torch.randn(C - 1, dtype=dtype, device=flag_gems.device)},
-        {"bias": torch.randn(C + 1, dtype=dtype, device=flag_gems.device)},
-        {"running_mean": torch.zeros(C + 1, dtype=dtype, device=flag_gems.device)},
-        {"running_var": torch.ones(C - 1, dtype=dtype, device=flag_gems.device)},
-    ):
-        args = {
-            "weight": None,
-            "bias": None,
-            "running_mean": running_mean,
-            "running_var": running_var,
-        }
-        args.update(kwargs)
-        with pytest.raises(RuntimeError):
-            flag_gems._batch_norm_with_update(
-                inp,
-                args["weight"],
-                args["bias"],
-                args["running_mean"],
-                args["running_var"],
-                0.1,
-                1e-5,
-            )
+    args = {
+        "weight": None,
+        "bias": None,
+        "running_mean": torch.zeros(C, dtype=dtype, device=flag_gems.device),
+        "running_var": torch.ones(C, dtype=dtype, device=flag_gems.device),
+    }
+    fill = torch.ones if param_name == "running_var" else torch.randn
+    args[param_name] = fill(C + delta, dtype=dtype, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems._batch_norm_with_update(
+            inp, args["weight"], args["bias"], args["running_mean"],
+            args["running_var"], 0.1, 1e-5
+        )
 
 
 @pytest.mark.batch_norm_with_update
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_batch_norm_with_update_empty_dims(dtype):
-    # Empty batch or spatial dimensions hold no elements to normalize and
-    # must return empty results instead of crashing.
+@pytest.mark.parametrize("shape", [(0, 4, 5), (8, 4, 0)])
+def test_batch_norm_with_update_empty_dims(dtype, shape):
     C = 4
     running_mean = torch.zeros(C, dtype=dtype, device=flag_gems.device)
     running_var = torch.ones(C, dtype=dtype, device=flag_gems.device)
-
-    for shape in ((0, C, 5), (8, C, 0)):
-        inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-        out, save_mean, save_invstd, reserve = flag_gems._batch_norm_with_update(
-            inp, None, None, running_mean, running_var, 0.1, 1e-5
-        )
-        assert out.shape == shape
-        assert save_mean.shape == (C,)
-        assert save_invstd.shape == (C,)
+    mean_ptr = running_mean.data_ptr()
+    var_ptr = running_var.data_ptr()
+    out, save_mean, save_invstd, reserve = flag_gems._batch_norm_with_update(
+        torch.empty(shape, dtype=dtype, device=flag_gems.device),
+        None, None, running_mean, running_var, 0.1, 1e-5
+    )
+    assert out.shape == shape
+    assert save_mean.shape == (C,)
+    assert save_invstd.shape == (C,)
+    assert running_mean.data_ptr() == mean_ptr
+    assert running_var.data_ptr() == var_ptr

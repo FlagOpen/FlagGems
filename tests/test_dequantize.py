@@ -35,6 +35,7 @@ QUANT_SHAPES = [(4, 4), (16, 32), (32, 64), (64, 128), (1024, 1024)]
 @pytest.mark.parametrize("zero_point", [0, 10, -20])
 def test_dequantize(shape, scale, zero_point):
     # Create quantized tensor
+    torch.manual_seed(0)
     fp_tensor = torch.randn(shape, device="cpu")
     q_tensor = torch.quantize_per_tensor(
         fp_tensor, scale=scale, zero_point=zero_point, dtype=torch.qint8
@@ -42,8 +43,8 @@ def test_dequantize(shape, scale, zero_point):
 
     ref_q_tensor = utils.to_reference(q_tensor)
 
-    # Reference dequantize
-    ref_out = torch.dequantize(ref_q_tensor)
+    # Reference dequantize, upcast after dequantization for comparison.
+    ref_out = utils.to_reference(torch.dequantize(ref_q_tensor), True)
 
     # GEMS dequantize
     res_out = flag_gems.dequantize(q_tensor)

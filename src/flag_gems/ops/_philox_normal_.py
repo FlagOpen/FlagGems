@@ -24,28 +24,6 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# `aten::_philox_normal_` is part of PyTorch's stateless Philox RNG family,
-# which landed upstream after the 2.10 release. Builds that predate it ship no
-# schema for the operator, and FlagGems' registrar refuses to install an
-# implementation for an unknown schema. Define the upstream signature verbatim
-# when it is missing so the operator can still be registered and exercised;
-# on newer torch builds the guard short-circuits.
-_PHILOX_NORMAL_SCHEMA = (
-    "(Tensor(a!) self, Tensor key, float mean=0, float std=1) -> Tensor(a!)"
-)
-
-
-def _ensure_philox_normal_schema():
-    if hasattr(torch.ops.aten, "_philox_normal_"):
-        return
-    try:
-        torch.library.define("aten::_philox_normal_", _PHILOX_NORMAL_SCHEMA)
-    except Exception as exc:  # pragma: no cover - depends on the torch build
-        logger.warning("Unable to define aten::_philox_normal_: %s", exc)
-
-
-_ensure_philox_normal_schema()
-
 
 @triton.jit
 def _box_muller_f32(r0, r1, r2, r3):

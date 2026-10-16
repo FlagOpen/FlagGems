@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "unsafe_masked_index_put_accumulate",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_unsafe_masked_index_put_accumulate(Tensor self, Tensor mask, Tensor?[] indices, Tensor values) -> Tensor. Tests cover the legacy multidimensional shape matrix, per-dimension index conversion, project floating dtypes except unsupported bfloat16, numerical accumulation, and non-mutation of every input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?[]"
+    },
+    {
+      "name": "values",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

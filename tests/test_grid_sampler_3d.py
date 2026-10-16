@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -24,6 +38,7 @@ GRID_SAMPLER_3D_SHAPES = [
 def test_grid_sampler_3d(
     input_shape, dtype, interpolation_mode, padding_mode, align_corners
 ):
+    torch.manual_seed(0)
     N, C, ID, IH, IW = input_shape
     # Fixed small output size to keep test runtime manageable
     OD, OH, OW = 2, 2, 2
@@ -85,6 +100,7 @@ GRID_SAMPLER_3D_OUTPUT_SIZE_CONFIGS = [
 def test_grid_sampler_3d_varied_output_sizes(
     input_shape, output_size, dtype, interpolation_mode, padding_mode, align_corners
 ):
+    torch.manual_seed(0)
     N, C, ID, IH, IW = input_shape
     OD, OH, OW = output_size
 
@@ -105,3 +121,24 @@ def test_grid_sampler_3d_varied_output_sizes(
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-5)
+
+@pytest.mark.grid_sampler_3d
+def test_grid_sampler_3d_explicit_autograd_rejection():
+    torch.manual_seed(0)
+    inp = torch.randn(
+        (1, 2, 4, 4, 4),
+        dtype=torch.float32,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    grid = torch.randn(
+        (1, 2, 2, 2, 3),
+        dtype=torch.float32,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    actual = flag_gems.grid_sampler_3d(inp, grid, 0, 0, False)
+
+    assert not actual.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(actual.sum(), (inp, grid))

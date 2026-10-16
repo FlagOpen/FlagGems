@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "special_bessel_j0",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_bessel_j0(Tensor self) -> Tensor. Computes the Bessel function of the first kind of order zero elementwise without mutating or aliasing the input. The correctness suite covers float32 and float64, the legacy pointwise shapes, zero-sized and noncontiguous tensors, and NaN/infinity/signed-zero values. Float64 is skipped only on Kunlunxin because that backend silently downgrades it to float32.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

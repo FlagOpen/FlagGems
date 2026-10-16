@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "standard_gamma_grad",
+  "requires_triton_kernel": true,
+  "description": "Representative upstream schema: aten::_standard_gamma_grad(Tensor self, Tensor output) -> Tensor. The artifact maps to the private canonical base _standard_gamma_grad and computes the reparameterized Gamma gradient without mutating or aliasing either input. Tests cover the general, small-output, large-alpha near-mode and away-from-mode numerical branches, supported floating dtypes, noncontiguous inputs, input preservation, and invalid dtype or shape combinations.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

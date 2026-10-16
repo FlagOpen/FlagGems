@@ -18,35 +18,29 @@ import torch
 from . import base, consts
 
 
-class EmbeddingRenormBenchmark(base.Benchmark):
+SHAPES = [(1024, 128), (4096, 256), (16384, 256), (32768, 512), (50000, 256), (50000, 512)]
+
+
+class EmbeddingRenormBenchmark(base.GenericBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # 2D shapes: (num_embeddings, embedding_dim) across growing table sizes.
-        self.shapes = [
-            (1024, 128),
-            (4096, 256),
-            (16384, 256),
-            (32768, 512),
-            (50000, 256),
-            (50000, 512),
-        ]
+        self.shapes = SHAPES
 
-    def set_more_shapes(self):
-        return None
 
-    def get_input_iter(self, cur_dtype):
-        for num_embeddings, embedding_dim in self.shapes:
-            weight = (
-                torch.randn(
-                    num_embeddings, embedding_dim, dtype=cur_dtype, device=self.device
-                )
-                * 1.5
-            )
-            num_indices = num_embeddings // 2
-            indices = torch.randint(
-                0, num_embeddings, (num_indices,), dtype=torch.long, device=self.device
-            )
-            # max_norm=1.0, norm_type=2.0 matches nn.Embedding's defaults.
-            yield weight, indices, 1.0, 2.0
+def _case_fn(shape, dtype):
+    del dtype
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(shape), "indices": [shape[0] // 2]},
+        params={"max_norm": 1.0, "norm_type": 2.0},
+        builder_args=(tuple(shape),),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    torch.manual_seed(0)
+    (shape,) = plan.builder_args
+    weight = torch.randn(shape, dtype=dtype, device=device) * 1.5
+    indices = torch.randint(0, shape[0], (shape[0] // 2,), device=device)
+    return weight, indices, 1.0, 2.0
 
 
 @pytest.mark.embedding_renorm_
@@ -54,6 +48,10 @@ def test_embedding_renorm_():
     bench = EmbeddingRenormBenchmark(
         op_name="embedding_renorm_",
         torch_op=torch.ops.aten.embedding_renorm_,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
     )
     bench.run()

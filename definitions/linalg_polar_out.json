@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_polar_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_polar.out(Tensor A, *, Tensor(a!) U, Tensor(b!) H) -> (Tensor(a!) U, Tensor(b!) H). Writes the right polar factors into U and H. Tests cover empty-buffer resize, object identity, noncontiguous pre-sized storage and stride preservation, reconstruction, and dtype rejection.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "U",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "H",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "U",
+    "H"
+  ],
+  "effects": {
+    "mutates": [
+      "U",
+      "H"
+    ],
+    "returns_alias_of": {
+      "U": "U",
+      "H": "H"
+    }
+  }
+}

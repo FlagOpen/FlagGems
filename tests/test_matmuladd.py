@@ -18,53 +18,109 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-
-# Shapes copied from the worktree shared BLAS tests for matmul-style coverage.
-MNK_SHAPES = [
-    (1, 1, 32),
-    (15, 160, 1024),
-    (495, 5333, 71),
-]
+from .conftest import QUICK_MODE
 
 
-def make_out(M, N, dtype, is_contiguous):
-    if is_contiguous:
-        return torch.empty((M, N), dtype=dtype, device=flag_gems.device)
-    return torch.empty((N, M), dtype=dtype, device=flag_gems.device).t()
+if QUICK_MODE:
+    _MNK_SHAPES = [(1, 1, 32)]
+    _DTYPES = [torch.float32]
+else:
+    _MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
+    _DTYPES = utils.FLOAT_DTYPES
+
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
+def _assert_unchanged(tensor, before, pointer):
+    utils.gems_assert_equal(tensor, before)
+    assert tensor.data_ptr() == pointer
+
+
+def _run_case(input_tensor, other, bias, dtype, reduce_dim):
+    ref_input = utils.to_reference(input_tensor, True)
+    ref_other = utils.to_reference(other, True)
+    ref_bias = utils.to_reference(bias, True)
+    expected = torch.matmul(ref_input, ref_other) + ref_bias
+
+    snapshots = [tensor.clone() for tensor in (input_tensor, other, bias)]
+    pointers = [tensor.data_ptr() for tensor in (input_tensor, other, bias)]
+    with flag_gems.use_gems():
+        result = flag_gems.matmuladd(input_tensor, other, bias)
+
+    assert result.shape == expected.shape
+    assert result.dtype == input_tensor.dtype
+    assert result.device == input_tensor.device
+    result_storage = result.untyped_storage().data_ptr()
+    assert result_storage not in {
+        input_tensor.untyped_storage().data_ptr(),
+        other.untyped_storage().data_ptr(),
+        bias.untyped_storage().data_ptr(),
+    }
+    utils.gems_assert_close(result, expected, dtype, reduce_dim=reduce_dim)
+    for tensor, before, pointer in zip(
+        (input_tensor, other, bias), snapshots, pointers
+    ):
+        _assert_unchanged(tensor, before, pointer)
 
 
 @pytest.mark.matmuladd
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_matmuladd(M, N, K, dtype):
+@pytest.mark.parametrize("M,N,K", _MNK_SHAPES)
+@pytest.mark.parametrize("bias_kind", ["vector", "matrix"])
+@pytest.mark.parametrize("dtype", _DTYPES)
+def test_matmuladd(M, N, K, bias_kind, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip(
-            "Issue #3794: Skipping fp32 matmuladd test on TsingMicro because "
-            "TX81 does not support fp32 dot."
+            reason=(
+                "Issue #3794: TX81 does not support the fp32 dot operation "
+                "required by matmuladd"
+            )
         )
+    input_tensor = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    other = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias_shape = (N,) if bias_kind == "vector" else (M, N)
+    bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+    _run_case(input_tensor, other, bias, dtype, K)
 
-    # Test case 1: 1D bias
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
 
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_bias = utils.to_reference(bias, True)
+@pytest.mark.matmuladd
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_matmuladd_noncontiguous(dtype):
+    input_tensor = torch.randn((4, 10), dtype=dtype, device=flag_gems.device)[:, ::2]
+    other = torch.randn((7, 5), dtype=dtype, device=flag_gems.device).t()
+    bias = torch.randn((4, 14), dtype=dtype, device=flag_gems.device)[:, ::2]
+    assert not input_tensor.is_contiguous()
+    assert not other.is_contiguous()
+    assert not bias.is_contiguous()
+    _run_case(input_tensor, other, bias, dtype, 5)
 
-    # Reference: matmul + bias
-    ref_out = torch.matmul(ref_mat1, ref_mat2) + ref_bias
-    with flag_gems.use_gems():
-        res_out = flag_gems.matmuladd(mat1, mat2, bias)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+@pytest.mark.matmuladd
+def test_matmuladd_is_not_autograd_registered():
+    input_tensor = torch.randn(
+        (3, 4), device=flag_gems.device, requires_grad=True
+    )
+    other = torch.randn((4, 5), device=flag_gems.device, requires_grad=True)
+    bias = torch.randn((5,), device=flag_gems.device, requires_grad=True)
+    result = flag_gems.matmuladd(input_tensor, other, bias)
+    assert result.requires_grad is False
 
-    # Test case 2: 2D bias (broadcasted)
-    bias_2d = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
-    ref_bias_2d = utils.to_reference(bias_2d, True)
 
-    ref_out_2d = torch.matmul(ref_mat1, ref_mat2) + ref_bias_2d
-    with flag_gems.use_gems():
-        res_out_2d = flag_gems.matmuladd(mat1, mat2, bias_2d)
+@pytest.mark.matmuladd
+def test_matmuladd_rejects_incompatible_matmul_shapes():
+    input_tensor = torch.randn((3, 4), device=flag_gems.device)
+    other = torch.randn((6, 5), device=flag_gems.device)
+    bias = torch.randn((5,), device=flag_gems.device)
+    with pytest.raises(AssertionError, match="Incompatible dimensions"):
+        flag_gems.matmuladd(input_tensor, other, bias)
 
-    utils.gems_assert_close(res_out_2d, ref_out_2d, dtype, reduce_dim=K)
+
+@pytest.mark.matmuladd
+def test_matmuladd_rejects_incompatible_bias_shape():
+    input_tensor = torch.randn((3, 4), device=flag_gems.device)
+    other = torch.randn((4, 5), device=flag_gems.device)
+    bias = torch.randn((6,), device=flag_gems.device)
+    with pytest.raises(AssertionError, match="Incompatible input shape"):
+        flag_gems.matmuladd(input_tensor, other, bias)

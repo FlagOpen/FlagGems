@@ -15,63 +15,48 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+class BlasCaseBenchmark(base.BlasBenchmark, OperatorBenchmark):
+    def supports_cases(self):
+        return True
+
+    get_case_iter = OperatorBenchmark.get_case_iter
+    build_inputs = OperatorBenchmark.build_inputs
 
 
-class BaddbmmBenchmark(base.BlasBenchmark):
-    def set_more_shapes(self):
-        model_shapes_list = consts.model_shapes()
-
-        skip_shapes = [
-            (4, 8192, 128256, 4096),
-            (4, 8192, 152064, 3584),
-        ]
-
-        filtered = []
-        for shape in model_shapes_list:
-            if shape not in skip_shapes:
-                filtered.append(shape)
-
-        return filtered
-
-    def get_tflops(self, op, *args, **kwargs):
-        # shape(b,m,k)(b,k,n)
-        # total_flops = b * m * n * (2 * k + 1)
-        total_flops = (
-            args[1].shape[0]
-            * args[1].shape[1]
-            * args[2].shape[2]
-            * (args[1].shape[2] * 2 + 1)
+def _case_fn(shape, dtype):
+    del dtype
+    b, m, n, k = tuple(shape)
+    for column_major in (False, True):
+        yield base.BenchmarkCasePlan(
+            shape={"self": [b, m, n], "batch1": [b, m, k], "batch2": [b, k, n]},
+            params={"column_major": column_major},
+            builder_args=(b, m, n, k, column_major),
         )
-        return total_flops
 
 
-def _input_fn(b, m, n, k, dtype, device, b_column_major):
-    inp1 = torch.randn([b, m, k], dtype=dtype, device=device)
-
-    if b_column_major:
-        inp2 = torch.randn([b, n, k], dtype=dtype, device=device)
-        inp2 = inp2.transpose(1, 2).contiguous()
+def _build_inputs_fn(plan, dtype, device):
+    b, m, n, k, column_major = plan.builder_args
+    torch.manual_seed(0)
+    batch1 = torch.randn((b, m, k), dtype=dtype, device=device)
+    if column_major:
+        batch2 = torch.randn((b, n, k), dtype=dtype, device=device).transpose(1, 2)
     else:
-        inp2 = torch.randn([b, k, n], dtype=dtype, device=device)
-
-    bias = torch.randn([b, m, n], dtype=dtype, device=device)
-
-    yield bias, inp1, inp2
+        batch2 = torch.randn((b, k, n), dtype=dtype, device=device)
+    self = torch.randn((b, m, n), dtype=dtype, device=device)
+    return self, batch1, batch2
 
 
 @pytest.mark.baddbmm_
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_baddbmm_():
-    bench = BaddbmmBenchmark(
+    BlasCaseBenchmark(
         op_name="baddbmm_",
-        input_fn=_input_fn,
-        torch_op=lambda bias, batch1, batch2: bias.baddbmm_(batch1, batch2),
+        torch_op=lambda self, batch1, batch2: self.baddbmm_(batch1, batch2),
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-
-    bench.run()
+        is_inplace=True,
+        fresh_inputs=True,
+    ).run()

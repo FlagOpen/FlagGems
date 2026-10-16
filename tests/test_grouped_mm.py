@@ -12,22 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import random
-
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
-if cfg.QUICK_MODE:
-    FLOAT_DTYPES = [torch.float32]
-else:
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
+
+
+def _make_grouped_inputs(groups, n_size, k_size, dtype):
+    torch.manual_seed(0)
+    group_sizes = [1 + (group_idx * 17) % 31 for group_idx in range(groups)]
+    total_m = sum(group_sizes)
+    mat_a = torch.rand(
+        (total_m, k_size), dtype=dtype, device=flag_gems.device
+    )
+    mat_b = torch.rand(
+        (groups, k_size, n_size), dtype=dtype, device=flag_gems.device
+    )
+    offs = torch.tensor(
+        [sum(group_sizes[: group_idx + 1]) for group_idx in range(groups)],
+        dtype=torch.int32,
+        device=flag_gems.device,
+    )
+    return mat_a, mat_b, offs
+
+
+def _grouped_reference(mat_a, mat_b, offs):
+    ref_a = utils.to_reference(mat_a, True)
+    ref_b = utils.to_reference(mat_b, True)
+    ref_offs = utils.to_reference(offs, False)
+    boundaries = [0] + ref_offs.cpu().tolist()
+    chunks = [
+        ref_a[boundaries[group_idx] : boundaries[group_idx + 1]]
+        @ ref_b[group_idx]
+        for group_idx in range(ref_b.shape[0])
+    ]
+    return torch.cat(chunks, dim=0)
 
 
 @pytest.mark.grouped_mm
@@ -35,40 +59,36 @@ GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
     utils.SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
 )
-@pytest.mark.parametrize("groups, N, K", GNK_SHAPES)
+@pytest.mark.parametrize("groups,n_size,k_size", GNK_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_grouped_mm(groups, N, K, dtype):
-    assert dtype == torch.bfloat16
-    group_A_list = []
-    group_B_list = []
-    M_list = []
-    A_offs = 0
-    B_offs = 0
+def test_grouped_mm(groups, n_size, k_size, dtype):
+    mat_a, mat_b, offs = _make_grouped_inputs(groups, n_size, k_size, dtype)
+    mat_a_before = utils.to_reference(mat_a.clone(), False)
+    mat_b_before = utils.to_reference(mat_b.clone(), False)
+    offs_before = utils.to_reference(offs.clone(), False)
 
-    for _ in range(groups):
-        M_g = random.randint(1, 16384)
-        N_g = N
-        K_g = K
-        A_g = torch.rand([M_g, K_g], device=flag_gems.device, dtype=dtype)
-        B_g = torch.rand([K_g, N_g], device=flag_gems.device, dtype=dtype)
-        group_A_list.append(A_g)
-        group_B_list.append(B_g)
-        M_list.append(M_g)
-        A_offs += M_g
-        B_offs += K_g
-
-    mat_a = torch.cat([x for x in group_A_list], dim=0)
-    mat_b = torch.stack([x for x in group_B_list], dim=0)
-    offs = torch.tensor(
-        [sum(M_list[: i + 1]) for i in range(groups)],
-        dtype=torch.int32,
-        device=flag_gems.device,
-    )
-
-    if utils.TO_CPU:
-        ref_out = torch._grouped_mm(mat_a.cpu(), mat_b.cpu(), offs.cpu())
-    else:
-        ref_out = torch._grouped_mm(mat_a, mat_b, offs)
+    ref_out = _grouped_reference(mat_a, mat_b, offs)
     res_out = flag_gems.group_mm(mat_a, mat_b, offs)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    assert res_out.shape == (mat_a.shape[0], n_size)
+    assert res_out.dtype == dtype
+    assert res_out.data_ptr() not in {mat_a.data_ptr(), mat_b.data_ptr()}
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=k_size)
+    utils.gems_assert_equal(mat_a, mat_a_before)
+    utils.gems_assert_equal(mat_b, mat_b_before)
+    utils.gems_assert_equal(offs, offs_before)
+
+
+@pytest.mark.grouped_mm
+@pytest.mark.parametrize("invalid", ["mat_a_rank", "mat_b_rank", "offs_count"])
+def test_grouped_mm_rejects_invalid_layout(invalid):
+    mat_a, mat_b, offs = _make_grouped_inputs(3, 16, 32, torch.bfloat16)
+    if invalid == "mat_a_rank":
+        mat_a = mat_a.unsqueeze(0)
+    elif invalid == "mat_b_rank":
+        mat_b = mat_b.reshape(-1, mat_b.shape[-1])
+    else:
+        offs = offs[:-1]
+
+    with pytest.raises(AssertionError):
+        flag_gems.group_mm(mat_a, mat_b, offs)

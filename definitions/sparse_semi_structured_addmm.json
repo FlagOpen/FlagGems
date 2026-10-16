@@ -1,0 +1,60 @@
+{
+  "api_version": "v6.0",
+  "name": "sparse_semi_structured_addmm",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_sparse_semi_structured_addmm(Tensor input, Tensor mat1, Tensor mat1_meta, Tensor mat2, *, Scalar alpha=1, Scalar beta=1, ScalarType? out_dtype=None) -> Tensor. 2:4 semi-structured addmm with alpha and beta scaling; inputs are not mutated. Tests preserve reviewed legacy sparse layout, dtype, shape, special-case, and error behavior.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat1",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat1_meta",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "alpha",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Scalar",
+      "default": 1
+    },
+    {
+      "name": "beta",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Scalar",
+      "default": 1
+    },
+    {
+      "name": "out_dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "ScalarType | None",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

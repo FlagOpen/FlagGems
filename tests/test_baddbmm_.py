@@ -17,47 +17,70 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
-from .accuracy_utils import SCALARS, gems_assert_close, to_reference
+from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
+    MNK_SHAPES = [(1, 1, 32)]
     FLOAT_DTYPES = [torch.float32]
 else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    FLOAT_DTYPES = ORIG_FLOAT_DTYPES
+    MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
+    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
 @pytest.mark.baddbmm_
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("scalar", SCALARS)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_baddbmm_(M, N, K, scalar, dtype):
+    torch.manual_seed(0)
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Issue #3794: not working")
-
     batch = 4
-    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
-    inp = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
-    ref_mat1 = to_reference(mat1, True)
-    ref_mat2 = to_reference(mat2, True)
-    ref_inp = to_reference(inp, True)
+    batch1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    batch2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    self = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
+    ref_batch1 = utils.to_reference(batch1, True)
+    ref_batch2 = utils.to_reference(batch2, True)
+    ref_self = utils.to_reference(self, True)
+    pointer = self.data_ptr()
 
-    alpha = beta = scalar
+    ref_result = ref_self.baddbmm_(ref_batch1, ref_batch2, alpha=scalar, beta=scalar)
+    with flag_gems.use_gems():
+        result = self.baddbmm_(batch1, batch2, alpha=scalar, beta=scalar)
 
-    ref_out = ref_inp.baddbmm_(ref_mat1, ref_mat2, alpha=alpha, beta=beta)
+    assert result is self
+    assert self.data_ptr() == pointer
+    utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
+    utils.gems_assert_close(self, ref_self, dtype, reduce_dim=K)
 
-    inp1 = inp.clone()
-    res_out = flag_gems.baddbmm_(inp1, mat1, mat2, alpha=alpha, beta=beta)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-    gems_assert_close(inp1, ref_inp, dtype, reduce_dim=K)
-    assert res_out is inp1
+@pytest.mark.baddbmm_
+def test_baddbmm_noncontiguous_self_preserves_storage():
+    torch.manual_seed(0)
+    dtype = torch.float32
+    self = torch.randn((2, 5, 3), dtype=dtype, device=flag_gems.device).transpose(1, 2)
+    batch1 = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
+    batch2 = torch.randn((2, 4, 5), dtype=dtype, device=flag_gems.device)
+    ref_self = utils.to_reference(self, True)
+    pointer = self.data_ptr()
+    stride = self.stride()
+    ref_result = ref_self.baddbmm_(
+        utils.to_reference(batch1, True), utils.to_reference(batch2, True)
+    )
+    with flag_gems.use_gems():
+        result = self.baddbmm_(batch1, batch2)
+    assert result is self
+    assert self.data_ptr() == pointer
+    assert self.stride() == stride
+    utils.gems_assert_close(result, ref_result, dtype, reduce_dim=4)
+
+
+@pytest.mark.baddbmm_
+def test_baddbmm_rejects_batch_mismatch():
+    torch.manual_seed(0)
+    self = torch.randn((2, 3, 5), device=flag_gems.device)
+    batch1 = torch.randn((2, 3, 4), device=flag_gems.device)
+    batch2 = torch.randn((3, 4, 5), device=flag_gems.device)
+    with flag_gems.use_gems(), pytest.raises(RuntimeError):
+        self.baddbmm_(batch1, batch2)

@@ -1,0 +1,114 @@
+{
+  "api_version": "v6.0",
+  "name": "scaled_dot_product_cudnn_attention_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_scaled_dot_product_cudnn_attention_backward(Tensor grad_out, Tensor query, Tensor key, Tensor value, Tensor out, Tensor logsumexp, Tensor philox_seed, Tensor philox_offset, Tensor attn_bias, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, float dropout_p, bool is_causal, *, float? scale=None) -> (Tensor, Tensor, Tensor). Computes query, key, and value gradients from a cuDNN-compatible scaled-dot-product attention forward state. Tests cover causal, noncausal, and additive-bias cases and validate all three gradients.",
+  "parameters": [
+    {
+      "name": "grad_out",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "query",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "logsumexp",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "philox_seed",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "philox_offset",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "attn_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cum_seq_q",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cum_seq_k",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "max_q",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "max_k",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "dropout_p",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "is_causal",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scale",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "float?"
+    }
+  ],
+  "outputs": [
+    "grad_query",
+    "grad_key",
+    "grad_value"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

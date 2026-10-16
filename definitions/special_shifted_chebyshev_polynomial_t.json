@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "special_shifted_chebyshev_polynomial_t",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_shifted_chebyshev_polynomial_t(Tensor x, Tensor n) -> Tensor. The correctness suite covers integer tensor degrees through the registered default overload, Python integer degrees through the exported FlagGems callable and ATen n_scalar reference, float32/float64 inputs in [0, 1], and rejection of Half/BFloat16 by the wrapper. The operation does not mutate or alias either input.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "n",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
