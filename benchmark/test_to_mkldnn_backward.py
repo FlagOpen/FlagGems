@@ -208,33 +208,24 @@ class ToMkldnnBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize(
     "dtype,case_group",
-    [
-        pytest.param(
-            dtype,
-            case_group,
-            marks=(
-                _ASCEND_OPAQUE_CROSS_CAST_SKIP
-                if case_group == OPAQUE_CROSS_CAST_GROUP
-                else ()
-            ),
+    [pytest.param(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
+    + [
+        pytest.param(dtype, OPAQUE_GROUP)
+        for dtype in (
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+            torch.int8,
+            torch.uint8,
         )
-        for dtype, case_group in [(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
-        + [
-            (dtype, OPAQUE_GROUP)
-            for dtype in (
-                torch.float32,
-                torch.float16,
-                torch.bfloat16,
-                torch.int8,
-                torch.uint8,
-            )
-            if dtype in BENCH_DTYPES
-        ]
-        + [
-            (dtype, OPAQUE_CROSS_CAST_GROUP)
-            for dtype in (torch.float16, torch.bfloat16)
-            if dtype in BENCH_DTYPES
-        ]
+        if dtype in BENCH_DTYPES
+    ]
+    + [
+        pytest.param(
+            dtype, OPAQUE_CROSS_CAST_GROUP, marks=_ASCEND_OPAQUE_CROSS_CAST_SKIP
+        )
+        for dtype in (torch.float16, torch.bfloat16)
+        if dtype in BENCH_DTYPES
     ],
     ids=str,
 )

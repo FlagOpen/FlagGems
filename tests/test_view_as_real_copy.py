@@ -393,13 +393,7 @@ def test_view_as_real_copy_backward(shape, dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _UNSUPPORTED_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test_view_as_real_copy_rejects_unsupported_dtypes(dtype):
     inp = tu.make_input(dtype, (4, 5), ["-1", "1"])
     with pytest.raises(RuntimeError):

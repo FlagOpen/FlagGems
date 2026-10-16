@@ -196,13 +196,7 @@ def test_adjoint_special_values(dtype):
 
 @pytest.mark.adjoint
 @pytest.mark.parametrize("shape", [(16, 32), (4, 8, 16)])
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in utils.FLOAT_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adjoint_mutation(shape, dtype):
     # Writing through the returned view must update the input.
     inp = tu.make_input(dtype, shape, ["-1", "1"])
