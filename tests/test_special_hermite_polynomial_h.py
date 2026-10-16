@@ -19,6 +19,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_FLOAT_DTYPES = [torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    _FLOAT_DTYPES.append(torch.float64)
+
 
 @pytest.fixture(autouse=True)
 def _seed_random_inputs():
@@ -40,7 +44,8 @@ def _assert_dispatch(caplog):
 
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+# special.hermite_polynomial_h reference only supports float32 and float64
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test_special_hermite_polynomial_h_tensor_degree(shape, dtype):
     _skip_unsupported_cambricon_float64(dtype)
     torch.manual_seed(0)
@@ -59,7 +64,8 @@ def test_special_hermite_polynomial_h_tensor_degree(shape, dtype):
 
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+# special.hermite_polynomial_h reference only supports float32 and float64
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test_special_hermite_polynomial_h_scalar_degree(shape, dtype):
     _skip_unsupported_cambricon_float64(dtype)
     torch.manual_seed(0)
@@ -84,7 +90,11 @@ def test_special_hermite_polynomial_h_registered_dispatch(overload, dtype, caplo
         else 9
     )
     ref_x = utils.to_reference(x, True)
-    ref_degree = utils.to_reference(degree, False) if isinstance(degree, torch.Tensor) else degree
+    ref_degree = (
+        utils.to_reference(degree, False)
+        if isinstance(degree, torch.Tensor)
+        else degree
+    )
     reference_op = getattr(torch.ops.aten.special_hermite_polynomial_h, overload)
     ref_out = reference_op(ref_x, ref_degree)
 
@@ -97,7 +107,7 @@ def test_special_hermite_polynomial_h_registered_dispatch(overload, dtype, caplo
 
 
 @pytest.mark.special_hermite_polynomial_h
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 @pytest.mark.parametrize("degree", [-1, 10])
 def test_special_hermite_polynomial_h_rejects_scalar_degree(dtype, degree):
     _skip_unsupported_cambricon_float64(dtype)
