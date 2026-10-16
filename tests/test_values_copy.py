@@ -31,8 +31,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
-# Keep non-complex cases active; Ascend complex input generation is unsupported.
-pytestmark = pytest.mark.usefixtures("skip_ascend_complex_input")
+
+@pytest.fixture(autouse=True)
+def _skip_ascend_complex_input(request):
+    """Keep non-complex cases active on Ascend."""
+    callspec = getattr(request.node, "callspec", None)
+    dtype = callspec.params.get("dtype") if callspec is not None else None
+    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
+        pytest.skip("Ascend complex input/reference support is incomplete")
+
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 

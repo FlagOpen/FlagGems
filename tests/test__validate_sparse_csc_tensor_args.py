@@ -19,7 +19,15 @@ import flag_gems
 
 from . import test_utils as tu
 
-pytestmark = pytest.mark.usefixtures("skip_ascend_complex_input")
+
+@pytest.fixture(autouse=True)
+def _skip_ascend_complex_input(request):
+    """Keep non-complex cases active on Ascend."""
+    callspec = getattr(request.node, "callspec", None)
+    dtype = callspec.params.get("dtype") if callspec is not None else None
+    if flag_gems.vendor_name == "ascend" and getattr(dtype, "is_complex", False):
+        pytest.skip("Ascend complex input/reference support is incomplete")
+
 
 # The operator validates the arguments of a CSC tensor and returns nothing:
 #   _validate_sparse_csc_tensor_args(Tensor ccol_indices, Tensor row_indices,
