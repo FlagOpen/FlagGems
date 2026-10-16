@@ -31,7 +31,9 @@ else:
     # (input_shape, dim, split_size) triples. Divisible and non-divisible
     # splits (the last chunk is smaller), every dim position including
     # negative dims, 1D/3D/4D inputs, empty tensors and split_size larger
-    # than the dimension are covered.
+    # than the dimension are covered. Non-contiguous / high-rank inputs that
+    # need the strided-decomposition path are covered by the dedicated tests
+    # below (the contig path is rank-independent and a flat copy).
     SPLIT_COPY_CASES = [
         ((8, 6), 0, 4),
         ((10, 8), 0, 4),
@@ -56,11 +58,20 @@ else:
 
 
 def _assert_chunks_match(res_out, ref_out, ref_inp, dtype):
+    # ``len`` -- the number of chunks is the defining output property of a
+    # split; a wrong count is a wrong result even if the values present match.
     assert len(res_out) == len(ref_out), "Number of splits mismatch"
     for res, ref in zip(res_out, ref_out):
+        # shape -- per-chunk extent, incl. the clamped last chunk.
         assert list(res.shape) == list(ref.shape)
+        # is_contiguous -- chunk layout must match the reference (aten always
+        # returns contiguous chunks); checked once per case, not per element.
         assert res.is_contiguous()
+        # _is_alias_of -- the copy must never share storage/view the input;
+        # ``gems_assert_equal`` below compares values only and would pass for
+        # an aliased view, so this is not redundant with it.
         assert not torch._C._is_alias_of(res, ref_inp)
+        # values -- full elementwise equality against the reference.
         utils.gems_assert_equal(res, ref)
 
 
@@ -102,6 +113,34 @@ def test_accuracy_split_copy_strided_input(dtype):
         ref_out = torch.ops.aten.split_copy(ref_inp, split_size, dim=dim)
         res_out = flag_gems.split_copy(inp, split_size, dim=dim)
         _assert_chunks_match(res_out, ref_out, inp, dtype)
+
+
+@pytest.mark.split_copy
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_accuracy_split_copy_high_rank_noncontiguous(dtype):
+    # 4-D/5-D strided and 4-D transposed inputs: only non-contiguous inputs
+    # reach _split_copy_strided_kernel, whose per-dim stride slots are the
+    # rank-dependent code path (the contig path is a flat rank-independent
+    # copy). The plain SPLIT_COPY_CASES entries are all contiguous, so this
+    # covers the decomposition for rank > 3.
+    base4 = torch.randn(4, 8, 6, 10, dtype=dtype, device=flag_gems.device)
+    base5 = torch.randn(4, 6, 8, 6, 10, dtype=dtype, device=flag_gems.device)
+    inputs = [
+        base4[:, ::2, :, :],  # 4-D stride-2 on dim 1
+        base4.transpose(1, 2),  # 4-D transposed
+        base4[:, :, :, ::2],  # 4-D stride-2 on the last dim
+        base5[:, ::2, :, ::2, :],  # 5-D strided
+        base5.transpose(2, 3),  # 5-D transposed
+    ]
+    for inp in inputs:
+        assert not inp.is_contiguous()
+        ref_inp = utils.to_reference(inp)
+        for dim, split_size in [(0, 2), (1, 3), (2, 2), (-1, 4), (-2, 3)]:
+            if inp.shape[dim] < 1:
+                continue
+            ref_out = torch.ops.aten.split_copy(ref_inp, split_size, dim=dim)
+            res_out = flag_gems.split_copy(inp, split_size, dim=dim)
+            _assert_chunks_match(res_out, ref_out, inp, dtype)
 
 
 @pytest.mark.split_copy
@@ -165,7 +204,6 @@ def test_accuracy_split_copy_tail_chunk(dtype):
 @pytest.mark.split_copy
 def test_accuracy_split_copy_error_paths():
     inp = torch.randn(10, 8, device=flag_gems.device)
-
     with pytest.raises((RuntimeError, IndexError)):
         torch.ops.aten.split_copy(inp, 0, dim=0)
     with pytest.raises((RuntimeError, IndexError)):
@@ -185,3 +223,11 @@ def test_accuracy_split_copy_error_paths():
         torch.ops.aten.split_copy(torch.tensor(1.0, device=flag_gems.device), 1, dim=0)
     with pytest.raises((RuntimeError, IndexError)):
         flag_gems.split_copy(torch.tensor(1.0, device=flag_gems.device), 1, dim=0)
+
+    # rank > _MAX_RANK (8) reaches the guard only on the non-contiguous path,
+    # so the negative case must be a non-contiguous high-rank input.
+    rank9 = torch.randn(*([2] * 9), device=flag_gems.device)
+    noncontig9 = rank9.transpose(0, 1)
+    assert not noncontig9.is_contiguous()
+    with pytest.raises(RuntimeError, match="at most 8 dimensions"):
+        flag_gems.split_copy(noncontig9, 1, dim=0)
