@@ -124,7 +124,7 @@ def test_indices_copy_out():
     res_inp = _make_coo(2, 16, (8, 8), flag_gems.device, seed=5)
     res_out = torch.empty((2, 16), dtype=torch.int64, device=flag_gems.device)
 
-    res_ret = torch.ops.aten.indices_copy.out(res_inp, out=res_out)
+    res_ret = flag_gems.indices_copy_out(res_inp, out=res_out)
 
     assert res_ret is res_out
     utils.gems_assert_equal(res_out, res_inp._indices())
