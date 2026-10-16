@@ -67,6 +67,19 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class MkldnnReorderConv2dWeightBenchmark(OperatorBenchmark):
+
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is not None:
+            if self.partition_dtype not in self.dtypes:
+                raise ValueError("partition_dtype must belong to the operator's dtypes")
+            if self.partition_dtype not in self.to_bench_dtypes:
+                pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+            self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         shapes = [tuple(shape) for shape in list(self.shapes) + DEFAULT_WEIGHT_SHAPES]

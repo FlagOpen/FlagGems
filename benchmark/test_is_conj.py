@@ -52,13 +52,27 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, {}
 
 
+class IsConjBenchmark(base.GenericBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is not None:
+            if self.partition_dtype not in self.dtypes:
+                raise ValueError("partition_dtype must belong to the operator's dtypes")
+            if self.partition_dtype not in self.to_bench_dtypes:
+                pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+            self.to_bench_dtypes = [self.partition_dtype]
+
+
 @pytest.mark.is_conj
 @pytest.mark.parametrize("dtype", BENCH_DTYPES)
 def test_is_conj(dtype):
     if flag_gems.vendor_name == "ascend" and dtype.is_complex:
         pytest.skip("Ascend normal_ does not support complex input dtypes")
 
-    bench = base.GenericBenchmark(
+    bench = IsConjBenchmark(
         op_name="is_conj",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

@@ -135,6 +135,18 @@ class IsCoalescedBenchmark(OperatorBenchmark):
     """Keeps the shared shape grid (shape-file aware) and adds the sparse
     (size, nnz, recorded bit) descriptors that this operator actually reads."""
 
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is not None:
+            if self.partition_dtype not in self.dtypes:
+                raise ValueError("partition_dtype must belong to the operator's dtypes")
+            if self.partition_dtype not in self.to_bench_dtypes:
+                pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+            self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = list(self.shapes) + IS_COALESCED_CASES
