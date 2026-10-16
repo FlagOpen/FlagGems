@@ -34,14 +34,14 @@ an average speedup of 0.8x or higher compared to PyTorch implementations.
 <!--
 ## Performance Overview
 
-- **Total Operators**: 142
+- **Total Operators**: 138
 - **Average Speedup Range**: 0.81x - 7.23x
 - **Test Environment**: Hopper GPU
 - **Filtering Criteria**: Average speedup ≥ 0.8x
 -->
 ## 性能数据概览
 
-- **算子总数**：142
+- **算子总数**：138
 - **平均加速比范围**：0.81x - 7.23x
 - **测试环境**：Hopper GPU
 - **过滤条件**：平均加速比 ≥ 0.8x
@@ -154,47 +154,43 @@ an average speedup of 0.8x or higher compared to PyTorch implementations.
 |  99 | `log1p_`                      | **1.00x** 📈  | Math       |
 | 100 | `frac`                        | **1.00x** ⚡  | Math       |
 | 101 | `_functional_sym_constrain_range_for_size` | **1.00x** ⚡  | Internal   |
-| 102 | `expand`                      | **1.00x** ⚡  | Shape      |
-| 103 | `lift`                        | **1.00x** ⚡  | Other      |
-| 104 | `unsqueeze`                   | **1.00x** ⚡  | Shape      |
-| 105 | `_unsafe_view`                | **1.00x** ⚡  | Internal   |
-| 106 | `softshrink`                  | **1.00x** ⚡  | Activation |
-| 107 | `log2_`                       | **1.00x** ⚡  | Math       |
-| 108 | `permute`                     | **1.00x** ⚡  | Shape      |
-| 109 | `leaky_relu_`                 | **1.00x** ⚡  | Activation |
-| 110 | `atanh_`                      | **1.00x** ⚡  | Math       |
-| 111 | `permute_copy`                | **1.00x** ⚡  | Shape      |
-| 112 | `fft_ifftshift`               | **1.00x** ⚡  | Other      |
-| 113 | `copy_`                       | **1.00x** ⚡  | Other      |
-| 114 | `fix_`                        | **1.00x** ⚡  | Math       |
-| 115 | `slice_scatter`               | **0.99x** ⚡  | Other      |
-| 116 | `exp2_`                       | **0.99x** ⚡  | Math       |
-| 117 | `rsqrt_`                      | **0.99x** ⚡  | Math       |
-| 118 | `threshold`                   | **0.98x** ⚡  | Activation |
-| 119 | `reciprocal`                  | **0.97x** ⚡  | Math       |
-| 120 | `maximum`                     | **0.97x** ⚡  | Arithmetic |
-| 121 | `abs`                         | **0.96x** ⚡  | Math       |
-| 122 | `arccosh`                     | **0.96x** ⚡  | Math       |
-| 123 | `multiply`                    | **0.95x** ⚡  | Arithmetic |
-| 124 | `margin_ranking_loss`         | **0.95x** ⚡  | Loss       |
-| 125 | `celu_`                       | **0.92x** ⚡  | Activation |
-| 126 | `hardswish`                   | **0.91x** ⚡  | Activation |
-| 127 | `soft_margin_loss`            | **0.90x** ⚡  | Loss       |
-| 128 | `replication_pad2d`           | **0.90x** ⚡  | Padding    |
-| 129 | `unsqueeze_copy`              | **0.89x** ⚡  | Shape      |
-| 130 | `native_dropout_backward`     | **0.89x** ⚡  | Other      |
-| 131 | `slice_backward`              | **0.88x** ⚡  | Other      |
-| 132 | `relu_`                       | **0.86x** ⚡  | Activation |
-| 133 | `negative_`                   | **0.86x** ⚡  | Math       |
-| 134 | `abs_`                        | **0.86x** ⚡  | Math       |
-| 135 | `take`                        | **0.86x** ⚡  | Other      |
-| 136 | `sgn`                         | **0.86x** ⚡  | Math       |
-| 137 | `erf_`                        | **0.82x** ⚡  | Math       |
-| 138 | `gelu_`                       | **0.82x** ⚡  | Activation |
-| 139 | `erfinv_`                     | **0.82x** ⚡  | Math       |
-| 140 | `_log_softmax_backward_data`  | **0.82x** ⚡  | Internal   |
-| 141 | `log10_`                      | **0.81x** ⚡  | Math       |
-| 142 | `rmsnorm`                     | **special** ⚡ | Normalization |
+| 102 | `softshrink`                  | **1.00x** ⚡  | Activation |
+| 103 | `log2_`                       | **1.00x** ⚡  | Math       |
+| 104 | `permute`                     | **1.00x** ⚡  | Shape      |
+| 105 | `leaky_relu_`                 | **1.00x** ⚡  | Activation |
+| 106 | `atanh_`                      | **1.00x** ⚡  | Math       |
+| 107 | `permute_copy`                | **1.00x** ⚡  | Shape      |
+| 108 | `fft_ifftshift`               | **1.00x** ⚡  | Other      |
+| 109 | `copy_`                       | **1.00x** ⚡  | Other      |
+| 110 | `fix_`                        | **1.00x** ⚡  | Math       |
+| 111 | `slice_scatter`               | **0.99x** ⚡  | Other      |
+| 112 | `exp2_`                       | **0.99x** ⚡  | Math       |
+| 113 | `rsqrt_`                      | **0.99x** ⚡  | Math       |
+| 114 | `threshold`                   | **0.98x** ⚡  | Activation |
+| 115 | `reciprocal`                  | **0.97x** ⚡  | Math       |
+| 116 | `maximum`                     | **0.97x** ⚡  | Arithmetic |
+| 117 | `abs`                         | **0.96x** ⚡  | Math       |
+| 118 | `arccosh`                     | **0.96x** ⚡  | Math       |
+| 119 | `multiply`                    | **0.95x** ⚡  | Arithmetic |
+| 120 | `margin_ranking_loss`         | **0.95x** ⚡  | Loss       |
+| 121 | `celu_`                       | **0.92x** ⚡  | Activation |
+| 122 | `hardswish`                   | **0.91x** ⚡  | Activation |
+| 123 | `soft_margin_loss`            | **0.90x** ⚡  | Loss       |
+| 124 | `replication_pad2d`           | **0.90x** ⚡  | Padding    |
+| 125 | `unsqueeze_copy`              | **0.89x** ⚡  | Shape      |
+| 126 | `native_dropout_backward`     | **0.89x** ⚡  | Other      |
+| 127 | `slice_backward`              | **0.88x** ⚡  | Other      |
+| 128 | `relu_`                       | **0.86x** ⚡  | Activation |
+| 129 | `negative_`                   | **0.86x** ⚡  | Math       |
+| 130 | `abs_`                        | **0.86x** ⚡  | Math       |
+| 131 | `take`                        | **0.86x** ⚡  | Other      |
+| 132 | `sgn`                         | **0.86x** ⚡  | Math       |
+| 133 | `erf_`                        | **0.82x** ⚡  | Math       |
+| 134 | `gelu_`                       | **0.82x** ⚡  | Activation |
+| 135 | `erfinv_`                     | **0.82x** ⚡  | Math       |
+| 136 | `_log_softmax_backward_data`  | **0.82x** ⚡  | Internal   |
+| 137 | `log10_`                      | **0.81x** ⚡  | Math       |
+| 138 | `rmsnorm`                     | **special** ⚡ | Normalization |
 
 <!--
 **Legend**:

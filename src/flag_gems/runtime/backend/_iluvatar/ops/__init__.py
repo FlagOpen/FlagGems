@@ -28,8 +28,6 @@ from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
 from .concatenate import run as concatenate
@@ -51,7 +49,6 @@ from .index_copy_ import index_copy_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
-from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_householder_product import run as linalg_householder_product
 from .linalg_ldl_factor_ex import ldl_factor_ex
@@ -137,8 +134,6 @@ __all__ = [
     "arccosh_",
     "as_strided_scatter",
     "avg_pool3d_backward",
-    "broadcast_tensors",
-    "broadcast_to",
     "cholesky_solve",
     "cholesky_solve_out",
     "concatenate",
@@ -164,7 +159,6 @@ __all__ = [
     "index_select_backward",
     "kthvalue",
     "ldl_factor_ex",
-    "lift_out",
     "linalg_cholesky",
     "linalg_householder_product",
     "linalg_lstsq",

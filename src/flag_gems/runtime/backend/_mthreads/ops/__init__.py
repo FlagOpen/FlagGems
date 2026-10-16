@@ -17,7 +17,6 @@ from torch_musa import current_device, get_device_capability
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
-from ._conj import _conj
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -139,7 +138,6 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
-from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -170,7 +168,6 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
-    "_conj",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_masked_scale",
@@ -313,7 +310,6 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad2d",
-    "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
     "scaled_grouped_mm",

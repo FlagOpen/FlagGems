@@ -273,23 +273,6 @@ ops:
   - Distribution
   stages:
   - alpha: '5.5.0'
-- id: _reshape_alias
-  description: 'Creates a view of the input tensor with the given size and stride,
-
-    sharing the same storage as the input. This is an internal reshape
-
-    helper that skips the validity checks a normal reshape performs.
-
-    '
-  for:
-  - _reshape_alias
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: _reshape_alias_copy
   description: 'Returns a contiguous copy of the input tensor viewed through the
     given size and stride. It is the copy companion of _reshape_alias: the view
@@ -1065,17 +1048,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.3'
-- id: alias
-  description: Return a view tensor sharing the same storage (zero-copy alias).
-  for:
-  - alias
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: alias_copy
   description: 'Creates a new tensor that shares the same storage data as the original
     tensor,
@@ -2722,29 +2694,6 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
-- id: broadcast_tensors
-  description: Broadcasts the given tensors to a common shape according to broadcasting
-    semantics, returning a list of tensors.
-  for:
-  - broadcast_tensors
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: broadcast_to
-  description: Broadcasts input to the shape size. Equivalent to calling input.expand(size).
-  for:
-  - broadcast_to
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: bucket_sort_topk
   description: A wrapper of the TLE version and the Triton version bucket-sort topk
     operation.
@@ -3030,17 +2979,6 @@ ops:
     '
   for:
   - choose_qparams_optimized
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: chunk
-  description: Split a tensor into a specific number of chunks along a given dimension.
-  for:
-  - chunk
   labels:
   - aten
   - KernelGen
@@ -4843,24 +4781,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: dsplit
-  description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
-    returning zero-copy views.
-
-    '
-  for:
-  - dsplit.int
-  - dsplit.array
-  marks:
-  - dsplit
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: dstack
   description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
     are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
@@ -5330,41 +5250,6 @@ ops:
   - Math
   stages:
   - stable: '4.1'
-- id: expand
-  description: Pure layout operation (expand).
-  for:
-  - expand
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: expand_
-  description: Pure layout operation (expand, in-place).
-  for:
-  - expand_
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: expand_as
-  description: Expand tensor to the same size as another tensor (view operation).
-  for:
-  - expand_as
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: expand_copy
   description: Returns a copy of the input tensor expanded by broadcasting singleton
     dimensions.
@@ -5929,18 +5814,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
-- id: flatten
-  description: Flatten a contiguous range of dimensions into a single dimension (view
-    operation).
-  for:
-  - flatten.using_ints
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: flip
   description: Reverse the order of an n-D tensor along given axis in dims.
   for:
@@ -8122,22 +7995,6 @@ ops:
   - Tensor
   stages:
   - stable: '2.1'
-- id: functional_assert_async
-  description: 'Functional version of _assert_async that takes a dependency token
-    and returns a new token.
-
-    Part of PyTorch''s functionalization framework for tracking operation dependencies.
-
-    '
-  for:
-  - _functional_assert_async.msg
-  labels:
-  - utility
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: functional_sym_constrain_range
   description: 'A low-level function used in symbolic shape analysis to restrict the
     possible numerical range
@@ -9553,22 +9410,6 @@ ops:
   - KernelGen
   kind:
   - Reduction
-  stages:
-  - alpha: '5.4'
-- id: hsplit
-  description: 'Split a tensor into multiple sub-tensors horizontally (column-wise).
-
-    Equivalent to tensor_split with dim=1 for 2D+ tensors, or dim=0 for 1D tensors.
-
-    '
-  for:
-  - hsplit.array
-  - hsplit.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
   stages:
   - alpha: '5.4'
 - id: hspmm
@@ -12337,23 +12178,6 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.4'
-- id: make_dep_token
-  description: 'Creates a scalar tensor as a dependency token for TorchScript tracing
-
-    and class-based compiler frameworks. The value of the returned tensor
-
-    is uninitialized and should not be consumed.
-
-    '
-  for:
-  - _make_dep_token
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: margin_ranking_loss
   description: Compute the margin ranking loss.
   for:
@@ -13596,19 +13420,6 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
-- id: narrow
-  description: Pure layout operation (narrow); returns a zero-copy view sharing storage
-    with the input.
-  for:
-  - narrow
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: narrow_copy
   description: Triton kernel implementation for narrow_copy.
   for:
@@ -16270,17 +16081,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: row_indices
-  description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor.
-  for:
-  - row_indices
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: row_indices_copy
   description: Returns the row indices of a column-compressed (CSC or BSC) sparse tensor as a contiguous strided tensor.
   for:
@@ -17568,22 +17368,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.0'
-- id: slice
-  description: 'Slices the input tensor along the specified dimension.
-
-    Returns a view of the original tensor with the given dimension sliced from start
-    to end.
-
-    '
-  for:
-  - slice.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -19117,21 +18901,6 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
-- id: split_with_sizes
-  description: 'Splits a tensor into sub-tensors along a given dimension,
-
-    where each split has a specified size. Returns views into the input.
-
-    '
-  for:
-  - split_with_sizes
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -19548,31 +19317,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
-- id: sym_constrain_range
-  description: Constrains the range of a symbolic integer value. Used for torch.compile
-    symbolic tracing to provide bounds information.
-  for:
-  - sym_constrain_range
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: sym_numel
-  description: Returns the total number of elements of the input tensor.
-  for:
-  - sym_numel
-  marks:
-  - sym_numel
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
@@ -19590,41 +19334,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
-- id: sym_storage_offset
-  description: Returns the storage offset of the input tensor as an integer. Used
-    for torch.compile symbolic tracing.
-  for:
-  - sym_storage_offset
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: sym_stride
-  description: Returns the stride of the input tensor as a tuple of integers. Used
-    for torch.compile symbolic tracing.
-  for:
-  - sym_stride.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: t_
-  description: Transpose a 2D tensor in-place.
-  for:
-  - t_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: t_copy
   description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
   for:
@@ -19811,42 +19520,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: tensor_split_indices
-  description: Splits a tensor into multiple sub-tensors at the given indices along
-    a given dimension.
-  for:
-  - tensor_split.indices
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
-- id: tensor_split_sections
-  description: Splits a tensor into multiple sub-tensors along a given dimension,
-    using a number of sections.
-  for:
-  - tensor_split.sections
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
-- id: tensor_split_tensor_indices_or_sections
-  description: Splits a tensor into multiple sub-tensors along a given dimension,
-    using a tensor of split indices.
-  for:
-  - tensor_split.tensor_indices_or_sections
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
 - id: tensordot
   description: Triton kernel implementation for tensordot.
   for:
@@ -20175,23 +19848,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: transpose
-  description: 'Returns a view of the original tensor with its two dimensions swapped.
-
-    This is a zero-copy view operation that swaps the sizes and strides of
-
-    the two specified dimensions.
-
-    '
-  for:
-  - transpose.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.1'
 - id: transpose_copy
   description: |
     Returns a new contiguous tensor with the two specified dimensions swapped.
@@ -20423,19 +20079,6 @@ ops:
   - Math
   stages:
   - stable: '2.1'
-- id: unbind
-  description: Pure layout operation (unbind); returns zero-copy views sharing storage
-    with the input.
-  for:
-  - unbind.int
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: unbind_copy
   description: Removes a tensor dimension and returns a tuple of all slices along
     a given dimension as copies.
@@ -20486,17 +20129,6 @@ ops:
   - RandomSampling
   stages:
   - alpha: '5.5.0'
-- id: unflatten
-  description: Expand a single dimension into multiple dimensions (inverse of flatten).
-  for:
-  - unflatten.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: unfold
   description: Return a view of the tensor with a sliding window along the given dimension.
   for:
@@ -20611,17 +20243,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: unsafe_chunk
-  description: Split a tensor into a specified number of chunks along a given dimension.
-  for:
-  - unsafe_chunk
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: unsafe_index
   description: 'Indexes `input` along each dimension with the given indices, matching
 
@@ -20687,64 +20308,6 @@ ops:
   - KernelGen
   kind:
   - Math
-  stages:
-  - alpha: '5.4'
-- id: unsafe_split_with_sizes
-  description: 'Splits a tensor into sub-tensors along a given dimension, where each
-    split
-
-    has a specified size. Returns views into the original tensor without safety
-
-    checks.
-
-    '
-  for:
-  - unsafe_split_with_sizes
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: unsafe_view
-  description: 'Creates a new view of an existing tensor with a different shape without
-
-    performing safety checks, such as verifying if the tensor is contiguous or
-
-    if the reshape is valid.
-
-    '
-  for:
-  - _unsafe_view
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: unsqueeze
-  description: Returns a new tensor with a dimension of size one inserted at the specified
-    position.
-  for:
-  - unsqueeze
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: unsqueeze_
-  description: In-place version of `unsqueeze()`.
-  for:
-  - unsqueeze_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
   stages:
   - alpha: '5.4'
 - id: upsample_bicubic2d
@@ -21292,17 +20855,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.0'
-- id: view_as_complex
-  description: Returns a view of the real input tensor as a complex tensor (zero-copy
-    view operation).
-  for:
-  - view_as_complex
-  labels:
-  - aten
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: view_copy
   description: 'Returns a copy of the tensor with the specified shape.
 
@@ -21318,22 +20870,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
-- id: vsplit
-  description: 'Split a tensor along the first axis (row-wise).
-
-    Each chunk is copied into a freshly allocated output by a Triton kernel.
-
-    '
-  for:
-  - vsplit.int
-  - vsplit.array
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: vstack
   description: Stack tensors in sequence vertically (row wise).
   for:
