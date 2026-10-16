@@ -23,6 +23,8 @@ convolution attributes in its schema do not broadcast. A graph-recording input k
 autograd connection, but native backward raises an unimplemented-derivative error.
 """
 
+import platform
+
 import pytest
 import torch
 
@@ -39,6 +41,23 @@ def _skip_unsupported_cpu_reorder_dtype(request):
         pytest.skip("Host CPU does not support the MKLDNN FP16 reorder path")
     if dtype == torch.bfloat16 and not torch.ops.mkldnn._is_mkldnn_bf16_supported():
         pytest.skip("Host CPU does not support the MKLDNN BF16 reorder path")
+
+
+@pytest.fixture
+def _skip_affected_int8_materialization(dtype):
+    # Even tiny weights can overrun the dense buffer without crashing: the
+    # reordered descriptor's compensation storage survives to_public().
+    # Keep reorder-only benchmarks and other CPU builds outside this guard.
+    if (
+        dtype == torch.int8
+        and platform.machine().lower() in ("aarch64", "arm64")
+        and str(torch.__version__).split("+", 1)[0] == "2.9.0"
+        and "MKL-DNN v3.7.1 " in torch.__config__.show()
+    ):
+        pytest.skip(
+            "PyTorch 2.9.0/oneDNN 3.7.1 on ARM overwrites the dense buffer "
+            "when materializing INT8 reordered weights"
+        )
 
 
 # Reorder support measured on this build with a valid rank-4 weight:
@@ -74,6 +93,7 @@ def assert_reordered(res_out, ref_out, operand):
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.usefixtures("_skip_affected_int8_materialization")
 def test_mkldnn_reorder_conv2d_weight(shape, value_range, dtype):
     dense = tu.make_input(dtype, shape, value_range).cpu()
     inp = dense.to_mkldnn()
@@ -105,6 +125,7 @@ _INFERRED_ROWS = [
 @pytest.mark.mkldnn_reorder_conv2d_weight
 @pytest.mark.parametrize("shape,expected_shape", _INFERRED_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.usefixtures("_skip_affected_int8_materialization")
 def test_mkldnn_reorder_conv2d_weight_size_inferred(shape, expected_shape, dtype):
     dense = tu.make_input(dtype, shape, ["-1", "1"]).cpu()
     inp = dense.to_mkldnn()
@@ -142,6 +163,7 @@ _PARAM_ROWS = [
 @pytest.mark.mkldnn_reorder_conv2d_weight
 @pytest.mark.parametrize("params", _PARAM_ROWS)
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.usefixtures("_skip_affected_int8_materialization")
 def test_mkldnn_reorder_conv2d_weight_params(params, dtype):
     dense = tu.make_input(dtype, _WEIGHT_SHAPE, ["-1", "1"]).cpu()
     inp = dense.to_mkldnn()
@@ -166,6 +188,7 @@ _OUT_ROWS = [
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
 @pytest.mark.parametrize("shape,dtype", _OUT_ROWS)
+@pytest.mark.usefixtures("_skip_affected_int8_materialization")
 def test_mkldnn_reorder_conv2d_weight_out(shape, dtype):
     dense = tu.make_input(dtype, shape, ["-1", "1"]).cpu()
     inp = dense.to_mkldnn()
