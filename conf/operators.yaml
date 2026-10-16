@@ -17878,6 +17878,19 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv2d_backward
+  description: |
+    Backward computation for the slow reference conv2d, returning the gradients
+    of the input, weight, and bias.
+  for:
+  - _slow_conv2d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: slow_conv2d_forward
   description: |
     An internal slow reference implementation of the 2-D convolution forward
