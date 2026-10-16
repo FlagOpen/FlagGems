@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+from functools import partial
+
 import pytest
 import torch
 
@@ -20,12 +23,32 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_OPAQUE_CROSS_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16",
+)
+_ASCEND_FP8_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot cast nonempty dense gradients between FP8 and other dtypes",
+)
+
 # Both native-valid call forms are timed for every shape: matching dtypes (the
 # operator hands `grad` back untouched) and a dtype cast (a fresh tensor cast to
 # input.dtype).  Only dtypes are read, so the payloads stay uninitialized and
 # are never compared.  Extra shapes are unioned with the shared shape set, which
 # keeps core_shapes.yaml, DEFAULT_SHAPES and a caller --shape-file in effect.
 EXTRA_SHAPES = [(1024, 1024), (20, 320, 15), (16, 128, 64)]
+
+DENSE_GROUP = "dense"
+DENSE_FP8_CAST_GROUP = "dense-fp8-cast"
+OPAQUE_GROUP = "opaque"
+OPAQUE_CROSS_CAST_GROUP = "opaque-cross-cast"
+OPAQUE_MODE = "opaque to dense"
+_CROSS_CAST_DTYPES = {
+    (str(torch.float16), str(torch.bfloat16)),
+    (str(torch.bfloat16), str(torch.float16)),
+}
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 _DEVICE_DTYPE_FLAG = {
     torch.bfloat16: "support_bf16",
@@ -84,7 +107,7 @@ def _cast_partner(dtype):
     return dtype if partner is None or not _dtype_supported(partner) else partner
 
 
-def _case_fn(shape, dtype):
+def _all_case_fn(shape, dtype):
     partner = _cast_partner(dtype)
     forms = [("same dtype", dtype)]
     if partner != dtype:
@@ -122,12 +145,31 @@ def _case_fn(shape, dtype):
             yield base.BenchmarkCasePlan(
                 shape={"grad": list(shape), "input": list(shape)},
                 params={
-                    "mode": "opaque to dense",
+                    "mode": OPAQUE_MODE,
                     "grad_dtype": str(dtype),
                     "input_dtype": str(target),
                 },
                 builder_args=(shape, target, "opaque"),
             )
+
+
+def _group_for_plan(plan):
+    if plan.params["mode"] != OPAQUE_MODE:
+        fp8_cast = plan.params["mode"] == "dtype cast" and any(
+            plan.params[key] in {str(dtype) for dtype in _FP8_DTYPES}
+            for key in ("grad_dtype", "input_dtype")
+        )
+        if fp8_cast and math.prod(plan.shape["grad"]) > 0:
+            return DENSE_FP8_CAST_GROUP
+        return DENSE_GROUP
+    dtype_pair = (plan.params["grad_dtype"], plan.params["input_dtype"])
+    return OPAQUE_CROSS_CAST_GROUP if dtype_pair in _CROSS_CAST_DTYPES else OPAQUE_GROUP
+
+
+def _case_fn(shape, dtype, case_group=None):
+    for plan in _all_case_fn(shape, dtype):
+        if case_group is None or _group_for_plan(plan) == case_group:
+            yield plan
 
 
 def _build_inputs_fn(plan, dtype, device):
@@ -146,20 +188,74 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ToMkldnnBackwardBenchmark(OperatorBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+    case_group = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None, *, default_shapes=None):
         super().set_shapes(shape_file_path, default_shapes=default_shapes)
         merged = [tuple(shape) for shape in self.shapes] + list(EXTRA_SHAPES)
         self.shapes = list(dict.fromkeys(merged))
+        if self.case_group is not None:
+            # Query mode calls set_shapes before user dtype selection.
+            dtype = self.partition_dtype or self.to_bench_dtypes[0]
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if any(_case_fn(shape, dtype, self.case_group))
+            ]
+            if not self.shapes:
+                pytest.skip("No MKLDNN backward workloads in this layout/cast group")
 
 
 @pytest.mark.to_mkldnn_backward
-def test_to_mkldnn_backward():
+@pytest.mark.parametrize(
+    "dtype,case_group",
+    [pytest.param(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
+    + [
+        pytest.param(dtype, DENSE_FP8_CAST_GROUP, marks=_ASCEND_FP8_CAST_SKIP)
+        for dtype in _FP8_DTYPES
+        if dtype in BENCH_DTYPES
+    ]
+    + [
+        pytest.param(dtype, OPAQUE_GROUP)
+        for dtype in (
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+            torch.int8,
+            torch.uint8,
+        )
+        if dtype in BENCH_DTYPES
+    ]
+    + [
+        pytest.param(
+            dtype, OPAQUE_CROSS_CAST_GROUP, marks=_ASCEND_OPAQUE_CROSS_CAST_SKIP
+        )
+        for dtype in (torch.float16, torch.bfloat16)
+        if dtype in BENCH_DTYPES
+    ],
+    ids=str,
+)
+def test_to_mkldnn_backward(dtype, case_group):
     bench = ToMkldnnBackwardBenchmark(
         op_name="to_mkldnn_backward",
         torch_op=torch.ops.aten.to_mkldnn_backward,
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, case_group=case_group),
         build_inputs_fn=_build_inputs_fn,
         gems_op=getattr(flag_gems, "to_mkldnn_backward", None),
         dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
+        case_group=case_group,
     )
     bench.run()

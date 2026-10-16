@@ -22,6 +22,11 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_FP8_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend zero_ does not support FP8 sparse values",
+)
+
 # A metadata query reads the bit recorded on a sparse COO tensor, so a workload
 # is (logical size, nnz, recorded bit). Explicit descriptors join the shared
 # shape grid read from the shape file; a plain shape from that grid expands into
@@ -135,13 +140,42 @@ class IsCoalescedBenchmark(OperatorBenchmark):
     """Keeps the shared shape grid (shape-file aware) and adds the sparse
     (size, nnz, recorded bit) descriptors that this operator actually reads."""
 
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         self.shapes = list(self.shapes) + IS_COALESCED_CASES
 
 
 @pytest.mark.is_coalesced
-def test_is_coalesced():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_FP8_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else ()
+            ),
+        )
+        for dtype in BENCH_DTYPES
+    ],
+    ids=str,
+)
+def test_is_coalesced(dtype):
+
     bench = IsCoalescedBenchmark(
         op_name="is_coalesced",
         case_fn=_case_fn,
@@ -149,5 +183,6 @@ def test_is_coalesced():
         torch_op=torch.ops.aten.is_coalesced,
         gems_op=getattr(flag_gems, "is_coalesced", None),
         dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

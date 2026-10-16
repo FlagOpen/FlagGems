@@ -22,6 +22,22 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.dtype.is_complex:
+        # Keep complex output coverage without requiring a complex NPU isclose.
+        assert result.dtype == reference.dtype
+        if not utils.TO_CPU:
+            assert result.device == reference.device
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
+_ASCEND_COMPLEX32_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend copy does not support nonempty complex32 output",
+)
+
 # aten::view_as_complex_copy(real) -> complex materializes a complex tensor from
 # real pairs. Native requirements: rank >= 1, a last dimension of size 2 with
 # stride 1, every other stride divisible by 2, and an even element storage offset.
@@ -126,6 +142,7 @@ _VAC_WRONG_OUT_DTYPES = [torch.float32] + (
     [torch.complex128] if utils.fp64_is_supported else []
 )
 
+
 # Native reports every invalid input with RuntimeError, so the negative tests match
 # that contract exactly instead of also accepting AssertionError, which unrelated
 # internal checks would raise.
@@ -165,17 +182,32 @@ def _assert_copy_result(res_out, ref_out, inp, ref_inp):
     so both are checked against the independent reference input. Empty tensors
     report a null data pointer on both sides and are skipped.
     """
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     assert res_out.device == inp.device
     if inp.numel() > 0:
         assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("shape", _VAC_SHAPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype,value_range,shape",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            shape,
+            marks=(
+                _ASCEND_COMPLEX32_SKIP
+                if dtype == torch.float16 and math.prod(shape) > 0
+                else ()
+            ),
+        )
+        for dtype in _VAC_DTYPES
+        for value_range in tu.selected_ranges()
+        for shape in _VAC_SHAPES
+    ],
+)
 def test_view_as_complex_copy_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -187,8 +219,22 @@ def test_view_as_complex_copy_value_ranges(shape, value_range, dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("shape", _VAC_SHAPES)
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype,shape",
+    [
+        pytest.param(
+            dtype,
+            shape,
+            marks=(
+                _ASCEND_COMPLEX32_SKIP
+                if dtype == torch.float16 and math.prod(shape) > 0
+                else ()
+            ),
+        )
+        for dtype in _VAC_DTYPES
+        for shape in _VAC_SHAPES
+    ],
+)
 def test_view_as_complex_copy_out(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -205,13 +251,21 @@ def test_view_as_complex_copy_out(shape, dtype):
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize("parent_shape, index", _VAC_OUT_VIEW_CASES)
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else ()
+        )
+        for dtype in _VAC_DTYPES
+    ],
+)
 def test_view_as_complex_copy_out_into_offset_view(parent_shape, index, dtype):
     inp = tu.make_input(dtype, (8, 2), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -231,16 +285,24 @@ def test_view_as_complex_copy_out_into_offset_view(parent_shape, index, dtype):
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(parent, ref_parent)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize(
     "kind, base_shape, offset, parent_shape, index", _VAC_OUT_STRIDED_INPUT_CASES
 )
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else ()
+        )
+        for dtype in _VAC_DTYPES
+    ],
+)
 def test_view_as_complex_copy_out_with_strided_input(
     kind, base_shape, offset, parent_shape, index, dtype
 ):
@@ -262,9 +324,9 @@ def test_view_as_complex_copy_out_with_strided_input(
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(parent, ref_parent)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
@@ -282,7 +344,15 @@ def test_view_as_complex_copy_empty(shape, dtype):
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize("base_shape, offset", _VAC_STRIDED_CASES)
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else ()
+        )
+        for dtype in _VAC_DTYPES
+    ],
+)
 def test_view_as_complex_copy_strided_input(base_shape, offset, dtype):
     base = tu.make_input(dtype, base_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -297,7 +367,15 @@ def test_view_as_complex_copy_strided_input(base_shape, offset, dtype):
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize("kind, base_shape, spec", _VAC_LAYOUT_CASES)
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else ()
+        )
+        for dtype in _VAC_DTYPES
+    ],
+)
 def test_view_as_complex_copy_layout(kind, base_shape, spec, dtype):
     base = tu.make_input(dtype, base_shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -311,7 +389,17 @@ def test_view_as_complex_copy_layout(kind, base_shape, spec, dtype):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("dtype, scenario", _VAC_SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else (),
+        )
+        for dtype, scenario in _VAC_SPECIAL_CASES
+    ],
+)
 def test_view_as_complex_copy_special_values(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
     # Both lanes carry the special payload, so nan/inf has to survive in each
@@ -326,8 +414,22 @@ def test_view_as_complex_copy_special_values(dtype, scenario):
 
 
 @pytest.mark.view_as_complex_copy
-@pytest.mark.parametrize("shape", _VAC_ALIAS_SHAPES)
-@pytest.mark.parametrize("dtype", _VAC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype,shape",
+    [
+        pytest.param(
+            dtype,
+            shape,
+            marks=(
+                _ASCEND_COMPLEX32_SKIP
+                if dtype == torch.float16 and math.prod(shape) > 0
+                else ()
+            ),
+        )
+        for dtype in _VAC_DTYPES
+        for shape in _VAC_ALIAS_SHAPES
+    ],
+)
 def test_view_as_complex_copy_does_not_alias_input(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -340,13 +442,14 @@ def test_view_as_complex_copy_does_not_alias_input(shape, dtype):
     # Overwriting the result afterwards must not change the input: a real copy
     # owns its storage, unlike the aliasing aten::view_as_complex view.
     res_out.fill_(0)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize("dtype", _VAC_UNSUPPORTED_DTYPES)
 def test_view_as_complex_copy_rejects_unsupported_dtype(dtype):
-    inp = torch.zeros((4, 2), dtype=dtype, device=flag_gems.device)
+    # Only dtype is inspected before rejection; FP8 zero_ is unavailable on NPU.
+    inp = torch.empty((4, 2), dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems.view_as_complex_copy(inp)

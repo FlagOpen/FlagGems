@@ -27,6 +27,15 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_CPU_FP16_SKIP = pytest.mark.skipif(
+    not torch.ops.mkldnn._is_mkldnn_fp16_supported(),
+    reason="Host CPU does not support the MKLDNN FP16 reorder path",
+)
+_CPU_BF16_SKIP = pytest.mark.skipif(
+    not torch.ops.mkldnn._is_mkldnn_bf16_supported(),
+    reason="Host CPU does not support the MKLDNN BF16 reorder path",
+)
+
 # Representative conv2d weight geometries (out_channels, in_channels / groups, kh, kw).
 DEFAULT_WEIGHT_SHAPES = [
     (32, 16, 3, 3),
@@ -67,6 +76,19 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class MkldnnReorderConv2dWeightBenchmark(OperatorBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         shapes = [tuple(shape) for shape in list(self.shapes) + DEFAULT_WEIGHT_SHAPES]
@@ -75,7 +97,22 @@ class MkldnnReorderConv2dWeightBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-def test_mkldnn_reorder_conv2d_weight():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                (_CPU_FP16_SKIP,)
+                if dtype == torch.float16
+                else (_CPU_BF16_SKIP,) if dtype == torch.bfloat16 else ()
+            ),
+        )
+        for dtype in _DTYPES
+    ],
+    ids=str,
+)
+def test_mkldnn_reorder_conv2d_weight(dtype):
     bench = MkldnnReorderConv2dWeightBenchmark(
         op_name="mkldnn_reorder_conv2d_weight",
         case_fn=_case_fn,
@@ -83,5 +120,6 @@ def test_mkldnn_reorder_conv2d_weight():
         torch_op=torch.ops.aten.mkldnn_reorder_conv2d_weight,
         gems_op=getattr(flag_gems, "mkldnn_reorder_conv2d_weight", None),
         dtypes=_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

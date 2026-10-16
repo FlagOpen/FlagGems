@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_VALUES_RANK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support values with more than 8 dimensions",
+)
+
 # Workloads as (size, nnz, dense_ndim, index dtype name). The op reads CSC index
 # metadata instead of a dense shape, so no entry of core_shapes.yaml describes it;
 # a caller-supplied shape file still takes precedence over these descriptors.
@@ -226,14 +231,38 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ValidateSparseCscTensorArgsBenchmark(OperatorBenchmark):
+    high_dimensional = None
+
     # These descriptors are the workloads for --list-cases and for normal
     # execution; a caller-supplied shape file still replaces them.
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=WORKLOADS)
+        if self.high_dimensional is not None:
+            # _plan_for returns (size, ...). Values replace the two sparse matrix
+            # axes with one nnz axis, so their rank is len(size) - 1.
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if (len(_plan_for(shape)[0]) - 1 > 8) == self.high_dimensional
+            ]
+            if not self.shapes:
+                pytest.skip("No CSC workloads in this values-rank group")
 
 
 @pytest.mark.validate_sparse_csc_tensor_args
-def test__validate_sparse_csc_tensor_args():
+@pytest.mark.parametrize(
+    "high_dimensional",
+    [
+        pytest.param(
+            high_dimensional, marks=_ASCEND_VALUES_RANK_SKIP if high_dimensional else ()
+        )
+        for high_dimensional in [False, True]
+    ],
+    ids=["values-rank-le8", "values-rank-gt8"],
+)
+def test__validate_sparse_csc_tensor_args(high_dimensional):
+    # A skip in the builder would abort the entire benchmark node, including
+    # supported shapes. Isolate the high-rank inputs in their own pytest node.
     # Both implementations return None, so the benchmark records the call
     # latency only. gems_op stays None until a candidate is injected, which keeps
     # --list-cases usable before a candidate exists.
@@ -244,5 +273,6 @@ def test__validate_sparse_csc_tensor_args():
         torch_op=torch.ops.aten._validate_sparse_csc_tensor_args,
         gems_op=getattr(flag_gems, "_validate_sparse_csc_tensor_args", None),
         dtypes=_BENCH_DTYPES,
+        high_dimensional=high_dimensional,
     )
     bench.run()

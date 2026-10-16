@@ -30,6 +30,26 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+
+
+def _input_marks(dtype):
+    if dtype.is_complex:
+        return (_ASCEND_COMPLEX_SKIP,)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        return (_ASCEND_FP8_INPUT_SKIP,)
+    return ()
+
+
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
+
+
 _FP64_SUPPORTED = utils.fp64_is_supported
 
 # int8/uint8/FP8/bool carry the flag like any other dtype, so only the dtypes
@@ -166,7 +186,13 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.is_neg
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(dtype, value_range, marks=_input_marks(dtype))
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_is_neg_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -180,7 +206,10 @@ def test_is_neg_value_ranges(shape, value_range, dtype):
 
 @pytest.mark.is_neg
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _DTYPES],
+)
 def test_is_neg_lazy_neg_view(shape, dtype):
     plain = tu.make_input(dtype, shape, ["-1", "1"])
     inp = torch._neg_view(plain)
@@ -194,7 +223,20 @@ def test_is_neg_lazy_neg_view(shape, dtype):
 
 
 @pytest.mark.is_neg
-@pytest.mark.parametrize("dtype,layout,conj,neg_count,conj_first", _FLAG_FORMS)
+@pytest.mark.parametrize(
+    "dtype,layout,conj,neg_count,conj_first",
+    [
+        pytest.param(
+            dtype,
+            layout,
+            conj,
+            neg_count,
+            conj_first,
+            marks=_input_marks(dtype),
+        )
+        for dtype, layout, conj, neg_count, conj_first in _FLAG_FORMS
+    ],
+)
 def test_is_neg_flag_forms(dtype, layout, conj, neg_count, conj_first):
     inp, ref_inp = _flag_form_pair(dtype, layout, conj, neg_count, conj_first)
 
@@ -207,7 +249,19 @@ def test_is_neg_flag_forms(dtype, layout, conj, neg_count, conj_first):
 
 
 @pytest.mark.is_neg
-@pytest.mark.parametrize("dtype,shape,has_flag,requires_grad", _STATE_ROWS)
+@pytest.mark.parametrize(
+    "dtype,shape,has_flag,requires_grad",
+    [
+        pytest.param(
+            dtype,
+            shape,
+            has_flag,
+            requires_grad,
+            marks=_input_marks(dtype),
+        )
+        for dtype, shape, has_flag, requires_grad in _STATE_ROWS
+    ],
+)
 def test_is_neg_keeps_input_state(dtype, shape, has_flag, requires_grad):
     plain = tu.make_input(dtype, shape, ["-1", "1"])
     if requires_grad:
@@ -237,7 +291,18 @@ def test_is_neg_keeps_input_state(dtype, shape, has_flag, requires_grad):
 
 
 @pytest.mark.is_neg
-@pytest.mark.parametrize("dtype,scenario,has_flag", _SPECIAL_ROWS)
+@pytest.mark.parametrize(
+    "dtype,scenario,has_flag",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            has_flag,
+            marks=_input_marks(dtype),
+        )
+        for dtype, scenario, has_flag in _SPECIAL_ROWS
+    ],
+)
 def test_is_neg_special_values(dtype, scenario, has_flag):
     plain = tu.make_special_input(dtype, scenario)
     ref_plain = tu.to_reference(plain)

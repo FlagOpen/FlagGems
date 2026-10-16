@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -19,6 +21,11 @@ import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
+
+_ASCEND_COMPLEX32_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend copy does not support complex32 output",
+)
 
 # aten::view_as_complex_copy needs rank >= 1, a last dimension of size 2 with
 # stride 1 and an even element storage offset, which no shape in the shared
@@ -77,14 +84,54 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ViewAsComplexCopyBenchmark(OperatorBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+    empty_input = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         # A caller-supplied shape file still wins; these scales are the fallback
         # because no shared default shape is a valid input for this operator.
         super().set_shapes(shape_file_path, default_shapes=VIEW_AS_COMPLEX_COPY_SHAPES)
+        if self.empty_input is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if (math.prod(shape) == 0) == self.empty_input
+            ]
+            if not self.shapes:
+                pytest.skip("No workloads in this input-emptiness group")
 
 
 @pytest.mark.view_as_complex_copy
-def test_view_as_complex_copy():
+@pytest.mark.parametrize(
+    "empty_input,dtype",
+    [
+        pytest.param(
+            empty_input,
+            dtype,
+            marks=(
+                _ASCEND_COMPLEX32_SKIP
+                if dtype == torch.float16 and not empty_input
+                else ()
+            ),
+            id=f"{'empty-input' if empty_input else 'nonempty-input'}-{dtype}",
+        )
+        for empty_input in (False, True)
+        for dtype in VIEW_AS_COMPLEX_COPY_DTYPES
+    ],
+)
+def test_view_as_complex_copy(dtype, empty_input):
+
     bench = ViewAsComplexCopyBenchmark(
         op_name="view_as_complex_copy",
         case_fn=_case_fn,
@@ -92,5 +139,7 @@ def test_view_as_complex_copy():
         torch_op=torch.ops.aten.view_as_complex_copy,
         gems_op=getattr(flag_gems, "view_as_complex_copy", None),
         dtypes=VIEW_AS_COMPLEX_COPY_DTYPES,
+        partition_dtype=dtype,
+        empty_input=empty_input,
     )
     bench.run()

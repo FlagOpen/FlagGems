@@ -69,19 +69,38 @@ class ViewAsRealCopyBenchmark(OperatorBenchmark):
     name still takes precedence.
     """
 
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=VIEW_AS_REAL_COPY_SHAPES)
 
 
 @pytest.mark.view_as_real_copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
 @pytest.mark.parametrize("dtype", VIEW_AS_REAL_COPY_DTYPES)
 def test_view_as_real_copy_bench(dtype):
+
     bench = ViewAsRealCopyBenchmark(
         op_name="view_as_real_copy",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.view_as_real_copy,
         gems_op=getattr(flag_gems, "view_as_real_copy", None),
-        dtypes=[dtype],
+        dtypes=VIEW_AS_REAL_COPY_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

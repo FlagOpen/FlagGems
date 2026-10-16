@@ -20,6 +20,11 @@ import flag_gems
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_FP8_VALUES_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct nonempty FP8 CSR values",
+)
+
 # benchmark/core_shapes.yaml has no entry for this operator, so these are the
 # default CSR sizes: the growing square scales, the rectangular and batched
 # shapes of the original workload, and the zero-extent boundaries. A
@@ -208,12 +213,52 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ValidateSparseCsrTensorArgsBenchmark(OperatorBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+    empty_values = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=DEFAULT_CSR_SHAPES)
+        if self.empty_values is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if (0 in _normalize_size(shape)) == self.empty_values
+            ]
+            if not self.shapes:
+                pytest.skip("No CSR workloads in this values-emptiness group")
 
 
 @pytest.mark.validate_sparse_csr_tensor_args
-def test_validate_sparse_csr_tensor_args():
+@pytest.mark.parametrize(
+    "empty_values,dtype",
+    [
+        pytest.param(
+            empty_values,
+            dtype,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                and not empty_values
+                else ()
+            ),
+            id=f"{'empty-values' if empty_values else 'nonempty-values'}-{dtype}",
+        )
+        for empty_values in (False, True)
+        for dtype in BENCH_VALUES_DTYPES
+    ],
+)
+def test_validate_sparse_csr_tensor_args(dtype, empty_values):
     bench = ValidateSparseCsrTensorArgsBenchmark(
         op_name="_validate_sparse_csr_tensor_args",
         case_fn=_case_fn,
@@ -221,5 +266,7 @@ def test_validate_sparse_csr_tensor_args():
         torch_op=torch.ops.aten._validate_sparse_csr_tensor_args,
         gems_op=getattr(flag_gems, "_validate_sparse_csr_tensor_args", None),
         dtypes=BENCH_VALUES_DTYPES,
+        partition_dtype=dtype,
+        empty_values=empty_values,
     )
     bench.run()

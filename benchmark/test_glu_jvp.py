@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_LOW_PRECISION_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend glu_jvp baseline falls back to CPU without FP16/BF16 support",
+)
+
 _SUPPORT_BF16 = flag_gems.runtime.device.support_bf16
 
 # Timed family follows consts.FLOAT_DTYPES with the bf16 capability flag applied;
@@ -73,12 +78,40 @@ def _build_inputs_fn(plan, dtype, device):
 class GluJvpBenchmark(OperatorBenchmark):
     """Two-phase benchmark defaulting to the glu shapes of core_shapes.yaml."""
 
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=GLU_JVP_SHAPES)
 
 
 @pytest.mark.glu_jvp
-def test_glu_jvp():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in _BENCH_DTYPES
+    ],
+    ids=str,
+)
+def test_glu_jvp(dtype):
     bench = GluJvpBenchmark(
         op_name="glu_jvp",
         case_fn=_case_fn,
@@ -86,5 +119,6 @@ def test_glu_jvp():
         torch_op=torch.ops.aten.glu_jvp,
         gems_op=getattr(flag_gems, "glu_jvp", None),
         dtypes=_BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

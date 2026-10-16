@@ -20,6 +20,11 @@ import flag_gems
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 _LAYOUTS = {
     "csr": torch.sparse_csr_tensor,
@@ -118,11 +123,11 @@ def _geometry(layout, size, nnz, blocks, nbatch):
 
 
 def _stored_values(shape, dtype, device):
-    """Generate stored values on the target device, with a device-side fp8 path."""
+    """Allocate FP8 copy payloads without requiring a random-number cast."""
     if dtype in _FP8_DTYPES:
-        # randn has no fp8 CUDA kernel, so generate in float32 on the device and
-        # cast there instead of building the tensor on the host.
-        return torch.randn(shape, dtype=torch.float32, device=device).to(dtype)
+        # Copy latency does not depend on the payload. FP8 copy is supported
+        # even where conversion from a float32 random tensor is unavailable.
+        return torch.empty(shape, dtype=dtype, device=device)
     if dtype.is_floating_point or dtype.is_complex:
         return torch.randn(shape, dtype=dtype, device=device)
     if dtype == torch.bool:
@@ -218,6 +223,19 @@ _BENCH_DTYPES = _gated_dtypes(
 
 
 class ValuesCopyBenchmark(OperatorBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     # values_copy is a sparse accessor: core_shapes.yaml carries dense shapes that
     # this operator rejects, so benchmark dedicated compressed-sparse cases.
     def set_shapes(self, shape_file_path=None):
@@ -225,7 +243,15 @@ class ValuesCopyBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.values_copy
-def test_values_copy():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in _BENCH_DTYPES
+    ],
+)
+def test_values_copy(dtype):
+
     bench = ValuesCopyBenchmark(
         op_name="values_copy",
         case_fn=_case_fn,
@@ -233,5 +259,6 @@ def test_values_copy():
         torch_op=torch.ops.aten.values_copy,
         gems_op=getattr(flag_gems, "values_copy", None),
         dtypes=_BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

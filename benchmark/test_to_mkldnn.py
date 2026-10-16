@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -19,6 +21,11 @@ import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
+
+_ASCEND_CROSS_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend host MKLDNN cannot convert between FP16 and BF16",
+)
 
 # aten::to_mkldnn converts a dense CPU tensor into an opaque oneDNN (mkldnn)
 # tensor and has no accelerator kernel, so the workload stays on CPU and the
@@ -75,9 +82,17 @@ TO_MKLDNN_DTYPES = [
     torch.uint8,
 ]
 
+CROSS_DTYPE_PAIRS = (
+    (torch.float16, torch.bfloat16),
+    (torch.bfloat16, torch.float16),
+)
 
-def _case_fn(shape, dtype):
+
+def _case_fn(shape, dtype, cross_cast=None):
     for out_dtype in DTYPE_BRANCHES[dtype]:
+        is_cross_cast = (dtype, out_dtype) in CROSS_DTYPE_PAIRS
+        if cross_cast is not None and is_cross_cast != cross_cast:
+            continue
         yield base.BenchmarkCasePlan(
             shape={"input": shape},
             params={"dtype": None if out_dtype is None else str(out_dtype)},
@@ -97,6 +112,19 @@ def _build_inputs_fn(plan, dtype, device):
 class ToMkldnnBenchmark(OperatorBenchmark):
     """Keeps the shared shape sets and adds reorder-heavy CPU shapes."""
 
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         # A 0-dim input has no reorder primitive ("could not create a primitive
@@ -106,13 +134,30 @@ class ToMkldnnBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.to_mkldnn
-def test_to_mkldnn():
+@pytest.mark.parametrize(
+    "dtype,cross_cast",
+    [
+        pytest.param(dtype, False, id=f"{dtype}-other-conversions")
+        for dtype in TO_MKLDNN_DTYPES
+    ]
+    + [
+        pytest.param(
+            dtype,
+            True,
+            marks=_ASCEND_CROSS_CAST_SKIP,
+            id=f"{dtype}-fp16-bf16-conversion",
+        )
+        for dtype in (torch.float16, torch.bfloat16)
+    ],
+)
+def test_to_mkldnn(dtype, cross_cast):
     bench = ToMkldnnBenchmark(
         op_name="to_mkldnn",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, cross_cast=cross_cast),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.to_mkldnn,
         gems_op=getattr(flag_gems, "to_mkldnn", None),
         dtypes=TO_MKLDNN_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

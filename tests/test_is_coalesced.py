@@ -22,6 +22,11 @@ import flag_gems
 
 from . import test_utils as tu
 
+_ASCEND_FP8_VALUES_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct nonempty FP8 sparse values",
+)
+
 # aten::is_coalesced reports the coalesced bit recorded on a sparse COO tensor.
 # It never sorts, merges or re-derives the coordinates and never writes the
 # stored tensors, so a recorded True bit on out-of-order columns is still
@@ -161,8 +166,24 @@ def _assert_flag(res_out, ref_out):
 
 
 @pytest.mark.is_coalesced
-@pytest.mark.parametrize("size,nnz,recorded", _MAIN_CASES)
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize(
+    "dtype,size,nnz,recorded",
+    [
+        pytest.param(
+            dtype,
+            size,
+            nnz,
+            recorded,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
+                else ()
+            ),
+        )
+        for dtype in _DTYPES
+        for size, nnz, recorded in _MAIN_CASES
+    ],
+)
 def test_is_coalesced(size, nnz, recorded, dtype):
     inp = _make_sparse(size, nnz, dtype, recorded=recorded, ordered=bool(recorded))
     ref_inp = tu.to_reference(inp)
@@ -185,7 +206,23 @@ _FLAG_DTYPE_CASES = [
 
 
 @pytest.mark.is_coalesced
-@pytest.mark.parametrize("size, nnz, recorded, dtype", _FLAG_DTYPE_CASES)
+@pytest.mark.parametrize(
+    "size, nnz, recorded, dtype",
+    [
+        pytest.param(
+            size,
+            nnz,
+            recorded,
+            dtype,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
+                else ()
+            ),
+        )
+        for size, nnz, recorded, dtype in _FLAG_DTYPE_CASES
+    ],
+)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_is_coalesced_value_ranges(size, nnz, recorded, value_range, dtype):
     inp = _make_sparse(
@@ -201,8 +238,24 @@ def test_is_coalesced_value_ranges(size, nnz, recorded, value_range, dtype):
 
 
 @pytest.mark.is_coalesced
-@pytest.mark.parametrize("size,nnz,recorded", _STATE_CASES)
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize(
+    "dtype,size,nnz,recorded",
+    [
+        pytest.param(
+            dtype,
+            size,
+            nnz,
+            recorded,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
+                else ()
+            ),
+        )
+        for dtype in _DTYPES
+        for size, nnz, recorded in _STATE_CASES
+    ],
+)
 def test_is_coalesced_keeps_input_state(size, nnz, recorded, dtype):
     inp = _make_sparse(size, nnz, dtype, recorded=recorded, ordered=recorded)
     # Snapshots sit on the configured reference device, the placement the shared
@@ -220,13 +273,32 @@ def test_is_coalesced_keeps_input_state(size, nnz, recorded, dtype):
     assert inp._nnz() == nnz
     assert inp._indices().dtype == torch.int64
     tu.assert_result_equal(inp._indices(), indices_before)
-    tu.assert_result_equal(inp._values(), values_before)
+    values_after = inp._values()
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        # The metadata query supports complex values; NPU isclose does not.
+        values_after, values_before = values_after.cpu(), values_before.cpu()
+    tu.assert_result_equal(values_after, values_before)
     assert inp.is_coalesced() == ref_out
 
 
 @pytest.mark.is_coalesced
-@pytest.mark.parametrize("size,nnz", _FLAG_CASES)
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize(
+    "dtype,size,nnz",
+    [
+        pytest.param(
+            dtype,
+            size,
+            nnz,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and nnz > 0
+                else ()
+            ),
+        )
+        for dtype in _DTYPES
+        for size, nnz in _FLAG_CASES
+    ],
+)
 def test_is_coalesced_reports_recorded_bit(size, nnz, dtype):
     # Deliberately wrong bit: duplicated out-of-order coordinates recorded as
     # coalesced. The query must report the saved bit instead of recomputing it.
@@ -243,7 +315,21 @@ def test_is_coalesced_reports_recorded_bit(size, nnz, dtype):
 
 @pytest.mark.is_coalesced
 @pytest.mark.parametrize("size,nnz,recorded", _SPECIAL_SIZES)
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(
+                _ASCEND_FP8_VALUES_SKIP
+                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else ()
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 def test_is_coalesced_special_values(size, nnz, recorded, dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
     values = payload.repeat((nnz + payload.numel() - 1) // payload.numel())[:nnz]

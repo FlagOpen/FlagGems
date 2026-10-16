@@ -16,6 +16,8 @@
 # default shape set is expressed here: scalar, empty, 1-D to 5-D boundaries.
 # Every plan is a (layout, memory_format) pair; a user --shape_file still wins.
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -23,6 +25,11 @@ import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
+
+_ASCEND_LAYOUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct channels-last input layouts",
+)
 
 CORE_SHAPES = list(
     dict.fromkeys(
@@ -76,10 +83,12 @@ def _view_shape(layout, shape):
     return shape
 
 
-def _case_fn(shape, dtype):
+def _case_fn(shape, dtype, input_layout=None):
     del dtype
     shape = tuple(shape)
     for layout in _layout_kinds(shape):
+        if input_layout is not None and layout != input_layout:
+            continue
         for name in ("default", *_MEMORY_FORMATS):
             yield base.BenchmarkCasePlan(
                 shape={"input": list(_view_shape(layout, shape))},
@@ -115,18 +124,49 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class IsContiguousBenchmark(OperatorBenchmark):
+    input_layout = None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=CORE_SHAPES)
+        if self.input_layout is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if self.input_layout in _layout_kinds(shape)
+            ]
+            if not self.shapes:
+                pytest.skip("No shapes support this input layout")
 
 
 @pytest.mark.is_contiguous
-def test_is_contiguous():
+@pytest.mark.parametrize(
+    "input_layout",
+    [
+        pytest.param(
+            input_layout,
+            marks=(
+                _ASCEND_LAYOUT_SKIP
+                if input_layout in ("channels_last", "channels_last_3d")
+                else ()
+            ),
+        )
+        for input_layout in [
+            "plain",
+            "transposed",
+            "column_step",
+            "channels_last",
+            "channels_last_3d",
+        ]
+    ],
+)
+def test_is_contiguous(input_layout):
     bench = IsContiguousBenchmark(
         op_name="is_contiguous",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, input_layout=input_layout),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_contiguous,
         gems_op=getattr(flag_gems, "is_contiguous", None),
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
+        input_layout=input_layout,
     )
     bench.run()

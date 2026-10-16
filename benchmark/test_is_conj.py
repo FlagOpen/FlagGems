@@ -19,6 +19,13 @@ import flag_gems
 
 from . import base, consts, utils
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
+BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
+
 # aten::is_conj(Tensor self) -> bool only reads the lazy conjugate bit and runs no
 # kernel. The plans below vary that bit (plain / conjugate / resolved conjugate /
 # conjugate + negative) instead of the payload, and the state is applied in the
@@ -50,14 +57,38 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, {}
 
 
+class IsConjBenchmark(base.GenericBenchmark):
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
+
 @pytest.mark.is_conj
-def test_is_conj():
-    bench = base.GenericBenchmark(
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in BENCH_DTYPES
+    ],
+)
+def test_is_conj(dtype):
+
+    bench = IsConjBenchmark(
         op_name="is_conj",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_conj,
         gems_op=getattr(flag_gems, "is_conj", None),
-        dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
+        dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

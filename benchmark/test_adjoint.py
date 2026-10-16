@@ -17,8 +17,15 @@ import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
+
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
+
+BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
 
 # aten::adjoint conjugates and swaps the last two dimensions of a matrix or
 # batch of matrices; it is a zero-copy view, so the benchmark measures
@@ -62,18 +69,40 @@ class AdjointBenchmark(OperatorBenchmark):
     benchmark overrides ``set_shapes`` with the rank >= 2 shape list above.
     """
 
+    # Keep the full operator dtype set for validation; execute only this node.
+    partition_dtype = None
+
+    def set_dtypes(self, user_desired_dtypes):
+        super().set_dtypes(user_desired_dtypes)
+        if self.partition_dtype is None:
+            return
+        if self.partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        if self.partition_dtype not in self.to_bench_dtypes:
+            pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+        self.to_bench_dtypes = [self.partition_dtype]
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=ADJOINT_SHAPES)
 
 
 @pytest.mark.adjoint
-def test_adjoint():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        for dtype in BENCH_DTYPES
+    ],
+)
+def test_adjoint(dtype):
+
     bench = AdjointBenchmark(
         op_name="adjoint",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.adjoint,
         gems_op=getattr(flag_gems, "adjoint", None),
-        dtypes=consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES,
+        dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()
