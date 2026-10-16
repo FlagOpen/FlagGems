@@ -20,6 +20,16 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+# Match the six large matrix chains added to the core benchmark (PR #7028).
+_LARGE_CHAIN_DIMENSIONS = (
+    (1024, 64, 1024),
+    (2048, 32, 2048, 32),
+    (512, 2048, 64, 1024),
+    (1024, 128, 2048, 64, 512),
+    (256, 1024, 64, 2048, 128, 512),
+    (512, 128, 1024, 64, 2048, 32, 512),
+)
+
 # Multiply compatible rank-2 matrices; keep native-dtype intermediate rounding and overflow.
 _CHAIN_SHAPES = tu.selected_cases(
     [
@@ -30,6 +40,10 @@ _CHAIN_SHAPES = tu.selected_cases(
         [(16, 32), (32, 64), (64, 32), (32, 16)],
         [(8, 16), (16, 32), (32, 48), (48, 32), (32, 16)],
         [(33, 65), (65, 17), (17, 129), (129, 255), (255, 71)],
+        *[
+            list(zip(dimensions, dimensions[1:]))
+            for dimensions in _LARGE_CHAIN_DIMENSIONS
+        ],
     ],
     quick=[[(2, 3), (3, 4)]],
 )
