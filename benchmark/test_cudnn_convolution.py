@@ -21,7 +21,6 @@ import flag_gems
 
 from . import base, consts, utils
 
-
 BENCH_DTYPES = [
     torch.bfloat16,
     torch.float16,

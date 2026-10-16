@@ -27,7 +27,6 @@ from .conftest import QUICK_MODE
 random.seed(42)
 
 
-
 def _quantized_weight_moe_supported():
     if flag_gems.vendor_name != "kunlunxin":
         return True

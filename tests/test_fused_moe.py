@@ -23,7 +23,6 @@ moe = importlib.import_module("flag_gems.fused.fused_moe")
 pytestmark = pytest.mark.fused_experts_impl
 
 
-
 def _quantized_weight_moe_supported():
     if flag_gems.vendor_name != "kunlunxin":
         return True
