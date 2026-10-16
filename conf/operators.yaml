@@ -302,6 +302,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _reshape_alias_copy
+  description: 'Returns a contiguous copy of the input tensor viewed through the
+    given size and stride. It is the copy companion of _reshape_alias: the view
+    described by size/stride is formed exactly as _reshape_alias does (reusing
+    the storage offset) and then materialized into fresh contiguous storage, so
+    the result never aliases the input.
+
+    '
+  for:
+  - _reshape_alias_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: _reshape_copy
   description: 'Returns a contiguous copy of the input tensor reshaped to the requested
     size. The row-major logical order of the input is materialized into fresh contiguous
@@ -1885,6 +1902,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atleast_1d
+  description: Returns a view of the input tensor with at least one dimension (view
+    operation).
+  for:
+  - atleast_1d
+  - atleast_1d.Sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: atleast_3d
   description: Returns a view of the input tensor with at least three dimensions (view
     operation).
@@ -2068,6 +2098,19 @@ ops:
   labels:
   - aten
   - NoCPU
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: batch_norm_elemt
+  description: |
+    Applies the elementwise Batch Normalization transform using precomputed
+    per-channel mean and inverse standard deviation: out = (input - mean) * invstd * weight + bias.
+  for:
+  - batch_norm_elemt
+  labels:
+  - aten
   - KernelGen
   kind:
   - NeuralNetwork
@@ -2737,6 +2780,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: cartesian_prod
+  description: Returns the cartesian product of the given sequence of 1-D tensors.
+  for:
+  - cartesian_prod
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cat
   description: Concatenates the given sequence of tensors in tensors in the given
     dimension.
@@ -5064,6 +5118,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: embedding_spmdm
+  description: 'Fixed-length embedding lookup followed by an optional per-sample
+    weighted sum; equivalent to F.embedding_bag with mode="sum" for a 2D
+    [B, bag_size] index matrix, returning a [B, D] tensor.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
@@ -8610,6 +8678,22 @@ ops:
   - Distribution
   stages:
   - beta: '5.1'
+- id: geqrf
+  description: 'Computes the packed Householder QR factorization of a (batched)
+    m x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the
+    Householder vectors below it, `tau` holds the scalar factors with shape
+    (*, min(m, n)).
+
+    '
+  for:
+  - geqrf
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
   description: Build scheduling metadata for paged MQA logits.
   for:
@@ -10290,6 +10374,23 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: istft
+  description: |
+    Computes the inverse short-time Fourier transform of an stft spectrogram,
+    equivalent to torch.istft. The spectrum is inverted frame by frame with
+    cuFFT (irfft/ifft), windowed, overlap-added, and normalized by the
+    squared-window envelope; the overlap-add, envelope and normalization run in
+    fused Triton kernels.
+  for:
+  - istft
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -13106,6 +13207,23 @@ ops:
   stages:
   - beta: '4.0'
   - stable: '4.2'
+- id: moe_load_balance_loss
+  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss
+    L_ib = N_e * sum_i f_i P_i, where f_i is expert i''s Top-K assignment
+    frequency and P_i its mean routing probability. Both statistics are computed
+    in fp32 from the router logits; an optional attention_mask excludes zero
+    entries from both statistics and the denominator. Returns a float32 scalar.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  - MoE
+  kind:
+  - MoE
+  stages:
+  - beta: '5.5'
 - id: moe_sum
   description: 'An implementation of Mixture of Experts (MoE) with sum-based aggregation
 
@@ -17055,6 +17173,22 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: select_copy
+  description: |
+    Returns a copy of the input with the selected slice along the given
+    dimension at the given index removed. This is the out-of-place counterpart
+    of `torch.select()`: the output has one dimension less than the input and
+    is freshly created instead of aliasing the input, equivalent to
+    `self.select(dim, index).clone()`.
+  for:
+  - select_copy.int
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: select_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given index.
 
@@ -20127,6 +20261,28 @@ ops:
     - Math
   stages:
     - alpha: '5.5'
+- id: triangular_solve
+  description: Solves a dense triangular system and returns a full coefficient clone.
+  for:
+  - triangular_solve
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: triangular_solve_out
+  description: Writes the triangular solution and coefficient clone to supplied outputs.
+  for:
+  - triangular_solve.X
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
