@@ -46,6 +46,17 @@ import flag_gems
 from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
 
+# Large chains from PR #7028 must participate in core optimization, not only
+# comprehensive reporting. Keep the existing core cases below as well.
+CORE_CHAINS = (
+    (1024, 64, 1024),
+    (2048, 32, 2048, 32),
+    (512, 2048, 64, 1024),
+    (1024, 128, 2048, 64, 512),
+    (256, 1024, 64, 2048, 128, 512),
+    (512, 128, 1024, 64, 2048, 32, 512),
+)
+
 # Each entry is one chain: a tuple of rank-2 matrix shapes whose inner
 # dimensions are consistent ((m0, k0), (k0, k1), ..., (k_{n-1}, m_out)).
 _CHAIN_BENCH_SHAPES = (
@@ -67,7 +78,7 @@ _CHAIN_BENCH_SHAPES = (
         (128, 512),
     ),  # five matrices
     ((1024, 256), (256, 1024)),  # rectangular pair
-)
+) + tuple(tuple(zip(dimensions, dimensions[1:])) for dimensions in CORE_CHAINS)
 
 # The .out overload measures the same work plus a write into the caller's
 # buffer; a representative subset keeps the run time in line with the default
