@@ -135,6 +135,9 @@ def test_layout_partition_preserves_memory_format_queries(benchmark_config, tmp_
 @pytest.mark.parametrize(
     "operator,arguments,unsupported",
     [
+        ("glu_jvp", (torch.float16,), True),
+        ("glu_jvp", (torch.bfloat16,), True),
+        ("glu_jvp", (torch.float32,), False),
         ("_validate_sparse_csr_tensor_args", (torch.float8_e4m3fn, False), True),
         ("_validate_sparse_csr_tensor_args", (torch.float8_e4m3fn, True), False),
         ("is_coalesced", (torch.float8_e4m3fn,), True),

@@ -78,13 +78,18 @@ class GluJvpBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.glu_jvp
-def test_glu_jvp():
+@pytest.mark.parametrize("dtype", _BENCH_DTYPES, ids=str)
+def test_glu_jvp(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            f"Ascend glu_jvp baseline falls back to CPU without {dtype} support"
+        )
     bench = GluJvpBenchmark(
         op_name="glu_jvp",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.glu_jvp,
         gems_op=getattr(flag_gems, "glu_jvp", None),
-        dtypes=_BENCH_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()

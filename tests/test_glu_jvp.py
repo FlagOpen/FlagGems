@@ -21,9 +21,15 @@ from . import test_utils as tu
 
 
 @pytest.fixture
-def _skip_cpu_fp16_reference(request, dtype):
-    if request.config.getoption("--ref") == "cpu" and dtype == torch.float16:
-        pytest.skip("CPU glu_jvp reference does not support float16")
+def _skip_unsupported_reference(request, dtype):
+    if dtype not in (torch.float16, torch.bfloat16):
+        return
+    if request.config.getoption("--ref") == "cpu":
+        pytest.skip(f"CPU glu_jvp reference does not support {dtype}")
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip(
+            f"Ascend glu_jvp reference falls back to CPU without {dtype} support"
+        )
 
 
 # aten::glu_jvp(glu, x, dx, dim) is the JVP of aten::glu(x, dim): glu is the
@@ -145,7 +151,7 @@ _POSITIVE_CASES = tu.selected_cases(
 
 @pytest.mark.glu_jvp
 @pytest.mark.parametrize("shape,dim,dtype,value_range,kind,extent", _POSITIVE_CASES)
-@pytest.mark.usefixtures("_skip_cpu_fp16_reference")
+@pytest.mark.usefixtures("_skip_unsupported_reference")
 def test_glu_jvp(shape, dim, dtype, value_range, kind, extent):
     x, x_parent = _operand(kind, dtype, shape, dim, value_range)
     dx, dx_parent = _operand(kind, dtype, shape, dim, value_range)
@@ -185,7 +191,7 @@ _BROADCAST_CASES = tu.selected_cases(
 
 @pytest.mark.glu_jvp
 @pytest.mark.parametrize("shape,dim,glu_shape,dx_shape,dtype", _BROADCAST_CASES)
-@pytest.mark.usefixtures("_skip_cpu_fp16_reference")
+@pytest.mark.usefixtures("_skip_unsupported_reference")
 def test_glu_jvp_broadcast(shape, dim, glu_shape, dx_shape, dtype):
     x = tu.make_input(dtype, shape, ["-1", "1"])
     dx = tu.make_input(dtype, dx_shape, ["-1", "1"])
@@ -213,7 +219,7 @@ _OUT_CASES = tu.selected_cases(
 
 @pytest.mark.glu_jvp
 @pytest.mark.parametrize("shape,dim,dtype", _OUT_CASES)
-@pytest.mark.usefixtures("_skip_cpu_fp16_reference")
+@pytest.mark.usefixtures("_skip_unsupported_reference")
 def test_glu_jvp_out(shape, dim, dtype):
     x = tu.make_input(dtype, shape, ["-1", "1"])
     dx = tu.make_input(dtype, shape, ["-1", "1"])
@@ -245,7 +251,7 @@ _SPECIAL_CASES = tu.selected_cases(
 
 @pytest.mark.glu_jvp
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
-@pytest.mark.usefixtures("_skip_cpu_fp16_reference")
+@pytest.mark.usefixtures("_skip_unsupported_reference")
 def test_glu_jvp_special_values(dtype, scenario):
     x = tu.make_special_input(dtype, scenario).repeat(2)
     dx = tu.make_special_input(dtype, scenario).repeat(2)
