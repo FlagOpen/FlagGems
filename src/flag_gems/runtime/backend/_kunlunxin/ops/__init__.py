@@ -346,6 +346,7 @@ from .less_equal_ import less_equal_, less_equal_scalar_
 from .lgamma import lgamma, lgamma_
 from .lift_fresh import lift_fresh  # noqa: F401
 from .lift_fresh_copy import lift_fresh_copy
+from .lift_out import lift_out  # noqa: F401
 from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
