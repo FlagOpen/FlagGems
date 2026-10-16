@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .__iand__ import __iand___scalar, __iand___tensor  # noqa: F401
 from .__irshift__ import __irshift__  # noqa: F401
 from .__rshift__ import __rshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
@@ -27,6 +28,29 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_binary_scalar import (  # noqa: F401
+    _foreach_add__ScalarList,
+    _foreach_clamp_max__Scalar,
+    _foreach_clamp_max__ScalarList,
+    _foreach_clamp_max_Scalar,
+    _foreach_clamp_max_ScalarList,
+    _foreach_clamp_min__Scalar,
+    _foreach_clamp_min__ScalarList,
+    _foreach_clamp_min_Scalar,
+    _foreach_clamp_min_ScalarList,
+    _foreach_maximum__Scalar,
+    _foreach_maximum__ScalarList,
+    _foreach_maximum_Scalar,
+    _foreach_maximum_ScalarList,
+    _foreach_minimum__Scalar,
+    _foreach_minimum__ScalarList,
+    _foreach_minimum_Scalar,
+    _foreach_minimum_ScalarList,
+    _foreach_mul__Scalar,
+    _foreach_sub__Scalar,
+)
+from ._foreach_sigmoid import _foreach_sigmoid
+from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -76,6 +100,8 @@ from .addr import addr
 from .affine_grid_generator import affine_grid_generator  # noqa: F401
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
+from .alpha_dropout import alpha_dropout  # noqa: F401
+from .alpha_dropout_ import alpha_dropout_  # noqa: F401
 from .amax import amax
 from .amin import amin, amin_
 from .aminmax import aminmax
@@ -158,6 +184,7 @@ from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .bucketize import bucketize
 from .cat import cat, cat_out
+from .cauchy import cauchy, cauchy_  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
@@ -305,6 +332,10 @@ from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
+from .hardshrink_backward import (  # noqa: F401
+    hardshrink_backward,
+    hardshrink_backward_grad_input,
+)
 from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
@@ -313,6 +344,8 @@ from .heaviside_ import heaviside_  # noqa: F401
 from .histc import histc
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
+from .i0 import i0, i0_out  # noqa: F401
+from .i0_ import i0_  # noqa: F401
 from .igamma_ import igamma_  # noqa: F401
 from .igammac import igammac, igammac_out
 from .igammac_ import igammac_
@@ -329,6 +362,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -474,9 +508,11 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
 from .ones import ones
 from .ones_like import ones_like
+from .or_tensor import or_tensor
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .pairwise_distance import pairwise_distance
@@ -566,6 +602,7 @@ from .sgn import sgn, sgn_out
 from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
 from .sign import sign, sign_out
+from .sign_ import sign_  # noqa: F401
 from .signbit import signbit, signbit_out
 from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
@@ -713,6 +750,8 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "__iand___scalar",
+    "__iand___tensor",
     "__irshift__",
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
@@ -728,6 +767,8 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_sigmoid",
+    "_foreach_sigmoid_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
@@ -791,6 +832,8 @@ __all__ = [
     "all_dim",
     "all_dims",
     "allclose",
+    "alpha_dropout",
+    "alpha_dropout_",
     "amax",
     "amin",
     "amin_",
@@ -869,6 +912,8 @@ __all__ = [
     "bucketize",
     "cat",
     "cat_out",
+    "cauchy",
+    "cauchy_",
     "ceil",
     "ceil_",
     "ceil_out",
@@ -1027,6 +1072,8 @@ __all__ = [
     "gt_tensor_",
     "hadamard_transform",
     "hardshrink",
+    "hardshrink_backward",
+    "hardshrink_backward_grad_input",
     "hardshrink_out",
     "hardsigmoid",
     "hardsigmoid_",
@@ -1036,6 +1083,9 @@ __all__ = [
     "hypot",
     "hypot_",
     "hypot_out",
+    "i0",
+    "i0_",
+    "i0_out",
     "igammac",
     "igammac_",
     "igammac_out",
@@ -1050,6 +1100,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "ior_tensor",
     "isclose",
     "isfinite",
     "isin",
@@ -1235,6 +1286,7 @@ __all__ = [
     "norm_scalaropt_dim",
     "normal_",
     "normal_float_tensor",
+    "normal_functional",
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
@@ -1242,6 +1294,7 @@ __all__ = [
     "not_equal_scalar",
     "ones",
     "ones_like",
+    "or_tensor",
     "ormqr",
     "outplace_fused_experts",
     "pad",
@@ -1352,6 +1405,7 @@ __all__ = [
     "sigmoid_",
     "sigmoid_backward",
     "sign",
+    "sign_",
     "sign_out",
     "signbit",
     "signbit_out",
