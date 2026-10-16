@@ -1281,3 +1281,85 @@ def test_native_forensics_indices(request, variant, mode, invalid):
     ][mode]
     (path / "results.json").write_text(json.dumps(report, indent=2))
     # This is observation, not an assertion that invalid native behavior is valid.
+
+
+@pytest.mark.parametrize("dtype_name", ["float16", "float32", "float64", "bfloat16"])
+@pytest.mark.parametrize("index_dtype", ["int32", "int64"])
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize("sparse", [False, True])
+@pytest.mark.parametrize("padding", [-1, 0])
+def test_masked_indices(request, dtype_name, index_dtype, mode, sparse, padding):
+    """Invalid rows act like padding, including all-invalid and empty bags."""
+    if _isolated(request):
+        return
+    import torch
+
+    import flag_gems
+
+    if dtype_name == "bfloat16" and not flag_gems.runtime.device.support_bf16:
+        pytest.skip("Device does not support bfloat16")
+    if dtype_name == "float64" and not flag_gems.runtime.device.support_fp64:
+        pytest.skip("Device does not support float64")
+    dtype = getattr(torch, dtype_name)
+    idtype = getattr(torch, index_dtype)
+    device = flag_gems.device
+    weight = torch.arange(24, device=device, dtype=dtype).reshape(6, 4)
+    indices = torch.tensor([1, -2, 6, 2, -100, 100], device=device, dtype=idtype)
+    offsets = torch.tensor([0, 4, 6, 6], device=device, dtype=idtype)
+    # Reference uses an explicit padding row, not native's unsafe OOB behavior.
+    safe = torch.tensor([1, 0, 0, 2, 0, 0], device=device, dtype=idtype)
+    for variant in ("_embedding_bag", "_embedding_bag_forward_only"):
+        op = getattr(flag_gems, variant)
+        actual = op(weight, indices, offsets, mode=mode, padding_idx=padding)
+        expected = op(weight, safe, offsets, mode=mode, padding_idx=0)
+        for got, ref in zip(actual, expected):
+            torch.testing.assert_close(got, ref)
+        grad = torch.ones_like(actual[0])
+        backward = flag_gems._embedding_bag_backward
+        got = backward(
+            grad, indices, offsets, *actual[1:], 6, False, mode, sparse, None, padding
+        )
+        ref = backward(
+            grad, safe, offsets, *expected[1:], 6, False, mode, sparse, None, 0
+        )
+        torch.testing.assert_close(
+            got.to_dense() if sparse else got, ref.to_dense() if sparse else ref
+        )
+    flag_gems.runtime.torch_device_fn.synchronize()
+
+
+@pytest.mark.parametrize(
+    "error", ["offset-negative", "offset-large", "mapping", "size", "maximum"]
+)
+def test_masked_device_metadata(request, error):
+    if _isolated(request):
+        return
+    import torch
+
+    import flag_gems
+
+    device = flag_gems.device
+    weight = torch.ones((4, 8), device=device)
+    indices = torch.tensor([1, 2, 1], device=device)
+    offsets = torch.tensor([0, 2], device=device)
+    mode = 2 if error == "maximum" else 1
+    output, mapping, sizes, maximum = flag_gems._embedding_bag(
+        weight, indices, offsets, mode=mode
+    )
+    if error.startswith("offset"):
+        offsets[1] = -100 if error.endswith("negative") else 100
+        for op in (flag_gems._embedding_bag, flag_gems._embedding_bag_forward_only):
+            result = op(weight, indices, offsets, mode=mode)[0]
+            assert torch.isfinite(result).all().item()
+    elif error == "mapping":
+        mapping[0] = 100
+    elif error == "size":
+        sizes[0] = -100
+    else:
+        maximum[0] = 100
+    grad = torch.ones_like(output)
+    result = flag_gems._embedding_bag_backward(
+        grad, indices, offsets, mapping, sizes, maximum, 4, False, mode, False
+    )
+    flag_gems.runtime.torch_device_fn.synchronize()
+    assert torch.isfinite(result).all().item()

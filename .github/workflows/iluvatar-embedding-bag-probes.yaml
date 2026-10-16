@@ -125,19 +125,38 @@ jobs:
             python3 -c 'import inspect, flag_gems; print(flag_gems.__file__); print(inspect.getfile(flag_gems._embedding_bag)); print(inspect.getfile(flag_gems._embedding_bag_backward))'
             python3 -m pip freeze > ../ix-results/environment.txt
           } 2>&1 | tee ../ix-results/setup.stdout.log
-      # Accuracy and exception coverage passed on n23 in run 38542625945.
-      # This phase investigates performance only; do not rerun those suites.
-      - name: Inspect native build and guarded invalid-index behavior
-        id: performance
-        timeout-minutes: 35
+      - name: Validate masked IX device inputs
+        id: accuracy
+        timeout-minutes: 45
         working-directory: operator-source
         shell: bash --login -e -o pipefail {0}
         run: |
           ulimit -c 0
           python3 -m pytest -c /dev/null -s -vv \
-            ../.github/scripts/test_iluvatar_embedding_bag_performance.py -k native_forensics \
-            --durations=0 --junitxml=../ix-results/performance-probes.xml \
-            2>&1 | tee ../ix-results/performance-probes.stdout.log
+            ../.github/scripts/test_iluvatar_embedding_bag_performance.py -k masked_ \
+            --durations=0 --junitxml=../ix-results/masked-inputs.xml \
+            2>&1 | tee ../ix-results/masked-inputs.stdout.log
+      - name: Run legal-input accuracy regression
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        timeout-minutes: 35
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          python3 -m pytest -s -vv tests/test_embedding_bag.py tests/test_embedding_bag_backward.py \
+            -k 'not invalid and not error' --durations=0 \
+            --junitxml=../ix-results/accuracy.xml \
+            2>&1 | tee ../ix-results/accuracy.stdout.log
+      - name: Measure masked IX forward and backward performance
+        id: performance
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        timeout-minutes: 35
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          python3 -m pytest -s -vv benchmark/test_embedding_bag.py benchmark/test_embedding_bag_backward.py \
+            -k "not default" --record=json --output=../ix-results/performance.json \
+            --durations=0 --junitxml=../ix-results/performance.xml \
+            2>&1 | tee ../ix-results/performance.stdout.log
       - name: Preserve diagnostics even when assertions fail
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
