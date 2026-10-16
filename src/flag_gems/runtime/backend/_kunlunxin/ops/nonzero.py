@@ -408,6 +408,27 @@ def _unbind_views(out):
 _TLE_VIEW_DTYPE = {1: torch.int8, 2: torch.int16, 4: torch.int32, 8: torch.int64}
 
 
+_TLE_OBJ_OK = None  # None = not yet probed
+
+
+def _tle_obj_supported():
+    """One-time probe: does the installed triton support the `tle.raw` object=
+    loader?  That loader only exists on newer tle builds; on older environments
+    building the stub raises (e.g. "RawJITFunction.__init__() got an unexpected
+    keyword argument 'object'").  Guard the whole declaration so an unsupported
+    tle leaves the tle path disabled and the generic kernels run instead -- a
+    failure here must never crash the op."""
+    global _TLE_OBJ_OK
+    if _TLE_OBJ_OK is None:
+        try:
+            _tle_stub((4, True, 1))
+            _TLE_OBJ_OK = True
+        except Exception as _e:  # noqa: BLE001 - any failure means "not usable"
+            logger.debug("GEMS_KUNLUNXIN NONZERO tle path deferred: %r", _e)
+            _TLE_OBJ_OK = False
+    return _TLE_OBJ_OK
+
+
 def _tle_chunk(n_elements):
     ch = max(64, triton.next_power_of_2(triton.cdiv(n_elements, _TLE_NW)))
     return ch
@@ -416,6 +437,7 @@ def _tle_chunk(n_elements):
 def _tle_usable(src, inp_ndim, n_elements):
     return (
         _tle is not None
+        and _tle_obj_supported()
         and 1 <= inp_ndim <= 8
         and n_elements < 2**31
         and n_elements * inp_ndim < 2**31
@@ -432,6 +454,7 @@ def _tle_fast_usable(inp, inp_ndim, n_elements):
     """
     return (
         _tle is not None
+        and _tle_obj_supported()
         and 1 <= inp_ndim <= 8
         and n_elements < 2**31
         and n_elements * inp_ndim < 2**31
@@ -557,44 +580,56 @@ def nonzero(inp, *, as_tuple=False):
 
     inp = inp.contiguous()
 
-    if _tle_fast_usable(inp, inp_ndim, n_elements):
-        esize = inp.element_size()
-        ch = _tle_chunk(n_elements)
-        meta = _tle_meta(inp.device, tuple(inp.shape), n_elements, ch)
-        view = inp.view(_TLE_VIEW_DTYPE[esize])
-        key = (esize, inp.is_floating_point())
-        pcount, prefix, total = _tle_scratch(inp.device)
-        if n_elements * inp_ndim * 8 <= _TLE_OVERALLOC_BYTES:
-            # Lever C: pre-size `out` to the worst case and defer the sync.
+    # Fast path: hand-written `tle.raw` payload kernels.  These rely on tle
+    # features that older/other tle builds may not expose (the object=
+    # loader); such a mismatch can raise at stub-build or compile time
+    # instead of returning False.  Guard the whole attempt so any failure
+    # cleanly falls through to the generic Triton kernels below (a full
+    # recompute of `out`, so a partial fast-path write is harmless).
+    try:
+        if _tle_fast_usable(inp, inp_ndim, n_elements):
+            esize = inp.element_size()
+            ch = _tle_chunk(n_elements)
+            meta = _tle_meta(inp.device, tuple(inp.shape), n_elements, ch)
+            view = inp.view(_TLE_VIEW_DTYPE[esize])
+            key = (esize, inp.is_floating_point())
+            pcount, prefix, total = _tle_scratch(inp.device)
+            if n_elements * inp_ndim * 8 <= _TLE_OVERALLOC_BYTES:
+                # Lever C: pre-size `out` to the worst case and defer the sync.
+                with torch_device_fn.device(inp.device):
+                    _tle_count_stub(key)[(_TLE_GRID,)](pcount, view, meta)
+                    _nz_scan16_kernel[(1,)](pcount, prefix, total, NW=_TLE_NW)
+                    out_full = torch.empty(
+                        n_elements, inp_ndim, dtype=torch.int64, device=inp.device
+                    )
+                    _tle_stub(key + (inp_ndim,))[(_TLE_GRID,)](
+                        out_full, view, prefix, meta
+                    )
+                    nnz = int(total[0].item())
+                out = out_full[:nnz]
+                return _unbind_views(out) if as_tuple else out
             with torch_device_fn.device(inp.device):
                 _tle_count_stub(key)[(_TLE_GRID,)](pcount, view, meta)
                 _nz_scan16_kernel[(1,)](pcount, prefix, total, NW=_TLE_NW)
-                out_full = torch.empty(
-                    n_elements, inp_ndim, dtype=torch.int64, device=inp.device
-                )
-                _tle_stub(key + (inp_ndim,))[(_TLE_GRID,)](out_full, view, prefix, meta)
                 nnz = int(total[0].item())
-            out = out_full[:nnz]
+                out = _tle_alloc_out(nnz, inp_ndim, inp.device)
+                if nnz:
+                    _tle_stub(key + (inp_ndim,))[(_TLE_GRID,)](out, view, prefix, meta)
             return _unbind_views(out) if as_tuple else out
-        with torch_device_fn.device(inp.device):
-            _tle_count_stub(key)[(_TLE_GRID,)](pcount, view, meta)
-            _nz_scan16_kernel[(1,)](pcount, prefix, total, NW=_TLE_NW)
-            nnz = int(total[0].item())
-            out = _tle_alloc_out(nnz, inp_ndim, inp.device)
-            if nnz:
-                _tle_stub(key + (inp_ndim,))[(_TLE_GRID,)](out, view, prefix, meta)
-        return _unbind_views(out) if as_tuple else out
 
-    src = _nz_mask_source(inp, n_elements)
-    if _tle_usable(src, inp_ndim, n_elements):
-        meta, view, key = _tle_prepare(src, inp.shape, n_elements)
-        nnz, prefix = _tle_count(view, meta, key, inp.device)
-        out = torch.empty(nnz, inp_ndim, dtype=torch.int64, device=inp.device)
-        if nnz:
-            kern = _tle_stub(key + (inp_ndim,))
-            with torch_device_fn.device(inp.device):
-                kern[(_TLE_GRID,)](out, view, prefix, meta)
-        return _unbind_views(out) if as_tuple else out
+        src = _nz_mask_source(inp, n_elements)
+        if _tle_usable(src, inp_ndim, n_elements):
+            meta, view, key = _tle_prepare(src, inp.shape, n_elements)
+            nnz, prefix = _tle_count(view, meta, key, inp.device)
+            out = torch.empty(nnz, inp_ndim, dtype=torch.int64, device=inp.device)
+            if nnz:
+                kern = _tle_stub(key + (inp_ndim,))
+                with torch_device_fn.device(inp.device):
+                    kern[(_TLE_GRID,)](out, view, prefix, meta)
+            return _unbind_views(out) if as_tuple else out
+
+    except Exception as _e:  # pragma: no cover - fall through to the generic kernels
+        logger.debug("GEMS_KUNLUNXIN NONZERO tle path deferred: %r", _e)
 
     num_nonzeros, plan = _count_plan(inp, n_elements)
 
