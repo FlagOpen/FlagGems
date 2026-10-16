@@ -1440,7 +1440,10 @@ def test_max_candidate_accuracy(dtype_name, shape):
         )
         torch.testing.assert_close(out.cpu(), expected, equal_nan=True, rtol=0, atol=0)
         torch.testing.assert_close(maximum.cpu(), winners, rtol=0, atol=0)
-        torch.testing.assert_close(sizes.cpu(), counts, rtol=0, atol=0)
+        # IX keeps one bag_size entry per offset, including a zero terminal
+        # entry when include_last_offset=True. Check the complete ABI tensor.
+        expected_sizes = torch.cat((counts, counts.new_zeros(1)))
+        torch.testing.assert_close(sizes.cpu(), expected_sizes, rtol=0, atol=0)
         # Include malformed saved rows; every atomic destination remains masked.
         invalid_max = winners.clone()
         if dim:

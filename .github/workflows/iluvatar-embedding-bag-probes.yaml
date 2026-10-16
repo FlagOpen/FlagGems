@@ -135,17 +135,8 @@ jobs:
             ../.github/scripts/test_iluvatar_embedding_bag_performance.py -k max_candidate_accuracy \
             --durations=0 --junitxml=../ix-results/max-accuracy.xml \
             2>&1 | tee ../ix-results/max-accuracy.stdout.log
-      - name: Measure MAX forward and backward performance
-        id: performance
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
-        timeout-minutes: 35
-        working-directory: operator-source
-        shell: bash --login -e -o pipefail {0}
-        run: |
-          python3 -m pytest -s -vv benchmark/test_embedding_bag.py benchmark/test_embedding_bag_backward.py \
-            -k "2-False and not True and not default" --record=json --output=../ix-results/performance.json \
-            --durations=0 --junitxml=../ix-results/performance.xml \
-            2>&1 | tee ../ix-results/performance.stdout.log
+      # MAX performance was measured on n23 in run 38859878207.
+      # This test-only ABI correction requires accuracy validation only.
       - name: Preserve diagnostics even when assertions fail
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
