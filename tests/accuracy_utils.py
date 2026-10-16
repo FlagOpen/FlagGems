@@ -27,6 +27,7 @@ fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
 fp8_is_supported = flag_gems.runtime.device.support_fp8
+complex_is_supported = flag_gems.runtime.device.support_complex
 
 
 def TestForwardOnly():
@@ -271,7 +272,11 @@ ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOA
 INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = (
+    ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
+    if complex_is_supported
+    else []
+)
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
 STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
@@ -301,6 +306,27 @@ def to_reference(inp, upcast=False):
         else:
             ref_inp = ref_inp.to(torch.float64 if can_use_fp64 else torch.float32)
     return ref_inp
+
+
+def ref_div_rounding(a, b, rounding_mode):
+    # Kunlunxin eager does not implement div with a rounding_mode, or computes
+    # it with fp32 opmath that differs from CPU half-precision semantics, so
+    # compute the reference on CPU there. Other backends keep the on-device
+    # reference (their eager implementation matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.div(a, b, rounding_mode=rounding_mode)
+    a_cpu = a.cpu() if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu() if isinstance(b, torch.Tensor) else b
+    ref = torch.div(a_cpu, b_cpu, rounding_mode=rounding_mode)
+    if not TO_CPU:
+        dev = None
+        for x in (a, b):
+            if isinstance(x, torch.Tensor) and x.device.type != "cpu":
+                dev = x.device
+                break
+        if dev is not None and isinstance(ref, torch.Tensor):
+            ref = ref.to(dev)
+    return ref
 
 
 def to_cpu(res, ref):
