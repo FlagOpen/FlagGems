@@ -793,8 +793,23 @@ def parse_perf_data(op, result_file):
                 details.setdefault(shape, {})
                 details[shape]["base"] = res.get("latency_base", 0.0)
                 details[shape]["gems"] = res.get("latency", 0.0)
-                speedup = res.get("speedup", 0.0)
+                speedup = res.get("compared_speedup")
+                if speedup is None:
+                    speedup = res.get("speedup", 0.0)
                 details[shape]["speedup"] = speedup
+                if res.get("compared_speedup") is not None:
+                    details[shape]["native_speedup"] = res.get("speedup")
+                for field in (
+                    "compared_speedup",
+                    "base_raw_speedup",
+                    "base_data_source",
+                    "base_shape_key",
+                    "base_latency_ms",
+                    "base_scaling_factor",
+                    "base_miss_reason",
+                ):
+                    if res.get(field) is not None:
+                        details[shape][field] = res[field]
                 count += 1
                 total += speedup
 
@@ -840,8 +855,23 @@ def parse_perf_data(op, result_file):
             details.setdefault(shape, {})
             details[shape]["base"] = res.get("latency_base")
             details[shape]["gems"] = res.get("latency")
-            speedup = res.get("speedup")
+            speedup = res.get("compared_speedup")
+            if speedup is None:
+                speedup = res.get("speedup")
             details[shape]["speedup"] = speedup
+            if res.get("compared_speedup") is not None:
+                details[shape]["native_speedup"] = res.get("speedup")
+            for field in (
+                "compared_speedup",
+                "base_raw_speedup",
+                "base_data_source",
+                "base_shape_key",
+                "base_latency_ms",
+                "base_scaling_factor",
+                "base_miss_reason",
+            ):
+                if res.get(field) is not None:
+                    details[shape][field] = res[field]
             if isinstance(speedup, (int, float)):
                 speedup_counts[dtype] = speedup_counts.get(dtype, 0) + 1
                 speedup_totals[dtype] = speedup_totals.get(dtype, 0.0) + speedup
@@ -969,6 +999,8 @@ def run_benchmark_q(gpu_id, op):
         f'pytest -m "{marker}" --level core --record json '
         f"--output benchmark_{op}.json --continue-on-collection-errors"
     )
+    if getattr(CFG, "base_data", None):
+        cmd += f" --base-data={shlex.quote(CFG.base_data)}"
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1501,7 +1533,14 @@ def main():
         default="auto",
         help="ANSI color output mode: auto (TTY only), always, never. Default: auto",
     )
+    parser.add_argument(
+        "--base-data",
+        metavar="FILE",
+        default=None,
+        help="Optional ops-baseline JSON; matched external speedup wins in summaries.",
+    )
     OPTS = parser.parse_args()
+    CFG.base_data = str(Path(OPTS.base_data).resolve()) if OPTS.base_data else None
     CFG.dump_output = OPTS.dump_output
     CFG.quick = OPTS.quick
     CFG.start = OPTS.start
