@@ -326,9 +326,9 @@ def ref_div_rounding(a, b, rounding_mode):
                 wide = torch.float64 if fp64_is_supported else torch.float32
                 a_wide = a.to(wide) if isinstance(a, torch.Tensor) else a
                 b_wide = b.to(wide) if isinstance(b, torch.Tensor) else b
-                return torch.div(
-                    a_wide, b_wide, rounding_mode=rounding_mode
-                ).to(orig_dtype)
+                return torch.div(a_wide, b_wide, rounding_mode=rounding_mode).to(
+                    orig_dtype
+                )
         return torch.div(a, b, rounding_mode=rounding_mode)
     a_cpu = a.cpu() if isinstance(a, torch.Tensor) else a
     b_cpu = b.cpu() if isinstance(b, torch.Tensor) else b

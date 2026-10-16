@@ -66,7 +66,9 @@ def test_max_pool3d(shape, kernel_size, stride, padding, dilation, ceil_mode, dt
 # contiguous storage, so a gradient allocated in NDHWC order would silently
 # scatter to wrong addresses.
 @pytest.mark.max_pool3d
-@pytest.mark.parametrize("memory_format", [torch.contiguous_format, torch.channels_last_3d])
+@pytest.mark.parametrize(
+    "memory_format", [torch.contiguous_format, torch.channels_last_3d]
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_max_pool3d_autograd(dtype, memory_format):
     shape = (2, 8, 8, 16, 16)
