@@ -740,6 +740,8 @@ from .xlogy import (
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+from .functional_assert_async import _functional_assert_async
+from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 
 __all__ = [
     "__iand___scalar",
@@ -761,6 +763,7 @@ __all__ = [
     "_flash_attention_forward",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
+    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adam",

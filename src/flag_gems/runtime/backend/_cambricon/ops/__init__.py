@@ -326,6 +326,7 @@ from .where import where_scalar_other, where_scalar_self, where_self, where_self
 from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
+from .resolve_conj import resolve_conj
 
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
@@ -655,6 +656,7 @@ __all__ = [
     "repeat_interleave_tensor",
     "resize",
     "resize_",
+    "resolve_conj",
     "resolve_neg",
     "rms_norm",
     "rms_norm_backward",

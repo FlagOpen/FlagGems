@@ -199,6 +199,7 @@ from .weight_norm import (
     weight_norm_interface,
     weight_norm_interface_backward,
 )
+from .unsqueeze import unsqueeze, unsqueeze_
 
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
@@ -378,6 +379,8 @@ __all__ = [
     "trunc_divide",
     "trunc_divide_",
     "unique_dim",
+    "unsqueeze",
+    "unsqueeze_",
     "upsample_linear1d",
     "upsample_nearest2d",
     "upsample_nearest_exact2d_backward",

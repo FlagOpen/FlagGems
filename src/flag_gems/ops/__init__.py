@@ -1518,6 +1518,27 @@ from flag_gems.ops.xlogy_ import xlogy_, xlogy_tensor_scalar_
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+from flag_gems.ops.functional_assert_async import _functional_assert_async
+from flag_gems.ops.sym_constrain_range import sym_constrain_range
+from flag_gems.ops.sym_numel import sym_numel
+from flag_gems.ops.sym_storage_offset import sym_storage_offset
+from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
+from flag_gems.ops._make_dep_token import _make_dep_token
+from flag_gems.ops._reshape_alias import _reshape_alias
+from flag_gems.ops._unsafe_view import _unsafe_view
+from flag_gems.ops.alias import alias
+from flag_gems.ops.expand import expand, expand_
+from flag_gems.ops.expand_as import expand_as
+from flag_gems.ops.flatten import flatten
+from flag_gems.ops.hsplit import hsplit
+from flag_gems.ops.t_ import t_
+from flag_gems.ops.unbind import unbind
+from flag_gems.ops.unflatten import unflatten
+from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
+from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
+from flag_gems.ops.row_indices import row_indices
+from flag_gems.ops.transpose import transpose
+from flag_gems.ops.view_as_complex import view_as_complex
 
 __all__ = [
     "__iand___scalar",
@@ -1724,6 +1745,7 @@ __all__ = [
     "_foreach_trunc_",
     "_foreach_zero",
     "_foreach_zero_",
+    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
@@ -1757,6 +1779,7 @@ __all__ = [
     "_logcumsumexp",
     "_logcumsumexp_out",
     "_lu_with_info",
+    "_make_dep_token",
     "_masked_scale",
     "_masked_softmax",
     "_masked_softmax_backward",
@@ -1788,6 +1811,7 @@ __all__ = [
     "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
+    "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",
     "_resize_output",
@@ -1829,6 +1853,7 @@ __all__ = [
     "_unique2",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
+    "_unsafe_view",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
     "_upsample_bilinear2d_aa",
@@ -1886,6 +1911,7 @@ __all__ = [
     "addr_",
     "adjoint",
     "affine_grid_generator",
+    "alias",
     "alias_copy",
     "alias_copy_out",
     "all",
@@ -2143,6 +2169,9 @@ __all__ = [
     "exp2_",
     "exp_",
     "exp_out",
+    "expand",
+    "expand_",
+    "expand_as",
     "expand_copy",
     "expm1",
     "expm1_",
@@ -2178,6 +2207,7 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
+    "flatten",
     "flip",
     "fliplr",
     "flipud",
@@ -2289,6 +2319,7 @@ __all__ = [
     "histogram_bin_ct",
     "histogram_bins_tensor",
     "histogramdd",
+    "hsplit",
     "hspmm",
     "hstack",
     "huber_loss",
@@ -2728,6 +2759,7 @@ __all__ = [
     "round_",
     "round_out",
     "router_gemm",
+    "row_indices",
     "row_indices_copy",
     "row_indices_copy_out",
     "row_stack",
@@ -2936,8 +2968,14 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "sym_constrain_range",
+    "sym_numel",
     "sym_size",
     "sym_size_int",
+    "sym_storage_offset",
+    "sym_stride",
+    "sym_stride_int",
+    "t_",
     "t_copy",
     "t_copy_out",
     "take",
@@ -2962,6 +3000,7 @@ __all__ = [
     "topk_w8a16_fp8",
     "trace",
     "trace_backward",
+    "transpose",
     "transpose_copy",
     "trapz",
     "triangular_solve",
@@ -2981,8 +3020,10 @@ __all__ = [
     "true_divide_tensor_",
     "trunc",
     "trunc_",
+    "unbind",
     "unbind_copy",
     "underscore_sobol_engine_draw",
+    "unflatten",
     "unfold",
     "unfold_backward",
     "unfold_copy",
@@ -2992,6 +3033,9 @@ __all__ = [
     "unique_dim",
     "unsafe_index",
     "unsafe_index_put",
+    "unsafe_split_with_sizes",
+    "unsqueeze",
+    "unsqueeze_",
     "upsample_bicubic2d",
     "upsample_bicubic2d_backward",
     "upsample_bicubic2d_backward_grad_input",
@@ -3021,6 +3065,7 @@ __all__ = [
     "var_mean",
     "vdot",
     "vector_norm",
+    "view_as_complex",
     "view_copy",
     "vstack",
     "w8a8_block_fp8_matmul",

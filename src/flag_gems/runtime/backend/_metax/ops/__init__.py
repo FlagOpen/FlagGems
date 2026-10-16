@@ -135,10 +135,13 @@ from .weight_int8pack_mm import weight_int8pack_mm
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+from ._make_dep_token import _make_dep_token
+from .resolve_conj import resolve_conj
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
+    "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
@@ -258,6 +261,7 @@ __all__ = [
     "repeat",
     "repeat_interleave_self_tensor",
     "replication_pad3d_backward",
+    "resolve_conj",
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
     "rsqrt",

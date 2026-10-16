@@ -313,6 +313,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad2d",
+    "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
     "scaled_grouped_mm",
@@ -442,5 +443,6 @@ if get_device_capability(current_device()) >= (3, 1):
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
 from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+from .resolve_conj import resolve_conj
 
 __all__.extend(["scaled_mm", "scaled_mm_out"])
