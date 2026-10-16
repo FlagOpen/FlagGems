@@ -150,7 +150,9 @@ def max_pool3d_with_indices_backward(
         grad_output.shape[4],
     )
 
-    grad_input = torch.zeros_like(self, dtype=torch.float32)
+    grad_input = torch.zeros_like(
+        self, dtype=torch.float32, memory_format=torch.contiguous_format
+    )
 
     if grad_input.numel() == 0:
         return grad_input.to(out_dtype)
