@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_UNSUPPORTED_DTYPES = (
+    torch.float64,
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.int64,
+    torch.bool,
+)
+
+_ASCEND_COALESCE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend COO reduction supports only FP16, BF16, FP32 and INT32",
+)
+
+
 # Merge duplicate COO coordinates and sum their stored values.
 # FP8 inputs are exercised by the rejection test.
 _COALESCE_DTYPES = [
@@ -133,7 +148,18 @@ def _assert_coalesced(res_out, ref_out, dtype, *, equal_nan=False):
 
 @pytest.mark.coalesce
 @pytest.mark.parametrize("case", _COALESCE_CASES)
-@pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_COALESCE_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()
+            ),
+        )
+        for dtype in _COALESCE_DTYPES
+    ],
+)
 def test_coalesce(case, dtype):
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype)
@@ -154,7 +180,12 @@ def test_coalesce(case, dtype):
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
 def test_coalesce_coalesced_input(case, dtype):
     shape, nnz = case
-    inp = _make_input(shape, nnz, dtype).coalesce()
+    inp = _make_input(shape, nnz, dtype)
+    # Prepare sorted, duplicate-free input on CPU; the tested NPU call only
+    # needs the already-coalesced identity path, which supports more dtypes.
+    if flag_gems.vendor_name == "ascend":
+        inp = inp.cpu()
+    inp = inp.coalesce().to(flag_gems.device)
     assert inp.is_coalesced()
     ref_inp = tu.to_reference(inp)
 
@@ -168,7 +199,20 @@ def test_coalesce_coalesced_input(case, dtype):
 
 
 @pytest.mark.coalesce
-@pytest.mark.parametrize("value_range,dtype,case", _VALUE_CASES)
+@pytest.mark.parametrize(
+    "value_range, dtype, case",
+    [
+        pytest.param(
+            value_range,
+            dtype,
+            case,
+            marks=(
+                _ASCEND_COALESCE_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()
+            ),
+        )
+        for value_range, dtype, case in _VALUE_CASES
+    ],
+)
 def test_coalesce_value_ranges(value_range, dtype, case):
     shape, nnz = case
     inp = _make_input(shape, nnz, dtype, value_range=value_range)
@@ -186,8 +230,19 @@ def test_coalesce_value_ranges(value_range, dtype, case):
 @pytest.mark.coalesce
 @pytest.mark.parametrize("case", _COALESCE_CASES)
 @pytest.mark.parametrize(
-    "dtype,scenario",
-    tu.selected_cases(tu.special_value_cases(_COALESCE_DTYPES)),
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(
+                _ASCEND_COALESCE_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_COALESCE_DTYPES)
+        )
+    ],
 )
 def test_coalesce_nan_inf(case, dtype, scenario):
     shape, nnz = case
@@ -232,7 +287,8 @@ def test_coalesce_rejects_csr_input():
 @pytest.mark.coalesce
 def test_coalesce_rejects_fp8_input():
     indices = torch.zeros((1, 3), dtype=torch.long, device=flag_gems.device)
-    values = torch.zeros(3, dtype=torch.float8_e4m3fn, device=flag_gems.device)
+    # Rejection depends only on dtype; do not require an FP8 fill kernel.
+    values = torch.empty(3, dtype=torch.float8_e4m3fn, device=flag_gems.device)
     inp = torch.sparse_coo_tensor(indices, values, (4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten.coalesce(inp)
