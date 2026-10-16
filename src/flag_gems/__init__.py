@@ -881,6 +881,7 @@ _FULL_CONFIG = (
     ("detach_copy", detach_copy),
     ("diag", diag),
     ("diag_embed", diag_embed),
+    ("diagflat", diagflat),
     ("diagonal_backward", diagonal_backward),
     ("diagonal_copy", diagonal_copy),
     ("diagonal_scatter", diagonal_scatter),
