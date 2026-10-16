@@ -855,6 +855,10 @@ def launch_combine(out, final_lse, partial, lse, block_m):
     )
 
 
+# `flash_kernel`/`flash_api` also name the implementation files these tests
+# cover, so tools/test-op.sh can select them by marker when ops/flash_kernel.py
+# or ops/flash_api.py changes.
+@pytest.mark.flash_kernel
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("layout", LAYOUTS)
@@ -885,6 +889,7 @@ def test_splitkv_combine_output_layout(
     assert_no_stray_writes(backing, occupied)
 
 
+@pytest.mark.flash_kernel
 @pytest.mark.flash_attention_forward
 @pytest.mark.skipif(
     flag_gems.device != "cuda", reason="Requires CUDA-compatible graphs"
@@ -927,6 +932,7 @@ def test_splitkv_combine_graph_replay(layout, dtype):
         assert_no_stray_writes(backing, occupied)
 
 
+@pytest.mark.flash_api
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("layout", LAYOUTS)
