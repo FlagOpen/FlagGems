@@ -1,47 +1,41 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
 import triton
 
-from flag_gems.ops.copy import copy_ as _triton_copy_
-from flag_gems.ops.fix_ import _fix_inplace_kernel
-from flag_gems.runtime import torch_device_fn
+from .fix import _fix_trunc_kernel, _pick_block
 
-logger = logging.getLogger("flag_gems.ops.fix_")
+logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+
+# Same fast-path tiling as the vendored ``fix`` operator: fix_ and fix are both
+# truncation toward zero, so the validated fix kernel (pure-FP helper, exact
+# for every input) is reused for the in-place variant.
+_FAST_BLOCK = 16384
+_FAST_WARPS = 32
 
 
-def _fix_real_(t: torch.Tensor):
-    """Run the in-place trunc kernel over a real floating tensor.
-
-    Uses a triton copy (not ``aten::copy_``) to write results back when ``t``
-    is not contiguous.
-    """
-    n_elements = t.numel()
-    if n_elements == 0:
+def _trunc_inplace(t: torch.Tensor) -> None:
+    """In-place truncation toward zero for a *real* floating tensor."""
+    numel = t.numel()
+    if numel == 0:
         return
 
-    t_contig = t.contiguous()
+    if not t.is_contiguous():
+        # Linear-index kernel: run on the contiguous copy, then write back
+        # through the vendor copy_ override (no aten fallback).
+        t_contig = t.contiguous()
+        _trunc_inplace(t_contig)
+        t.copy_(t_contig)
+        return
 
-    grid = (triton.cdiv(n_elements, 1024),)
-    with torch_device_fn.device(t.device):
-        _fix_inplace_kernel[grid](t_contig, n_elements, BLOCK_SIZE=1024)
-
-    if t_contig is not t:
-        _triton_copy_(t, t_contig)
+    # Constant-tuple grid, mask-free when the block divides evenly (masked
+    # memory is ~2x more expensive on this backend). Each element is loaded
+    # and stored exactly once by its owning lane, so in-place is safe.
+    block_size, num_warps = _pick_block(numel, t.dtype)
+    even = numel % block_size == 0
+    _fix_trunc_kernel[(triton.cdiv(numel, block_size),)](
+        t, t, numel, BLOCK_SIZE=block_size, EVEN=even, num_warps=num_warps
+    )
 
 
 def fix_(self: torch.Tensor):
@@ -53,11 +47,16 @@ def fix_(self: torch.Tensor):
     logger.debug("GEMS_KUNLUNXIN FIX_")
 
     if self.is_complex():
-        _fix_real_(torch.view_as_real(self))
+        # Complex: truncate the real/imag components separately.  ATen has no
+        # complex fix (torch.fix on a complex tensor raises
+        # NotImplementedError), so view the buffer as a flat real tensor and
+        # reuse the float in-place path.
+        _trunc_inplace(torch.view_as_real(self).view(-1))
         return self
 
+    # Integer tensors: truncation is a no-op.
     if not self.is_floating_point():
         return self
 
-    _fix_real_(self)
+    _trunc_inplace(self)
     return self
