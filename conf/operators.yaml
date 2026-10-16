@@ -16426,6 +16426,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: rnn_relu_cell
+  description: An Elman RNN cell with ReLU non-linearity.
+  for:
+  - rnn_relu_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: rnn_tanh
   description: Pure Triton implementation for the rnn_tanh input overload.
   for:
