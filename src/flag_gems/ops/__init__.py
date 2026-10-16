@@ -574,6 +574,7 @@ from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.col2im import col2im
 from flag_gems.ops.col_indices import col_indices
+from flag_gems.ops.col_indices_copy import col_indices_copy, col_indices_copy_out
 from flag_gems.ops.column_stack import column_stack, column_stack_out
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
@@ -815,6 +816,9 @@ from flag_gems.ops.hardswish_backward import hardswish_backward
 from flag_gems.ops.hardtanh import hardtanh, hardtanh_out
 from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.hardtanh_backward import hardtanh_backward
+from flag_gems.ops.has_same_storage_numel import (
+    _has_same_storage_numel as has_same_storage_numel,
+)
 from flag_gems.ops.hash_tensor import hash_tensor
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
@@ -2068,6 +2072,8 @@ __all__ = [
     "clip_",
     "col2im",
     "col_indices",
+    "col_indices_copy",
+    "col_indices_copy_out",
     "column_stack",
     "column_stack_out",
     "concat",
@@ -2325,6 +2331,7 @@ __all__ = [
     "hardtanh_",
     "hardtanh_backward",
     "hardtanh_out",
+    "has_same_storage_numel",
     "hash_tensor",
     "heaviside",
     "heaviside_",
