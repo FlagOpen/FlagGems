@@ -18,10 +18,8 @@ import torch
 from . import base, consts
 
 # (sparse shape, nnz) workload descriptors, mirroring the KernelGen acceptance
-# benchmark. Coalescing work scales with nnz, so the tensors are sized for a
-# meaningful measurement while staying small enough to build repeatedly; nnz is
-# always > numel(shape), which guarantees duplicate coordinates and therefore
-# real merging work.
+# benchmark. Coalescing work scales with nnz; nnz > numel(shape) guarantees
+# duplicate coordinates and therefore real sort/merge work.
 _COALESCE_SHAPES = [
     ((1024, 1024), 65536),
     ((1024, 1024), 262144),
@@ -46,9 +44,9 @@ def _make_uncoalesced_coo(sparse_shape, nnz, dtype, device):
 
 
 class CoalesceBenchmark(base.Benchmark):
-    """``aten::_coalesce`` over duplicate-bearing sparse COO tensors.
+    """``aten::coalesce`` over duplicate-bearing sparse COO tensors.
 
-    ``_coalesce`` is a sparse op with no meaningful dense shapes, so the
+    ``coalesce`` is a sparse op with no meaningful dense shapes, so the
     benchmark sweeps the KernelGen (sparse_shape, nnz) workload descriptors.
     """
 
@@ -60,6 +58,16 @@ class CoalesceBenchmark(base.Benchmark):
         for sparse_shape, nnz in self.shapes:
             inp = _make_uncoalesced_coo(sparse_shape, nnz, cur_dtype, self.device)
             yield inp,
+
+
+@pytest.mark.coalesce
+def test_coalesce():
+    bench = CoalesceBenchmark(
+        op_name="coalesce",
+        torch_op=torch.ops.aten.coalesce,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.underscore_coalesce
