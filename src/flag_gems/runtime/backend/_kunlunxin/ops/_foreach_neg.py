@@ -129,10 +129,10 @@ def _apply(tensors, inplace):
 
 
 def _foreach_neg(self):
-    logger.debug("GEMS _FOREACH_NEG")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_NEG")
     return _apply(self, inplace=False)
 
 
 def _foreach_neg_(self):
-    logger.debug("GEMS _FOREACH_NEG_")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_NEG_")
     return _apply(self, inplace=True)

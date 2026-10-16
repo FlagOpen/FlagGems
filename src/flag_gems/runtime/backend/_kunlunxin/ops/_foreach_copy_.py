@@ -120,7 +120,7 @@ def _flat_copy(dst, src):
 
 
 def _foreach_copy_(self, src, non_blocking=False):
-    logger.debug("GEMS _FOREACH_COPY_")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_COPY_")
     self = check_tensor_list(self)
     src = check_tensor_list(src)
     _check_same_length(self, src, "tensor list")

@@ -458,7 +458,7 @@ def _pad_buffer(src, pad_to, device):
     buf = torch.full((pad_to,), _pad_value(src.dtype), dtype=src.dtype, device=device)
     if n:
         if not tle_copy(src, buf[:n]):
-            torch.ops.aten._copy_from(src, buf[:n], False)
+            buf[:n].copy_(src)
     return buf
 
 
@@ -489,7 +489,7 @@ def _max_flat(inp, out, device):
     if numel <= block:
         buf = torch.full((block,), pad_val, dtype=inp.dtype, device=device)
         if not tle_copy(inp, buf[:numel]):
-            torch.ops.aten._copy_from(inp, buf[:numel], False)
+            buf[:numel].copy_(inp)
         max_kernel_1[(1, 1)](buf, out, numel, block, False, buffer_size_limit=2048)
         return
     rows = numel // block
@@ -529,9 +529,7 @@ def _max_flat(inp, out, device):
             )
             src_tail = inp[rows_exact * block : rows * block]
             if not tle_copy(src_tail, tail_buf[: tail_rows * block]):
-                torch.ops.aten._copy_from(
-                    src_tail, tail_buf[: tail_rows * block], False
-                )
+                tail_buf[: tail_rows * block].copy_(src_tail)
             tail_mid = torch.empty((bm,), dtype=inp.dtype, device=device)
             max_kernel_2d[(1, 1)](
                 tail_buf, tail_mid, bm, block, bm, bn, False, buffer_size_limit=2048
@@ -539,16 +537,12 @@ def _max_flat(inp, out, device):
             if not tle_copy(
                 tail_mid[:tail_rows], mid[rows_exact : rows_exact + tail_rows]
             ):
-                torch.ops.aten._copy_from(
-                    tail_mid[:tail_rows],
-                    mid[rows_exact : rows_exact + tail_rows],
-                    False,
-                )
+                mid[rows_exact : rows_exact + tail_rows].copy_(tail_mid[:tail_rows])
         if res:
             res_buf = torch.full((block,), pad_val, dtype=inp.dtype, device=device)
             src_res = inp[rows * block :]
             if not tle_copy(src_res, res_buf[:res]):
-                torch.ops.aten._copy_from(src_res, res_buf[:res], False)
+                res_buf[:res].copy_(src_res)
             max_kernel_1[(1, 1)](
                 res_buf, mid[rows:], res, block, False, buffer_size_limit=2048
             )
@@ -594,7 +588,7 @@ def max_dim(inp, dim=None, keepdim=False):
         out_index.zero_()
         with torch_device_fn.device(inp.device):
             if not tle_copy(inp, out_value):
-                torch.ops.aten._copy_from(inp, out_value, False)
+                out_value.copy_(inp)
         if not keepdim:
             out_value = torch.squeeze(out_value, dim)
             out_index = torch.squeeze(out_index, dim)
@@ -634,7 +628,7 @@ def max_dim(inp, dim=None, keepdim=False):
                         )
                         with torch_device_fn.device(inp.device):
                             if not tle_copy(view, src):
-                                torch.ops.aten._copy_from(view, src, False)
+                                src.copy_(view)
                     part_val = torch.empty(VR, dtype=torch.float32, device=inp.device)
                     best_c = torch.empty((M2,), dtype=torch.int32, device=inp.device)
                     out_flat = out_value.reshape(-1)
@@ -707,7 +701,7 @@ def max_dim(inp, dim=None, keepdim=False):
                 src = torch.empty(list(view.shape), dtype=dtype, device=inp.device)
                 with torch_device_fn.device(inp.device):
                     if not tle_copy(view, src):
-                        torch.ops.aten._copy_from(view, src, False)
+                        src.copy_(view)
             nc = triton.cdiv(N, block_n)
             part_val = torch.empty((M2, nc), dtype=torch.float32, device=inp.device)
             best_c = torch.empty((M2,), dtype=torch.int32, device=inp.device)
