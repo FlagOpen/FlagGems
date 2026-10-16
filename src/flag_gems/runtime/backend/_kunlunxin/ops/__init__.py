@@ -49,10 +49,15 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_mul__Scalar,
     _foreach_sub__Scalar,
 )
+from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_neg import _foreach_neg, _foreach_neg_
+from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
+from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
+from ._foreach_tan import _foreach_tan  # noqa: F401
+from ._foreach_tan_ import _foreach_tan_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -771,11 +776,16 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_copy",
     "_foreach_copy_",
     "_foreach_neg",
     "_foreach_neg_",
+    "_foreach_pow__List",
+    "_foreach_pow_List",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
+    "_foreach_tan",
+    "_foreach_tan_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
