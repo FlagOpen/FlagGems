@@ -152,25 +152,20 @@ def _chip_matches(model, device_name):
     )
 
 
-def _tensors(value):
-    if isinstance(value, dict):
-        if "shape" in value:
-            yield value
-        else:
-            for item in value.values():
-                yield from _tensors(item)
-    elif isinstance(value, (tuple, list)):
-        for item in value:
-            yield from _tensors(item)
-
-
 def _legacy_shape_key(key, call):
-    """Legacy records have no config, so only an exact simple shape key works."""
-    first = next(_tensors(call), None)
-    if first is None:
+    """Only a direct unary tensor call can use shape-only legacy records.
+
+    Extra tensors, scalars, keywords, or nested containers need input metadata
+    to distinguish incompatible operator ABIs (for example packed vs split).
+    """
+    args = call.get("args", [])
+    if len(args) != 1 or call.get("kwargs"):
+        return False
+    tensor = args[0]
+    if not isinstance(tensor, dict) or "shape" not in tensor:
         return False
     try:
-        return json.loads(key) == first["shape"]
+        return json.loads(key) == tensor["shape"]
     except (TypeError, ValueError):
         return False
 

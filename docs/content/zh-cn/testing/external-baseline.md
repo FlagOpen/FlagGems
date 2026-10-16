@@ -26,8 +26,10 @@ pytest 建议使用 `--base-data=路径`，避免仓库外的路径影响早期 
 记录中的 tensor shape、dtype、stride 和 requires_grad，支持 ops-baseline PR #8
 的 PyTorch 记录及其复合 shape key。显式参数与省略默认值不会自动合并。
 具名 `config.inputs` 需要 reference callable 有可绑定的 Python 签名；无法绑定时回退。
-没有输入元数据的旧记录仅按首个 tensor 的 shape key 和 dtype 匹配，不能检查其他
-参数或布局，复杂算子应提供完整输入元数据。算子名精确匹配并保留下划线前缀，
+没有输入元数据的旧记录仅支持单个直接 tensor 实参且无关键字参数的调用，按
+shape key 和 dtype 匹配。多个 tensor、标量参数和嵌套输入必须提供完整输入元数据。
+即使是单输入旧记录，也无法验证布局和默认参数；这些影响语义时应补充输入元数据。
+算子名精确匹配并保留下划线前缀，
 不猜算子别名；多个记录同时匹配时放弃外部结果。
 
 对于具名 `device` 参数，来源的 `cuda` / `cuda:0` 可匹配本次 benchmark 明确选择的
@@ -57,3 +59,8 @@ compared_speedup = 原始比值 / 芯片折算系数
 该参数不会自动跳过本机原生实现。已有 `skip_native` 标记仍负责厂商基线缺失的场景，
 这些场景可使用外部比值；外部也未命中时保持 N/A。正确性、preflight、reference-only、
 profiling 和输入生成流程不受影响。完整格式与边界见英文同名文档。
+
+BLAS 串行与并行 worker 复用相同的外部比较逻辑，worker 接收基线文件的绝对
+路径。native/Gems 输入格式不同的成对输入按 native callable 的 ABI 匹配。
+独立的 int4 packing benchmark runner 暂未接入外部基线。此选项不改变自定义
+runner 对 `--skip-native` 等其他选项的原有支持情况。

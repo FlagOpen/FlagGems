@@ -22,7 +22,7 @@ The filename is arbitrary; the file must use the `ops-baseline` layout:
 
 ```json
 {
-  "add": {
+  "neg": {
     "shapes": {
       "[64, 64]": {
         "torch.float32": {"latency_ms": 0.01}
@@ -58,10 +58,11 @@ has an inspectable Python signature. Defaults are bound before comparison. If
 parameter binding is unavailable, named records are left unmatched rather than
 using an unordered tensor-shape heuristic.
 
-Legacy records without input metadata match an exact first-tensor shape key and
-dtype. They cannot verify other tensor layouts or scalar parameters; use full
-input metadata for operators where these distinguish workloads. There are no
-implicit operator aliases. Multiple matching records are ambiguous and are not
+Legacy records without input metadata are accepted only for a single direct
+tensor argument with no keywords, using its exact shape key and dtype. Multiple
+tensors, scalar parameters, and nested inputs require full input metadata. Even
+a unary legacy record cannot verify layout or defaults; supply input metadata
+when these affect the workload. There are no implicit operator aliases. Multiple matching records are ambiguous and are not
 used. An unmatched record retains native behavior and records `base_miss_reason`.
 
 ## Results and hardware scaling
@@ -99,3 +100,9 @@ remain responsible for missing vendor baselines; those cases can still receive
 an external speedup. If neither baseline is available, native speedup stays N/A.
 The option does not change correctness, preflight, reference-only, profiling,
 or timing input generation, and it does not download data from KS3.
+
+BLAS serial runs and parallel workers use the same comparison logic. Workers
+receive the absolute baseline path; paired native/Gems inputs are matched using
+the native callable ABI. The standalone int4 packing benchmark runners do not
+yet apply external baselines. This option does not change custom runners’
+existing support for other options such as `--skip-native`.

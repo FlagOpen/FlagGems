@@ -25,6 +25,7 @@ from tools.performance_report import parse_perf_data
 
 DTYPE = "torch.float32"
 TENSOR = {"shape": [4, 8], "dtype": DTYPE, "stride": [8, 1], "requires_grad": False}
+UNARY_CALL = {"args": [TENSOR], "kwargs": {}}
 CALL = {"args": [TENSOR, 1], "kwargs": {"keepdim": False}}
 
 
@@ -89,7 +90,7 @@ def test_named_inputs_require_binding_and_compare_scalars():
 
 def test_legacy_shape_and_microsecond_units_and_private_operator_names():
     data = baseline({"T_us": 500}, key="[4,8]", op="_reduce")
-    assert data.lookup("_reduce", DTYPE, CALL)[0]["latency_ms"] == 0.5
+    assert data.lookup("_reduce", DTYPE, UNARY_CALL)[0]["latency_ms"] == 0.5
     assert data.lookup("_reduce", "torch.float16", CALL)[0] is None
     assert data.lookup("missing", DTYPE, CALL)[2] == "operator_missing"
 
@@ -99,7 +100,7 @@ def test_legacy_shape_and_microsecond_units_and_private_operator_names():
 )
 def test_invalid_latency_is_a_miss(latency):
     data = baseline({"latency_ms": latency}, key="[4, 8]")
-    assert data.lookup("reduce", DTYPE, CALL)[2] == "invalid_latency"
+    assert data.lookup("reduce", DTYPE, UNARY_CALL)[2] == "invalid_latency"
 
 
 @pytest.mark.parametrize("payload", ["[]", "null", "{broken"])
@@ -224,7 +225,7 @@ def test_malformed_resource_and_oversized_latency_do_not_break_benchmarks():
     data = with_scaling(baseline())
     assert data.scaling_factor("nvidia", "NVIDIA H20", [], DTYPE) is None
     data = baseline({"latency_ms": 10**1000}, key="[4, 8]")
-    assert data.lookup("reduce", DTYPE, CALL)[2] == "invalid_latency"
+    assert data.lookup("reduce", DTYPE, UNARY_CALL)[2] == "invalid_latency"
 
 
 @pytest.mark.parametrize("target", ["npu", "mlu"])
@@ -359,3 +360,31 @@ def test_malformed_kwargs_metadata_falls_back_without_crashing(kwargs):
     inputs = {"args": CALL["args"], "kwargs": kwargs}
     data = baseline({"latency_ms": 4, "config": {"inputs": inputs}})
     assert data.lookup("reduce", DTYPE, CALL, target_device="npu")[0] is None
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        {"args": [TENSOR, TENSOR], "kwargs": {}},
+        {"args": [TENSOR, 1], "kwargs": {}},
+        {"args": [TENSOR], "kwargs": {"dim": 1}},
+        {"args": [[TENSOR]], "kwargs": {}},
+    ],
+)
+def test_legacy_shape_cannot_establish_multi_input_or_parameter_abi(call):
+    data = baseline({"latency_ms": 4}, key="[4, 8]")
+    assert data.lookup("reduce", DTYPE, call)[0] is None
+
+
+def test_legacy_sglang_packed_silu_and_mul_does_not_match_two_tensor_gems_abi():
+    tensor = {"shape": [1, 2048], "dtype": "torch.bfloat16"}
+    data = BaselineData(
+        {
+            "silu_and_mul": {
+                "shapes": {"[1, 2048]": {"torch.bfloat16": {"latency_ms": 0.005}}}
+            }
+        },
+        "legacy-sglang.json",
+    )
+    call = {"args": [tensor, tensor], "kwargs": {}}
+    assert data.lookup("silu_and_mul", "torch.bfloat16", call)[0] is None
