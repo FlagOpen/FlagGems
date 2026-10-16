@@ -29,6 +29,8 @@ argument is matched by value: the sentinel is a plain string, never an object
 identity, and no entry is silently coerced into a different workload.
 """
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -190,9 +192,21 @@ def _plan(entry):
     return kind, shape, nnz, masked_grad
 
 
-def _case_fn(shape, dtype):
+def _uses_nonempty_sparse_mask(kind, nnz, masked_grad):
+    # _plan has validated the optional bool. None and omission enable masking;
+    # integer 0 disables it, while any other accepted integer enables it.
+    masking = masked_grad in (OMITTED, None) or bool(masked_grad)
+    return kind == "sparse" and nnz > 0 and masking
+
+
+def _case_fn(shape, dtype, nonempty_masked_sparse=None):
     del dtype
     kind, case_shape, nnz, masked_grad = _plan(shape)
+    if (
+        nonempty_masked_sparse is not None
+        and _uses_nonempty_sparse_mask(kind, nnz, masked_grad) != nonempty_masked_sparse
+    ):
+        return
     if kind == "sparse" and not STRUCTURAL_INT64:
         # Without INT64 coordinates the sparse descriptor has no valid operand,
         # so no unsupported tensor is built: the plan is simply not produced and
@@ -236,18 +250,36 @@ class ToDenseBackwardBenchmark(OperatorBenchmark):
     agree.
     """
 
+    nonempty_masked_sparse = None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=DEFAULT_WORKLOADS)
+        if self.nonempty_masked_sparse is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if any(_case_fn(shape, self.dtypes[0], self.nonempty_masked_sparse))
+            ]
+            if not self.shapes:
+                pytest.skip("No workloads in this sparse-mask group")
 
 
 @pytest.mark.to_dense_backward
-def test_to_dense_backward():
+@pytest.mark.parametrize(
+    "nonempty_masked_sparse",
+    [False, True],
+    ids=["other-workloads", "nonempty-masked-sparse"],
+)
+def test_to_dense_backward(nonempty_masked_sparse):
+    if flag_gems.vendor_name == "ascend" and nonempty_masked_sparse:
+        pytest.skip("Ascend to_dense_backward cannot mask a nonempty sparse input")
     bench = ToDenseBackwardBenchmark(
         op_name="to_dense_backward",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, nonempty_masked_sparse=nonempty_masked_sparse),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.to_dense_backward,
         gems_op=getattr(flag_gems, "to_dense_backward", None),
         dtypes=BENCH_DTYPES,
+        nonempty_masked_sparse=nonempty_masked_sparse,
     )
     bench.run()
