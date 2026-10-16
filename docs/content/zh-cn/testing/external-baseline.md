@@ -28,7 +28,12 @@ pytest 建议使用 `--base-data=路径`，避免仓库外的路径影响早期 
 具名 `config.inputs` 需要 reference callable 有可绑定的 Python 签名；无法绑定时回退。
 没有输入元数据的旧记录仅按首个 tensor 的 shape key 和 dtype 匹配，不能检查其他
 参数或布局，复杂算子应提供完整输入元数据。算子名精确匹配并保留下划线前缀，
-不猜别名；多个记录同时匹配时放弃外部结果。
+不猜算子别名；多个记录同时匹配时放弃外部结果。
+
+对于具名 `device` 参数，来源的 `cuda` / `cuda:0` 可匹配本次 benchmark 明确选择的
+目标加速设备，例如 `npu`、`mlu:2`。CPU 位置、非默认来源 CUDA 索引、其他参数名和
+非选定目标设备仍严格比较；不忽略 tensor 布局或辅助设备信息。
+`torch.device` 实参统一描述为设备字符串。
 
 命中后新增 `vs Base` 列，计算：
 
@@ -40,7 +45,9 @@ compared_speedup = 原始比值 / 芯片折算系数
 折算系数取 `_scaling_factors.chips`，根据当前 vendor/chip、基线瓶颈资源
 `bottle_neck_unit`（mem/cuda/tensor）和 dtype 选择，优先 measured，其次 nominal。
 缺少有效系数时保留原始比值。已知芯片名不匹配、匹配多个型号，或无法检测型号且该
-厂商有多个条目时不使用系数。使用者应确保折算参考芯片与基线实际采集环境一致。
+厂商有多个条目时不使用系数。型号使用边界匹配，H20 不会命中 H200，允许 H20-3e
+这样的后缀；厂商名显式兼容 ops-baseline 的 `t-head` 与 FlagGems 的 `thead`。
+使用者应确保折算参考芯片与基线实际采集环境一致。
 
 原有 benchmark JSON 的本机 `speedup`、Torch/Gems 延迟保留，新增外部
 `compared_speedup`、数据路径、shape key、外部延迟、原始比值和折算系数。

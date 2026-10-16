@@ -16,6 +16,7 @@
 
 import json
 import math
+import re
 import warnings
 
 
@@ -43,7 +44,7 @@ def describe_call(args, kwargs):
             return [describe(item) for item in value]
         if isinstance(value, dict):
             return {key: describe(item) for key, item in value.items()}
-        if isinstance(value, torch.dtype):
+        if isinstance(value, (torch.dtype, torch.device)):
             return str(value)
         return value
 
@@ -73,6 +74,82 @@ def _matches(expected, actual):
             and all(_matches(a, b) for a, b in zip(expected, actual))
         )
     return type(expected) is type(actual) and expected == actual
+
+
+def _device_identity(value):
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"([a-z][a-z0-9_]*)(?::([0-9]+))?", value)
+    if match is None:
+        return None
+    return match[1], int(match[2] or 0)
+
+
+def _matches_execution_device(expected, actual, target_device):
+    """Map source CUDA's default device only to this benchmark's chosen target.
+
+    CPU placement, non-default source devices, and devices other than the
+    chosen target remain significant. This applies only to a named `device`
+    parameter, never to arbitrary strings or tensor metadata.
+    """
+    if isinstance(expected, dict) and "scalar" in expected:
+        expected = expected["scalar"]
+    source = _device_identity(expected)
+    target = _device_identity(target_device)
+    return (
+        source == ("cuda", 0)
+        and target is not None
+        and target[0] != "cpu"
+        and _device_identity(actual) == target
+    )
+
+
+def _matches_parameters(expected, actual, target_device):
+    if (
+        not isinstance(expected, dict)
+        or not isinstance(actual, dict)
+        or set(expected) != set(actual)
+    ):
+        return False
+    return all(
+        (
+            name == "device"
+            and _matches_execution_device(value, actual[name], target_device)
+        )
+        or _matches(value, actual[name])
+        for name, value in expected.items()
+    )
+
+
+def _matches_inputs(inputs, call, named_call, target_device):
+    if "args" in inputs or "kwargs" in inputs:
+        return (
+            set(inputs) == set(call)
+            and _matches(inputs["args"], call["args"])
+            and _matches_parameters(inputs["kwargs"], call["kwargs"], target_device)
+        )
+    if named_call is None or not set(inputs) <= set(named_call):
+        return False
+    return _matches_parameters(
+        inputs, {name: named_call[name] for name in inputs}, target_device
+    )
+
+
+def _vendor_name(value):
+    # ops-baseline and FlagGems use different spellings for this same vendor.
+    return "thead" if value == "t-head" else value
+
+
+def _chip_matches(model, device_name):
+    if not isinstance(model, str) or not model or not device_name:
+        return False
+    # Preserve suffixes such as H20-3e, but never confuse H20 with H200.
+    return (
+        re.search(
+            rf"(?<![a-z0-9]){re.escape(model)}(?![a-z0-9])", device_name, re.IGNORECASE
+        )
+        is not None
+    )
 
 
 def _tensors(value):
@@ -120,7 +197,7 @@ class BaselineData:
             return None
         return cls(data, path)
 
-    def lookup(self, op_name, dtype, call, named_call=None):
+    def lookup(self, op_name, dtype, call, named_call=None, *, target_device=None):
         """Return (record, shape key, miss reason), never guess an ambiguous match.
 
         Supports ops-baseline PyTorch args/kwargs metadata, named SGLang/vLLM
@@ -154,13 +231,7 @@ class BaselineData:
             ):
                 continue
             if isinstance(inputs, dict):
-                if "args" in inputs or "kwargs" in inputs:
-                    matched = _matches(inputs, call)
-                else:
-                    matched = named_call is not None and all(
-                        name in named_call and _matches(value, named_call[name])
-                        for name, value in inputs.items()
-                    )
+                matched = _matches_inputs(inputs, call, named_call, target_device)
             else:
                 matched = _legacy_shape_key(key, call)
             if matched:
@@ -183,15 +254,10 @@ class BaselineData:
         candidates = [
             c
             for c in scaling["chips"]
-            if isinstance(c, dict) and c.get("vendor") == vendor
+            if isinstance(c, dict)
+            and _vendor_name(c.get("vendor")) == _vendor_name(vendor)
         ]
-        matched = [
-            c
-            for c in candidates
-            if isinstance(c.get("chip"), str)
-            and chip
-            and c["chip"].lower() in chip.lower()
-        ]
+        matched = [c for c in candidates if _chip_matches(c.get("chip"), chip)]
         if len(matched) == 1:
             selected = matched[0]
         elif not chip and len(candidates) == 1:
@@ -225,11 +291,24 @@ class BaselineData:
                 return value
         return None
 
-    def apply(self, metric, op_name, dtype, call, named_call, vendor, chip):
+    def apply(
+        self,
+        metric,
+        op_name,
+        dtype,
+        call,
+        named_call,
+        vendor,
+        chip,
+        *,
+        target_device=None,
+    ):
         if not positive_number(metric.latency):
             metric.base_miss_reason = "invalid_candidate_latency"
             return
-        record, key, reason = self.lookup(op_name, dtype, call, named_call)
+        record, key, reason = self.lookup(
+            op_name, dtype, call, named_call, target_device=target_device
+        )
         metric.base_miss_reason = reason
         if record is None:
             return

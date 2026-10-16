@@ -14,6 +14,7 @@
 
 """Benchmark integration with real CPU tensors and deterministic test timers."""
 
+import shlex
 from contextlib import nullcontext
 from types import SimpleNamespace
 
@@ -23,6 +24,7 @@ import torch
 from benchmark import base, conftest
 from benchmark.baseline import BaselineData, describe_call
 from benchmark.consts import BenchmarkResult
+from tools import run_tests
 
 
 @pytest.mark.parametrize("skip_native", [False, True])
@@ -160,3 +162,89 @@ def test_pytest_option_loads_baseline_and_can_reset_to_disabled(tmp_path, monkey
             assert conftest.Config.base_data.source == str(path)
         else:
             assert conftest.Config.base_data is None
+
+
+def test_scheduler_passes_absolute_baseline_path_as_one_shell_argument(
+    tmp_path, monkeypatch
+):
+    commands = []
+    monkeypatch.setattr(run_tests, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        run_tests,
+        "CFG",
+        SimpleNamespace(output_dir=tmp_path, base_data="/tmp/a b.json"),
+    )
+    monkeypatch.setattr(run_tests, "get_env", lambda _: {})
+    monkeypatch.setattr(run_tests, "op_marker", lambda op: op)
+    monkeypatch.setattr(
+        run_tests, "run_cmd", lambda op, cmd, **kw: commands.append(cmd) or 0
+    )
+    run_tests.run_benchmark_q(0, "reduce")
+    assert "--base-data=/tmp/a b.json" in shlex.split(commands[0])
+
+
+def test_scheduler_imports_shared_report_parser():
+    from tools.performance_report import parse_perf_data
+
+    assert run_tests.parse_perf_data is parse_perf_data
+
+
+@pytest.mark.parametrize("target", ["npu", "mlu"])
+def test_factory_benchmark_passes_target_device_to_external_matching(
+    monkeypatch, target
+):
+    config = conftest.BenchConfig()
+    config.skip_native = True
+    config.base_data = BaselineData(
+        {
+            "full": {
+                "shapes": {
+                    "factory-case": {
+                        "torch.float32": {
+                            "latency_ms": 8.0,
+                            "config": {
+                                "inputs": {
+                                    "args": [],
+                                    "kwargs": {
+                                        "size": [4, 8],
+                                        "fill_value": 3.0,
+                                        "dtype": "torch.float32",
+                                        "device": "cuda",
+                                    },
+                                }
+                            },
+                        }
+                    }
+                }
+            }
+        },
+        "synthetic.json",
+    )
+    monkeypatch.setattr(base, "Config", config)
+    bench = base.Benchmark("full", torch_op=torch.full, gems_op=torch.full)
+    bench.device = target
+    bench.to_bench_metrics = ["latency_base", "latency", "speedup"]
+    monkeypatch.setattr(
+        bench, "_candidate_call", lambda: (torch.full, nullcontext(), False)
+    )
+    monkeypatch.setattr(bench, "get_latency", lambda *a, **kw: 2.0)
+    metric = bench._measure_input(
+        (
+            {
+                "size": (4, 8),
+                "fill_value": 3.0,
+                "dtype": torch.float32,
+                "device": target,
+            },
+        ),
+        dtype=torch.float32,
+    )
+    assert metric.compared_speedup == 4.0
+    assert metric.latency_base is None
+
+
+def test_device_objects_are_described_without_allocating_on_an_accelerator():
+    call = describe_call(
+        (), {"device": torch.device("cuda:0"), "aux_device": torch.device("cpu")}
+    )
+    assert call["kwargs"] == {"device": "cuda:0", "aux_device": "cpu"}

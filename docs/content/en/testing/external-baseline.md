@@ -46,6 +46,13 @@ dtype, stride, and `requires_grad`. This supports semantic shape keys and the
 PyTorch baseline modules from ops-baseline PR #8. Explicit defaults and omitted
 defaults in an args/kwargs record are different calls for matching purposes.
 
+The benchmark passes its chosen execution device to the matcher. A named
+`device` parameter recorded as `cuda` or `cuda:0` can match that chosen
+accelerator (for example `npu` or `mlu:2`). CPU placement, a non-default source
+CUDA index, other parameter names, and devices other than the chosen target
+remain significant. This does not discard tensor layout or auxiliary-device
+information. `torch.device` arguments are described as device strings.
+
 Named `config.inputs` records can match when the benchmark's reference callable
 has an inspectable Python signature. Defaults are bound before comparison. If
 parameter binding is unavailable, named records are left unmatched rather than
@@ -74,6 +81,9 @@ compute, and `tensor` selects Tensor Core compute for the workload dtype.
 Measured values take precedence over nominal values. Missing/invalid factors
 leave the raw ratio unchanged. A known chip name must match; multiple matching
 models or an unknown model with multiple vendor entries do not select a factor.
+Chip matching uses model boundaries, so H20 does not match H200; suffixes such
+as H20-3e are accepted. The explicit vendor alias `t-head` / `thead` bridges
+ops-baseline's spelling and the FlagGems runtime name.
 The configured reference chip must correspond to the baseline collection;
 normalization is not proof of equivalent numerical semantics or equal hardware.
 

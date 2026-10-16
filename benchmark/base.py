@@ -803,6 +803,7 @@ class Benchmark:
                     named_call,
                     vendor_name,
                     chip,
+                    target_device=self.device,
                 )
 
             if "gbps" in self.to_bench_metrics:

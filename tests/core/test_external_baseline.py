@@ -14,16 +14,14 @@
 
 """Synthetic format/contract checks; these are not collected NVIDIA timings."""
 
-import ast
 import copy
 import json
-import shlex
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from benchmark.baseline import BaselineData
+from tools.performance_report import parse_perf_data
 
 DTYPE = "torch.float32"
 TENSOR = {"shape": [4, 8], "dtype": DTYPE, "stride": [8, 1], "requires_grad": False}
@@ -181,20 +179,6 @@ def test_skip_native_can_use_external_data_and_a_miss_keeps_na():
     assert missing.speedup is None and not hasattr(missing, "compared_speedup")
 
 
-def scheduler_function(name, namespace):
-    """Exercise the real scheduler function without importing device discovery."""
-    source = Path(__file__).resolve().parents[2] / "tools" / "run_tests.py"
-    tree = ast.parse(source.read_text())
-    node = next(
-        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name
-    )
-    exec(
-        compile(ast.Module(body=[node], type_ignores=[]), str(source), "exec"),
-        namespace,
-    )
-    return namespace[name]
-
-
 @pytest.mark.parametrize("skip_native", [False, True])
 def test_real_summary_prefers_external_per_case_and_preserves_fallback(
     tmp_path, skip_native
@@ -224,35 +208,10 @@ def test_real_summary_prefers_external_per_case_and_preserves_fallback(
         item["result"][1]["speedup"] = None
     path = tmp_path / "result.json"
     path.write_text(json.dumps({"reduce": {"result": "passed", "details": [item]}}))
-    parse = scheduler_function(
-        "parse_perf_data", {"json": json, "consts": SimpleNamespace(DTYPE_MAP={})}
-    )
-    result = parse("reduce", path)["data"][DTYPE]
+    result = parse_perf_data("reduce", path)["data"]["fp32"]
     assert result["speedup"] == (4 if skip_native else 3)
     assert result["details"]["[4]"]["native_speedup"] == 3
     assert result["details"]["[8]"]["base_miss_reason"] == "shape_or_dtype_missing"
-
-
-def test_scheduler_passes_absolute_baseline_path_as_one_shell_argument(tmp_path):
-    op_dir = tmp_path / "reduce"
-    op_dir.mkdir()
-    commands = []
-    fn = scheduler_function(
-        "run_benchmark_q",
-        {
-            "ROOT": tmp_path,
-            "CFG": SimpleNamespace(output_dir=tmp_path, base_data="/tmp/a b.json"),
-            "get_env": lambda _: {},
-            "ensure_dir": lambda _: None,
-            "op_marker": lambda op: op,
-            "time": SimpleNamespace(time=lambda: 1),
-            "run_cmd": lambda op, cmd, **kw: commands.append(cmd) or 0,
-            "shlex": shlex,
-            "TIMEOUT": -100,
-        },
-    )
-    fn(0, "reduce")
-    assert "--base-data=/tmp/a b.json" in shlex.split(commands[0])
 
 
 @pytest.mark.parametrize("config", [[], "invalid", {"inputs": []}, {"inputs": None}])
@@ -266,3 +225,137 @@ def test_malformed_resource_and_oversized_latency_do_not_break_benchmarks():
     assert data.scaling_factor("nvidia", "NVIDIA H20", [], DTYPE) is None
     data = baseline({"latency_ms": 10**1000}, key="[4, 8]")
     assert data.lookup("reduce", DTYPE, CALL)[2] == "invalid_latency"
+
+
+@pytest.mark.parametrize("target", ["npu", "mlu"])
+def test_factory_device_matches_selected_backend_without_weakening_other_inputs(target):
+    source = {
+        "args": [],
+        "kwargs": {"size": [4, 8], "fill_value": 3.0, "dtype": DTYPE, "device": "cuda"},
+    }
+    call = copy.deepcopy(source)
+    call["kwargs"]["device"] = target
+    data = baseline({"latency_ms": 4, "config": {"inputs": source}}, op="full")
+    assert data.lookup("full", DTYPE, call, target_device=target)[
+        0
+    ], "factory target device must not prevent a match"
+
+
+def test_thead_runtime_vendor_uses_ops_baseline_t_head_scaling():
+    data = baseline()
+    data.data["_scaling_factors"] = {
+        "chips": [
+            {"vendor": "t-head", "chip": "m890", "measured": {"bandwidth_gbps": 0.78}}
+        ]
+    }
+    assert data.scaling_factor("thead", "M890", "mem", DTYPE) == 0.78
+
+
+def test_h200_does_not_use_h20_scaling():
+    data = with_scaling(baseline())
+    assert data.scaling_factor("nvidia", "NVIDIA H200", "mem", DTYPE) is None
+
+
+@pytest.mark.parametrize(
+    "source_device,actual_device,target,matched",
+    [
+        ("cuda:0", "npu:0", "npu", True),
+        ("cuda", "mlu:2", "mlu:2", True),
+        ("cuda", "npu:1", "npu", False),
+        ("cuda", "cpu", "npu", False),
+        ("cpu", "npu", "npu", False),
+        ("cuda:1", "npu", "npu", False),
+        ("cuda", "npu", None, False),
+        ("cuda", "npu", "mlu", False),
+    ],
+)
+def test_device_normalization_requires_the_selected_target(
+    source_device, actual_device, target, matched
+):
+    source = {"args": [], "kwargs": {"device": source_device, "size": [4, 8]}}
+    call = copy.deepcopy(source)
+    call["kwargs"]["device"] = actual_device
+    data = baseline({"latency_ms": 4, "config": {"inputs": source}})
+    result = data.lookup("reduce", DTYPE, call, target_device=target)
+    assert (result[0] is not None) == matched
+
+
+@pytest.mark.parametrize(
+    "changed_key,changed_value",
+    [
+        ("size", [8, 4]),
+        ("fill_value", 4.0),
+        ("dtype", "torch.float16"),
+        ("auxiliary_device", "npu"),
+    ],
+)
+def test_factory_normalization_still_checks_all_other_parameters(
+    changed_key, changed_value
+):
+    source = {
+        "args": [],
+        "kwargs": {
+            "size": [4, 8],
+            "fill_value": 3.0,
+            "dtype": DTYPE,
+            "device": "cuda",
+            "auxiliary_device": "cpu",
+        },
+    }
+    call = copy.deepcopy(source)
+    call["kwargs"]["device"] = "npu"
+    call["kwargs"][changed_key] = changed_value
+    data = baseline({"latency_ms": 4, "config": {"inputs": source}})
+    assert data.lookup("reduce", DTYPE, call, target_device="npu")[0] is None
+    assert data.data["reduce"]["shapes"]["case0"][DTYPE]["config"]["inputs"] == source
+
+
+def test_named_device_metadata_uses_the_same_target_rule():
+    inputs = {"size": {"scalar": [4, 8]}, "device": {"scalar": "cuda"}}
+    data = baseline({"latency_ms": 4, "config": {"inputs": inputs}})
+    named = {"size": [4, 8], "device": "mlu"}
+    call = {"args": [], "kwargs": named}
+    assert data.lookup("reduce", DTYPE, call, named, target_device="mlu")[0]
+    assert data.lookup("reduce", DTYPE, call, named, target_device="npu")[0] is None
+
+
+def test_overlapping_models_select_the_exact_chip_and_preserve_suffixes():
+    data = with_scaling(baseline())
+    data.data["_scaling_factors"]["chips"].append(
+        {
+            "vendor": "nvidia",
+            "chip": "H200",
+            "measured": {"bandwidth_gbps": 0.8},
+        }
+    )
+    assert data.scaling_factor("nvidia", "NVIDIA H200", "mem", DTYPE) == 0.8
+    assert data.scaling_factor("nvidia", "NVIDIA H20-3e", "mem", DTYPE) == 0.5
+    assert data.scaling_factor("nvidia", "NVIDIA XH20", "mem", DTYPE) is None
+    assert data.scaling_factor("nvidia", "NVIDIA H20X", "mem", DTYPE) is None
+
+
+@pytest.mark.parametrize(
+    "runtime_vendor,stored_vendor", [("thead", "t-head"), ("t-head", "thead")]
+)
+def test_vendor_alias_is_explicit_and_does_not_match_other_vendors(
+    runtime_vendor, stored_vendor
+):
+    data = baseline()
+    data.data["_scaling_factors"] = {
+        "chips": [
+            {
+                "vendor": stored_vendor,
+                "chip": "m890",
+                "nominal": {"bandwidth_gbps": 0.78},
+            },
+        ]
+    }
+    assert data.scaling_factor(runtime_vendor, "M890", "mem", DTYPE) == 0.78
+    assert data.scaling_factor("thead2", "M890", "mem", DTYPE) is None
+
+
+@pytest.mark.parametrize("kwargs", [None, 1, "invalid", []])
+def test_malformed_kwargs_metadata_falls_back_without_crashing(kwargs):
+    inputs = {"args": CALL["args"], "kwargs": kwargs}
+    data = baseline({"latency_ms": 4, "config": {"inputs": inputs}})
+    assert data.lookup("reduce", DTYPE, CALL, target_device="npu")[0] is None
