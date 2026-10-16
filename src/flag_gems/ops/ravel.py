@@ -48,6 +48,8 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["ravel"]
+
 _MAX_DIMS = 8
 # 1024 elements per program: the copy path is a flat gather whose lanes issue
 # fully coalesced 16 B stores, so one 4-warp program per 1024 elements keeps
@@ -441,28 +443,19 @@ class _RavelCopy(torch.autograd.Function):
         return grad_output.reshape(ctx.input_shape)
 
 
-def run(*args, **kwargs):
+def ravel(self):
     """``aten::ravel(Tensor(a) self) -> Tensor(a)``."""
     logger.debug("GEMS RAVEL")
-    if args:
-        inp = args[0]
-    elif "self" in kwargs:
-        inp = kwargs.pop("self")
-    elif "input" in kwargs:
-        inp = kwargs.pop("input")
-    else:
-        raise TypeError("ravel() missing 1 required positional argument: 'self'")
-
-    if not isinstance(inp, torch.Tensor):
+    if not isinstance(self, torch.Tensor):
         raise TypeError(
-            "ravel(): argument 'self' must be a Tensor, not %s" % type(inp).__name__
+            "ravel(): argument 'self' must be a Tensor, not %s" % type(self).__name__
         )
-    if inp.layout != torch.strided:
+    if self.layout != torch.strided:
         raise RuntimeError("unsupported memory format option Contiguous")
 
-    if inp.is_contiguous():
-        return inp.view(-1)
+    if self.is_contiguous():
+        return self.view(-1)
 
-    if inp.requires_grad and torch.is_grad_enabled():
-        return _RavelCopy.apply(inp)
-    return _copy_impl(inp)
+    if self.requires_grad and torch.is_grad_enabled():
+        return _RavelCopy.apply(self)
+    return _copy_impl(self)
