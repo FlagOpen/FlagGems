@@ -17,9 +17,13 @@ import torch
 import triton
 
 import flag_gems
-from flag_gems.ops.i0_ import i0_kernel_
 
-logger = logging.getLogger("flag_gems.ops.i0_")
+from .i0 import _BLOCK, _i0_poly, i0_kernel, i0_kernel_nomask  # noqa: F401
+
+logger = logging.getLogger(__name__)
+
+_SMALL_BLOCK = 1024
+_SMALL_LIMIT = 65536
 
 
 def i0_(*args, **kwargs):
@@ -28,6 +32,7 @@ def i0_(*args, **kwargs):
     if len(args) > 0:
         x = args[0]
     else:
+        # Try common keyword names
         for k in ("input", "self", "x"):
             if k in kwargs:
                 x = kwargs[k]
@@ -50,6 +55,14 @@ def i0_(*args, **kwargs):
     if n_elements == 0:
         return x
 
-    grid = (triton.cdiv(n_elements, 1024),)
-    i0_kernel_[grid](x, n_elements, BLOCK_SIZE=1024)
+    if n_elements < _SMALL_LIMIT:
+        # Small tensors: 1024-lane masked tile (see NOTE above).
+        grid = (triton.cdiv(n_elements, _SMALL_BLOCK),)
+        i0_kernel[grid](x, x, n_elements, BLOCK_SIZE=_SMALL_BLOCK)
+    elif n_elements % _BLOCK == 0:
+        grid = (n_elements // _BLOCK,)
+        i0_kernel_nomask[grid](x, x, n_elements, BLOCK_SIZE=_BLOCK)
+    else:
+        grid = (triton.cdiv(n_elements, _BLOCK),)
+        i0_kernel[grid](x, x, n_elements, BLOCK_SIZE=_BLOCK)
     return x
