@@ -1363,3 +1363,107 @@ def test_masked_device_metadata(request, error):
     )
     flag_gems.runtime.torch_device_fn.synchronize()
     assert torch.isfinite(result).all().item()
+
+
+@pytest.mark.parametrize("dtype_name", ["float16", "float32", "bfloat16"])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (8, 16, 128, 4),
+        (32, 64, 1024, 8),
+        (128, 128, 4096, 16),
+        (256, 256, 4096, 32),
+        (1024, 64, 16384, 64),
+        (128, 512, 4096, 8),
+        (5, 33, 8, 7),
+        (4, 0, 8, 3),
+    ],
+)
+def test_max_candidate_accuracy(dtype_name, shape):
+    """Only the changed MAX paths: strides, ties, NaNs and masked indirect loads."""
+    import torch
+
+    import flag_gems
+
+    if dtype_name == "bfloat16" and not flag_gems.runtime.device.support_bf16:
+        pytest.skip("Device does not support bfloat16")
+    dtype = getattr(torch, dtype_name)
+    bags, dim, rows, length = shape
+    device = flag_gems.device
+    torch.manual_seed(5764)
+    weight = torch.randn((rows, dim * 2), dtype=dtype)[:, ::2]
+    values = torch.randint(1, rows, (bags * length,), dtype=torch.int64)
+    # Invalid rows and padding must have exactly the same masking as before.
+    values[::11] = rows + 100
+    values[1::13] = -2
+    values[2::17] = 0
+    values[:length] = rows
+    offsets = torch.arange(0, values.numel() + 1, length, dtype=torch.int64)
+    if dim == 33:
+        values[length : 2 * length] = torch.tensor([1, 2, 3, 4, 4, 5, 6])
+        values[2 * length : 3 * length] = torch.tensor([2, 1, 3, 4, 4, 5, 6])
+        offsets[4] = offsets[3]  # An empty bag before the final bag.
+        weight[1, :4] = float("nan")
+        weight[2, :4] = float("inf")
+        weight[3, :4] = float("-inf")
+        weight[4:, 4:8] = 0
+    expected = torch.zeros((bags, dim), dtype=dtype)
+    winners = torch.full((bags, dim), -1, dtype=torch.int64)
+    counts = torch.zeros(bags, dtype=torch.int64)
+    for bag in range(bags):
+        valid = values[offsets[bag].item() : offsets[bag + 1].item()]
+        valid = valid[(valid > 0) & (valid < rows)]
+        counts[bag] = valid.numel()
+        for position, row in enumerate(valid.tolist()):
+            replace = (
+                torch.ones(dim, dtype=torch.bool)
+                if position == 0
+                else weight[row] > expected[bag]
+            )
+            expected[bag] = torch.where(replace, weight[row], expected[bag])
+            winners[bag] = torch.where(replace, row, winners[bag])
+    # Transfer the backing storage then slice, retaining noncontiguous strides.
+    weight_gpu = torch.empty((rows, dim * 2), dtype=dtype, device=device)[:, ::2]
+    weight_gpu.copy_(weight)
+    indices_gpu, offsets_gpu = values.to(device), offsets.to(device)
+    grad = torch.randn((bags, dim * 2), dtype=dtype)[:, ::2]
+    grad_gpu = torch.empty((bags, dim * 2), dtype=dtype, device=device)[:, ::2]
+    grad_gpu.copy_(grad)
+    for variant in ("_embedding_bag", "_embedding_bag_forward_only"):
+        out, mapping, sizes, maximum = getattr(flag_gems, variant)(
+            weight_gpu,
+            indices_gpu,
+            offsets_gpu,
+            mode=2,
+            include_last_offset=True,
+            padding_idx=0,
+        )
+        torch.testing.assert_close(out.cpu(), expected, equal_nan=True, rtol=0, atol=0)
+        torch.testing.assert_close(maximum.cpu(), winners, rtol=0, atol=0)
+        torch.testing.assert_close(sizes.cpu(), counts, rtol=0, atol=0)
+        # Include malformed saved rows; every atomic destination remains masked.
+        invalid_max = winners.clone()
+        if dim:
+            invalid_max[1, 0] = rows + 100
+            invalid_max[2, 0] = -2
+        expected_grad = torch.zeros((rows, dim), dtype=torch.float32)
+        feature = torch.arange(dim)[None, :].expand(bags, dim)
+        valid = (invalid_max > 0) & (invalid_max < rows) & (counts[:, None] > 0)
+        destination = invalid_max * dim + feature
+        expected_grad.view(-1).index_add_(0, destination[valid], grad.float()[valid])
+        actual_grad = flag_gems._embedding_bag_backward(
+            grad_gpu,
+            indices_gpu,
+            offsets_gpu,
+            mapping,
+            sizes,
+            invalid_max.to(device),
+            rows,
+            True,
+            2,
+            False,
+            None,
+            0,
+        )
+        torch.testing.assert_close(actual_grad.cpu(), expected_grad.to(dtype))
+    flag_gems.runtime.torch_device_fn.synchronize()
