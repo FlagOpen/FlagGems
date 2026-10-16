@@ -12459,6 +12459,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: lstm_cell
+  description: A long short-term memory (LSTM) cell.
+  for:
+  - lstm_cell
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: lt
   description: Computes that `input` is less than `other` element-wise.
   for:
