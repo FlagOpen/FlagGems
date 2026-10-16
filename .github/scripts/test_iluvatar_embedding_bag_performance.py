@@ -1112,3 +1112,172 @@ def test_sdk_silent(request, count, phase, kind):
         torch.cuda.synchronize()
     prof.export_chrome_trace(str(path / "trace.json"))
     (path / "profiler.txt").write_text(prof.key_averages().table(row_limit=30))
+
+
+def test_native_forensics_build(request):
+    """Collect installed build/source evidence without claiming upstream identity."""
+    if _isolated(request):
+        return
+    import hashlib
+    import json
+    import shutil
+    import time
+
+    import torch
+
+    path = Path("../ix-results/native-forensics/build")
+    path.mkdir(parents=True, exist_ok=True)
+    root = Path(torch.__file__).parent
+    report = {
+        "torch": torch.__version__,
+        "git_version": torch.version.git_version,
+        "torch_file": str(torch.__file__),
+        "cuda_version": torch.version.cuda,
+        "config": torch.__config__.show(),
+        "sources": [],
+        "binaries": [],
+        "tools": {
+            name: shutil.which(name)
+            for name in (
+                "nm",
+                "readelf",
+                "objdump",
+                "cuobjdump",
+                "ixobjdump",
+                "llvm-objdump",
+            )
+        },
+    }
+    (path / "dispatch.txt").write_text(
+        "\n".join(
+            torch._C._dispatch_dump_table("aten::" + name)
+            for name in ("_embedding_bag", "_embedding_bag_forward_only")
+        )
+    )
+    # Bounded search: never traverse /proc, /sys, devices or home credentials.
+    deadline = time.monotonic() + 25
+    roots = [root, Path("/opt"), Path("/usr/local/corex"), Path("/workspace")]
+    targets = {
+        "EmbeddingBag.cu",
+        "EmbeddingBag.cpp",
+        "CUDADeviceAssertion.h",
+        "Macros.h",
+    }
+    for search_root in roots:
+        if not search_root.exists():
+            continue
+        for base, dirs, files in os.walk(search_root):
+            dirs[:] = [
+                d
+                for d in dirs
+                if d not in (".git", "__pycache__", ".cache", "node_modules")
+            ]
+            if time.monotonic() > deadline:
+                report["source_search_time_limited"] = True
+                break
+            for name in files:
+                if name not in targets:
+                    continue
+                source = Path(base) / name
+                if source.stat().st_size > 2_000_000 or len(report["sources"]) >= 40:
+                    continue
+                data = source.read_bytes()
+                dest = f"source-{len(report['sources'])}-{name}.txt"
+                (path / dest).write_bytes(data)
+                report["sources"].append(
+                    {
+                        "path": str(source),
+                        "artifact": dest,
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                    }
+                )
+    # Filter potentially large symbol tables while streaming, keeping bounded logs.
+    import shlex
+
+    candidates = sorted((root / "lib").glob("*.so*"))
+    for binary in candidates:
+        if not any(
+            x in binary.name for x in ("torch_cuda", "torch_corex", "torch_cpu")
+        ):
+            continue
+        if len(report["binaries"]) >= 3:
+            break
+        info = {"path": str(binary), "bytes": binary.stat().st_size}
+        for label, command in (
+            ("symbols", "nm -D -C"),
+            ("sections", "readelf -SW"),
+            ("build-id", "readelf -n"),
+        ):
+            expression = "EmbeddingBag|embedding_bag|assertfail|\\.debug|\\.text|Build ID|corex|iluvatar"
+            script = f"{command} {shlex.quote(str(binary))} | grep -E {shlex.quote(expression)} | head -n 160"
+            try:
+                result = subprocess.run(
+                    script,
+                    shell=True,
+                    executable="/bin/bash",
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                (path / f"{binary.name}-{label}.txt").write_text(
+                    result.stdout + result.stderr
+                )
+                info[label + "_returncode"] = result.returncode
+            except subprocess.TimeoutExpired:
+                info[label + "_timeout"] = True
+        report["binaries"].append(info)
+    (path / "build.json").write_text(json.dumps(report, indent=2))
+
+
+@pytest.mark.parametrize("variant", ["_embedding_bag", "_embedding_bag_forward_only"])
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize("invalid", ["upper", "negative"])
+def test_native_forensics_indices(request, variant, mode, invalid):
+    """Use guard rows in one allocation to distinguish masking from raw row reads."""
+    if _isolated(request):
+        return
+    import json
+
+    import torch
+
+    path = Path("../ix-results/native-forensics") / request.node.name
+    path.mkdir(parents=True, exist_ok=True)
+    # Invalid logical indices still address allocated guard rows. This avoids
+    # intentionally accessing another allocation while testing native behavior.
+    backing = torch.tensor([100.0, 200.0, 30.0, 40.0, 50.0, 60.0], device="cuda")
+    weight = backing[2:4].view(2, 1)
+    bad = 2 if invalid == "upper" else -2
+    indices = torch.tensor([0, bad, 1], device="cuda")
+    offsets = torch.tensor([0], device="cuda")
+    native = getattr(torch.ops.aten, variant).default
+    report = {
+        "variant": variant,
+        "mode": mode,
+        "indices": [0, bad, 1],
+        "weight_rows": [30.0, 40.0],
+        "guard_value": 50.0 if bad == 2 else 100.0,
+        "storage_offset": weight.storage_offset(),
+        "torch": torch.__version__,
+    }
+    stage = "operator_call"
+    try:
+        output = native(weight, indices, offsets, False, mode, False, None, False, -1)
+        stage = "synchronize"
+        torch.cuda.synchronize()
+        stage = "diagnostic_output_readback"
+        # Test-only readback records semantics; never used in an operator path.
+        report["outputs"] = [tensor.cpu().tolist() for tensor in output]
+        report["error_stage"] = None
+    except Exception as error:
+        report["error_stage"] = stage
+        report["exception_type"] = type(error).__name__
+        report["exception"] = str(error)
+    report["masked_expected"] = [70.0, 35.0, 40.0][mode]
+    guard = report["guard_value"]
+    report["raw_row_read_expected"] = [
+        70.0 + guard,
+        (70.0 + guard) / 3,
+        max(40.0, guard),
+    ][mode]
+    (path / "results.json").write_text(json.dumps(report, indent=2))
+    # This is observation, not an assertion that invalid native behavior is valid.
