@@ -50,6 +50,8 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_sub__Scalar,
 )
 from ._foreach_copy import _foreach_copy  # noqa: F401
+from ._foreach_copy_ import _foreach_copy_
+from ._foreach_neg import _foreach_neg, _foreach_neg_
 from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
 from ._foreach_sigmoid import _foreach_sigmoid
@@ -777,6 +779,9 @@ __all__ = [
     "_euclidean_dist",
     "_flash_attention_forward",
     "_foreach_copy",
+    "_foreach_copy_",
+    "_foreach_neg",
+    "_foreach_neg_",
     "_foreach_pow__List",
     "_foreach_pow_List",
     "_foreach_sigmoid",
