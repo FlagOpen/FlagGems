@@ -123,11 +123,11 @@ def _geometry(layout, size, nnz, blocks, nbatch):
 
 
 def _stored_values(shape, dtype, device):
-    """Generate stored values on the target device, with a device-side fp8 path."""
+    """Allocate FP8 copy payloads without requiring a random-number cast."""
     if dtype in _FP8_DTYPES:
-        # randn has no fp8 CUDA kernel, so generate in float32 on the device and
-        # cast there instead of building the tensor on the host.
-        return torch.randn(shape, dtype=torch.float32, device=device).to(dtype)
+        # Copy latency does not depend on the payload. FP8 copy is supported
+        # even where conversion from a float32 random tensor is unavailable.
+        return torch.empty(shape, dtype=dtype, device=device)
     if dtype.is_floating_point or dtype.is_complex:
         return torch.randn(shape, dtype=dtype, device=device)
     if dtype == torch.bool:

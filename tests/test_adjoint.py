@@ -20,6 +20,20 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+
+
+def _input_marks(dtype):
+    if dtype.is_complex:
+        return (_ASCEND_COMPLEX_SKIP,)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        return (_ASCEND_FP8_INPUT_SKIP,)
+    return ()
+
+
 _ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend complex input/reference support is incomplete",
@@ -59,10 +73,7 @@ def _assert_view_semantics(res_out, ref_out, inp):
 @pytest.mark.parametrize("shape", _ADJOINT_SHAPES)
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _ADJOINT_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _ADJOINT_DTYPES],
 )
 def test_adjoint(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
@@ -93,9 +104,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize(
     "dtype,value_range",
     [
-        pytest.param(
-            dtype, value_range, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, value_range, marks=_input_marks(dtype))
         for dtype, value_range in _DTYPE_RANGE_CASES
     ],
 )
@@ -114,10 +123,7 @@ def test_adjoint_value_ranges(shape, value_range, dtype):
 @pytest.mark.parametrize("shape", [(8, 16, 32), (4, 8, 16, 32)])
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _ADJOINT_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _ADJOINT_DTYPES],
 )
 def test_adjoint_non_contiguous(shape, dtype):
     base = tu.make_input(dtype, shape, ["-1", "1"])
@@ -138,7 +144,7 @@ def test_adjoint_non_contiguous(shape, dtype):
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        pytest.param(dtype, marks=_input_marks(dtype))
         for dtype in utils.FLOAT_DTYPES + utils.COMPLEX_DTYPES
     ],
 )
@@ -163,7 +169,7 @@ def test_adjoint_toggle(shape, dtype):
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        pytest.param(dtype, marks=_input_marks(dtype))
         for dtype in tu.selected_cases(utils.ALL_FLOAT_DTYPES)
     ],
 )
@@ -218,7 +224,7 @@ def test_adjoint_mutation(shape, dtype):
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        pytest.param(dtype, marks=_input_marks(dtype))
         for dtype in tu.selected_cases(
             [d for d in _ADJOINT_DTYPES if d.is_floating_point or d.is_complex]
         )
@@ -245,10 +251,7 @@ def test_adjoint_backward(shape, dtype):
 @pytest.mark.adjoint
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _ADJOINT_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _ADJOINT_DTYPES],
 )
 def test_adjoint_0d(dtype):
     # ATen accepts scalars as a lazy conj(), with a deprecation warning.
@@ -266,7 +269,7 @@ def test_adjoint_0d(dtype):
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        pytest.param(dtype, marks=_input_marks(dtype))
         for dtype in [torch.float32, torch.complex64]
     ],
 )
@@ -292,9 +295,7 @@ def test_adjoint_rejects_non_tensor():
 @pytest.mark.parametrize(
     "dtype, scenario",
     [
-        pytest.param(
-            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, scenario, marks=_input_marks(dtype))
         for dtype, scenario in tu.selected_cases(
             tu.special_value_cases(_ADJOINT_DTYPES)
         )

@@ -22,6 +22,17 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.dtype.is_complex:
+        # Keep complex output coverage without requiring a complex NPU isclose.
+        assert result.dtype == reference.dtype
+        if not utils.TO_CPU:
+            assert result.device == reference.device
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 _ASCEND_COMPLEX32_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend copy does not support nonempty complex32 output",
@@ -171,8 +182,8 @@ def _assert_copy_result(res_out, ref_out, inp, ref_inp):
     so both are checked against the independent reference input. Empty tensors
     report a null data pointer on both sides and are skipped.
     """
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     assert res_out.device == inp.device
     if inp.numel() > 0:
         assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
@@ -240,8 +251,8 @@ def test_view_as_complex_copy_out(shape, dtype):
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
@@ -274,9 +285,9 @@ def test_view_as_complex_copy_out_into_offset_view(parent_shape, index, dtype):
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(parent, ref_parent)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
@@ -313,9 +324,9 @@ def test_view_as_complex_copy_out_with_strided_input(
     res_ret = flag_gems.view_as_complex_copy(inp, out=out)
 
     assert res_ret is out
-    tu.assert_result_equal(out, ref_out)
-    tu.assert_result_equal(parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(out, ref_out)
+    _assert_result_equal(parent, ref_parent)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
@@ -431,13 +442,14 @@ def test_view_as_complex_copy_does_not_alias_input(shape, dtype):
     # Overwriting the result afterwards must not change the input: a real copy
     # owns its storage, unlike the aliasing aten::view_as_complex view.
     res_out.fill_(0)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.view_as_complex_copy
 @pytest.mark.parametrize("dtype", _VAC_UNSUPPORTED_DTYPES)
 def test_view_as_complex_copy_rejects_unsupported_dtype(dtype):
-    inp = torch.zeros((4, 2), dtype=dtype, device=flag_gems.device)
+    # Only dtype is inspected before rejection; FP8 zero_ is unavailable on NPU.
+    inp = torch.empty((4, 2), dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems.view_as_complex_copy(inp)

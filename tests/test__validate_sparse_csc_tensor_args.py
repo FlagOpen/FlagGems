@@ -19,6 +19,20 @@ import flag_gems
 
 from . import test_utils as tu
 
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+
+
+def _input_marks(dtype):
+    if dtype.is_complex:
+        return (_ASCEND_COMPLEX_SKIP,)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        return (_ASCEND_FP8_INPUT_SKIP,)
+    return ()
+
+
 _ASCEND_VALUES_RANK_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend input generation does not support values with more than 8 dimensions",
@@ -369,10 +383,7 @@ def _schema_defect_args(defect, ccol, row, values, call_size):
 @pytest.mark.validate_sparse_csc_tensor_args
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in VALUE_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in VALUE_DTYPES],
 )
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize(
@@ -439,9 +450,7 @@ def test__validate_sparse_csc_tensor_args_structure(
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
-        pytest.param(
-            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, scenario, marks=_input_marks(dtype))
         for dtype, scenario in SPECIAL_CASES
     ],
 )

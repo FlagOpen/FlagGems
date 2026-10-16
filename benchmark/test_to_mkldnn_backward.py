@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from functools import partial
 
 import pytest
@@ -26,6 +27,10 @@ _ASCEND_OPAQUE_CROSS_CAST_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16",
 )
+_ASCEND_FP8_CAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot cast nonempty dense gradients between FP8 and other dtypes",
+)
 
 # Both native-valid call forms are timed for every shape: matching dtypes (the
 # operator hands `grad` back untouched) and a dtype cast (a fresh tensor cast to
@@ -35,6 +40,7 @@ _ASCEND_OPAQUE_CROSS_CAST_SKIP = pytest.mark.skipif(
 EXTRA_SHAPES = [(1024, 1024), (20, 320, 15), (16, 128, 64)]
 
 DENSE_GROUP = "dense"
+DENSE_FP8_CAST_GROUP = "dense-fp8-cast"
 OPAQUE_GROUP = "opaque"
 OPAQUE_CROSS_CAST_GROUP = "opaque-cross-cast"
 OPAQUE_MODE = "opaque to dense"
@@ -42,6 +48,7 @@ _CROSS_CAST_DTYPES = {
     (str(torch.float16), str(torch.bfloat16)),
     (str(torch.bfloat16), str(torch.float16)),
 }
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
 _DEVICE_DTYPE_FLAG = {
     torch.bfloat16: "support_bf16",
@@ -148,6 +155,12 @@ def _all_case_fn(shape, dtype):
 
 def _group_for_plan(plan):
     if plan.params["mode"] != OPAQUE_MODE:
+        fp8_cast = plan.params["mode"] == "dtype cast" and any(
+            plan.params[key] in {str(dtype) for dtype in _FP8_DTYPES}
+            for key in ("grad_dtype", "input_dtype")
+        )
+        if fp8_cast and math.prod(plan.shape["grad"]) > 0:
+            return DENSE_FP8_CAST_GROUP
         return DENSE_GROUP
     dtype_pair = (plan.params["grad_dtype"], plan.params["input_dtype"])
     return OPAQUE_CROSS_CAST_GROUP if dtype_pair in _CROSS_CAST_DTYPES else OPAQUE_GROUP
@@ -209,6 +222,11 @@ class ToMkldnnBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.parametrize(
     "dtype,case_group",
     [pytest.param(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
+    + [
+        pytest.param(dtype, DENSE_FP8_CAST_GROUP, marks=_ASCEND_FP8_CAST_SKIP)
+        for dtype in _FP8_DTYPES
+        if dtype in BENCH_DTYPES
+    ]
     + [
         pytest.param(dtype, OPAQUE_GROUP)
         for dtype in (

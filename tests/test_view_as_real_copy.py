@@ -395,7 +395,8 @@ def test_view_as_real_copy_backward(shape, dtype):
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("dtype", _UNSUPPORTED_DTYPES)
 def test_view_as_real_copy_rejects_unsupported_dtypes(dtype):
-    inp = tu.make_input(dtype, (4, 5), ["-1", "1"])
+    # Values are irrelevant to dtype rejection; avoid unsupported FP8 RNG casts.
+    inp = torch.empty((4, 5), dtype=dtype, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.view_as_real_copy(inp)
 

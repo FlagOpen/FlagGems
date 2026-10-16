@@ -23,7 +23,33 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+
+
+def _input_marks(dtype, shape, kind="plain"):
+    marks = []
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and all(shape):
+        marks.append(_ASCEND_FP8_INPUT_SKIP)
+    if kind in ("channels_last", "channels_last_3d"):
+        marks.append(_ASCEND_LAYOUT_SKIP)
+    return marks
+
+
+def _reference_layout(inp):
+    # This predicate only reads geometry. A device copy can compact views and
+    # resolve lazy flags; reconstruct the same shape/strides on the CPU instead.
+    if utils.TO_CPU:
+        return torch.empty_strided(
+            inp.shape, inp.stride(), dtype=inp.dtype, device="cpu"
+        )
+    return inp
+
 
 _ASCEND_LAYOUT_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -160,11 +186,17 @@ _SHAPE_DTYPE_CASES = tu.selected_cases(
 
 
 @pytest.mark.is_contiguous
-@pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
+@pytest.mark.parametrize(
+    "shape, dtype",
+    [
+        pytest.param(shape, dtype, marks=_input_marks(dtype, shape))
+        for shape, dtype in _SHAPE_DTYPE_CASES
+    ],
+)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_is_contiguous(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
-    ref = torch.ops.aten.is_contiguous(tu.to_reference(inp))
+    ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
 
     res = flag_gems.is_contiguous(inp)
 
@@ -173,26 +205,23 @@ def test_is_contiguous(shape, value_range, dtype):
 
 
 @pytest.mark.is_contiguous
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize(
-    "kind,shape",
+    "kind,shape,dtype",
     [
         pytest.param(
             kind,
             shape,
-            marks=(
-                _ASCEND_LAYOUT_SKIP
-                if kind in ("channels_last", "channels_last_3d")
-                else ()
-            ),
+            dtype,
+            marks=_input_marks(dtype, shape, kind),
+            id=f"{label}-dtype{index}",
         )
-        for kind, shape in [(kind, shape) for _, kind, shape in _LAYOUT_ROWS]
+        for label, kind, shape in _LAYOUT_ROWS
+        for index, dtype in enumerate(SUPPORTED_DTYPES)
     ],
-    ids=[label for label, _, _ in _LAYOUT_ROWS],
 )
 def test_is_contiguous_layout(kind, shape, dtype):
     inp = _make_layout_input(kind, shape, dtype)
-    ref = torch.ops.aten.is_contiguous(tu.to_reference(inp))
+    ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
 
     res = flag_gems.is_contiguous(inp)
 
@@ -201,30 +230,25 @@ def test_is_contiguous_layout(kind, shape, dtype):
 
 
 @pytest.mark.is_contiguous
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 @pytest.mark.parametrize(
-    "kind,shape,memory_format",
+    "kind,shape,memory_format,dtype",
     [
         pytest.param(
             kind,
             shape,
             memory_format,
-            marks=(
-                _ASCEND_LAYOUT_SKIP
-                if kind in ("channels_last", "channels_last_3d")
-                else ()
-            ),
+            dtype,
+            marks=_input_marks(dtype, shape, kind),
+            id=f"{label}-dtype{index}",
         )
-        for kind, shape, memory_format in [
-            (kind, shape, fmt) for _, kind, shape, fmt in _MEMORY_FORMAT_ROWS
-        ]
+        for label, kind, shape, memory_format in _MEMORY_FORMAT_ROWS
+        for index, dtype in enumerate(SUPPORTED_DTYPES)
     ],
-    ids=[label for label, _, _, _ in _MEMORY_FORMAT_ROWS],
 )
 def test_is_contiguous_memory_format(kind, shape, memory_format, dtype):
     inp = _make_layout_input(kind, shape, dtype)
     ref = torch.ops.aten.is_contiguous.memory_format(
-        tu.to_reference(inp), memory_format
+        _reference_layout(inp), memory_format
     )
 
     res = flag_gems.is_contiguous(inp, memory_format)
@@ -234,11 +258,17 @@ def test_is_contiguous_memory_format(kind, shape, memory_format, dtype):
 
 
 @pytest.mark.is_contiguous
-@pytest.mark.parametrize("dtype,scenario,kind", _SPECIAL_VALUE_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario,kind",
+    [
+        pytest.param(dtype, scenario, kind, marks=_input_marks(dtype, (5,)))
+        for dtype, scenario, kind in _SPECIAL_VALUE_CASES
+    ],
+)
 def test_is_contiguous_special_values(dtype, scenario, kind):
     payload = tu.make_special_input(dtype, scenario)
     inp = payload if kind == "plain" else payload[::2]
-    ref = torch.ops.aten.is_contiguous(tu.to_reference(inp))
+    ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
 
     res = flag_gems.is_contiguous(inp)
 
@@ -249,7 +279,7 @@ def test_is_contiguous_special_values(dtype, scenario, kind):
 @pytest.mark.is_contiguous
 def test_is_contiguous_keeps_input_state():
     inp = tu.make_input(torch.float32, (8, 12), ["-1", "1"])[:, ::2]
-    ref = torch.ops.aten.is_contiguous(tu.to_reference(inp))
+    ref = torch.ops.aten.is_contiguous(_reference_layout(inp))
     state_before = _input_state(inp)
 
     res = flag_gems.is_contiguous(inp)

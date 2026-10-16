@@ -273,7 +273,11 @@ def test_is_coalesced_keeps_input_state(size, nnz, recorded, dtype):
     assert inp._nnz() == nnz
     assert inp._indices().dtype == torch.int64
     tu.assert_result_equal(inp._indices(), indices_before)
-    tu.assert_result_equal(inp._values(), values_before)
+    values_after = inp._values()
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        # The metadata query supports complex values; NPU isclose does not.
+        values_after, values_before = values_after.cpu(), values_before.cpu()
+    tu.assert_result_equal(values_after, values_before)
     assert inp.is_coalesced() == ref_out
 
 

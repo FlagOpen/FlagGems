@@ -31,6 +31,20 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+
+
+def _input_marks(dtype, shape=(1,)):
+    if dtype.is_complex:
+        return (_ASCEND_COMPLEX_SKIP,)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and all(shape):
+        return (_ASCEND_FP8_INPUT_SKIP,)
+    return ()
+
+
 _ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend complex input/reference support is incomplete",
@@ -377,10 +391,7 @@ _STRIDED_OUT_CASES = tu.selected_cases(
     "case,dtype,value_range",
     [
         pytest.param(
-            case,
-            dtype,
-            value_range,
-            marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else (),
+            case, dtype, value_range, marks=_input_marks(dtype, _stored_shape(*case))
         )
         for case, dtype, value_range in _COPY_ROWS
     ],
@@ -401,10 +412,7 @@ def test_values_copy(case, dtype, value_range):
     "case,dtype,value_range",
     [
         pytest.param(
-            case,
-            dtype,
-            value_range,
-            marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else (),
+            case, dtype, value_range, marks=_input_marks(dtype, _stored_shape(*case))
         )
         for case, dtype, value_range in _COPY_ROWS
     ],
@@ -428,9 +436,7 @@ def test_values_copy_out(case, dtype, value_range):
 @pytest.mark.parametrize(
     "kind,dtype",
     [
-        pytest.param(
-            kind, dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(kind, dtype, marks=_input_marks(dtype))
         for kind, dtype in _VIEW_CASES
     ],
 )
@@ -452,10 +458,7 @@ def test_values_copy_values_view(kind, dtype):
 @pytest.mark.values_copy
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _OUT_BUFFER_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _OUT_BUFFER_DTYPES],
 )
 @pytest.mark.parametrize("case", _OFFSET_OUT_CASES)
 def test_values_copy_out_into_offset_buffer(case, dtype):
@@ -487,10 +490,7 @@ def test_values_copy_out_into_offset_buffer(case, dtype):
 @pytest.mark.values_copy
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _OUT_BUFFER_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _OUT_BUFFER_DTYPES],
 )
 @pytest.mark.parametrize("case", _STRIDED_OUT_CASES)
 def test_values_copy_out_into_strided_view(case, dtype):
@@ -525,9 +525,7 @@ def test_values_copy_out_into_strided_view(case, dtype):
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
-        pytest.param(
-            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, scenario, marks=_input_marks(dtype))
         for dtype, scenario in _SPECIAL_ROWS
     ],
 )
@@ -549,9 +547,7 @@ def test_values_copy_special_values(dtype, scenario):
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
-        pytest.param(
-            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, scenario, marks=_input_marks(dtype))
         for dtype, scenario in _SPECIAL_ROWS
     ],
 )
@@ -576,10 +572,7 @@ def test_values_copy_out_special_values(dtype, scenario):
 @pytest.mark.parametrize("case", _BACKWARD_CASES)
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _BACKWARD_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _BACKWARD_DTYPES],
 )
 def test_values_copy_backward(case, dtype):
     """The copy is the identity, so the stored values receive the exact upstream."""
@@ -617,9 +610,7 @@ def test_values_copy_rejects_dense_input():
 @pytest.mark.parametrize(
     "kind,dtype",
     [
-        pytest.param(
-            kind, dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(kind, dtype, marks=_input_marks(dtype))
         for kind, dtype in _REJECTION_ROWS
     ],
 )

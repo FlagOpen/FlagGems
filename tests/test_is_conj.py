@@ -20,6 +20,20 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+
+
+def _input_marks(dtype):
+    if dtype.is_complex:
+        return (_ASCEND_COMPLEX_SKIP,)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        return (_ASCEND_FP8_INPUT_SKIP,)
+    return ()
+
+
 _ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend complex input/reference support is incomplete",
@@ -117,9 +131,7 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize(
     "dtype,value_range",
     [
-        pytest.param(
-            dtype, value_range, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, value_range, marks=_input_marks(dtype))
         for dtype, value_range in _DTYPE_RANGE_CASES
     ],
 )
@@ -174,7 +186,7 @@ _STATE_CASES = tu.selected_cases(
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        pytest.param(dtype, marks=_input_marks(dtype))
         for dtype in _COMPLEX_DTYPES + [torch.float32]
     ],
 )
@@ -201,10 +213,7 @@ _BOUNDARY_DTYPES = _COMPLEX_DTYPES + [torch.float32, torch.int64, torch.bool]
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _BOUNDARY_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _BOUNDARY_DTYPES],
 )
 @pytest.mark.parametrize("state", ["plain", "conj"])
 @pytest.mark.parametrize("shape", [(), (1,), (0,), (3, 0)])
@@ -236,9 +245,7 @@ _SPECIAL_CASES = tu.selected_cases(
 @pytest.mark.parametrize(
     "dtype,scenario",
     [
-        pytest.param(
-            dtype, scenario, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ()
-        )
+        pytest.param(dtype, scenario, marks=_input_marks(dtype))
         for dtype, scenario in _SPECIAL_CASES
     ],
 )
@@ -261,7 +268,7 @@ def test_is_conj_special_values(state, dtype, scenario):
 @pytest.mark.parametrize(
     "dtype",
     [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
+        pytest.param(dtype, marks=_input_marks(dtype))
         for dtype in _COMPLEX_DTYPES + [torch.float32]
     ],
 )
@@ -302,10 +309,7 @@ def test_is_conj_query_leaves_input_untouched(shape, dtype):
 @pytest.mark.is_conj
 @pytest.mark.parametrize(
     "dtype",
-    [
-        pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP if dtype.is_complex else ())
-        for dtype in _COMPLEX_DTYPES
-    ],
+    [pytest.param(dtype, marks=_input_marks(dtype)) for dtype in _COMPLEX_DTYPES],
 )
 @pytest.mark.parametrize("shape", [(1024, 1024)])
 def test_is_conj_flag_is_per_tensor_not_per_storage(shape, dtype):

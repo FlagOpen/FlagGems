@@ -17,7 +17,35 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.dtype.is_complex:
+        # Complex metadata/casts work on NPU, but its isclose kernel does not.
+        assert result.dtype == reference.dtype
+        if not utils.TO_CPU:
+            assert result.device == reference.device
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate nonempty FP8 test payloads",
+)
+_ASCEND_CHANNELS_LAST_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct channels-last input layouts",
+)
+
+
+def _fp8_input_marks(*dtypes):
+    if any(dtype in (torch.float8_e4m3fn, torch.float8_e5m2) for dtype in dtypes):
+        return (_ASCEND_FP8_INPUT_SKIP,)
+    return ()
+
 
 _ASCEND_OPAQUE_CROSS_CAST_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -194,7 +222,13 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(dtype, value_range, marks=_fp8_input_marks(dtype))
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_to_mkldnn_backward_matching_dtype_returns_grad(shape, value_range, dtype):
     grad = tu.make_input(dtype, shape, value_range)
     inp = tu.make_input(dtype, shape, value_range)
@@ -207,14 +241,22 @@ def test_to_mkldnn_backward_matching_dtype_returns_grad(shape, value_range, dtyp
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out is grad
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # The operator only reads input.dtype, so neither operand may be written.
-    tu.assert_result_equal(grad, grad_before)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(grad, grad_before)
+    _assert_result_equal(inp, inp_before)
 
 
 @pytest.mark.to_mkldnn_backward
-@pytest.mark.parametrize("grad_dtype,input_dtype", CONVERSION_PAIRS)
+@pytest.mark.parametrize(
+    "grad_dtype,input_dtype",
+    [
+        pytest.param(
+            grad_dtype, input_dtype, marks=_fp8_input_marks(grad_dtype, input_dtype)
+        )
+        for grad_dtype, input_dtype in CONVERSION_PAIRS
+    ],
+)
 def test_to_mkldnn_backward_dtype_mismatch_follows_input(grad_dtype, input_dtype):
     grad = tu.make_input(grad_dtype, CAST_SHAPE, ["-1", "1"])
     inp = tu.make_input(input_dtype, CAST_SHAPE, ["0", "1"])
@@ -229,13 +271,22 @@ def test_to_mkldnn_backward_dtype_mismatch_follows_input(grad_dtype, input_dtype
     assert res_out.dtype == input_dtype
     assert res_out.shape == grad.shape
     assert res_out.device == grad.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(grad, grad_before)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(grad, grad_before)
+    _assert_result_equal(inp, inp_before)
 
 
 @pytest.mark.to_mkldnn_backward
-@pytest.mark.parametrize("layout", LAYOUTS)
+@pytest.mark.parametrize(
+    "layout",
+    [
+        pytest.param(
+            layout,
+            marks=_ASCEND_CHANNELS_LAST_SKIP if layout == "channels last" else (),
+        )
+        for layout in LAYOUTS
+    ],
+)
 def test_to_mkldnn_backward_returns_grad_layout_unchanged(layout):
     grad = _layout_grad(layout)
     inp = tu.make_input(torch.float32, (4, 4), ["0", "1"])
@@ -246,7 +297,7 @@ def test_to_mkldnn_backward_returns_grad_layout_unchanged(layout):
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out is grad
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -263,9 +314,9 @@ def test_to_mkldnn_backward_ignores_operand_shape(grad_shape, input_shape):
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out is grad
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(grad, grad_before)
-    tu.assert_result_equal(inp, inp_before)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(grad, grad_before)
+    _assert_result_equal(inp, inp_before)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -286,8 +337,8 @@ def test_to_mkldnn_backward_shape_mismatch_with_dtype_cast(grad_shape, input_sha
     assert res_out.dtype == torch.float16
     assert res_out.shape == grad.shape
     assert res_out.device == grad.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(grad, grad_before)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(grad, grad_before)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -303,7 +354,7 @@ def test_to_mkldnn_backward_cpu_input_matching_dtype(dtype):
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out is grad
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -320,7 +371,7 @@ def test_to_mkldnn_backward_cpu_input_casts_on_grad_device(grad_dtype, input_dty
     assert res_out.dtype == input_dtype
     assert res_out.shape == grad.shape
     assert res_out.device == grad.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -338,7 +389,7 @@ def test_to_mkldnn_backward_cpu_operands_matching_dtype():
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out is grad
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -358,7 +409,7 @@ def test_to_mkldnn_backward_cpu_operands_cast(grad_dtype, input_dtype):
 
     assert res_out.dtype == input_dtype
     assert res_out.device == grad.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -370,17 +421,22 @@ def test_to_mkldnn_backward_result_is_grad_storage():
         tu.to_reference(grad), tu.to_reference(inp)
     )
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     written = torch.full((4, 8), -2.5, dtype=torch.float32, device=grad.device)
     res_out.copy_(written)
-    tu.assert_result_equal(grad, written)
+    _assert_result_equal(grad, tu.to_reference(written))
 
 
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize(
     "dtype,scenario",
-    tu.selected_cases(tu.special_value_cases(SPECIAL_DTYPES), quick=[]),
+    [
+        pytest.param(dtype, scenario, marks=_fp8_input_marks(dtype))
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(SPECIAL_DTYPES), quick=[]
+        )
+    ],
 )
 def test_to_mkldnn_backward_special_values_pass_through(dtype, scenario):
     grad = tu.make_special_input(dtype, scenario)
@@ -392,20 +448,23 @@ def test_to_mkldnn_backward_special_values_pass_through(dtype, scenario):
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out is grad
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize(
     "scenario,input_dtype",
-    tu.selected_cases(
-        [
-            (scenario, dtype)
-            for dtype in SPECIAL_CAST_DTYPES
-            for scenario in SPECIAL_SCENARIOS
-        ],
-        quick=[],
-    ),
+    [
+        pytest.param(scenario, input_dtype, marks=_fp8_input_marks(input_dtype))
+        for scenario, input_dtype in tu.selected_cases(
+            [
+                (scenario, dtype)
+                for dtype in SPECIAL_CAST_DTYPES
+                for scenario in SPECIAL_SCENARIOS
+            ],
+            quick=[],
+        )
+    ],
 )
 def test_to_mkldnn_backward_special_values_follow_input_dtype(scenario, input_dtype):
     grad = tu.make_special_input(torch.float32, scenario)
@@ -417,13 +476,18 @@ def test_to_mkldnn_backward_special_values_follow_input_dtype(scenario, input_dt
     res_out = flag_gems.to_mkldnn_backward(grad, inp)
 
     assert res_out.dtype == input_dtype
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize(
     "grad_dtype,input_dtype",
-    tu.selected_cases(BACKWARD_PAIRS, quick=[]),
+    [
+        pytest.param(
+            grad_dtype, input_dtype, marks=_fp8_input_marks(grad_dtype, input_dtype)
+        )
+        for grad_dtype, input_dtype in tu.selected_cases(BACKWARD_PAIRS, quick=[])
+    ],
 )
 def test_to_mkldnn_backward_backward(grad_dtype, input_dtype):
     shape = (16, 128)
@@ -440,16 +504,16 @@ def test_to_mkldnn_backward_backward(grad_dtype, input_dtype):
 
     ref_leaf = tu.to_reference(grad.detach()).requires_grad_(True)
     ref_out = torch.ops.aten.to_mkldnn_backward(ref_leaf, tu.to_reference(inp))
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     ref_grad = torch.autograd.grad(
         ref_out, ref_leaf, grad_outputs=tu.to_reference(upstream)
     )[0]
 
     assert res_grad.dtype == grad.dtype
     assert res_grad.shape == grad.shape
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
     # A pure dtype cast differentiates to the upstream gradient cast back.
-    tu.assert_result_equal(res_grad, upstream.to(grad.dtype))
+    _assert_result_equal(res_grad, tu.to_reference(upstream.to(grad.dtype)))
 
 
 @pytest.mark.to_mkldnn_backward
@@ -506,8 +570,8 @@ def test_to_mkldnn_backward_opaque_grad(dtype, shape, value_range):
     assert res_out.layout == torch.strided
     assert res_out.device == grad.device
     assert res_out is not grad
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(grad.to_dense(), dense)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(grad.to_dense(), dense)
 
 
 @pytest.mark.to_mkldnn_backward
@@ -538,8 +602,8 @@ def test_to_mkldnn_backward_opaque_dtype_conversion(source, target):
 
     assert res_out.layout == torch.strided
     assert res_out.device == grad.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(grad.to_dense(), dense)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(grad.to_dense(), dense)
 
 
 @pytest.mark.to_mkldnn_backward

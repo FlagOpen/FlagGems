@@ -22,6 +22,24 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_VALUES_RANK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend random input generation supports at most 8 values dimensions",
+)
+
+
+def _csr_input_marks(case, dtype, value_range):
+    marks = []
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and _has_csr_values(case):
+        marks.append(_ASCEND_FP8_VALUES_SKIP)
+    values_rank = len(case[0]) - 1
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    # Constant fills remain supported at high rank; bool always uses randint.
+    if values_rank > 8 and (dtype == torch.bool or low != high):
+        marks.append(_ASCEND_VALUES_RANK_SKIP)
+    return marks
+
+
 _ASCEND_FP8_VALUES_SKIP = pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Ascend cannot construct nonempty FP8 CSR values",
@@ -216,15 +234,7 @@ _DTYPE_RANGE_CASES = [
     "case,dtype,value_range",
     [
         pytest.param(
-            case,
-            dtype,
-            value_range,
-            marks=(
-                _ASCEND_FP8_VALUES_SKIP
-                if dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
-                and _has_csr_values(case)
-                else ()
-            ),
+            case, dtype, value_range, marks=_csr_input_marks(case, dtype, value_range)
         )
         for case in SIZE_CASES
         for dtype, value_range in _DTYPE_RANGE_CASES
