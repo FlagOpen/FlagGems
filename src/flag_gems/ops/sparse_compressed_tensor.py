@@ -37,9 +37,13 @@ Two construction routes exist, and both are exercised:
   ``values.shape``.  This is the only real device work the operator can have.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 _SPARSE_CSR = torch.sparse_csr
 _SPARSE_CSC = torch.sparse_csc
@@ -154,6 +158,7 @@ def sparse_compressed_tensor(
     never inferred from ``values`` (the ATen factory defaults it to float32 and
     rejects a mismatch), and ``values`` is retained by reference.
     """
+    logger.debug("GEMS SPARSE_COMPRESSED_TENSOR")
     # Subscript rather than dict.get(): it avoids a Python-level bound-method
     # call on the hot path, and the KeyError/TypeError path is cold (only the
     # negative cases arrive here).
