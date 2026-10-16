@@ -43,8 +43,8 @@ import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 # Large chains from PR #7028 must participate in core optimization, not only
 # comprehensive reporting. Keep the existing core cases below as well.
