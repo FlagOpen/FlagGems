@@ -30,9 +30,15 @@ on every call, so after the structural fast path the only remaining lever is
 the size of the Python wrapper that guards it.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
 
 _I64_MIN = -(2**63)
 _I64_MAX = 2**63 - 1
@@ -50,6 +56,7 @@ _ASSEMBLE = getattr(_ASSEMBLE, "_op", _ASSEMBLE)
 _TENSOR = torch.Tensor
 
 
+@libentry()
 @triton.jit
 def _coo_bounds_kernel(
     idx_ptr,
@@ -78,6 +85,7 @@ def _coo_bounds_kernel(
     tl.atomic_min(lo_ptr + d, tl.min(lo_v, axis=0))
 
 
+@libentry()
 @triton.jit
 def _coo_cast_kernel(src_ptr, dst_ptr, numel, BLOCK: tl.constexpr):
     """Exact elementwise cast, used for numeric dtype conversion and moves."""
@@ -224,6 +232,7 @@ def sparse_coo_tensor(
     given and nothing needs materialising, the caller's buffers go straight to
     the COO constructor.
     """
+    logger.debug("GEMS SPARSE_COO_TENSOR")
     if (
         size is not None
         and layout is None
