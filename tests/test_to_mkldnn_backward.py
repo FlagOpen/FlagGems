@@ -508,6 +508,13 @@ def test_to_mkldnn_backward_opaque_grad(dtype, shape, value_range):
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize("source,target", MKLDNN_CAST_PAIRS)
 def test_to_mkldnn_backward_opaque_dtype_conversion(source, target):
+    if flag_gems.vendor_name == "ascend" and (source, target) in (
+        (torch.float16, torch.bfloat16),
+        (torch.bfloat16, torch.float16),
+    ):
+        pytest.skip(
+            "Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16"
+        )
     dense = tu.make_input(source, (2, 3), ["-1", "1"]).cpu()
     grad = dense.to_mkldnn()
     ref_grad = dense.clone().to_mkldnn()

@@ -36,13 +36,13 @@ def benchmark_config(monkeypatch):
     return base
 
 
-def _plans(bench):
+def _plans(bench, dtype=torch.float32):
     return Counter(
         json.dumps(
             (plan.shape, plan.params, plan.builder_args), sort_keys=True, default=str
         )
         for shape in bench.shapes
-        for plan in bench.case_fn(shape, torch.float32)
+        for plan in bench.case_fn(shape, dtype)
     )
 
 
@@ -135,6 +135,13 @@ def test_layout_partition_preserves_memory_format_queries(benchmark_config, tmp_
 @pytest.mark.parametrize(
     "operator,arguments,unsupported",
     [
+        ("to_mkldnn", (torch.float16, True), True),
+        ("to_mkldnn", (torch.bfloat16, True), True),
+        ("to_mkldnn", (torch.float16, False), False),
+        ("to_mkldnn_backward", (torch.float16, "opaque-cross-cast"), True),
+        ("to_mkldnn_backward", (torch.bfloat16, "opaque-cross-cast"), True),
+        ("to_mkldnn_backward", (torch.float16, "dense"), False),
+        ("to_mkldnn_backward", (torch.float16, "opaque"), False),
         ("glu_jvp", (torch.float16,), True),
         ("glu_jvp", (torch.bfloat16,), True),
         ("glu_jvp", (torch.float32,), False),
@@ -169,4 +176,64 @@ def test_capability_skips_are_vendor_and_configuration_scoped(
         assert not captured
     else:
         entry(*arguments)
+        assert len(captured) == 1
+
+
+@pytest.mark.parametrize("operator", ["to_mkldnn", "to_mkldnn_backward"])
+def test_mkldnn_conversion_partitions_preserve_all_plans(
+    benchmark_config, tmp_path, operator
+):
+    module = importlib.import_module(f"benchmark.test_{operator}")
+    backward = operator.endswith("_backward")
+    cls = module.ToMkldnnBackwardBenchmark if backward else module.ToMkldnnBenchmark
+    dtypes = module.BENCH_DTYPES if backward else module.TO_MKLDNN_DTYPES
+    groups = ("dense", "opaque", "opaque-cross-cast") if backward else (False, True)
+    keyword = "case_group" if backward else "cross_cast"
+    shape_file = tmp_path / "mkldnn-shapes.json"
+    shape_file.write_text(json.dumps({operator: {"shapes": [[], [0], [0, 3], [2, 3]]}}))
+
+    for dtype in dtypes:
+        bench = cls(
+            op_name=operator,
+            torch_op=lambda *args: None,
+            case_fn=module._case_fn,
+            build_inputs_fn=module._build_inputs_fn,
+            dtypes=[dtype],
+        )
+        bench.set_shapes(str(shape_file))
+        original = _plans(bench, dtype)
+        combined = Counter()
+        for group in groups:
+            bench.case_fn = partial(module._case_fn, **{keyword: group})
+            plans = _plans(bench, dtype)
+            assert not (combined & plans)
+            combined += plans
+        assert combined == original
+
+
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int8]
+)
+@pytest.mark.parametrize("supported", [False, True])
+def test_reorder_guard_uses_host_cpu_capabilities(
+    benchmark_config, monkeypatch, dtype, supported
+):
+    from benchmark import test_mkldnn_reorder_conv2d_weight as module
+
+    monkeypatch.setattr(
+        torch.ops.mkldnn, "_is_mkldnn_fp16_supported", lambda: supported
+    )
+    monkeypatch.setattr(
+        torch.ops.mkldnn, "_is_mkldnn_bf16_supported", lambda: supported
+    )
+    captured = []
+    monkeypatch.setattr(
+        benchmark_config.Benchmark, "run", lambda self: captured.append(self)
+    )
+    if dtype in (torch.float16, torch.bfloat16) and not supported:
+        with pytest.raises(pytest.skip.Exception):
+            module.test_mkldnn_reorder_conv2d_weight(dtype)
+        assert not captured
+    else:
+        module.test_mkldnn_reorder_conv2d_weight(dtype)
         assert len(captured) == 1

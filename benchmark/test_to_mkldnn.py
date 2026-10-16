@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -75,9 +77,19 @@ TO_MKLDNN_DTYPES = [
     torch.uint8,
 ]
 
+CROSS_DTYPE_PAIRS = (
+    (torch.float16, torch.bfloat16),
+    (torch.bfloat16, torch.float16),
+)
 
-def _case_fn(shape, dtype):
+
+def _case_fn(shape, dtype, cross_cast=None):
     for out_dtype in DTYPE_BRANCHES[dtype]:
+        if (
+            cross_cast is not None
+            and ((dtype, out_dtype) in CROSS_DTYPE_PAIRS) != cross_cast
+        ):
+            continue
         yield base.BenchmarkCasePlan(
             shape={"input": shape},
             params={"dtype": None if out_dtype is None else str(out_dtype)},
@@ -106,13 +118,21 @@ class ToMkldnnBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.to_mkldnn
-def test_to_mkldnn():
+@pytest.mark.parametrize(
+    "dtype,cross_cast",
+    [(dtype, False) for dtype in TO_MKLDNN_DTYPES]
+    + [(torch.float16, True), (torch.bfloat16, True)],
+    ids=lambda value: str(value),
+)
+def test_to_mkldnn(dtype, cross_cast):
+    if flag_gems.vendor_name == "ascend" and cross_cast:
+        pytest.skip("Ascend host MKLDNN cannot convert between FP16 and BF16")
     bench = ToMkldnnBenchmark(
         op_name="to_mkldnn",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, cross_cast=cross_cast),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.to_mkldnn,
         gems_op=getattr(flag_gems, "to_mkldnn", None),
-        dtypes=TO_MKLDNN_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()

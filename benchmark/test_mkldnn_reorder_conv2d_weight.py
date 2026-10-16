@@ -75,13 +75,18 @@ class MkldnnReorderConv2dWeightBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.mkldnn_reorder_conv2d_weight
-def test_mkldnn_reorder_conv2d_weight():
+@pytest.mark.parametrize("dtype", _DTYPES, ids=str)
+def test_mkldnn_reorder_conv2d_weight(dtype):
+    if dtype == torch.float16 and not torch.ops.mkldnn._is_mkldnn_fp16_supported():
+        pytest.skip("Host CPU does not support the MKLDNN FP16 reorder path")
+    if dtype == torch.bfloat16 and not torch.ops.mkldnn._is_mkldnn_bf16_supported():
+        pytest.skip("Host CPU does not support the MKLDNN BF16 reorder path")
     bench = MkldnnReorderConv2dWeightBenchmark(
         op_name="mkldnn_reorder_conv2d_weight",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.mkldnn_reorder_conv2d_weight,
         gems_op=getattr(flag_gems, "mkldnn_reorder_conv2d_weight", None),
-        dtypes=_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()

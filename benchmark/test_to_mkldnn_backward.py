@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
+
 import pytest
 import torch
 
@@ -84,7 +86,7 @@ def _cast_partner(dtype):
     return dtype if partner is None or not _dtype_supported(partner) else partner
 
 
-def _case_fn(shape, dtype):
+def _all_case_fn(shape, dtype):
     partner = _cast_partner(dtype)
     forms = [("same dtype", dtype)]
     if partner != dtype:
@@ -130,6 +132,21 @@ def _case_fn(shape, dtype):
             )
 
 
+def _case_fn(shape, dtype, case_group=None):
+    for plan in _all_case_fn(shape, dtype):
+        if plan.params["mode"] != "opaque to dense":
+            group = "dense"
+        elif (dtype, plan.builder_args[1]) in (
+            (torch.float16, torch.bfloat16),
+            (torch.bfloat16, torch.float16),
+        ):
+            group = "opaque-cross-cast"
+        else:
+            group = "opaque"
+        if case_group is None or group == case_group:
+            yield plan
+
+
 def _build_inputs_fn(plan, dtype, device):
     # The cast reads grad values; the benchmark does not compare its result,
     # so uninitialized payloads are enough (generate_tensor_input has no
@@ -146,20 +163,56 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class ToMkldnnBackwardBenchmark(OperatorBenchmark):
+    case_group = None
+
     def set_shapes(self, shape_file_path=None, *, default_shapes=None):
         super().set_shapes(shape_file_path, default_shapes=default_shapes)
         merged = [tuple(shape) for shape in self.shapes] + list(EXTRA_SHAPES)
         self.shapes = list(dict.fromkeys(merged))
+        if self.case_group is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if any(_case_fn(shape, self.dtypes[0], self.case_group))
+            ]
+            if not self.shapes:
+                pytest.skip("No MKLDNN backward workloads in this layout/cast group")
 
 
 @pytest.mark.to_mkldnn_backward
-def test_to_mkldnn_backward():
+@pytest.mark.parametrize(
+    "dtype,case_group",
+    [(dtype, "dense") for dtype in BENCH_DTYPES]
+    + [
+        (dtype, "opaque")
+        for dtype in (
+            torch.float32,
+            torch.float16,
+            torch.bfloat16,
+            torch.int8,
+            torch.uint8,
+        )
+        if dtype in BENCH_DTYPES
+    ]
+    + [
+        (dtype, "opaque-cross-cast")
+        for dtype in (torch.float16, torch.bfloat16)
+        if dtype in BENCH_DTYPES
+    ],
+    ids=lambda value: str(value),
+)
+def test_to_mkldnn_backward(dtype, case_group):
+    if flag_gems.vendor_name == "ascend" and case_group == "opaque-cross-cast":
+        pytest.skip(
+            "Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16"
+        )
     bench = ToMkldnnBackwardBenchmark(
         op_name="to_mkldnn_backward",
         torch_op=torch.ops.aten.to_mkldnn_backward,
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, case_group=case_group),
         build_inputs_fn=_build_inputs_fn,
         gems_op=getattr(flag_gems, "to_mkldnn_backward", None),
-        dtypes=BENCH_DTYPES,
+        dtypes=[dtype],
+        case_group=case_group,
     )
     bench.run()

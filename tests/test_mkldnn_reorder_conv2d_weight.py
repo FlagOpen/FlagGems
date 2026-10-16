@@ -30,6 +30,17 @@ import flag_gems
 
 from . import test_utils as tu
 
+
+@pytest.fixture(autouse=True)
+def _skip_unsupported_cpu_reorder_dtype(request):
+    params = getattr(getattr(request.node, "callspec", None), "params", {})
+    dtype = params.get("dtype")
+    if dtype == torch.float16 and not torch.ops.mkldnn._is_mkldnn_fp16_supported():
+        pytest.skip("Host CPU does not support the MKLDNN FP16 reorder path")
+    if dtype == torch.bfloat16 and not torch.ops.mkldnn._is_mkldnn_bf16_supported():
+        pytest.skip("Host CPU does not support the MKLDNN BF16 reorder path")
+
+
 # Reorder support measured on this build with a valid rank-4 weight:
 #   float32 / float16 / bfloat16 / int8 -> reordered, values bit-exact for all five ranges
 #   uint8 -> ``to_mkldnn()`` accepts it, the convolution descriptor does not, so it is
