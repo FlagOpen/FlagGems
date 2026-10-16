@@ -63,7 +63,6 @@ def _input_fn(shape, dtype, device):
 def _conv_depthwise2d_torch_op(
     input, weight, kernel_size, bias, stride, padding, dilation
 ):
-    """Kunlunxin-only baseline: the equivalent grouped convolution."""
     return torch.nn.functional.conv2d(
         input, weight, bias, stride, padding, dilation, groups=input.shape[1]
     )

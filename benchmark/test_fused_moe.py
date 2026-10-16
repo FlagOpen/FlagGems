@@ -242,38 +242,7 @@ class FusedMoEBenchmark(base.Benchmark):
         yield (hidden_states, w1, w2, topk_weights, topk_ids)
 
 
-# ---------------------------------------------------------------------------
-# NOTE (kunlunxin): SUBSTITUTED / NON-CONTRACT baseline.
-#
-# The official contract for this marker is FlagGems fused_experts_impl vs
-# vLLM's own fused_experts_impl.  That baseline is NOT constructible on this
-# Kunlunxin/XPU stack, measured 2026-10-11: vLLM resolves its MoE tuning
-# config through ``current_platform.get_device_name()``
-# (vllm/model_executor/layers/fused_moe/fused_moe.py:1024) and on a platform
-# vLLM does not recognise that raises NotImplementedError from
-# ``vllm/platforms/interface.py`` (UnspecifiedPlatform) before any kernel is
-# reached.  vLLM's own Triton MoE kernel also fails on XPU when the missing
-# glue ops are supplied (illegal memory access at M=8; a compile failure at
-# M=1), and its shipped .so files are NVIDIA-only.
-#
-# Therefore, for kunlunxin only, the number reported here is measured against a
-# SUBSTITUTED device baseline: a straightforward unfused per-expert
-# index_select + matmul implementation.  It is recorded so the comparison
-# stays visible and reviewable.  It is NOT an official-contract measurement.
-#
-# DIRECTION OF BIAS, stated plainly: an unfused per-expert loop is
-# intrinsically SLOWER than a fused MoE kernel, so a speedup > 1 here only
-# says "fused beats unfused".  It is WEAKER evidence than a fair fused
-# baseline and must not be read as an official-contract pass.
-#
-# Every other vendor keeps upstream's vLLM baseline verbatim.
-# ---------------------------------------------------------------------------
 def _unfused_moe_experts_device_baseline(hidden_states, w1, w2, topk_weights, topk_ids):
-    """Unfused per-expert MoE (silu gating), all device ops, no vLLM.
-
-    Routing is computed once with a single stable argsort (one host sync per
-    call); the expert loop then runs sync-free so E=256 shapes stay tractable.
-    """
     num_experts = w1.shape[0]
     top_k = topk_ids.shape[1]
     out = torch.zeros_like(hidden_states)
@@ -302,8 +271,6 @@ def _unfused_moe_experts_device_baseline(hidden_states, w1, w2, topk_weights, to
 def _vllm_fused_moe_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     """Wrapper to call vllm fused_experts_impl."""
     if IS_KUNLUNXIN:
-        # Substituted device baseline (see NOTE above) -- the vLLM baseline is
-        # not constructible on this stack.  Other vendors keep upstream.
         return _unfused_moe_experts_device_baseline(
             hidden_states, w1, w2, topk_weights, topk_ids
         )

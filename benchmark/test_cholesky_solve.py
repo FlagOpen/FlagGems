@@ -140,8 +140,6 @@ def test_cholesky_solve():
         gems_op = None
         dtypes = REAL_DTYPES
     elif IS_KUNLUNXIN:
-        # No complex device kernels on this backend (torch.eye / common_matmul
-        # reject complex), so only the real dtypes are benchmarked.
         torch_op = torch.ops.aten.cholesky_solve
         gems_op = None
         dtypes = REAL_DTYPES
@@ -171,7 +169,6 @@ def test_cholesky_solve_out():
         gems_op = None
         dtypes = REAL_DTYPES
     elif IS_KUNLUNXIN:
-        # No complex device kernels on this backend; real dtypes only.
         torch_op = torch.cholesky_solve
         gems_op = None
         dtypes = REAL_DTYPES

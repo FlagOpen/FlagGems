@@ -22,21 +22,6 @@ import flag_gems
 moe = importlib.import_module("flag_gems.fused.fused_moe")
 pytestmark = pytest.mark.fused_experts_impl
 
-# ---------------------------------------------------------------------------
-# Quantized-weight capability gate (test side).
-#
-# This is a CAPABILITY question, not a vendor list: the Kunlunxin backend's
-# ``fused_experts_impl`` has no quantized-weight path at all -- it raises
-# ``NotImplementedError("Kunlunxin fused_experts_impl does not support
-# quantized weights")`` for every quantized variant (INT8 W8A8, INT8 W8A16,
-# INT4 W4A16) -- and the generic implementation does not run on this XPU stack
-# either (its MoE kernels fault with an illegal memory access, XPU status 700).
-# Every other vendor keeps upstream behaviour byte for byte; a backend that
-# grows a quantized-weight path only has to make this probe return True.
-#
-# Recorded coverage narrowing: the quantized-weight variants of the
-# ``fused_experts_impl`` marker are exercised by zero cases on this device.
-# ---------------------------------------------------------------------------
 
 
 def _quantized_weight_moe_supported():

@@ -51,7 +51,6 @@ def _device_attn_forward(
     window_size_left=-1,
     window_size_right=-1,
 ):
-    """Device fp32 golden reference for the flash/cudnn backward tests."""
     b, h, s_q, d = Q_bhsd.shape
     s_kv = K_bhsd.shape[2]
     if scale is None:
@@ -126,7 +125,6 @@ def _flash_attention_backward_reference(
     philox_seed,
     philox_offset,
 ):
-    """Reference dQ/dK/dV, BSHD in and out."""
     if IS_KUNLUNXIN:
         grads = _attn_backward_by_autograd(
             dOut.permute(0, 2, 1, 3).contiguous(),
@@ -180,7 +178,6 @@ def _cudnn_attention_backward_reference(
     philox_seed,
     philox_offset,
 ):
-    """Reference dQ/dK/dV, BHSD in and out."""
     if IS_KUNLUNXIN:
         return _attn_backward_by_autograd(
             dOut_bhsd, Q_bhsd, K_bhsd, V_bhsd, is_causal, scale, attn_bias, -1, -1
@@ -331,12 +328,6 @@ def efficient_attn_forward_native(
     )
 
     if IS_KUNLUNXIN:
-        # The native efficient-attention forward on this XPU build rejects an
-        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
-        # yet"), so the sequence lengths are left to be inferred from the tensor
-        # shapes.  Verified on device: the returned (out, lse) match a device
-        # fp32 reference to 3e-05 (one fp16 ULP) and the native backward fed
-        # with this lse matches explicit device-math gradients to 4e-06.
         results = torch.ops.aten._efficient_attention_forward(
             Q,
             K,
@@ -782,23 +773,6 @@ def test_efficient_attention_backward(
 def _attn_bias_gradient_device(
     dOut_bhsd, Q_bhsd, K_bhsd, V_bhsd, attn_bias, is_causal, scale
 ):
-    """dBias for the native efficient-attention logit convention.
-
-    The native logits are ``S = (Q @ K^T) * scale + bias``, so the bias enters
-    the logits unscaled and the bias gradient is ``dS`` itself::
-
-        P      = softmax(S)
-        O      = P @ V
-        dS     = P * (dOut @ V^T - rowsum(dOut * O))
-        dBias  = dS
-
-    Evaluated on the device in float32 with 2-D matmuls (4-D batched fp32
-    ``matmul``/``bmm`` abort the process on this stack, hence the explicit
-    batch/head loop).  Validated two independent ways: finite differences
-    through the native forward give ``dOut/dbias == dS`` (best fit 1.003), and
-    the same expression evaluated in float64 on the CPU agrees with this
-    float32 device evaluation to 1e-9.
-    """
     batch, heads, q_len, kv_len = attn_bias.shape
     qf = Q_bhsd.detach().float()
     kf = K_bhsd.detach().float()
@@ -808,7 +782,6 @@ def _attn_bias_gradient_device(
 
     keep = None
     if is_causal:
-        # The native efficient-attention causal mask is bottom-right aligned.
         q_idx = torch.arange(q_len, device=bf.device).view(q_len, 1)
         k_idx = torch.arange(kv_len, device=bf.device).view(1, kv_len)
         keep = k_idx <= q_idx + (kv_len - q_len)
@@ -850,17 +823,6 @@ def _efficient_attention_backward_reference(
     is_causal,
     scale,
 ):
-    """Reference dQ/dK/dV/dBias for the efficient-attention backward test.
-
-    ``aten::_scaled_dot_product_efficient_attention_backward`` raises
-    ``ValueError: Check failed, bias_requires_grad not supported yet`` whenever
-    the bias-gradient slot of ``grad_input_mask`` is set together with a real
-    ``attn_bias``, so the FlagGems candidate would never be exercised for that
-    combination.  The bias gradient is an independent output, so dQ/dK/dV are
-    still taken from the same native op with that slot cleared, and only dBias
-    is constructed by ``_attn_bias_gradient_device``.  Every other vendor and
-    every other ``grad_input_mask`` takes the plain native call below.
-    """
     if IS_KUNLUNXIN and grad_input_mask[3] and ref_bias is not None:
         native_mask = (
             grad_input_mask[0],
@@ -1007,9 +969,6 @@ def test_scaled_dot_product_efficient_attention_backward(
     ref_bias = utils.to_reference(attn_bias)
     ref_out_bhsd = utils.to_reference(out_bhsd)
     ref_lse = utils.to_reference(lse)
-    # The helper's non-kunlunxin path is the plain native call; on kunlunxin
-    # the bias-gradient slot is cleared and dBias is constructed, because the
-    # native op rejects `bias_requires_grad=True`.
     (
         ref_dQ_bhsd,
         ref_dK_bhsd,

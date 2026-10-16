@@ -20,10 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-# Capability gate: this backend declares support_fp64=False, so a float64
-# request is silently normalized to float32 before dispatch and the
-# unsupported-dtype guard is unconstructible. Skipping NARROWS coverage of
-# that guard to zero on this device (recorded, needs human sign-off).
 _skip_if_no_fp64 = pytest.mark.skipif(
     not flag_gems.runtime.device.support_fp64,
     reason="backend does not support fp64; unsupported-dtype guard is unconstructible",

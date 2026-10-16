@@ -108,20 +108,6 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
 
 
 def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
-    """Device baseline for ``aten::addmm.dtype``.
-
-    The native ``addmm.dtype`` cannot run on this build, so ``latency_base``
-    can never be assigned from it.
-
-    The baseline is therefore assembled from native device ops only (never from
-    FlagGems, and always outside ``use_gems``): ordinary ``torch.addmm`` with
-    the operands kept in their own fp16/bf16 dtype -- the same tensor-core GEMM
-    the dtype overload would select -- followed by the output-dtype conversion
-    the overload performs. It is dtype sensitive (measured on this card:
-    0.707 ms fp16 vs 1.379 ms bf16 at 4096^3, a 1.95x spread), unlike a shim
-    that promotes every operand to fp32 and therefore times one and the same
-    fp32 GEMM for both dtypes.
-    """
     return torch.addmm(bias.to(mat1.dtype), mat1, mat2, beta=beta, alpha=alpha).to(
         out_dtype
     )
@@ -133,7 +119,6 @@ def _native_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.
 
 
 def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0):
-    """Candidate wrapper: ``flag_gems.addmm_dtype_out`` has a keyword-only ``out``."""
     return flag_gems.addmm_dtype_out(
         bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
     )

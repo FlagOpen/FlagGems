@@ -33,10 +33,6 @@ try:
     )
 
     if IS_KUNLUNXIN:
-        # The vLLM Python wrapper imports even when its compiled extension is
-        # absent, so a successful import does NOT mean the op can run. On the
-        # kunlunxin/XPU build _flashmla_C is NVIDIA-only, so key the flag on
-        # vLLM's own availability marker and fall back to the in-tree reference.
         from vllm.v1.attention.ops.flashmla import _flashmla_C_AVAILABLE
 
         HAS_VLLM_FLASHMLA_SPARSE = bool(_flashmla_C_AVAILABLE)
@@ -127,8 +123,6 @@ class FlashmlaSparseTestKit:
             .float()
         )
         if IS_KUNLUNXIN:
-            # A batched fp32 matmul aborts the process on the XPU build, so run
-            # one 2-D matmul per query instead.
             P = torch.empty(s_q, h_q, topk, dtype=torch.float32, device=q.device)
             for _i in range(s_q):
                 P[_i] = q[_i] @ gathered_kv[_i].transpose(0, 1)

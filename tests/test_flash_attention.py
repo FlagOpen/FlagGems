@@ -107,7 +107,6 @@ def make_input(
 def _flash_fwd_device_ref(
     q, k, v, scale, is_causal, window_size_left=None, window_size_right=None
 ):
-    """Golden reference for flash attention, built with explicit device math."""
     B, Sq, H, D = q.shape
     Sk = k.shape[1]
     Hk = k.shape[2]
@@ -136,9 +135,6 @@ def _flash_fwd_device_ref(
             scores = (qf[b, :, h, :] @ kf[b, :, h, :].t()) * scale
             scores = scores.masked_fill(~valid, float("-inf"))
             m = scores.max(dim=-1, keepdim=True).values
-            # A fully masked row (possible for a window outside its band) has
-            # m = -inf; floor it so exp() is 0 rather than NaN, then the
-            # clamped denominator yields out = 0 and lse = -inf.
             m_safe = torch.where(torch.isfinite(m), m, torch.zeros_like(m))
             p = torch.exp(scores - m_safe)
             denom = p.sum(dim=-1, keepdim=True)

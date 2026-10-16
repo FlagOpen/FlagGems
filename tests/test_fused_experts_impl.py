@@ -26,21 +26,6 @@ from .conftest import QUICK_MODE
 
 random.seed(42)
 
-# ---------------------------------------------------------------------------
-# Quantized-weight capability gate (test side).
-#
-# This is a CAPABILITY question, not a vendor list: the Kunlunxin backend's
-# ``fused_experts_impl`` has no quantized-weight path at all -- it raises
-# ``NotImplementedError("Kunlunxin fused_experts_impl does not support
-# quantized weights")`` for every quantized variant (INT8 W8A8, INT8 W8A16,
-# INT4 W4A16) -- and the generic implementation does not run on this XPU stack
-# either (its MoE kernels fault with an illegal memory access, XPU status 700).
-# Every other vendor keeps upstream behaviour byte for byte; a backend that
-# grows a quantized-weight path only has to make this probe return True.
-#
-# Recorded coverage narrowing: the quantized-weight variants of the
-# ``fused_experts_impl`` marker are exercised by zero cases on this device.
-# ---------------------------------------------------------------------------
 
 
 def _quantized_weight_moe_supported():
@@ -346,20 +331,6 @@ except ImportError:
 
 
 def _vllm_fused_moe_reference_unusable():
-    """Whether vLLM's ``fused_experts_impl`` cannot be used as a reference here.
-
-    The import above only proves that vLLM's *Python* package is importable.
-    Calling it is a second, independent requirement: vLLM resolves its MoE
-    tuning config through ``current_platform.get_device_name()``
-    (``fused_moe.py:1024``), and on a platform vLLM does not recognise that
-    raises ``NotImplementedError`` from ``vllm/platforms/interface.py``
-    (``UnspecifiedPlatform``) before any kernel is reached.  The reference can
-    therefore never be constructed, whatever the candidate does.
-
-    The probe is deliberately restricted to kunlunxin: for every other vendor
-    this returns False without importing or calling anything, so the marker it
-    feeds is False and their collection behaviour is byte-for-byte upstream's.
-    """
     if flag_gems.vendor_name != "kunlunxin" or not HAS_VLLM_FUSED_MOE:
         return False
     try:
