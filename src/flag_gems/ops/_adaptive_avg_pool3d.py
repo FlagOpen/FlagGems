@@ -47,6 +47,7 @@ def adaptive_avg_pool3d_kernel(
     stride_out_d,
     stride_out_h,
     stride_out_w,
+    ACC_DTYPE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
 
@@ -98,7 +99,10 @@ def adaptive_avg_pool3d_kernel(
 
     base_nc = n * stride_in_n_i64 + c * stride_in_c_i64
 
-    acc = tl.zeros((), dtype=tl.float32)
+    # Accumulate in the input's precision class: a fixed fp32 accumulator
+    # loses ~1e-6 relative accuracy on fp64 inputs (measured on H20), ten
+    # orders of magnitude worse than fp64 eps.
+    acc = tl.zeros((), dtype=ACC_DTYPE)
 
     di = d0
     while di < d1:
@@ -113,12 +117,12 @@ def adaptive_avg_pool3d_kernel(
                     + wi * stride_in_w_i64
                 )
                 val = tl.load(in_ptr + in_idx)
-                acc += tl.cast(val, tl.float32)
+                acc += tl.cast(val, ACC_DTYPE)
                 wi += 1
             hi += 1
         di += 1
 
-    denom_f = tl.cast(denom, tl.float32)
+    denom_f = tl.cast(denom, ACC_DTYPE)
     out_val = acc / denom_f
 
     out_idx = (
@@ -187,6 +191,7 @@ def _launch_adaptive_avg_pool3d_kernel(x, out):
             stride_out_d,
             stride_out_h,
             stride_out_w,
+            ACC_DTYPE=tl.float64 if x.dtype == torch.float64 else tl.float32,
             num_warps=4,
         )
 
