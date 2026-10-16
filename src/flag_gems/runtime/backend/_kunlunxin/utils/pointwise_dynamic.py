@@ -1117,7 +1117,9 @@ class ModuleGenerator:
         code.writeline("from flag_gems.utils import triton_lang_extension as ext")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         code.newline()
-        code.writeline("# 1D-tile geometry depends only on num_tasks for a given config.")
+        code.writeline(
+            "# 1D-tile geometry depends only on num_tasks for a given config."
+        )
         code.writeline("_PW_GEO_CACHE = {}")
         code.newline()
         return code
