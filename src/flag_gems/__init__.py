@@ -1859,6 +1859,7 @@ _FULL_CONFIG = (
     ("tensor_split.tensor_indices_or_sections", tensor_split),
     ("tensordot", tensordot),
     ("tensordot.out", tensordot_out),
+    ("thnn_conv2d", thnn_conv2d),
     ("threshold", threshold),
     ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),

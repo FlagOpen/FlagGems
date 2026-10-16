@@ -20006,6 +20006,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: thnn_conv2d
+  description: 'Applies a 2D convolution over an NCHW input using the legacy THNN
+    entry point, with the given kernel weights, optional bias, stride and padding.
+
+    '
+  for:
+  - thnn_conv2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: threshold
   description: Apply a threshold to each element of the input Tensor.
   for:
