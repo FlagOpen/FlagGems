@@ -28,6 +28,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_abs_ import _foreach_abs_
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
     _foreach_clamp_max__Scalar,
@@ -49,8 +50,10 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_mul__Scalar,
     _foreach_sub__Scalar,
 )
+from ._foreach_round_ import _foreach_round_
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
+from ._foreach_sign_ import _foreach_sign_
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -769,8 +772,11 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_abs_",
+    "_foreach_round_",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
+    "_foreach_sign_",
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
