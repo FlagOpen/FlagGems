@@ -537,6 +537,60 @@ def normed_cumsum_div_kernel(y, K, ACC_DTYPE: tl.constexpr, BLOCK: tl.constexpr)
         tl.store(y + row * K + offs, x / total, mask=mask)
 
 
+_NORMED_MM_MAX_K = 512
+_NORMED_U_CACHE = {}
+
+
+def _normed_tri_u(TK, dev):
+    key = (TK, dev)
+    u = _NORMED_U_CACHE.get(key)
+    if u is None:
+        u = torch.triu(torch.ones(TK, TK, dtype=torch.float32, device=dev))
+        _NORMED_U_CACHE[key] = u
+    return u
+
+
+@libentry()
+@triton.jit
+def normed_cumsum_mm_kernel(inp, out, u_ptr, M, K, TK: tl.constexpr, BM: tl.constexpr):
+    """normed_cumsum as a prefix-sum matmul: Y = X @ U with U upper-triangular
+    ones gives Y[m,k] = sum_{j<=k} X[m,j] (the cumulative sum), vectorized across
+    BM rows by a single tl.dot (ieee -> fp32-exact); normed = Y / row_total. This
+    turns the launch-bound many-row / short-K corner (one scan per row -> millions
+    of programs) into a few GEMM tiles.
+    NOTE: TK is the next MULTIPLE OF 16 >= K, NOT next_pow2 -- an oversized pow2
+    contraction with many zero-padded lanes makes tl.dot drop terms on this
+    backend (verified: K=100/TK=128 wrong, K=100/TK=112 correct)."""
+    pid = ext.program_id(0)
+    rm = pid * BM + tl.arange(0, BM)
+    mmask = rm < M
+    kk = tl.arange(0, TK)
+    kmask = kk < K
+    x = tl.load(
+        inp + rm[:, None] * K + kk[None, :],
+        mask=mmask[:, None] & kmask[None, :],
+        other=0.0,
+    ).to(tl.float32)
+    jj = tl.arange(0, TK)
+    u = tl.load(u_ptr + jj[:, None] * TK + kk[None, :]).to(tl.float32)
+    y = tl.dot(x, u, input_precision="ieee")
+    inv = 1.0 / tl.sum(x, axis=1)
+    r = y * inv[:, None]
+    tl.store(
+        out + rm[:, None] * K + kk[None, :],
+        r.to(out.dtype.element_ty),
+        mask=mmask[:, None] & kmask[None, :],
+    )
+
+
+def _normed_mm(inp, out, M, K):
+    TK = ((K + 15) // 16) * 16
+    BM = 64 if K <= 256 else 32
+    u = _normed_tri_u(TK, inp.device)
+    grid = (triton.cdiv(M, BM),)
+    normed_cumsum_mm_kernel[grid](inp, out, u, M, K, TK=TK, BM=BM, num_warps=4)
+
+
 def normed_cumsum(inp, dim=-1):
     logger.debug("GEMS_KUNLUNXIN NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
@@ -545,17 +599,30 @@ def normed_cumsum(inp, dim=-1):
     if inp.numel() == 0:
         return torch.empty_like(inp)
     K = inp.size(dim)
+    # Short-K prefix-sum-as-matmul fast path (see normed_cumsum_mm_kernel): the
+    # many-row / short-K shapes are launch-bound as one-scan-per-row; a GEMM over
+    # BM rows collapses that. fp64 and K > cap fall through to the scan path.
+    use_mm = (1 < K <= _NORMED_MM_MAX_K) and inp.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    )
     if inp.stride(dim) != 1:
-        K = inp.size(dim)
         M = inp.numel() // K
         inp_t = inp.movedim(dim, -1).contiguous()
         out_t = torch.empty_like(inp_t)
         with torch_device_fn.device(inp.device):
-            _scan_rows_into(inp_t, out_t, M, K)
-            adj = out_t / out_t.narrow(-1, K - 1, 1)
-        return adj.movedim(-1, dim)
+            if use_mm:
+                _normed_mm(inp_t, out_t, M, K)
+            else:
+                _scan_rows_into(inp_t, out_t, M, K)
+                out_t = out_t / out_t.narrow(-1, K - 1, 1)
+        return out_t.movedim(-1, dim)
     M = inp.numel() // K
     out = torch.empty_like(inp)
     with torch_device_fn.device(inp.device):
+        if use_mm:
+            _normed_mm(inp, out, M, K)
+            return out
         _scan_rows_into(inp, out, M, K)
         return out / out.narrow(-1, K - 1, 1)
