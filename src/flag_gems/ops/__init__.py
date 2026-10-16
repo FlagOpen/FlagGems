@@ -1325,10 +1325,10 @@ from flag_gems.ops.softplus import softplus, softplus_backward
 from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
+from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_mask import sparse_mask
 from flag_gems.ops.sparse_resize_ import sparse_resize_
 from flag_gems.ops.sparse_resize_and_clear_ import sparse_resize_and_clear_
-from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -2930,10 +2930,10 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "sparse_broadcast_to",
     "sparse_mask",
     "sparse_resize_",
     "sparse_resize_and_clear_",
-    "sparse_broadcast_to",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",
