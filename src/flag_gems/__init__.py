@@ -1205,6 +1205,7 @@ _FULL_CONFIG = (
     ("linalg_eigvalsh", linalg_eigvalsh),
     ("linalg_eigvalsh.out", linalg_eigvalsh_out),
     ("linalg_householder_product", linalg_householder_product),
+    ("linalg_inv", linalg_inv),
     ("linalg_inv_ex", linalg_inv_ex),
     ("linalg_ldl_factor", ldl_factor),
     ("linalg_ldl_factor_ex", ldl_factor_ex),
