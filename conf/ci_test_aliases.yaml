@@ -178,6 +178,7 @@ foreach_trunc_: test_foreach_unary
 foreach_zero: test_foreach_ops
 foreach_zero_: test_foreach_ops
 int_mm_out: test_int_mm
+linalg_eigvals_out: test_linalg_eigvals
 multi_margin_loss_out: test_multi_margin_loss
 nanmedian_out: test_nanmedian
 scaled_mm_out: test_scaled_mm
@@ -258,6 +259,7 @@ upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 
 # Underscore-prefixed aten op shares the base operator test file
 _linalg_eigh: test_linalg_eigh
+_linalg_eigvals: test_linalg_eigvals
 _flash_attention_forward: test_flash_attention
 
 fused_adamw_: test__fused_adamw_
