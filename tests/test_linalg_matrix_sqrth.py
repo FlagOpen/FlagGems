@@ -31,7 +31,6 @@ pytestmark = pytest.mark.skipif(
 DTYPES = [torch.float32, torch.complex64]
 if not QUICK_MODE:
     DTYPES += [torch.float64, torch.complex128]
-
 SHAPES = [(1, 1), (4, 4), (2, 8, 8), (2, 3, 4, 4), (0, 0), (0, 4, 4)]
 if QUICK_MODE:
     SHAPES = [(4, 4), (2, 8, 8), (0, 0)]
@@ -40,14 +39,14 @@ if QUICK_MODE:
 def _make_hpd(shape, dtype, device):
     if 0 in shape:
         return torch.empty(shape, dtype=dtype, device=device)
+    torch.manual_seed(0)
     matrix = torch.randn(shape, dtype=dtype, device=device)
     n = shape[-1]
     return matrix @ matrix.mH + 0.5 * torch.eye(n, dtype=dtype, device=device)
 
 
 def _reference(inp):
-    ref_inp = utils.to_reference(inp)
-    return torch.ops.aten.linalg_matrix_sqrth(ref_inp)
+    return torch.ops.aten.linalg_matrix_sqrth(utils.to_reference(inp, True))
 
 
 @pytest.mark.linalg_matrix_sqrth
@@ -55,17 +54,17 @@ def _reference(inp):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_linalg_matrix_sqrth(dtype, shape):
     inp = _make_hpd(shape, dtype, flag_gems.device)
+    inp_before = inp.clone()
     reference = _reference(inp)
 
     with flag_gems.use_gems():
         result = torch.ops.aten.linalg_matrix_sqrth(inp)
 
-    utils.gems_assert_close(
-        result,
-        reference,
-        dtype,
-        reduce_dim=max(shape[-1], 1),
-    )
+    utils.gems_assert_close(result, reference, dtype, reduce_dim=max(shape[-1], 1))
+    utils.gems_assert_equal(inp, inp_before)
+    assert result.shape == inp.shape
+    assert result.dtype == inp.dtype
+    assert result is not inp
 
 
 @pytest.mark.linalg_matrix_sqrth
@@ -73,6 +72,7 @@ def test_linalg_matrix_sqrth(dtype, shape):
 def test_linalg_matrix_sqrth_noncontiguous_and_lower_triangle(dtype):
     inp = _make_hpd((2, 8, 8), dtype, flag_gems.device).mH
     assert not inp.is_contiguous()
+    torch.manual_seed(1)
     upper_noise = torch.randn_like(inp)
     inp = torch.tril(inp) + torch.triu(upper_noise, diagonal=1)
     reference = _reference(inp)
@@ -84,41 +84,28 @@ def test_linalg_matrix_sqrth_noncontiguous_and_lower_triangle(dtype):
 
 
 @pytest.mark.linalg_matrix_sqrth
+def test_linalg_matrix_sqrth_autograd_matches_reference():
+    inp = _make_hpd((4, 4), torch.float32, flag_gems.device)
+    inp = inp.detach().requires_grad_(True)
+    ref_inp = utils.to_reference(inp, True).detach().requires_grad_(True)
+
+    reference = torch.ops.aten.linalg_matrix_sqrth(ref_inp)
+    ref_grad = torch.autograd.grad(reference.square().sum(), ref_inp)[0]
+
+    with flag_gems.use_gems():
+        result = torch.ops.aten.linalg_matrix_sqrth(inp)
+    grad = torch.autograd.grad(result.square().sum(), inp)[0]
+
+    utils.gems_assert_close(grad, ref_grad, inp.dtype, reduce_dim=4)
+
+
+@pytest.mark.linalg_matrix_sqrth
 @pytest.mark.parametrize(
     "shape,dtype",
     [((4,), torch.float32), ((3, 4), torch.float32), ((4, 4), torch.float16)],
 )
 def test_linalg_matrix_sqrth_invalid_input(shape, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.linalg_matrix_sqrth(inp)
-
-
-@pytest.mark.linalg_matrix_sqrth_out
-@pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("shape", [(4, 4), (2, 8, 8)])
-def test_linalg_matrix_sqrth_out(dtype, shape):
-    inp = _make_hpd(shape, dtype, flag_gems.device)
-    reference = _reference(inp)
-    out = torch.empty(shape, dtype=dtype, device=flag_gems.device).mH
-    assert not out.is_contiguous()
-
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.linalg_matrix_sqrth.out(inp, out=out)
-
-    assert returned is out
-    utils.gems_assert_close(out, reference, dtype, reduce_dim=shape[-1])
-
-
-@pytest.mark.linalg_matrix_sqrth_out
-def test_linalg_matrix_sqrth_out_resize():
-    inp = _make_hpd((4, 4), torch.float32, flag_gems.device)
-    reference = _reference(inp)
-    out = torch.empty(0, dtype=inp.dtype, device=inp.device)
-
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.linalg_matrix_sqrth.out(inp, out=out)
-
-    assert returned is out
-    assert out.shape == inp.shape
-    utils.gems_assert_close(out, reference, inp.dtype, reduce_dim=4)

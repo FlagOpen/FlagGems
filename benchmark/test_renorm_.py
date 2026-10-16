@@ -16,34 +16,49 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class RenormBenchmark(base.Benchmark):
+_DEFAULT_SHAPES = [
+    (16, 256),
+    (32, 512),
+    (64, 1024),
+    (128, 2048),
+    (256, 4096),
+    (512, 8192),
+]
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims)},
+        params={"p": 2.0, "dim": 1, "maxnorm": 1.0},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    return torch.randn(shape, dtype=dtype, device=device), 2.0, 1, 1.0
+
+
+class RenormInplaceBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # 2D shapes: (num_slices, slice_size) to benchmark renorm across different dimensions
-        self.shapes = [
-            (16, 256),
-            (32, 512),
-            (64, 1024),
-            (128, 2048),
-            (256, 4096),
-            (512, 8192),
-        ]
-
-    def set_more_shapes(self):
-        return None
-
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            yield inp, 2.0, 1, 1.0
+        super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
 
 
 @pytest.mark.renorm_
 def test_renorm_():
-    bench = RenormBenchmark(
+    bench = RenormInplaceBenchmark(
         op_name="renorm_",
         torch_op=torch.ops.aten.renorm_,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
     )
     bench.run()

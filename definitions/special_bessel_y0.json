@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "special_bessel_y0",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::special_bessel_y0(Tensor self) -> Tensor. Computes the Bessel function of the second kind of order zero elementwise without mutating or aliasing the input. The correctness suite covers float32 and float64 when the active backend reports fp64 support, the legacy positive-domain pointwise cases, zero-sized and noncontiguous tensors, and the defined NaN/infinity/signed-zero behavior outside and at the boundary of the positive domain.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

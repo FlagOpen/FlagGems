@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "smm",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::smm(Tensor self, Tensor mat2) -> Tensor. Sparse COO by dense matrix multiplication returning a sparse tensor; inputs are not mutated and the result does not alias either input. Tests preserve reviewed legacy sparse layout, dtype, shape, special-case, and error behavior.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

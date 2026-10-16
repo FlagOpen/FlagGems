@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "lu_unpack",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::lu_unpack(Tensor LU_data, Tensor LU_pivots, bool unpack_data=True, bool unpack_pivots=True) -> (Tensor P, Tensor L, Tensor U). Unpacks a packed LU factorization into permutation, lower-triangular and upper-triangular outputs. Coverage includes square, rectangular and batched factors, every flag combination, exact empty-output behavior when a component is disabled, input immutability and invalid pivot dimensions. The operation does not mutate or alias its inputs.",
+  "parameters": [
+    {
+      "name": "LU_data",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "LU_pivots",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "unpack_data",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "unpack_pivots",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "P",
+    "L",
+    "U"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -54,6 +54,7 @@ INVERSE_PIVOT_MATRICES = [
 
 def _make_well_conditioned(shape, dtype, device):
     """Identity plus a small perturbation: always invertible, never singular."""
+    torch.manual_seed(0)
     n = shape[-1]
     eye = torch.eye(n, dtype=dtype, device=device)
     if len(shape) > 2:
@@ -154,7 +155,23 @@ def test_inverse_empty(dtype):
 
 @pytest.mark.inverse
 def test_inverse_unsupported_dtype():
+    torch.manual_seed(0)
     A = torch.randn((4, 4), dtype=torch.float16, device=flag_gems.device)
 
     with pytest.raises(AssertionError):
         flag_gems.inverse(A)
+
+
+@pytest.mark.inverse
+def test_inverse_autograd_rejected():
+    matrix = _make_well_conditioned(
+        (4, 4), torch.float32, flag_gems.device
+    ).requires_grad_(True)
+
+    result = flag_gems.inverse(matrix)
+
+    # The register kernel writes into a detached output and no custom autograd
+    # Function is registered for the FlagGems inverse implementation.
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result.sum(), matrix)

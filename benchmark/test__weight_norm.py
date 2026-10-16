@@ -18,66 +18,47 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+CASES = [((4096, 256), 0), ((4096, 256), 1), ((4, 256, 3), 0), ((4, 256, 3), 2)]
 
 
-def weight_norm_input_fn(shape, dtype, device):
-    dim = 0
+class WeightNormBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(CASES)
+        self.shape_desc = "shape, dim"
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    tensor_shape, dim = shape
+    tensor_shape = tuple(tensor_shape)
+    yield base.BenchmarkCasePlan(
+        shape={"v": list(tensor_shape)},
+        params={"dim": dim},
+        builder_args=(tensor_shape, dim),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, dim = plan.builder_args
+    torch.manual_seed(0)
     v = torch.randn(shape, dtype=dtype, device=device)
-    g = torch.randn(
-        [1 if i != dim else shape[i] for i in range(len(shape))],
-        dtype=dtype,
-        device=device,
-    )
-    yield v, g, dim
-
-
-def weight_norm_input_fn_last(shape, dtype, device):
-    dim = len(shape) - 1
-    v = torch.randn(shape, dtype=dtype, device=device)
-    g = torch.randn(
-        [1 if i != dim else shape[i] for i in range(len(shape))],
-        dtype=dtype,
-        device=device,
-    )
-    yield v, g, dim
-
-
-# ``_weight_norm`` is a distinct operator from ``weight_norm``. Its id cannot be
-# used verbatim as a pytest marker, for two independent reasons:
-#
-#  1. pytest rejects the attribute form outright: MarkGenerator.__getattr__
-#     raises ``AttributeError("Marker name must NOT start with underscore")``.
-#  2. check_operator_markers derives the required marker from the operator id by
-#     stripping the leading underscore and -- because ``weight_norm`` is already
-#     a registered operator id, so the stripped name would collide -- prefixing
-#     ``underscore_``, giving ``underscore_weight_norm``. Its AST scan accepts
-#     only a literal ``pytest.mark.<that name>`` attribute, so hand-building a
-#     MarkDecorator to dodge (1) would read as "no marker" and fail the gate.
-#
-# Hence ``underscore_weight_norm``, mirroring op_marker() in tools/run_tests.py.
-@pytest.mark.underscore_weight_norm
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_underscore_weight_norm_dim0():
-    bench = base.GenericBenchmarkExcluse1D(
-        op_name="_weight_norm",
-        input_fn=weight_norm_input_fn,
-        torch_op=torch.ops.aten._weight_norm.default,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    g_shape = tuple(shape[index] if index == dim else 1 for index in range(len(shape)))
+    g = torch.randn(g_shape, dtype=dtype, device=device)
+    return v, g, dim
 
 
 @pytest.mark.underscore_weight_norm
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_underscore_weight_norm_dim_last():
-    bench = base.GenericBenchmarkExcluse1D(
+def test_underscore_weight_norm():
+    WeightNormBenchmark(
         op_name="_weight_norm",
-        input_fn=weight_norm_input_fn_last,
         torch_op=torch.ops.aten._weight_norm.default,
+        gems_op=flag_gems._weight_norm,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

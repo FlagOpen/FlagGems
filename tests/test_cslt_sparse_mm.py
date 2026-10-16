@@ -59,6 +59,7 @@ pytestmark = [
 
 def _make_2to4(M, K, dtype, device):
     """Build an M x K matrix with an exact 2:4 sparsity pattern."""
+    torch.manual_seed(0)
     a = torch.randn(M, K, dtype=dtype, device=device).view(M, K // 4, 4)
     # keep the 2 largest-magnitude of every group of 4, zero the other 2.
     idx = a.abs().argsort(dim=-1)
@@ -71,17 +72,22 @@ def _make_2to4(M, K, dtype, device):
 @pytest.mark.parametrize("shape", [(32, 64, 16), (64, 128, 32), (128, 256, 64)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_accuracy_cslt_sparse_mm(shape, dtype):
+    torch.manual_seed(0)
     M, K, N = shape
     dev = flag_gems.device
     A = _make_2to4(M, K, dtype, dev)
     compressed_A = torch._cslt_compress(A)
     B = torch.randn(K, N, dtype=dtype, device=dev)
 
-    ref_compressed_A = utils.to_reference(compressed_A)
-    ref_B = utils.to_reference(B)
+    ref_compressed_A = utils.to_reference(compressed_A, False)
+    ref_B = utils.to_reference(B, False)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B)
+    ref_out = utils.to_reference(ref_out, True)
     res_out = flag_gems._cslt_sparse_mm(compressed_A, B)
 
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == compressed_A.device
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -89,6 +95,7 @@ def test_accuracy_cslt_sparse_mm(shape, dtype):
 @pytest.mark.parametrize("shape", [(64, 128, 32), (128, 256, 64)])
 @pytest.mark.parametrize("dtype", [torch.float16])
 def test_accuracy_cslt_sparse_mm_with_alpha(shape, dtype):
+    torch.manual_seed(0)
     M, K, N = shape
     dev = flag_gems.device
     A = _make_2to4(M, K, dtype, dev)
@@ -96,12 +103,16 @@ def test_accuracy_cslt_sparse_mm_with_alpha(shape, dtype):
     B = torch.randn(K, N, dtype=dtype, device=dev)
     alpha = torch.tensor(2.0, dtype=dtype, device=dev)
 
-    ref_compressed_A = utils.to_reference(compressed_A)
-    ref_B = utils.to_reference(B)
-    ref_alpha = utils.to_reference(alpha)
+    ref_compressed_A = utils.to_reference(compressed_A, False)
+    ref_B = utils.to_reference(B, False)
+    ref_alpha = utils.to_reference(alpha, False)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, alpha=ref_alpha)
+    ref_out = utils.to_reference(ref_out, True)
     res_out = flag_gems._cslt_sparse_mm(compressed_A, B, alpha=alpha)
 
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == compressed_A.device
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -109,16 +120,21 @@ def test_accuracy_cslt_sparse_mm_with_alpha(shape, dtype):
 @pytest.mark.parametrize("shape", [(64, 128, 32)])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_accuracy_cslt_sparse_mm_transpose(shape, dtype):
+    torch.manual_seed(0)
     M, K, N = shape
     dev = flag_gems.device
     A = _make_2to4(M, K, dtype, dev)
     compressed_A = torch._cslt_compress(A)
     B = torch.randn(K, N, dtype=dtype, device=dev)
 
-    ref_compressed_A = utils.to_reference(compressed_A)
-    ref_B = utils.to_reference(B)
+    ref_compressed_A = utils.to_reference(compressed_A, False)
+    ref_B = utils.to_reference(B, False)
     ref_out = torch._cslt_sparse_mm(ref_compressed_A, ref_B, transpose_result=True)
+    ref_out = utils.to_reference(ref_out, True)
     res_out = flag_gems._cslt_sparse_mm(compressed_A, B, transpose_result=True)
 
+    assert res_out.shape == (N, M)
     assert res_out.shape == ref_out.shape
+    assert res_out.dtype == dtype
+    assert res_out.device == compressed_A.device
     utils.gems_assert_close(res_out, ref_out, dtype)

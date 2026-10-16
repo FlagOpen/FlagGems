@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from . import base, consts
-from .conftest import Config
+from .generated_operator_utils import OperatorBenchmark
 
 CORE_CHAINS = [
     (64, 256, 128),
@@ -28,7 +28,6 @@ CORE_CHAINS = [
     (128, 256, 64, 512, 128),
     (256, 128, 512, 64, 256),
 ]
-
 COMPREHENSIVE_CHAINS = [
     (1024, 64, 1024),
     (2048, 32, 2048, 32),
@@ -39,56 +38,44 @@ COMPREHENSIVE_CHAINS = [
 ]
 
 
-class LinalgMultiDotBenchmark(base.Benchmark):
+class LinalgMultiDotBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(CORE_CHAINS)
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
             self.shapes.extend(COMPREHENSIVE_CHAINS)
         self.shape_desc = "matrix-chain dimensions (d0, d1, ..., dn)"
 
-    def get_input_iter(self, cur_dtype):
-        for dimensions in self.shapes:
-            tensors = [
-                torch.randn(
-                    dimensions[index],
-                    dimensions[index + 1],
-                    dtype=cur_dtype,
-                    device=self.device,
-                )
-                for index in range(len(dimensions) - 1)
-            ]
-            yield (tensors,)
+
+def _case_fn(dimensions, dtype):
+    del dtype
+    dims = tuple(dimensions)
+    yield base.BenchmarkCasePlan(
+        shape={"tensors": [[dims[i], dims[i + 1]] for i in range(len(dims) - 1)]},
+        params={"chain_length": len(dims) - 1},
+        builder_args=(dims,),
+    )
 
 
-class LinalgMultiDotOutBenchmark(LinalgMultiDotBenchmark):
-    def get_input_iter(self, cur_dtype):
-        for (tensors,) in super().get_input_iter(cur_dtype):
-            out = torch.empty(
-                tensors[0].shape[0],
-                tensors[-1].shape[1],
-                dtype=cur_dtype,
-                device=self.device,
-            )
-            yield tensors, {"out": out}
+def _build_tensors(dims, dtype, device):
+    torch.manual_seed(0)
+    return [
+        torch.randn((dims[i], dims[i + 1]), dtype=dtype, device=device)
+        for i in range(len(dims) - 1)
+    ]
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (dims,) = plan.builder_args
+    return (_build_tensors(dims, dtype, device),)
 
 
 @pytest.mark.linalg_multi_dot
-def test_linalg_multi_dot_benchmark():
-    bench = LinalgMultiDotBenchmark(
+def test_linalg_multi_dot():
+    LinalgMultiDotBenchmark(
         op_name="linalg_multi_dot",
         torch_op=torch.ops.aten.linalg_multi_dot.default,
         gems_op=flag_gems.linalg_multi_dot,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.linalg_multi_dot_out
-def test_linalg_multi_dot_out_benchmark():
-    bench = LinalgMultiDotOutBenchmark(
-        op_name="linalg_multi_dot_out",
-        torch_op=torch.ops.aten.linalg_multi_dot.out,
-        gems_op=flag_gems.linalg_multi_dot_out,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

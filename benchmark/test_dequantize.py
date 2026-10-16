@@ -15,26 +15,49 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+from .generated_operator_utils import OperatorBenchmark
+
+SHAPES = [(4, 4), (16, 32), (32, 64), (64, 128), (1024, 1024)]
+PARAMS = ((0.1, 0), (0.01, 10), (0.5, -20))
 
 
-def _input_fn(shape, dtype, device):
-    # Generate quantized tensor for benchmarking
-    fp_tensor = torch.randn(shape, device="cpu")
-    q_tensor = torch.quantize_per_tensor(
-        fp_tensor, scale=0.1, zero_point=0, dtype=torch.qint8
-    ).to(device)
-    yield q_tensor,
+class DequantizeBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "shape"
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for scale, zero_point in PARAMS:
+        yield base.BenchmarkCasePlan(
+            shape={"self": list(dims)},
+            params={"scale": scale, "zero_point": zero_point},
+            builder_args=(dims, scale, zero_point),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    del dtype
+    shape, scale, zero_point = plan.builder_args
+    torch.manual_seed(0)
+    host = torch.quantize_per_tensor(
+        torch.randn(shape), scale=scale, zero_point=zero_point, dtype=torch.qint8
+    )
+    return (host if device == "cpu" else host.to(device),)
 
 
 @pytest.mark.dequantize
 def test_dequantize():
-    # Dequantize operates on quantized tensor input;
-    # no FLOAT_DTYPES parametrization needed (input always qint8, output always float32).
-    bench = base.GenericBenchmarkExcluse1D(
+    DequantizeBenchmark(
         op_name="dequantize",
-        input_fn=_input_fn,
-        dtypes=[torch.qint8],
         torch_op=torch.dequantize,
-    )
-    bench.run()
+        gems_op=flag_gems.dequantize,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.qint8],
+    ).run()

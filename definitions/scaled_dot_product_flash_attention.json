@@ -1,0 +1,69 @@
+{
+  "api_version": "v6.0",
+  "name": "scaled_dot_product_flash_attention",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_scaled_dot_product_flash_attention(Tensor query, Tensor key, Tensor value, float dropout_p=0.0, bool is_causal=False, bool return_debug_mask=False, *, float? scale=None) -> (Tensor output, Tensor logsumexp, Tensor cum_seq_q, Tensor cum_seq_k, SymInt max_q, SymInt max_k, Tensor rng_state, Tensor unused, Tensor debug_attn_mask). The artifact ID maps to the canonical upstream packet _scaled_dot_product_flash_attention. Tests cover deterministic dense Q/K/V, causal and noncausal masks, default and explicit scale, non-square and noncontiguous layouts, dropout/debug metadata, every logical output, and invalid shape/dtype contracts.",
+  "parameters": [
+    {
+      "name": "query",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "key",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "value",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dropout_p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "is_causal",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "return_debug_mask",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "scale",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "float | None"
+    }
+  ],
+  "outputs": [
+    "output",
+    "logsumexp",
+    "cum_seq_q",
+    "cum_seq_k",
+    "max_q",
+    "max_k",
+    "rng_state",
+    "unused",
+    "debug_attn_mask"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

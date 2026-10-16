@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "hsplit",
+  "requires_triton_kernel": false,
+  "description": "Representative ATen schema: aten::hsplit.int(Tensor(a -> *) self, int sections) -> Tensor(a)[]. The correctness suite also covers aten::hsplit.array(Tensor(a -> *) self, int[] indices) -> Tensor(a)[]. hsplit partitions dimension 0 for rank-one inputs and dimension 1 for higher-rank inputs, returning a tuple of views whose length, per-part value, shape, dtype, stride, storage offset, view state, shared input storage, and write-through behavior are checked through both the public flag_gems API and the torch dispatcher. Coverage includes one- through four-dimensional tensors, evenly divisible integer sections, explicit ascending, repeated, descending, and out-of-range indices, empty and overlapping slices, floating and integer dtypes including int8 boundary values, noncontiguous input, and distinct nonuniform per-output backward gradients. Rank-zero inputs, nonpositive section counts, and integer sections that do not evenly divide the selected dimension are rejected. All valid forward paths are metadata/view operations and do not mutate self, while every tensor element of the logical parts list aliases self; Protocol v6.0 effects cannot represent aliases for individual elements of a tensor-list output.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "sections",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "parts"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

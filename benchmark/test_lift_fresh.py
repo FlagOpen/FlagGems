@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,15 +18,36 @@ import torch
 from . import base, consts
 
 
+SHAPES = [(2, 3), (128, 256), (512, 512)]
+
+
+class LiftFreshBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SHAPES
+        self.shape_desc = "M, N"
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"self": list(shape)},
+                    builder_args=(tuple(shape),),
+                ),
+            )
+
+    def build_inputs(self, case):
+        torch.manual_seed(0)
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        return (torch.randn(shape, dtype=case.dtype, device=self.device),)
+
+
 @pytest.mark.lift_fresh
 def test_lift_fresh():
-    bench = base.GenericBenchmark(
-        input_fn=lambda shape, dtype, device: (
-            iter([(torch.randn(shape, dtype=dtype, device=device),)])
-        ),
+    LiftFreshBenchmark(
         op_name="lift_fresh",
         torch_op=torch.ops.aten.lift_fresh,
         dtypes=consts.FLOAT_DTYPES,
-    )
-
-    bench.run()
+    ).run()

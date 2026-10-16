@@ -20,6 +20,11 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
 @pytest.mark.msort
 @pytest.mark.parametrize("rows", [17, 1025])
 @pytest.mark.parametrize(
@@ -83,6 +88,7 @@ def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
 
 
 def _make_input(shape, dtype):
+    torch.manual_seed(0)
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
     if not dtype.is_floating_point:

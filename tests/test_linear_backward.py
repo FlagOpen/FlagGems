@@ -19,141 +19,128 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Shapes for linear_backward: (batch, in_features), weight is (out_features, in_features)
-LINEAR_SHAPES = [
-    (4, 16),
-    (8, 32),
-    (16, 64),
-    (32, 128),
-]
+
+LINEAR_SHAPES = [(4, 16), (8, 32), (16, 64), (32, 128)]
 LINEAR_OUT_FEATURES = [32, 64, 128, 256]
 
 
+def _make_inputs(batch_shape, in_features, out_features, dtype):
+    torch.manual_seed(0)
+    input_tensor = torch.randn(
+        (*batch_shape, in_features), dtype=dtype, device=flag_gems.device
+    )
+    weight = torch.randn(
+        (out_features, in_features), dtype=dtype, device=flag_gems.device
+    )
+    grad_output = torch.randn(
+        (*batch_shape, out_features), dtype=dtype, device=flag_gems.device
+    )
+    return input_tensor, grad_output, weight
+
+
+def _reference(input_tensor, grad_output, weight, output_mask):
+    ref_input = utils.to_reference(input_tensor, True)
+    ref_grad_output = utils.to_reference(grad_output, True)
+    ref_weight = utils.to_reference(weight, True)
+    flat_input = ref_input.reshape(-1, ref_input.shape[-1])
+    flat_grad_output = ref_grad_output.reshape(-1, ref_grad_output.shape[-1])
+    batch_shape = ref_input.shape[:-1]
+    grad_input = (
+        (flat_grad_output @ ref_weight).reshape(*batch_shape, ref_weight.shape[-1])
+        if output_mask[0]
+        else None
+    )
+    grad_weight = (
+        flat_grad_output.transpose(-2, -1) @ flat_input if output_mask[1] else None
+    )
+    grad_bias = flat_grad_output.sum(dim=0) if output_mask[2] else None
+    return grad_input, grad_weight, grad_bias
+
+
+def _reduction_dims(input_tensor, weight):
+    batch_count = input_tensor.numel() // input_tensor.shape[-1]
+    return weight.shape[0], batch_count, batch_count
+
+
+def _assert_outputs(result, reference, dtype, reduction_dims):
+    assert len(result) == 3
+    for actual, expected, reduce_dim in zip(result, reference, reduction_dims):
+        if expected is None:
+            assert actual is None
+        else:
+            assert actual.shape == expected.shape
+            assert actual.dtype == dtype
+            utils.gems_assert_close(actual, expected, dtype, reduce_dim=reduce_dim)
+
+
 @pytest.mark.linear_backward
-@pytest.mark.parametrize("batch, in_features", LINEAR_SHAPES)
+@pytest.mark.parametrize("batch,in_features", LINEAR_SHAPES)
 @pytest.mark.parametrize("out_features", LINEAR_OUT_FEATURES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_linear_backward(batch, in_features, out_features, dtype):
-    # Create inputs
-    input_tensor = torch.randn(
-        (batch, in_features), dtype=dtype, device=flag_gems.device
+    input_tensor, grad_output, weight = _make_inputs(
+        (batch,), in_features, out_features, dtype
     )
-    weight = torch.randn(
-        (out_features, in_features), dtype=dtype, device=flag_gems.device
+    snapshots = tuple(
+        utils.to_reference(tensor.clone(), False)
+        for tensor in (input_tensor, grad_output, weight)
     )
-    grad_output = torch.randn(
-        (batch, out_features), dtype=dtype, device=flag_gems.device
-    )
+    output_mask = (True, True, True)
 
-    ref_input = utils.to_reference(input_tensor, True)
-    ref_weight = utils.to_reference(weight, True)
-    ref_grad_output = utils.to_reference(grad_output, True)
-
-    # Reference computation
-    ref_grad_input = ref_grad_output @ ref_weight
-    ref_grad_weight = ref_grad_output.t() @ ref_input
-    ref_grad_bias = ref_grad_output.sum(dim=0)
-
-    # GEMS computation
+    reference = _reference(input_tensor, grad_output, weight, output_mask)
     with flag_gems.use_gems():
-        res_grad_input, res_grad_weight, res_grad_bias = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (True, True, True)
+        result = torch.ops.aten.linear_backward(
+            input_tensor, grad_output, weight, output_mask
         )
 
-    utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
-    utils.gems_assert_close(res_grad_weight, ref_grad_weight, dtype)
-    utils.gems_assert_close(res_grad_bias, ref_grad_bias, dtype)
+    _assert_outputs(result, reference, dtype, _reduction_dims(input_tensor, weight))
+    utils.gems_assert_equal(input_tensor, snapshots[0])
+    utils.gems_assert_equal(grad_output, snapshots[1])
+    utils.gems_assert_equal(weight, snapshots[2])
 
 
 @pytest.mark.linear_backward
-@pytest.mark.parametrize("batch, in_features", LINEAR_SHAPES)
-@pytest.mark.parametrize("out_features", LINEAR_OUT_FEATURES)
+@pytest.mark.parametrize(
+    "output_mask",
+    [
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (True, False, True),
+        (False, False, False),
+    ],
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_linear_backward_grad_input_only(batch, in_features, out_features, dtype):
-    """Test with output_mask=(True, False, False)"""
-    input_tensor = torch.randn(
-        (batch, in_features), dtype=dtype, device=flag_gems.device
-    )
-    weight = torch.randn(
-        (out_features, in_features), dtype=dtype, device=flag_gems.device
-    )
-    grad_output = torch.randn(
-        (batch, out_features), dtype=dtype, device=flag_gems.device
-    )
-    ref_weight = utils.to_reference(weight, True)
-    ref_grad_output = utils.to_reference(grad_output, True)
+def test_linear_backward_output_mask(output_mask, dtype):
+    input_tensor, grad_output, weight = _make_inputs((5,), 16, 24, dtype)
+    reference = _reference(input_tensor, grad_output, weight, output_mask)
 
-    # Reference computation
-    ref_grad_input = ref_grad_output @ ref_weight
-
-    # GEMS computation
     with flag_gems.use_gems():
-        res = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (True, False, False)
+        result = torch.ops.aten.linear_backward(
+            input_tensor, grad_output, weight, output_mask
         )
-        res_grad_input = res[0]
 
-    utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
+    _assert_outputs(result, reference, dtype, _reduction_dims(input_tensor, weight))
 
 
 @pytest.mark.linear_backward
-@pytest.mark.parametrize("batch, in_features", LINEAR_SHAPES)
-@pytest.mark.parametrize("out_features", LINEAR_OUT_FEATURES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_linear_backward_grad_weight_only(batch, in_features, out_features, dtype):
-    """Test with output_mask=(False, True, False)"""
-    input_tensor = torch.randn(
-        (batch, in_features), dtype=dtype, device=flag_gems.device
-    )
-    weight = torch.randn(
-        (out_features, in_features), dtype=dtype, device=flag_gems.device
-    )
-    grad_output = torch.randn(
-        (batch, out_features), dtype=dtype, device=flag_gems.device
-    )
+def test_linear_backward_preserves_batch_dimensions(dtype):
+    input_tensor, grad_output, weight = _make_inputs((2, 3), 16, 24, dtype)
+    output_mask = (True, True, True)
+    reference = _reference(input_tensor, grad_output, weight, output_mask)
 
-    ref_input = utils.to_reference(input_tensor, True)
-    ref_grad_output = utils.to_reference(grad_output, True)
-
-    # Reference computation
-    ref_grad_weight = ref_grad_output.t() @ ref_input
-
-    # GEMS computation
     with flag_gems.use_gems():
-        res = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (False, True, False)
+        result = torch.ops.aten.linear_backward(
+            input_tensor, grad_output, weight, output_mask
         )
-        res_grad_weight = res[1]
 
-    utils.gems_assert_close(res_grad_weight, ref_grad_weight, dtype)
+    _assert_outputs(result, reference, dtype, _reduction_dims(input_tensor, weight))
+    assert result[0].shape == input_tensor.shape
 
 
 @pytest.mark.linear_backward
-@pytest.mark.parametrize("batch, in_features", LINEAR_SHAPES)
-@pytest.mark.parametrize("out_features", LINEAR_OUT_FEATURES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_linear_backward_grad_bias_only(batch, in_features, out_features, dtype):
-    """Test with output_mask=(False, False, True)"""
-    input_tensor = torch.randn(
-        (batch, in_features), dtype=dtype, device=flag_gems.device
-    )
-    weight = torch.randn(
-        (out_features, in_features), dtype=dtype, device=flag_gems.device
-    )
-    grad_output = torch.randn(
-        (batch, out_features), dtype=dtype, device=flag_gems.device
-    )
-
-    ref_grad_output = utils.to_reference(grad_output, True)
-
-    # Reference computation
-    ref_grad_bias = ref_grad_output.sum(dim=0)
-
-    # GEMS computation
-    with flag_gems.use_gems():
-        res = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (False, False, True)
-        )
-        res_grad_bias = res[2]
-
-    utils.gems_assert_close(res_grad_bias, ref_grad_bias, dtype)
+def test_linear_backward_rejects_invalid_output_mask_length():
+    input_tensor, grad_output, weight = _make_inputs((2,), 4, 6, torch.float32)
+    with pytest.raises((IndexError, RuntimeError)):
+        flag_gems.linear_backward(input_tensor, grad_output, weight, (True, False))

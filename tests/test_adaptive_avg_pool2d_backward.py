@@ -20,29 +20,32 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+CASES = [
+    ((2, 3, 7, 9), (3, 4)),
+    ((1, 2, 8, 8), (1, 1)),
+    ((3, 5, 6), (2, 4)),
+    ((1, 2, 65, 71), (2, 3)),
+]
+
+
 @pytest.mark.adaptive_avg_pool2d_backward
-# Covers batched, global-pooling, unbatched, and non-square adaptive windows.
-@pytest.mark.parametrize(
-    "shape,output_size",
-    [
-        ((2, 3, 7, 9), (3, 4)),
-        ((1, 2, 8, 8), (1, 1)),
-        ((3, 5, 6), (2, 4)),
-        ((1, 2, 65, 71), (2, 3)),
-    ],
-)
+@pytest.mark.parametrize("shape,output_size", CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_avg_pool2d_backward(shape, output_size, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     grad_output = torch.randn(
         (*shape[:-2], *output_size), device=flag_gems.device, dtype=dtype
     )
     ref_inp = utils.to_reference(inp, True)
     ref_grad_output = utils.to_reference(grad_output, True)
-    expected = torch.ops.aten._adaptive_avg_pool2d_backward(ref_grad_output, ref_inp)
-
+    expected = torch.ops.aten._adaptive_avg_pool2d_backward(
+        ref_grad_output, ref_inp
+    )
     actual = flag_gems._adaptive_avg_pool2d_backward(grad_output, inp)
 
+    assert actual.shape == inp.shape
+    assert actual.dtype == inp.dtype
     utils.gems_assert_close(
         actual, expected, dtype, reduce_dim=output_size[0] * output_size[1]
     )

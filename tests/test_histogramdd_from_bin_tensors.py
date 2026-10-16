@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
 # The aten reference for ``_histogramdd_from_bin_tensors`` has no native CUDA
 # implementation in this PyTorch build, so the reference histogram is always
 # computed on CPU (the inputs are moved to CPU, the reference is run, and
@@ -41,12 +47,14 @@ def _make_input(shape, dtype, device):
 
 def _ref_histogramdd(inp, bins, *, weight=None, density=False):
     """Run the aten reference on CPU (no native CUDA impl is available)."""
-    inp_cpu = inp.detach().to("cpu")
-    bins_cpu = tuple(b.detach().to("cpu") for b in bins)
-    weight_cpu = weight.detach().to("cpu") if weight is not None else None
+    inp_cpu = utils.to_reference(inp, True).to("cpu")
+    bins_cpu = tuple(utils.to_reference(b, True).to("cpu") for b in bins)
+    weight_cpu = (
+        utils.to_reference(weight, True).to("cpu") if weight is not None else None
+    )
     return torch._histogramdd_from_bin_tensors(
         inp_cpu, bins_cpu, weight=weight_cpu, density=density
-    )
+    ).to(inp.dtype)
 
 
 def _assert_weighted_close(res, ref, dtype, num_points):
@@ -315,13 +323,14 @@ def test_histogramdd_from_bin_tensors_out(shape, num_bins, dtype):
     num_bins_per_dim = num_bins - 1
     out_shape = (num_bins_per_dim,) * D
     out = torch.zeros(out_shape, dtype=dtype, device=flag_gems.device)
+    out_ptr = out.data_ptr()
 
     ref_out = _ref_histogramdd(inp, bins)
     res_out = flag_gems._histogramdd_from_bin_tensors_out(inp, bins, out=out)
 
-    # The .out variant writes into and returns the provided out buffer; the
-    # returned tensor shares storage with ``out`` (reshape may return a view).
-    assert res_out.data_ptr() == out.data_ptr()
+    # A correctly shaped out buffer is returned unchanged and keeps its storage.
+    assert res_out is out
+    assert out.data_ptr() == out_ptr
     utils.gems_assert_close(res_out.to("cpu"), ref_out, dtype)
 
 
@@ -346,15 +355,16 @@ def test_histogramdd_from_bin_tensors_out_weighted(shape, num_bins, dtype):
     num_bins_per_dim = num_bins - 1
     out_shape = (num_bins_per_dim,) * D
     out = torch.zeros(out_shape, dtype=dtype, device=flag_gems.device)
+    out_ptr = out.data_ptr()
 
     ref_out = _ref_histogramdd(inp, bins, weight=weight)
     res_out = flag_gems._histogramdd_from_bin_tensors_out(
         inp, bins, weight=weight, out=out
     )
 
-    # The .out variant writes into and returns the provided out buffer; the
-    # returned tensor shares storage with ``out`` (reshape may return a view).
-    assert res_out.data_ptr() == out.data_ptr()
+    # A correctly shaped weighted out buffer obeys the same identity contract.
+    assert res_out is out
+    assert out.data_ptr() == out_ptr
     _assert_weighted_close(res_out, ref_out, dtype, inp.numel() // D)
 
 
@@ -508,6 +518,12 @@ def test_histogramdd_from_bin_tensors_out_non_contiguous(dtype):
     base = torch.empty((3, 6), dtype=dtype, device=dev)
     out = base[:, ::2]
     assert not out.is_contiguous()
+    out_ptr = out.data_ptr()
+    out_stride = out.stride()
+    out_storage_offset = out.storage_offset()
     res = flag_gems._histogramdd_from_bin_tensors_out(inp, bins, out=out)
     assert res is out
+    assert out.data_ptr() == out_ptr
+    assert out.stride() == out_stride
+    assert out.storage_offset() == out_storage_offset
     utils.gems_assert_close(out.to("cpu"), ref, dtype)

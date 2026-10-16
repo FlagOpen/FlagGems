@@ -1,0 +1,61 @@
+{
+  "api_version": "v6.0",
+  "name": "nested_from_padded_tensor",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_nested_from_padded_tensor(Tensor padded, Tensor offsets, Tensor dummy, int ragged_idx=1, Tensor? min_seqlen=None, Tensor? max_seqlen=None, SymInt? sum_S=None) -> Tensor. Packs the non-padding prefix of each padded sequence into newly materialized jagged values; it does not mutate or alias an input. Tests retain the reviewed legacy coverage and add protocol-specific alias, metadata or case-planning checks where applicable.",
+  "parameters": [
+    {
+      "name": "padded",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "offsets",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dummy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "ragged_idx",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    },
+    {
+      "name": "min_seqlen",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "max_seqlen",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "sum_S",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "int | None"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

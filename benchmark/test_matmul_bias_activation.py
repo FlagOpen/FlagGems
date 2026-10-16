@@ -18,35 +18,55 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class MatmulBiasActivationBenchmark(base.BlasBenchmark):
-    """
-    benchmark for matmul_bias_activation
-    """
+_CASES = [
+    (384, 384, 384),
+    (1024, 1024, 1024),
+    (2048, 2048, 2048),
+    (4096, 4096, 4096),
+    (128, 256, 512),
+    (256, 1024, 4096),
+]
 
-    def set_more_shapes(self):
-        return None
+
+class MatmulBiasActivationBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=_CASES)
 
 
-def matmul_bias_activation_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
-    # Note: b is ignored as we use (m, k) x (k, n) + bias
-    input_tensor = torch.randn([m, k], dtype=cur_dtype, device=device)
-    weight = torch.randn([k, n], dtype=cur_dtype, device=device)
-    bias = torch.randn([n], dtype=cur_dtype, device=device)
-    yield input_tensor, weight, bias
+def _case_fn(shape, dtype):
+    del dtype
+    m, n, k = shape
+    yield base.BenchmarkCasePlan(
+        shape={"input": [m, k], "weight": [k, n], "bias": [n]},
+        params={"M": m, "N": n, "K": k, "activation": "relu"},
+        builder_args=(m, n, k),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    m, n, k = plan.builder_args
+    torch.manual_seed(0)
+    input_tensor = torch.randn((m, k), dtype=dtype, device=device)
+    weight = torch.randn((k, n), dtype=dtype, device=device)
+    bias = torch.randn((n,), dtype=dtype, device=device)
+    return input_tensor, weight, bias
+
+
+def _reference(input_tensor, weight, bias):
+    return torch.relu(torch.mm(input_tensor, weight) + bias)
 
 
 @pytest.mark.matmul_bias_activation
 def test_matmul_bias_activation():
-    def mma_torch_op(input, weight, bias):
-        return torch.relu(torch.mm(input, weight) + bias)
-
     bench = MatmulBiasActivationBenchmark(
-        input_fn=matmul_bias_activation_input_fn,
         op_name="matmul_bias_activation",
-        torch_op=mma_torch_op,
+        torch_op=_reference,
         gems_op=flag_gems.matmul_bias_activation,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

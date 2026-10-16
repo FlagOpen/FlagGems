@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "sym_constrain_range",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen signature: aten::sym_constrain_range(Scalar size, *, int? min=None, int? max=None) -> (). Validates that a scalar symbolic integer lies within the inclusive optional bounds and returns no value; violations raise RuntimeError. Bounds are keyword-only. The operation has no tensor output, mutation, aliasing or autograd result.",
+  "parameters": [
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "min",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "max",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

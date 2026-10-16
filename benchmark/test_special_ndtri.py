@@ -16,22 +16,36 @@ import pytest
 import torch
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
+
+
+_DTYPES = [torch.float32, torch.float64]
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims)},
+        params={"domain": [0.01, 0.99]},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.empty(shape, dtype=dtype, device=device).uniform_(0.01, 0.99)
+    return (inp,)
 
 
 @pytest.mark.special_ndtri
 def test_special_ndtri():
-    def special_ndtri_input_fn(shape, dtype, device):
-        # ndtri takes a probability in [0, 1]. The default randn input would be
-        # mostly out of range and would degenerate into nan, so the domain is
-        # sampled explicitly here.
-        yield torch.empty(shape, dtype=dtype, device=device).uniform_(0.01, 0.99),
-
-    bench = base.GenericBenchmark(
-        input_fn=special_ndtri_input_fn,
+    bench = OperatorBenchmark(
         op_name="special_ndtri",
         torch_op=torch.ops.aten.special_ndtri,
-        # ndtri is implemented for single and double precision only, so the
-        # half precision dtypes benchmarked for most pointwise ops are excluded.
-        dtypes=[torch.float32, torch.float64],
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=_DTYPES,
     )
     bench.run()

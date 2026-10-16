@@ -19,33 +19,76 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# _masked_scale only supports float32 on most backends.
-# CUDA reference does not support float16/bf16 for this private op.
+
 FLOAT_DTYPES = [torch.float32]
+_SHAPES = [*utils.POINTWISE_SHAPES, (2, 0, 3)]
+_SCALES = [-1.0, 0.0, 0.5, 2.0]
+
+
+def _make_mask(shape):
+    if flag_gems.vendor_name == "cambricon":
+        return torch.randint(0, 2, shape, dtype=torch.uint8, device="cpu").to(
+            flag_gems.device
+        )
+    return torch.randint(0, 2, shape, dtype=torch.uint8, device=flag_gems.device)
+
+
+def _reference(inp, mask, scale):
+    ref_inp = utils.to_reference(inp, True)
+    ref_mask = utils.to_reference(mask, False)
+    return torch.where(
+        ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
+    )
 
 
 @pytest.mark.masked_scale
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_masked_scale(shape, dtype):
+@pytest.mark.parametrize("scale", _SCALES)
+def test_masked_scale(shape, dtype, scale):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    if flag_gems.vendor_name == "cambricon":
-        # Cambricon torch.randint currently does not support uint8 generation.
-        mask = torch.randint(0, 2, shape, dtype=torch.uint8, device="cpu").to(
-            flag_gems.device
-        )
-    else:
-        mask = torch.randint(0, 2, shape, dtype=torch.uint8, device=flag_gems.device)
-    scale = 2.0
-
-    ref_inp = utils.to_reference(inp)
-    ref_mask = utils.to_reference(mask)
-    # aten._masked_scale has no CPU backend; compute reference manually.
-    ref_out = torch.where(
-        ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
-    )
+    mask = _make_mask(shape)
+    inp_before = inp.clone()
+    mask_before = mask.clone()
+    ref_out = _reference(inp, mask, scale)
 
     with flag_gems.use_gems():
         res_out = torch.ops.aten._masked_scale(inp, mask, scale)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out.shape == inp.shape
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    utils.gems_assert_equal(inp, inp_before)
+    utils.gems_assert_equal(mask, mask_before)
+
+
+@pytest.mark.masked_scale
+def test_masked_scale_noncontiguous():
+    torch.manual_seed(0)
+    inp = torch.randn((4, 7, 9), dtype=torch.float32, device=flag_gems.device).transpose(0, 2)
+    mask = _make_mask((4, 7, 9)).transpose(0, 2)
+    assert not inp.is_contiguous()
+    assert not mask.is_contiguous()
+    ref_out = _reference(inp, mask, 2.0)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._masked_scale(inp, mask, 2.0)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.masked_scale
+def test_masked_scale_special_values():
+    inp = torch.tensor(
+        [float("nan"), float("inf"), -float("inf"), -0.0, 0.0, 1.0],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    mask = torch.tensor([1, 1, 1, 0, 1, 0], dtype=torch.uint8, device=flag_gems.device)
+    ref_out = _reference(inp, mask, -0.5)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten._masked_scale(inp, mask, -0.5)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)

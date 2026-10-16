@@ -27,6 +27,10 @@ from .conftest import TO_CPU
 _cudnn_rnn_impl = importlib.import_module("flag_gems.ops.cudnn_rnn")
 
 
+def _reference(value):
+    return utils.to_reference(value, True)
+
+
 def _cudnn_rnn_layer_dropout(x, p, train):
     """Inter-layer dropout as the operator applies it."""
     return _cudnn_rnn_impl._triton_dropout(x, p, train)
@@ -39,6 +43,11 @@ RNN_RELU = 0
 RNN_TANH = 1
 LSTM = 2
 GRU = 3
+
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
 
 
 def _make_rnn_weights(
@@ -304,10 +313,10 @@ def test_cudnn_rnn_accuracy(
     gems_output, gems_hy, gems_cy, _, _ = gems_result
 
     atol = _TOLERANCE.get(dtype, 2e-3)
-    utils.gems_assert_close(gems_output, ref_output, dtype, atol=atol)
-    utils.gems_assert_close(gems_hy, ref_hy, dtype, atol=atol)
+    utils.gems_assert_close(gems_output, _reference(ref_output), dtype, atol=atol)
+    utils.gems_assert_close(gems_hy, _reference(ref_hy), dtype, atol=atol)
     if mode == LSTM:
-        utils.gems_assert_close(gems_cy, ref_cy, dtype, atol=atol)
+        utils.gems_assert_close(gems_cy, _reference(ref_cy), dtype, atol=atol)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
@@ -409,10 +418,10 @@ def test_cudnn_rnn_accuracy_no_bias(
     gems_output, gems_hy, gems_cy, _, _ = gems_result
 
     atol = _TOLERANCE.get(dtype, 3e-2)
-    utils.gems_assert_close(gems_output, ref_output, dtype, atol=atol)
-    utils.gems_assert_close(gems_hy, ref_hy, dtype, atol=atol)
+    utils.gems_assert_close(gems_output, _reference(ref_output), dtype, atol=atol)
+    utils.gems_assert_close(gems_hy, _reference(ref_hy), dtype, atol=atol)
     if mode == LSTM:
-        utils.gems_assert_close(gems_cy, ref_cy, dtype, atol=atol)
+        utils.gems_assert_close(gems_cy, _reference(ref_cy), dtype, atol=atol)
 
 
 # ---------------------------------------------------------------------------
@@ -507,9 +516,9 @@ def test_cudnn_rnn_projection(
     )
 
     atol = _TOLERANCE.get(dtype, 2e-3)
-    utils.gems_assert_close(gems[0], ref[0], dtype, atol=atol)
-    utils.gems_assert_close(gems[1], ref[1], dtype, atol=atol)
-    utils.gems_assert_close(gems[2], ref[2], dtype, atol=atol)
+    utils.gems_assert_close(gems[0], _reference(ref[0]), dtype, atol=atol)
+    utils.gems_assert_close(gems[1], _reference(ref[1]), dtype, atol=atol)
+    utils.gems_assert_close(gems[2], _reference(ref[2]), dtype, atol=atol)
 
 
 # ---------------------------------------------------------------------------
@@ -656,10 +665,10 @@ def test_cudnn_rnn_dropout_state(mode, mode_name, dtype):
 
     atol = _TOLERANCE.get(dtype, 2e-3)
     # With dropout disabled (eval mode) results must match the reference.
-    utils.gems_assert_close(gems_with_state[0], ref[0], dtype, atol=atol)
-    utils.gems_assert_close(gems_with_state[1], ref[1], dtype, atol=atol)
+    utils.gems_assert_close(gems_with_state[0], _reference(ref[0]), dtype, atol=atol)
+    utils.gems_assert_close(gems_with_state[1], _reference(ref[1]), dtype, atol=atol)
     if mode == LSTM:
-        utils.gems_assert_close(gems_with_state[2], ref[2], dtype, atol=atol)
+        utils.gems_assert_close(gems_with_state[2], _reference(ref[2]), dtype, atol=atol)
     # And the dropout_state argument must not alter the output.
     assert torch.equal(gems_with_state[0], gems_without_state[0])
     assert torch.equal(gems_with_state[1], gems_without_state[1])
@@ -729,10 +738,10 @@ def test_cudnn_rnn_dropout_eval(mode, mode_name, dtype):
     )
 
     atol = _TOLERANCE.get(dtype, 2e-3)
-    utils.gems_assert_close(gems[0], ref[0], dtype, atol=atol)
-    utils.gems_assert_close(gems[1], ref[1], dtype, atol=atol)
+    utils.gems_assert_close(gems[0], _reference(ref[0]), dtype, atol=atol)
+    utils.gems_assert_close(gems[1], _reference(ref[1]), dtype, atol=atol)
     if mode == LSTM:
-        utils.gems_assert_close(gems[2], ref[2], dtype, atol=atol)
+        utils.gems_assert_close(gems[2], _reference(ref[2]), dtype, atol=atol)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
@@ -964,7 +973,7 @@ def test_cudnn_rnn_weight_buf(mode, mode_name, num_layers, bidirectional):
         None,
     )
     assert gems[4].numel() == ref[4].numel(), "weight_buf size differs from cuDNN"
-    utils.gems_assert_equal(gems[4], ref[4])
+    utils.gems_assert_equal(gems[4], _reference(ref[4]))
 
 
 # ---------------------------------------------------------------------------
@@ -1038,10 +1047,10 @@ def test_cudnn_rnn_packed(mode, mode_name, dtype):
     )
 
     atol = _TOLERANCE.get(dtype, 2e-3)
-    utils.gems_assert_close(gems[0], ref[0], dtype, atol=atol)
-    utils.gems_assert_close(gems[1], ref[1], dtype, atol=atol)
+    utils.gems_assert_close(gems[0], _reference(ref[0]), dtype, atol=atol)
+    utils.gems_assert_close(gems[1], _reference(ref[1]), dtype, atol=atol)
     if mode == LSTM:
-        utils.gems_assert_close(gems[2], ref[2], dtype, atol=atol)
+        utils.gems_assert_close(gems[2], _reference(ref[2]), dtype, atol=atol)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
@@ -1110,9 +1119,9 @@ def test_cudnn_rnn_packed_bidirectional(dtype):
     )
 
     atol = _TOLERANCE.get(dtype, 2e-3)
-    utils.gems_assert_close(gems[0], ref[0], dtype, atol=atol)
-    utils.gems_assert_close(gems[1], ref[1], dtype, atol=atol)
-    utils.gems_assert_close(gems[2], ref[2], dtype, atol=atol)
+    utils.gems_assert_close(gems[0], _reference(ref[0]), dtype, atol=atol)
+    utils.gems_assert_close(gems[1], _reference(ref[1]), dtype, atol=atol)
+    utils.gems_assert_close(gems[2], _reference(ref[2]), dtype, atol=atol)
 
 
 # ---------------------------------------------------------------------------

@@ -288,6 +288,7 @@ _FULL_CONFIG = (
     ("_padded_dense_to_jagged_forward", _padded_dense_to_jagged_forward),
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
+    ("_philox_normal_", _philox_normal_, lambda: torch_ge("2.12")),
     # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
     # accelerator key: registering under the backend key would never fire.
     ("_pin_memory", _pin_memory, None, ["CPU"]),
@@ -1506,6 +1507,7 @@ _FULL_CONFIG = (
     ("special_chebyshev_polynomial_u.n_scalar", special_chebyshev_polynomial_u),
     ("special_chebyshev_polynomial_v", special_chebyshev_polynomial_v),
     ("special_chebyshev_polynomial_w", special_chebyshev_polynomial_w),
+    ("special_chebyshev_polynomial_w.n_scalar", special_chebyshev_polynomial_w),
     ("special_chebyshev_polynomial_w.out", special_chebyshev_polynomial_w_out),
     ("special_digamma", special_digamma),
     ("special_entr", special_entr),
@@ -1760,9 +1762,10 @@ for _item in _FULL_CONFIG:
     func_name = fn.__name__ if hasattr(fn, "__name__") else str(fn)
     FULL_CONFIG_BY_FUNC.setdefault(func_name, []).append(_item)
 
-# Friendly names for only_enable(include=[...]) when the registered impl is *.out
+# Friendly names for only_enable(include=[...]) when the registered implementation
+# symbol differs from the public catalog/operator ID.
 for _alias, _target in (
-    ("_philox_normal_", _philox_normal_),
+    ("philox_normal_", "_philox_normal_"),
     ("softmax", "softmax_out"),
     ("softmax_backward", "softmax_backward_out"),
     ("log_softmax", "log_softmax_out"),

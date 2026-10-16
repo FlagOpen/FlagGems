@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "arccosh_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::arccosh_(Tensor(a!) self) -> Tensor(a!). Computes inverse hyperbolic cosine in place, mutates self, and returns the same Tensor object and storage. Tests cover deterministic valid-domain floating inputs, zero-sized and noncontiguous tensors, the boundary at one, infinity and NaN, native invalid-domain NaN behavior, output metadata, mutation, and identity.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

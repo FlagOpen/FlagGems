@@ -2,17 +2,19 @@
   "api_version": "v6.0",
   "name": "ldexp",
   "requires_triton_kernel": true,
-  "description": "Multiplies `self` by 2 raised to the power of `other`, element-wise.",
+  "description": "Representative ATen schema: aten::ldexp.Tensor(Tensor self, Tensor other) -> Tensor. Computes self multiplied by two raised to other. Tests cover floating and promoted inputs, integral exponents, broadcasting, zero-sized and noncontiguous tensors, special values, and autograd with respect to self.",
   "parameters": [
     {
       "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "other",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [

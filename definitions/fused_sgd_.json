@@ -1,0 +1,91 @@
+{
+  "api_version": "v6.0",
+  "name": "fused_sgd_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_fused_sgd_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] momentum_buffer_list, *, float weight_decay, float momentum, float lr, float dampening, bool nesterov, bool maximize, bool is_first_step, Tensor? grad_scale=None, Tensor? found_inf=None) -> (). The same artifact also covers aten::_fused_sgd_.tensor_lr, whose lr is a Tensor. Tests preserve the legacy option, multi-tensor, heterogeneous, AMP, validation, device, launch, and CUDA-graph coverage and verify both LR overloads, found_inf values, void return, every mutated list element value, and object/pointer/stride/storage-offset preservation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "grads",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "momentum_buffer_list",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "weight_decay",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "momentum",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "lr",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "dampening",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "nesterov",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "maximize",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "is_first_step",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "grad_scale",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Optional[Tensor]",
+      "default": null
+    },
+    {
+      "name": "found_inf",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Optional[Tensor]",
+      "default": null
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self",
+      "grads",
+      "momentum_buffer_list"
+    ],
+    "returns_alias_of": {}
+  }
+}

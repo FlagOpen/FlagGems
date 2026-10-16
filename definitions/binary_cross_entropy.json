@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "binary_cross_entropy",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::binary_cross_entropy(Tensor self, Tensor target, Tensor? weight=None, int reduction=Mean) -> Tensor. Computes elementwise binary cross entropy with optional weighting and none, mean, or sum reduction without mutating or aliasing its inputs. Tests cover legacy reduction shapes, zero-sized tensors, weighted and unweighted calls, exact probability boundaries, the related out overload's contents and object/storage identity, functional and ATen calling conventions, gradients, and input non-mutation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

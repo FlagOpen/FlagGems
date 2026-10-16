@@ -23,19 +23,10 @@ from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
-    # Reduced shapes to speed up CI smoke/runtime tests
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    # Keep only float32 in quick mode for faster test execution
+    MNK_SHAPES = [(1, 1, 32)]
     FLOAT_DTYPES = [torch.float32]
 else:
-    # Small/medium/large shapes covering different BLOCK granularities
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
+    MNK_SHAPES = [(1, 1, 32), (15, 160, 1024), (495, 5333, 71)]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
@@ -44,26 +35,60 @@ else:
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_addmm_(M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skiping fp32 addmm_ test on tsingmicro platform")
-
+    torch.manual_seed(0)
     if flag_gems.vendor_name == "mthreads":
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
+    try:
+        mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+        mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+        self = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+        ref_mat1 = utils.to_reference(mat1, True)
+        ref_mat2 = utils.to_reference(mat2, True)
+        ref_self = utils.to_reference(self, True)
+        original_pointer = self.data_ptr()
 
-    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
-    inp1 = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+        ref_result = ref_self.addmm_(ref_mat1, ref_mat2, alpha=scalar, beta=scalar)
+        with flag_gems.use_gems():
+            result = self.addmm_(mat1, mat2, alpha=scalar, beta=scalar)
+
+        assert result is self
+        assert result.data_ptr() == original_pointer
+        utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
+        utils.gems_assert_close(self, ref_self, dtype, reduce_dim=K)
+    finally:
+        if flag_gems.vendor_name == "mthreads":
+            os.environ.pop("MUSA_ENABLE_SQMMA", None)
+
+
+@pytest.mark.addmm_
+def test_addmm_noncontiguous_self_preserves_storage():
+    torch.manual_seed(0)
+    dtype = torch.float32
+    backing = torch.randn((5, 3), dtype=dtype, device=flag_gems.device)
+    self = backing.t()
+    mat1 = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
+    ref_self = utils.to_reference(self, True)
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)
-    ref_inp1 = utils.to_reference(inp1, True)
+    pointer = self.data_ptr()
+    stride = self.stride()
 
-    alpha = beta = scalar
+    ref_result = ref_self.addmm_(ref_mat1, ref_mat2)
+    with flag_gems.use_gems():
+        result = self.addmm_(mat1, mat2)
 
-    ref_out1 = ref_inp1.addmm_(ref_mat1, ref_mat2, alpha=alpha, beta=beta)
-    res_out1 = flag_gems.addmm_(inp1, mat1, mat2, alpha=alpha, beta=beta)
+    assert result is self
+    assert self.data_ptr() == pointer
+    assert self.stride() == stride
+    utils.gems_assert_close(result, ref_result, dtype, reduce_dim=4)
 
-    utils.gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=K)
-    utils.gems_assert_close(inp1, ref_out1, dtype, reduce_dim=K)
 
-    if flag_gems.vendor_name == "mthreads":
-        del os.environ["MUSA_ENABLE_SQMMA"]
+@pytest.mark.addmm_
+def test_addmm_rejects_incompatible_shapes():
+    torch.manual_seed(0)
+    self = torch.randn((2, 3), device=flag_gems.device)
+    mat1 = torch.randn((2, 4), device=flag_gems.device)
+    mat2 = torch.randn((5, 3), device=flag_gems.device)
+    with flag_gems.use_gems(), pytest.raises(RuntimeError):
+        self.addmm_(mat1, mat2)

@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_svd",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_svd(Tensor A, bool full_matrices=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh). Computes the public singular value decomposition; outputs do not alias A. Tests preserve reviewed legacy shapes, dtype limits, batching and layout behavior and add protocol-specific output checks where applicable.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "full_matrices",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "driver",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "str | None"
+    }
+  ],
+  "outputs": [
+    "U",
+    "S",
+    "Vh"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

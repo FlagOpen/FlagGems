@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "masked_select_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::masked_select_backward(Tensor grad, Tensor input, Tensor mask) -> Tensor. Tests preserve legacy zero, boundary, large, scalar, broadcast, noncontiguous, channels-last, storage-offset, integer, boolean, float, complex, conjugate, mask-extreme, and error coverage.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "dsplit",
+  "requires_triton_kernel": false,
+  "description": "Representative ATen schema: aten::dsplit.int(Tensor(a -> *) self, int sections) -> Tensor(a)[]. The correctness suite also covers aten::dsplit.array(Tensor(a -> *) self, int[] indices) -> Tensor(a)[]. dsplit requires rank three or greater and partitions dimension 2, returning a tuple of views whose length, per-part value, shape, dtype, stride, storage offset, view state, shared input storage, and write-through behavior are checked through both the public flag_gems API and the torch dispatcher. Coverage includes evenly divisible integer section counts, explicit ascending, repeated, descending, and out-of-range indices, empty and overlapping slices, four-dimensional and noncontiguous inputs, floating and integer dtypes including int8 boundary values, and distinct nonuniform per-output backward gradients. Integer sections must evenly divide dimension 2; nonpositive counts, non-divisible dimensions, and inputs below rank three are rejected. The operation does not mutate self, while every tensor element of the logical parts list aliases self; Protocol v6.0 effects cannot represent aliases for individual elements of a tensor-list output.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "sections",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "parts"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

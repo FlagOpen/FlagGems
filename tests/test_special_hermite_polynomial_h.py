@@ -20,68 +20,98 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.special_hermite_polynomial_h
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-# special.hermite_polynomial_h reference only supports float32 and float64
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_special_hermite_polynomial_h(shape, dtype):
-    # Test with tensor n in [0, 9]
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
+def _skip_unsupported_cambricon_float64(dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
-        pytest.skip("Issue #5253: Not supported")
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    n = torch.randint(0, 10, (1,), device=flag_gems.device).squeeze()
+        pytest.skip(reason="Issue #5253: float64 is not supported on Cambricon")
 
-    # Compare against PyTorch in the same dtype: gems replicates PyTorch's
-    # in-dtype recurrence, so no float64 upcast is used for the reference.
-    ref_inp = utils.to_reference(inp)
 
-    ref_out = torch.special.hermite_polynomial_h(ref_inp, utils.to_reference(n))
-    res_out = flag_gems.special_hermite_polynomial_h(inp, n)
-
-    # gems uses the same in-dtype recurrence as PyTorch, so results match the
-    # reference to default precision for both float32 and float64.
-    utils.gems_assert_close(res_out, ref_out, dtype)
+def _assert_dispatch(caplog):
+    expected = (
+        f"{utils.gems_log_prefix(flag_gems.special_hermite_polynomial_h)} "
+        "SPECIAL_HERMITE_POLYNOMIAL_H"
+    )
+    assert expected in caplog.text
 
 
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-# special.hermite_polynomial_h reference only supports float32 and float64
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_special_hermite_polynomial_h_scalar(shape, dtype):
-    # Test with scalar n = 9 (largest supported degree)
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
-        pytest.skip("Issue #5253: Not supported")
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    n = 9
+def test_special_hermite_polynomial_h_tensor_degree(shape, dtype):
+    _skip_unsupported_cambricon_float64(dtype)
+    torch.manual_seed(0)
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    degree = torch.randint(0, 10, (), dtype=torch.int64, device=flag_gems.device)
+    ref_x = utils.to_reference(x, True)
+    ref_degree = utils.to_reference(degree, False)
 
-    # Compare against PyTorch in the same dtype (no float64 upcast).
-    ref_inp = utils.to_reference(inp)
+    ref_out = torch.ops.aten.special_hermite_polynomial_h.default(ref_x, ref_degree)
+    res_out = flag_gems.special_hermite_polynomial_h(x, degree)
 
-    ref_out = torch.special.hermite_polynomial_h(ref_inp, n)
-    res_out = flag_gems.special_hermite_polynomial_h(inp, n)
+    assert res_out.shape == x.shape
+    assert res_out.dtype == dtype
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
-    # gems uses the same in-dtype recurrence as PyTorch, so results match the
-    # reference to default precision for both float32 and float64.
-    utils.gems_assert_close(res_out, ref_out, dtype)
+
+@pytest.mark.special_hermite_polynomial_h
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_special_hermite_polynomial_h_scalar_degree(shape, dtype):
+    _skip_unsupported_cambricon_float64(dtype)
+    torch.manual_seed(0)
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    degree = 9
+    ref_x = utils.to_reference(x, True)
+
+    ref_out = torch.ops.aten.special_hermite_polynomial_h.n_scalar(ref_x, degree)
+    res_out = flag_gems.special_hermite_polynomial_h(x, degree)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.special_hermite_polynomial_h
+@pytest.mark.parametrize("overload", ["default", "n_scalar"])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_hermite_polynomial_h_registered_dispatch(overload, dtype, caplog):
+    x = torch.tensor([-1.0, -0.25, 0.5, 1.0], dtype=dtype, device=flag_gems.device)
+    degree = (
+        torch.tensor([0, 1, 5, 9], dtype=torch.int64, device=flag_gems.device)
+        if overload == "default"
+        else 9
+    )
+    ref_x = utils.to_reference(x, True)
+    ref_degree = utils.to_reference(degree, False) if isinstance(degree, torch.Tensor) else degree
+    reference_op = getattr(torch.ops.aten.special_hermite_polynomial_h, overload)
+    ref_out = reference_op(ref_x, ref_degree)
+
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_hermite_polynomial_h"):
+        with flag_gems.use_gems():
+            res_out = reference_op(x, degree)
+
+    _assert_dispatch(caplog)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_special_hermite_polynomial_h_out_of_range(dtype):
-    # Verify that n >= 10 or n < 0 raises ValueError
-    if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
-        pytest.skip("Issue #5253: Not supported")
-    inp = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
+@pytest.mark.parametrize("degree", [-1, 10])
+def test_special_hermite_polynomial_h_rejects_scalar_degree(dtype, degree):
+    _skip_unsupported_cambricon_float64(dtype)
+    x = torch.randn((4, 4), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(ValueError, match="only supports n"):
-        flag_gems.special_hermite_polynomial_h(inp, 10)
-    with pytest.raises(ValueError, match="only supports n"):
-        flag_gems.special_hermite_polynomial_h(inp, -1)
+    with pytest.raises(ValueError, match=r"only supports n in \[0, 9\]"):
+        flag_gems.special_hermite_polynomial_h(x, degree)
 
-    # Verify that tensor n with values >= 10 raises ValueError
-    with pytest.raises(ValueError, match="only supports n"):
-        n_bad = torch.tensor(10, dtype=torch.int32, device=flag_gems.device)
-        flag_gems.special_hermite_polynomial_h(inp, n_bad)
-    with pytest.raises(ValueError, match="only supports n"):
-        n_bad = torch.tensor(-1, dtype=torch.int32, device=flag_gems.device)
-        flag_gems.special_hermite_polynomial_h(inp, n_bad)
+
+@pytest.mark.special_hermite_polynomial_h
+@pytest.mark.parametrize("degree", [-1, 10])
+def test_special_hermite_polynomial_h_rejects_tensor_degree(degree):
+    x = torch.randn((4, 4), dtype=torch.float32, device=flag_gems.device)
+    bad_degree = torch.tensor(degree, dtype=torch.int32, device=flag_gems.device)
+
+    with pytest.raises(ValueError, match=r"only supports n in \[0, 9\]"):
+        flag_gems.special_hermite_polynomial_h(x, bad_degree)

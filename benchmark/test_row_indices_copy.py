@@ -15,99 +15,84 @@
 import pytest
 import torch
 
-from . import base, consts
+import flag_gems
 
-# Sparse CSC matrix configurations (rows, cols, nnz). row_indices_copy copies
-# the row_indices buffer of a column-compressed sparse tensor, so the benchmark
-# exercises a range of nnz counts (which is the size of the copied buffer).
-ROW_INDICES_COPY_SHAPES = [
-    (256, 256, 1024),
-    (1024, 1024, 4096),
-    (1024, 1024, 16384),
-    (4096, 4096, 16384),
-    (4096, 4096, 65536),
-]
+from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# Index dtypes supported for sparse buffers (the dtype of the copied output).
+SHAPES = [(256, 256, 1024), (1024, 1024, 4096), (1024, 1024, 16384), (4096, 4096, 16384), (4096, 4096, 65536)]
 INDEX_DTYPES = [torch.int32, torch.int64]
 
 
 def _make_csc(shape, index_dtype, device):
+    torch.manual_seed(0)
     rows, cols, nnz = shape
-    gen = torch.Generator(device="cpu")
-    gen.manual_seed(1024)
-    per_col = torch.randint(0, max(nnz, 1) * 2, (cols,), generator=gen).tolist()
-    if sum(per_col) == 0:
-        per_col = [1] * min(cols, nnz) if cols else []
-    scale = nnz / max(sum(per_col), 1)
-    per_col = [max(int(round(c * scale)), 0) for c in per_col]
-    if per_col:
-        per_col[-1] = max(per_col[-1] + (nnz - sum(per_col)), 0)
-    else:
-        per_col = [nnz]
-    ccol = torch.zeros(cols + 1, dtype=index_dtype, device="cpu")
-    acc = 0
-    for i in range(cols):
-        acc += per_col[i]
-        ccol[i + 1] = acc
-    ccol = ccol.to(device).to(index_dtype)
-    row_list = []
-    for i in range(cols):
-        n = int(ccol[i + 1].item() - ccol[i].item())
-        if n > 0:
-            rs = torch.randperm(rows, generator=gen)[:n]
-            rs, _ = torch.sort(rs)
-            row_list.append(rs)
-    if row_list:
-        row = torch.cat(row_list).to(index_dtype).to(device)
-    else:
-        row = torch.empty(0, dtype=index_dtype, device=device)
-    vals = torch.randn(row.numel(), dtype=torch.float32, device=device)
-    return torch.sparse_csc_tensor(ccol, row, vals, size=(rows, cols))
+    counts = [nnz // cols + (1 if i < nnz % cols else 0) for i in range(cols)]
+    ccol = torch.tensor([0] + list(torch.cumsum(torch.tensor(counts), dim=0).tolist()), dtype=index_dtype, device=device)
+    pieces = []
+    for count in counts:
+        pieces.append(torch.arange(count, dtype=index_dtype, device=device) % rows)
+    row = torch.cat(pieces) if pieces else torch.empty(0, dtype=index_dtype, device=device)
+    values = torch.randn(row.numel(), dtype=torch.float32, device=device)
+    return torch.sparse_csc_tensor(ccol, row, values, size=(rows, cols))
 
 
-class RowIndicesCopyBenchmark(base.Benchmark):
-    """Benchmark for row_indices_copy on column-compressed sparse tensors."""
-
-    DEFAULT_METRICS = consts.DEFAULT_METRICS[:]
-
+class RowIndicesCopyBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = ROW_INDICES_COPY_SHAPES
+        self.shapes = list(SHAPES)
+        self.shape_desc = "rows, cols, nnz"
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            csc = _make_csc(shape, cur_dtype, self.device)
-            yield (csc,)
+
+def _case_fn(shape, dtype):
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims), "out": [dims[2]]},
+        params={"index_dtype": str(dtype).removeprefix("torch.")},
+        builder_args=(dims, False),
+    )
+
+
+def _out_case_fn(shape, dtype):
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims), "out": [dims[2]]},
+        params={"index_dtype": str(dtype).removeprefix("torch.")},
+        builder_args=(dims, True),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, _ = plan.builder_args
+    return (_make_csc(shape, dtype, device),)
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    shape, _ = plan.builder_args
+    csc = _make_csc(shape, dtype, device)
+    return csc, {"out": torch.empty(shape[2], dtype=dtype, device=device)}
 
 
 @pytest.mark.row_indices_copy
-@pytest.mark.parametrize("in_dtype", INDEX_DTYPES)
-def test_row_indices_copy(in_dtype):
-    bench = RowIndicesCopyBenchmark(
+def test_row_indices_copy():
+    RowIndicesCopyBenchmark(
         op_name="row_indices_copy",
         torch_op=torch.row_indices_copy,
-        dtypes=[in_dtype],
-    )
-    bench.run()
+        gems_op=flag_gems.row_indices_copy,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=INDEX_DTYPES,
+    ).run()
 
 
 @pytest.mark.row_indices_copy_out
-@pytest.mark.parametrize("in_dtype", INDEX_DTYPES)
-def test_row_indices_copy_out(in_dtype):
-    bench = RowIndicesCopyBenchmark(
+def test_row_indices_copy_out():
+    RowIndicesCopyBenchmark(
         op_name="row_indices_copy_out",
         torch_op=torch.row_indices_copy,
-        dtypes=[in_dtype],
-    )
-    # Provide a pre-allocated out tensor sized to the buffer for each input.
-    base_get_input_iter = bench.get_input_iter
-
-    def get_input_iter_with_out(cur_dtype):
-        for (csc,) in base_get_input_iter(cur_dtype):
-            n = csc.row_indices().numel()
-            out = torch.empty(n, dtype=cur_dtype, device=bench.device)
-            # The dict is unpacked into kwargs by the benchmark harness.
-            yield (csc, {"out": out})
-
-    bench.get_input_iter = get_input_iter_with_out
-    bench.run()
+        gems_op=flag_gems.row_indices_copy_out,
+        case_fn=_out_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
+        dtypes=INDEX_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
+    ).run()

@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,33 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-if cfg.QUICK_MODE:
-    FLOAT_DTYPES = [torch.float32]
-else:
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
 
+FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
 ADAPTIVE_AVG_POOL3D_OUTPUT_SIZES = [
     (4, 4, 4),
     (8, 8, 8),
     (3, 3, 3),
     (5, 5, 5),
-    # Upsampling cases where each input maps to more than 2 outputs per
-    # dimension. These exercise the dynamic MAX_OUT_D/H/W loop bound in
-    # the kernel; the previous static_range(0, 2) would miss contributions.
     (7, 7, 7),
     (8, 8, 8),
 ]
-
-
-# Define shapes for 3D adaptive average pooling
 ADAPTIVE_AVG_POOL3D_SHAPES = [
     (1, 3, 8, 8, 8),
     (2, 3, 16, 16, 16),
     (1, 1, 7, 7, 7),
     (1, 2, 10, 10, 10),
-    # Small inputs paired with the upsampling output sizes above to expose
-    # the static_range(0, 2) bug: ceil(out/in) >= 3 forces the kernel to
-    # iterate beyond 2 output positions per input.
     (1, 1, 3, 3, 3),
     (1, 1, 2, 2, 2),
 ]
@@ -57,25 +45,23 @@ ADAPTIVE_AVG_POOL3D_SHAPES = [
 @pytest.mark.parametrize("output_size", ADAPTIVE_AVG_POOL3D_OUTPUT_SIZES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_adaptive_avg_pool3d_backward(shape, output_size, dtype):
-    # Create input tensor
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     grad_output = torch.randn(
-        (*shape[:-3], *output_size), device=flag_gems.device, dtype=dtype
+        (*shape[:-3], *output_size), dtype=dtype, device=flag_gems.device
     )
     ref_inp = utils.to_reference(inp, True)
     ref_grad_output = utils.to_reference(grad_output, True)
-
-    # Reference implementation (high-precision upcast)
-    ref_grad = torch.ops.aten._adaptive_avg_pool3d_backward.default(
+    expected = torch.ops.aten._adaptive_avg_pool3d_backward.default(
         ref_grad_output, ref_inp
     )
+    actual = flag_gems._adaptive_avg_pool3d_backward(grad_output, inp)
 
-    # GEMS implementation
-    gems_grad = flag_gems._adaptive_avg_pool3d_backward(grad_output, inp)
-
+    assert actual.shape == inp.shape
+    assert actual.dtype == inp.dtype
     utils.gems_assert_close(
-        gems_grad,
-        ref_grad,
+        actual,
+        expected,
         dtype,
         reduce_dim=output_size[0] * output_size[1] * output_size[2],
     )

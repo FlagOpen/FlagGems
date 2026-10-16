@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "cov",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::cov(Tensor self, *, int correction=1, Tensor? fweights=None, Tensor? aweights=None) -> Tensor. Computes covariance for one- or two-dimensional observations without mutating or aliasing inputs. Tests cover correction values, frequency and analytic weights individually and together, scalar and matrix outputs, noncontiguous input, metadata, non-mutation, and invalid weight length.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "correction",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "int",
+      "default": 1
+    },
+    {
+      "name": "fweights",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Tensor?",
+      "default": null
+    },
+    {
+      "name": "aweights",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Tensor?",
+      "default": null
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

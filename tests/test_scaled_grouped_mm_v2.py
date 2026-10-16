@@ -32,6 +32,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
@@ -54,6 +55,7 @@ def _dtype_cases():
 
 
 def _make_tensor(shape, dtype):
+    torch.manual_seed(0)
     base = torch.randn(shape, dtype=torch.float32, device=flag_gems.device) * 0.25
     try:
         return base.to(dtype)
@@ -69,6 +71,7 @@ def _make_mat_b(shape, dtype):
     materialised as ``(..., N, K)`` and swapped, leaving ``stride(-2) == 1``.
     """
     k_size, n_size = shape[-2], shape[-1]
+    torch.manual_seed(0)
     base = torch.randn(
         shape[:-2] + (n_size, k_size), dtype=torch.float32, device=flag_gems.device
     )
@@ -82,6 +85,7 @@ def _make_case(case_name, dtype):
     are multiples of the 16 elements that the upstream fp8 kernels require for
     the scaled dimension of the output.
     """
+    torch.manual_seed(0)
     groups, m_per_group, n_per_group, k_size = 3, 32, 64, 128
 
     if case_name == "m_varying":
@@ -156,11 +160,12 @@ def _reference(mat_a, mat_b, scale_a, scale_b, offs):
     else:
         groups = mat_a.shape[0]
 
-    mat_a = mat_a.detach().cpu().float()
-    mat_b = mat_b.detach().cpu().float()
-    scale_a = scale_a.detach().cpu().float()
-    scale_b = scale_b.detach().cpu().float()
-    offsets = [0] + (offs.detach().cpu().tolist() if offs is not None else [])
+    mat_a = utils.to_reference(mat_a, True).cpu()
+    mat_b = utils.to_reference(mat_b, True).cpu()
+    scale_a = utils.to_reference(scale_a, True).cpu()
+    scale_b = utils.to_reference(scale_b, True).cpu()
+    offs = utils.to_reference(offs, False)
+    offsets = [0] + (offs.cpu().tolist() if offs is not None else [])
 
     chunks = []
     if a_is_2d and not b_is_2d:
@@ -226,6 +231,13 @@ def _row_wise_scales(mat_a, mat_b, scale_a, scale_b):
 @pytest.mark.parametrize("dtype", _dtype_cases())
 def test_scaled_grouped_mm_v2(case_name, dtype):
     mat_a, mat_b, scale_a, scale_b, offs = _make_case(case_name, dtype)
+    snapshots = (
+        utils.to_reference(mat_a.clone(), False),
+        utils.to_reference(mat_b.clone(), False),
+        utils.to_reference(scale_a.clone(), False),
+        utils.to_reference(scale_b.clone(), False),
+        utils.to_reference(offs.clone(), False) if offs is not None else None,
+    )
 
     ref = _reference(mat_a, mat_b, scale_a, scale_b, offs)
     ref = ref.to(torch.bfloat16)
@@ -254,7 +266,15 @@ def test_scaled_grouped_mm_v2(case_name, dtype):
     # fp8 operands accumulate in float32 but the reference rounds to bf16, so
     # the comparison has to tolerate the ~1e-2 resolution bf16 carries at the
     # magnitudes this GEMM produces.
-    torch.testing.assert_close(res.float().cpu(), ref.float(), atol=2.5e-1, rtol=5e-1)
+    utils.gems_assert_close(
+        res, ref, torch.bfloat16, reduce_dim=mat_a.shape[-1], atol=2.5e-1
+    )
+    utils.gems_assert_equal(mat_a, snapshots[0])
+    utils.gems_assert_equal(mat_b, snapshots[1])
+    utils.gems_assert_equal(scale_a, snapshots[2])
+    utils.gems_assert_equal(scale_b, snapshots[3])
+    if offs is not None:
+        utils.gems_assert_equal(offs, snapshots[4])
 
 
 @pytest.mark.scaled_grouped_mm_v2
@@ -301,7 +321,9 @@ def test_scaled_grouped_mm_v2_tensor_wise(dtype):
         False,
     )
 
-    torch.testing.assert_close(res.float().cpu(), ref, atol=2.5e-1, rtol=5e-1)
+    utils.gems_assert_close(
+        res, ref, torch.bfloat16, reduce_dim=mat_a.shape[-1], atol=2.5e-1
+    )
 
 
 @pytest.mark.scaled_grouped_mm_v2
@@ -332,7 +354,9 @@ def test_scaled_grouped_mm_v2_out_dtype_default(dtype):
     )
 
     assert res.dtype == torch.bfloat16
-    torch.testing.assert_close(res.float().cpu(), ref, atol=2.5e-1, rtol=5e-1)
+    utils.gems_assert_close(
+        res, ref, torch.bfloat16, reduce_dim=mat_a.shape[-1], atol=2.5e-1
+    )
 
 
 @pytest.mark.scaled_grouped_mm_v2
@@ -375,8 +399,12 @@ def test_scaled_grouped_mm_v2_use_fast_accum(dtype):
         True,
     )
 
-    torch.testing.assert_close(
-        res_fast.float().cpu(), res_slow.float().cpu(), atol=2.5e-1, rtol=5e-1
+    utils.gems_assert_close(
+        res_fast,
+        utils.to_reference(res_slow, True),
+        torch.bfloat16,
+        reduce_dim=mat_a.shape[-1],
+        atol=2.5e-1,
     )
 
 
@@ -403,6 +431,45 @@ def test_scaled_grouped_mm_v2_rejects_bias():
             torch.zeros(mat_b.shape[-1], device=flag_gems.device),
             torch.bfloat16,
             [],
+            False,
+        )
+
+
+@pytest.mark.scaled_grouped_mm_v2
+@pytest.mark.skipif(
+    not _cuda_fp8_available(), reason="invalid contract cases require CUDA fp8"
+)
+@pytest.mark.parametrize("invalid", ["mat_b_layout", "out_dtype", "contraction_dim"])
+def test_scaled_grouped_mm_v2_rejects_invalid_contract(invalid):
+    mat_a, mat_b, scale_a, scale_b, offs = _make_case(
+        "m_varying", torch.float8_e4m3fn
+    )
+    lst_a, recipe_a, swizzle_a, lst_b, recipe_b, swizzle_b = _row_wise_scales(
+        mat_a, mat_b, scale_a, scale_b
+    )
+    out_dtype = torch.bfloat16
+    contraction_dim = []
+    if invalid == "mat_b_layout":
+        mat_b = mat_b.contiguous()
+    elif invalid == "out_dtype":
+        out_dtype = torch.float32
+    else:
+        contraction_dim = [1]
+
+    with pytest.raises(ValueError):
+        flag_gems._scaled_grouped_mm_v2(
+            mat_a,
+            mat_b,
+            lst_a,
+            recipe_a,
+            swizzle_a,
+            lst_b,
+            recipe_b,
+            swizzle_b,
+            offs,
+            None,
+            out_dtype,
+            contraction_dim,
             False,
         )
 
@@ -451,6 +518,10 @@ def test_scaled_grouped_mm_v2_matches_native(case_name, dtype):
         False,
     )
 
-    torch.testing.assert_close(
-        res.float().cpu(), ref.float().cpu(), atol=2.5e-1, rtol=5e-1
+    utils.gems_assert_close(
+        res,
+        utils.to_reference(ref, True),
+        torch.bfloat16,
+        reduce_dim=mat_a.shape[-1],
+        atol=2.5e-1,
     )

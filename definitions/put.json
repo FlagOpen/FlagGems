@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "put",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::put(Tensor self, Tensor index, Tensor source, bool accumulate=False) -> Tensor. Writes source into flattened self indices, optionally accumulating duplicates. Tests cover floating, integer, boolean, and complex dtypes; accumulate modes; negative, empty, noncontiguous, and storage-offset inputs; input non-mutation; invalid dtype and length errors; and the shared put.out buffer identity contract.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "source",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "accumulate",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

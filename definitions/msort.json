@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "msort",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::msort(Tensor self) -> Tensor. Sorts each column along dimension zero without mutating or aliasing self. Tests cover floating, integer and bool inputs, noncontiguous and empty tensors, NaN payloads, infinities, signed zero, radix boundaries, and complex rejection.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

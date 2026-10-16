@@ -18,23 +18,36 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class SmoothL1LossBenchmark(base.Benchmark):
+class SmoothL1LossBenchmark(OperatorBenchmark):
     DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
-    DEFAULT_SHAPES = [
-        (262144,),
-        (1024, 1024),
-        (4096, 4096),
-        (64, 512, 512),
-    ]
+    DEFAULT_SHAPES = [(262144,), (1024, 1024), (4096, 4096), (64, 512, 512)]
     DEFAULT_SHAPE_DESC = "(B), M, N"
 
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, device=self.device, dtype=dtype)
-            target = torch.randn(shape, device=self.device, dtype=dtype)
-            yield inp, target, 1, 1.0
+    def set_shapes(self, shape_file_path=None):
+        base.Benchmark.set_shapes(self, shape_file_path)
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    reductions = (1,) if base.Config.bench_level != consts.BenchLevel.COMPREHENSIVE else (0, 1, 2)
+    for reduction in reductions:
+        yield base.BenchmarkCasePlan(
+            shape={"self": list(dims), "target": list(dims)},
+            params={"reduction": reduction, "beta": 1.0},
+            builder_args=(dims, reduction),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, reduction = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    target = torch.randn(shape, dtype=dtype, device=device)
+    return inp, target, reduction, 1.0
 
 
 @pytest.mark.smooth_l1_loss
@@ -45,37 +58,8 @@ def test_smooth_l1_loss():
     bench = SmoothL1LossBenchmark(
         op_name="smooth_l1_loss",
         torch_op=torch.ops.aten.smooth_l1_loss,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-class SmoothL1LossBackwardBenchmark(base.Benchmark):
-    DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
-    DEFAULT_SHAPES = [
-        (262144,),
-        (1024, 1024),
-        (4096, 4096),
-        (64, 512, 512),
-    ]
-    DEFAULT_SHAPE_DESC = "(B), M, N"
-
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, device=self.device, dtype=dtype)
-            target = torch.randn(shape, device=self.device, dtype=dtype)
-            grad_output = torch.randn((), device=self.device, dtype=dtype)
-            yield grad_output, inp, target, 1, 1.0
-
-
-@pytest.mark.smooth_l1_loss_backward
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_smooth_l1_loss_backward():
-    bench = SmoothL1LossBackwardBenchmark(
-        op_name="smooth_l1_loss_backward",
-        torch_op=torch.ops.aten.smooth_l1_loss_backward,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

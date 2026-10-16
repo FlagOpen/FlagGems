@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_multi_dot",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_multi_dot(Tensor[] tensors) -> Tensor. Computes the matrix-chain product using an order chosen to reduce arithmetic cost. Tests cover two and longer chains, vector endpoints, invalid short chains, non-mutation, output metadata, and gradients for every input tensor.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[Tensor]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

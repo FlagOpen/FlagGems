@@ -39,6 +39,7 @@ EMBEDDING_RENORM_MAX_NORM_LIST = [1.0] if QUICK_MODE else [0.5, 1.0, 2.0]
 @pytest.mark.parametrize("norm_type", EMBEDDING_RENORM_NORM_TYPE_LIST)
 @pytest.mark.parametrize("max_norm", EMBEDDING_RENORM_MAX_NORM_LIST)
 def test_embedding_renorm_(shape, dtype, norm_type, max_norm):
+    torch.manual_seed(0)
     num_embeddings, embedding_dim = shape
     # Scale rows up so a good fraction exceed max_norm and get renormalized.
     inp = torch.randn(
@@ -51,15 +52,19 @@ def test_embedding_renorm_(shape, dtype, norm_type, max_norm):
         0, num_embeddings, (num_indices,), dtype=torch.long, device=flag_gems.device
     )
 
-    ref_inp = utils.to_reference(inp)
-    ref_indices = utils.to_reference(indices)
+    pointer = inp.data_ptr()
+    stride = inp.stride()
+    ref_inp = utils.to_reference(inp, True)
+    ref_indices = utils.to_reference(indices, False)
 
     ref_out = torch.ops.aten.embedding_renorm_(
         ref_inp, ref_indices, max_norm, norm_type
     )
     res_out = embedding_renorm_(inp, indices, max_norm, norm_type)
 
-    # embedding_renorm_ is in-place: validate both the returned handle and the
-    # mutated input tensor against the reference.
+    # embedding_renorm_ returns and mutates the exact input object.
+    assert res_out is inp
+    assert res_out.data_ptr() == pointer
+    assert res_out.stride() == stride
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

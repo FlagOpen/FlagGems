@@ -1,0 +1,98 @@
+{
+  "api_version": "v6.0",
+  "name": "scaled_grouped_mm_v2",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_scaled_grouped_mm_v2(Tensor self, Tensor mat2, Tensor[] scale_a, int[] recipe_a, int[] swizzle_a, Tensor[] scale_b, int[] recipe_b, int[] swizzle_b, Tensor? offs=None, Tensor? bias=None, ScalarType? out_dtype=None, int[] contraction_dim=[], bool use_fast_accum=False) -> Tensor. Performs recipe-driven grouped scaled matrix multiplication for FP8 operands. Tests cover M-, N-, and K-varying layouts, batched groups, row-wise and tensor-wise scales, default bfloat16 output, fast accumulation, native agreement when available, non-mutation, and rejected unsupported options.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mat2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "scale_a",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[Tensor]"
+    },
+    {
+      "name": "recipe_a",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "swizzle_a",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "scale_b",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[Tensor]"
+    },
+    {
+      "name": "recipe_b",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "swizzle_b",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "offs",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "out_dtype",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "ScalarType | None",
+      "default": null
+    },
+    {
+      "name": "contraction_dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "list[int]",
+      "default": []
+    },
+    {
+      "name": "use_fast_accum",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

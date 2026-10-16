@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -44,9 +58,6 @@ SVD_ATOL = 2e-2
 # Only float32 is supported for SVD on CUDA (PyTorch limitation)
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_svdvals(M, N, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
-
     A = _make_well_conditioned_matrix(M, N, dtype, flag_gems.device)
     ref_A = utils.to_reference(A, True)
 
@@ -67,9 +78,6 @@ def test_linalg_svdvals(M, N, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_svdvals_batch(M, N, dtype):
     """Test linalg_svdvals with batch dimensions"""
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
-
     batch_size = 4
     A = torch.stack(
         [_make_well_conditioned_matrix(M, N, dtype, "cpu") for _ in range(batch_size)]
@@ -87,9 +95,6 @@ def test_linalg_svdvals_batch(M, N, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_linalg_svdvals_non_contiguous(M, N, dtype):
     """Test linalg_svdvals with non-contiguous input"""
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
-
     # Build a well-conditioned matrix then make it non-contiguous via transpose-slice
     A0 = _make_well_conditioned_matrix(N + 2, M + 2, dtype, flag_gems.device)
     big = A0.T
@@ -101,3 +106,15 @@ def test_linalg_svdvals_non_contiguous(M, N, dtype):
     res_out = flag_gems.linalg_svdvals(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+
+
+@pytest.mark.linalg_svdvals
+def test_linalg_svdvals_autograd_is_explicitly_unsupported():
+    A = _make_well_conditioned_matrix(4, 4, torch.float32, flag_gems.device)
+    A.requires_grad_(True)
+
+    result = flag_gems.linalg_svdvals(A)
+
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result.sum(), A)

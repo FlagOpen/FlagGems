@@ -15,11 +15,9 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
-# torch.inner contracts the last dimension of both operands. The cases cover the
-# three performance regimes: the 1-D dot-product reduction (memory bound), the
-# 2-D matrix product (tensor-core bound), and the batched/outer-product forms.
 INNER_SHAPES = [
     ((4096,), (4096,)),
     ((16384,), (16384,)),
@@ -30,19 +28,29 @@ INNER_SHAPES = [
 ]
 
 
-class InnerBenchmark(base.Benchmark):
-    """Benchmark for aten::inner (generalized inner product)."""
+def _case_fn(shape, dtype):
+    del dtype
+    input_shape, other_shape = shape
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(input_shape), "other": list(other_shape)},
+        params={},
+        builder_args=(input_shape, other_shape),
+    )
 
+
+def _build_inputs_fn(plan, dtype, device):
+    input_shape, other_shape = plan.builder_args
+    torch.manual_seed(0)
+    inp = utils.generate_tensor_input(input_shape, dtype, device)
+    other = utils.generate_tensor_input(other_shape, dtype, device)
+    return inp, other
+
+
+class InnerBenchmark(OperatorBenchmark):
     DEFAULT_SHAPE_DESC = "input shape, other shape"
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = INNER_SHAPES
-
-    def get_input_iter(self, dtype):
-        for input_shape, other_shape in self.shapes:
-            inp = torch.randn(input_shape, dtype=dtype, device=self.device)
-            other = torch.randn(other_shape, dtype=dtype, device=self.device)
-            yield inp, other
+        super().set_shapes(shape_file_path, default_shapes=INNER_SHAPES)
 
 
 @pytest.mark.inner
@@ -50,6 +58,8 @@ def test_inner():
     bench = InnerBenchmark(
         op_name="inner",
         torch_op=torch.inner,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

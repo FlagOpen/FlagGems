@@ -1,4 +1,16 @@
-import contextlib
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import pytest
 import torch
@@ -16,40 +28,14 @@ from .conftest import QUICK_MODE, TO_CPU
 # When the native op is unavailable on this device, the whole module is skipped.
 # When a given case (shape/dtype/activation) is outside what the native op
 # supports, that case is skipped via ``_skip_if_native_cannot``.
-NATIVE_AVAILABLE = False
-_NATIVE_UNAVAILABLE_REASON = ""
-if torch.cuda.is_available():
-    try:
-        with contextlib.ExitStack() as _stk:
-            _stk.callback(
-                setattr,
-                torch.sparse.SparseSemiStructuredTensor,
-                "_FORCE_CUTLASS",
-                torch.sparse.SparseSemiStructuredTensor._FORCE_CUTLASS,
-            )
-            torch.sparse.SparseSemiStructuredTensor._FORCE_CUTLASS = True
-            _w = torch.randn(32, 64, dtype=torch.float16, device="cuda")
-            _w[:, 2::4] = 0
-            _w[:, 3::4] = 0
-            _s = torch.sparse.to_sparse_semi_structured(_w)
-            torch._sparse_semi_structured_linear(
-                torch.randn(8, 64, dtype=torch.float16, device="cuda"),
-                _s.packed,
-                _s.meta,
-            )
-        NATIVE_AVAILABLE = True
-    except Exception as _e:
-        NATIVE_AVAILABLE = False
-        _NATIVE_UNAVAILABLE_REASON = f"{type(_e).__name__}: {_e}"
-
-if not NATIVE_AVAILABLE:
-    pytestmark = pytest.mark.skip(
-        reason=(
-            "torch._sparse_semi_structured_linear (native 2:4 reference) is not "
-            "available on this device/build; requires NVIDIA SM8.x. "
-            f"({_NATIVE_UNAVAILABLE_REASON})"
-        )
+def _native_available():
+    return (
+        torch.cuda.is_available()
+        and hasattr(torch, "_sparse_semi_structured_linear")
+        and hasattr(torch.sparse, "to_sparse_semi_structured")
+        and torch.cuda.get_device_capability()[0] == 8
     )
+
 
 # The native op only supports fp16 / bf16 on CUDA.
 FLOAT_DTYPES = [torch.float16, torch.bfloat16]
@@ -172,7 +158,7 @@ def _skip_if_native_cannot(weight, *, dtype=None, activation=None, out_dtype=Non
     the fused activations {None, 'relu', 'silu'} (NOT 'gelu'), and an int8->int32
     quantized out_dtype path. Anything else is skipped here.
     """
-    if not NATIVE_AVAILABLE:
+    if not _native_available():
         pytest.skip("native _sparse_semi_structured_linear unavailable on this device")
     n, k = weight.shape
     if dtype is not None and dtype not in (torch.float16, torch.bfloat16):
@@ -202,8 +188,10 @@ def _assert_close(res, ref, dtype, atol):
     ``--ref=cpu`` we move both tensors to CPU first, matching the convention in
     ``test_act_quant`` so ``gems_assert_close``'s ``to_cpu`` sees a CPU reference.
     """
+    assert res.shape == ref.shape
+    assert res.dtype == dtype
+    ref = utils.to_reference(ref, True)
     if TO_CPU:
-        ref = ref.to("cpu")
         res = res.to("cpu")
     utils.gems_assert_close(res, ref, dtype, atol=atol)
 

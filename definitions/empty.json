@@ -1,0 +1,56 @@
+{
+  "api_version": "v6.0",
+  "name": "empty",
+  "requires_triton_kernel": false,
+  "description": "Representative ATen schema: aten::empty.memory_format(SymInt[] size, *, ScalarType? dtype=None, Layout? layout=None, Device? device=None, bool? pin_memory=None, MemoryFormat? memory_format=None) -> Tensor. Allocates fresh uninitialized storage; element values are intentionally undefined and the correctness suite therefore validates shape, stride, dtype, layout, device, element count and requires-grad metadata only. It covers default dtype, floating, integer, boolean and complex dtypes, zero-size dimensions and higher-rank shapes. Pure uninitialized allocation is classified as metadata/runtime work rather than required computation.",
+  "parameters": [
+    {
+      "name": "size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "dtype",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "layout",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    },
+    {
+      "name": "device",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[Device]"
+    },
+    {
+      "name": "pin_memory",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[bool]"
+    },
+    {
+      "name": "memory_format",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

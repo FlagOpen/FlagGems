@@ -1,0 +1,69 @@
+{
+  "api_version": "v6.0",
+  "name": "conv_transpose3d",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::conv_transpose3d.input(Tensor input, Tensor weight, Tensor? bias=None, SymInt[3] stride=1, SymInt[3] padding=0, SymInt[3] output_padding=0, SymInt groups=1, SymInt[3] dilation=1) -> Tensor. Tests bias, groups, stride, padding, dilation, output padding, noncontiguous input, metadata, and invalid output padding.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int, int]",
+      "default": 1
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int, int]",
+      "default": 0
+    },
+    {
+      "name": "output_padding",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int, int]",
+      "default": 0
+    },
+    {
+      "name": "groups",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": 1
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int | tuple[int, int, int]",
+      "default": 1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

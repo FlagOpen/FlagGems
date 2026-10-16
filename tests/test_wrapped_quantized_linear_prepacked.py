@@ -43,11 +43,11 @@ def _make_qparams(device):
     )
 
 
-@pytest.mark.wrapped_linear_prepack
 @pytest.mark.wrapped_quantized_linear_prepacked
 @pytest.mark.parametrize("leading_shape,N,K", SHAPES)
 @pytest.mark.parametrize("noncontiguous", [False, True])
 def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
+    torch.manual_seed(0)
     input_scale, input_zp, weight_scale, weight_zp, output_scale, output_zp = (
         _make_qparams(flag_gems.device)
     )
@@ -80,9 +80,9 @@ def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
         bias = torch.zeros((N,), device=flag_gems.device)
     # The native packed object is an opaque CPU pointer and its consumer has no
     # usable CUDA path, so this operator always needs a CPU native reference.
-    ref_input = input.cpu()
-    ref_weight = weight.cpu()
-    ref_bias = bias.cpu()
+    ref_input = utils.to_reference(input, True).cpu()
+    ref_weight = utils.to_reference(weight, True).cpu()
+    ref_bias = utils.to_reference(bias, True).cpu()
     ref_input_scale = input_scale.cpu()
     ref_input_zp = input_zp.cpu()
     ref_weight_scale = weight_scale.cpu()
@@ -122,9 +122,9 @@ def test_wrapped_quantized_linear_prepacked(leading_shape, N, K, noncontiguous):
     )
 
 
-@pytest.mark.wrapped_linear_prepack
 @pytest.mark.wrapped_quantized_linear_prepacked
 def test_wrapped_quantized_linear_prepacked_empty_batch():
+    torch.manual_seed(0)
     N, K = 5, 7
     input = torch.empty((2, 0, K), device=flag_gems.device)
     weight = torch.randn((N, K), device=flag_gems.device)
@@ -148,10 +148,10 @@ def test_wrapped_quantized_linear_prepacked_empty_batch():
     assert actual.numel() == 0
 
 
-@pytest.mark.wrapped_linear_prepack
 @pytest.mark.wrapped_quantized_linear_prepacked
 @pytest.mark.parametrize("N,K", [(0, 7), (5, 0)])
 def test_wrapped_quantized_linear_prepacked_empty_weight_dimension(N, K):
+    torch.manual_seed(0)
     input = torch.randn((2, K), device=flag_gems.device)
     weight = torch.randn((N, K), device=flag_gems.device)
     bias = torch.randn((N,), device=flag_gems.device)
@@ -189,7 +189,7 @@ def test_wrapped_quantized_linear_prepacked_empty_weight_dimension(N, K):
         expected = -float(output_zp) * float(output_scale)
         utils.gems_assert_close(
             actual,
-            utils.to_reference(torch.full_like(actual, expected)),
+            utils.to_reference(torch.full_like(actual, expected), True),
             actual.dtype,
             atol=1e-6,
         )
@@ -199,6 +199,7 @@ def test_wrapped_quantized_linear_prepacked_empty_weight_dimension(N, K):
 
 @pytest.mark.wrapped_quantized_linear_prepacked
 def test_wrapped_quantized_linear_prepacked_rejects_vector_input():
+    torch.manual_seed(0)
     N, K = 5, 7
     input = torch.randn((K,), device=flag_gems.device)
     weight = torch.randn((N, K), device=flag_gems.device)

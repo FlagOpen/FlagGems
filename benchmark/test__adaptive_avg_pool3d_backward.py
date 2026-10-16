@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,34 +17,52 @@ import torch
 
 from . import base, consts
 
-# Shapes for _adaptive_avg_pool3d_backward benchmark
-ADAPTIVE_AVG_POOL3D_BACKWARD_SHAPES = [
-    (1, 3, 8, 8, 8),
-    (2, 3, 16, 16, 16),
-    (1, 1, 32, 32, 32),
-    (4, 8, 64, 64, 64),
+
+CASES = [
+    ((1, 3, 8, 8, 8), (4, 4, 4)),
+    ((2, 3, 16, 16, 16), (8, 8, 8)),
+    ((1, 1, 32, 32, 32), (16, 16, 16)),
+    ((4, 8, 64, 64, 64), (32, 32, 32)),
 ]
 
 
 class AdaptiveAvgPool3DBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = ADAPTIVE_AVG_POOL3D_BACKWARD_SHAPES
-        self.output_sizes = [(4, 4, 4), (8, 8, 8), (16, 16, 16), (32, 32, 32)]
+        self.shapes = CASES
+        self.shape_desc = "input shape, output size"
 
-    def get_input_iter(self, cur_dtype):
-        for shape, output_size in zip(self.shapes, self.output_sizes):
-            x = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            # Compute forward to get output shape
-            out = torch.nn.functional.adaptive_avg_pool3d(x, output_size)
-            grad = torch.ones_like(out)
-            yield grad, x
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, (shape, output_size) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "self": list(shape),
+                        "grad_output": [*shape[:-3], *output_size],
+                    },
+                    params={},
+                    builder_args=(tuple(shape), tuple(output_size)),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, output_size = plan.builder_args
+        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
+        grad_output = torch.randn(
+            (*shape[:-3], *output_size), dtype=case.dtype, device=self.device
+        )
+        return grad_output, inp
 
 
 @pytest.mark.underscore_adaptive_avg_pool3d_backward
 def test_adaptive_avg_pool3d_backward():
-    bench = AdaptiveAvgPool3DBackwardBenchmark(
+    AdaptiveAvgPool3DBackwardBenchmark(
         op_name="_adaptive_avg_pool3d_backward",
         torch_op=torch.ops.aten._adaptive_avg_pool3d_backward,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

@@ -1,0 +1,35 @@
+{
+  "api_version": "v6.0",
+  "name": "trapz",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::trapz.dx(Tensor y, *, float dx=1, int dim=-1) -> Tensor. FlagGems registers the same implementation for aten::trapezoid.dx, whose dx parameter is Scalar. The suite covers multiple ranks, dimensions and spacings, empty and length-one reductions, large reductions, noncontiguous input, integer promotion, fp64 spacing precision, dispatcher and direct FlagGems entry points, invalid dimensions and unsupported bool/complex inputs, and autograd. The reduction does not mutate or alias y.",
+  "parameters": [
+    {
+      "name": "y",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dx",
+      "kind": "keyword_only",
+      "required": false,
+      "default": 1,
+      "type_hint": "float"
+    },
+    {
+      "name": "dim",
+      "kind": "keyword_only",
+      "required": false,
+      "default": -1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

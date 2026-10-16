@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -6,239 +20,120 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.skipif(
+_SKIP_CAMBRICON = pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+
+
+def _make_metadata(
+    num_bags,
+    embedding_dim,
+    dtype,
+    mode,
+    weighted,
+    scale_grad_by_freq,
+    padding_idx,
+):
+    torch.manual_seed(42)
+    num_weights = 50
+    num_samples = num_bags * 3
+    weight = torch.randn(
+        num_weights, embedding_dim, dtype=dtype, device=flag_gems.device
+    )
+    # A short repeating range deterministically exercises duplicate-index
+    # accumulation, frequency scaling, and the padding row when requested.
+    indices = torch.arange(num_samples, device=flag_gems.device) % min(num_weights, 7)
+    offsets = torch.arange(
+        0, num_samples, 3, dtype=torch.long, device=flag_gems.device
+    )
+    per_sample_weights = (
+        torch.rand(num_samples, dtype=dtype, device=flag_gems.device)
+        if weighted
+        else None
+    )
+    output, offset2bag, bag_size, maximum_indices = torch.ops.aten._embedding_bag(
+        weight,
+        indices,
+        offsets,
+        scale_grad_by_freq,
+        mode,
+        False,
+        per_sample_weights,
+        False,
+        padding_idx,
+    )
+    return (
+        torch.randn_like(output),
+        indices,
+        offset2bag,
+        bag_size,
+        maximum_indices,
+        num_weights,
+        per_sample_weights,
+    )
+
+
+@_SKIP_CAMBRICON
 @pytest.mark.embedding_bag_dense_backward
 @pytest.mark.parametrize("num_bags", [3, 8, 16])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_embedding_bag_dense_backward(num_bags, embedding_dim, dtype):
-    """Test _embedding_bag_dense_backward accuracy."""
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
-
-    num_weights = 50
-    num_samples = num_bags * 3  # Average 3 samples per bag
-
-    # Create inputs
-    weight = torch.randn(
-        num_weights,
-        embedding_dim,
-        dtype=dtype,
-        device=flag_gems.device,
-        requires_grad=True,
-    )
-    indices = torch.randint(
-        0, num_weights, (num_samples,), dtype=torch.long, device=flag_gems.device
-    )
-
-    # Create offsets with varying bag sizes
-    bag_sizes_list = []
-    remaining = num_samples
-    for _ in range(num_bags - 1):
-        bs = max(1, remaining // 2)
-        bag_sizes_list.append(min(bs, remaining - num_bags + 1))
-        remaining -= bag_sizes_list[-1]
-    bag_sizes_list.append(remaining)
-    offsets = torch.tensor(
-        [0] + list(torch.cumsum(torch.tensor(bag_sizes_list), dim=0).tolist())[:-1],
-        dtype=torch.long,
-        device=flag_gems.device,
-    )
-
-    # Forward pass to get offset2bag, bag_size, maximum_indices
-    output, offset2bag, bag_size, maximum_indices = torch.ops.aten._embedding_bag(
-        weight, indices, offsets, False, 0, False, None, False, -1
-    )
-
-    # Compute backward
-    grad = torch.randn_like(output)
-
-    ref_out = utils.to_reference(
-        torch.ops.aten._embedding_bag_dense_backward(
-            grad,
-            indices,
-            offset2bag,
-            bag_size,
-            maximum_indices,
-            num_weights,
-            False,
-            0,
-            None,
-            -1,
-        )
-    )
-    res_out = flag_gems._embedding_bag_dense_backward(
-        grad,
-        indices,
-        offset2bag,
-        bag_size,
-        maximum_indices,
-        num_weights,
-        False,
-        0,
-        None,
-        -1,
-    )
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+@pytest.mark.parametrize(
+    "mode,weighted,scale_grad_by_freq,padding_idx",
+    [
+        (0, False, False, -1),
+        (0, True, False, -1),
+        (1, False, False, -1),
+        (0, False, True, -1),
+        (0, False, False, 0),
+        (2, False, False, -1),
+    ],
 )
-@pytest.mark.embedding_bag_dense_backward
-@pytest.mark.parametrize("num_bags", [3, 8])
-@pytest.mark.parametrize("embedding_dim", [16, 32])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_embedding_bag_dense_backward_with_weights(num_bags, embedding_dim, dtype):
-    """Test _embedding_bag_dense_backward accuracy with per_sample_weights."""
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
-
-    num_weights = 50
-    num_samples = num_bags * 3
-
-    # Create inputs
-    weight = torch.randn(
-        num_weights,
+def test_embedding_bag_dense_backward(
+    num_bags,
+    embedding_dim,
+    dtype,
+    mode,
+    weighted,
+    scale_grad_by_freq,
+    padding_idx,
+):
+    args = _make_metadata(
+        num_bags,
         embedding_dim,
-        dtype=dtype,
-        device=flag_gems.device,
-        requires_grad=True,
+        dtype,
+        mode,
+        weighted,
+        scale_grad_by_freq,
+        padding_idx,
     )
-    indices = torch.randint(
-        0, num_weights, (num_samples,), dtype=torch.long, device=flag_gems.device
+    grad, indices, offset2bag, bag_size, maximum_indices, num_weights, weights = args
+    ref_out = torch.ops.aten._embedding_bag_dense_backward(
+        utils.to_reference(grad, True),
+        utils.to_reference(indices, False),
+        utils.to_reference(offset2bag, False),
+        utils.to_reference(bag_size, False),
+        utils.to_reference(maximum_indices, False),
+        num_weights,
+        scale_grad_by_freq,
+        mode,
+        None if weights is None else utils.to_reference(weights, True),
+        padding_idx,
     )
-    per_sample_weights = torch.rand(num_samples, dtype=dtype, device=flag_gems.device)
-
-    # Create offsets
-    bag_sizes_list = []
-    remaining = num_samples
-    for _ in range(num_bags - 1):
-        bs = max(1, remaining // 2)
-        bag_sizes_list.append(min(bs, remaining - num_bags + 1))
-        remaining -= bag_sizes_list[-1]
-    bag_sizes_list.append(remaining)
-    offsets = torch.tensor(
-        [0] + list(torch.cumsum(torch.tensor(bag_sizes_list), dim=0).tolist())[:-1],
-        dtype=torch.long,
-        device=flag_gems.device,
-    )
-
-    # Forward pass
-    output, offset2bag, bag_size, maximum_indices = torch.ops.aten._embedding_bag(
-        weight, indices, offsets, False, 0, False, per_sample_weights, False, -1
-    )
-
-    # Compute backward
-    grad = torch.randn_like(output)
-
-    ref_out = utils.to_reference(
-        torch.ops.aten._embedding_bag_dense_backward(
-            grad,
-            indices,
-            offset2bag,
-            bag_size,
-            maximum_indices,
-            num_weights,
-            False,
-            0,
-            per_sample_weights,
-            -1,
-        )
-    )
-    res_out = flag_gems._embedding_bag_dense_backward(
+    result = flag_gems._embedding_bag_dense_backward(
         grad,
         indices,
         offset2bag,
         bag_size,
         maximum_indices,
         num_weights,
-        False,
-        0,
-        per_sample_weights,
-        -1,
+        scale_grad_by_freq,
+        mode,
+        weights,
+        padding_idx,
     )
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
-)
-@pytest.mark.embedding_bag_dense_backward
-@pytest.mark.parametrize("num_bags", [3, 8])
-@pytest.mark.parametrize("embedding_dim", [16, 32])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_embedding_bag_dense_backward_mode_sum(num_bags, embedding_dim, dtype):
-    """Test _embedding_bag_dense_backward accuracy with mode=1 (sum)."""
-    torch.manual_seed(42)
-    torch.cuda.manual_seed(42)
-
-    num_weights = 50
-    num_samples = num_bags * 3
-
-    # Create inputs
-    weight = torch.randn(
-        num_weights,
-        embedding_dim,
-        dtype=dtype,
-        device=flag_gems.device,
-        requires_grad=True,
-    )
-    indices = torch.randint(
-        0, num_weights, (num_samples,), dtype=torch.long, device=flag_gems.device
-    )
-
-    # Create offsets
-    bag_sizes_list = []
-    remaining = num_samples
-    for _ in range(num_bags - 1):
-        bs = max(1, remaining // 2)
-        bag_sizes_list.append(min(bs, remaining - num_bags + 1))
-        remaining -= bag_sizes_list[-1]
-    bag_sizes_list.append(remaining)
-    offsets = torch.tensor(
-        [0] + list(torch.cumsum(torch.tensor(bag_sizes_list), dim=0).tolist())[:-1],
-        dtype=torch.long,
-        device=flag_gems.device,
-    )
-
-    # Forward pass with mode=1 (sum)
-    output, offset2bag, bag_size, maximum_indices = torch.ops.aten._embedding_bag(
-        weight, indices, offsets, False, 1, False, None, False, -1
-    )
-
-    # Compute backward
-    grad = torch.randn_like(output)
-
-    ref_out = utils.to_reference(
-        torch.ops.aten._embedding_bag_dense_backward(
-            grad,
-            indices,
-            offset2bag,
-            bag_size,
-            maximum_indices,
-            num_weights,
-            False,
-            1,
-            None,
-            -1,
-        )
-    )
-    res_out = flag_gems._embedding_bag_dense_backward(
-        grad,
-        indices,
-        offset2bag,
-        bag_size,
-        maximum_indices,
-        num_weights,
-        False,
-        1,
-        None,
-        -1,
-    )
-
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert result is not grad
+    assert result.untyped_storage().data_ptr() != grad.untyped_storage().data_ptr()
+    assert result.shape == (num_weights, embedding_dim)
+    assert result.dtype == dtype
+    utils.gems_assert_close(result, ref_out, dtype)

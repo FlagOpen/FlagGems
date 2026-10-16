@@ -21,18 +21,16 @@ from . import accuracy_utils as utils
 from . import conftest as cfg
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
+_SHAPES = [(0,), (1,), (2, 3), (32, 17), (4, 8, 16), (2, 3, 16, 16)]
+
+
 @pytest.mark.smooth_l1_loss
-@pytest.mark.parametrize(
-    "shape",
-    [
-        (0,),
-        (1,),
-        (2, 3),
-        (32, 17),
-        (4, 8, 16),
-        (2, 3, 16, 16),
-    ],
-)
+@pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 @pytest.mark.parametrize("beta", [0.0, 0.5, 1.0, 2.0])
@@ -40,22 +38,26 @@ from . import conftest as cfg
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_smooth_l1_loss(shape, dtype, reduction, beta):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-
     if len(shape) >= 2 and shape[0] > 0:
         inp = inp.transpose(0, 1).contiguous().transpose(0, 1)
-
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-    ref_out = torch.ops.aten.smooth_l1_loss(ref_inp, ref_target, reduction, beta).to(
-        dtype
+    inp_before = inp.clone()
+    target_before = target.clone()
+    reference = torch.ops.aten.smooth_l1_loss(
+        utils.to_reference(inp, True),
+        utils.to_reference(target, True),
+        reduction,
+        beta,
     )
 
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss(inp, target, reduction, beta)
+        result = torch.ops.aten.smooth_l1_loss(inp, target, reduction, beta)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
+    utils.gems_assert_close(result, reference, dtype, equal_nan=True, atol=2e-2)
+    utils.gems_assert_equal(inp, inp_before)
+    utils.gems_assert_equal(target, target_before)
 
 
 @pytest.mark.smooth_l1_loss_backward
@@ -78,37 +80,50 @@ def test_smooth_l1_loss(shape, dtype, reduction, beta):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_smooth_l1_loss_backward(shape, target_shape, dtype, reduction, beta):
+def test_smooth_l1_loss_backward(
+    shape, target_shape, dtype, reduction, beta
+):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    target = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn(
+        target_shape, dtype=dtype, device=flag_gems.device
+    )
     if beta == 0.0:
         inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
-        target = torch.ones(target_shape, dtype=dtype, device=flag_gems.device)
+        target = torch.ones(
+            target_shape, dtype=dtype, device=flag_gems.device
+        )
     out_shape = torch.broadcast_shapes(shape, target_shape)
-
     if len(shape) >= 2 and shape[0] > 0:
         inp = inp.transpose(0, 1).contiguous().transpose(0, 1)
-
     if reduction == 0:
-        grad_output = torch.randn(out_shape, dtype=dtype, device=flag_gems.device)
+        grad_output = torch.randn(
+            out_shape, dtype=dtype, device=flag_gems.device
+        )
         if len(out_shape) >= 2 and out_shape[0] > 0:
-            grad_output = grad_output.transpose(0, 1).contiguous().transpose(0, 1)
+            grad_output = (
+                grad_output.transpose(0, 1).contiguous().transpose(0, 1)
+            )
     else:
-        grad_output = torch.randn((), dtype=dtype, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-    ref_grad_output = utils.to_reference(grad_output).to(torch.float32)
-    ref_out = torch.ops.aten.smooth_l1_loss_backward(
-        ref_grad_output, ref_inp, ref_target, reduction, beta
+        grad_output = torch.randn(
+            (), dtype=dtype, device=flag_gems.device
+        )
+    reference = torch.ops.aten.smooth_l1_loss_backward(
+        utils.to_reference(grad_output, False).to(torch.float32),
+        utils.to_reference(inp, False).to(torch.float32),
+        utils.to_reference(target, False).to(torch.float32),
+        reduction,
+        beta,
     ).to(dtype)
 
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss_backward(
+        result = torch.ops.aten.smooth_l1_loss_backward(
             grad_output, inp, target, reduction, beta
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
+    utils.gems_assert_close(
+        result, reference, dtype, equal_nan=True, atol=2e-2
+    )
 
 
 @pytest.mark.smooth_l1_loss_backward
@@ -119,19 +134,18 @@ def test_smooth_l1_loss_backward_scalar_grad_output():
     inp = torch.tensor([-1.0, -0.5, 1.0], device=flag_gems.device)
     target = torch.zeros_like(inp)
     grad_output = torch.tensor(2.0, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-    ref_grad_output = utils.to_reference(grad_output).to(torch.float32)
-
-    ref_out = torch.ops.aten.smooth_l1_loss_backward(
-        ref_grad_output, ref_inp, ref_target, 0, 0.0
+    reference = torch.ops.aten.smooth_l1_loss_backward(
+        utils.to_reference(grad_output, False).to(torch.float32),
+        utils.to_reference(inp, False).to(torch.float32),
+        utils.to_reference(target, False).to(torch.float32),
+        0,
+        0.0,
     )
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss_backward(
+        result = torch.ops.aten.smooth_l1_loss_backward(
             grad_output, inp, target, 0, 0.0
         )
-
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    utils.gems_assert_close(result, reference, torch.float32)
 
 
 @pytest.mark.smooth_l1_loss_backward
@@ -141,47 +155,38 @@ def test_smooth_l1_loss_backward_scalar_grad_output():
 def test_smooth_l1_loss_backward_beta_zero_equal_inputs_cuda_behavior():
     if cfg.TO_CPU:
         pytest.skip("PyTorch CPU and CUDA differ for beta=0 with equal inputs.")
-
-    inp = torch.zeros((4,), dtype=torch.float32, device=flag_gems.device)
+    inp = torch.zeros((4,), device=flag_gems.device)
     target = torch.zeros_like(inp)
     grad_output = torch.ones_like(inp)
-    ref_out = torch.ops.aten.smooth_l1_loss_backward(grad_output, inp, target, 0, 0.0)
-
+    reference = torch.ops.aten.smooth_l1_loss_backward(
+        grad_output, inp, target, 0, 0.0
+    )
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss_backward(
+        result = torch.ops.aten.smooth_l1_loss_backward(
             grad_output, inp, target, 0, 0.0
         )
-
-    utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
+    utils.gems_assert_close(
+        result, reference, torch.float32, equal_nan=True
+    )
 
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", [0, 1, 2])
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_smooth_l1_loss_broadcast(dtype, reduction):
+    torch.manual_seed(0)
     inp = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
     target = torch.randn((4,), dtype=dtype, device=flag_gems.device)
-
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-    ref_out = torch.ops.aten.smooth_l1_loss(ref_inp, ref_target, reduction, 1.0).to(
-        dtype
+    reference = torch.ops.aten.smooth_l1_loss(
+        utils.to_reference(inp, True), utils.to_reference(target, True), reduction, 1.0
     )
-
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss(inp, target, reduction, 1.0)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
+        result = torch.ops.aten.smooth_l1_loss(inp, target, reduction, 1.0)
+    utils.gems_assert_close(result, reference, dtype, equal_nan=True, atol=2e-2)
 
 
 @pytest.mark.smooth_l1_loss
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_smooth_l1_loss_special_values(dtype):
     inp = torch.tensor(
         [0.0, -0.0, 1.0, -2.0, float("inf"), float("-inf"), float("nan")],
@@ -193,100 +198,96 @@ def test_smooth_l1_loss_special_values(dtype):
         dtype=dtype,
         device=flag_gems.device,
     )
-
-    ref_out = torch.ops.aten.smooth_l1_loss(
-        utils.to_reference(inp).to(torch.float32),
-        utils.to_reference(target).to(torch.float32),
-        0,
-        1.0,
-    ).to(dtype)
+    reference = torch.ops.aten.smooth_l1_loss(
+        utils.to_reference(inp, True), utils.to_reference(target, True), 0, 1.0
+    )
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss(inp, target, 0, 1.0)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=2e-2)
+        result = torch.ops.aten.smooth_l1_loss(inp, target, 0, 1.0)
+    utils.gems_assert_close(result, reference, dtype, equal_nan=True, atol=2e-2)
 
 
 @pytest.mark.smooth_l1_loss
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_smooth_l1_loss_out():
-    inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    target = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    out = torch.empty_like(inp)
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-    ref_out = torch.empty_like(ref_inp)
-
-    torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 0, 0.5, out=ref_out)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_smooth_l1_loss_out_preserves_storage(reduction):
+    torch.manual_seed(0)
+    inp = torch.randn((8, 16), device=flag_gems.device)
+    target = torch.randn_like(inp)
+    reference = torch.ops.aten.smooth_l1_loss(
+        utils.to_reference(inp, True),
+        utils.to_reference(target, True),
+        reduction,
+        0.5,
+    )
+    out_shape = inp.shape if reduction == 0 else ()
+    out = torch.empty(out_shape, device=flag_gems.device)
+    pointer = out.data_ptr()
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss.out(inp, target, 0, 0.5, out=out)
-
-    assert res_out is out
-    utils.gems_assert_close(out, ref_out, torch.float32)
+        result = torch.ops.aten.smooth_l1_loss.out(
+            inp, target, reduction, 0.5, out=out
+        )
+    assert result is out
+    assert out.data_ptr() == pointer
+    utils.gems_assert_close(out, reference, torch.float32)
 
 
 @pytest.mark.smooth_l1_loss
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_smooth_l1_loss_out_reduced():
-    inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    target = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    out = torch.empty_like(inp)
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-    ref_out = torch.empty_like(ref_inp)
-
-    torch.ops.aten.smooth_l1_loss.out(ref_inp, ref_target, 1, 1.0, out=ref_out)
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+def test_smooth_l1_loss_out_identity_and_resize(reduction):
+    torch.manual_seed(0)
+    inp = torch.randn((8, 16), device=flag_gems.device)
+    target = torch.randn_like(inp)
+    out = torch.empty((1,), device=flag_gems.device)
+    reference = torch.ops.aten.smooth_l1_loss(
+        utils.to_reference(inp, True), utils.to_reference(target, True), reduction, 0.5
+    )
     with flag_gems.use_gems():
-        res_out = torch.ops.aten.smooth_l1_loss.out(inp, target, 1, 1.0, out=out)
-
-    assert res_out is out
-    utils.gems_assert_close(out, ref_out, torch.float32)
+        result = torch.ops.aten.smooth_l1_loss.out(
+            inp, target, reduction, 0.5, out=out
+        )
+    assert result is out
+    assert out.shape == reference.shape
+    utils.gems_assert_close(out, reference, torch.float32)
 
 
 @pytest.mark.smooth_l1_loss
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_smooth_l1_loss_functional():
-    inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    target = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp).to(torch.float32)
-    ref_target = utils.to_reference(target).to(torch.float32)
-
-    ref_out = torch.nn.functional.smooth_l1_loss(
+def test_smooth_l1_loss_functional_and_autograd():
+    torch.manual_seed(0)
+    inp = torch.randn((8, 16), device=flag_gems.device, requires_grad=True)
+    target = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp, True).requires_grad_(True)
+    ref_target = utils.to_reference(target, True)
+    reference = torch.nn.functional.smooth_l1_loss(
         ref_inp, ref_target, reduction="mean", beta=0.5
     )
     with flag_gems.use_gems():
-        res_out = torch.nn.functional.smooth_l1_loss(
+        result = torch.nn.functional.smooth_l1_loss(
             inp, target, reduction="mean", beta=0.5
         )
-
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    (reference_grad,) = torch.autograd.grad(reference, ref_inp)
+    (result_grad,) = torch.autograd.grad(result, inp)
+    utils.gems_assert_close(result, reference, torch.float32)
+    utils.gems_assert_close(result_grad, reference_grad, torch.float32)
 
 
 @pytest.mark.smooth_l1_loss
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_smooth_l1_loss_negative_beta():
-    inp = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
-    target = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
-
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="negative"):
-        torch.ops.aten.smooth_l1_loss(inp, target, 1, -1.0)
+def test_smooth_l1_loss_rejects_negative_beta():
+    inp = torch.randn((8,), device=flag_gems.device)
+    target = torch.randn_like(inp)
+    with pytest.raises(RuntimeError, match="negative"):
+        with flag_gems.use_gems():
+            torch.ops.aten.smooth_l1_loss(inp, target, 1, -1.0)
 
 
 @pytest.mark.smooth_l1_loss_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_smooth_l1_loss_backward_negative_beta():
-    grad_output = torch.randn((), dtype=torch.float32, device=flag_gems.device)
-    inp = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
-    target = torch.randn((8,), dtype=torch.float32, device=flag_gems.device)
-
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="negative"):
-        torch.ops.aten.smooth_l1_loss_backward(grad_output, inp, target, 1, -1.0)
+def test_smooth_l1_loss_backward_rejects_negative_beta():
+    grad_output = torch.randn((), device=flag_gems.device)
+    inp = torch.randn((8,), device=flag_gems.device)
+    target = torch.randn_like(inp)
+    with pytest.raises(RuntimeError, match="negative"):
+        with flag_gems.use_gems():
+            torch.ops.aten.smooth_l1_loss_backward(
+                grad_output, inp, target, 1, -1.0
+            )

@@ -1,0 +1,49 @@
+{
+  "api_version": "v6.0",
+  "name": "histogramdd",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::histogramdd(Tensor self, int[] bins, float[]? range=None, Tensor? weight=None, bool density=False) -> (Tensor hist, Tensor[] bin_edges). Computes a multidimensional histogram and generated bin-edge tensors without mutation or aliasing. Tests also cover the stable int_bins and TensorList_bins public overloads, explicit and automatic ranges, weights, density normalization, empty and degenerate inputs, noncontiguous input, metadata, input non-mutation, and invalid bin dimensionality.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bins",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int[]"
+    },
+    {
+      "name": "range",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "float[]?",
+      "default": null
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor?",
+      "default": null
+    },
+    {
+      "name": "density",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    }
+  ],
+  "outputs": [
+    "hist",
+    "bin_edges"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

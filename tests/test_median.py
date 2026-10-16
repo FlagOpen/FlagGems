@@ -26,6 +26,12 @@ from flag_gems import median_out as gems_median_out
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
     DTYPES = [torch.float32, torch.int32]
@@ -51,6 +57,7 @@ else:
 
 
 def _make_input(shape, dtype):
+    torch.manual_seed(0)
     if not dtype.is_floating_point:
         numel = 1
         for size in shape:
@@ -1222,6 +1229,8 @@ def test_median_strided_nonlast_large_reduction_out(keepdim):
     ref_indices = torch.empty(ref_shape, dtype=torch.int64, device=ref_inp.device)
     values = torch.empty(ref_shape, dtype=torch.float32, device=inp.device)
     indices = torch.empty(ref_shape, dtype=torch.int64, device=inp.device)
+    values_pointer = values.data_ptr()
+    indices_pointer = indices.data_ptr()
 
     ref_out = torch.median(
         ref_inp, dim=0, keepdim=keepdim, out=(ref_values, ref_indices)
@@ -1230,8 +1239,10 @@ def test_median_strided_nonlast_large_reduction_out(keepdim):
         inp, dim=0, keepdim=keepdim, values=values, indices=indices
     )
 
-    assert res_out.values.data_ptr() == values.data_ptr()
-    assert res_out.indices.data_ptr() == indices.data_ptr()
+    assert res_out.values is values
+    assert res_out.indices is indices
+    assert values.data_ptr() == values_pointer
+    assert indices.data_ptr() == indices_pointer
     _assert_median_dim_equal(
         res_out, ref_out, torch.float32, inp=inp, dim=0, keepdim=keepdim
     )
@@ -1354,6 +1365,7 @@ def test_median_out():
     ref_result = torch.ops.aten.median.out(ref_inp, out=ref_buf)
     res_result = gems_median_out(inp, out=out)
 
+    assert res_result is out
     utils.gems_assert_equal(res_result, ref_result)
     utils.gems_assert_equal(out, ref_buf)
 
@@ -1387,6 +1399,8 @@ def test_median_dim_values_out(keepdim):
     )
     res_result = gems_median_dim_values(inp, 1, keepdim, values=values, indices=indices)
 
+    assert res_result.values is values
+    assert res_result.indices is indices
     _assert_median_dim_equal(
         res_result, ref_result, torch.float32, inp=inp, dim=1, keepdim=keepdim
     )
@@ -1407,6 +1421,8 @@ def test_median_dim_values_out_python_api():
     ref_result = torch.median(ref_inp, dim=1, out=(ref_values, ref_indices))
     res_result = gems_median_dim_values(inp, dim=1, values=values, indices=indices)
 
+    assert res_result.values is values
+    assert res_result.indices is indices
     _assert_median_dim_equal(res_result, ref_result, torch.float32, inp=inp, dim=1)
     utils.gems_assert_equal(values, ref_values)
     utils.gems_assert_equal(indices, ref_indices)

@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "row_indices_copy",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::row_indices_copy(Tensor self) -> Tensor. Copies the row-index buffer of a sparse CSC or BSC tensor into a dense tensor. Tests cover int32/int64 indices, empty, batched and block-compressed layouts, invalid sparse layouts, plus out-buffer identity, no-resize storage/stride preservation, resize, and dtype rejection.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

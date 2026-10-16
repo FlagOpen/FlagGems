@@ -38,6 +38,7 @@ CHOLESKY_INVERSE_DTYPES = [
 
 def _make_positive_definite(shape, dtype, device):
     """Create a positive-definite matrix and return its Cholesky factor."""
+    torch.manual_seed(0)
     n = shape[-1]
     B = torch.randn(shape, dtype=dtype, device=device)
     A = B @ B.transpose(-2, -1) + torch.eye(n, dtype=dtype, device=device) * n
@@ -51,7 +52,7 @@ def _make_positive_definite(shape, dtype, device):
 @pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
-    ref_L = utils.to_reference(L)
+    ref_L = utils.to_reference(L, True)
 
     ref_out = torch.cholesky_inverse(ref_L, upper=False)
     res_out = flag_gems.cholesky_inverse(L, upper=False)
@@ -65,7 +66,7 @@ def test_cholesky_inverse(shape, dtype):
 def test_cholesky_inverse_upper(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
     U = L.transpose(-2, -1).contiguous()
-    ref_U = utils.to_reference(U)
+    ref_U = utils.to_reference(U, True)
 
     ref_out = torch.cholesky_inverse(ref_U, upper=True)
     res_out = flag_gems.cholesky_inverse(U, upper=True)
@@ -78,9 +79,43 @@ def test_cholesky_inverse_upper(shape, dtype):
 @pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
 def test_cholesky_inverse_batch(shape, dtype):
     L = _make_positive_definite(shape, dtype, flag_gems.device)
-    ref_L = utils.to_reference(L)
+    ref_L = utils.to_reference(L, True)
 
     ref_out = torch.cholesky_inverse(ref_L, upper=False)
     res_out = flag_gems.cholesky_inverse(L, upper=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cholesky_inverse
+@pytest.mark.parametrize("shape", [(0, 0), (2, 0, 0)])
+@pytest.mark.parametrize("dtype", CHOLESKY_INVERSE_DTYPES)
+def test_cholesky_inverse_empty_alias(shape, dtype):
+    factor = torch.empty(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    original_pointer = factor.untyped_storage().data_ptr()
+
+    result = flag_gems.cholesky_inverse(factor)
+
+    assert result is factor
+    assert result.untyped_storage().data_ptr() == original_pointer
+    assert result.shape == factor.shape
+    assert result.dtype == factor.dtype
+    gradient = torch.autograd.grad(result.sum(), factor)[0]
+    utils.gems_assert_equal(gradient, torch.ones_like(factor))
+
+
+@pytest.mark.cholesky_inverse
+def test_cholesky_inverse_autograd_rejected():
+    factor = _make_positive_definite(
+        (4, 4), torch.float32, flag_gems.device
+    ).requires_grad_(True)
+
+    result = flag_gems.cholesky_inverse(factor)
+
+    # Nonempty inputs run both Triton kernels under torch.no_grad and no custom
+    # autograd Function is registered, so gradients are explicitly unsupported.
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result.sum(), factor)

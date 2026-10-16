@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "tensordot",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::tensordot(Tensor self, Tensor other, int[] dims_self, int[] dims_other) -> Tensor. Contracts selected dimensions of two tensors. Tests cover explicit, negative, reordered and empty dimension lists, zero-size and size-one broadcast contractions, noncontiguous inputs, validation errors, unsupported dtypes, and gradients for both inputs.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dims_self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "dims_other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_matrix_sqrth_out",
+  "requires_triton_kernel": true,
+  "description": "Representative autogen schema: aten::linalg_matrix_sqrth.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Writes the principal matrix square root into out. Tests cover real/complex dtypes, noncontiguous pre-sized storage and stride preservation, empty-buffer resize, return identity, and dtype rejection.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_polar",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_polar(Tensor A) -> (Tensor U, Tensor H). Computes the right polar decomposition A=U@H without mutating A. Tests cover rectangular and batched matrices, noncontiguous input, empty and rank-deficient matrices, output metadata, reconstruction, orthogonality, Hermitian H, and invalid rank/shape/dtype inputs.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "U",
+    "H"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

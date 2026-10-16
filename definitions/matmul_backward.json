@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "matmul_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::matmul_backward(Tensor grad, Tensor self, Tensor other, bool[2] mask) -> (Tensor, Tensor). Computes selected gradients for matmul. Tests preserve vector, matrix, batched and broadcast legacy coverage; exercise all four output masks, noncontiguous broadcast operands, output metadata, non-mutation and invalid contracts.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[bool]"
+    }
+  ],
+  "outputs": [
+    "grad_self",
+    "grad_other"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

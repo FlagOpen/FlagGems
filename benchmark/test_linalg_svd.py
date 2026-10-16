@@ -1,61 +1,57 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-pytestmark = pytest.mark.filterwarnings(
-    "ignore:Warning only once for all operators.*:UserWarning"
-)
-
-# The Triton SVD kernels only cover float32 CUDA matrices; the full_matrices
-# path requires max(M, N) <= 64, so keep the shapes small and square.
-LINALG_SVD_SHAPES = [(8, 8), (16, 16), (32, 32), (64, 64)]
+SHAPES = [(8, 8), (16, 16), (32, 32), (64, 64)]
 
 
-class LinalgSvdBenchmark(base.Benchmark):
-    DEFAULT_SHAPE_DESC = "(*B), M, N"
-
+class OperatorCaseBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = LINALG_SVD_SHAPES
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(*B), M, N"
 
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            yield (inp,)
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"full_matrices": False},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return (inp, {"full_matrices": False})
 
 
 @pytest.mark.linalg_svd
 def test_linalg_svd():
-    bench = LinalgSvdBenchmark(
+    OperatorCaseBenchmark(
         op_name="linalg_svd",
         torch_op=torch.linalg.svd,
-        # The Triton SVD kernels only support float32 CUDA matrices.
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
-    )
-    bench.run()
-
-
-# ---------------------------------------------------------------------------
-# aten::_linalg_svd
-#
-# The operator id stays `_linalg_svd`, so the benchmark reports under that name
-# (as the merged `_aminmax` benchmark does); the marker is `underscore_linalg_svd`
-# since pytest will not build one from a leading underscore. Kept in this file
-# because it shares the shapes and torch_op with the bare `linalg_svd` above.
-# ---------------------------------------------------------------------------
-
-
-class LinalgSvdPrivateBenchmark(LinalgSvdBenchmark):
-    pass
-
-
-@pytest.mark.underscore_linalg_svd
-def test__linalg_svd():
-    bench = LinalgSvdPrivateBenchmark(
-        op_name="_linalg_svd",
-        # torch.linalg.svd decomposes into aten::_linalg_svd internally.
-        torch_op=torch.linalg.svd,
-        # The Triton SVD kernels only support float32 CUDA matrices.
-        dtypes=[torch.float32],
-    )
-    bench.run()
+    ).run()

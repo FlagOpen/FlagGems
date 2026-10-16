@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "_linalg_svd",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_linalg_svd(Tensor A, bool full_matrices=False, bool compute_uv=True, *, str? driver=None) -> (Tensor U, Tensor S, Tensor Vh). Computes the private SVD primitive; outputs do not alias A. Tests preserve reviewed legacy shapes, dtype limits, batching and layout behavior and add protocol-specific output checks where applicable.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "full_matrices",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    },
+    {
+      "name": "compute_uv",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "driver",
+      "kind": "keyword_only",
+      "required": false,
+      "default": null,
+      "type_hint": "str | None"
+    }
+  ],
+  "outputs": [
+    "U",
+    "S",
+    "Vh"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

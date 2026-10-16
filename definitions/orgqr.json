@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "orgqr",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::orgqr(Tensor self, Tensor input2) -> Tensor. Builds an explicit orthogonal matrix from Householder reflectors in self and scalar factors in input2. The suite covers square, rectangular, batched and zero-sized inputs, partial reflector counts, invalid dimensions and the explicitly unsupported complex path. The same family artifact also preserves aten::orgqr.out coverage for output identity, resize, noncontiguous storage, final-result casting, input aliasing and rejected output contracts. The functional result does not mutate or alias either input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "input2",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

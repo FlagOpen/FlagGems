@@ -12,140 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
 from . import base, consts, utils
 
 
-class MedianNoDimBenchmark(base.Benchmark):
+class MedianBenchmark(base.Benchmark):
     DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
     DEFAULT_SHAPE_DESC = "input shape"
-    with_out = False
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for shape in self.shapes:
-            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-            if self.with_out:
-                out = torch.empty((), dtype=cur_dtype, device=self.device)
-                yield inp, {"out": out}
-            else:
-                yield (inp,)
+    def supports_cases(self):
+        return True
 
-
-class MedianReductionBenchmark(base.Benchmark):
-    DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
-    DEFAULT_SHAPE_DESC = "input shape or [input shape, dim, keepdim]"
-    with_out = False
-
-    def get_case_iter(self, dtype) -> Generator:
-        for case_id, shape_spec in enumerate(self.shapes):
-            if shape_spec and isinstance(shape_spec[0], (list, tuple)):
-                shape = tuple(shape_spec[0])
-                dim = int(shape_spec[1])
-                keepdim = bool(shape_spec[2]) if len(shape_spec) > 2 else False
-            else:
-                shape = shape_spec
-                keepdim = case_id % 3 == 0
-                if len(shape) == 1:
-                    dim = 0
-                elif case_id % 2 == 0:
-                    dim = len(shape) - 1
-                else:
-                    dim = 0
-            yield self._case_from_plan(
-                dtype,
-                case_id,
-                base.BenchmarkCasePlan(
-                    shape={"input": list(shape)},
-                    params={"dim": dim, "keepdim": keepdim},
-                    builder_args=(shape, dim, keepdim),
-                ),
-            )
-
-    def build_inputs(self, case):
-        plan = case.builder_args[0]
-        shape, dim, keepdim = plan.builder_args
-        cur_dtype = case.dtype
-        inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-        if self.with_out:
-            out_shape = list(shape)
-            if keepdim:
-                out_shape[dim] = 1
-            else:
-                del out_shape[dim]
-            values = torch.empty(out_shape, dtype=cur_dtype, device=self.device)
-            indices = torch.empty(out_shape, dtype=torch.int64, device=self.device)
-            return inp, dim, {"keepdim": keepdim, "out": (values, indices)}
-        else:
-            return inp, dim, {"keepdim": keepdim}
-
-
-class MedianOutBenchmark(base.Benchmark):
-    DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
-    DEFAULT_SHAPE_DESC = "input shape"
-    with_out = True
-
-    def get_case_iter(self, dtype) -> Generator:
+    def get_case_iter(self, dtype):
         for ordinal, shape in enumerate(self.shapes):
             yield self._case_from_plan(
                 dtype,
                 ordinal,
                 base.BenchmarkCasePlan(
-                    shape={"input": list(shape)},
-                    params={},
-                    builder_args=(shape,),
+                    shape={"input": list(shape)}, params={}, builder_args=(tuple(shape),)
                 ),
             )
 
     def build_inputs(self, case):
         plan = case.builder_args[0]
         (shape,) = plan.builder_args
-        cur_dtype = case.dtype
-        inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-        out = torch.empty((), dtype=cur_dtype, device=self.device)
-        return inp, {"out": out}
+        torch.manual_seed(0)
+        return (utils.generate_tensor_input(shape, case.dtype, self.device),)
 
 
 @pytest.mark.median
 def test_median():
-    bench = MedianNoDimBenchmark(
+    MedianBenchmark(
         op_name="median",
         torch_op=torch.median,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.median_out
-def test_median_out():
-    bench = MedianOutBenchmark(
-        op_name="median_out",
-        torch_op=torch.ops.aten.median.out,
-        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
-        with_out=True,
-    )
-    bench.run()
-
-
-@pytest.mark.median_dim
-def test_median_dim():
-    bench = MedianReductionBenchmark(
-        op_name="median_dim",
-        torch_op=torch.median,
-        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.median_dim_values
-def test_median_dim_values():
-    bench = MedianReductionBenchmark(
-        op_name="median_dim_values",
-        torch_op=torch.median,
-        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
-        with_out=True,
-    )
-    bench.run()
+    ).run()

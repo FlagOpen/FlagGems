@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "smooth_l1_loss",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::smooth_l1_loss(Tensor self, Tensor target, int reduction=Mean, float beta=1.0) -> Tensor. Computes Smooth L1 loss with none, mean, or sum reduction without mutating or aliasing the functional inputs. Tests cover zero-sized through four-dimensional tensors, noncontiguous and broadcast inputs, beta zero and positive beta values, special floating values, functional autograd, input non-mutation, negative-beta rejection, the out overload's identity, storage, and resize behavior, and the legacy backward contract including broadcast, scalar-grad, beta-zero, and error cases.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    },
+    {
+      "name": "beta",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0,
+      "type_hint": "float"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

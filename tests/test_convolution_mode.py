@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -51,6 +65,7 @@ def _run_and_assert(
 
 
 def _make_inputs(input_shape, weight_shape, groups, dtype, bias_flag):
+    torch.manual_seed(0)
     inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
     bias = (
@@ -133,6 +148,7 @@ def test_convolution_mode_3d(input_shape, weight_shape, groups, padding, dtype, 
 @pytest.mark.convolution_mode
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_convolution_mode_invalid_padding(dtype):
+    torch.manual_seed(0)
     inp = torch.randn(1, 3, 8, 8, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(6, 3, 3, 3, dtype=dtype, device=flag_gems.device)
     with pytest.raises(ValueError):
@@ -142,6 +158,7 @@ def test_convolution_mode_invalid_padding(dtype):
 @pytest.mark.convolution_mode
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_convolution_mode_same_strided_raises(dtype):
+    torch.manual_seed(0)
     inp = torch.randn(1, 3, 8, 8, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(6, 3, 3, 3, dtype=dtype, device=flag_gems.device)
     with pytest.raises(ValueError):

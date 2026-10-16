@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "masked_softmax",
+  "requires_triton_kernel": true,
+  "description": "Apply softmax over dim while excluding positions selected by a boolean mask. mask_type 2 uses an elementwise mask, 1 expands a batch padding mask, and 0 expands a source attention mask.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "int?"
+    },
+    {
+      "name": "mask_type",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "int?"
+    }
+  ],
+  "outputs": [
+    "output"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "column_stack",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::column_stack(Tensor[] tensors) -> Tensor. Creates a new tensor by stacking scalar and one-dimensional inputs as columns and concatenating higher-rank inputs along dimension 1. The correctness suite retains the legacy one-, two-, mixed-, and three-dimensional cases and additionally covers scalar and zero-sized tensors, noncontiguous inputs, tuple input, dtype promotion, and invalid empty, rank, and shape combinations.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Sequence[Tensor]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

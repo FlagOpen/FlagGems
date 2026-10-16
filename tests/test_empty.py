@@ -20,9 +20,6 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-device = flag_gems.device
-
-
 EMPTY_PERMUTED_LAYOUTS = [
     ((8,), [0]),
     ((4, 8), [0, 1]),
@@ -33,19 +30,38 @@ EMPTY_PERMUTED_LAYOUTS = [
 ]
 
 
+def _requested_device():
+    requested = torch.device(flag_gems.device)
+    if requested.index is None and requested.type != "cpu":
+        requested = torch.device(
+            requested.type, flag_gems.runtime.torch_device_fn.current_device()
+        )
+    return requested
+
+
+def _assert_empty_metadata(result, reference, expected_device):
+    # empty() intentionally returns uninitialized storage. Values are undefined,
+    # so only the allocation contract may be compared. The candidate device is
+    # checked against the requested target, not a possibly CPU-moved reference.
+    assert result.shape == reference.shape
+    assert result.stride() == reference.stride()
+    assert result.dtype == reference.dtype
+    assert result.layout == reference.layout
+    assert result.device == expected_device
+    assert result.numel() == reference.numel()
+    assert result.requires_grad == reference.requires_grad
+
+
 @pytest.mark.empty_permuted
 @pytest.mark.parametrize("shape,physical_layout", EMPTY_PERMUTED_LAYOUTS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_empty_permuted(shape, physical_layout, dtype, caplog):
-    # empty_permuted returns uninitialized memory, so the layout contract is
-    # verified against the reference instead of the element values. The
-    # reference is built on the same device to keep the comparison about the
-    # layout only.
-    ref_out = torch.ops.aten.empty_permuted(
+    # Values are uninitialized; compare only the shape/stride/layout contract.
+    reference = torch.ops.aten.empty_permuted(
         shape, physical_layout, dtype=dtype, device=flag_gems.device
     )
     with caplog.at_level("DEBUG", logger="flag_gems.ops.empty_permuted"):
-        res_out = flag_gems.empty_permuted(
+        result = flag_gems.empty_permuted(
             shape, physical_layout, dtype=dtype, device=flag_gems.device
         )
 
@@ -53,36 +69,43 @@ def test_empty_permuted(shape, physical_layout, dtype, caplog):
         f"{utils.gems_log_prefix(flag_gems.empty_permuted)} EMPTY_PERMUTED"
         in caplog.text
     )
-    assert res_out.shape == ref_out.shape
-    assert res_out.stride() == ref_out.stride()
-    assert res_out.dtype == ref_out.dtype
-    assert res_out.numel() == ref_out.numel()
-    assert res_out.device == ref_out.device
-    # A permuted layout stays non-overlapping and dense.
-    assert torch.ops.aten.is_non_overlapping_and_dense(res_out)
+    _assert_empty_metadata(result, reference, _requested_device())
+    assert torch.ops.aten.is_non_overlapping_and_dense(result)
 
 
 @pytest.mark.empty
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_empty(shape, dtype):
-    expected_dev = "cpu" if cfg.TO_CPU else device
-    with flag_gems.use_gems():
-        res_out = torch.empty(*shape, dtype=dtype, device=flag_gems.device)
+    expected_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    reference = torch.empty(shape, dtype=dtype, device=expected_device)
 
-    ref_out = torch.zeros(*shape, dtype=dtype, device=expected_dev)
-    ref_out = utils.to_reference(ref_out, True)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    with flag_gems.use_gems():
+        result = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+
+    _assert_empty_metadata(result, reference, _requested_device())
 
 
 @pytest.mark.empty
 def test_empty_default_dtype():
-    # Tests empty() with default dtype (not explicitly specified) to verify
-    # proper dtype inference when only shape and device are given.
-    expected_dev = "cpu" if cfg.TO_CPU else device
-    with flag_gems.use_gems():
-        res_out = torch.empty(10, 20, device=flag_gems.device)
+    expected_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    reference = torch.empty((10, 20), device=expected_device)
 
-    ref_out = torch.zeros(10, 20, device=expected_dev)
-    ref_out = utils.to_reference(ref_out, True)
-    utils.gems_assert_close(res_out, ref_out, torch.get_default_dtype())
+    with flag_gems.use_gems():
+        result = torch.empty((10, 20), device=flag_gems.device)
+
+    _assert_empty_metadata(result, reference, _requested_device())
+    assert result.dtype == torch.get_default_dtype()
+
+
+@pytest.mark.empty
+@pytest.mark.parametrize("shape", [(0,), (2, 0, 3), (2, 3, 4, 5)])
+@pytest.mark.parametrize("dtype", [torch.int32, torch.bool, torch.complex64])
+def test_empty_dtype_and_zero_size(shape, dtype):
+    expected_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    reference = torch.empty(shape, dtype=dtype, device=expected_device)
+
+    with flag_gems.use_gems():
+        result = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+
+    _assert_empty_metadata(result, reference, _requested_device())

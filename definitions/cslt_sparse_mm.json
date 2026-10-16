@@ -1,0 +1,76 @@
+{
+  "api_version": "v6.0",
+  "name": "cslt_sparse_mm",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_cslt_sparse_mm(Tensor compressed_A, Tensor dense_B, Tensor? bias=None, Tensor? alpha=None, ScalarType? out_dtype=None, bool transpose_result=False, int alg_id=0, int split_k=1, int split_k_mode=-1) -> Tensor. Compressed 2:4 sparse matrix multiplication; optional alpha and transpose_result behavior are covered and inputs are not mutated. Tests preserve reviewed legacy sparse layout, dtype, shape, special-case, and error behavior. PyTorch 2.7.0 used the final parameter split_k_one_kernel=True; the representative current schema uses split_k_mode=-1 from PyTorch 2.8.0 through 2.12.0.",
+  "parameters": [
+    {
+      "name": "compressed_A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dense_B",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "alpha",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Tensor | None",
+      "default": null
+    },
+    {
+      "name": "out_dtype",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "ScalarType | None",
+      "default": null
+    },
+    {
+      "name": "transpose_result",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    },
+    {
+      "name": "alg_id",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": 0
+    },
+    {
+      "name": "split_k",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": 1
+    },
+    {
+      "name": "split_k_mode",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": -1
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

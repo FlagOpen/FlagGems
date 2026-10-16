@@ -19,6 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
 # torch._histogramdd_from_bin_cts is only implemented for floating types on the
 # ATen reference (CPU). float16/bfloat16/int raise NotImplementedError, so the
 # dtype sweep is restricted to float32 (and float64 where the device supports it).
@@ -78,9 +84,9 @@ def _to_cpu_ref(inp):
     False (mirroring ``tests/test_histogramdd_bin_edges.py``).
     """
     return (
-        utils.to_reference(inp).to("cpu")
+        utils.to_reference(inp, True).to("cpu")
         if not utils.TO_CPU
-        else utils.to_reference(inp)
+        else utils.to_reference(inp, True)
     )
 
 
@@ -466,9 +472,12 @@ def test_histogramdd_from_bin_cts_out(shape, dtype):
 
     out_shape = tuple(bins)
     out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    out_ptr = out.data_ptr()
     res_out = flag_gems._histogramdd_from_bin_cts_out(inp, bins, range=rng, out=out)
 
-    # The .out variant returns the out tensor and writes into it in-place.
+    # A correctly shaped out buffer is returned unchanged and keeps its storage.
+    assert res_out is out
+    assert out.data_ptr() == out_ptr
     _assert_close(res_out, ref_out, dtype)
     _assert_close(out, ref_out, dtype)
 
@@ -491,9 +500,12 @@ def test_histogramdd_from_bin_cts_out_weighted_density(dtype):
     )
 
     out = torch.empty((10, 10), dtype=dtype, device=flag_gems.device)
+    out_ptr = out.data_ptr()
     res_out = flag_gems._histogramdd_from_bin_cts_out(
         inp, [10, 10], range=rng, weight=weight, density=True, out=out
     )
+    assert res_out is out
+    assert out.data_ptr() == out_ptr
     _assert_close(res_out, ref_out, dtype)
     _assert_close(out, ref_out, dtype)
 
@@ -629,6 +641,12 @@ def test_histogramdd_from_bin_cts_out_non_contiguous(dtype):
     base = torch.empty((3, 6), dtype=dtype, device=flag_gems.device)
     out = base[:, ::2]
     assert not out.is_contiguous()
+    out_ptr = out.data_ptr()
+    out_stride = out.stride()
+    out_storage_offset = out.storage_offset()
     res = flag_gems._histogramdd_from_bin_cts_out(inp, bins, range=rng, out=out)
     assert res is out
+    assert out.data_ptr() == out_ptr
+    assert out.stride() == out_stride
+    assert out.storage_offset() == out_storage_offset
     _assert_close(out, ref_out, dtype)

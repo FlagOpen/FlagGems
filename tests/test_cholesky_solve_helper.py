@@ -21,18 +21,21 @@ from . import accuracy_utils as utils
 
 
 def _factor(shape, dtype):
+    torch.manual_seed(0)
     matrix = torch.randn(shape, device=flag_gems.device, dtype=dtype)
     identity = torch.eye(shape[-1], device=flag_gems.device, dtype=dtype)
     return torch.linalg.cholesky(matrix @ matrix.mT + 0.5 * identity)
 
 
-# Covers unbatched, batched, and multiple-RHS cases. The raw aten helper does
-# not broadcast a 2D factor across the rhs batch dim (that happens in the
-# higher-level cholesky_solve), so factor and rhs share matching batch dims.
+# Covers unbatched, batched, multiple-RHS, and both directions of batch
+# broadcasting implemented through torch.broadcast_shapes and expand.
 CHOLESKY_SOLVE_CASES = [
     ((5, 3), (5, 5)),
     ((2, 5, 3), (2, 5, 5)),
     ((3, 8, 4), (3, 8, 8)),
+    ((2, 5, 3), (5, 5)),
+    ((1, 5, 3), (2, 5, 5)),
+    ((2, 1, 5, 3), (1, 3, 5, 5)),
 ]
 
 
@@ -44,11 +47,86 @@ def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
     factor = _factor(factor_shape, dtype)
     if upper:
         factor = factor.mT.contiguous()
+    torch.manual_seed(1)
     rhs = torch.randn(rhs_shape, device=flag_gems.device, dtype=dtype)
-    ref_rhs = utils.to_reference(rhs)
-    ref_factor = utils.to_reference(factor)
+    ref_rhs = utils.to_reference(rhs, True)
+    ref_factor = utils.to_reference(factor, True)
     expected = torch.ops.aten._cholesky_solve_helper(ref_rhs, ref_factor, upper)
 
     actual = flag_gems._cholesky_solve_helper(rhs, factor, upper)
 
     utils.gems_assert_close(actual, expected, dtype, reduce_dim=rhs_shape[-2])
+
+
+@pytest.mark.cholesky_solve_helper
+def test_cholesky_solve_helper_incompatible_batch_error():
+    torch.manual_seed(0)
+    rhs = torch.randn((2, 5, 3), dtype=torch.float32, device=flag_gems.device)
+    factor = _factor((3, 5, 5), torch.float32)
+
+    with pytest.raises(RuntimeError):
+        flag_gems._cholesky_solve_helper(rhs, factor, False)
+
+
+@pytest.mark.cholesky_solve_helper
+def test_cholesky_solve_helper_dtype_error():
+    torch.manual_seed(0)
+    rhs = torch.randn((5, 2), dtype=torch.float32, device=flag_gems.device)
+    factor = _factor((5, 5), torch.float64)
+
+    with pytest.raises(RuntimeError, match="same dtype and device"):
+        flag_gems._cholesky_solve_helper(rhs, factor, False)
+
+
+@pytest.mark.cholesky_solve_helper
+@pytest.mark.skipif(
+    torch.device(flag_gems.device).type == "cpu",
+    reason="device-mismatch coverage requires a non-CPU FlagGems target",
+)
+def test_cholesky_solve_helper_device_error():
+    torch.manual_seed(0)
+    rhs = torch.randn((5, 2), dtype=torch.float32, device=flag_gems.device)
+    factor = torch.eye(5, dtype=torch.float32, device="cpu")
+
+    with pytest.raises(RuntimeError, match="same dtype and device"):
+        flag_gems._cholesky_solve_helper(rhs, factor, False)
+
+
+@pytest.mark.cholesky_solve_helper
+@pytest.mark.parametrize(
+    "rhs_shape,factor_shape",
+    [
+        ((5,), (5, 5)),
+        ((5, 2), (5,)),
+        ((5, 2), (5, 4)),
+        ((4, 2), (5, 5)),
+    ],
+)
+def test_cholesky_solve_helper_invalid_rank_or_matrix_error(
+    rhs_shape, factor_shape
+):
+    torch.manual_seed(0)
+    rhs = torch.randn(rhs_shape, dtype=torch.float32, device=flag_gems.device)
+    factor = torch.randn(
+        factor_shape, dtype=torch.float32, device=flag_gems.device
+    )
+
+    with pytest.raises(RuntimeError):
+        flag_gems._cholesky_solve_helper(rhs, factor, False)
+
+
+@pytest.mark.cholesky_solve_helper
+def test_cholesky_solve_helper_autograd_rejected():
+    factor = _factor((5, 5), torch.float32).requires_grad_(True)
+    torch.manual_seed(1)
+    rhs = torch.randn(
+        (5, 2), dtype=torch.float32, device=flag_gems.device, requires_grad=True
+    )
+
+    result = flag_gems._cholesky_solve_helper(rhs, factor, False)
+
+    # The raw helper writes a detached Triton output and has no custom autograd
+    # Function, so gradients for either tensor input are explicitly unsupported.
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result.sum(), (rhs, factor))

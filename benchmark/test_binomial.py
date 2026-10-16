@@ -21,17 +21,40 @@ from . import base, consts
 
 
 def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
     yield base.BenchmarkCasePlan(
-        shape={"count": list(shape), "prob": list(shape)},
-        builder_args=(shape,),
+        shape={"count": list(dims), "prob": list(dims)},
+        params={"generator": None},
+        builder_args=(dims,),
+    )
+
+
+def _out_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"count": list(dims), "prob": list(dims), "out": list(dims)},
+        params={"generator": None},
+        builder_args=(dims,),
     )
 
 
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
+    torch.manual_seed(0)
     count = torch.randint(1, 100, shape, device=device).to(dtype)
     prob = torch.rand(shape, dtype=dtype, device=device)
-    return (count, prob)
+    return count, prob
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    count = torch.randint(1, 100, shape, device=device).to(dtype)
+    prob = torch.rand(shape, dtype=dtype, device=device)
+    out = torch.empty_like(count)
+    return count, prob, {"out": out}
 
 
 @pytest.mark.binomial
@@ -54,15 +77,12 @@ def test_binomial():
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_binomial_out():
-    def out_op(count, prob):
-        out = torch.empty_like(count)
-        return torch.ops.aten.binomial.out(count, prob, out=out)
-
     bench = base.GenericBenchmark2DOnly(
         op_name="binomial_out",
-        torch_op=out_op,
-        case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        torch_op=torch.binomial,
+        case_fn=_out_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
     )
     bench.run()

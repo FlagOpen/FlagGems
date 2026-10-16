@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "huber_loss_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::huber_loss.out(Tensor self, Tensor target, int reduction=Mean, float delta=1.0, *, Tensor(a!) out) -> Tensor(a!). Computes Huber loss into the keyword-only out tensor, mutates that buffer, and returns the same tensor object. Tests cover zero-sized and regular tensors, none, mean, and sum reduction, multiple positive delta values, correctly shaped output storage identity, wrong-shape resize, unsafe output-cast rejection, and invalid negative delta rejection.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1,
+      "type_hint": "int"
+    },
+    {
+      "name": "delta",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1.0,
+      "type_hint": "float"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

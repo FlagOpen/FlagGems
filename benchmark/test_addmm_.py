@@ -16,25 +16,47 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+class BlasCaseBenchmark(base.BlasBenchmark, OperatorBenchmark):
+    def supports_cases(self):
+        return True
+
+    get_case_iter = OperatorBenchmark.get_case_iter
+    build_inputs = OperatorBenchmark.build_inputs
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    b, m, n, k = tuple(shape)
+    for column_major in (False, True):
+        yield base.BenchmarkCasePlan(
+            shape={"self": [m, n], "mat1": [m, k], "mat2": [k, n]},
+            params={"column_major": column_major},
+            builder_args=(b, m, n, k, column_major),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    b, m, n, k, column_major = plan.builder_args
+    torch.manual_seed(0)
+    mat1 = torch.randn((m, k), dtype=dtype, device=device)
+    if column_major:
+        mat2 = torch.randn((n, k), dtype=dtype, device=device).t()
+    else:
+        mat2 = torch.randn((k, n), dtype=dtype, device=device)
+    self = torch.randn((n,) if False else (m, n), dtype=dtype, device=device)
+    return self, mat1, mat2
 
 
 @pytest.mark.addmm_
-def test_addmm_(monkeypatch):
-    def _input_fn(b, m, n, k, dtype, device, b_column_major):
-        inp1 = torch.randn([m, k], dtype=dtype, device=device)
-        bias = torch.randn([m, n], dtype=dtype, device=device)
-        if b_column_major:
-            inp2 = torch.randn([n, k], dtype=dtype, device=device)
-            yield bias, inp1, inp2.t(),
-        else:
-            inp2 = torch.randn([k, n], dtype=dtype, device=device)
-            yield bias, inp1, inp2,
-
-    bench = base.BlasBenchmark(
+def test_addmm_():
+    BlasCaseBenchmark(
         op_name="addmm_",
-        input_fn=_input_fn,
-        torch_op=lambda bias, mat1, mat2: bias.addmm_(mat1, mat2),
+        torch_op=lambda self, mat1, mat2: self.addmm_(mat1, mat2),
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-
-    bench.run()
+        is_inplace=True,
+        fresh_inputs=True,
+    ).run()

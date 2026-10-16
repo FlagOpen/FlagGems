@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "replication_pad1d_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::replication_pad1d_backward(Tensor grad_output, Tensor self, SymInt[2] padding) -> Tensor. Tests preserve legacy shape, dtype, layout, scaling and error coverage. Inputs are not mutated and outputs do not alias inputs.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    }
+  ],
+  "outputs": [
+    "grad_input"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

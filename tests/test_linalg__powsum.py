@@ -52,6 +52,7 @@ def _reduction_size(shape, dim):
 @pytest.mark.parametrize("keepdim", KEEP_DIM)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_linalg__powsum(shape, dim, ord, keepdim, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, upcast=True)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, ord, dim, keepdim)
@@ -68,6 +69,7 @@ def test_linalg__powsum(shape, dim, ord, keepdim, dtype):
 
 @pytest.mark.linalg__powsum
 def test_linalg__powsum_dtype_and_public_api():
+    torch.manual_seed(0)
     inp = torch.randn((11, 19), dtype=torch.float16, device=flag_gems.device)
     ref_inp = utils.to_reference(inp).to(torch.float32)
     ref = torch.ops.aten.linalg__powsum.default(
@@ -108,6 +110,7 @@ def test_linalg__powsum_integer_input_with_float_dtype():
     ],
 )
 def test_linalg__powsum_complex(input_dtype, requested_dtype):
+    torch.manual_seed(0)
     inp = torch.randn((5, 7), dtype=input_dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(
@@ -133,6 +136,7 @@ def test_linalg__powsum_empty(keepdim):
 
 @pytest.mark.linalg__powsum
 def test_linalg__powsum_noncontiguous():
+    torch.manual_seed(0)
     inp = torch.randn((7, 5, 9), device=flag_gems.device).transpose(0, 2)
     ref_inp = utils.to_reference(inp)
     ref = torch.ops.aten.linalg__powsum.default(ref_inp, 3, [0, 2], False)
@@ -172,7 +176,21 @@ def test_linalg__powsum_special_values(ord):
 @pytest.mark.linalg__powsum
 @pytest.mark.parametrize("dim", [[3], [1, 1]])
 def test_linalg__powsum_invalid_dim(dim):
+    torch.manual_seed(0)
     inp = torch.randn((2, 3, 4), device=flag_gems.device)
 
     with pytest.raises((IndexError, RuntimeError)):
         flag_gems.linalg__powsum(inp, 2, dim)
+
+
+@pytest.mark.linalg__powsum
+def test_linalg__powsum_autograd_is_explicitly_unsupported():
+    torch.manual_seed(0)
+    inp = torch.randn((4, 5), dtype=torch.float32, device=flag_gems.device)
+    inp.requires_grad_(True)
+
+    result = flag_gems.linalg__powsum(inp, 2, [1], False)
+
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result.sum(), inp)

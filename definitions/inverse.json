@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "inverse",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::inverse(Tensor self) -> Tensor. Computes a matrix inverse without mutating or aliasing self. Tests cover square matrices on small fused and large delegated paths, batches, matrices requiring pivoting, inverse-product residuals, noncontiguous inputs, empty batches, supported float32/float64, low-precision rejection, and explicit rejection of unsupported FlagGems autograd.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

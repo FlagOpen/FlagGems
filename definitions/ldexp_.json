@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "ldexp_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::ldexp_(Tensor(a!) self, Tensor other) -> Tensor(a!). Computes ldexp in place, mutates self, and returns the same Tensor object and storage. Tests cover floating dtypes, broadcasting, zero-sized and noncontiguous tensors, special values, and invalid in-place casts or shape expansion.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

@@ -12,57 +12,72 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
-from . import base
+import flag_gems
+
+from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class ChebyshevPolynomialTBenchmark(base.Benchmark):
-    """Custom benchmark for special_chebyshev_polynomial_t (binary op: x, n)."""
+_SHAPES = [
+    (1024, 1024),
+    (20, 320, 15),
+    (16, 128, 64, 1280),
+    (2, 19, 7),
+]
+_COMPREHENSIVE_SHAPES = [
+    (1024, 1),
+    (1024, 16),
+    (1024, 256),
+    (1024, 4096),
+    (1024, 65536),
+    (64, 64, 1),
+    (64, 64, 16),
+    (64, 64, 256),
+    (64, 64, 4096),
+    (64, 64, 65536),
+]
 
+
+class ChebyshevPolynomialTBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # SPECIAL_SHAPES equivalent; special.* ops use a modest subset of shapes
-        self.shapes = [
-            (1024, 1024),
-            (20, 320, 15),
-            (16, 128, 64, 1280),
-            (2, 19, 7),
-        ]
-
-    def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + [
-            (64, 64, 2**i) for i in range(0, 20, 4)
-        ]
-
-    def get_input_iter(self, cur_dtype) -> Generator:
-        # Constant small degree for benchmark stability
-        n_val = 3
-        for shape in self.shapes:
-            x = base.generate_tensor_input(shape, cur_dtype, self.device)
-            # x in [-1, 1] domain
-            x = x * 2 - 1
-            n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
-            yield x, n
+        super().set_shapes(shape_file_path, default_shapes=_SHAPES)
+        if (
+            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            and not base.Config.query
+        ):
+            self.shapes = list(
+                dict.fromkeys([*self.shapes, *_COMPREHENSIVE_SHAPES])
+            )
 
     def get_tflops(self, op, *args, **kwargs):
-        shape = list(args[0].shape)
-        return torch.tensor(shape).prod().item()
+        del op, kwargs
+        return args[0].numel()
 
 
-class ChebyshevPolynomialTOutBenchmark(ChebyshevPolynomialTBenchmark):
-    """Benchmark for special_chebyshev_polynomial_t_out."""
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for degree_kind in ("scalar", "tensor"):
+        yield base.BenchmarkCasePlan(
+            shape={"x": list(dims), "n": [] if degree_kind == "tensor" else None},
+            params={"degree_kind": degree_kind, "degree": 3},
+            builder_args=(dims, degree_kind),
+        )
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        n_val = 3
-        for shape in self.shapes:
-            x = base.generate_tensor_input(shape, cur_dtype, self.device)
-            x = x * 2 - 1
-            n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
-            out = torch.empty_like(x)
-            yield x, n, {"out": out}
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, degree_kind = plan.builder_args
+    torch.manual_seed(0)
+    x = torch.rand(shape, dtype=dtype, device=device) * 2 - 1
+    degree = (
+        torch.tensor(3, dtype=torch.int64, device=device)
+        if degree_kind == "tensor"
+        else 3
+    )
+    return x, degree
 
 
 @pytest.mark.special_chebyshev_polynomial_t
@@ -70,17 +85,9 @@ def test_special_chebyshev_polynomial_t():
     bench = ChebyshevPolynomialTBenchmark(
         op_name="special_chebyshev_polynomial_t",
         torch_op=torch.special.chebyshev_polynomial_t,
-        # special.* operators only support float32
-        dtypes=[torch.float32],
-    )
-    bench.run()
-
-
-@pytest.mark.special_chebyshev_polynomial_t_out
-def test_special_chebyshev_polynomial_t_out():
-    bench = ChebyshevPolynomialTOutBenchmark(
-        op_name="special_chebyshev_polynomial_t_out",
-        torch_op=torch.special.chebyshev_polynomial_t,
+        gems_op=flag_gems.special_chebyshev_polynomial_t,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
     )
     bench.run()

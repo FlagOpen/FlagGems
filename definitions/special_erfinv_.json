@@ -1,0 +1,25 @@
+{
+  "api_version": "v6.0",
+  "name": "special_erfinv_",
+  "requires_triton_kernel": true,
+  "description": "Representative FlagGems custom schema: flaggems::special_erfinv_(Tensor(a!) x) -> Tensor(a!). This non-ATen entrypoint computes the inverse error function in place, mutates x, and returns the identical Tensor object and storage. Tests cover deterministic floating inputs in the valid domain, boundary and special values, out-of-domain NaN behavior, noncontiguous views with nonzero storage offset and unchanged sibling storage, retained pointer/stride/storage metadata, and the implementation-backed rejection of an in-place write to a leaf Tensor requiring gradients.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "x"
+    ],
+    "returns_alias_of": {
+      "out": "x"
+    }
+  }
+}

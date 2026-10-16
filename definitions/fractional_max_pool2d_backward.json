@@ -2,39 +2,41 @@
   "api_version": "v6.0",
   "name": "fractional_max_pool2d_backward",
   "requires_triton_kernel": true,
-  "description": "The backward version of `fractional_max_pool2d()`. Scatters the output gradient\nback to the input positions recorded in `indices`.",
+  "description": "Representative ATen schema: aten::fractional_max_pool2d_backward(Tensor grad_output, Tensor self, int[2] kernel_size, int[2] output_size, Tensor indices) -> Tensor. Scatters each output gradient back to the input position recorded by the matching fractional-max-pool indices. Coverage derives deterministic pooling regions from shared random samples, validates the forward indices exactly, and compares the backward result with autograd across square and non-square shapes. Inputs are not mutated and the result does not alias them.",
   "parameters": [
     {
       "name": "grad_output",
       "kind": "positional_or_keyword",
       "required": true,
-      "type_hint": "torch.Tensor"
+      "type_hint": "Tensor"
     },
     {
-      "name": "input",
+      "name": "self",
       "kind": "positional_or_keyword",
       "required": true,
-      "type_hint": "torch.Tensor"
+      "type_hint": "Tensor"
     },
     {
       "name": "kernel_size",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "int | Sequence[int]"
     },
     {
       "name": "output_size",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Sequence[int]"
     },
     {
       "name": "indices",
       "kind": "positional_or_keyword",
       "required": true,
-      "type_hint": "torch.Tensor"
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [
-    "out"
+    "grad_input"
   ],
   "effects": {
     "mutates": [],

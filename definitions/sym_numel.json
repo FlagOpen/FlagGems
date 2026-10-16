@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "sym_numel",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen signature: aten::sym_numel(Tensor self) -> SymInt. Returns the product of the input shape dimensions as a symbolic integer; a scalar tensor has one element and any zero dimension yields zero. The result is non-differentiable and the operation neither mutates nor aliases self.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "numel"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

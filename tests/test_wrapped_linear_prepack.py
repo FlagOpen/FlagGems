@@ -33,6 +33,7 @@ SHAPES = [(4, 8)] if cfg.QUICK_MODE else [(0, 7), (5, 0), (4, 8), (33, 65), (128
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("noncontiguous", [False, True])
 def test_wrapped_linear_prepack(shape, noncontiguous):
+    torch.manual_seed(0)
     N, K = shape
     if noncontiguous:
         weight = torch.randn((K, N), dtype=torch.float32, device=flag_gems.device).T
@@ -81,6 +82,7 @@ def test_wrapped_linear_prepack_rounds_ties_to_even_and_clamps():
 
 @pytest.mark.wrapped_linear_prepack
 def test_wrapped_linear_prepack_rejects_invalid_shapes():
+    torch.manual_seed(0)
     weight = torch.randn((4, 8), device=flag_gems.device)
     bias = torch.randn((4,), device=flag_gems.device)
     scale_tensor = torch.tensor(0.1, device=flag_gems.device)

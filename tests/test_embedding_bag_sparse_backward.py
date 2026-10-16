@@ -70,19 +70,23 @@ def _run_sparse_backward(
     per_sample_weights,
     padding_idx,
 ):
-    ref_out = utils.to_reference(
-        torch.ops.aten._embedding_bag_sparse_backward(
-            grad,
-            indices,
-            offsets,
-            offset2bag,
-            bag_size,
-            num_weights,
-            False,
-            mode,
-            per_sample_weights,
-            padding_idx,
-        )
+    ref_grad = utils.to_reference(grad, True)
+    ref_indices = utils.to_reference(indices, False)
+    ref_offsets = utils.to_reference(offsets, False)
+    ref_offset2bag = utils.to_reference(offset2bag, False)
+    ref_bag_size = utils.to_reference(bag_size, False)
+    ref_per_sample_weights = utils.to_reference(per_sample_weights, True)
+    ref_out = torch.ops.aten._embedding_bag_sparse_backward(
+        ref_grad,
+        ref_indices,
+        ref_offsets,
+        ref_offset2bag,
+        ref_bag_size,
+        num_weights,
+        False,
+        mode,
+        ref_per_sample_weights,
+        padding_idx,
     )
     res_out = flag_gems._embedding_bag_sparse_backward(
         grad,

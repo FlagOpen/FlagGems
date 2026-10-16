@@ -2,12 +2,13 @@
   "api_version": "v6.0",
   "name": "median",
   "requires_triton_kernel": true,
-  "description": "Returns the median of all elements in the `inp` tensor.",
+  "description": "Representative ATen schema: aten::median(Tensor self) -> Tensor. Returns the lower median of all elements without mutating or aliasing self. Tests additionally preserve dimension, keepdim, value/index, NaN, tie, noncontiguous, integer, empty, and boundary behavior from the legacy median family.",
   "parameters": [
     {
-      "name": "inp",
+      "name": "self",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     }
   ],
   "outputs": [

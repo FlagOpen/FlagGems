@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "histc",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::histc(Tensor self, int bins=100, Scalar min=0, Scalar max=0) -> Tensor. Computes a one-dimensional histogram with optional automatic range selection without mutating or aliasing self. Tests cover deterministic bucket-centered float32 values, legacy shapes and bin counts, explicit and automatic ranges, endpoints and outliers, empty and noncontiguous tensors, output metadata, input non-mutation, and invalid bins or reversed ranges.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bins",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 100,
+      "type_hint": "int"
+    },
+    {
+      "name": "min",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "Scalar"
+    },
+    {
+      "name": "max",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

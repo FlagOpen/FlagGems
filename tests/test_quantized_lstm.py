@@ -31,6 +31,15 @@ QUANTIZED_LSTM_SHAPES = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _restore_quantized_engine():
+    original_engine = torch.backends.quantized.engine
+    try:
+        yield
+    finally:
+        torch.backends.quantized.engine = original_engine
+
+
 def _make_cell_params(input_size, hidden_size, has_biases, device, dtype):
     """Build one layer of quantized LSTM params plus their dequantized form.
 
@@ -259,3 +268,74 @@ def test_accuracy_quantized_lstm_no_bias(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
     utils.gems_assert_close(res_hn, ref_hn, dtype, atol=atol)
     utils.gems_assert_close(res_cn, ref_cn, dtype, atol=atol)
+
+
+@pytest.mark.quantized_lstm
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_quantized_lstm_multilayer_batch_first(dtype):
+    """Two stacked layers preserve batch-first layout and hidden/cell ordering."""
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    torch.backends.quantized.engine = "fbgemm"
+    batch_size, seq_len, input_size, hidden_size, num_layers = 3, 5, 8, 12, 2
+    device = flag_gems.device
+    inp = torch.randn(batch_size, seq_len, input_size, dtype=dtype, device=device)
+    h0 = torch.randn(num_layers, batch_size, hidden_size, dtype=dtype, device=device) * 0.1
+    c0 = torch.randn_like(h0) * 0.1
+    params, layer_refs = [], []
+    for layer in range(num_layers):
+        layer_input_size = input_size if layer == 0 else hidden_size
+        cell_params, layer_ref = _make_cell_params(
+            layer_input_size, hidden_size, True, device, dtype
+        )
+        params.append(cell_params)
+        layer_refs.append({
+            key: utils.to_reference(value, True) if value is not None else None
+            for key, value in layer_ref.items()
+        })
+    ref_out, ref_hn, ref_cn = _reference_lstm(
+        utils.to_reference(inp.transpose(0, 1), True),
+        utils.to_reference(h0, True),
+        utils.to_reference(c0, True),
+        layer_refs,
+        num_layers,
+        False,
+    )
+    result = flag_gems.quantized_lstm(
+        inp, [h0, c0], params, True, num_layers, 0.0, False, False, True
+    )
+    utils.gems_assert_close(result[0], ref_out.transpose(0, 1), dtype, atol=_tolerance(dtype, seq_len))
+    utils.gems_assert_close(result[1], ref_hn, dtype, atol=_tolerance(dtype, seq_len))
+    utils.gems_assert_close(result[2], ref_cn, dtype, atol=_tolerance(dtype, seq_len))
+
+
+@pytest.mark.quantized_lstm
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_quantized_lstm_training_dropout_is_seeded(dtype):
+    """Training dropout is applied between layers and follows the seeded RNG stream."""
+    torch.manual_seed(42)
+    torch.cuda.manual_seed(42)
+    torch.backends.quantized.engine = "fbgemm"
+    seq_len, batch_size, input_size, hidden_size, num_layers = 6, 3, 8, 12, 2
+    device = flag_gems.device
+    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
+    h0 = torch.randn(num_layers, batch_size, hidden_size, dtype=dtype, device=device)
+    c0 = torch.randn_like(h0)
+    params = []
+    for layer in range(num_layers):
+        layer_input_size = input_size if layer == 0 else hidden_size
+        cell_params, _ = _make_cell_params(layer_input_size, hidden_size, True, device, dtype)
+        params.append(cell_params)
+    torch.manual_seed(7)
+    first = flag_gems.quantized_lstm(
+        inp, [h0, c0], params, True, num_layers, 0.25, True, False, False
+    )
+    torch.manual_seed(7)
+    second = flag_gems.quantized_lstm(
+        inp, [h0, c0], params, True, num_layers, 0.25, True, False, False
+    )
+    for actual, repeated in zip(first, second):
+        utils.gems_assert_equal(actual, repeated)
+    assert first[0].shape == (seq_len, batch_size, hidden_size)
+    assert first[1].shape == h0.shape
+    assert first[2].shape == c0.shape

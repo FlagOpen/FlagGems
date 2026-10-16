@@ -1,0 +1,22 @@
+{
+  "api_version": "v6.0",
+  "name": "frexp",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::frexp.Tensor(Tensor self) -> (Tensor mantissa, Tensor exponent). Decomposes each floating input into a fractional mantissa and integral power-of-two exponent. The correctness suite validates both outputs independently, including shape and dtype, across pointwise, zero-size, noncontiguous, signed-zero, infinity, NaN, and invalid integer-input cases. The operation does not mutate or alias self.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "mantissa",
+    "exponent"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

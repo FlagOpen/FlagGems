@@ -1,0 +1,40 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_ldl_solve",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_ldl_solve(Tensor LD, Tensor pivots, Tensor B, *, bool hermitian=False) -> Tensor. Solves systems from compact LDL factors without mutating or aliasing the inputs. Tests preserve real/complex, batched, and rectangular right-hand-side coverage and additionally cover Hermitian complex systems, noncontiguous and empty right-hand sides, return independence, and invalid rank, shape, batch, and dtype contracts.",
+  "parameters": [
+    {
+      "name": "LD",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "pivots",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "hermitian",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

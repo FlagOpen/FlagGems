@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -13,11 +27,13 @@ def _spdiags_ref(diagonals, offsets, shape, layout=None):
 
 def _assert_sparse_close(res_out, ref_out, dtype):
     assert res_out.shape == ref_out.shape
+    assert res_out.dtype == ref_out.dtype == dtype
+    assert res_out.layout == ref_out.layout
 
     # Convert to dense for comparison. gems_assert_close requires res and ref
     # to share a device: in quick-cpu mode (TO_CPU) it moves res to CPU and
     # asserts ref is already there, otherwise both must stay on the device.
-    ref_dense = ref_out.to_dense()
+    ref_dense = utils.to_reference(ref_out.to_dense(), True)
     if not utils.TO_CPU:
         ref_dense = ref_dense.to(flag_gems.device)
     res_dense = res_out.to_dense()
@@ -29,6 +45,7 @@ def _assert_sparse_close(res_out, ref_out, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_spdiags_single_diagonal(shape, dtype):
     """Test single diagonal (main diagonal)"""
+    torch.manual_seed(0)
     nrows, ncols = shape
     diag_len = min(nrows, ncols)
 
@@ -48,6 +65,7 @@ def test_spdiags_single_diagonal(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_spdiags_multiple_diagonals(shape, dtype):
     """Test multiple diagonals with different offsets"""
+    torch.manual_seed(0)
     nrows, ncols = shape
     diag_len = min(nrows, ncols)
 
@@ -68,6 +86,7 @@ def test_spdiags_multiple_diagonals(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_spdiags_various_offsets(offset, dtype):
     """Test various diagonal offsets"""
+    torch.manual_seed(0)
     # Small square matrix to test all offset directions within bounds
     shape = (5, 5)
     nrows, ncols = shape
@@ -87,6 +106,7 @@ def test_spdiags_various_offsets(offset, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_spdiags_non_square(shape, dtype):
     """Test non-square matrices"""
+    torch.manual_seed(0)
     nrows, ncols = shape
     diag_len = min(nrows, ncols)  # Offset-0 diagonal length is the smaller dimension
 
@@ -102,6 +122,7 @@ def test_spdiags_non_square(shape, dtype):
 @pytest.mark.spdiags
 def test_spdiags_empty():
     """Test empty case"""
+    torch.manual_seed(0)
     # Small square matrix sufficient for empty diagonal list edge case
     shape = (3, 3)
     dtype = torch.float32
@@ -123,6 +144,7 @@ def test_spdiags_empty():
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_spdiags_layouts(layout, dtype):
     """Test all supported output layouts (COO, CSR, CSC)"""
+    torch.manual_seed(0)
     shape = (5, 5)
     diag_len = min(shape)
 
@@ -140,6 +162,7 @@ def test_spdiags_layouts(layout, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_spdiags_1d_scalar_promotion(dtype):
     """Test native promotion of 1-D diagonals and scalar offset"""
+    torch.manual_seed(0)
     shape = (4, 4)
     diag_len = min(shape)
 
@@ -156,6 +179,7 @@ def test_spdiags_1d_scalar_promotion(dtype):
 @pytest.mark.spdiags
 def test_spdiags_offsets_dtype():
     """Native requires offsets to be Long (int64)"""
+    torch.manual_seed(0)
     shape = (3, 3)
     diagonals = torch.randn((1, 3), dtype=torch.float32, device=flag_gems.device)
     offsets = torch.tensor([0], dtype=torch.int32, device=flag_gems.device)
@@ -167,6 +191,7 @@ def test_spdiags_offsets_dtype():
 @pytest.mark.spdiags
 def test_spdiags_duplicate_offsets():
     """Native rejects duplicate offsets"""
+    torch.manual_seed(0)
     shape = (3, 3)
     diagonals = torch.randn((2, 3), dtype=torch.float32, device=flag_gems.device)
     offsets = torch.tensor([0, 0], dtype=torch.int64, device=flag_gems.device)

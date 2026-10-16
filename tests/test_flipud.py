@@ -20,6 +20,11 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    utils.init_seed(0)
+
+
 @pytest.mark.flipud
 @pytest.mark.parametrize(
     "shape",
@@ -118,5 +123,11 @@ def test_accuracy_flipud_noncontiguous(make_input, dtype):
 @pytest.mark.flipud
 def test_flipud_rejects_zero_dimensional_input():
     inp = torch.empty((), device=flag_gems.device)
-    with pytest.raises(RuntimeError, match="Input must be >= 1-d"):
+    ref_inp = utils.to_reference(inp, False)
+
+    with pytest.raises(RuntimeError):
+        torch.flipud(ref_inp)
+    with flag_gems.use_gems(), pytest.raises(
+        RuntimeError, match="Input must be >= 1-d"
+    ):
         torch.flipud(inp)

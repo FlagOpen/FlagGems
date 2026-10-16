@@ -1,0 +1,62 @@
+{
+  "api_version": "v6.0",
+  "name": "index_reduce_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::index_reduce.out(Tensor self, int dim, Tensor index, Tensor source, str reduce, *, bool include_self=True, Tensor(a!) out) -> Tensor(a!). Tests cover every supported reduction, include_self, empty and correctly shaped out buffers, resize, storage and Python identity, input/output aliasing, and rejected unsafe output dtypes.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "source",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "reduce",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "str"
+    },
+    {
+      "name": "include_self",
+      "kind": "keyword_only",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

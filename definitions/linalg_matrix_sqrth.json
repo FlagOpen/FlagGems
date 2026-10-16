@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_matrix_sqrth",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_matrix_sqrth(Tensor self) -> Tensor. Computes the principal square root of symmetric/Hermitian positive-definite matrices without mutating self. Tests cover real and complex dtypes, batched and empty shapes, noncontiguous lower-triangle semantics, output metadata, non-mutation, and invalid rank/shape/dtype inputs.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

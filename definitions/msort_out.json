@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "msort_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::msort.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!). Sorts along dimension zero into out. Tests verify content, returned object and storage identity, resize, noncontiguous buffers, input/output aliasing, sort path boundaries, and rejected unsafe dtype conversion.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "result"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "result": "out"
+    }
+  }
+}

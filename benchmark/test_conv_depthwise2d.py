@@ -18,56 +18,27 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
+CASES = [(32,4,8,8,2,2,1,0,1),(18,16,4,4,2,2,2,1,1),(1,64,224,224,3,3,1,1,1),(1,128,112,112,5,5,2,2,1)]
 
-class ConvDepthwise2DBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        # Additional shapes for COMPREHENSIVE mode
-        return [
-            (1, 64, 224, 224, 3, 3, 1, 1, 1),
-            (1, 128, 112, 112, 5, 5, 2, 2, 1),
-        ]
+class ConvDepthwise2dBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(CASES)
+        self.shape_desc = "N, C, H, W, Kh, Kw, stride, padding, dilation"
 
+def _case_fn(shape, dtype):
+    del dtype
+    case = tuple(shape)
+    yield base.BenchmarkCasePlan(shape={"case": list(case)}, params={}, builder_args=(case,))
 
-def _input_fn(shape, dtype, device):
-    (
-        batch,
-        channels,
-        input_h,
-        input_w,
-        kernel_h,
-        kernel_w,
-        stride,
-        padding,
-        dilation,
-    ) = shape
-    input_shape = (batch, channels, input_h, input_w)
-    weight_shape = (channels, 1, kernel_h, kernel_w)
-    input_tensor = torch.randn(size=input_shape, device=device, dtype=dtype)
-    weight = torch.randn(size=weight_shape, device=device, dtype=dtype)
-
-    # Pass as positional args since the first arg is named 'self' in aten op
-    yield (
-        input_tensor,
-        weight,
-        [kernel_h, kernel_w],
-        None,  # bias
-        [stride, stride],
-        [padding, padding],
-        [dilation, dilation],
-    )
-
+def _build_inputs_fn(plan, dtype, device):
+    n, c, h, w, kh, kw, stride, padding, dilation = plan.builder_args[0]
+    torch.manual_seed(0)
+    inp = torch.randn((n,c,h,w), dtype=dtype, device=device)
+    weight = torch.randn((c,1,kh,kw), dtype=dtype, device=device)
+    return inp, weight, [kh,kw], None, [stride,stride], [padding,padding], [dilation,dilation]
 
 @pytest.mark.conv_depthwise2d
 def test_conv_depthwise2d():
-    torch.backends.cudnn.allow_tf32 = False
-
-    bench = ConvDepthwise2DBenchmark(
-        op_name="conv_depthwise2d",
-        input_fn=_input_fn,
-        torch_op=torch.ops.aten._conv_depthwise2d,
-        gems_op=flag_gems._conv_depthwise2d,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-
-    bench.run()
+    ConvDepthwise2dBenchmark(op_name="conv_depthwise2d", torch_op=torch.ops.aten._conv_depthwise2d.default, gems_op=flag_gems._conv_depthwise2d, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()

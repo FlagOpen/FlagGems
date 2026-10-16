@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -24,6 +38,7 @@ PADDINGS = [0, 1]
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -53,6 +68,7 @@ def test_conv_transpose3d(shape, kernel, stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_bias(shape, kernel, stride, padding, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -85,6 +101,7 @@ def test_conv_transpose3d_bias(shape, kernel, stride, padding, dtype):
 def test_conv_transpose3d_dilation(stride, padding, dtype):
     # Small 5-dim shapes (N, C_in, D, H, W) / (C_in, C_out, kD, kH, kW) keep the
     # dilated 3D transposed conv cheap while still exercising all spatial dims.
+    torch.manual_seed(0)
     shape = (2, 4, 5, 5, 5)
     kernel = (4, 8, 3, 3, 3)
     dilation = 2
@@ -128,6 +145,7 @@ def test_conv_transpose3d_dilation(stride, padding, dtype):
 @pytest.mark.parametrize("padding", PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
@@ -164,6 +182,7 @@ def test_conv_transpose3d_groups(shape, kernel, groups, stride, padding, dtype):
 def test_conv_transpose3d_output_padding(dtype):
     # Small 5-dim shapes (N, C_in, D, H, W) / (C_in, C_out, kD, kH, kW); output_padding
     # requires stride > 1, so a compact case is enough to validate the extra offset.
+    torch.manual_seed(0)
     shape = (2, 4, 5, 5, 5)
     kernel = (4, 8, 3, 3, 3)
     stride = 2
@@ -202,3 +221,31 @@ def test_conv_transpose3d_output_padding(dtype):
         dtype,
         reduce_dim=kernel_volume * max(in_channels, out_channels),
     )
+
+
+@pytest.mark.conv_transpose3d
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_conv_transpose3d_noncontiguous(dtype):
+    torch.manual_seed(0)
+    base = torch.randn((1, 8, 5, 6, 7), dtype=dtype, device=flag_gems.device)
+    inp = base[:, ::2, :, :, :]
+    weight = torch.randn((4, 6, 3, 3, 3), dtype=dtype, device=flag_gems.device)
+    ref = torch.nn.functional.conv_transpose3d(
+        utils.to_reference(inp, True), utils.to_reference(weight, True),
+        stride=2, padding=1, output_padding=1
+    )
+    result = flag_gems.conv_transpose3d(
+        inp, weight, stride=2, padding=1, output_padding=1
+    )
+    utils.gems_assert_close(result, ref, dtype, reduce_dim=108)
+    assert result.shape == ref.shape
+    assert result.dtype == dtype
+
+
+@pytest.mark.conv_transpose3d
+def test_conv_transpose3d_invalid_output_padding():
+    torch.manual_seed(0)
+    inp = torch.randn((1, 4, 4, 4, 4), device=flag_gems.device)
+    weight = torch.randn((4, 6, 3, 3, 3), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.conv_transpose3d(inp, weight, stride=1, output_padding=1)

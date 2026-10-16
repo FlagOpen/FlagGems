@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "linalg_cond",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_cond(Tensor self, Scalar? p=None) -> Tensor. Computes matrix condition numbers without mutating or aliasing self. Tests additionally exercise the registered aten::linalg_cond.p_str overload for fro and nuc, numeric square-matrix norms including infinities, rectangular p=2/-2 SVD paths using moderately conditioned float32 matrices, and explicit rejection of unsupported FlagGems autograd.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "p",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Scalar?"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

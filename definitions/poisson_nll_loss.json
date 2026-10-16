@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "poisson_nll_loss",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::poisson_nll_loss(Tensor input, Tensor target, bool log_input, bool full, float eps, int reduction) -> Tensor. Computes Poisson negative log likelihood with optional Stirling-term correction and none, mean, or sum reduction without mutating or aliasing its inputs. Tests cover legacy shapes, zero-sized and broadcast noncontiguous tensors, both input interpretations, special values and epsilon values, dtype promotion including complex inputs, reduction-size boundaries, gradients, and invalid input rejection.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "log_input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "full",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

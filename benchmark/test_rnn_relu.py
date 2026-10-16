@@ -12,51 +12,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+SHAPES = [(16, 4, 32, 32), (32, 8, 64, 64), (64, 16, 128, 128)]
 
 
-def rnn_relu_input_fn(shape, dtype, device):
-    seq_len, batch_size, input_size = shape
-    hidden_size = input_size
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=device)
-    hx = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=device)
-    rnn = torch.nn.RNN(input_size, hidden_size, 1, nonlinearity="relu")
-    rnn = rnn.to(dtype=dtype, device=device)
-    params = tuple(rnn._flat_weights)
-    yield inp, {
-        "hx": hx,
-        "params": params,
-        "has_biases": True,
-        "num_layers": 1,
-        "dropout": 0.0,
-        "train": False,
-        "bidirectional": False,
-        "batch_first": False,
-    }
+class RnnReluBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "seq,batch,input,hidden"
 
 
-class RnnReluBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        shapes = [
-            (16, 4, 32),
-            (32, 8, 64),
-            (64, 16, 128),
-        ]
-        for shape in shapes:
-            yield from self.input_fn(shape, dtype, self.device)
+def _case_fn(shape, dtype):
+    del dtype
+    seq, batch, input_size, hidden_size = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={
+            "input": [seq, batch, input_size],
+            "hx": [1, batch, hidden_size],
+        },
+        params={"layers": 1, "bidirectional": False, "batch_first": False},
+        builder_args=((seq, batch, input_size, hidden_size),),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    torch.manual_seed(0)
+    seq, batch, input_size, hidden_size = plan.builder_args[0]
+    value = torch.randn(seq, batch, input_size, dtype=dtype, device=device)
+    hx = torch.randn(1, batch, hidden_size, dtype=dtype, device=device)
+    module = torch.nn.RNN(input_size, hidden_size, 1, nonlinearity="relu").to(
+        dtype=dtype, device=device
+    )
+    params = tuple(module._flat_weights)
+    return value, hx, params, True, 1, 0.0, False, False, False
 
 
 @pytest.mark.rnn_relu
 def test_rnn_relu():
     bench = RnnReluBenchmark(
-        input_fn=rnn_relu_input_fn,
         op_name="rnn_relu",
-        torch_op=torch.rnn_relu,
+        torch_op=torch.ops.aten.rnn_relu.input,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

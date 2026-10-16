@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "divide",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::divide.Tensor(Tensor self, Tensor other) -> Tensor. Performs elementwise true division with broadcasting without mutating or aliasing either input. Tests cover deterministic floating inputs, legacy pointwise shapes, broadcasting, zero-sized and noncontiguous tensors, zeros, infinities and NaNs, autograd, output metadata, input non-mutation, and invalid broadcasting.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

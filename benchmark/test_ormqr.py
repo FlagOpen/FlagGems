@@ -1,16 +1,24 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 from . import base
 
 
-# ormqr benchmark
-# ormqr applies Householder reflectors which have inherent sequential dependency.
-# The fused Triton kernel excels on small-to-medium matrices where the entire
-# active region fits in GPU SRAM (<=128 in both dimensions).
-class OrmqrBenchmark(base.GenericBenchmark2DOnly):
-    # Override default shapes to include representative sizes for Householder application:
-    # small matrices (fused kernel path) and medium/large matrices (tiled path)
+class OrmqrBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [
         (32, 32),
         (48, 48),
@@ -25,31 +33,52 @@ class OrmqrBenchmark(base.GenericBenchmark2DOnly):
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = self.DEFAULT_SHAPES
+        self.shape_desc = "M, N"
+
+    def set_more_metrics(self):
+        return ["tflops"]
 
     def get_tflops(self, op, *args, **kwargs):
-        # ormqr: multiply Q (m x m or n x n) with C (m x n)
-        # Flops: 2 * m * n * min(m, n) for the matrix multiplication
-        m, n = args[2].shape
-        k = args[0].shape[-1]  # k = min(m, n) for ormqr
+        m, n = args[2].shape[-2:]
+        k = args[0].shape[-1]
         return 2 * m * n * k
+
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        ordinal = 0
+        for shape in self.shapes:
+            for left in (True, False):
+                for transpose in (True, False):
+                    yield self._case_from_plan(
+                        dtype,
+                        ordinal,
+                        base.BenchmarkCasePlan(
+                            shape={"other": list(shape)},
+                            params={"left": left, "transpose": transpose},
+                            builder_args=(tuple(shape), left, transpose),
+                        ),
+                    )
+                    ordinal += 1
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, left, transpose = plan.builder_args
+        torch.manual_seed(0)
+        m, n = shape
+        k = min(m, n)
+        rows = m if left else n
+        matrix = torch.randn((rows, k), dtype=case.dtype, device=self.device)
+        inp, tau = torch.geqrf(matrix)
+        other = torch.randn(shape, dtype=case.dtype, device=self.device)
+        return inp, tau, other, {"left": left, "transpose": transpose}
 
 
 @pytest.mark.ormqr
 def test_ormqr():
-    def ormqr_input_fn(shape, dtype, device):
-        m, n = shape
-        k = min(m, n)
-        # Generate valid Householder reflectors via QR decomposition
-        a = torch.randn(m, k, dtype=dtype, device=device)
-        input_tensor, tau = torch.geqrf(a)
-        other = torch.randn(m, n, dtype=dtype, device=device)
-        yield input_tensor, tau, other
-
-    bench = OrmqrBenchmark(
-        input_fn=ormqr_input_fn,
+    OrmqrBenchmark(
         op_name="ormqr",
         torch_op=torch.ormqr,
-        # ormqr only supports float32 and float64 (LAPACK limitation, no half/bfloat16)
         dtypes=[torch.float32, torch.float64],
-    )
-    bench.run()
+    ).run()

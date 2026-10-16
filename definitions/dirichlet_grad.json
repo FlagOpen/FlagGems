@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "dirichlet_grad",
+  "requires_triton_kernel": true,
+  "description": "Representative upstream schema: aten::_dirichlet_grad(Tensor x, Tensor alpha, Tensor total) -> Tensor. The artifact maps to the private canonical base _dirichlet_grad and computes the reparameterized Dirichlet gradient without mutating or aliasing its inputs. Tests cover float32/float64 simplex inputs across concentration and category regimes, output metadata, numerical agreement, input preservation, and rejection of nonbroadcastable shapes.",
+  "parameters": [
+    {
+      "name": "x",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "alpha",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "total",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

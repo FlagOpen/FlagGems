@@ -18,73 +18,41 @@ import torch
 import flag_gems
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
+
+CORE_SHAPES = [(4, 2), (8, 4), (16, 8), (16, 8, 4)]
+COMPREHENSIVE_SHAPES = [(64, 8, 4), (32, 16, 8)]
 
 
-def _reference_linalg_polar(inp):
-    svd_U, singular_values, Vh = torch.linalg.svd(inp, full_matrices=False)
-    polar_U = svd_U @ Vh
-    polar_H = Vh.mH @ (singular_values.unsqueeze(-1) * Vh)
-    return polar_U, 0.5 * (polar_H + polar_H.mH)
-
-
-def _reference_linalg_polar_out(inp, *, U, H):
-    result_U, result_H = _reference_linalg_polar(inp)
-    U.resize_as_(result_U).copy_(result_U)
-    H.resize_as_(result_H).copy_(result_H)
-    return U, H
-
-
-if hasattr(torch.ops.aten, "linalg_polar"):
-    TORCH_LINALG_POLAR = torch.ops.aten.linalg_polar.default
-    TORCH_LINALG_POLAR_OUT = torch.ops.aten.linalg_polar.out
-else:
-    TORCH_LINALG_POLAR = _reference_linalg_polar
-    TORCH_LINALG_POLAR_OUT = _reference_linalg_polar_out
-
-
-class LinalgPolarBenchmark(base.Benchmark):
-    CORE_SHAPES = [(4, 2), (8, 4), (16, 8), (16, 8, 4)]
-    COMPREHENSIVE_SHAPES = [(64, 8, 4), (32, 16, 8)]
-
+class LinalgPolarBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(self.CORE_SHAPES)
+        self.shapes = list(CORE_SHAPES)
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            self.shapes += self.COMPREHENSIVE_SHAPES
-
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            yield (torch.randn(shape, dtype=dtype, device=self.device),)
+            self.shapes.extend(COMPREHENSIVE_SHAPES)
+        self.shape_desc = "batch dimensions, rows, columns"
 
 
-class LinalgPolarOutBenchmark(LinalgPolarBenchmark):
-    def get_input_iter(self, dtype):
-        for (inp,) in super().get_input_iter(dtype):
-            U = torch.empty_like(inp)
-            H = torch.empty(
-                (*inp.shape[:-2], inp.shape[-1], inp.shape[-1]),
-                dtype=dtype,
-                device=self.device,
-            )
-            yield inp, {"U": U, "H": H}
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"A": list(dims)}, params={}, builder_args=(dims,)
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    return (torch.randn(shape, dtype=dtype, device=device),)
 
 
 @pytest.mark.linalg_polar
 def test_linalg_polar():
-    bench = LinalgPolarBenchmark(
+    LinalgPolarBenchmark(
         op_name="linalg_polar",
-        torch_op=TORCH_LINALG_POLAR,
+        torch_op=torch.ops.aten.linalg_polar.default,
         gems_op=flag_gems.linalg_polar,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
-    )
-    bench.run()
-
-
-@pytest.mark.linalg_polar_out
-def test_linalg_polar_out():
-    bench = LinalgPolarOutBenchmark(
-        op_name="linalg_polar_out",
-        torch_op=TORCH_LINALG_POLAR_OUT,
-        gems_op=flag_gems.linalg_polar_out,
-        dtypes=[torch.float32],
-    )
-    bench.run()
+    ).run()

@@ -36,6 +36,7 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     """Test accuracy for _thnn_fused_lstm_cell_backward_impl."""
     if flag_gems.vendor_name == "cambricon" and dtype == torch.bfloat16:
         pytest.skip("Issue #5254: Not supported")
+    torch.manual_seed(0)
     batch_size, hidden_size = shape
     dev = flag_gems.device
 
@@ -66,6 +67,7 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
 
     # Compare outputs — ref_out order: (grad_input_gates, grad_cx, grad_biases)
     for i, (ref, res) in enumerate(zip(ref_out, res_out)):
+        ref = utils.to_reference(ref, True)
         assert (
             res.shape == ref.shape
         ), f"Shape mismatch at output[{i}]: {res.shape} vs {ref.shape}"

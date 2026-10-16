@@ -40,6 +40,7 @@ def _make_moderate_cond_matrix(shape, dtype, device):
     in a predictable range, avoiding flaky test failures from ill-conditioned
     random matrices where GPU/CPU inverse differences get amplified.
     """
+    torch.manual_seed(0)
     n = shape[-1]
     batch_shape = shape[:-2]
     A = torch.randn(shape, dtype=dtype, device=device)
@@ -58,7 +59,7 @@ def _make_moderate_cond_matrix(shape, dtype, device):
 def test_linalg_cond(shape, dtype):
     # Test with p=None (2-norm via Jacobi SVD)
     A = _make_moderate_cond_matrix(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.cond(ref_A)
     res_out = torch.linalg.cond(A)
@@ -74,7 +75,7 @@ def test_linalg_cond(shape, dtype):
 def test_linalg_cond_with_p(shape, dtype, p):
     # Test with various p values that require square matrices
     A = _make_moderate_cond_matrix(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.cond(ref_A, p=p)
     res_out = torch.linalg.cond(A, p=p)
@@ -89,16 +90,32 @@ def test_linalg_cond_with_p(shape, dtype, p):
 @pytest.mark.parametrize("p", [2, -2])
 def test_linalg_cond_svd(shape, dtype, p):
     # Test with p=2 or p=-2 which can work with non-square matrices
+    torch.manual_seed(0)
     m, n = shape[-2], shape[-1]
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     # Make well-conditioned by adding scaled identity to square part
     k = min(m, n)
     eye_k = torch.eye(k, dtype=dtype, device=flag_gems.device)
     A[..., :k, :k] = A[..., :k, :k] + k * eye_k
-    ref_A = utils.to_reference(A)
+    ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.cond(ref_A, p=p)
     res_out = torch.linalg.cond(A, p=p)
 
     # Use relative comparison for condition numbers
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+
+
+@pytest.mark.linalg_cond
+def test_linalg_cond_autograd_rejected():
+    matrix = _make_moderate_cond_matrix(
+        (4, 4), torch.float32, flag_gems.device
+    ).requires_grad_(True)
+
+    result = flag_gems.linalg_cond(matrix)
+
+    # Condition-number paths write detached Triton outputs and no custom
+    # autograd Function is registered for the FlagGems implementation.
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result, matrix)

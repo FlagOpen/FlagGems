@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "nextafter_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::nextafter_(Tensor(a!) self, Tensor other) -> Tensor(a!). Replaces each element of self with the next representable value toward other and returns the same Tensor object and storage. Tests cover supported floating dtypes, broadcasting, zero-sized and noncontiguous tensors, signed zero, infinities, NaN propagation, mutation, identity, and invalid shape expansion.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

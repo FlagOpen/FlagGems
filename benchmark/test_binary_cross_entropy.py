@@ -1,76 +1,102 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 
-def binary_cross_entropy_input_fn(shape, dtype, device):
-    # Generate input in (0, 1) range using sigmoid
-    inp = torch.sigmoid(utils.generate_tensor_input(shape, dtype, device))
-    # Generate binary targets (0 or 1)
-    target = torch.randint(0, 2, shape, device=device).to(dtype)
-    yield inp, target
-
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    reductions = (1,) if base.Config.bench_level != consts.BenchLevel.COMPREHENSIVE else (0, 1, 2)
+    for reduction in reductions:
+        yield base.BenchmarkCasePlan(
+            shape={"self": list(dims), "target": list(dims)},
+            params={"weighted": False, "reduction": reduction},
+            builder_args=(dims, False, reduction),
+        )
     if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield inp, target, {"reduction": "mean"}
-        yield inp, target, {"reduction": "sum"}
-        yield inp, target, {"reduction": "none"}
+        yield base.BenchmarkCasePlan(
+            shape={"self": list(dims), "target": list(dims), "weight": list(dims)},
+            params={"weighted": True, "reduction": 1},
+            builder_args=(dims, True, 1),
+        )
 
 
-def binary_cross_entropy_out_input_fn(shape, dtype, device):
-    # Generate input in (0, 1) range using sigmoid
+def _build_inputs_fn(plan, dtype, device):
+    shape, weighted, reduction = plan.builder_args
+    torch.manual_seed(0)
     inp = torch.sigmoid(utils.generate_tensor_input(shape, dtype, device))
-    # Generate binary targets (0 or 1)
     target = torch.randint(0, 2, shape, device=device).to(dtype)
-
-    # Default reduction is "mean", so out is scalar
-    out = torch.empty((), dtype=dtype, device=device)
-    yield inp, target, {"out": out}
-
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        # reduction="mean": out is scalar
-        yield inp, target, {
-            "reduction": "mean",
-            "out": torch.empty((), dtype=dtype, device=device),
-        }
-
-        # reduction="sum": out is scalar
-        yield inp, target, {
-            "reduction": "sum",
-            "out": torch.empty((), dtype=dtype, device=device),
-        }
-
-        # reduction="none": out shape matches input shape
-        yield inp, target, {
-            "reduction": "none",
-            "out": torch.empty_like(inp),
-        }
-
-
-def torch_binary_cross_entropy_out(inp, target, **kwargs):
-    out = kwargs.pop("out")
-    result = torch.nn.functional.binary_cross_entropy(inp, target, **kwargs)
-    out.copy_(result)
-    return out
+    weight = torch.rand(shape, dtype=dtype, device=device) if weighted else None
+    return inp, target, weight, reduction
 
 
 @pytest.mark.binary_cross_entropy
 def test_binary_cross_entropy():
     bench = base.GenericBenchmark2DOnly(
         op_name="binary_cross_entropy",
-        input_fn=binary_cross_entropy_input_fn,
-        torch_op=torch.nn.functional.binary_cross_entropy,
+        torch_op=torch.ops.aten.binary_cross_entropy,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
+def _out_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    reductions = (
+        (1,)
+        if base.Config.bench_level != consts.BenchLevel.COMPREHENSIVE
+        else (0, 1, 2)
+    )
+    for reduction in reductions:
+        out_shape = dims if reduction == 0 else ()
+        yield base.BenchmarkCasePlan(
+            shape={
+                "self": list(dims),
+                "target": list(dims),
+                "out": list(out_shape),
+            },
+            params={"weighted": False, "reduction": reduction},
+            builder_args=(dims, out_shape, reduction),
+        )
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    shape, out_shape, reduction = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.sigmoid(utils.generate_tensor_input(shape, dtype, device))
+    target = torch.randint(0, 2, shape, device=device).to(dtype)
+    out = torch.empty(out_shape, dtype=dtype, device=device)
+    return inp, target, None, reduction, {"out": out}
+
+
 @pytest.mark.binary_cross_entropy_out
 def test_binary_cross_entropy_out():
-    bench = base.GenericBenchmark2DOnly(
+    bench = OperatorBenchmark(
         op_name="binary_cross_entropy_out",
-        input_fn=binary_cross_entropy_out_input_fn,
-        torch_op=torch_binary_cross_entropy_out,
+        torch_op=torch.ops.aten.binary_cross_entropy.out,
+        case_fn=_out_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
     )
     bench.run()

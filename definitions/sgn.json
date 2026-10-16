@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "sgn",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::sgn(Tensor self) -> Tensor. Returns the real sign or normalized complex phase elementwise without mutating the input. The shared legacy correctness file also preserves coverage for the in-place and out overload families, including integer, boolean and complex dtypes, special and nonfinite values, empty and noncontiguous tensors, out-buffer resizing and dtype rejection. Effects below describe only the representative functional signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

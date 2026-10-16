@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,41 +18,41 @@ import torch
 import flag_gems
 
 from . import base
+from .generated_operator_utils import OperatorBenchmark
 
-# Shapes for nuclear_norm benchmark
-NUCLEAR_NORM_BENCHMARK_SHAPES = [
-    (16, 16),
-    (32, 32),
-    (64, 64),
-    (128, 128),
-    (256, 256),
-    (512, 512),
-]
+SHAPES = [(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512)]
 
 
-class NuclearNormBenchmark(base.GenericBenchmark2DOnly):
-    """
-    Benchmark for nuclear_norm
-    """
+class OperatorCaseBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(*B), M, N"
 
-    def set_more_shapes(self):
-        return NUCLEAR_NORM_BENCHMARK_SHAPES
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"keepdim": False},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return (inp, {"keepdim": False})
 
 
 @pytest.mark.nuclear_norm
 def test_nuclear_norm():
-    def nuclear_norm_input_fn(shape, cur_dtype, device):
-        m, n = shape
-        # Only float32 is supported for SVD on CUDA
-        inp = torch.randn([m, n], dtype=torch.float32, device=device)
-        yield inp,
-
-    bench = NuclearNormBenchmark(
-        input_fn=nuclear_norm_input_fn,
+    OperatorCaseBenchmark(
         op_name="nuclear_norm",
         torch_op=torch.nuclear_norm,
-        # Only float32 for SVD on CUDA (PyTorch limitation)
+        gems_op=flag_gems.nuclear_norm,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
-    )
-    bench.set_gems(flag_gems.nuclear_norm)
-    bench.run()
+    ).run()

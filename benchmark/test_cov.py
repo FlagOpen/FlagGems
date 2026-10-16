@@ -16,33 +16,50 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-# cov takes a 2D (variables x observations) matrix and produces an N x N
-# covariance matrix. Shapes range from small to large in both dimensions so the
-# mean reduction and the centered Gram GEMM are both exercised.
-COV_SHAPES = [
+
+_COV_SHAPES = [
     (32, 256),
     (64, 1024),
     (128, 1024),
     (256, 1024),
-    (256, 4096),
     (512, 2048),
-    (512, 4096),
 ]
 
 
-class CovBenchmark(base.Benchmark):
-    """Benchmark for aten::cov (covariance matrix)."""
-
-    DEFAULT_SHAPE_DESC = "input shape"
-
+class CovBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = COV_SHAPES
+        super().set_shapes(shape_file_path, default_shapes=_COV_SHAPES)
 
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            inp = torch.randn(shape, dtype=dtype, device=self.device)
-            yield inp,
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for mode in ("default", "correction", "fweights", "aweights"):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(dims)},
+            params={"mode": mode},
+            builder_args=(dims, mode),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, mode = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    kwargs = {}
+    if mode == "correction":
+        kwargs["correction"] = 0
+    elif mode == "fweights":
+        kwargs["fweights"] = torch.randint(
+            1, 5, (shape[-1],), dtype=torch.int64, device=device
+        )
+    elif mode == "aweights":
+        kwargs["aweights"] = torch.rand(
+            (shape[-1],), dtype=dtype, device=device
+        ) + 0.1
+    return inp, kwargs
 
 
 @pytest.mark.cov
@@ -50,6 +67,8 @@ def test_cov():
     bench = CovBenchmark(
         op_name="cov",
         torch_op=torch.cov,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

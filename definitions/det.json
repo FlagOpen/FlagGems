@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "det",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::det(Tensor self) -> Tensor. Computes matrix determinants without mutating or aliasing self. Tests cover square matrices and batches across kernel regimes, positive-definite, negative, diagonal and singular matrices, empty matrices and empty batches, noncontiguous input, float32 and supported float64, invalid ranks/shapes, the NPU-compatible small-operations reference path, and explicit rejection of unsupported FlagGems autograd.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

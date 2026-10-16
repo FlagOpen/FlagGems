@@ -2,23 +2,26 @@
   "api_version": "v6.0",
   "name": "binomial",
   "requires_triton_kernel": true,
-  "description": "Draws samples from a binomial distribution parameterized by `count` and `prob`.",
+  "description": "Representative upstream schema: aten::binomial(Tensor count, Tensor prob, Generator? generator=None) -> Tensor. Draws binomial samples without mutating or aliasing count or prob. Tests cover output metadata and bounds, distribution moments, varying parameters, deterministic probability/count boundaries, generator reproducibility and state advancement, input preservation, and the separately registered binomial.out buffer identity contract retained in the shared pytest family.",
   "parameters": [
     {
       "name": "count",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "prob",
       "kind": "positional_or_keyword",
-      "required": true
+      "required": true,
+      "type_hint": "Tensor"
     },
     {
       "name": "generator",
       "kind": "positional_or_keyword",
       "required": false,
-      "default": null
+      "default": null,
+      "type_hint": "Generator?"
     }
   ],
   "outputs": [

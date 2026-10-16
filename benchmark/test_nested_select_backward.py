@@ -20,53 +20,57 @@ import flag_gems
 from . import base, consts
 
 
-class NestedSelectBackwardBenchmark(base.Benchmark):
-    """Benchmark for the _nested_select_backward operator."""
+SHAPES = [
+    ([5, 7, 4], 3),
+    ([16, 8, 12, 20], 8),
+    ([64, 128, 256], 16),
+    ([128, 64, 192, 256], 32),
+]
 
+
+class NestedSelectBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
-        # (component sizes along the ragged dim, dense dim) configurations.
-        self.shapes = [
-            ([5, 7, 4], 3),
-            ([16, 8, 12, 20], 8),
-            ([64, 128, 256], 16),
-            ([128, 64, 192, 256], 32),
-        ]
+        self.shapes = SHAPES
         self.shape_desc = "component_sizes, dense_dim"
 
-    def get_input_iter(self, cur_dtype):
-        for sizes, dense_dim in self.shapes:
-            comps = [
-                torch.randn(s, dense_dim, dtype=cur_dtype, device=self.device)
-                for s in sizes
-            ]
-            self_nt = torch.nested.nested_tensor(
-                comps, layout=torch.jagged, device=self.device
+    def get_case_iter(self, dtype):
+        for ordinal, (sizes, dense_dim) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "component_sizes": list(sizes),
+                        "dense_dim": dense_dim,
+                    },
+                    params={"dim": 0, "index": 1},
+                    builder_args=(tuple(sizes), dense_dim, 1),
+                ),
             )
-            index = 1
-            grad = torch.randn(
-                sizes[index], dense_dim, dtype=cur_dtype, device=self.device
-            )
-            yield grad, self_nt, 0, index
+
+    def build_inputs(self, case):
+        torch.manual_seed(0)
+        plan = case.builder_args[0]
+        sizes, dense_dim, index = plan.builder_args
+        components = [
+            torch.randn(size, dense_dim, dtype=case.dtype, device=self.device)
+            for size in sizes
+        ]
+        nested = torch.nested.nested_tensor(components, layout=torch.jagged)
+        grad = torch.randn(
+            sizes[index], dense_dim, dtype=case.dtype, device=self.device
+        )
+        return grad, nested, 0, index
 
     def get_tflops(self, op, *args, **kwargs):
         return 0.0
 
-    def record_shapes(self, *args, **kwargs):
-        # args == (grad, nested_self, dim, index). Nested tensor sizes contain
-        # SymInts that break the default JSON serializer, so emit a plain
-        # string description instead.
-        grad, self_nt, dim, index = args
-        comp_sizes = [int(t.shape[0]) for t in self_nt.unbind()]
-        return f"components={comp_sizes} dense_dim={grad.shape[-1]} index={index}"
-
 
 @pytest.mark.nested_select_backward
-@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
-def test_nested_select_backward(dtype):
-    bench = NestedSelectBackwardBenchmark(
+def test_nested_select_backward():
+    NestedSelectBackwardBenchmark(
         op_name="nested_select_backward",
         torch_op=torch.ops.aten._nested_select_backward,
-        dtypes=[dtype],
-    )
-    bench.set_gems(flag_gems._nested_select_backward)
-    bench.run()
+        gems_op=flag_gems._nested_select_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    ).run()

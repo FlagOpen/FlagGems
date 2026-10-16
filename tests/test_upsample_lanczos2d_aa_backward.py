@@ -19,10 +19,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._upsample_lanczos2d_aa_backward import (
-    upsample_lanczos2d_aa_backward_grad_input,
-)
-
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
@@ -120,13 +116,14 @@ def test_upsample_lanczos2d_aa_backward(
     scales_h,
     scales_w,
 ):
+    torch.manual_seed(0)
     _disable_gemm_path(monkeypatch)
     if not QUICK_MODE:
         # Keep the semantic matrix CI-safe: the separately tested fused path
         # has large shape-dependent static loops and is expensive to compile.
         monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((n, c, output_h, output_w), dtype=dtype, device=flag_gems.device)
-    grad_cpu = utils.to_reference(grad).cpu()
+    grad_cpu = utils.to_reference(grad, True).cpu()
     input_size = (n, c, input_h, input_w)
     reference = _reference(grad_cpu, input_size, align_corners, scales_h, scales_w)
     result = flag_gems.upsample_lanczos2d_aa_backward(
@@ -144,7 +141,7 @@ def test_upsample_lanczos2d_aa_backward(
         torch.float32: 2e-4,
         torch.float64: 1e-12,
     }[dtype]
-    torch.testing.assert_close(result, reference, rtol=tolerance, atol=tolerance)
+    utils.gems_assert_close(result, reference, dtype, atol=tolerance)
 
 
 @pytest.mark.upsample_lanczos2d_aa_backward
@@ -157,57 +154,48 @@ def test_upsample_lanczos2d_aa_backward(
     ],
 )
 def test_upsample_lanczos2d_aa_backward_dtypes(monkeypatch, dtype, tolerance):
+    torch.manual_seed(0)
     _disable_gemm_path(monkeypatch)
     monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((1, 2, 11, 13), dtype=dtype, device=flag_gems.device)
-    grad_cpu = utils.to_reference(grad).cpu()
+    grad_cpu = utils.to_reference(grad, True).cpu()
     input_size = (1, 2, 7, 9)
     result = flag_gems.upsample_lanczos2d_aa_backward(
         grad, (11, 13), input_size, False
     ).cpu()
     reference = _reference(grad_cpu, input_size, False, None, None)
-    torch.testing.assert_close(result, reference, rtol=tolerance, atol=tolerance)
+    utils.gems_assert_close(result, reference, dtype, atol=tolerance)
 
 
 @pytest.mark.upsample_lanczos2d_aa_backward
 def test_upsample_lanczos2d_aa_backward_precomputed_path(monkeypatch):
     # Force the two-pass path so CI compiles and validates its independent
     # precomputed-weight kernels in addition to the fused gather path.
+    torch.manual_seed(0)
     _disable_gemm_path(monkeypatch)
     monkeypatch.setattr(lanczos_backward_module, "_FUSE_THRESHOLD", 0)
     grad = torch.randn((2, 3, 9, 31), device=flag_gems.device)
-    grad_cpu = utils.to_reference(grad).cpu()
+    grad_cpu = utils.to_reference(grad, True).cpu()
     input_size = (2, 3, 17, 19)
     result = flag_gems.upsample_lanczos2d_aa_backward(
         grad, (9, 31), input_size, False
     ).cpu()
     reference = _reference(grad_cpu, input_size, False, None, None)
-    torch.testing.assert_close(result, reference, rtol=2e-4, atol=2e-4)
+    utils.gems_assert_close(result, reference, result.dtype, atol=2e-4)
 
 
-@pytest.mark.upsample_lanczos2d_aa_backward_grad_input
-def test_upsample_lanczos2d_aa_backward_out(monkeypatch):
-    _disable_gemm_path(monkeypatch)
-    grad = torch.randn((1, 2, 11, 13), device=flag_gems.device)
-    grad_cpu = utils.to_reference(grad).cpu()
-    output = torch.empty(0, device=flag_gems.device)
-    result = upsample_lanczos2d_aa_backward_grad_input(
-        grad, (11, 13), (1, 2, 7, 9), False, grad_input=output
-    )
-    assert result is output
-    reference = _reference(grad_cpu, (1, 2, 7, 9), False, None, None)
-    torch.testing.assert_close(result.cpu(), reference, rtol=2e-4, atol=2e-4)
 
 
 @pytest.mark.upsample_lanczos2d_aa_backward
 def test_upsample_lanczos2d_aa_backward_noncontiguous_grad(monkeypatch):
+    torch.manual_seed(0)
     _disable_gemm_path(monkeypatch)
     grad = torch.randn((1, 2, 13, 11), device=flag_gems.device).transpose(-1, -2)
     assert not grad.is_contiguous()
-    grad_cpu = utils.to_reference(grad).cpu()
+    grad_cpu = utils.to_reference(grad, True).cpu()
     input_size = (1, 2, 7, 9)
     result = flag_gems.upsample_lanczos2d_aa_backward(
         grad, (11, 13), input_size, False
     ).cpu()
     reference = _reference(grad_cpu, input_size, False, None, None)
-    torch.testing.assert_close(result, reference, rtol=2e-4, atol=2e-4)
+    utils.gems_assert_close(result, reference, result.dtype, atol=2e-4)

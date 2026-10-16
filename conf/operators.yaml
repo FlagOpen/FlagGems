@@ -2153,7 +2153,7 @@ ops:
 
     '
   for:
-  - binary_cross_entropy_out
+  - binary_cross_entropy.out
   labels:
   - aten
   - pointwise
@@ -4840,7 +4840,7 @@ ops:
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
   for:
-  - empty
+  - empty.memory_format
   labels:
   - aten
   - KernelGen
@@ -5718,7 +5718,8 @@ ops:
 - id: float_power_
   description: Triton kernel implementation for float_power_.
   for:
-  - float_power_
+  - float_power_.Scalar
+  - float_power_.Tensor
   labels:
   - aten
   - KernelGen
@@ -9106,7 +9107,7 @@ ops:
 - id: linalg_matmul
   description: Triton kernel implementation for linalg_matmul.
   for:
-  - linalg.matmul
+  - linalg_matmul
   labels:
   - aten
   - KernelGen
@@ -9460,7 +9461,6 @@ ops:
     where info indicates singularity status.
   for:
   - linalg_solve_ex
-  - _linalg_solve_ex
   labels:
   - aten
   - KernelGen
@@ -10483,6 +10483,7 @@ ops:
   - alpha: '5.5'
 - id: matmul_bias_activation
   description: Fused matrix multiplication with bias addition and ReLU activation.
+  schema_namespace: flaggems
   for:
   - matmul_bias_activation
   labels:
@@ -10493,6 +10494,7 @@ ops:
   - alpha: '5.4'
 - id: matmuladd
   description: Computes matrix multiplication followed by bias addition.
+  schema_namespace: flaggems
   for:
   - matmuladd
   labels:
@@ -10663,7 +10665,7 @@ ops:
   description: Applies a 3D max pooling over an input signal composed of several input
     planes.
   for:
-  - nn.functional.max_pool3d
+  - max_pool3d_with_indices
   labels:
   - aten
   - nn.functional
@@ -14011,7 +14013,7 @@ ops:
 - id: rnn_relu
   description: Triton kernel implementation for rnn_relu.
   for:
-  - rnn_relu
+  - rnn_relu.input
   labels:
   - aten
   - KernelGen
@@ -14757,7 +14759,7 @@ ops:
 - id: scatter_reduce_
   description: This is the in-place version of `scatter_reduce()`.
   for:
-  - scatter_.reduce
+  - scatter_reduce_.two
   labels:
   - aten
   - KernelGen
@@ -15861,7 +15863,7 @@ ops:
 
     '
   for:
-  - special.bessel_j0
+  - special_bessel_j0
   labels:
   - aten
   - pointwise
@@ -15923,7 +15925,7 @@ ops:
 
     '
   for:
-  - special.chebyshev_polynomial_t
+  - special_chebyshev_polynomial_t
   labels:
   - aten
   - KernelGen
@@ -15985,7 +15987,8 @@ ops:
 
     '
   for:
-  - special.chebyshev_polynomial_w
+  - special_chebyshev_polynomial_w
+  - special_chebyshev_polynomial_w.n_scalar
   labels:
   - aten
   - KernelGen
@@ -16098,10 +16101,10 @@ ops:
   - alpha: '5.4'
 - id: special_erfinv_
   description: The in-place version of `special_erfinv()`.
+  schema_namespace: flaggems
   for:
   - special_erfinv_
   labels:
-  - aten
   - KernelGen
   kind:
   - Math
@@ -16738,7 +16741,7 @@ ops:
 
     '
   for:
-  - special.shifted_chebyshev_polynomial_w
+  - special_shifted_chebyshev_polynomial_w
   stages:
   - alpha: '5.4'
 - id: special_sinc

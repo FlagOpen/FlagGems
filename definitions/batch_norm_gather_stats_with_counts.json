@@ -1,0 +1,67 @@
+{
+  "api_version": "v6.0",
+  "name": "batch_norm_gather_stats_with_counts",
+  "requires_triton_kernel": true,
+  "description": "Gather per-segment batch-normalization statistics using an explicit count tensor; updates running_mean and running_var in place when both are supplied.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "mean",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "invstd",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "running_mean",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "running_var",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "counts",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "mean",
+    "invstd"
+  ],
+  "effects": {
+    "mutates": [
+      "running_mean",
+      "running_var"
+    ],
+    "returns_alias_of": {}
+  }
+}

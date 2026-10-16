@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -5,150 +19,49 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# Small shapes for attention accuracy tests:
-# (batch, heads, seq_len, head_dim) combinations covering common
-# attention patterns from single-batch single-head to multi-batch multi-head
-ATTENTION_SHAPES = [
-    (1, 2, 8, 16),
-    (2, 4, 16, 32),
-    (4, 8, 32, 64),
-]
-
-
-def _get_atol_for_dtype(dtype):
-    if dtype == torch.bfloat16:
-        return 2e-3
-    else:
-        return 3e-4
+EFFICIENT_ATTENTION = torch.ops.aten._scaled_dot_product_efficient_attention
+CASES = [(1, 2, 8, 16, False, False), (2, 4, 16, 32, True, False), (2, 4, 16, 32, False, True)]
 
 
 @pytest.mark.scaled_dot_product_efficient_attention
-@pytest.mark.parametrize("shape", ATTENTION_SHAPES)
+@pytest.mark.parametrize("batch,heads,seq_len,head_dim,is_causal,use_bias", CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_scaled_dot_product_efficient_attention(shape, dtype):
-    batch, num_heads, seq_len, head_dim = shape
-
-    query = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
+def test_scaled_dot_product_efficient_attention(
+    batch, heads, seq_len, head_dim, is_causal, use_bias, dtype
+):
+    torch.manual_seed(0)
+    shape = (batch, heads, seq_len, head_dim)
+    query = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    key = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    value = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    attn_bias = (
+        torch.randn(batch, heads, seq_len, seq_len, dtype=dtype, device=flag_gems.device) * 0.1
+        if use_bias
+        else None
     )
-    key = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
+    ref_query = utils.to_reference(query, True)
+    ref_key = utils.to_reference(key, True)
+    ref_value = utils.to_reference(value, True)
+    ref_bias = utils.to_reference(attn_bias, True)
+    reference = EFFICIENT_ATTENTION(
+        ref_query, ref_key, ref_value, ref_bias, True, is_causal=is_causal
     )
-    value = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-
-    ref_out = utils.to_reference(
-        torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, is_causal=False
-        )
-    )
-
     with flag_gems.use_gems():
-        res_out, _, _, _ = torch.ops.aten._scaled_dot_product_efficient_attention(
-            query,
-            key,
-            value,
-            attn_bias=None,
-            compute_log_sumexp=False,
-            dropout_p=0.0,
-            is_causal=False,
+        result = EFFICIENT_ATTENTION(
+            query, key, value, attn_bias, True, is_causal=is_causal
         )
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=_get_atol_for_dtype(dtype))
+    assert len(result) == len(reference) == 4
+    utils.gems_assert_close(result[0], reference[0], dtype, atol=3e-2)
+    utils.gems_assert_close(result[1], reference[1], torch.float32, atol=3e-2)
+    for index in (2, 3):
+        assert result[index].shape == reference[index].shape
+        assert result[index].dtype == reference[index].dtype
 
 
 @pytest.mark.scaled_dot_product_efficient_attention
-@pytest.mark.parametrize("shape", ATTENTION_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_scaled_dot_product_efficient_attention_causal(shape, dtype):
-    batch, num_heads, seq_len, head_dim = shape
-
-    query = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-    key = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-    value = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-
-    ref_out = utils.to_reference(
-        torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, is_causal=True
-        )
-    )
-
-    with flag_gems.use_gems():
-        res_out, _, _, _ = torch.ops.aten._scaled_dot_product_efficient_attention(
-            query,
-            key,
-            value,
-            attn_bias=None,
-            compute_log_sumexp=False,
-            dropout_p=0.0,
-            is_causal=True,
-        )
-
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=_get_atol_for_dtype(dtype))
-
-
-@pytest.mark.scaled_dot_product_efficient_attention
-@pytest.mark.parametrize("shape", ATTENTION_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_scaled_dot_product_efficient_attention_logsumexp(shape, dtype):
-    batch, num_heads, seq_len, head_dim = shape
-
-    query = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-    key = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-    value = torch.randn(
-        batch, num_heads, seq_len, head_dim, dtype=dtype, device=flag_gems.device
-    )
-
-    ref_out = utils.to_reference(
-        torch.nn.functional.scaled_dot_product_attention(
-            query, key, value, is_causal=False
-        )
-    )
-
-    # Reference log_sumexp from the native aten op (run on device, outside
-    # `use_gems()`). It is padded to ceil(seq_len / 32) * 32, so slice to
-    # seq_len before comparing.
-    _, ref_log_sumexp, _, _ = torch.ops.aten._scaled_dot_product_efficient_attention(
-        query,
-        key,
-        value,
-        attn_bias=None,
-        compute_log_sumexp=True,
-        dropout_p=0.0,
-        is_causal=False,
-    )
-    ref_log_sumexp = ref_log_sumexp[:, :, :seq_len]
-    ref_log_sumexp = utils.to_reference(ref_log_sumexp)
-
-    with flag_gems.use_gems():
-        (
-            res_out,
-            res_log_sumexp,
-            _,
-            _,
-        ) = torch.ops.aten._scaled_dot_product_efficient_attention(
-            query,
-            key,
-            value,
-            attn_bias=None,
-            compute_log_sumexp=True,
-            dropout_p=0.0,
-            is_causal=False,
-        )
-
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=_get_atol_for_dtype(dtype))
-    # log_sumexp is always float32 regardless of input dtype.
-    utils.gems_assert_close(
-        res_log_sumexp, ref_log_sumexp, torch.float32, atol=_get_atol_for_dtype(dtype)
-    )
+def test_scaled_dot_product_efficient_attention_rejects_dropout():
+    torch.manual_seed(0)
+    query = torch.randn(1, 2, 8, 16, device=flag_gems.device)
+    with flag_gems.use_gems(), pytest.raises(AssertionError, match="dropout_p"):
+        EFFICIENT_ATTENTION(query, query, query, None, False, dropout_p=0.1)

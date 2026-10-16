@@ -34,6 +34,19 @@ SAME_SIZE_SHAPE_PAIRS = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    utils.init_seed(0)
+
+
+def _assert_bool_equal(result, reference):
+    assert isinstance(result, bool)
+    assert result == reference
+    # The repository exact-value helper accepts scalar values directly; no
+    # temporary tensors or backing allocations are needed for a bool result.
+    utils.gems_assert_equal(result, reference)
+
+
 @pytest.mark.is_same_size
 @pytest.mark.parametrize("shape_a,shape_b", SAME_SIZE_SHAPE_PAIRS)
 @pytest.mark.parametrize(
@@ -56,7 +69,7 @@ def test_is_same_size(shape_a, shape_b, dtype, caplog):
     assert (
         f"{utils.gems_log_prefix(flag_gems.is_same_size)} IS_SAME_SIZE" in caplog.text
     )
-    assert res_out == ref_out, f"Expected {ref_out}, got {res_out}"
+    _assert_bool_equal(res_out, ref_out)
     assert res_out == (shape_a == shape_b)
 
 
@@ -76,7 +89,7 @@ def test_is_same_size_non_contiguous(caplog):
     assert (
         f"{utils.gems_log_prefix(flag_gems.is_same_size)} IS_SAME_SIZE" in caplog.text
     )
-    assert res_out == ref_out
+    _assert_bool_equal(res_out, ref_out)
     assert res_out is True
 
 
@@ -98,7 +111,9 @@ def test_is_same_size_scalar_tensor(caplog):
     assert (
         f"{utils.gems_log_prefix(flag_gems.is_same_size)} IS_SAME_SIZE" in caplog.text
     )
-    assert res_same == torch.ops.aten.is_same_size(ref_a, ref_b)
-    assert res_diff == torch.ops.aten.is_same_size(ref_a, ref_c)
+    ref_same = torch.ops.aten.is_same_size(ref_a, ref_b)
+    ref_diff = torch.ops.aten.is_same_size(ref_a, ref_c)
+    _assert_bool_equal(res_same, ref_same)
+    _assert_bool_equal(res_diff, ref_diff)
     assert res_same is True
     assert res_diff is False

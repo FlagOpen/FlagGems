@@ -18,74 +18,91 @@ import pytest
 import torch
 
 from . import base, consts
-
-# The aten op is registered under the name `_native_multi_head_attention`, which
-# starts with an underscore.  pytest >= 8.0 rejects marker names that start with
-# an underscore ("Marker name must NOT start with underscore"), so the real
-# marker below drops the leading underscore and uses `native_multi_head_attention`.
-# The KernelGen completeness validator greps the raw source for the literal aten
-# mark name, which is why the string `@pytest.mark.native_multi_head_attention`
-# appears verbatim in this comment.
+from .generated_operator_utils import OperatorBenchmark
 
 
-class NativeMultiHeadAttentionBenchmark(base.Benchmark):
-    # (batch, seq_len, embed_dim, num_head).
-    ATTENTION_SHAPES = [
-        (2, 128, 64, 4),
-        (4, 256, 64, 8),
-        (8, 256, 128, 8),
+class NativeMultiHeadAttentionBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (2, 128, 64, 4),
+            (4, 256, 64, 8),
+            (8, 256, 128, 8),
+        ]
+
+    def set_more_shapes(self):
+        return None
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    batch, seq_len, embed_dim, num_heads = shape
+    modes = [
+        ("self", None),
+        ("encoder_decoder", None),
+        ("generic", None),
+        ("self", 0),
+        ("self", 1),
+        ("self", 2),
     ]
+    for mode, mask_type in modes:
+        yield base.BenchmarkCasePlan(
+            shape={
+                "query": [batch, seq_len, embed_dim],
+                "key": [batch, seq_len, embed_dim],
+                "value": [batch, seq_len, embed_dim],
+            },
+            params={
+                "mode": mode,
+                "mask_type": mask_type,
+                "need_weights": True,
+                "average_attn_weights": True,
+                "num_heads": num_heads,
+            },
+            builder_args=(tuple(shape), mode, mask_type),
+        )
 
-    # (label, share_k, share_v): the three input aliasing patterns of the op.
-    #   self-attention:      Q == K == V
-    #   encoder-decoder:     Q != K == V (cross-attention)
-    #   generic:             Q != K != V
-    ATTENTION_MODES = [
-        ("self", True, True),
-        ("encdec", False, True),
-        ("generic", False, False),
-    ]
 
-    def get_input_iter(self, dtype):
-        for B, T, D, NH in self.ATTENTION_SHAPES:
-            scale = 1.0 / math.sqrt(D)
-            query = torch.randn(B, T, D, dtype=dtype, device=self.device)
-            key = torch.randn(B, T, D, dtype=dtype, device=self.device)
-            value = torch.randn(B, T, D, dtype=dtype, device=self.device)
-            qkv_weight = torch.randn(3 * D, D, dtype=dtype, device=self.device) * scale
-            qkv_bias = torch.randn(3 * D, dtype=dtype, device=self.device) * scale
-            proj_weight = torch.randn(D, D, dtype=dtype, device=self.device) * scale
-            proj_bias = torch.randn(D, dtype=dtype, device=self.device) * scale
-            for mode, share_k, share_v in self.ATTENTION_MODES:
-                k_in = query if share_k else key
-                v_in = k_in if share_v else value
-                yield (
-                    query,
-                    k_in,
-                    v_in,
-                    D,
-                    NH,
-                    qkv_weight,
-                    qkv_bias,
-                    proj_weight,
-                    proj_bias,
-                    None,
-                    True,
-                    True,
-                    None,
-                )
-
-    def record_shapes(self, query, key, value, *args, **kwargs):
-        if query is key and key is value:
-            mode = "self"
-        elif key is value:
-            mode = "encdec"
-        else:
-            mode = "generic"
-        return {
-            "mode": mode,
-            "query": query.size(),
-        }
+def _build_inputs_fn(plan, dtype, device):
+    shape, mode, mask_type = plan.builder_args
+    batch, seq_len, embed_dim, num_heads = shape
+    torch.manual_seed(0)
+    scale = 1.0 / math.sqrt(embed_dim)
+    query = torch.randn(batch, seq_len, embed_dim, dtype=dtype, device=device)
+    key = torch.randn(batch, seq_len, embed_dim, dtype=dtype, device=device)
+    value = torch.randn(batch, seq_len, embed_dim, dtype=dtype, device=device)
+    if mode == "self":
+        key = value = query
+    elif mode == "encoder_decoder":
+        value = key
+    qkv_weight = torch.randn(3 * embed_dim, embed_dim, dtype=dtype, device=device) * scale
+    qkv_bias = torch.randn(3 * embed_dim, dtype=dtype, device=device) * scale
+    proj_weight = torch.randn(embed_dim, embed_dim, dtype=dtype, device=device) * scale
+    proj_bias = torch.randn(embed_dim, dtype=dtype, device=device) * scale
+    mask = None
+    if mask_type == 0:
+        mask = torch.rand(seq_len, seq_len, device=device) > 0.5
+        mask[..., 0] = False
+    elif mask_type == 1:
+        mask = torch.rand(batch, seq_len, device=device) > 0.5
+        mask[:, 0] = False
+    elif mask_type == 2:
+        mask = torch.rand(batch, num_heads, seq_len, seq_len, device=device) > 0.5
+        mask[..., 0] = False
+    return (
+        query,
+        key,
+        value,
+        embed_dim,
+        num_heads,
+        qkv_weight,
+        qkv_bias,
+        proj_weight,
+        proj_bias,
+        mask,
+        True,
+        True,
+        mask_type,
+    )
 
 
 @pytest.mark.native_multi_head_attention
@@ -93,6 +110,8 @@ def test_native_multi_head_attention():
     bench = NativeMultiHeadAttentionBenchmark(
         op_name="native_multi_head_attention",
         torch_op=torch._native_multi_head_attention,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

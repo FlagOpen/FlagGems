@@ -82,7 +82,7 @@ def test_fused_moving_avg_obs_fq_helper(
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     # Reference on the reference device (CPU when --ref=cpu, else CUDA).
-    ref_x = utils.to_reference(base)
+    ref_x = utils.to_reference(base, True)
     (
         ref_out,
         ref_mask,
@@ -102,6 +102,9 @@ def test_fused_moving_avg_obs_fq_helper(
     running_max = torch.full((n,), 0.5, dtype=torch.float32, device=dev)
     scale = torch.ones((n,), dtype=torch.float32, device=dev)
     zero_point = torch.zeros((n,), dtype=torch.int32, device=dev)
+    state_pointers = [
+        tensor.data_ptr() for tensor in (running_min, running_max, scale, zero_point)
+    ]
     qmin, qmax = (-128, 127) if symmetric else (0, 255)
 
     res_out, res_mask = flag_gems._fused_moving_avg_obs_fq_helper(
@@ -127,6 +130,9 @@ def test_fused_moving_avg_obs_fq_helper(
     utils.gems_assert_close(running_max, ref_rmax, torch.float32)
     utils.gems_assert_close(scale, ref_scale, torch.float32)
     assert torch.equal(zero_point.cpu(), ref_zp.cpu()), "zero_point mismatch"
+    assert [
+        tensor.data_ptr() for tensor in (running_min, running_max, scale, zero_point)
+    ] == state_pointers
 
 
 @pytest.mark.fused_moving_avg_obs_fq_helper
@@ -134,6 +140,7 @@ def test_fused_moving_avg_obs_fq_helper(
 def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
     """Match ATen's float32-only input contract."""
     dev = flag_gems.device
+    torch.manual_seed(0)
     x = torch.randn((16, 32), dtype=dtype, device=dev)
     obs = torch.tensor(1, dtype=torch.long, device=dev)
     fq = torch.tensor(1, dtype=torch.long, device=dev)

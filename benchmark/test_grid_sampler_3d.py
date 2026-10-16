@@ -1,37 +1,51 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-# Benchmark shapes covering a range of typical 3D grid sampling workloads
-GRID_SAMPLER_3D_SHAPES = [
-    (1, 3, 8, 8, 8),
-    (2, 8, 16, 16, 16),
-    (4, 16, 32, 32, 32),
-    (8, 32, 64, 64, 64),
-]
+SHAPES = [(1,3,8,8,8),(2,8,16,16,16),(4,16,32,32,32),(8,32,64,64,64)]
+
+def _case_fn(shape,dtype):
+    del dtype
+    dims=tuple(shape); grid=(dims[0],dims[2]//2,dims[3]//2,dims[4]//2,3)
+    yield base.BenchmarkCasePlan(shape={"input":list(dims),"grid":list(grid)},params={"interpolation_mode":0,"padding_mode":0,"align_corners":False},builder_args=(dims,grid))
+
+def _build_inputs_fn(plan,dtype,device):
+    shape,grid_shape=plan.builder_args; torch.manual_seed(0)
+    inp=torch.randn(shape,dtype=dtype,device=device)
+    grid=torch.randn(grid_shape,dtype=dtype,device=device)*1.5
+    return inp,grid,0,0,False
 
 
-class GridSampler3DBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = GRID_SAMPLER_3D_SHAPES
-
-    def get_input_iter(self, cur_dtype):
-        for shape in self.shapes:
-            N, C, ID, IH, IW = shape
-            # Output size is half the input for representativeness
-            OD, OH, OW = ID // 2, IH // 2, IW // 2
-            inp = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            grid = torch.randn(N, OD, OH, OW, 3, dtype=cur_dtype, device=self.device)
-            grid = grid * 1.5  # Cover more spatial range
-            yield inp, grid, 0, 0, False  # bilinear, zeros, align_corners=False
+class ScopedBenchmark(OperatorBenchmark):
+    def set_shapes(self,shape_file_path=None):
+        self.shapes=list(SHAPES)
 
 
 @pytest.mark.grid_sampler_3d
 def test_grid_sampler_3d():
-    bench = GridSampler3DBenchmark(
+    ScopedBenchmark(
         op_name="grid_sampler_3d",
-        torch_op=torch.ops.aten.grid_sampler_3d,
+        torch_op=torch.ops.aten.grid_sampler_3d.default,
+        gems_op=flag_gems.grid_sampler_3d,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

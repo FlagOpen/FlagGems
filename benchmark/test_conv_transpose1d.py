@@ -12,58 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
-import flag_gems
+from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-from . import base, consts, utils
+CASES = [(32,64,128,64,3,1,0,1),(64,48,256,128,5,2,2,1),(16,24,512,96,7,1,3,1),(8,16,1024,32,3,2,1,2),(4,8,2048,16,5,1,2,1)]
 
+class ConvTranspose1dBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(CASES)
+        self.shape_desc = "N, Cin, L, Cout, K, stride, padding, groups"
 
-def conv_transpose1d_input_fn(shape, dtype, device):
-    (
-        batch,
-        input_c,
-        input_l,
-        out_c,
-        kernel,
-        stride,
-        padding,
-        groups,
-    ) = shape
-    input_shape = (batch, input_c, input_l)
-    weight_shape = (input_c, out_c // groups, kernel)
-    inp = utils.generate_tensor_input(input_shape, dtype, device)
-    weight = utils.generate_tensor_input(weight_shape, dtype, device)
+def _case_fn(shape, dtype):
+    del dtype
+    case = tuple(shape)
+    yield base.BenchmarkCasePlan(shape={"case": list(case)}, params={}, builder_args=(case,))
 
-    yield (inp, weight, None, stride, padding, 0, groups)
-
-
-class ConvTranspose1dBenchmark(base.GenericBenchmark):
-    def get_input_iter(self, dtype) -> Generator:
-        shapes = [
-            (32, 64, 128, 64, 3, 1, 0, 1),
-            (64, 48, 256, 128, 5, 2, 2, 1),
-            (16, 24, 512, 96, 7, 1, 3, 1),
-            (8, 16, 1024, 32, 3, 2, 1, 2),
-            (4, 8, 2048, 16, 5, 1, 2, 1),
-        ]
-
-        for shape in shapes:
-            yield from self.input_fn(shape, dtype, self.device)
-
+def _build_inputs_fn(plan, dtype, device):
+    n, cin, length, cout, kernel, stride, padding, groups = plan.builder_args[0]
+    torch.manual_seed(0)
+    inp = torch.randn((n, cin, length), dtype=dtype, device=device)
+    weight = torch.randn((cin, cout // groups, kernel), dtype=dtype, device=device)
+    return inp, weight, None, stride, padding, 0, groups, 1
 
 @pytest.mark.conv_transpose1d
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
 def test_conv_transpose1d():
-    bench = ConvTranspose1dBenchmark(
-        input_fn=conv_transpose1d_input_fn,
-        op_name="conv_transpose1d",
-        torch_op=torch.nn.functional.conv_transpose1d,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ConvTranspose1dBenchmark(op_name="conv_transpose1d", torch_op=torch.nn.functional.conv_transpose1d, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()

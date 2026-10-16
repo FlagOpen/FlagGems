@@ -15,22 +15,47 @@
 import pytest
 import torch
 
-from . import base, consts
+from . import base, consts, utils
+from .generated_operator_utils import OperatorBenchmark
 
 
-def hash_tensor_input_fn(shape, dtype, device):
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    # Reduce over the last dim: the contiguous axis, which is the common
-    # row-hash use case and keeps the reduction size tied to the shape.
-    yield inp, [-1]
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"dim": [-1], "keepdim": False, "mode": 0},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, [-1], {"keepdim": False, "mode": 0}
+
+
+class HashTensorBenchmark(base.GenericBenchmark2DOnly, OperatorBenchmark):
+    """Keep the reduction shape policy while exposing replayable cases."""
+
+    def supports_cases(self):
+        return True
+
+    def set_shapes(self, shape_file_path=None):
+        base.Benchmark.set_shapes(self, shape_file_path)
+
+    get_case_iter = OperatorBenchmark.get_case_iter
+    build_inputs = OperatorBenchmark.build_inputs
 
 
 @pytest.mark.hash_tensor
 def test_hash_tensor():
-    bench = base.GenericBenchmark2DOnly(
-        input_fn=hash_tensor_input_fn,
+    bench = HashTensorBenchmark(
         op_name="hash_tensor",
         torch_op=torch.ops.aten.hash_tensor,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

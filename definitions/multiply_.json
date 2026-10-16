@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "multiply_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::multiply_.Tensor(Tensor(a!) self, Tensor other) -> Tensor(a!). The correctness suite also covers the Scalar overload. Both overloads perform elementwise multiplication in place, mutate self, and return the same Tensor object and storage. The tests cover equal-shape and broadcast Tensor operands, Scalar operands, zero-sized and noncontiguous inputs, floating-point special values, gradients through a non-leaf in-place input, and rejection of a non-broadcastable operand.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

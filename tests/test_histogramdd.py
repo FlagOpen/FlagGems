@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,115 +20,152 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.fixture(autouse=True)
+def _seed_random_inputs():
+    torch.manual_seed(0)
+
+
+_POINT_CASES = [
+    pytest.param((50, 2), [4, 5], id="2d"),
+    pytest.param((100, 3), [3, 4, 5], id="3d"),
+    pytest.param((80, 4), [2, 3, 4, 5], id="4d"),
+]
+
+
+def _reference(inp, bins, *, range=None, weight=None, density=False):
+    ref_inp = utils.to_reference(inp, True).to("cpu")
+    if isinstance(bins, (tuple, list)) and bins and isinstance(bins[0], torch.Tensor):
+        ref_bins = tuple(utils.to_reference(item, True).to("cpu") for item in bins)
+    else:
+        ref_bins = bins
+    ref_weight = (
+        utils.to_reference(weight, True).to("cpu") if weight is not None else None
+    )
+    hist, edges = torch.histogramdd(
+        ref_inp, bins=ref_bins, range=range, weight=ref_weight, density=density
+    )
+    return hist.to(inp.dtype), tuple(edge.to(inp.dtype) for edge in edges)
+
+
+def _assert_result(result, reference, dtype):
+    hist, edges = result
+    ref_hist, ref_edges = reference
+    if dtype in utils.ALL_FLOAT_DTYPES:
+        utils.gems_assert_close(hist.cpu(), ref_hist, dtype, atol=1e-4)
+    else:
+        utils.gems_assert_equal(hist.cpu(), ref_hist)
+    assert hist.shape == ref_hist.shape
+    assert hist.dtype == ref_hist.dtype
+    assert len(edges) == len(ref_edges)
+    for edge, ref_edge in zip(edges, ref_edges):
+        utils.gems_assert_close(edge.cpu(), ref_edge, dtype, atol=1e-4)
+        assert edge.shape == ref_edge.shape
+        assert edge.dtype == ref_edge.dtype
+
+
 @pytest.mark.histogramdd
-@pytest.mark.parametrize("shape", [(50, 2), (100, 3), (80, 4)])
-@pytest.mark.parametrize("bins", [[4, 5], [3, 4, 5], [2, 3, 4, 5]])
+@pytest.mark.parametrize("shape,bins", _POINT_CASES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_histogramdd_basic(shape, bins, dtype):
-    if len(bins) != shape[1]:
-        pytest.skip("bins length must match D dimension")
-
+def test_histogramdd_bin_counts(shape, bins, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    before = inp.clone()
+    reference = _reference(inp, bins)
 
-    # Native histogramdd is CPU-only; compute reference on CPU
-    ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins)
-    res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins)
+    with flag_gems.use_gems():
+        result = torch.histogramdd(inp, bins=bins)
 
-    # Compare histogram (move result to CPU for comparison)
-    utils.gems_assert_equal(res_hist.cpu(), ref_hist)
-
-    # Compare bin edges
-    assert len(res_edges) == len(ref_edges), "edge list length mismatch"
-    for i, (res_edge, ref_edge) in enumerate(zip(res_edges, ref_edges)):
-        utils.gems_assert_close(
-            res_edge.cpu(),
-            ref_edge,
-            dtype,
-            atol=1e-4,
-        )
+    _assert_result(result, reference, dtype)
+    utils.gems_assert_equal(inp, before)
 
 
 @pytest.mark.histogramdd
-@pytest.mark.parametrize("shape", [(60, 2), (40, 3)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_histogramdd_with_range(shape, dtype):
-    D = shape[1]
-    bins = [5] * D
-    # Define explicit range per dimension
-    range_vals = []
-    for d in range(D):
-        range_vals.extend([-2.0, 2.0])
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("density", [False, True])
+def test_histogramdd_range_weight_density(dtype, weighted, density):
+    torch.manual_seed(0)
+    inp = torch.randn((60, 2), dtype=dtype, device=flag_gems.device)
+    weight = (
+        torch.rand((60,), dtype=dtype, device=flag_gems.device)
+        if weighted
+        else None
+    )
+    range_ = [-2.0, 2.0, -3.0, 3.0]
+    reference = _reference(
+        inp, [5, 4], range=range_, weight=weight, density=density
+    )
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-
-    ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins, range=range_vals)
-    res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins, range=range_vals)
-
-    utils.gems_assert_equal(res_hist.cpu(), ref_hist)
-
-    for i, (res_edge, ref_edge) in enumerate(zip(res_edges, ref_edges)):
-        utils.gems_assert_close(
-            res_edge.cpu(),
-            ref_edge,
-            dtype,
-            atol=1e-4,
+    with flag_gems.use_gems():
+        result = torch.histogramdd(
+            inp, bins=[5, 4], range=range_, weight=weight, density=density
         )
+
+    _assert_result(result, reference, dtype)
 
 
 @pytest.mark.histogramdd
-@pytest.mark.parametrize("shape", [(30, 2), (50, 3)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
-def test_histogramdd_density(shape, dtype):
-    D = shape[1]
-    bins = [4] * D
+def test_histogramdd_tensor_list_bins(dtype):
+    inp = torch.tensor(
+        [[-1.0, 0.0], [0.25, 0.5], [1.0, 1.5], [2.0, -0.5]],
+        dtype=dtype,
+        device=flag_gems.device,
+    )
+    bins = (
+        torch.tensor([-2.0, 0.0, 1.0, 3.0], dtype=dtype, device=flag_gems.device),
+        torch.tensor([-1.0, 0.25, 1.0, 2.0], dtype=dtype, device=flag_gems.device),
+    )
+    reference = _reference(inp, bins)
 
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    with flag_gems.use_gems():
+        result = torch.histogramdd(inp, bins=bins)
 
-    ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins, density=True)
-    res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins, density=True)
-
-    # Density normalization may have larger relative errors
-    utils.gems_assert_close(res_hist.cpu(), ref_hist, dtype, atol=1e-3)
-
-    for i, (res_edge, ref_edge) in enumerate(zip(res_edges, ref_edges)):
-        utils.gems_assert_close(
-            res_edge.cpu(),
-            ref_edge,
-            dtype,
-            atol=1e-4,
-        )
+    _assert_result(result, reference, dtype)
 
 
 @pytest.mark.histogramdd
-def test_histogramdd_empty():
-    """Test with empty input (N=0)."""
-    inp = torch.zeros(0, 2, dtype=torch.float32, device=flag_gems.device)
-    bins = [3, 3]
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_histogramdd_integer_bins_overload(dtype):
+    torch.manual_seed(0)
+    inp = torch.randn((40, 3), dtype=dtype, device=flag_gems.device)
+    reference = _reference(inp, 4)
 
-    hist, edges = flag_gems.histogramdd(inp, bins=bins)
+    with flag_gems.use_gems():
+        result = torch.histogramdd(inp, bins=4)
 
-    assert hist.shape == (3, 3)
-    assert hist.sum().item() == 0.0
-    assert len(edges) == 2
+    _assert_result(result, reference, dtype)
 
 
 @pytest.mark.histogramdd
-def test_histogramdd_degenerate_range():
-    """Test with all values equal (degenerate range)."""
-    # All points at the same location
-    inp = torch.ones(10, 2, dtype=torch.float32, device=flag_gems.device) * 5.0
-    bins = [3, 3]
+def test_histogramdd_empty_and_degenerate_range():
+    empty = torch.empty((0, 2), dtype=torch.float32, device=flag_gems.device)
+    with flag_gems.use_gems():
+        empty_result = torch.histogramdd(empty, bins=[3, 3])
+    _assert_result(empty_result, _reference(empty, [3, 3]), torch.float32)
 
-    ref_hist, ref_edges = torch.histogramdd(inp.cpu(), bins=bins)
-    res_hist, res_edges = flag_gems.histogramdd(inp, bins=bins)
+    inp = torch.full((10, 2), 5.0, device=flag_gems.device)
+    with flag_gems.use_gems():
+        result = torch.histogramdd(inp, bins=[3, 3])
+    _assert_result(result, _reference(inp, [3, 3]), torch.float32)
 
-    utils.gems_assert_equal(res_hist.cpu(), ref_hist)
 
-    # Check that edges span [val-0.5, val+0.5] for degenerate case
-    for i, (res_edge, ref_edge) in enumerate(zip(res_edges, ref_edges)):
-        utils.gems_assert_close(
-            res_edge.cpu(),
-            ref_edge,
-            torch.float32,
-            atol=1e-4,
-        )
+@pytest.mark.histogramdd
+def test_histogramdd_noncontiguous_input():
+    torch.manual_seed(0)
+    inp = torch.randn((2, 32), device=flag_gems.device).transpose(0, 1)
+    assert not inp.is_contiguous()
+    reference = _reference(inp, [4, 5])
+
+    with flag_gems.use_gems():
+        result = torch.histogramdd(inp, bins=[4, 5])
+
+    _assert_result(result, reference, torch.float32)
+
+
+@pytest.mark.histogramdd
+def test_histogramdd_rejects_mismatched_bins():
+    inp = torch.randn((20, 2), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        with flag_gems.use_gems():
+            torch.histogramdd(inp, bins=[4, 5, 6])

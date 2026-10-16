@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+
 from .conftest import TO_CPU
 
 # Shapes representative of common batch-norm workloads.
@@ -38,6 +39,7 @@ SHAPES = [
 @pytest.mark.parametrize("num_segments", [2, 4])
 def test_batch_norm_gather_stats(shape, dtype, num_segments):
     # batch_norm_gather_stats has no CPU backend in PyTorch, skip under --ref=cpu
+    torch.manual_seed(0)
     if TO_CPU:
         pytest.skip("batch_norm_gather_stats has no CPU backend; skip under --ref=cpu")
 
@@ -55,24 +57,38 @@ def test_batch_norm_gather_stats(shape, dtype, num_segments):
     )
     running_mean = torch.randn(C, dtype=torch.float32, device=flag_gems.device)
     running_var = torch.rand(C, dtype=torch.float32, device=flag_gems.device) + 0.1
+    ref_input = utils.to_reference(input_t, True).to(dtype)
+    ref_mean = utils.to_reference(mean, False)
+    ref_invstd = utils.to_reference(invstd, False)
+    ref_running_mean = utils.to_reference(running_mean, False)
+    ref_running_var = utils.to_reference(running_var, False)
 
+    ref_running_mean_arg = ref_running_mean.clone()
+    ref_running_var_arg = ref_running_var.clone()
+    actual_running_mean = running_mean.clone()
+    actual_running_var = running_var.clone()
+    mean_pointer, var_pointer = (
+        actual_running_mean.data_ptr(),
+        actual_running_var.data_ptr(),
+    )
+    mean_stride, var_stride = actual_running_mean.stride(), actual_running_var.stride()
     ref_out = torch.batch_norm_gather_stats(
-        input_t,
-        mean,
-        invstd,
-        running_mean.clone(),
-        running_var.clone(),
+        ref_input,
+        ref_mean,
+        ref_invstd,
+        ref_running_mean_arg,
+        ref_running_var_arg,
         0.1,
         1e-5,
         count,
     )
 
-    res_out = torch.batch_norm_gather_stats(
+    res_out = flag_gems.batch_norm_gather_stats(
         input_t,
         mean,
         invstd,
-        running_mean.clone(),
-        running_var.clone(),
+        actual_running_mean,
+        actual_running_var,
         0.1,
         1e-5,
         count,
@@ -81,3 +97,9 @@ def test_batch_norm_gather_stats(shape, dtype, num_segments):
     for ref_val, res_val in zip(ref_out, res_out):
         # Output is always float32 regardless of input dtype
         utils.gems_assert_close(res_val, ref_val, torch.float32)
+    assert actual_running_mean.data_ptr() == mean_pointer
+    assert actual_running_var.data_ptr() == var_pointer
+    assert actual_running_mean.stride() == mean_stride
+    assert actual_running_var.stride() == var_stride
+    utils.gems_assert_close(actual_running_mean, ref_running_mean_arg, torch.float32)
+    utils.gems_assert_close(actual_running_var, ref_running_var_arg, torch.float32)

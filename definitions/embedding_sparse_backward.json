@@ -1,0 +1,45 @@
+{
+  "api_version": "v6.0",
+  "name": "embedding_sparse_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::embedding_sparse_backward(Tensor grad, Tensor indices, int num_weights, int padding_idx, bool scale_grad_by_freq) -> Tensor. Builds a sparse embedding weight gradient from dense output gradients and integer indices. Tests cover batch, sequence, embedding and table sizes, padding indices, supported floating dtypes, sparse layout, and dense-equivalent values.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "num_weights",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "padding_idx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "scale_grad_by_freq",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

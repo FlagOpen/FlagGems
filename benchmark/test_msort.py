@@ -33,31 +33,28 @@ class MsortBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         return [(8, 262144), (128, 65536), (512, 16384), (32, 524288)]
 
+    def supports_cases(self):
+        return True
 
-def msort_input_fn(shape, dtype, device):
-    yield utils.generate_tensor_input(shape, dtype, device),
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)}, params={}, builder_args=(tuple(shape),)
+                ),
+            )
 
-
-def msort_out_input_fn(shape, dtype, device):
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    yield inp, {"out": torch.empty_like(inp)}
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        torch.manual_seed(0)
+        return (utils.generate_tensor_input(shape, case.dtype, self.device),)
 
 
 @pytest.mark.msort
 def test_msort():
     MsortBenchmark(
-        op_name="msort",
-        torch_op=torch.msort,
-        input_fn=msort_input_fn,
-        dtypes=consts.FLOAT_DTYPES,
-    ).run()
-
-
-@pytest.mark.msort_out
-def test_msort_out():
-    MsortBenchmark(
-        op_name="msort_out",
-        torch_op=torch.msort,
-        input_fn=msort_out_input_fn,
-        dtypes=consts.FLOAT_DTYPES,
+        op_name="msort", torch_op=torch.msort, dtypes=consts.FLOAT_DTYPES
     ).run()

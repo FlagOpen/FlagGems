@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "lshift",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::__lshift__.Tensor(Tensor self, Tensor other) -> Tensor. Performs elementwise integer left shift without mutating or aliasing either input. The suite also covers aten::__lshift__.Scalar(Tensor self, Scalar other) -> Tensor. Tests cover deterministic int16 and int32 values, Tensor and Scalar overloads, broadcasting, zero-sized and noncontiguous tensors, output metadata, input non-mutation, and invalid broadcasting.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

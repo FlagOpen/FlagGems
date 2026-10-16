@@ -18,127 +18,134 @@ import torch
 import flag_gems
 
 from . import base, consts
-
-# ``aten::_histogramdd_from_bin_tensors`` has no native CUDA implementation, so the
-# baseline necessarily runs on CPU. Two consequences, both handled below:
-#
-#  * The transfers must not be timed. Moving the inputs to CPU and the result back
-#    inside the timed call charges the native op for copies the Triton kernel never
-#    performs, which inflates the ratio by transfer cost rather than measuring the
-#    kernel. CPU copies of each generated input are staged up front instead.
-#  * ``speedup`` is not reported at all: ``latency_base`` is a CPU measurement and
-#    ``latency`` a CUDA one, so their ratio is not operator parity. Both latencies
-#    are still shown individually, which is the honest form of this comparison.
-HISTDD_BENCH_SHAPES = [
-    (1024, 2),
-    (4096, 2),
-    (16384, 2),
-    (4096, 3),
-    (8192, 4),
-]
+from .generated_operator_utils import OperatorBenchmark
 
 
-# Pre-staged CPU copies of the generated inputs, keyed by storage identity, so the
-# timed baseline call does no host-device traffic.
+_POINT_SHAPES = [(1024, 2), (4096, 2), (16384, 2), (4096, 3), (8192, 4)]
 _CPU_CACHE = {}
 
 
-def _stage(t):
-    """Remember a CPU copy of ``t`` and return the key used to look it up."""
-    key = (t.data_ptr(), tuple(t.shape), t.dtype)
-    _CPU_CACHE[key] = t.detach().to("cpu")
-    return key
+def _stage(tensor):
+    key = (tensor.data_ptr(), tuple(tensor.shape), tensor.dtype)
+    _CPU_CACHE[key] = tensor.detach().to("cpu")
 
 
-def _cpu(t):
-    """Return the pre-staged CPU copy of ``t``, falling back to a fresh copy."""
-    staged = _CPU_CACHE.get((t.data_ptr(), tuple(t.shape), t.dtype))
-    return t.detach().to("cpu") if staged is None else staged
+def _cpu(tensor):
+    key = (tensor.data_ptr(), tuple(tensor.shape), tensor.dtype)
+    staged = _CPU_CACHE.get(key)
+    return tensor.detach().to("cpu") if staged is None else staged
 
 
-def _histogramdd_reference(inp, bins, *, weight=None, density=False):
-    """Native CPU baseline; reads pre-staged CPU tensors so no copies are timed."""
+class HistogramddFromBinTensorsBenchmark(OperatorBenchmark):
+    DEFAULT_METRICS = ["latency_base", "latency"]
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=_POINT_SHAPES)
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for mode in ("plain", "weighted", "density"):
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(dims)},
+            params={"mode": mode, "edges": 11},
+            builder_args=(dims, mode),
+        )
+
+
+def _out_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims), "out": [10] * dims[-1]},
+        params={"mode": "out", "edges": 11},
+        builder_args=(dims,),
+    )
+
+
+def _make_inputs(shape, dtype, device):
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    bins = tuple(
+        torch.linspace(-3.0, 3.0, 11, dtype=dtype, device=device)
+        for _ in range(shape[-1])
+    )
+    _stage(inp)
+    for edge in bins:
+        _stage(edge)
+    return inp, bins
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, mode = plan.builder_args
+    inp, bins = _make_inputs(shape, dtype, device)
+    kwargs = {}
+    if mode == "weighted":
+        weight = torch.rand(shape[:-1], dtype=dtype, device=device)
+        _stage(weight)
+        kwargs["weight"] = weight
+    elif mode == "density":
+        kwargs["density"] = True
+    return inp, bins, kwargs
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    inp, bins = _make_inputs(shape, dtype, device)
+    out = torch.empty((10,) * shape[-1], dtype=dtype, device=device)
+    return inp, bins, {"out": out}
+
+
+def _cpu_reference(inp, bins, *, weight=None, density=False):
     return torch._histogramdd_from_bin_tensors(
         _cpu(inp),
-        tuple(_cpu(b) for b in bins),
+        tuple(_cpu(edge) for edge in bins),
         weight=None if weight is None else _cpu(weight),
         density=density,
     )
 
 
-def _histogramdd_input_fn(shape, dtype, device):
-    """Yield (input, bins, kwargs) tuples for the benchmark variants."""
-    D = shape[-1]
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    bins = tuple(
-        torch.linspace(-3.0, 3.0, 11, dtype=dtype, device=device) for _ in range(D)
+def _cpu_out_reference(
+    inp, bins, *, weight=None, density=False, out=None
+):
+    del out
+    cpu_out = torch.empty(
+        tuple(edge.numel() - 1 for edge in bins), dtype=inp.dtype, device="cpu"
     )
-    _stage(inp)
-    for b in bins:
-        _stage(b)
-    # Plain histogram (no weights).
-    yield (inp, bins, {})
-    # Weighted histogram.
-    weight = torch.rand(shape[:-1], dtype=dtype, device=device)
-    _stage(weight)
-    yield (inp, bins, {"weight": weight})
-    # Density histogram.
-    yield (inp, bins, {"density": True})
-
-
-class HistogramddBenchmark(base.GenericBenchmark):
-    # No speedup column: the baseline is CPU-only, so the ratio would compare two
-    # different devices. See the module docstring above.
-    DEFAULT_METRICS = ["latency_base", "latency"]
-
-    def set_shapes(self, shape_file_path=None):
-        # Override the default (gigabyte-scale) shapes with point-cloud sizes
-        # that are meaningful for a multi-dimensional histogram.
-        self.shapes = HISTDD_BENCH_SHAPES
+    torch.ops.aten._histogramdd_from_bin_tensors.out(
+        _cpu(inp),
+        tuple(_cpu(edge) for edge in bins),
+        weight=None if weight is None else _cpu(weight),
+        density=density,
+        out=cpu_out,
+    )
+    return cpu_out
 
 
 @pytest.mark.histogramdd_from_bin_tensors
 def test_histogramdd_from_bin_tensors():
-    bench = HistogramddBenchmark(
-        input_fn=_histogramdd_input_fn,
+    bench = HistogramddFromBinTensorsBenchmark(
         op_name="histogramdd_from_bin_tensors",
-        torch_op=_histogramdd_reference,
+        torch_op=_cpu_reference,
+        gems_op=flag_gems._histogramdd_from_bin_tensors,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems._histogramdd_from_bin_tensors)
     bench.run()
 
 
-@pytest.mark.histogramdd_from_bin_tensors_out
+@pytest.mark.histogramdd_from_bin_tensors
 def test_histogramdd_from_bin_tensors_out():
-    def _out_input_fn(shape, dtype, device):
-        D = shape[-1]
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        bins = tuple(
-            torch.linspace(-3.0, 3.0, 11, dtype=dtype, device=device) for _ in range(D)
-        )
-        _stage(inp)
-        for b in bins:
-            _stage(b)
-        out = torch.zeros((10,) * D, dtype=dtype, device=device)
-        # ``out`` is passed as a keyword argument to the aten .out overload.
-        yield (inp, bins, {"out": out})
-        weight = torch.rand(shape[:-1], dtype=dtype, device=device)
-        _stage(weight)
-        out_w = torch.zeros((10,) * D, dtype=dtype, device=device)
-        yield (inp, bins, {"weight": weight, "out": out_w})
-
-    def _out_reference(inp, bins, *, weight=None, density=False, out=None):
-        # Deliberately does not copy back into ``out``: that would be a D2H/H2D
-        # round trip the gems path never performs. The baseline measures the
-        # native kernel only.
-        return _histogramdd_reference(inp, bins, weight=weight, density=density)
-
-    bench = HistogramddBenchmark(
-        input_fn=_out_input_fn,
+    bench = HistogramddFromBinTensorsBenchmark(
         op_name="histogramdd_from_bin_tensors_out",
-        torch_op=_out_reference,
+        torch_op=_cpu_out_reference,
+        gems_op=flag_gems._histogramdd_from_bin_tensors_out,
+        case_fn=_out_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
     )
-    bench.set_gems(flag_gems._histogramdd_from_bin_tensors_out)
     bench.run()

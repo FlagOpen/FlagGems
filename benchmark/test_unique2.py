@@ -16,55 +16,56 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
-# aten::_unique2 sorts the flattened input, so keep shapes well under sort's
-# 2^30 element limit.
-_UNIQUE2_SHAPES = [
-    (1024,),
-    (4096,),
-    (16384,),
-    (65536,),
-    (262144,),
-]
 
-# The four return-flag combinations are benchmarked as cases of the single
-# unique2 operator identity rather than as separate pseudo operators.
+_UNIQUE2_SHAPES = [(1024,), (4096,), (16384,), (65536,), (262144,)]
 _FLAG_COMBOS = [
-    {"sorted": True, "return_inverse": False, "return_counts": False},
-    {"sorted": True, "return_inverse": True, "return_counts": False},
-    {"sorted": True, "return_inverse": False, "return_counts": True},
-    {"sorted": True, "return_inverse": True, "return_counts": True},
+    (False, False),
+    (True, False),
+    (False, True),
+    (True, True),
 ]
 
 
-class Unique2Benchmark(base.GenericBenchmark):
-    DEFAULT_SHAPES = _UNIQUE2_SHAPES
-
-    def set_more_shapes(self):
-        # Shapes are fully specified by DEFAULT_SHAPES.
-        return []
+class Unique2Benchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=_UNIQUE2_SHAPES)
 
 
-def unique2_input_fn(shape, dtype, device):
-    if dtype in consts.FLOAT_DTYPES:
-        inp = torch.randn(shape, dtype=dtype, device=device)
-        # Quantize to create duplicates.
-        inp = torch.round(inp * 10) / 10
-    else:
-        # Small range ensures duplicates for integer inputs.
-        high = min(1000, shape[0] // 10) if shape[0] > 100 else 10
-        inp = torch.randint(0, high, shape, dtype=dtype, device=device)
-    # Emit each return-flag combination as its own benchmark case.
-    for flags in _FLAG_COMBOS:
-        yield inp, dict(flags)
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for return_inverse, return_counts in _FLAG_COMBOS:
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(dims)},
+            params={
+                "sorted": True,
+                "return_inverse": return_inverse,
+                "return_counts": return_counts,
+            },
+            builder_args=(dims, return_inverse, return_counts),
+        )
 
 
-@pytest.mark.underscore_unique2
-def test_perf_unique2():
+def _build_inputs_fn(plan, dtype, device):
+    shape, return_inverse, return_counts = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randint(0, 1000, shape, dtype=torch.int64, device=device).to(dtype)
+    return inp, {
+        "sorted": True,
+        "return_inverse": return_inverse,
+        "return_counts": return_counts,
+    }
+
+
+@pytest.mark.unique2
+def test_unique2():
     bench = Unique2Benchmark(
-        input_fn=unique2_input_fn,
         op_name="unique2",
         torch_op=torch._unique2,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.INT_DTYPES + consts.FLOAT_DTYPES,
     )
     bench.run()

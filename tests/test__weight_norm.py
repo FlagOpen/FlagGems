@@ -6,7 +6,6 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
-# Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
@@ -20,69 +19,89 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-# Use smaller shapes to avoid Triton autotuning timeout on large reductions
 WEIGHT_NORM_SHAPES = [(1, 2), (4096, 256), (4, 256, 3)]
-
-if cfg.QUICK_MODE:
-    # Quick mode intentionally limits the fused reduction to float32.
-    FLOAT_DTYPES = [torch.float32]
-    DIM_LIST = [-1]
-else:
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
-    DIM_LIST = [0, -1]
+FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
+DIM_LIST = [-1] if cfg.QUICK_MODE else [0, -1]
 
 
-# ``_weight_norm`` is a distinct operator from ``weight_norm``. Its id cannot be
-# used verbatim as a pytest marker, for two independent reasons:
-#
-#  1. pytest rejects the attribute form outright: MarkGenerator.__getattr__
-#     raises ``AttributeError("Marker name must NOT start with underscore")``.
-#  2. check_operator_markers derives the required marker from the operator id by
-#     stripping the leading underscore and -- because ``weight_norm`` is already
-#     a registered operator id, so the stripped name would collide -- prefixing
-#     ``underscore_``, giving ``underscore_weight_norm``. Its AST scan accepts
-#     only a literal ``pytest.mark.<that name>`` attribute, so hand-building a
-#     MarkDecorator to dodge (1) would read as "no marker" and fail the gate.
-#
-# Hence ``underscore_weight_norm``, mirroring op_marker() in tools/run_tests.py.
+def _g_shape(shape, dim):
+    return tuple(shape[index] if index == dim else 1 for index in range(len(shape)))
+
+
 @pytest.mark.underscore_weight_norm
-# @pytest.mark.skip(reason="Issue #2860: fails assertion")
 @pytest.mark.parametrize("shape", WEIGHT_NORM_SHAPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_underscore_weight_norm(shape, dtype, dim):
-    if flag_gems.vendor_name == "cambricon":
-        torch.manual_seed(42)
-        torch.mlu.manual_seed_all(42)
-
-    dim = dim % len(shape)
+def test_underscore_weight_norm_forward_and_autograd(shape, dim, dtype):
+    torch.manual_seed(0)
+    dim %= len(shape)
     v = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     g = torch.randn(
-        [1 if i != dim else shape[i] for i in range(v.ndim)],
-        dtype=dtype,
-        device=flag_gems.device,
-        requires_grad=True,
+        _g_shape(shape, dim), dtype=dtype, device=flag_gems.device, requires_grad=True
     )
-    reduce_size = v.numel() // shape[dim]
-
     ref_v = utils.to_reference(v, True)
     ref_g = utils.to_reference(g, True)
-    ref_w_out = torch.ops.aten._weight_norm(ref_v, ref_g, dim)
-    res_w_out = flag_gems._weight_norm(v, g, dim)
-    utils.gems_assert_close(res_w_out, ref_w_out, dtype, reduce_dim=reduce_size)
 
-    res_w_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_w_grad = utils.to_reference(res_w_grad, True)
+    ref_out = torch.ops.aten._weight_norm(ref_v, ref_g, dim)
+    result = flag_gems._weight_norm(v, g, dim)
+    reduce_size = v.numel() // shape[dim]
+    utils.gems_assert_close(result, ref_out, dtype, reduce_dim=reduce_size)
+    assert result.shape == v.shape
+    assert result.dtype == dtype
 
+    torch.manual_seed(1)
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_grad = utils.to_reference(grad, True)
     ref_v_grad, ref_g_grad = torch.autograd.grad(
-        ref_w_out, (ref_v, ref_g), grad_outputs=ref_w_grad
+        ref_out, (ref_v, ref_g), grad_outputs=ref_grad
     )
-    res_v_grad, res_g_grad = torch.autograd.grad(
-        res_w_out, (v, g), grad_outputs=res_w_grad
+    v_grad, g_grad = torch.autograd.grad(result, (v, g), grad_outputs=grad)
+    utils.gems_assert_close(
+        v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True
     )
     utils.gems_assert_close(
-        res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True
+        g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True
     )
-    utils.gems_assert_close(
-        res_g_grad, ref_g_grad, dtype, reduce_dim=reduce_size, equal_nan=True
-    )
+
+
+@pytest.mark.underscore_weight_norm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_underscore_weight_norm_noncontiguous(dtype):
+    torch.manual_seed(2)
+    v = torch.randn((7, 5), dtype=dtype, device=flag_gems.device).transpose(0, 1)
+    g = torch.randn((1, 7), dtype=dtype, device=flag_gems.device)
+    ref_v = utils.to_reference(v, True)
+    ref_g = utils.to_reference(g, True)
+
+    ref = torch.ops.aten._weight_norm(ref_v, ref_g, 1)
+    result = flag_gems._weight_norm(v, g, 1)
+
+    utils.gems_assert_close(result, ref, dtype, reduce_dim=5)
+    assert result.shape == v.shape
+
+
+@pytest.mark.underscore_weight_norm
+@pytest.mark.parametrize("dim", [0, 1])
+def test_underscore_weight_norm_zero_norm(dim):
+    shape = (4, 5)
+    v = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    g = torch.arange(1, shape[dim] + 1, dtype=torch.float32, device=flag_gems.device)
+    g = g.reshape(_g_shape(shape, dim))
+    ref_v = utils.to_reference(v, True)
+    ref_g = utils.to_reference(g, True)
+
+    ref = torch.ops.aten._weight_norm(ref_v, ref_g, dim)
+    result = flag_gems._weight_norm(v, g, dim)
+
+    utils.gems_assert_close(result, ref, torch.float32, equal_nan=True)
+    utils.gems_assert_equal(torch.isfinite(result), torch.isfinite(ref).to(result.device))
+
+
+@pytest.mark.underscore_weight_norm
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64, torch.float64])
+def test_underscore_weight_norm_rejects_unsupported_dtype(dtype):
+    v = torch.ones((4, 5), dtype=dtype, device=flag_gems.device)
+    g = torch.ones((4, 1), dtype=dtype, device=flag_gems.device)
+
+    with pytest.raises(TypeError):
+        flag_gems._weight_norm(v, g, 0)

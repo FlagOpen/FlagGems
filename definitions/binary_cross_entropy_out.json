@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "binary_cross_entropy_out",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::binary_cross_entropy.out(Tensor self, Tensor target, Tensor? weight=None, int reduction=1, *, Tensor(a!) out) -> Tensor(a!). Computes binary cross entropy into the supplied output tensor. Tests cover weighted and unweighted inputs, all reduction modes, output identity and storage metadata, noncontiguous output views, output resizing, casting, invalid weights, and device errors.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "target",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "Optional[Tensor]",
+      "default": null
+    },
+    {
+      "name": "reduction",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": 1
+    },
+    {
+      "name": "out",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "out"
+    ],
+    "returns_alias_of": {
+      "out": "out"
+    }
+  }
+}

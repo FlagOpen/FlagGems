@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "is_same_size",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::is_same_size(Tensor self, Tensor other) -> bool. Returns a Python boolean indicating whether both tensors have exactly the same logical shape. The correctness suite covers equal and unequal dimensions across ranks, differing ranks, noncontiguous tensors and scalar tensors. The current FlagGems implementation materializes device shape vectors and launches a Triton reduction kernel for equal-rank non-scalar tensors, so the operation requires Triton kernel work even though it does not inspect element values, mutate inputs or return an alias.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "same"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

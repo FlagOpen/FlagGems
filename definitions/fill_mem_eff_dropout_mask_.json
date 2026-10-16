@@ -1,0 +1,43 @@
+{
+  "api_version": "v6.0",
+  "name": "fill_mem_eff_dropout_mask_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_fill_mem_eff_dropout_mask_(Tensor(a!) self, float dropout_p, int seed, int offset) -> Tensor(a!). Fills a contiguous four-dimensional float32 attention mask in place from the Philox stream and returns self. Tests cover representative shapes, seeds and offsets, value range, ignored dropout_p, exact object and storage identity, pointer/stride/storage-offset preservation, and invalid rank, dtype, and layout errors.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dropout_p",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "seed",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "offset",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

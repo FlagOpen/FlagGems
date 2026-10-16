@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "matrix_exp_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::matrix_exp_backward(Tensor self, Tensor grad) -> Tensor. Computes the matrix-exponential backward transform for a square matrix and upstream gradient. Tests cover multiple square matrix sizes and stacked batches while independently comparing the ATen result.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

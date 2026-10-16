@@ -1,0 +1,42 @@
+{
+  "api_version": "v6.0",
+  "name": "fft_irfftn",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::fft_irfftn(Tensor self, SymInt[1]? s=None, int[1]? dim=None, str? norm=None) -> Tensor. Computes the inverse real N-dimensional FFT without mutation or aliasing. Tests preserve reviewed legacy shapes, dtype limits, batching and layout behavior and add protocol-specific output checks where applicable.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "s",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "list[int] | None"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "list[int] | None"
+    },
+    {
+      "name": "norm",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "str | None"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

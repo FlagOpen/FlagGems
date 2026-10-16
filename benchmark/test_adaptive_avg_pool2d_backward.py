@@ -12,38 +12,56 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
 from . import base, consts
 
 
-class AdaptiveAvgPool2dBackwardBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        # Common CNN feature-map shapes paired with representative output sizes.
-        self.shapes = [
-            (4, 3, 32, 32, 7, 7),
-            (8, 64, 56, 56, 7, 7),
-            (4, 128, 112, 112, 14, 14),
-        ]
-        self.shape_desc = "N, C, H, W, OUT_H, OUT_W"
+CASES = [
+    ((4, 3, 32, 32), (7, 7)),
+    ((8, 64, 56, 56), (7, 7)),
+    ((4, 128, 112, 112), (14, 14)),
+]
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for n, c, h, w, out_h, out_w in self.shapes:
-            inp = torch.randn((n, c, h, w), dtype=cur_dtype, device=self.device)
-            grad_output = torch.randn(
-                (n, c, out_h, out_w), dtype=cur_dtype, device=self.device
+
+class AdaptiveAvgPool2DBackwardBenchmark(base.Benchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = CASES
+        self.shape_desc = "input shape, output size"
+
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, (shape, output_size) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "self": list(shape),
+                        "grad_output": [*shape[:-2], *output_size],
+                    },
+                    params={},
+                    builder_args=(tuple(shape), tuple(output_size)),
+                ),
             )
-            yield grad_output, inp
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        shape, output_size = plan.builder_args
+        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
+        grad_output = torch.randn(
+            (*shape[:-2], *output_size), dtype=case.dtype, device=self.device
+        )
+        return grad_output, inp
 
 
 @pytest.mark.adaptive_avg_pool2d_backward
 def test_adaptive_avg_pool2d_backward():
-    bench = AdaptiveAvgPool2dBackwardBenchmark(
+    AdaptiveAvgPool2DBackwardBenchmark(
         op_name="adaptive_avg_pool2d_backward",
         torch_op=torch.ops.aten._adaptive_avg_pool2d_backward,
         dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
+    ).run()

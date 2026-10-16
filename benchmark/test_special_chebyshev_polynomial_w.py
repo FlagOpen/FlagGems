@@ -12,68 +12,72 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
-
 import pytest
 import torch
 
-from . import base
+import flag_gems
+
+from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class ChebyshevPolynomialWBenchmark(base.Benchmark):
-    """Custom benchmark for special_chebyshev_polynomial_w (binary op: x, n)."""
+_SHAPES = [
+    (1024, 1024),
+    (20, 320, 15),
+    (16, 128, 64, 1280),
+    (2, 19, 7),
+]
+_COMPREHENSIVE_SHAPES = [
+    (1024, 1),
+    (1024, 16),
+    (1024, 256),
+    (1024, 4096),
+    (1024, 65536),
+    (64, 64, 1),
+    (64, 64, 16),
+    (64, 64, 256),
+    (64, 64, 4096),
+    (64, 64, 65536),
+]
 
+
+class ChebyshevPolynomialWBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        # SPECIAL_SHAPES equivalent; special.* ops use modest subset of shapes
-        self.shapes = [
-            (1024, 1024),
-            (20, 320, 15),
-            (16, 128, 64, 1280),
-            (2, 19, 7),
-        ]
-
-    def set_more_shapes(self):
-        return [(1024, 2**i) for i in range(0, 20, 4)] + [
-            (64, 64, 2**i) for i in range(0, 20, 4)
-        ]
-
-    def get_input_iter(self, cur_dtype) -> Generator:
-        # Constant small degree for benchmark stability
-        n_val = 3
-        for shape in self.shapes:
-            x = base.generate_tensor_input(shape, cur_dtype, self.device)
-            # x in [-1, 1] domain
-            x = x * 2 - 1
-            n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
-            yield x, n
-
-    def get_tflops(self, op, *args, **kwargs):
-        shape = list(args[0].shape)
-        return torch.tensor(shape).prod().item()
-
-
-class ChebyshevPolynomialWOutBenchmark(ChebyshevPolynomialWBenchmark):
-    """Benchmark for special_chebyshev_polynomial_w_out."""
-
-    def get_case_iter(self, cur_dtype) -> Generator:
-        for ordinal, shape in enumerate(self.shapes):
-            yield self._case_from_plan(
-                cur_dtype,
-                ordinal,
-                base.BenchmarkCasePlan(
-                    shape={"input": list(shape)},
-                    builder_args=(shape,),
-                ),
+        super().set_shapes(shape_file_path, default_shapes=_SHAPES)
+        if (
+            base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
+            and not base.Config.query
+        ):
+            self.shapes = list(
+                dict.fromkeys([*self.shapes, *_COMPREHENSIVE_SHAPES])
             )
 
-    def build_inputs(self, case):
-        n_val = 3
-        shape = case.builder_args[0].builder_args[0]
-        x = base.generate_tensor_input(shape, case.dtype, self.device)
-        x = x * 2 - 1
-        n = torch.tensor(n_val, dtype=torch.int64, device=self.device)
-        out = torch.empty_like(x)
-        return x, n, {"out": out}
+    def get_tflops(self, op, *args, **kwargs):
+        del op, kwargs
+        return args[0].numel()
+
+
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    for degree_kind in ("scalar", "tensor"):
+        yield base.BenchmarkCasePlan(
+            shape={"x": list(dims), "n": [] if degree_kind == "tensor" else None},
+            params={"degree_kind": degree_kind, "degree": 3},
+            builder_args=(dims, degree_kind),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, degree_kind = plan.builder_args
+    torch.manual_seed(0)
+    x = torch.rand(shape, dtype=dtype, device=device) * 2 - 1
+    degree = (
+        torch.tensor(3, dtype=torch.int64, device=device)
+        if degree_kind == "tensor"
+        else 3
+    )
+    return x, degree
 
 
 @pytest.mark.special_chebyshev_polynomial_w
@@ -81,17 +85,9 @@ def test_special_chebyshev_polynomial_w():
     bench = ChebyshevPolynomialWBenchmark(
         op_name="special_chebyshev_polynomial_w",
         torch_op=torch.special.chebyshev_polynomial_w,
-        # special.* operators only support float32
-        dtypes=[torch.float32],
-    )
-    bench.run()
-
-
-@pytest.mark.special_chebyshev_polynomial_w_out
-def test_special_chebyshev_polynomial_w_out():
-    bench = ChebyshevPolynomialWOutBenchmark(
-        op_name="special_chebyshev_polynomial_w_out",
-        torch_op=torch.special.chebyshev_polynomial_w,
+        gems_op=flag_gems.special_chebyshev_polynomial_w,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
     )
     bench.run()

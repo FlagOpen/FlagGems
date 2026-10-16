@@ -1,0 +1,44 @@
+{
+  "api_version": "v6.0",
+  "name": "unique2",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_unique2(Tensor self, bool sorted=True, bool return_inverse=False, bool return_counts=False) -> (Tensor, Tensor, Tensor). Returns unique values plus optional inverse indices and counts without mutating or aliasing self. Tests cover sorted flags, every inverse/count flag combination, small and large implementation paths, empty/all-same/all-unique inputs, float and integer dtypes, NaN/Inf/signed-zero behavior, output metadata, reconstruction, and input non-mutation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "sorted",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": true
+    },
+    {
+      "name": "return_inverse",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    },
+    {
+      "name": "return_counts",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "bool",
+      "default": false
+    }
+  ],
+  "outputs": [
+    "output",
+    "inverse_indices",
+    "counts"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

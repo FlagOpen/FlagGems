@@ -54,11 +54,11 @@ def _make_dynamic_quantized_gru(
 @pytest.mark.parametrize(
     "num_layers,bidirectional", [(1, False), (2, True)], ids=["single", "stacked_bidir"]
 )
-@pytest.mark.skip(reason="PyTorch's quantized_gru only supports CPU backend")
 def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirectional):
     """Compare the dense Triton implementation with packed dynamic GRU."""
     from flag_gems.ops.quantized_gru import quantized_gru_input
 
+    torch.manual_seed(0)
     batch_size, seq_len, input_size = shape
     directions = 2 if bidirectional else 1
     ref_gru, params = _make_dynamic_quantized_gru(
@@ -84,8 +84,8 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
     )
     # Reference runs on CPU via torch.ao dynamic quantized GRU
     # PyTorch's quantized_gru only supports CPU, so explicitly move to CPU
-    ref_input = utils.to_reference(input_tensor).cpu()
-    ref_hx = utils.to_reference(hx).cpu()
+    ref_input = utils.to_reference(input_tensor, True).cpu()
+    ref_hx = utils.to_reference(hx, True).cpu()
     ref_output, ref_hx_out = ref_gru(ref_input, ref_hx)
 
     output, out_hx = quantized_gru_input(
@@ -110,10 +110,10 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
 
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
-@pytest.mark.skip(reason="PyTorch's quantized_gru only supports CPU backend")
 def test_quantized_gru_packed_data(bidirectional):
     from flag_gems.ops.quantized_gru import quantized_gru_data
 
+    torch.manual_seed(0)
     batch_size, seq_len, input_size, hidden_size = 3, 5, 8, 20
     directions = 2 if bidirectional else 1
     ref_gru, params = _make_dynamic_quantized_gru(

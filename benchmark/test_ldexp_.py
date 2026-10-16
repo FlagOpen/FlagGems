@@ -16,28 +16,33 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class LdexpInplaceBenchmark(base.GenericBenchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            (1,),
-            (1024,),
-            (1024, 1024),
-            (4096, 4096),
-            (16, 128, 64, 64),
-        ]
-        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            self.shapes.extend(self.set_more_shapes())
-
-    def set_more_shapes(self):
-        return [(2**24,), (8192, 4096)]
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims), "other": list(dims)},
+        params={"exponent_dtype": "int32"},
+        builder_args=(dims,),
+    )
 
 
-def ldexp_inplace_input_fn(shape, dtype, device):
-    self = torch.randn(shape, dtype=dtype, device=device)
-    other = torch.randint(-8, 9, shape, dtype=torch.int32, device=device)
-    yield self, other
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    exponent = torch.randint(-8, 9, shape, dtype=torch.int32, device=device)
+    return inp, exponent
+
+
+class LdexpInplaceBenchmark(base.BinaryPointwiseBenchmark, OperatorBenchmark):
+    def supports_cases(self):
+        return True
+
+    get_case_iter = OperatorBenchmark.get_case_iter
+    build_inputs = OperatorBenchmark.build_inputs
 
 
 @pytest.mark.ldexp_
@@ -45,8 +50,10 @@ def test_ldexp_():
     bench = LdexpInplaceBenchmark(
         op_name="ldexp_",
         torch_op=torch.ops.aten.ldexp_.default,
-        input_fn=ldexp_inplace_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+        fresh_inputs=True,
     )
     bench.run()

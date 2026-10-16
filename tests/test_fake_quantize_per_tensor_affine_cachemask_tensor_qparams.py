@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,72 +19,107 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-# int8 symmetric quantization range used by the fake-quant tests below.
 QUANT_MIN = -128
 QUANT_MAX = 127
 
 
-def _make_inputs(shape, dtype, device):
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    scale = torch.tensor(0.1, dtype=torch.float32, device=device)
-    zero_point = torch.tensor(0, dtype=torch.int32, device=device)
-    fake_quant_enabled = torch.tensor(1, dtype=torch.int64, device=device)
+def _seed():
+    torch.manual_seed(0)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(0)
+
+
+def _reference(tensor):
+    return utils.to_reference(tensor, True).to(tensor.dtype)
+
+
+def _make_inputs(shape, dtype, enabled=1, noncontiguous=False):
+    _seed()
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    if noncontiguous:
+        inp = inp.T
+    scale = torch.tensor(0.1, dtype=torch.float32, device=flag_gems.device)
+    zero_point = torch.tensor(0, dtype=torch.int32, device=flag_gems.device)
+    fake_quant_enabled = torch.tensor(
+        enabled, dtype=torch.int64, device=flag_gems.device
+    )
     return inp, scale, zero_point, fake_quant_enabled
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(shape, dtype):
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+    shape, dtype, enabled
+):
     inp, scale, zero_point, fake_quant_enabled = _make_inputs(
-        shape, dtype, flag_gems.device
+        shape, dtype, enabled
     )
-    ref_inp = utils.to_reference(inp)
-    ref_scale = utils.to_reference(scale)
-    ref_zero_point = utils.to_reference(zero_point)
-    ref_fake_quant_enabled = utils.to_reference(fake_quant_enabled)
-
+    snapshots = tuple(
+        tensor.clone() for tensor in (inp, scale, zero_point, fake_quant_enabled)
+    )
     ref_out = torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
-        ref_inp,
-        ref_scale,
-        ref_zero_point,
-        ref_fake_quant_enabled,
+        _reference(inp),
+        utils.to_reference(scale, True).to(scale.dtype),
+        utils.to_reference(zero_point, False),
+        utils.to_reference(fake_quant_enabled, False),
         QUANT_MIN,
         QUANT_MAX,
     )
-    res_out = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+    result = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
-    utils.gems_assert_close(res_out[0], ref_out[0], dtype)
-    utils.gems_assert_equal(res_out[1], ref_out[1])
+    utils.gems_assert_close(result[0], ref_out[0], dtype)
+    utils.gems_assert_equal(result[1], ref_out[1])
+    for value, snapshot in zip(
+        (inp, scale, zero_point, fake_quant_enabled), snapshots
+    ):
+        utils.gems_assert_equal(value, snapshot)
+    assert result[0].shape == inp.shape
+    assert result[0].dtype == inp.dtype
+    assert result[1].shape == inp.shape
+    assert result[1].dtype == torch.bool
+    if not enabled:
+        utils.gems_assert_equal(result[0], inp)
+        utils.gems_assert_equal(result[1], torch.ones_like(result[1]))
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
-@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_disabled(
-    shape, dtype
-):
-    # When fake_quant_enabled is False, the op is a pass-through and mask is all True.
-    inp, scale, zero_point, _ = _make_inputs(shape, dtype, flag_gems.device)
-    fake_quant_enabled = torch.tensor(0, dtype=torch.int64, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
-    ref_scale = utils.to_reference(scale)
-    ref_zero_point = utils.to_reference(zero_point)
-    ref_fake_quant_enabled = utils.to_reference(fake_quant_enabled)
-
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_layout(enabled):
+    inp, scale, zero_point, fake_quant_enabled = _make_inputs(
+        (8, 16), torch.float32, enabled, noncontiguous=True
+    )
     ref_out = torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
-        ref_inp,
-        ref_scale,
-        ref_zero_point,
-        ref_fake_quant_enabled,
+        _reference(inp),
+        utils.to_reference(scale, True).to(scale.dtype),
+        utils.to_reference(zero_point, False),
+        utils.to_reference(fake_quant_enabled, False),
         QUANT_MIN,
         QUANT_MAX,
     )
-    res_out = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+
+    result = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
-    utils.gems_assert_close(res_out[0], ref_out[0], dtype)
-    utils.gems_assert_equal(res_out[1], ref_out[1])
+    utils.gems_assert_close(result[0], ref_out[0], torch.float32)
+    utils.gems_assert_equal(result[1], ref_out[1])
+
+
+@pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_empty():
+    inp, scale, zero_point, fake_quant_enabled = _make_inputs(
+        (2, 0, 3), torch.float32
+    )
+    result = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+        inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
+    )
+
+    assert result[0].shape == inp.shape
+    assert result[0].dtype == inp.dtype
+    assert result[1].shape == inp.shape
+    assert result[1].dtype == torch.bool
+    utils.gems_assert_equal(result[0], inp)

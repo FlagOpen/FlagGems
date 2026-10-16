@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "flipud",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::flipud(Tensor self) -> Tensor. Reverses the order of slices along the first dimension and materializes a fresh output. The correctness suite covers zero-size and higher-rank tensors, floating, integer, boolean and complex dtypes, transposed, sliced, expanded and channels-last inputs, autograd, source non-mutation and rejection of a zero-dimensional input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

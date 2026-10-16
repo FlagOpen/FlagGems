@@ -1,0 +1,51 @@
+{
+  "api_version": "v6.0",
+  "name": "dyn_quant_pack_4bit_weight",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_dyn_quant_pack_4bit_weight(Tensor weights, Tensor scales_zeros, Tensor? bias, int block_size, int in_features, int out_features) -> Tensor. Tests define the FlagGems portable ABI as a contiguous float32 concatenation of packed uint8 weight bytes, scales, and optional bias; they cover bit-exact nibble byte order, grouped/flat qparams, float16/bfloat16/float32 parameter conversion, noncontiguous inputs, zero output channels, invalid shape/dtype/group contracts, and device mismatch rejection.",
+  "parameters": [
+    {
+      "name": "weights",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "scales_zeros",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Optional[Tensor]"
+    },
+    {
+      "name": "block_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "in_features",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "out_features",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "packed_weight"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

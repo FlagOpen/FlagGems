@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -33,7 +47,6 @@ FFT_IRFFTN_SHAPES = [
 
 
 @pytest.mark.fft_irfftn
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Not supported on metax")
 @pytest.mark.parametrize("shape", FFT_IRFFTN_SHAPES)
 @pytest.mark.parametrize(
     "dtype", utils.COMPLEX_DTYPES
@@ -41,6 +54,7 @@ FFT_IRFFTN_SHAPES = [
 def test_fft_irfftn(shape, dtype):
     """Test fft_irfftn accuracy by roundtrip with rfftn."""
     # Generate a real input
+    torch.manual_seed(0)
     inp_real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
 
     # Get the half-Hermitian complex output from rfftn
@@ -48,7 +62,7 @@ def test_fft_irfftn(shape, dtype):
     inp_complex = torch.fft.rfftn(inp_real)
 
     # Reference output from PyTorch
-    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape))
+    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape), True)
 
     # Our implementation (call the registered Gems op directly, matching the
     # KernelGen test convention that avoids flag_gems.use_gems() contexts).
@@ -84,12 +98,13 @@ def test_fft_irfftn_complex32(shape):
     """Test fft_irfftn with complex32 (fp16 complex) input produces float16 output."""
     half_shape = list(shape)
     half_shape[-1] = shape[-1] // 2 + 1
+    torch.manual_seed(0)
     inp_complex = torch.complex(
         torch.randn(half_shape, dtype=torch.float16, device=flag_gems.device),
         torch.randn(half_shape, dtype=torch.float16, device=flag_gems.device),
     )
 
-    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape))
+    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape), True)
 
     res_out = flag_gems.fft_irfftn(inp_complex, s=shape)
 
@@ -103,18 +118,18 @@ FFT_IRFFTN_COMPLEX128_SHAPES = FFT_IRFFTN_SHAPES
 
 
 @pytest.mark.fft_irfftn
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Not supported on metax")
 @pytest.mark.parametrize("shape", FFT_IRFFTN_COMPLEX128_SHAPES)
 def test_fft_irfftn_complex128(shape):
     """Test fft_irfftn with complex128 (fp64 complex) input produces float64 output."""
     half_shape = list(shape)
     half_shape[-1] = shape[-1] // 2 + 1
+    torch.manual_seed(0)
     inp_complex = torch.complex(
         torch.randn(half_shape, dtype=torch.float64, device=flag_gems.device),
         torch.randn(half_shape, dtype=torch.float64, device=flag_gems.device),
     )
 
-    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape))
+    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex, s=shape), True)
 
     res_out = flag_gems.fft_irfftn(inp_complex, s=shape)
 
@@ -123,14 +138,29 @@ def test_fft_irfftn_complex128(shape):
 
 
 @pytest.mark.fft_irfftn
-@pytest.mark.skipif(flag_gems.vendor_name == "metax", reason="Not supported on metax")
 @pytest.mark.parametrize("shape", FFT_IRFFTN_SHAPES)
 def test_fft_irfftn_default_s(shape):
     """Test fft_irfftn with default s and dim (all dims transformed)."""
+    torch.manual_seed(0)
     inp_real = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     inp_complex = torch.fft.rfftn(inp_real)
 
-    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex))
+    ref_out = utils.to_reference(torch.fft.irfftn(inp_complex), True)
     res_out = flag_gems.fft_irfftn(inp_complex)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32, atol=1e-3)
+
+
+@pytest.mark.fft_irfftn
+def test_fft_irfftn_autograd_is_explicitly_unsupported():
+    torch.manual_seed(0)
+    inp = torch.complex(
+        torch.randn((4, 3), device=flag_gems.device),
+        torch.randn((4, 3), device=flag_gems.device),
+    ).requires_grad_(True)
+
+    result = flag_gems.fft_irfftn(inp, s=(4, 4))
+
+    assert not result.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(result.sum(), inp)
