@@ -128,11 +128,11 @@ def _matches_inputs(inputs, call, named_call, target_device):
             and _matches(inputs["args"], call["args"])
             and _matches_parameters(inputs["kwargs"], call["kwargs"], target_device)
         )
-    if named_call is None or not set(inputs) <= set(named_call):
+    # Missing parameters can change semantics even when tensor shapes agree.
+    # Defaults have already been bound by the benchmark; require full evidence.
+    if not inputs or named_call is None:
         return False
-    return _matches_parameters(
-        inputs, {name: named_call[name] for name in inputs}, target_device
-    )
+    return _matches_parameters(inputs, named_call, target_device)
 
 
 def _vendor_name(value):

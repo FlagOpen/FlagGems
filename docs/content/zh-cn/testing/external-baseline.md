@@ -25,7 +25,8 @@ pytest 建议使用 `--base-data=路径`，避免仓库外的路径影响早期 
 包含 `config.inputs.args/kwargs` 时，匹配真实输入的嵌套结构、标量值与类型，以及
 记录中的 tensor shape、dtype、stride 和 requires_grad，支持 ops-baseline PR #8
 的 PyTorch 记录及其复合 shape key。显式参数与省略默认值不会自动合并。
-具名 `config.inputs` 需要 reference callable 有可绑定的 Python 签名；无法绑定时回退。
+具名 `config.inputs` 需要 reference callable 有可绑定的 Python 签名，且覆盖所有绑定
+参数（包括默认值）。空或不完整的具名元数据、无法绑定的签名均回退到原生结果。
 没有输入元数据的旧记录仅支持单个直接 tensor 实参且无关键字参数的调用，按
 shape key 和 dtype 匹配。多个 tensor、标量参数和嵌套输入必须提供完整输入元数据。
 即使是单输入旧记录，也无法验证布局和默认参数；这些影响语义时应补充输入元数据。

@@ -355,7 +355,12 @@ def test_blas_serial_and_worker_run_apply_external_baseline(
     import pickle
 
     blas, config, bench, _ = _parallel_blas_fixture(monkeypatch, tmp_path, enabled)
-    config.parallel = 0
+    config.parallel = 1 if worker else 0
+
+    def forbidden_parallel_dispatch(*args):
+        raise AssertionError("a worker must not launch more workers")
+
+    monkeypatch.setattr(bench, "_run_parallel_dtype", forbidden_parallel_dispatch)
     result_path = tmp_path / "worker.pkl"
     if worker:
         monkeypatch.setenv(blas.PARALLEL_WORKER_ENV, "1")
@@ -431,5 +436,44 @@ def test_blas_external_miss_retains_native_result(monkeypatch, tmp_path):
         bench.get_input_iter(torch.float32), dtype=torch.float32
     )[0]
     assert metric.speedup == 2
+    assert metric.compared_speedup is None
+    assert metric.base_miss_reason == "shape_or_dtype_missing"
+
+
+@pytest.mark.parametrize(
+    "recorded", [{}, {"x": {"shape": [4, 8], "dtype": "torch.float32"}}]
+)
+def test_named_metadata_missing_default_parameter_keeps_native_ratio(
+    monkeypatch, recorded
+):
+    config = conftest.BenchConfig()
+    config.base_data = BaselineData(
+        {
+            "example": {
+                "shapes": {
+                    "case": {
+                        "torch.float32": {
+                            "latency_ms": 8,
+                            "config": {"inputs": recorded},
+                        }
+                    }
+                }
+            }
+        },
+        "synthetic.json",
+    )
+    monkeypatch.setattr(base, "Config", config)
+
+    def native(x, dim=1):
+        return x
+
+    candidate = lambda x: x
+    bench = base.Benchmark("example", torch_op=native, gems_op=candidate)
+    bench.to_bench_metrics = ["latency_base", "latency", "speedup"]
+    monkeypatch.setattr(
+        bench, "get_latency", lambda op, *a, **kw: 6 if op is native else 2
+    )
+    metric = bench._measure_input((torch.ones(4, 8),), dtype=torch.float32)
+    assert metric.speedup == pytest.approx(3)
     assert metric.compared_speedup is None
     assert metric.base_miss_reason == "shape_or_dtype_missing"

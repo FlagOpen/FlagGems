@@ -54,9 +54,10 @@ remain significant. This does not discard tensor layout or auxiliary-device
 information. `torch.device` arguments are described as device strings.
 
 Named `config.inputs` records can match when the benchmark's reference callable
-has an inspectable Python signature. Defaults are bound before comparison. If
-parameter binding is unavailable, named records are left unmatched rather than
-using an unordered tensor-shape heuristic.
+has an inspectable Python signature. Defaults are bound before comparison;
+the metadata must describe every bound parameter, including defaults. Empty or
+partial named metadata is left unmatched because omitted parameters can change
+semantics. Unavailable parameter binding also leaves the record unmatched.
 
 Legacy records without input metadata are accepted only for a single direct
 tensor argument with no keywords, using its exact shape key and dtype. Multiple

@@ -388,3 +388,29 @@ def test_legacy_sglang_packed_silu_and_mul_does_not_match_two_tensor_gems_abi():
     )
     call = {"args": [tensor, tensor], "kwargs": {}}
     assert data.lookup("silu_and_mul", "torch.bfloat16", call)[0] is None
+
+
+@pytest.mark.parametrize("inputs", [{}, {"x": TENSOR}])
+@pytest.mark.parametrize("dim", [0, 1])
+def test_incomplete_named_metadata_cannot_choose_a_semantic_baseline(inputs, dim):
+    data = baseline({"latency_ms": 8, "config": {"inputs": inputs}})
+    call = {"args": [TENSOR, dim], "kwargs": {}}
+    assert data.lookup("reduce", DTYPE, call, {"x": TENSOR, "dim": dim})[0] is None
+
+
+def test_complete_named_metadata_still_matches_and_checks_all_parameters():
+    data = baseline(
+        {
+            "latency_ms": 8,
+            "config": {
+                "inputs": {"x": TENSOR, "dim": {"scalar": 1}, "out": {"scalar": None}}
+            },
+        }
+    )
+    named = {"x": TENSOR, "dim": 1, "out": None}
+    assert data.lookup("reduce", DTYPE, CALL, named)[0] is not None
+    named["dim"] = 0
+    assert data.lookup("reduce", DTYPE, CALL, named)[0] is None
+    named["dim"] = 1
+    named["other_input"] = TENSOR
+    assert data.lookup("reduce", DTYPE, CALL, named)[0] is None
