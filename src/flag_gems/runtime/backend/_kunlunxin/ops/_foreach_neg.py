@@ -23,7 +23,7 @@ from flag_gems.utils.foreach import check_tensor_list, foreach_unary, tl_dtype
 
 from .neg import neg_, neg_func
 
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # Fast-path split: contiguous uniform floating lists are either run through a
 # single meta-pointer launch (small/medium) or per-tensor pointwise_dynamic

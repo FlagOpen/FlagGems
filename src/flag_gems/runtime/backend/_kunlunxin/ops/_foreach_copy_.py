@@ -28,7 +28,7 @@ from flag_gems.utils.foreach import (
 
 from .copy import _copy_flat_kernel, _pick_flat_block
 
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 _META_BLOCK = 8192
 _META_NUM_WARPS = 8
