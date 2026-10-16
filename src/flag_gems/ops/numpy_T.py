@@ -74,7 +74,7 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["run"]
+__all__ = ["numpy_T"]
 
 # Per-device scratch for the kernel result.  It holds only the relayout
 # metadata, which nothing reads back, so reusing it across calls cannot change
@@ -113,7 +113,7 @@ def _order_workspace(device):
     return buffer
 
 
-def run(self):
+def numpy_T(self):
     logger.debug("GEMS NUMPY_T")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
