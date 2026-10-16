@@ -155,6 +155,7 @@ def test_is_coalesced(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_coalesced,
         gems_op=getattr(flag_gems, "is_coalesced", None),
-        dtypes=[dtype],
+        dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

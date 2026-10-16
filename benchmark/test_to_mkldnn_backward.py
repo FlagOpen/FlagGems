@@ -29,6 +29,15 @@ from .generated_operator_utils import OperatorBenchmark
 # keeps core_shapes.yaml, DEFAULT_SHAPES and a caller --shape-file in effect.
 EXTRA_SHAPES = [(1024, 1024), (20, 320, 15), (16, 128, 64)]
 
+DENSE_GROUP = "dense"
+OPAQUE_GROUP = "opaque"
+OPAQUE_CROSS_CAST_GROUP = "opaque-cross-cast"
+OPAQUE_MODE = "opaque to dense"
+_CROSS_CAST_DTYPES = {
+    (str(torch.float16), str(torch.bfloat16)),
+    (str(torch.bfloat16), str(torch.float16)),
+}
+
 _DEVICE_DTYPE_FLAG = {
     torch.bfloat16: "support_bf16",
     torch.float64: "support_fp64",
@@ -124,7 +133,7 @@ def _all_case_fn(shape, dtype):
             yield base.BenchmarkCasePlan(
                 shape={"grad": list(shape), "input": list(shape)},
                 params={
-                    "mode": "opaque to dense",
+                    "mode": OPAQUE_MODE,
                     "grad_dtype": str(dtype),
                     "input_dtype": str(target),
                 },
@@ -132,18 +141,16 @@ def _all_case_fn(shape, dtype):
             )
 
 
+def _group_for_plan(plan):
+    if plan.params["mode"] != OPAQUE_MODE:
+        return DENSE_GROUP
+    dtype_pair = (plan.params["grad_dtype"], plan.params["input_dtype"])
+    return OPAQUE_CROSS_CAST_GROUP if dtype_pair in _CROSS_CAST_DTYPES else OPAQUE_GROUP
+
+
 def _case_fn(shape, dtype, case_group=None):
     for plan in _all_case_fn(shape, dtype):
-        if plan.params["mode"] != "opaque to dense":
-            group = "dense"
-        elif (dtype, plan.builder_args[1]) in (
-            (torch.float16, torch.bfloat16),
-            (torch.bfloat16, torch.float16),
-        ):
-            group = "opaque-cross-cast"
-        else:
-            group = "opaque"
-        if case_group is None or group == case_group:
+        if case_group is None or _group_for_plan(plan) == case_group:
             yield plan
 
 
@@ -170,10 +177,12 @@ class ToMkldnnBackwardBenchmark(OperatorBenchmark):
         merged = [tuple(shape) for shape in self.shapes] + list(EXTRA_SHAPES)
         self.shapes = list(dict.fromkeys(merged))
         if self.case_group is not None:
+            # Query mode calls set_shapes before user dtype selection.
+            dtype = self.partition_dtype or self.to_bench_dtypes[0]
             self.shapes = [
                 shape
                 for shape in self.shapes
-                if any(_case_fn(shape, self.dtypes[0], self.case_group))
+                if any(_case_fn(shape, dtype, self.case_group))
             ]
             if not self.shapes:
                 pytest.skip("No MKLDNN backward workloads in this layout/cast group")
@@ -182,9 +191,9 @@ class ToMkldnnBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.to_mkldnn_backward
 @pytest.mark.parametrize(
     "dtype,case_group",
-    [(dtype, "dense") for dtype in BENCH_DTYPES]
+    [(dtype, DENSE_GROUP) for dtype in BENCH_DTYPES]
     + [
-        (dtype, "opaque")
+        (dtype, OPAQUE_GROUP)
         for dtype in (
             torch.float32,
             torch.float16,
@@ -195,14 +204,14 @@ class ToMkldnnBackwardBenchmark(OperatorBenchmark):
         if dtype in BENCH_DTYPES
     ]
     + [
-        (dtype, "opaque-cross-cast")
+        (dtype, OPAQUE_CROSS_CAST_GROUP)
         for dtype in (torch.float16, torch.bfloat16)
         if dtype in BENCH_DTYPES
     ],
-    ids=lambda value: str(value),
+    ids=str,
 )
 def test_to_mkldnn_backward(dtype, case_group):
-    if flag_gems.vendor_name == "ascend" and case_group == "opaque-cross-cast":
+    if flag_gems.vendor_name == "ascend" and case_group == OPAQUE_CROSS_CAST_GROUP:
         pytest.skip(
             "Ascend host MKLDNN cannot convert opaque gradients between FP16 and BF16"
         )
@@ -212,7 +221,8 @@ def test_to_mkldnn_backward(dtype, case_group):
         case_fn=partial(_case_fn, case_group=case_group),
         build_inputs_fn=_build_inputs_fn,
         gems_op=getattr(flag_gems, "to_mkldnn_backward", None),
-        dtypes=[dtype],
+        dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
         case_group=case_group,
     )
     bench.run()

@@ -240,7 +240,8 @@ def test_validate_sparse_csr_tensor_args(dtype, empty_values):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._validate_sparse_csr_tensor_args,
         gems_op=getattr(flag_gems, "_validate_sparse_csr_tensor_args", None),
-        dtypes=[dtype],
+        dtypes=BENCH_VALUES_DTYPES,
+        partition_dtype=dtype,
         empty_values=empty_values,
     )
     bench.run()

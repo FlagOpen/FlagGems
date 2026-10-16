@@ -85,6 +85,7 @@ def test_view_as_real_copy_bench(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.view_as_real_copy,
         gems_op=getattr(flag_gems, "view_as_real_copy", None),
-        dtypes=[dtype],
+        dtypes=VIEW_AS_REAL_COPY_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

@@ -60,8 +60,10 @@ def _skip_affected_int8_materialization(dtype):
         )
 
 
-# Reorder support measured on this build with a valid rank-4 weight:
-#   float32 / float16 / bfloat16 / int8 -> reordered, values bit-exact for all five ranges
+# Native callable dtype grid, measured with a valid rank-4 weight. The fixtures
+# above separately guard CPU capabilities and unsafe INT8 materialization;
+# bit-exact values alone do not establish memory safety.
+#   float32 / float16 / bfloat16 / int8 -> accepted by the reorder API
 #   uint8 -> ``to_mkldnn()`` accepts it, the convolution descriptor does not, so it is
 #            reachable as a candidate call and appears as the dtype negative below
 #   bool / int32 / int64 / float64 / fp8 -> ``to_mkldnn()`` itself refuses them

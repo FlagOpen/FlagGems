@@ -19,6 +19,8 @@ import flag_gems
 
 from . import base, consts, utils
 
+BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
+
 # aten::is_conj(Tensor self) -> bool only reads the lazy conjugate bit and runs no
 # kernel. The plans below vary that bit (plain / conjugate / resolved conjugate /
 # conjugate + negative) instead of the payload, and the state is applied in the
@@ -51,7 +53,7 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.is_conj
-@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", BENCH_DTYPES)
 def test_is_conj(dtype):
     if flag_gems.vendor_name == "ascend" and dtype.is_complex:
         pytest.skip("Ascend normal_ does not support complex input dtypes")
@@ -62,6 +64,7 @@ def test_is_conj(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.is_conj,
         gems_op=getattr(flag_gems, "is_conj", None),
-        dtypes=[dtype],
+        dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

@@ -90,6 +90,7 @@ def test_glu_jvp(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.glu_jvp,
         gems_op=getattr(flag_gems, "glu_jvp", None),
-        dtypes=[dtype],
+        dtypes=_BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

@@ -20,6 +20,8 @@ import flag_gems
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
+BENCH_DTYPES = consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES
+
 # aten::adjoint conjugates and swaps the last two dimensions of a matrix or
 # batch of matrices; it is a zero-copy view, so the benchmark measures
 # dispatch + view-materialization overhead. 1-D shapes are excluded because
@@ -67,7 +69,7 @@ class AdjointBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.adjoint
-@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES + consts.COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", BENCH_DTYPES)
 def test_adjoint(dtype):
     if flag_gems.vendor_name == "ascend" and dtype.is_complex:
         pytest.skip("Ascend normal_ does not support complex input dtypes")
@@ -78,6 +80,7 @@ def test_adjoint(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.adjoint,
         gems_op=getattr(flag_gems, "adjoint", None),
-        dtypes=[dtype],
+        dtypes=BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

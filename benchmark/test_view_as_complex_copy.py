@@ -110,7 +110,8 @@ def test_view_as_complex_copy(dtype, empty_input):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.view_as_complex_copy,
         gems_op=getattr(flag_gems, "view_as_complex_copy", None),
-        dtypes=[dtype],
+        dtypes=VIEW_AS_COMPLEX_COPY_DTYPES,
+        partition_dtype=dtype,
         empty_input=empty_input,
     )
     bench.run()

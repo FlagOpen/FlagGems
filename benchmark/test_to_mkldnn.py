@@ -85,10 +85,8 @@ CROSS_DTYPE_PAIRS = (
 
 def _case_fn(shape, dtype, cross_cast=None):
     for out_dtype in DTYPE_BRANCHES[dtype]:
-        if (
-            cross_cast is not None
-            and ((dtype, out_dtype) in CROSS_DTYPE_PAIRS) != cross_cast
-        ):
+        is_cross_cast = (dtype, out_dtype) in CROSS_DTYPE_PAIRS
+        if cross_cast is not None and is_cross_cast != cross_cast:
             continue
         yield base.BenchmarkCasePlan(
             shape={"input": shape},
@@ -120,9 +118,14 @@ class ToMkldnnBenchmark(OperatorBenchmark):
 @pytest.mark.to_mkldnn
 @pytest.mark.parametrize(
     "dtype,cross_cast",
-    [(dtype, False) for dtype in TO_MKLDNN_DTYPES]
-    + [(torch.float16, True), (torch.bfloat16, True)],
-    ids=lambda value: str(value),
+    [
+        pytest.param(dtype, False, id=f"{dtype}-other-conversions")
+        for dtype in TO_MKLDNN_DTYPES
+    ]
+    + [
+        pytest.param(dtype, True, id=f"{dtype}-fp16-bf16-conversion")
+        for dtype in (torch.float16, torch.bfloat16)
+    ],
 )
 def test_to_mkldnn(dtype, cross_cast):
     if flag_gems.vendor_name == "ascend" and cross_cast:
@@ -133,6 +136,7 @@ def test_to_mkldnn(dtype, cross_cast):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.to_mkldnn,
         gems_op=getattr(flag_gems, "to_mkldnn", None),
-        dtypes=[dtype],
+        dtypes=TO_MKLDNN_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

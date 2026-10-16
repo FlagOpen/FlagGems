@@ -87,6 +87,7 @@ def test_mkldnn_reorder_conv2d_weight(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.mkldnn_reorder_conv2d_weight,
         gems_op=getattr(flag_gems, "mkldnn_reorder_conv2d_weight", None),
-        dtypes=[dtype],
+        dtypes=_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()

@@ -122,6 +122,7 @@ class Benchmark:
         dtypes=None,
         is_backward=False,
         is_inplace=False,
+        partition_dtype=None,
         **kwargs,
     ):
         self.op_name = op_name
@@ -149,6 +150,11 @@ class Benchmark:
         # Theoretical supported dtypes, metrics for the operation.
         # These are set by default.
         self.dtypes = dtypes if dtypes is not None else self.DEFAULT_DTYPES
+        # Keep the operator's complete dtype set for CLI validation, even when
+        # this pytest node executes only one dtype partition.
+        if partition_dtype is not None and partition_dtype not in self.dtypes:
+            raise ValueError("partition_dtype must belong to the operator's dtypes")
+        self.partition_dtype = partition_dtype
         self.metrics = self.DEFAULT_METRICS
         self.shapes = self.DEFAULT_SHAPES
         self.shape_desc = self.DEFAULT_SHAPE_DESC
@@ -210,6 +216,10 @@ class Benchmark:
         self.to_bench_dtypes = (
             user_desired_dtypes if user_desired_dtypes else self.dtypes
         )
+        if self.partition_dtype is not None:
+            if self.partition_dtype not in self.to_bench_dtypes:
+                pytest.skip(f"Dtype {self.partition_dtype} was not requested")
+            self.to_bench_dtypes = [self.partition_dtype]
 
     def set_shapes(self, shape_file_path: Optional[List[Any]] = None):
         # Validate user-spicified shapes files

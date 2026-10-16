@@ -236,6 +236,7 @@ def test_values_copy(dtype):
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.values_copy,
         gems_op=getattr(flag_gems, "values_copy", None),
-        dtypes=[dtype],
+        dtypes=_BENCH_DTYPES,
+        partition_dtype=dtype,
     )
     bench.run()
