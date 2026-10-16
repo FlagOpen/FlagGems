@@ -51,16 +51,7 @@ def _device_attn_forward(
     window_size_left=-1,
     window_size_right=-1,
 ):
-    """Device fp32 golden reference for the flash/cudnn backward tests.
-
-    ``aten::_flash_attention_forward`` / ``aten::_flash_attention_backward`` and
-    ``aten::_scaled_dot_product_cudnn_attention*`` have no executable kernel on
-    the kunlunxin/XPU build, so the reference is explicit device math instead of
-    the native op.  It is differentiable, so ``torch.autograd.grad`` supplies the
-    reference gradients.  One 2-D matmul per (batch, head): a batched fp32
-    matmul aborts the process on this stack.  The causal mask is top-left
-    aligned (``col > row`` is masked), matching ``F.scaled_dot_product_attention``.
-    """
+    """Device fp32 golden reference for the flash/cudnn backward tests."""
     b, h, s_q, d = Q_bhsd.shape
     s_kv = K_bhsd.shape[2]
     if scale is None:

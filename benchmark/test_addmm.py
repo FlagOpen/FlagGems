@@ -110,12 +110,8 @@ def _input_fn_dtype(b, m, n, k, dtype, device, b_column_major):
 def _native_addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1.0, alpha=1.0):
     """Device baseline for ``aten::addmm.dtype``.
 
-    This torch build registers the ``addmm.dtype`` schema but ships no device
-    kernel for it: only Meta/Autograd kernels exist, and the CUDA/XPU dispatch
-    keys resolve to the torch_xmlir eager *fallback*
-    (``ts_eager_fallback.cpp``), so the native call raises
-    "Could not run 'aten::addmm.dtype' with arguments from the 'CPU' backend"
-    and ``latency_base`` can never be assigned.
+    The native ``addmm.dtype`` cannot run on this build, so ``latency_base``
+    can never be assigned from it.
 
     The baseline is therefore assembled from native device ops only (never from
     FlagGems, and always outside ``use_gems``): ordinary ``torch.addmm`` with
@@ -156,8 +152,6 @@ def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
         input_fn=_input_fn_dtype,
-        # The device baseline is needed only where the native addmm.dtype has
-        # no executable kernel (kunlunxin/XPU).  Other vendors keep upstream.
         torch_op=_native_addmm_dtype if IS_KUNLUNXIN else torch.ops.aten.addmm.dtype,
         gems_op=flag_gems.addmm_dtype if IS_KUNLUNXIN else None,
         dtypes=consts.FP16_BF16_DTYPES,

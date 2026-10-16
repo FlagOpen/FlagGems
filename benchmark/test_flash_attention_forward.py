@@ -52,10 +52,9 @@ def _kunlunxin_flash_attention_forward_baseline(
 ):
     """Device baseline used when the native flash op cannot run.
 
-    ``aten::_flash_attention_forward`` -- the op this benchmark normally times
-    -- has no executable kernel on this XPU build, so ``latency_base`` could
-    never be assigned.  The same quantity is measured with the nearest native
-    device op instead:
+    The op this benchmark normally times cannot run on this build, so
+    ``latency_base`` could never be assigned.  The same quantity is measured
+    with the nearest native device op instead:
 
     * plain / causal shapes: ``aten::_scaled_dot_product_flash_attention``, the
       same-interface native flash-attention op (BSHD in/out, same family).
@@ -163,11 +162,6 @@ def torch_flash_attention_supports_alibi(device: str) -> bool:
         return False
 
     if flag_gems.vendor_name == "kunlunxin":
-        # On this XPU build `aten::_flash_attention_forward` has no executable
-        # kernel at all (its CUDA/XPU dispatch entries are ts_eager_fallback
-        # placeholders), so the native op cannot answer this question and the
-        # alibi shapes have no baseline.  The alibi path is still covered by
-        # tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap.
         return False
 
     try:

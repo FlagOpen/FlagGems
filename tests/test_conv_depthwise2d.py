@@ -64,8 +64,6 @@ def test_conv_depthwise2d(
         ref_bias = None
 
     if IS_KUNLUNXIN:
-        # aten::_conv_depthwise2d is CUDA-only and has no kernel here, so the
-        # reference is built with the equivalent grouped convolution.
         ref_out = torch.nn.functional.conv2d(
             ref_inp.float(),
             ref_weight.float(),

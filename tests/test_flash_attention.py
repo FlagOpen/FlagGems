@@ -28,6 +28,7 @@ from . import conftest as cfg
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 # Representative dense configs cover square/non-square inputs and 64/128 head sizes.
 # Other shape families below keep their existing QUICK_MODE reductions.
@@ -106,15 +107,7 @@ def make_input(
 def _flash_fwd_device_ref(
     q, k, v, scale, is_causal, window_size_left=None, window_size_right=None
 ):
-    """Golden reference for flash attention, built with explicit device math.
-
-    ``aten::_flash_attention_forward`` has no executable kernel on the XPU
-    backend, so the native call cannot construct the reference.  This computes
-    the same quantity on the device instead, looping over (batch, head) with
-    2-D matmuls: a 4-D batched fp32 matmul (or bmm) aborts the process on this
-    stack.  Masks follow this file's own ``construct_local_mask`` /
-    ``attention_ref`` semantics.
-    """
+    """Golden reference for flash attention, built with explicit device math."""
     B, Sq, H, D = q.shape
     Sk = k.shape[1]
     Hk = k.shape[2]
@@ -161,7 +154,18 @@ def torch_flash_fwd(
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
 
-    try:
+    if IS_KUNLUNXIN:
+        out, lse = _flash_fwd_device_ref(
+            q,
+            k,
+            v,
+            scale,
+            is_causal,
+            window_size_left=extra_kwargs.get("window_size_left"),
+            window_size_right=extra_kwargs.get("window_size_right"),
+        )
+        seed, offset, debug_softmax = None, None, None
+    else:
         (
             out,
             lse,
@@ -182,23 +186,6 @@ def torch_flash_fwd(
             scale=scale,
             **extra_kwargs,
         )
-    except NotImplementedError:
-        # `aten::_flash_attention_forward` has no executable kernel on the XPU
-        # backend (its CUDA/XPU dispatch entries are ts_eager_fallback
-        # placeholders), so the native call cannot build the golden reference.
-        # Fall back to the same quantity computed with explicit device math.
-        # Only this helper is affected; the FlagGems candidate is still the
-        # call under test.
-        out, lse = _flash_fwd_device_ref(
-            q,
-            k,
-            v,
-            scale,
-            is_causal,
-            window_size_left=extra_kwargs.get("window_size_left"),
-            window_size_right=extra_kwargs.get("window_size_right"),
-        )
-        seed, offset, debug_softmax = None, None, None
 
     return out, lse, seed, offset, debug_softmax
 
