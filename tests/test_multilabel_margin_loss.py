@@ -601,7 +601,15 @@ def test_multilabel_margin_loss_invalid_input_dtype(dtype):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("target_dtype", [torch.float32, torch.int32, torch.int16])
+@pytest.mark.parametrize(
+    "target_dtype",
+    # Ascend native loss accepts INT32 targets.
+    (
+        [torch.float32, torch.int16]
+        if flag_gems.vendor_name == "ascend"
+        else [torch.float32, torch.int32, torch.int16]
+    ),
+)
 def test_multilabel_margin_loss_invalid_target_dtype(target_dtype):
     inp = torch.zeros((8, 11), dtype=torch.float32, device=flag_gems.device)
     target = torch.zeros((8, 11), dtype=target_dtype, device=flag_gems.device)
