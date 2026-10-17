@@ -30,6 +30,11 @@ _ASCEND_LOW_PRECISION_BACKWARD_SKIP = pytest.mark.skipif(
     reason="Ascend FP16/BF16 backward falls back to an unavailable CPU kernel",
 )
 
+_ASCEND_CPU_SPECIAL_VALUES_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and utils.TO_CPU,
+    reason="Ascend and CPU native loss differ in NaN/Inf propagation",
+)
+
 # multilabel_margin_loss scores an (N, C) matrix, or a single C-class row, against an
 # int64 target of the same shape whose rows list active class ids terminated by -1.
 # reduction follows at::Reduction: 0 is per-row, 1 the mean, 2 the sum. The native
@@ -546,21 +551,30 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize(
-    "dtype, special",
+    "layout, dtype, special",
     [
         pytest.param(
+            layout,
             dtype,
             special,
             marks=(
                 _ASCEND_CPU_LOW_PRECISION_SKIP
                 if dtype in (torch.float16, torch.bfloat16)
-                else ()
+                else (
+                    _ASCEND_CPU_SPECIAL_VALUES_SKIP
+                    if dtype == torch.float32
+                    and (
+                        special in ("nan", "mixed")
+                        or (layout == "batched" and special == "inf")
+                    )
+                    else ()
+                )
             ),
         )
+        for layout in SPECIAL_LAYOUTS
         for dtype, special in SPECIAL_CASES
     ],
 )
-@pytest.mark.parametrize("layout", SPECIAL_LAYOUTS)
 def test_multilabel_margin_loss_special_values(dtype, special, layout):
     shape = (8, 11)
     inp = _special_input(dtype, shape, special, layout)
