@@ -412,12 +412,6 @@ from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
-from .linalg_matrix_rank import (
-    linalg_matrix_rank,
-    linalg_matrix_rank_out,
-    linalg_matrix_rank_tol,
-    linalg_matrix_rank_tol_out,
-)
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_qr import linalg_qr, linalg_qr_out  # noqa: F401
 from .linalg_slogdet import linalg_slogdet
@@ -1244,10 +1238,6 @@ __all__ = [
     "linalg_lu_out",
     "linalg_matrix_norm",
     "linalg_matrix_norm_out",
-    "linalg_matrix_rank",
-    "linalg_matrix_rank_out",
-    "linalg_matrix_rank_tol",
-    "linalg_matrix_rank_tol_out",
     "linalg_multi_dot",
     "linalg_multi_dot_out",
     "linalg_qr",
