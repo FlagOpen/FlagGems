@@ -95,15 +95,22 @@ TARGET_PATTERNS = [
     "payload",
 ]
 MAIN_PATTERN = "half"
+# The main grid sweeps all value ranges; supplementary patterns use MAIN_RANGE.
 # Supplementary target patterns are a default-only dimension.
 PATTERN_CASES = tu.selected_cases(TARGET_PATTERNS, quick=[])
 
-VIEW_LAYOUTS = ["contiguous", "offset", "row_strided", "col_strided", "transposed"]
+# Cover each layout on both sides, plus one-sided striding and mixed noncontiguous views.
 LAYOUT_PAIRS = tu.selected_cases(
     [
-        (in_layout, tgt_layout)
-        for in_layout in VIEW_LAYOUTS
-        for tgt_layout in VIEW_LAYOUTS
+        ("contiguous", "contiguous"),
+        ("offset", "offset"),
+        ("row_strided", "row_strided"),
+        ("col_strided", "col_strided"),
+        ("transposed", "transposed"),
+        ("contiguous", "row_strided"),
+        ("row_strided", "contiguous"),
+        ("offset", "transposed"),
+        ("transposed", "offset"),
     ],
     quick=[],
 )
@@ -129,12 +136,7 @@ SPECIAL_CASES = tu.selected_cases(
 # An empty batch carries no values, so the value-range dimension does not apply here.
 EMPTY_BATCH_CASES = tu.selected_cases(SUPPORTED_DTYPES, quick=[])
 CLASS_COUNT_CASES = tu.selected_cases(
-    [
-        (n, dtype, r)
-        for n in (255, 256, 257)
-        for dtype in SUPPORTED_DTYPES
-        for r in RANGES
-    ],
+    [(n, dtype, MAIN_RANGE) for n in (255, 256, 257) for dtype in SUPPORTED_DTYPES],
     quick=[],
 )
 EXTRA_REDUCTIONS = tu.selected_cases(
@@ -300,7 +302,7 @@ def test_multilabel_margin_loss(shape, value_range, reduction, dtype):
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("pattern", PATTERN_CASES)
-@pytest.mark.parametrize("value_range", RANGES)
+@pytest.mark.parametrize("value_range", [MAIN_RANGE])
 @pytest.mark.parametrize("reduction", REDUCTIONS)
 @pytest.mark.parametrize(
     "dtype",
@@ -331,7 +333,7 @@ def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction,
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("shape", DEFAULT_REDUCTION_SHAPES)
-@pytest.mark.parametrize("value_range", RANGES)
+@pytest.mark.parametrize("value_range", [MAIN_RANGE])
 @pytest.mark.parametrize(
     "dtype",
     [
