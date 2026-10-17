@@ -630,6 +630,10 @@ def _ppu_split_k_configs():
     )
 
 
+# The candidate catalog is static; do not rebuild it on every MM call.
+_PPU_MAX_SPLIT_K = max(config.kwargs["SPLIT_K"] for config in _ppu_split_k_configs())
+
+
 def _ppu_split_k_reduce_configs():
     return [
         triton.Config({"BLOCK": block, "VEC": vec}, num_warps=warps, num_stages=1)
@@ -1687,6 +1691,7 @@ if HAS_PPU_TLE:
         else:
             tl.store(workspace_ptrs, acc, mask=mask)
 
+    @libentry()
     @libtuner(
         configs=_ppu_split_k_reduce_configs(),
         # SPLIT_K is constexpr and changes the reduction loop body.  Keeping
@@ -2324,18 +2329,17 @@ def _run_split_k_mm(
     M, K = a.shape
     _, N = b.shape
     b_transposed = _b_transposed_layout(b)
-    # The tuner updates ``best_config`` inside the kernel launch.  It may still
-    # contain the winner for a previous shape before this call, so allocate the
-    # bounded maximum up front and read the active split count afterwards.
-    max_split_k = max(config.kwargs["SPLIT_K"] for config in _ppu_split_k_configs())
-    workspace = torch.empty((max_split_k, M, N), device=out.device, dtype=torch.float32)
+    # Bound cold tuning as before, using the static catalog's maximum.
+    workspace = torch.empty(
+        (_PPU_MAX_SPLIT_K, M, N), device=out.device, dtype=torch.float32
+    )
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"])
         * triton.cdiv(N, META["BLOCK_N"])
         * META["SPLIT_K"],
     )
     with torch_device_fn.device(a.device):
-        mm_split_k_kernel_ppu[grid](
+        _, launch_meta = mm_split_k_kernel_ppu[grid](
             a,
             b,
             workspace,
@@ -2350,15 +2354,9 @@ def _run_split_k_mm(
             aiu_load_mask=_aiu_load_mask(a, b),
             EVEN_MN=False,
         )
-        # The libentry wrapper owns the tuner in newer runtimes, while older
-        # runtimes exposed the tuner directly.  Read the selected config from
-        # whichever layer carries ``best_config``.
-        split_tuner = mm_split_k_kernel_ppu
-        while not hasattr(split_tuner, "best_config"):
-            split_tuner = getattr(split_tuner, "fn", None)
-            if split_tuner is None:
-                raise RuntimeError("split-K tuner did not expose best_config")
-        split_k = split_tuner.best_config.kwargs["SPLIT_K"]
+        # A warm LibEntry launch does not update the tuner's best_config.
+        # Its returned metadata belongs to this exact cached kernel/shape.
+        split_k = launch_meta["SPLIT_K"]
         reduce_grid = lambda META: (triton.cdiv(M * N, META["BLOCK"] * META["VEC"]),)
         mm_split_k_reduce_kernel_ppu[reduce_grid](
             workspace,

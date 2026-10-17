@@ -1376,6 +1376,8 @@ class LibEntry(triton.KernelInterface):
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
         self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
+        self._flagtune_state = None
+        self._flagtune_model_ids = self._cost_model_ids(fn)
         self._cpu_cache = dict()
 
         while not isinstance(fn, triton.runtime.JITFunction):
@@ -1416,20 +1418,59 @@ class LibEntry(triton.KernelInterface):
                 break
         return False
 
-    def _apply_flagtune(self):
-        changed = False
-        fn = self.fn
+    @staticmethod
+    def _cost_model_ids(fn):
+        """Collect immutable identities whose process-wide AUTO fuse can change."""
+        identities = []
         while not isinstance(fn, triton.runtime.JITFunction):
-            apply_flagtune = getattr(fn, "apply_flagtune", None)
-            if apply_flagtune is not None:
-                changed = apply_flagtune() or changed
+            if _supports_flagtune_cost_model(fn):
+                identities.append((fn._flagtune_op_id, fn._flagtune_variant))
             fn = getattr(fn, "fn", None)
             if fn is None:
                 break
-        if changed:
-            for cache in self.kernel_cache:
-                cache.clear()
-            self._cpu_cache.clear()
+        return tuple(identities)
+
+    def _apply_flagtune(self, device=None):
+        from flag_gems.runtime.flagtune import _flagtune_state_key
+
+        if device is None:
+            device = torch_device_fn.current_device()
+        state = (
+            device,
+            _flagtune_state_key(),
+            tuple(
+                cost_model.is_auto_disabled(*key) for key in self._flagtune_model_ids
+            ),
+        )
+        if state == self._flagtune_state:
+            return
+        with self.lock:
+            # Recheck after waiting for another thread's initialization. Commit
+            # the state only after success, so failed validation is retried.
+            state = (
+                device,
+                _flagtune_state_key(),
+                tuple(
+                    cost_model.is_auto_disabled(*key)
+                    for key in self._flagtune_model_ids
+                ),
+            )
+            if state == self._flagtune_state:
+                return
+            changed = False
+            fn = self.fn
+            while not isinstance(fn, triton.runtime.JITFunction):
+                apply_flagtune = getattr(fn, "apply_flagtune", None)
+                if apply_flagtune is not None:
+                    changed = apply_flagtune() or changed
+                fn = getattr(fn, "fn", None)
+                if fn is None:
+                    break
+            if changed:
+                for cache in self.kernel_cache:
+                    cache.clear()
+                self._cpu_cache.clear()
+            self._flagtune_state = state
 
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
@@ -1471,8 +1512,9 @@ class LibEntry(triton.KernelInterface):
 
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
+        device = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
-            self._apply_flagtune()
+            self._apply_flagtune(device)
 
         # collect all the arguments
         spec_args = []  # specialize arguments
@@ -1517,7 +1559,6 @@ class LibEntry(triton.KernelInterface):
             )
 
         entry_key = self.key(spec_args, dns_args, const_args)
-        device = torch_device_fn.current_device()
         # CPU has one device per process and `current_device()` returns the
         # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
         # This branch is CPU-generic — any future x86 / RISC-V CPU backend
