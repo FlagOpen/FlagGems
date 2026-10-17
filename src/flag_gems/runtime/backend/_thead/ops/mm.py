@@ -20,6 +20,7 @@ implementation; partial M/N/K tiles are handled in the PPU kernels.
 """
 
 import logging
+from contextlib import nullcontext
 from enum import Enum
 
 import torch
@@ -112,8 +113,10 @@ def _is_transposed_contiguous_2d(tensor: torch.Tensor) -> bool:
     """
     return (
         tensor.ndim == 2
+        and tensor.layout == torch.strided
         and not tensor.is_contiguous()
-        and tensor.transpose(0, 1).is_contiguous()
+        and tensor.stride(0) == 1
+        and tensor.stride(1) == tensor.shape[0]
     )
 
 
@@ -659,7 +662,7 @@ def _flagtune_mm_dtype_identity(arguments):
 
 if HAS_PPU_TLE:
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_gemv_configs(),
         key=["FUSE_ADDMM", "TRANSPOSED", "B_TRANSPOSED", "M", "K"],
@@ -736,7 +739,7 @@ if HAS_PPU_TLE:
             mask=rows < M,
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_multi_row_gemv_configs(),
         key=["FUSE_ADDMM", "B_TRANSPOSED", "M", "N", "K"],
@@ -821,7 +824,7 @@ if HAS_PPU_TLE:
             mask=mask,
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_narrow_columns_configs(),
         key=["FUSE_ADDMM", "B_TRANSPOSED", "M", "N", "K"],
@@ -902,7 +905,7 @@ if HAS_PPU_TLE:
             mask=row_mask & (pid_n < N),
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_grouped_row_gemv_configs(),
         key=["FUSE_ADDMM", "B_TRANSPOSED", "M", "N", "K"],
@@ -984,7 +987,7 @@ if HAS_PPU_TLE:
             mask=row_mask[:, None] & col_mask[None, :],
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_mm_configs(),
         key=["FUSE_ADDMM", "B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1101,7 +1104,7 @@ if HAS_PPU_TLE:
             FUSE_ADDMM,
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_narrow_n_configs(),
         key=["FUSE_ADDMM", "B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1206,7 +1209,7 @@ if HAS_PPU_TLE:
             FUSE_ADDMM,
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_small_m_configs(),
         key=["FUSE_ADDMM", "B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1314,7 +1317,7 @@ if HAS_PPU_TLE:
             FUSE_ADDMM,
         )
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_mid_m_configs(),
         key=[
@@ -1549,7 +1552,7 @@ if HAS_PPU_TLE:
     # PPU global-output atomics compile, but direct FP16 accumulation retained
     # only 20-77% of this workspace path's throughput in the Qwen split-K set.
     # BF16 also rounds every partial sum before the atomic and missed tolerance.
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_split_k_configs(),
         key=["B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1691,7 +1694,7 @@ if HAS_PPU_TLE:
         else:
             tl.store(workspace_ptrs, acc, mask=mask)
 
-    @libentry()
+    @libentry(ppu_cached=True)
     @libtuner(
         configs=_ppu_split_k_reduce_configs(),
         # SPLIT_K is constexpr and changes the reduction loop body.  Keeping
@@ -1743,6 +1746,18 @@ if HAS_PPU_TLE:
             tl.store(C + offsets, acc.to(C.dtype.element_ty))
         else:
             tl.store(C + offsets, acc.to(C.dtype.element_ty), mask=mask)
+
+
+_NO_DEVICE_CHANGE = nullcontext()
+
+
+def _ppu_device_context(tensor):
+    # LibEntry uses the current device and stream. Avoid resetting an already
+    # current device while preserving the original multi-device behavior.
+    index = tensor.device.index
+    if index == torch_device_fn.current_device():
+        return _NO_DEVICE_CHANGE
+    return torch_device_fn.device(tensor.device)
 
 
 def _can_use_ppu_mm(a: torch.Tensor, b: torch.Tensor, out: torch.Tensor) -> bool:
@@ -1804,16 +1819,15 @@ def _run_ppu_gemv_mm(
 
     if N == 1:
         matrix = a
-        # Keep the singleton operand as a true vector.  Passing a (K, 1)
-        # tensor makes the same GEMV kernel use a two-dimensional pointer
-        # signature and costs a measurable amount on launch-bound columns.
-        vector = b[:, 0]
+        # The kernel addresses raw pointers with explicit strides. Keep the
+        # original tensor: slicing a singleton column only adds a Python view.
+        vector = b
         rows = M
         stride_matrix_row = a.stride(0)
         stride_matrix_k = a.stride(1)
-        stride_vector_k = vector.stride(0)
-        output = out[:, 0]
-        bias_output = expanded_bias[:, 0]
+        stride_vector_k = b.stride(0)
+        output = out
+        bias_output = expanded_bias
         stride_out_row = output.stride(0)
         stride_bias_row = bias_output.stride(0)
         transposed = False
@@ -1821,19 +1835,19 @@ def _run_ppu_gemv_mm(
         # A(1, K) @ B(K, N) is the GEMV B.T(N, K) @ A[0].  The logical
         # transpose is represented only by strides, so no copy is introduced.
         matrix = b
-        vector = a[0, :]
+        vector = a
         rows = N
         stride_matrix_row = b.stride(1)
         stride_matrix_k = b.stride(0)
-        stride_vector_k = vector.stride(0)
-        output = out[0, :]
-        bias_output = expanded_bias[0, :]
-        stride_out_row = output.stride(0)
-        stride_bias_row = bias_output.stride(0)
+        stride_vector_k = a.stride(1)
+        output = out
+        bias_output = expanded_bias
+        stride_out_row = out.stride(1)
+        stride_bias_row = expanded_bias.stride(1)
         transposed = True
 
     grid = lambda META: (triton.cdiv(rows, META["BLOCK_M"]),)
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         gemv_kernel_ppu[grid](
             matrix,
             vector,
@@ -1905,7 +1919,7 @@ def _run_ppu_mm(
             FUSE_ADDMM=fuse_addmm,
         )
 
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         if N > _PPU_DESCRIPTOR_MAX_N and M > _PPU_ULTRA_WIDE_DIRECT_M_MAX:
             for n_start in range(0, N, _PPU_DESCRIPTOR_CHUNK_N):
                 width = min(_PPU_DESCRIPTOR_CHUNK_N, N - n_start)
@@ -2120,7 +2134,7 @@ def _run_ppu_narrow_n_mm(
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_narrow_n_kernel_ppu[grid](
             a,
             b,
@@ -2168,7 +2182,7 @@ def _run_partial_m_ppu_mm(
         else {"GROUPED_ROWS": not fuse_addmm and _prefer_grouped_mid_m(1, M, N, K)}
     )
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         kernel[grid](
             a,
             b,
@@ -2211,7 +2225,7 @@ def _run_ppu_multi_row_gemv_mm(
     fuse_addmm = bias is not None
     expanded_bias = bias.broadcast_to((M, N)) if fuse_addmm else out
     grid = lambda META: (triton.cdiv(N, META["BLOCK_M"]), M)
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_multi_row_gemv_kernel_ppu[grid](
             a,
             b,
@@ -2251,7 +2265,7 @@ def _run_ppu_narrow_columns_mm(
     fuse_addmm = bias is not None
     expanded_bias = bias.broadcast_to((M, N)) if fuse_addmm else out
     grid = lambda META: (N, triton.cdiv(M, META["BLOCK_M"]))
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_narrow_columns_kernel_ppu[grid](
             a,
             b,
@@ -2293,7 +2307,7 @@ def _run_ppu_grouped_row_gemv_mm(
         triton.cdiv(N, META["BLOCK_M"]),
         triton.cdiv(M, META["ROWS_PER_PROGRAM"]),
     )
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_grouped_row_gemv_kernel_ppu[grid](
             a,
             b,
@@ -2338,7 +2352,7 @@ def _run_split_k_mm(
         * triton.cdiv(N, META["BLOCK_N"])
         * META["SPLIT_K"],
     )
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         _, launch_meta = mm_split_k_kernel_ppu[grid](
             a,
             b,

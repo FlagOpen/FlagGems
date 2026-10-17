@@ -1470,6 +1470,9 @@ class LibEntry(triton.KernelInterface):
                 for cache in self.kernel_cache:
                     cache.clear()
                 self._cpu_cache.clear()
+                plans = getattr(self, "_ppu_launch_plans", None)
+                if plans is not None:
+                    plans.clear()
             self._flagtune_state = state
 
     def key(self, spec_args, dns_args, const_args):
@@ -1668,6 +1671,142 @@ class LibEntry(triton.KernelInterface):
         return kernel, constexprs
 
 
+class PPULibEntry(LibEntry):
+    """Fast warm binding for tuned PPU kernels; other backends use LibEntry."""
+
+    def __init__(self, fn):
+        super().__init__(fn)
+        import torch
+
+        self._ppu_launch_plans = {}
+        self._ppu_tensor_type = torch.Tensor
+        self._ppu_scalar_types = (int, bool, float, str, type(None))
+        self._ppu_param_names = tuple(p.name for p in self.jit_function.params)
+        self._ppu_param_kinds = tuple(
+            0 if p.is_constexpr else 2 if p.do_not_specialize else 1
+            for p in self.jit_function.params
+        )
+        self._ppu_param_defaults = tuple(p.default for p in self.jit_function.params)
+        self._ppu_dtype_names = {}
+
+    def _ppu_key_value(self, value, kind):
+        if isinstance(value, self._ppu_tensor_type):
+            if kind == 1:
+                return (value.dtype, value.data_ptr() % self.divisibility == 0)
+            if kind == 2:
+                return value.dtype
+            return inspect._empty
+        if type(value) not in self._ppu_scalar_types:
+            # Descriptors, constexpr wrappers and custom pointer objects retain
+            # the generic binder and its existing specialization behavior.
+            return inspect._empty
+        if kind == 0:
+            return value
+        if kind == 1:
+            return (type(value), value)
+        if not isinstance(value, int):
+            return type(value)
+        if -(2**31) <= value <= 2**31 - 1:
+            return "i32"
+        if 2**63 <= value <= 2**64 - 1:
+            return "u64"
+        return "i64"
+
+    def _run_ppu_cached(self, args, kwargs):
+        """Bind ordinary tensor/scalar launches without rebuilding OrderedDicts.
+
+        Cold entries and descriptors still use the complete generic path. The
+        key preserves tensor alignment, scalar specialization, integer widths,
+        defaults and FlagTune dtype identity. Plans store constants only; each
+        launch supplies its current tensors and unspecialized scalar values.
+        """
+        count = len(args)
+        if count > len(self._ppu_param_names):
+            return None
+        keys = ([], [], [])
+        dtype_names = []
+        key_value = self._ppu_key_value
+        for kind, value in zip(self._ppu_param_kinds, args):
+            key = key_value(value, kind)
+            if key is inspect._empty:
+                return None
+            keys[kind].append(key)
+            if self._has_flagtune_tuner and isinstance(value, self._ppu_tensor_type):
+                dtype = value.dtype
+                name = self._ppu_dtype_names.get(dtype)
+                if name is None:
+                    name = self._ppu_dtype_names[dtype] = str(dtype)
+                dtype_names.append(name)
+        for name, kind, default in zip(
+            self._ppu_param_names[count:],
+            self._ppu_param_kinds[count:],
+            self._ppu_param_defaults[count:],
+        ):
+            value = kwargs.get(name, default)
+            if value is inspect._empty:
+                continue
+            key = key_value(value, kind)
+            if key is inspect._empty:
+                return None
+            keys[kind].append(key)
+            if self._has_flagtune_tuner and isinstance(value, self._ppu_tensor_type):
+                dtype = value.dtype
+                name = self._ppu_dtype_names.get(dtype)
+                if name is None:
+                    name = self._ppu_dtype_names[dtype] = str(dtype)
+                dtype_names.append(name)
+        if self._has_flagtune_tuner:
+            keys[0].append(("flagtune_dtypes",) + tuple(dtype_names))
+        # Generic order is specialized, unspecialized, then constexpr values.
+        entry_key = tuple(keys[1] + keys[2] + keys[0])
+        device_index = torch_device_fn.current_device()
+        if self._has_flagtune_tuner:
+            self._apply_flagtune(device_index)
+        entry = self.kernel_cache[device_index].get(entry_key)
+        if entry is None:
+            return None
+        kernel, constexprs, tune_constexprs, heur_constexprs, hooks = entry
+        plan_key = (device_index, entry_key, count)
+        saved = self._ppu_launch_plans.get(plan_key)
+        if saved is None or saved[0] is not entry:
+            defaults = []
+            for name, default in zip(
+                self._ppu_param_names[count:], self._ppu_param_defaults[count:]
+            ):
+                if default is inspect._empty:
+                    if name in tune_constexprs:
+                        default = tune_constexprs[name]
+                    elif name in heur_constexprs:
+                        default = heur_constexprs[name]
+                    else:
+                        default = constexprs.get(name, inspect._empty)
+                defaults.append((name, default))
+            saved = (entry, tuple(defaults))
+            self._ppu_launch_plans[plan_key] = saved
+        all_args = list(args)
+        for name, default in saved[1]:
+            value = kwargs.get(name, default)
+            if value is inspect._empty:
+                return None
+            all_args.append(value)
+        grid = kwargs["grid"]
+        if callable(grid):
+            grid = grid({**dict(zip(self.arg_names, args)), **kwargs, **constexprs})
+        grid = grid + (1, 1)
+        if hooks:
+            hook_nargs = {**dict(zip(self.arg_names, args)), **kwargs}
+            for pre_hook, hook_kwargs in hooks:
+                pre_hook({**hook_nargs, **hook_kwargs})
+        kernel[grid[:3]](*all_args)
+        return kernel, constexprs
+
+    def run(self, *args, **kwargs):
+        cached = self._run_ppu_cached(args, kwargs)
+        if cached is not None:
+            return cached
+        return super().run(*args, **kwargs)
+
+
 def find_flagtune_benchmark_target(
     public_operator: Callable[..., Any], op_id: str, variant: str
 ) -> Tuple["LibEntry", LibTuner]:
@@ -1739,12 +1878,22 @@ def clear_libentry_dispatch_cache(entry: "LibEntry") -> None:
     for cache in entry.kernel_cache:
         cache.clear()
     entry._cpu_cache.clear()
+    plans = getattr(entry, "_ppu_launch_plans", None)
+    if plans is not None:
+        plans.clear()
 
 
-def libentry():
-    """Decorator for triton library entries."""
+def libentry(*, ppu_cached=False):
+    """Decorate an entry; PPU cached binding requires explicit per-kernel opt-in."""
 
     def decorator(fn):
+        if (
+            ppu_cached
+            and device.vendor_name == "thead"
+            and major_version == 3
+            and 3 <= minor_version <= 6
+        ):
+            return PPULibEntry(fn)
         return LibEntry(fn)
 
     return decorator
