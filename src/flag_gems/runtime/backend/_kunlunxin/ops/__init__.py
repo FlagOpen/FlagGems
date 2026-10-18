@@ -482,12 +482,6 @@ from .moe_sum import moe_sum
 from .mse_loss import mse_loss
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
-from .multi_margin_loss import (
-    multi_margin_loss,
-    multi_margin_loss_backward,
-    multi_margin_loss_backward_out,
-    multi_margin_loss_out,
-)
 from .multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from .multinomial import multinomial
 from .multiply import multiply
@@ -1319,10 +1313,6 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
-    "multi_margin_loss",
-    "multi_margin_loss_backward",
-    "multi_margin_loss_backward_out",
-    "multi_margin_loss_out",
     "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
