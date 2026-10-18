@@ -198,6 +198,29 @@ def _hc_mix_geometry_for(m: int, k: int) -> Tuple[int, int]:
     return _block_m_for(m), _num_stages_for(m, k)
 
 
+_HC_MIX_H100_TRITON36_MAXNREG = 168
+
+
+def _hc_mix_extra_launch_options(x: torch.Tensor, fn: torch.Tensor):
+    # Keep the arithmetic, K slicing and row reduction tree unchanged.
+    # H100/3.6's unconstrained allocation exceeds the three-CTA register budget.
+    if (
+        x.is_cuda
+        and x.dtype == torch.bfloat16
+        and x.ndim == 2
+        and x.shape[0] in (50, 60)
+        and x.shape[1] == 20480
+        and x.is_contiguous()
+        and fn.dtype == torch.float32
+        and fn.shape == (24, 20480)
+        and fn.is_contiguous()
+        and triton.__version__.split("+")[0] == "3.6.0"
+        and torch.cuda.get_device_capability(x.device) == (9, 0)
+    ):
+        return {"maxnreg": _HC_MIX_H100_TRITON36_MAXNREG}
+    return {}
+
+
 def hc_mix_stats(
     x_flat: torch.Tensor, hc_fn: torch.Tensor, eps: float, *, tuned=True
 ) -> torch.Tensor:
@@ -243,6 +266,7 @@ def hc_mix_stats(
         DOT_PRECISION=_HC_MIX_DOT_PRECISION,
         num_warps=_HC_MIX_NUM_WARPS,
         num_stages=num_stages,
+        **(_hc_mix_extra_launch_options(x_flat, hc_fn) if tuned else {}),
     )
     _hc_mix_stats_reduce_kernel[(grid_m,)](
         part_mix,
@@ -436,6 +460,7 @@ def hc_mix_stats_sinkhorn_exact(
         DOT_PRECISION=_HC_MIX_DOT_PRECISION,
         num_warps=_HC_MIX_NUM_WARPS,
         num_stages=stages,
+        **_hc_mix_extra_launch_options(x, fn),
     )
     kernel = _exact_kernel(hc, iters, hc_eps, slices, debug_mix)
     kernel(pm, ps, scale, base, pre, post, comb, mixes, 1.0 / k, rms_eps)
