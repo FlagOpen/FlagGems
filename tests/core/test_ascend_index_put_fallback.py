@@ -27,6 +27,7 @@ real hardware is covered by the upstream CI suite (``tests/test_index_put*.py``)
 
 import ast
 import importlib.util
+import logging
 import sys
 import types
 from pathlib import Path
@@ -204,6 +205,27 @@ def test_native_path_passes_index_list_and_moves_values(ascend_index_put, monkey
     _, _, args = native_calls[0]
     assert args[1] == ["a", "b"]
     assert args[2] is moved
+
+
+def test_native_fallback_warns_only_once(ascend_index_put, monkeypatch, caplog):
+    """The fallback warning fires once per process, not on every call."""
+    module, _, _ = ascend_index_put
+    monkeypatch.delenv(ENV, raising=False)
+    inp = FakeTensor()
+    values = FakeTensor()
+
+    with caplog.at_level(logging.WARNING):
+        module.index_put(inp, ["i"], values)
+        module.index_put_(inp, ["i"], values)
+        module.index_put(inp, ["i"], values)
+
+    warnings = [
+        record
+        for record in caplog.records
+        if "falling back to native ATen" in record.getMessage()
+    ]
+    assert len(warnings) == 1
+    assert warnings[0].levelno == logging.WARNING
 
 
 def test_ascend_ops_init_exports_index_put():

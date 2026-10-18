@@ -46,6 +46,11 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 
+# index_put is a high-frequency op, so warn about the implementation switch only
+# once per process instead of on every call. WARNING (not INFO) so the switch is
+# visible at the default log level.
+_LOGGED_NATIVE_FALLBACK = False
+
 
 def _use_triton_path() -> bool:
     """True when the caller opted back into the Triton implementation."""
@@ -53,10 +58,13 @@ def _use_triton_path() -> bool:
 
 
 def _native_index_put(inp, indices, values, accumulate, inplace):
-    logger.info(
-        "ascend: index_put/index_put_ falling back to native ATen "
-        "(set FLAGGEMS_ASCEND_INDEX_PUT_TRITON=1 to override)"
-    )
+    global _LOGGED_NATIVE_FALLBACK
+    if not _LOGGED_NATIVE_FALLBACK:
+        logger.warning(
+            "ascend: index_put/index_put_ falling back to native ATen "
+            "(set FLAGGEMS_ASCEND_INDEX_PUT_TRITON=1 to override)"
+        )
+        _LOGGED_NATIVE_FALLBACK = True
     indices = list(indices)
     if values.device != inp.device:
         values = values.to(inp.device)
