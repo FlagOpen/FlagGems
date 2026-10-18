@@ -53,6 +53,10 @@ def _use_triton_path() -> bool:
 
 
 def _native_index_put(inp, indices, values, accumulate, inplace):
+    logger.info(
+        "ascend: index_put/index_put_ falling back to native ATen "
+        "(set FLAGGEMS_ASCEND_INDEX_PUT_TRITON=1 to override)"
+    )
     indices = list(indices)
     if values.device != inp.device:
         values = values.to(inp.device)
