@@ -15,6 +15,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 
 import pytest
 import torch
@@ -25,6 +26,8 @@ from flag_gems.cli_override import add_override_arguments, apply_overrides_from_
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
+from .profile_hook import ProfileHooks
+from .reference import reference_report, validate_reference_options
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
@@ -112,8 +115,11 @@ class BenchConfig:
         self.profile_only = False
         self.preflight_only = False
         self.preflight_records = []
+        self.reference_only = False
+        self.reference_records = []
         self.profile_warmup = 10
         self.profile_iterations = 1
+        self.profile_hook = None
         self.override_registry = None
         self.skip_native = False
         self.native_baseline_skip_reason = None
@@ -180,6 +186,12 @@ def _deactivate_inactive_native_marker(item, current_vendor):
 
 def pytest_addoption(parser):
     parser.addoption(
+        "--reference-only",
+        action="store_true",
+        default=False,
+        help="Run original benchmark baseline only; no candidate or timing.",
+    )
+    parser.addoption(
         (
             "--mode" if vendor_name != "kunlunxin" else "--fg_mode"
         ),  # TODO: fix pytest-* common --mode args
@@ -197,10 +209,10 @@ def pytest_addoption(parser):
     parser.addoption(
         "--level",
         action="store",
-        default="comprehensive",
+        default=None,
         required=False,
         choices=[level.value for level in consts.BenchLevel],
-        help="Specify the benchmark level: comprehensive, or core.",
+        help="Benchmark level: reference-only defaults to core; other modes default to comprehensive.",
     )
 
     parser.addoption(
@@ -337,6 +349,10 @@ def pytest_addoption(parser):
     add_override_arguments(parser)
 
 
+def pytest_addhooks(pluginmanager):
+    pluginmanager.add_hookspecs(ProfileHooks)
+
+
 def pytest_configure(config):
     global Config  # noqa: F824
     global REPORT_FILE
@@ -348,6 +364,7 @@ def pytest_configure(config):
     )
 
     Config = BenchConfig()
+    Config.reference_only = validate_reference_options(config)
     CASE_LISTS.clear()
     TEST_RESULTS.clear()
 
@@ -394,7 +411,11 @@ def pytest_configure(config):
             "profile warmup must be non-negative and iterations positive"
         )
 
+    Config.profile_hook = config.hook.pytest_flaggems_profile_scope
+
     level_value = config.getoption("--level")
+    if level_value is None:
+        level_value = "core" if Config.reference_only else "comprehensive"
     Config.bench_level = consts.BenchLevel(level_value)
 
     warmup_value = config.getoption("--warmup")
@@ -421,6 +442,9 @@ def pytest_configure(config):
     if Config.record_json or Config.list_cases:
         Config.output = config.getoption("--output")
         REPORT_FILE = Config.output
+    if Config.reference_only:
+        Config.record_json = True
+        REPORT_FILE = config.getoption("--output") or "reference_result.json"
 
     if Config.record_log:
         cmd_args = [
@@ -559,6 +583,18 @@ def pytest_runtest_makereport(item, call):
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_logreport(report):
+    if Config.reference_only:
+        if report.outcome in {"failed", "skipped"}:
+            Config.reference_records.append(
+                {
+                    "nodeid": report.nodeid,
+                    "operator": report.opid,
+                    "status": "FAILED" if report.failed else "SKIP",
+                    "reason": get_reason(report),
+                    "pytest_phase": report.when,
+                }
+            )
+        return
     if not Config.record_json:
         return
 
@@ -585,6 +621,14 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.reference_only:
+        with open(REPORT_FILE, "w") as output:
+            json.dump(
+                reference_report(Config.reference_records, exitstatus=exitstatus),
+                output,
+                indent=2,
+            )
+        return
     if Config.preflight_only:
         if Config.record_json:
             with open(REPORT_FILE, "w") as f:
@@ -623,6 +667,14 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 def pytest_sessionfinish(session, exitstatus):
+    if Config is not None and Config.reference_only:
+        if reference_report(Config.reference_records)["status"] in {
+            "UNSUPPORTED",
+            "FAILED",
+            "NO_CASES",
+        }:
+            if session.exitstatus == pytest.ExitCode.OK:
+                session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and Config.preflight_only:
         incomplete = not Config.preflight_records or any(
             record["status"] != "passed" for record in Config.preflight_records
@@ -633,7 +685,12 @@ def pytest_sessionfinish(session, exitstatus):
         return
     requested = set(Config.case_ids)
     unknown = sorted(requested - Config.available_case_ids)
-    not_executed = sorted(requested - Config.executed_case_ids)
+    skipped = (
+        {r.get("case_id") for r in Config.reference_records if r["status"] == "SKIP"}
+        if Config.reference_only
+        else set()
+    )
+    not_executed = sorted(requested - Config.executed_case_ids - skipped)
     if unknown or not_executed:
         reporter = session.config.pluginmanager.get_plugin("terminalreporter")
         if reporter:
@@ -653,6 +710,14 @@ def pytest_itemcollected(item):
 
 
 def pytest_collection_modifyitems(session, config, items):
+    if Config.reference_only:
+        correctness_root = Path(__file__).resolve().parents[1] / "tests"
+        if any(
+            Path(item.path).resolve().is_relative_to(correctness_root) for item in items
+        ):
+            raise pytest.UsageError(
+                "--reference-only is for benchmark only; run correctness pytest separately"
+            )
     collect_marks_file = config.getoption("--collect-marks")
     if not collect_marks_file:
         return

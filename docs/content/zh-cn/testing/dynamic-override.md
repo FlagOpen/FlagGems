@@ -25,6 +25,8 @@ weight: 30
 -->
 # 使用动态算子重载进行测试
 
+如果尚未生成候选，只需要验证 benchmark 的原始 baseline 能否运行，使用独立的 [reference-only 模式](reference-only.md)；它与 override 互斥，不执行 correctness reference，也不替代本章的候选正确性验证。
+
 <!--
 Most accuracy tests in `tests/` call *FlagGems* operators directly, for
 example `flag_gems.softmax(x)` or `flag_gems._list_to_tensor(...)`. When you
@@ -399,6 +401,14 @@ maintaining separate copies of the operator source tree.
 > registry 上的 `restore_all()` 只会恢复它自己重载过的算子。
 > 建议每个进程/测试会话只使用一个 registry，并通过 `with`
 > 语句限定其作用范围，以保持行为的可预测性。
+
+## Candidate-only profiling 与外部采集
+
+`--profile-only --case-id <id>` 精确重放 `--list-cases` 中的一个 case。FlagGems 构造输入、执行 `--profile-warmup` 次预热并同步，然后在可选的采集 context 中执行 `--profile-iterations` 次候选调用及最后同步；不运行 correctness reference 或 benchmark latency 计时。
+
+外部执行器通过 `pytest.main(pytest_args, plugins=[plugin])` 显式传入插件对象。插件实现 `pytest_flaggems_profile_scope(backend, case_id)` 并返回 context manager；`backend` 是 FlagGems vendor 名称。context 的进入/退出负责开始/结束采集，并应通过 `finally` 保证候选异常时也清理。benchmark conftest 注册 first-result hookspec，默认没有插件（或插件返回 None）时只做普通 candidate-only 重放，不执行外部采集。
+
+这条接口不需要环境变量指定模块、动态导入执行器或依赖 `__main__`。需要采集的执行器必须自行核对插件实际进入且完成，不能只凭 pytest 退出 0 判定成功；编译器/profiler 准备、completion marker 和产物仍由执行器负责。FlagGems 不依赖 KGS。每个 benchmark session 使用独立进程，不在一个进程中并发调用多个 `pytest.main()`。
 
 ## Candidate-only Preflight
 
