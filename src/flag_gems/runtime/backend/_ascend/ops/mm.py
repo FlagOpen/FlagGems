@@ -77,9 +77,7 @@ def _prune_mm_configs(configs, named_args, **kwargs):
     min_programs = min(program_counts.values())
     max_programs = max(1, 2 * min_programs)
     candidates = [
-        config
-        for config in configs
-        if program_counts[id(config)] <= max_programs
+        config for config in configs if program_counts[id(config)] <= max_programs
     ]
     if large_aligned:
         if k >= 1024:
@@ -314,73 +312,133 @@ def _mm_rectangular_kernel(
 
 
 @triton.jit
-def _mm_pack_narrow4_split_kernel(B,P,K:tl.constexpr,BK:tl.constexpr):
-    base=tl.program_id(0)*BK
-    idx=tl.arange(0,BK*4)
-    b=tl.load(B+base*4+idx).reshape((BK,2,2))
-    b02,b13=tl.split(b)
-    b0,b2=tl.split(b02)
-    b1,b3=tl.split(b13)
-    k=base+tl.arange(0,BK)
-    tl.store(P+k,b0)
-    tl.store(P+K+k,b1)
-    tl.store(P+2*K+k,b2)
-    tl.store(P+3*K+k,b3)
+def _mm_pack_narrow4_split_kernel(B, P, K: tl.constexpr, BK: tl.constexpr):
+    base = tl.program_id(0) * BK
+    idx = tl.arange(0, BK * 4)
+    b = tl.load(B + base * 4 + idx).reshape((BK, 2, 2))
+    b02, b13 = tl.split(b)
+    b0, b2 = tl.split(b02)
+    b1, b3 = tl.split(b13)
+    k = base + tl.arange(0, BK)
+    tl.store(P + k, b0)
+    tl.store(P + K + k, b1)
+    tl.store(P + 2 * K + k, b2)
+    tl.store(P + 3 * K + k, b3)
 
 
 @triton.jit
-def _mm_pack_narrow_b_kernel(B, P, N: tl.constexpr, K: tl.constexpr, BK: tl.constexpr, BN: tl.constexpr):
+def _mm_pack_narrow_b_kernel(
+    B, P, N: tl.constexpr, K: tl.constexpr, BK: tl.constexpr, BN: tl.constexpr
+):
     k = tl.program_id(0) * BK + tl.arange(0, BK)
     n = tl.arange(0, BN)
-    b = tl.load(B + k[:, None] * N + n[None, :], (k < K)[:, None] & (n < N)[None, :], other=0)
-    tl.store(P + n[:, None] * K + k[None, :], tl.trans(b), (n < N)[:, None] & (k < K)[None, :])
+    b = tl.load(
+        B + k[:, None] * N + n[None, :], (k < K)[:, None] & (n < N)[None, :], other=0
+    )
+    tl.store(
+        P + n[:, None] * K + k[None, :],
+        tl.trans(b),
+        (n < N)[:, None] & (k < K)[None, :],
+    )
 
 
 @triton.jit
-def _mm_pack_narrow4_b_kernel(B, P, N: tl.constexpr, K: tl.constexpr, BK: tl.constexpr, BN: tl.constexpr):
+def _mm_pack_narrow4_b_kernel(
+    B, P, N: tl.constexpr, K: tl.constexpr, BK: tl.constexpr, BN: tl.constexpr
+):
     k = tl.program_id(0) * BK + tl.arange(0, BK)
     n = tl.arange(0, BN)
-    b = tl.load(B + k[:, None] * N + n[None, :], (k < K)[:, None] & (n < N)[None, :], other=0)
+    b = tl.load(
+        B + k[:, None] * N + n[None, :], (k < K)[:, None] & (n < N)[None, :], other=0
+    )
     # P is padded to 16 columns so the subsequent Cube load stays aligned.
     tl.store(P + n[:, None] * K + k[None, :], tl.trans(b), (k < K)[None, :])
 
+
 @triton.jit
-def _mm_packed_narrow_kernel(A, P, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-                BM: tl.constexpr, BK: tl.constexpr):
+def _mm_packed_narrow_kernel(
+    A,
+    P,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+):
     rows = tl.program_id(0) * BM + tl.arange(0, BM)
     cols = tl.arange(0, 16)
     rk = tl.arange(0, BK)
     acc = tl.zeros((BM, 16), tl.float32)
     for s in tl.range(tl.cdiv(K, BK)):
         k = s * BK + rk
-        a = tl.load(A + rows[:, None] * K + k[None, :], (rows < M)[:, None] & (k < K)[None, :], other=0)
-        bt = tl.load(P + cols[:, None] * K + k[None, :], (cols < N)[:, None] & (k < K)[None, :], other=0)
-        al.compile_hint(a, 'dot_pad_only_k')
-        al.compile_hint(bt, 'dot_pad_only_k')
-        acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
-    tl.store(C + rows[:, None] * N + cols[None, :], acc.to(C.dtype.element_ty), (rows < M)[:, None] & (cols < N)[None, :])
-
-
-@triton.jit
-def _mm_packed_narrow4_kernel(A, P, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-                              BM: tl.constexpr, BK: tl.constexpr):
-    rows = tl.program_id(0) * BM + tl.arange(0, BM)
-    cols = tl.arange(0, 16)
-    rk = tl.arange(0, BK)
-    acc = tl.zeros((BM, 16), tl.float32)
-    for s in tl.range(tl.cdiv(K, BK)):
-        k = s * BK + rk
-        a = tl.load(A + rows[:, None] * K + k[None, :], (rows < M)[:, None] & (k < K)[None, :], other=0)
-        bt = tl.load(P + cols[:, None] * K + k[None, :], (cols < N)[:, None] & (k < K)[None, :], other=0)
+        a = tl.load(
+            A + rows[:, None] * K + k[None, :],
+            (rows < M)[:, None] & (k < K)[None, :],
+            other=0,
+        )
+        bt = tl.load(
+            P + cols[:, None] * K + k[None, :],
+            (cols < N)[:, None] & (k < K)[None, :],
+            other=0,
+        )
         al.compile_hint(a, "dot_pad_only_k")
         al.compile_hint(bt, "dot_pad_only_k")
         acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
-    tl.store(C + rows[:, None] * N + cols[None, :], acc.to(C.dtype.element_ty), (rows < M)[:, None] & (cols < N)[None, :])
+    tl.store(
+        C + rows[:, None] * N + cols[None, :],
+        acc.to(C.dtype.element_ty),
+        (rows < M)[:, None] & (cols < N)[None, :],
+    )
 
 
 @triton.jit
-def _mm_materialize_broadcast_kernel(X, Y, R: tl.constexpr, C: tl.constexpr,
-                          S0: tl.constexpr, S1: tl.constexpr, BLOCK: tl.constexpr):
+def _mm_packed_narrow4_kernel(
+    A,
+    P,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+):
+    rows = tl.program_id(0) * BM + tl.arange(0, BM)
+    cols = tl.arange(0, 16)
+    rk = tl.arange(0, BK)
+    acc = tl.zeros((BM, 16), tl.float32)
+    for s in tl.range(tl.cdiv(K, BK)):
+        k = s * BK + rk
+        a = tl.load(
+            A + rows[:, None] * K + k[None, :],
+            (rows < M)[:, None] & (k < K)[None, :],
+            other=0,
+        )
+        bt = tl.load(
+            P + cols[:, None] * K + k[None, :],
+            (cols < N)[:, None] & (k < K)[None, :],
+            other=0,
+        )
+        al.compile_hint(a, "dot_pad_only_k")
+        al.compile_hint(bt, "dot_pad_only_k")
+        acc = tl.dot(a, tl.trans(bt), acc, allow_tf32=False)
+    tl.store(
+        C + rows[:, None] * N + cols[None, :],
+        acc.to(C.dtype.element_ty),
+        (rows < M)[:, None] & (cols < N)[None, :],
+    )
+
+
+@triton.jit
+def _mm_materialize_broadcast_kernel(
+    X,
+    Y,
+    R: tl.constexpr,
+    C: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     val = tl.load(X + (idx // C) * S0 + (idx % C) * S1, idx < R * C, other=0)
     tl.store(Y + idx, val, idx < R * C)
@@ -390,15 +448,22 @@ def _mm_materialize_broadcast(x):
     y = torch.empty(x.shape, dtype=x.dtype, device=x.device)
     with torch_device_fn.device(x.device):
         _mm_materialize_broadcast_kernel[(triton.cdiv(x.numel(), 1024),)](
-            x, y, x.shape[0], x.shape[1], x.stride(0), x.stride(1), 1024,
+            x,
+            y,
+            x.shape[0],
+            x.shape[1],
+            x.stride(0),
+            x.stride(1),
+            1024,
             multibuffer=False,
         )
     return y
 
 
 @triton.jit
-def _mm_pack_wide_panels_kernel(B, P, N: tl.constexpr, K: tl.constexpr,
-                                 BN: tl.constexpr, BK: tl.constexpr):
+def _mm_pack_wide_panels_kernel(
+    B, P, N: tl.constexpr, K: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr
+):
     pid = tl.program_id(0)
     panel = pid // (K // BK)
     block_k = pid % (K // BK)
@@ -409,8 +474,17 @@ def _mm_pack_wide_panels_kernel(B, P, N: tl.constexpr, K: tl.constexpr,
 
 
 @triton.jit
-def _mm_wide_panel_cube_kernel(A, P, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-                                BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+def _mm_wide_panel_cube_kernel(
+    A,
+    P,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
     pid = tl.program_id(0)
     panel = pid % (N // BN)
     rows = (pid // (N // BN)) * BM + tl.arange(0, BM)
@@ -432,20 +506,34 @@ def _mm_wide_panel_cube_kernel(A, P, C, M: tl.constexpr, N: tl.constexpr, K: tl.
 
 
 @triton.jit
-def _mm_pack_large_panels_kernel(B, P, N: tl.constexpr, K: tl.constexpr,
-                                 BN: tl.constexpr, BK: tl.constexpr):
+def _mm_pack_large_panels_kernel(
+    B, P, N: tl.constexpr, K: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr
+):
     pid = tl.program_id(0)
     panel = pid // (K // BK)
     block_k = pid % (K // BK)
     k = block_k * BK + tl.arange(0, BK)
     n = tl.arange(0, BN)
-    b = tl.load(B + k[:, None] * N + panel * BN + n[None, :], (panel * BN + n[None, :]) < N, other=0)
+    b = tl.load(
+        B + k[:, None] * N + panel * BN + n[None, :],
+        (panel * BN + n[None, :]) < N,
+        other=0,
+    )
     tl.store(P + panel * K * BN + k[:, None] * BN + n[None, :], b)
 
 
 @triton.jit
-def _mm_large_panel_cube_kernel(A, P, C, M: tl.constexpr, N: tl.constexpr, K: tl.constexpr,
-                                BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
+def _mm_large_panel_cube_kernel(
+    A,
+    P,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
     pid = tl.program_id(0)
     panel = pid % tl.cdiv(N, BN)
     rows = (pid // tl.cdiv(N, BN)) * BM + tl.arange(0, BM)
@@ -464,7 +552,6 @@ def _mm_large_panel_cube_kernel(A, P, C, M: tl.constexpr, N: tl.constexpr, K: tl
         acc.to(C.dtype.element_ty),
         (rows[:, None] < M) & (panel * BN + cols[None, :] < N),
     )
-
 
 
 @triton.jit
@@ -543,36 +630,70 @@ def mm(a, b):
     # Pack the narrow right operand once so Cube reads contiguous K rows.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and N == 16 and 2048 <= K <= 4096 and K % 1024 == 0
-        and a.is_contiguous() and b.is_contiguous()
+        and N == 16
+        and 2048 <= K <= 4096
+        and K % 1024 == 0
+        and a.is_contiguous()
+        and b.is_contiguous()
     ):
         block_m = 64 if M >= 4096 else 16
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         packed_b = torch.empty((N, K), device=device, dtype=b.dtype)
         with torch_device_fn.device(device), _blockified():
             _mm_pack_narrow_b_kernel[(triton.cdiv(K, 512),)](
-                b, packed_b, N, K, 512, 16, multibuffer=False,
+                b,
+                packed_b,
+                N,
+                K,
+                512,
+                16,
+                multibuffer=False,
             )
             _mm_packed_narrow_kernel[(triton.cdiv(M, block_m),)](
-                a, packed_b, c, M, N, K, block_m, 1024,
-                multibuffer=True, unit_flag=True, sync_solver=False,
+                a,
+                packed_b,
+                c,
+                M,
+                N,
+                K,
+                block_m,
+                1024,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # Deinterleave four BF16 columns into contiguous K vectors for Cube.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and N == 4 and 8192 < K <= 16384 and K % 512 == 0
-        and a.is_contiguous() and b.is_contiguous()
+        and N == 4
+        and 8192 < K <= 16384
+        and K % 512 == 0
+        and a.is_contiguous()
+        and b.is_contiguous()
     ):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         packed_b = torch.empty((4, K), device=device, dtype=b.dtype)
         with torch_device_fn.device(device), _blockified():
             _mm_pack_narrow4_split_kernel[(K // 512,)](
-                b, packed_b, K, 512, multibuffer=False,
+                b,
+                packed_b,
+                K,
+                512,
+                multibuffer=False,
             )
             _mm_packed_narrow_kernel[(triton.cdiv(M, 16),)](
-                a, packed_b, c, M, N, K, 16, 512,
-                multibuffer=True, unit_flag=True, sync_solver=False,
+                a,
+                packed_b,
+                c,
+                M,
+                N,
+                K,
+                16,
+                512,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # For the very wide BF16 layout, pack B into contiguous N panels so that
@@ -584,21 +705,30 @@ def mm(a, b):
         and 1024 < K <= 2048
         and K % 128 == 0
         and 0 < M <= 128
-        and a.is_contiguous() and b.is_contiguous()
+        and a.is_contiguous()
+        and b.is_contiguous()
     ):
         block_m = 16 if M <= 16 else 128
         block_n = 256
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         packed_b = torch.empty((N // block_n, K, block_n), device=device, dtype=b.dtype)
         with torch_device_fn.device(device), _blockified():
-            _mm_pack_wide_panels_kernel[
-                (N // block_n * (K // 64),)
-            ](b, packed_b, N, K, block_n, 64, multibuffer=False)
-            _mm_wide_panel_cube_kernel[
-                (triton.cdiv(M, block_m) * (N // block_n),)
-            ](
-                a, packed_b, c, M, N, K, block_m, block_n, 128,
-                multibuffer=True, unit_flag=True, sync_solver=False,
+            _mm_pack_wide_panels_kernel[(N // block_n * (K // 64),)](
+                b, packed_b, N, K, block_n, 64, multibuffer=False
+            )
+            _mm_wide_panel_cube_kernel[(triton.cdiv(M, block_m) * (N // block_n),)](
+                a,
+                packed_b,
+                c,
+                M,
+                N,
+                K,
+                block_m,
+                block_n,
+                128,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # Panel families: tall/narrow outputs and wide outputs with a large
@@ -616,17 +746,36 @@ def mm(a, b):
                 and 2048 < K <= 8192
             )
         )
-        and a.is_contiguous() and b.is_contiguous()
+        and a.is_contiguous()
+        and b.is_contiguous()
     ):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
-        packed_b = torch.empty((triton.cdiv(N, 256), K, 256), device=device, dtype=b.dtype)
+        packed_b = torch.empty(
+            (triton.cdiv(N, 256), K, 256), device=device, dtype=b.dtype
+        )
         with torch_device_fn.device(device), _blockified():
             _mm_pack_large_panels_kernel[(triton.cdiv(N, 256) * (K // 64),)](
-                b, packed_b, N, K, 256, 64, multibuffer=False,
+                b,
+                packed_b,
+                N,
+                K,
+                256,
+                64,
+                multibuffer=False,
             )
             _mm_large_panel_cube_kernel[(triton.cdiv(M, 128) * triton.cdiv(N, 256),)](
-                a, packed_b, c, M, N, K, 128, 256, 256,
-                multibuffer=True, unit_flag=True, sync_solver=False,
+                a,
+                packed_b,
+                c,
+                M,
+                N,
+                K,
+                128,
+                256,
+                256,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # Compatibility exceptions: nearby shapes use the generic path in the
@@ -635,22 +784,35 @@ def mm(a, b):
     if (
         a.dtype == b.dtype == torch.bfloat16
         and (M, N, K) == (480, 4096, 128)
-        and a.is_contiguous() and b.is_contiguous()
+        and a.is_contiguous()
+        and b.is_contiguous()
     ):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         with torch_device_fn.device(device), _blockified():
             _mm_persistent_smallk_kernel[(16,)](
-                a, b, c, M, N, K, 128, 256, 128,
-                multibuffer=True, unit_flag=True, sync_solver=False,
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                128,
+                256,
+                128,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # Wider N tiles reduce program count and K-loop overhead on these layouts.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and a.is_contiguous() and b.is_contiguous()
+        and a.is_contiguous()
+        and b.is_contiguous()
         and (
             (6144 < N <= 7168 and K == 256 and M > 128)
-            or (M, N, K) in (
+            or (M, N, K)
+            in (
                 (200, 7168, 2304),
                 (13422, 256, 2048),
                 (480, 4608, 7168),
@@ -660,15 +822,27 @@ def mm(a, b):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         with torch_device_fn.device(device), _blockified():
             _mm_rectangular_kernel[(triton.cdiv(M, 128) * triton.cdiv(N, 256),)](
-                a, b, c, M, N, K, 128, 256, min(256, K),
-                multibuffer=True, unit_flag=True, sync_solver=False,
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                128,
+                256,
+                min(256, K),
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # Explicit tiles for narrow outputs and the remaining slow rectangular layouts.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and a.is_contiguous() and b.is_contiguous()
-        and (M, N, K) in (
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and (M, N, K)
+        in (
             (1, 64, 4096),
             (6, 64, 4096),
             (16, 64, 2048),
@@ -683,8 +857,18 @@ def mm(a, b):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
         with torch_device_fn.device(device), _blockified():
             _mm_rectangular_kernel[(triton.cdiv(M, bm) * triton.cdiv(N, bn),)](
-                a, b, c, M, N, K, bm, bn, 256,
-                multibuffer=True, unit_flag=True, sync_solver=False,
+                a,
+                b,
+                c,
+                M,
+                N,
+                K,
+                bm,
+                bn,
+                256,
+                multibuffer=True,
+                unit_flag=True,
+                sync_solver=False,
             )
         return c
     # allocates output
@@ -723,7 +907,9 @@ def mm(a, b):
         block_m = 16 if M <= 16 else 128
         block_n = 32 if N <= 32 else (128 if N <= 128 else 256)
         with torch_device_fn.device(device), _blockified():
-            _mm_rectangular_kernel[(triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)](
+            _mm_rectangular_kernel[
+                (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+            ](
                 a,
                 b,
                 c,
@@ -749,7 +935,12 @@ def mm(a, b):
         if N == 1:
             with torch_device_fn.device(device):
                 _mm_narrow_n_kernel[(triton.cdiv(M, 4),)](
-                    a, b, c, M, N, K,
+                    a,
+                    b,
+                    c,
+                    M,
+                    N,
+                    K,
                     BLOCK_OUT=4,
                     BLOCK_K=min(2048, triton.next_power_of_2(K)),
                 )
@@ -758,12 +949,21 @@ def mm(a, b):
             block_m = 16 if M <= 16 else 32
             block_n = 256
             with torch_device_fn.device(device), _blockified():
-                _mm_rectangular_kernel[(
-                    triton.cdiv(M, block_m) * triton.cdiv(N, block_n),
-                )](
-                    a, b, c, M, N, K,
-                    BLOCK_M=block_m, BLOCK_N=block_n, BLOCK_K=256,
-                    multibuffer=True, unit_flag=True, sync_solver=False,
+                _mm_rectangular_kernel[
+                    (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+                ](
+                    a,
+                    b,
+                    c,
+                    M,
+                    N,
+                    K,
+                    BLOCK_M=block_m,
+                    BLOCK_N=block_n,
+                    BLOCK_K=256,
+                    multibuffer=True,
+                    unit_flag=True,
+                    sync_solver=False,
                 )
             return c
 
