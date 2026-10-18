@@ -745,7 +745,7 @@ from .triu_indices import triu_indices  # noqa: F401
 from .trunc import trunc, trunc_
 from .unbind_copy import unbind_copy  # noqa: F401
 from .unfold_copy import unfold_copy
-from .uniform import uniform, uniform_
+from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
@@ -1619,7 +1619,6 @@ __all__ = [
     "trunc",
     "trunc_",
     "unfold_copy",
-    "uniform",
     "uniform_",
     "unique_consecutive",
     "unique_dim",
