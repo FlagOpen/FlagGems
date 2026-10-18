@@ -639,7 +639,6 @@ from .softmax import (
     softmax_backward,
     softmax_backward_out,
     softmax_out,
-    special_softmax,
 )
 from .softplus import softplus, softplus_backward
 from .softshrink import softshrink, softshrink_out
@@ -1566,7 +1565,6 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
-    "special_softmax",
     "special_xlog1py",
     "special_xlogy",
     "special_xlogy_",
