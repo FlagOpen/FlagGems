@@ -20,8 +20,6 @@ payload byte encodes even/odd E2M1 nibbles; four scales cover 128 elements.
 No request-to-token mapping, compressed slots or candidate layout is accepted.
 """
 
-import os
-
 import torch
 import triton
 import triton.language as tl
@@ -30,10 +28,6 @@ INDEX_HEAD_DIM = 128
 PAYLOAD_BYTES = tl.constexpr(64)
 SCALE_BYTES = tl.constexpr(4)
 FP4_INDEX_SCORE_ABI = 1
-
-
-def _skip_invalid_tiles():
-    return os.getenv("FLAGGEMS_DSV41_INDEXER_SKIP_INVALID_TILES", "1") == "1"
 
 
 @triton.jit
@@ -86,7 +80,6 @@ def _fp4_slot_score_kernel(
     H: tl.constexpr,
     HALF_D: tl.constexpr,
     BLOCK_L: tl.constexpr,
-    SKIP_INVALID: tl.constexpr,
 ):
     b = tl.program_id(0)
     lb = tl.program_id(1)
@@ -94,10 +87,9 @@ def _fp4_slot_score_kernel(
     offs_h = tl.arange(0, H)
     offs_i = tl.arange(0, HALF_D)
     n_vis = tl.load(lens_ptr + b)
-    if SKIP_INVALID:
-        if lb * BLOCK_L >= tl.minimum(n_vis, L):
-            tl.store(out_ptr + b * stride_out + offs_l, -float("inf"), offs_l < L)
-            return
+    if lb * BLOCK_L >= tl.minimum(n_vis, L):
+        tl.store(out_ptr + b * stride_out + offs_l, -float("inf"), offs_l < L)
+        return
     valid = offs_l < tl.minimum(n_vis, L)
     slot = tl.load(slots_ptr + b * L + offs_l, mask=offs_l < L, other=0).to(tl.int64)
     page = slot // page_size
@@ -185,7 +177,6 @@ def fp4_index_logits_decode(
         H=H,
         HALF_D=INDEX_HEAD_DIM // 2,
         BLOCK_L=BLOCK_L,
-        SKIP_INVALID=_skip_invalid_tiles(),
         num_warps=4,
     )
     return out
