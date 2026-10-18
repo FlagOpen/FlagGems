@@ -543,7 +543,7 @@ def mm(a, b):
     # Pack the narrow right operand once so Cube reads contiguous K rows.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and N == 16 and K in (2048, 4096)
+        and N == 16 and 2048 <= K <= 4096 and K % 1024 == 0
         and a.is_contiguous() and b.is_contiguous()
     ):
         block_m = 64 if M >= 4096 else 16
@@ -561,7 +561,7 @@ def mm(a, b):
     # Deinterleave four BF16 columns into contiguous K vectors for Cube.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and N == 4 and K == 16384
+        and N == 4 and 8192 < K <= 16384 and K % 512 == 0
         and a.is_contiguous() and b.is_contiguous()
     ):
         c = torch.empty((M, N), device=device, dtype=a.dtype)
@@ -579,7 +579,11 @@ def mm(a, b):
     # Cube reads short contiguous rows instead of the original K-strided rows.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and N == 248320 and K == 2048 and M <= 128
+        and N >= 131072
+        and N % 256 == 0
+        and 1024 < K <= 2048
+        and K % 128 == 0
+        and 0 < M <= 128
         and a.is_contiguous() and b.is_contiguous()
     ):
         block_m = 16 if M <= 16 else 128
@@ -597,15 +601,20 @@ def mm(a, b):
                 multibuffer=True, unit_flag=True, sync_solver=False,
             )
         return c
-    # Pack the non-aligned N stride into complete Cube panels.
+    # Panel families: tall/narrow outputs and wide outputs with a large
+    # reduction. K alignment is required by the unmasked panel kernels.
     if (
         a.dtype == b.dtype == torch.bfloat16
-        and (M, N, K) in (
-            (16384, 2112, 7168),
-            (2048, 248320, 2048),
-            (2048, 16160, 4096),
-            (2048, 16160, 7168),
-            (2048, 31040, 4096),
+        and K % 256 == 0
+        and (
+            (15360 < M <= 16384 and 2048 < N <= 2304 and 4096 < K <= 8192)
+            or (1024 < M <= 2048 and N >= 131072 and 1024 < K <= 2048)
+            or (
+                1024 < M <= 2048
+                and 8192 < N <= 32768
+                and N % 256 != 0
+                and 2048 < K <= 8192
+            )
         )
         and a.is_contiguous() and b.is_contiguous()
     ):
@@ -620,6 +629,8 @@ def mm(a, b):
                 multibuffer=True, unit_flag=True, sync_solver=False,
             )
         return c
+    # Compatibility exceptions: nearby shapes use the generic path in the
+    # established workload. Keep their dispatch until wider ranges are measured.
     # Four M tiles per program keep this 64-tile workload balanced over 16 cores.
     if (
         a.dtype == b.dtype == torch.bfloat16
@@ -638,7 +649,7 @@ def mm(a, b):
         a.dtype == b.dtype == torch.bfloat16
         and a.is_contiguous() and b.is_contiguous()
         and (
-            (N == 7168 and K == 256 and M > 128)
+            (6144 < N <= 7168 and K == 256 and M > 128)
             or (M, N, K) in (
                 (200, 7168, 2304),
                 (13422, 256, 2048),
