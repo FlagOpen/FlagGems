@@ -109,7 +109,7 @@ def test_mm_w8a8_fp8(monkeypatch):
 
     bench = MmW8A8Fp8Benchmark(
         input_fn=mm_w8a8_fp8_input_fn,
-        op_name="mm_w8a8_fp8",
+        op_name="mm_w8a8",
         torch_op=torch_fp8_mm,
         dtypes=(
             [torch.float8_e4m3fn]
