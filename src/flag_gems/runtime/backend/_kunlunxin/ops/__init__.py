@@ -711,7 +711,6 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .special_xlog1py import special_xlog1py
-from .special_xlogy import special_xlogy, special_xlogy_
 from .special_zeta import (
     special_zeta,
     special_zeta_out,
@@ -1566,8 +1565,6 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
     "special_xlog1py",
-    "special_xlogy",
-    "special_xlogy_",
     "special_zeta",
     "special_zeta_out",
     "special_zeta_scalar_tensor",
