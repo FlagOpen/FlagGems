@@ -280,6 +280,29 @@ def w8a8_block_fp8_matmul(
         from ._w8a8_block_fp8_configs import _H100_MIDRANGE_FP8_CONFIGS
 
         if (M, N, K) in _H100_MIDRANGE_FP8_CONFIGS:
+            if tuned and triton.__version__.split("+")[0] == "3.6.0":
+                from ._w8a8_block_fp8_tle_short_configs import _H100_TLE_SHORT_CONFIGS
+
+                short_config = _H100_TLE_SHORT_CONFIGS.get((M, N, K))
+                if (
+                    short_config is not None
+                    and A.data_ptr() % 16 == 0
+                    and B.data_ptr() % 16 == 0
+                ):
+                    try:
+                        from ._w8a8_block_fp8_tle_short import (
+                            block_fp8_matmul_tle_short,
+                        )
+                    except ModuleNotFoundError as error:
+                        if not error.name or not error.name.startswith(
+                            "triton.experimental.tle"
+                        ):
+                            raise
+                    else:
+                        return block_fp8_matmul_tle_short(
+                            A, B, As, Bs, output_dtype, **short_config
+                        )
+
             from ._w8a8_block_fp8_sm90 import block_fp8_matmul_sm90
 
             return block_fp8_matmul_sm90(A, B, As, Bs, output_dtype, tuned=tuned)

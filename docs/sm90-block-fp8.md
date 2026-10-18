@@ -28,6 +28,34 @@ They derive from SGLang's Apache-licensed implementation and the subsequent
 H100 optimization work; attribution is retained in source. Repository
 ownership follows the general matrix/scale interface.
 
+## Optional FlagTree 3.6 short-K schedule
+
+On FlagTree's Triton 3.6.0, seven measured K288 shapes use an ordinary
+pointer-to-shared copy of the complete tile, followed by nine ordered K32
+WGMMA products and the original FP32 scale/accumulation boundaries. The
+shapes are M12/24/40/48/72/80/96 with N5120/K288. The remaining155 finite
+shapes use the previous optimized SM90 path. There is no TMA, pipe, warp
+specialization, tensor descriptor or global allocator dependency in this
+selected short-K helper.
+
+The public path requires 16-byte-aligned A/B pointers. Contiguous offset
+views with unaligned pointers retain the old SM90 path; direct calls to the
+private short-K helper reject those pointers explicitly. Other compiler
+versions and stock Triton3.6 without TLE retain the old path as well.
+
+Two alternating/reversed paired rounds measured complete public-call BF16
+speedups of1.173–1.534x and FP32 speedups of1.093–1.601x over the previous
+optimized FlagTree3.6 path across all7 shapes. M12 BF16 is3.626→2.364us;
+M72 is4.361→3.718us. These are operator results. All7 BF16/FP32 cases pass
+memcheck/racecheck/synccheck with zero errors,42 independent scale/value/Graph
+contracts, pointer-alignment and version/allocator checks. The three legacy
+FP16-MMA exceptions remain unchanged.
+
+Earlier TMA/warp-specialized schedules remain experimental and are not
+selected by the public wrapper after their additional racecheck gate reported
+hazards. Their numerical and timing records are retained separately; their
+162-shape speedup is not attributed to this selected seven-shape path.
+
 Run from a CUDA checkout with `PYTHONPATH=src`:
 
 ```bash
@@ -51,3 +79,21 @@ The engineering split requires its own numerical/Graph parity verification;
 those historical microbenchmarks are not a newly measured serving gain.
 The SGLang adapter is maintained separately in
 [FlagGems-sglang #161](https://github.com/flagos-ai/FlagGems-sglang/pull/161).
+
+
+## Large prefill and group quantization
+
+`ops._w8a8_block_fp8_tle_prefill.block_fp8_prefill` exposes the selected TMA64
+two-slot pipeline through the same explicit matrix/numeric-scale convention.
+It recreates descriptors on every call, keeps independent K32 products and
+FP32 scale accumulation, and returns a fresh BF16 output. Only recorded exact
+shapes on H100/FlagTree 3.6 are admitted. It is an explicit API; callers retain
+their original path when `supports` is false. Experimental slab variants are
+not shipped.
+
+`fused.dsv41.group32_quant.quantize_group32_ue8m0` returns E4M3 values and
+numeric FP32 power-of-two scales. It retains the native rounded reciprocal,
+NaN clamp and BF16 input behavior, without treating scale bytes as numbers.
+The new extracted prefill wrappers remain draft pending GPU requalification;
+the earlier accepted short-K and decode results refer to their original
+qualified sources, not a new end-to-end measurement of this PR head.
