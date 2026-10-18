@@ -37,6 +37,41 @@ helpers around their own addressing and candidate writes; this introduces
 no intermediate tensors or extra GPU launches. Their internal contract is
 versioned by `FP4_INDEX_SCORE_ABI=1`.
 
+## Guarded FP4-storage / FP8-compute helpers
+
+`flag_gems.fused.dsv41.fp4_fp8` adds the independent query preparation,
+E2M1-to-E4M3 conversion, block-scaled FP8 dot and predecessor rounding
+helpers under `FP4_FP8_SCORE_ABI=2`. Storage remains packed FP4 with UE8M0
+scales. The caller owns addressing, grouping, workspace, runtime eligibility
+and the BF16 fallback; these helpers do not import a serving framework.
+
+The exact fast path is bounded: normalized query blocks must satisfy the
+query-preparation multiples-of-16/exponent-span checks, and key scale
+encodings must satisfy the documented dot helper contract. Recompute these
+checks on every graph replay. Unsupported values retain the existing BF16
+calculation; a successful benchmark on eligible inputs does not imply that
+every arbitrary BF16 query can use FP8.
+
+The Gluon `e2m1x4_to_fp8` intrinsic uses a four-element register pack. The
+caller must arrange each group so its input elements refer to the same
+16-bit packed word; the intrinsic expands that word into four E4M3 bytes.
+The validated Gluon layout supplies this invariant. A different DSL/layout
+must establish it or use a layout-independent packed-word conversion.
+
+`fp4_fp8_tle.decode_fp4_e2m1_words_to_fp8x4` provides that independent
+conversion: each uint32 input lane's low 16 bits hold four consecutive E2M1
+nibbles (widen uint16 loads before calling); one uint32 result holds four
+E4M3 bytes in the same order. Both zero signs
+become positive zero. This integer helper has no TLE import or register-pack
+assumption. Its test exhausts all 65,536 words for uint16/int32 input and
+checks changed-input graph replay. Framework-specific TLE shared-memory
+layouts and fused request addressing remain in FlagGems-sglang.
+
+H100 qualification covers Triton 3.6.0 and 3.7.1. The exhaustive decode,
+query-guard and scale-bit tests are in `tests/test_dsv41_fp4_fp8_math.py`.
+Framework-fused scoring and its consumer-chain results remain documented
+in FlagGems-sglang.
+
 ## mHC statistics, combine and exact Sinkhorn
 
 `flag_gems.fused.dsv41.mhc` owns `hc_mix_stats`, `hc_combine`,
@@ -69,3 +104,42 @@ rows and measurement noise. The immutable numerical source is
 [the measured pre-split port](https://github.com/CherryLemon/FlagGems-sglang/commit/b188ef6b9de41138331299651aa23f3e11fb8187).
 Framework FP4 fusion speedups are documented in its owning repository,
 not attributed to the standalone explicit-slot API here.
+
+On H100 with Triton/FlagTree 3.6.0, the contiguous BF16 `[50, 20480]` and
+`[60, 20480]` statistics paths cap registers at 168 per thread. The FP32
+weight shape is `[24, 20480]`. This preserves all kernel arithmetic while
+raising the register-limited resident blocks per SM from two to three,
+without spilling. Other shapes, dtypes, layouts, architectures and compiler
+versions retain their existing launch settings. Two paired CUDA Graph rounds
+measured the full fused statistics/Sinkhorn call at 19.740 to 16.339 us
+(1.208x) and 19.659 to 16.073 us (1.223x), respectively, compared with the
+previous fused implementation under FlagTree 3.6. All 24 benchmark shapes
+passed byte-exact independent native-3.7 regression and changed-input graph
+replay; the public tests and target stress checks passed memcheck. These are
+operator-level results.
+
+
+## Common prefill and MoE math
+
+The new standalone modules contain only explicit tensors and numeric
+contracts, with no SGLang model objects, request tables or scheduler state:
+
+* `fp8_prefill_score`: E4M3 Q/K, BF16 head weights, device visibility lengths.
+  Dot, weighted-ReLU and head reduction retain their BF16 round points. The
+  eight-query reuse path uses lossless FP16 operand casts on the qualified
+  compiler; FP8 storage alone is not a native FP8-MMA claim.
+* `mhc_post_combine`: emits both the materialized BF16 post residual and BF16
+  combined input, preserving FP32 FMA order. Pre coefficients must already
+  be known at the post boundary. The public selected path uses direct loads.
+* `mhc_prefill_stats`: per-call K-major high/low TF32 weight preparation, with
+  the original 80-slice reduction order and no cached tensor/workspace.
+* `masked_row_quant`: explicit expert/capacity rows and device valid counts.
+* `swiglu_row_quant`: clipped gate/up activation, BF16 materialization and
+  row quantization. The caller supplies original calc/finalize/conversion JIT
+  callbacks. Invalid route rows and output padding remain untouched.
+
+The callback interfaces deliberately avoid a dependency on Humming; its source
+qualification and SGLang route layout belong to FlagGems-sglang. Host wrappers
+reject unsupported layouts before launch. Newly extracted API boundaries
+remain draft pending a fresh GPU integration run. Original qualification and
+the new CPU contract checks are recorded separately.
