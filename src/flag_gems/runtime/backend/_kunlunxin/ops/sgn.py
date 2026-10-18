@@ -209,7 +209,7 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
     if x.numel() == 0:
         return out
 
-    grid = (triton.cdiv(x.numel(), 1024),)
+    grid = lambda meta: (triton.cdiv(x.numel(), meta["BLOCK_SIZE"]),)
     if x.is_complex() and (not x.is_contiguous() or not out.is_contiguous()):
         if x.ndim > 8:
             raise RuntimeError(
