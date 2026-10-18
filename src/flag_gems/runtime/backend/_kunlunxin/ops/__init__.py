@@ -738,7 +738,6 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
-from .transpose_copy import transpose_copy
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
 from .triu import triu, triu_
@@ -1605,7 +1604,6 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
-    "transpose_copy",
     "tril",
     "tril_",
     "tril_indices",
