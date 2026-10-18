@@ -419,7 +419,6 @@ from .linalg_solve_triangular import (
 )
 from .linalg_svd import linalg_svd
 from .linalg_svdvals import linalg_svdvals
-from .linalg_tensorinv import linalg_tensorinv, linalg_tensorinv_out  # noqa: F401
 from .linalg_vander import linalg_vander
 from .linear import linear
 from .linear_backward import linear_backward
@@ -1240,8 +1239,6 @@ __all__ = [
     "linalg_solve_triangular_out",
     "linalg_svd",
     "linalg_svdvals",
-    "linalg_tensorinv",
-    "linalg_tensorinv_out",
     "linalg_vander",
     "linear",
     "linear_backward",
