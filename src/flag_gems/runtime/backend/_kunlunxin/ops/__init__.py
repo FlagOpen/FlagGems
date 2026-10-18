@@ -753,10 +753,6 @@ from .unsafe_chunk import unsafe_chunk  # noqa: F401
 from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
-from .upsample_bicubic2d_backward import (
-    upsample_bicubic2d_backward,
-    upsample_bicubic2d_backward_grad_input,
-)
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
 from .upsample_bilinear2d_backward import (
     upsample_bilinear2d_backward,
@@ -1623,8 +1619,6 @@ __all__ = [
     "unique_consecutive",
     "unique_dim",
     "unsafe_chunk",
-    "upsample_bicubic2d_backward",
-    "upsample_bicubic2d_backward_grad_input",
     "upsample_bilinear2d",
     "upsample_bilinear2d_backward",
     "upsample_bilinear2d_backward_grad_input",
