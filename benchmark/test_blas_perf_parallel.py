@@ -603,6 +603,9 @@ class ParallelBenchmarkMixin:
     # across GPUs; defaults to op_name. Set it when one op_name covers several
     # precisions that need different cost models.
     SHAPE_COST_OP_NAME = None
+    # Record the merged metrics in --record json. Opt-in so ops whose kanban
+    # number comes from a dedicated single-process benchmark keep that source.
+    RECORD_PARALLEL_RESULTS = False
 
     def set_more_shapes(self):
         if os.environ.get(PARALLEL_WORKER_ENV):
@@ -1042,6 +1045,14 @@ class ParallelBenchmarkMixin:
             else:
                 metrics = self._run_inputs(self.get_input_iter(dtype))
 
+            if self.RECORD_PARALLEL_RESULTS and not os.environ.get(
+                PARALLEL_RESULT_FILE_ENV
+            ):
+                # Main process of an opted-in benchmark: record the merged
+                # metrics like a single-process benchmark (--record json).
+                self._emit_result(dtype, metrics)
+                continue
+
             result = BenchmarkResult(
                 level=Config.bench_level.value,
                 op_name=self.op_name,
@@ -1114,6 +1125,7 @@ class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
     SHAPE_CONFIG_KEYS = ("mm",)
     # op_name is the shared kanban id "mm_w8a8"; FP8 keeps the mm GEMM cost.
     SHAPE_COST_OP_NAME = "mm"
+    RECORD_PARALLEL_RESULTS = True
 
     def should_forward_parallel_dtype(self, dtype_name):
         # The CLI excludes FP8; each worker uses the same single FP8 dtype.

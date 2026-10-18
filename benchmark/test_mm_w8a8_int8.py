@@ -35,6 +35,7 @@ class ParallelMmW8A8Int8Benchmark(ParallelBlasBenchmark):
     """
 
     SHAPE_CONFIG_KEYS = ("mm_w8a8_int8", "BlasBenchmark")
+    RECORD_PARALLEL_RESULTS = True
 
     def prepare_call(self, op, a, b):
         if op is self.torch_op:
