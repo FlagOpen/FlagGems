@@ -9,6 +9,23 @@ from .stack import stack
 logger = logging.getLogger(__name__)
 
 
+def _gems_mm(a, b):
+    """Call the selected FlagGems matmul explicitly.
+
+    ``torch.mm`` only resolves to a FlagGems kernel while ``use_gems()`` is
+    active, so the same call would run the native kernel on direct paths.
+    """
+    import flag_gems
+
+    return flag_gems.mm(a, b)
+
+
+def _gems_relu(x):
+    import flag_gems
+
+    return flag_gems.relu(x)
+
+
 @triton.jit
 def _rnn_relu_step_kernel(
     h_ptr,
@@ -68,7 +85,7 @@ def rnn_relu(
     """Single-layer unidirectional Elman RNN with ReLU activation (kunlunxin).
 
     Inference uses a fused Triton step kernel per time step; training and other
-    cases use a native matmul/add/relu chain with autograd tracking.
+    cases use a per-step matmul/add/relu recurrence with autograd tracking.
     """
     logger.debug("GEMS_KUNLUNXIN RNN_RELU")
 
@@ -119,9 +136,9 @@ def rnn_relu(
         # match native mm output.
         low_prec = x.dtype != torch.float32
         if low_prec:
-            pre = x2d.float().matmul(w_ih.t().float()).to(x.dtype)
+            pre = _gems_mm(x2d.float(), w_ih.t().float()).to(x.dtype)
         else:
-            pre = x2d.matmul(w_ih.t())
+            pre = _gems_mm(x2d, w_ih.t())
         if b_ih is not None:
             pre = pre + b_ih
         pre = pre.reshape(seq_len, batch_size, hidden_size)
@@ -154,19 +171,26 @@ def rnn_relu(
         output = out_buf[..., :hidden_size]
         h = h_in[..., :hidden_size]
     else:
-        # ---- native-chain path (autograd-friendly, also bf16 inference) ----
-        # Uses native aten matmul/add/relu only. For bf16, per-step mm is
-        # computed in fp32 then truncated to bf16 to match native torch.mm.
+        # ---- per-step chain (autograd-friendly, also bf16 inference) ----
+        # For bf16, per-step mm is computed in fp32 then truncated to bf16.
+        # Direct flag_gems.<op> calls do not build autograd nodes, so the grad
+        # path keeps the differentiable aten ops; the inference path calls the
+        # FlagGems kernels explicitly instead of relying on the use_gems()
+        # context to redirect torch.mm / torch.relu.
+        if need_autograd:
+            mm, relu = torch.mm, torch.relu
+        else:
+            mm, relu = _gems_mm, _gems_relu
         w_hh_t = w_hh.t().contiguous()
         is_bf16 = x.dtype == torch.bfloat16
         try:
             if is_bf16:
-                pre = x2d.float().matmul(w_ih.t().float()).to(x.dtype)
+                pre = mm(x2d.float(), w_ih.t().float()).to(x.dtype)
             else:
                 pre = (
-                    (x2d.matmul(w_ih.t()) + b_ih)
+                    (mm(x2d, w_ih.t()) + b_ih)
                     if b_ih is not None
-                    else x2d.matmul(w_ih.t())
+                    else mm(x2d, w_ih.t())
                 )
             if is_bf16 and b_ih is not None:
                 pre = pre + b_ih
@@ -178,12 +202,12 @@ def rnn_relu(
             outputs = []
             for t in range(seq_len):
                 if is_bf16:
-                    hgates = torch.mm(h.float(), w_hh_t_f).to(h.dtype)
+                    hgates = mm(h.float(), w_hh_t_f).to(h.dtype)
                 else:
-                    hgates = torch.mm(h, w_hh_t)
+                    hgates = mm(h, w_hh_t)
                 if b_hh is not None:
                     hgates = hgates + b_hh
-                h = torch.relu(hgates + pre[t])
+                h = relu(hgates + pre[t])
                 outputs.append(h)
             # autograd-safe assembly
             output = stack(outputs, 0)
@@ -193,18 +217,12 @@ def rnn_relu(
             outputs = []
             for t in range(seq_len):
                 ih_t = (
-                    x[t].matmul(w_ih.t()) + b_ih
+                    mm(x[t], w_ih.t()) + b_ih
                     if b_ih is not None
-                    else x[t].matmul(w_ih.t())
+                    else mm(x[t], w_ih.t())
                 )
-                hh_t = (
-                    h.matmul(w_hh.t()) + b_hh
-                    if b_hh is not None
-                    else h.matmul(w_hh.t())
-                )
-                h = torch.relu(ih_t.to(torch.float32) + hh_t.to(torch.float32)).to(
-                    x.dtype
-                )
+                hh_t = mm(h, w_hh.t()) + b_hh if b_hh is not None else mm(h, w_hh.t())
+                h = relu(ih_t.to(torch.float32) + hh_t.to(torch.float32)).to(x.dtype)
                 outputs.append(h)
             output = stack(outputs, 0)
 
@@ -283,6 +301,8 @@ class KunlunxinRnnReluFunction(torch.autograd.Function):
             seq_len, batch_size, input_size = input.shape
 
         # Recompute forward with autograd tracking using mm + add.
+        # The aten calls below are deliberate: a direct flag_gems.mm call does
+        # not create the grad_fn that torch.autograd.grad needs.
         # w_hh.t() must be inside enable_grad so autograd tracks w_hh.
         with torch.enable_grad():
             w_hh_t = w_hh.t().contiguous()
