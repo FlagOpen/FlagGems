@@ -131,6 +131,59 @@ DEFAULT_REDUCTION_SHAPES = tu.selected_cases([(32, 47), (256, 8)], quick=[])
 OUT_FILL = -3.0
 
 
+def _assert_result_close(result, reference, device):
+    assert result.device == device
+    tu.assert_result_close(result, reference)
+
+
+def _cpu_low_precision_loss(inp, target, reduction):
+    # CUDA rounds each margin operation and each row loss to the input dtype,
+    # while accumulating positive margins in FP32. Bound the pairwise temporary.
+    scores = inp.reshape(-1, inp.shape[-1] if inp.ndim else 1)
+    labels = target.reshape_as(scores)
+    rows, classes = scores.shape
+    losses = []
+    chunk_rows = max(1, 2**22 // (classes * classes))
+    for start in range(0, rows, chunk_rows):
+        values = scores[start : start + chunk_rows]
+        indices = labels[start : start + chunk_rows]
+        active = (indices < 0).cumsum(-1) == 0
+        selected = indices.clamp_min(0)
+        is_target = torch.zeros_like(values, dtype=torch.int64)
+        is_target.scatter_add_(1, selected, active.to(torch.int64))
+        margins = 1 - values.gather(1, selected)
+        margins = margins[:, :, None] + values[:, None, :]
+        valid = active[:, :, None] & (is_target[:, None, :] == 0)
+        positive = torch.where(valid & (margins > 0), margins, 0).float()
+        loss = positive.sum((1, 2)) / classes
+        if reduction == 1:
+            loss = loss / rows
+        losses.append(loss.to(inp.dtype))
+    result = torch.cat(losses) if losses else inp.new_empty((0,))
+    return result if inp.ndim == 2 and reduction == 0 else result.sum()
+
+
+def _reference_loss(inp, target, reduction=1, *, out=None):
+    # CPU has no FP16/BF16 kernel. NVIDIA forward needs scalar-dtype margins;
+    # Ascend uses FP32. Both paths retain casts in the input autograd graph.
+    if inp.device.type == "cpu" and inp.dtype in (torch.float16, torch.bfloat16):
+        if flag_gems.vendor_name == "nvidia":
+            result = _cpu_low_precision_loss(inp, target, reduction)
+        else:
+            result = torch.ops.aten.multilabel_margin_loss(
+                inp.float(), target, reduction
+            )
+        if out is not None:
+            out.resize_(result.shape).copy_(result)
+            return out
+        return result.to(inp.dtype)
+    if out is not None:
+        return torch.ops.aten.multilabel_margin_loss.out(
+            inp, target, reduction, out=out
+        )
+    return torch.ops.aten.multilabel_margin_loss(inp, target, reduction)
+
+
 def _class_rows(shape):
     # (rows, classes) of the logical (N, C) form; rank <= 1 is one class row.
     if len(shape) == 0:
@@ -259,52 +312,25 @@ def _special_input(dtype, shape, special, layout):
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("value_range", RANGES)
 @pytest.mark.parametrize("reduction", REDUCTIONS)
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(
-            dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for dtype in SUPPORTED_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_multilabel_margin_loss(shape, value_range, reduction, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
     target = _make_target(shape, MAIN_PATTERN)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, reduction)
+    ref_out = _reference_loss(ref_inp, ref_target, reduction)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("pattern", PATTERN_CASES)
 @pytest.mark.parametrize("value_range", [MAIN_RANGE])
 @pytest.mark.parametrize("reduction", REDUCTIONS)
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(
-            dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for dtype in SUPPORTED_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction, dtype):
     shape = (8, 11)
     inp = tu.make_input(dtype, shape, value_range)
@@ -312,30 +338,17 @@ def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction,
     target = _make_target(shape, pattern)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, reduction)
+    ref_out = _reference_loss(ref_inp, ref_target, reduction)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("shape", DEFAULT_REDUCTION_SHAPES)
 @pytest.mark.parametrize("value_range", [MAIN_RANGE])
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(
-            dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for dtype in SUPPORTED_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_multilabel_margin_loss_default_reduction(shape, value_range, dtype):
     # Omitting reduction exercises the schema default in the public call signature.
     inp = tu.make_input(dtype, shape, value_range)
@@ -343,29 +356,15 @@ def test_multilabel_margin_loss_default_reduction(shape, value_range, dtype):
     target = _make_target(shape, MAIN_PATTERN)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target)
+    ref_out = _reference_loss(ref_inp, ref_target)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize(
-    "reduction, dtype",
-    [
-        pytest.param(
-            reduction,
-            dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for reduction, dtype in EXTRA_REDUCTIONS
-    ],
-)
+@pytest.mark.parametrize("reduction, dtype", EXTRA_REDUCTIONS)
 def test_multilabel_margin_loss_extra_reduction_values(reduction, dtype):
     shape = (32, 47)
     inp = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -373,29 +372,16 @@ def test_multilabel_margin_loss_extra_reduction_values(reduction, dtype):
     target = _make_target(shape, MAIN_PATTERN)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, reduction)
+    ref_out = _reference_loss(ref_inp, ref_target, reduction)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("reduction,out_layout", OUT_CASES)
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(
-            dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for dtype in SUPPORTED_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
     shape = (8, 11)
     inp = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -409,38 +395,27 @@ def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
     # post-call geometry and the complete logical values can all be compared.
     res_buf = _out_buffer(out_shape, span, out_layout, dtype, inp.device)
     ref_buf = _out_buffer(out_shape, span, out_layout, dtype, ref_inp.device)
+    parent = res_buf._base
+    guard = parent[:1].clone() if parent is not None else None
 
-    ref_out = torch.ops.aten.multilabel_margin_loss.out(
-        ref_inp, ref_target, reduction, out=ref_buf
-    )
+    ref_out = _reference_loss(ref_inp, ref_target, reduction, out=ref_buf)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, reduction, out=res_buf)
 
     assert res_out is res_buf
+    if parent is not None:
+        torch.testing.assert_close(parent[:1], guard, rtol=0, atol=0)
     # The overload may resize the buffer it is handed (a (1,) buffer becomes 0-dim for
     # the scalar reductions), so geometry is compared after the call rather than
     # assumed.
     assert _geometry(res_out) == _geometry(ref_out)
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("in_layout,tgt_layout", LAYOUT_PAIRS)
 @pytest.mark.parametrize("reduction", REDUCTIONS)
-@pytest.mark.parametrize(
-    "dtype",
-    [
-        pytest.param(
-            dtype,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for dtype in SUPPORTED_DTYPES
-    ],
-)
+@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, dtype):
     shape = (8, 11)
     values = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -449,10 +424,11 @@ def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, 
     target = _laid_out_target(shape, tgt_layout)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, reduction)
+    ref_out = _reference_loss(ref_inp, ref_target, reduction)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
@@ -485,15 +461,16 @@ def test_multilabel_margin_loss_backward(in_layout, tgt_layout, dtype):
     res_target = _laid_out_target(shape, tgt_layout)
     ref_target = tu.to_reference(res_target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, 1)
+    ref_out = _reference_loss(ref_inp, ref_target, 1)
+    expected_device = res_inp.device
     res_out = flag_gems.multilabel_margin_loss(res_inp, res_target, 1)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
     ref_grad = torch.autograd.grad(ref_out, ref_buf)[0]
     res_grad = torch.autograd.grad(res_out, res_buf)[0]
 
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_result_close(res_grad, ref_grad, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
@@ -506,30 +483,15 @@ def test_multilabel_margin_loss_empty_batch(dtype):
     target = _make_target(shape, MAIN_PATTERN)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, 0)
+    ref_out = _reference_loss(ref_inp, ref_target, 0)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, 0)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize(
-    "n_classes, dtype, value_range",
-    [
-        pytest.param(
-            n_classes,
-            dtype,
-            value_range,
-            marks=pytest.mark.skipif(
-                flag_gems.vendor_name == "ascend"
-                and utils.TO_CPU
-                and dtype in (torch.float16, torch.bfloat16),
-                reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-            ),
-        )
-        for n_classes, dtype, value_range in CLASS_COUNT_CASES
-    ],
-)
+@pytest.mark.parametrize("n_classes, dtype, value_range", CLASS_COUNT_CASES)
 def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
     shape = (4, n_classes)
     inp = tu.make_input(dtype, shape, value_range)
@@ -537,10 +499,11 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
     target = _make_target(shape, MAIN_PATTERN)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, 1)
+    ref_out = _reference_loss(ref_inp, ref_target, 1)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, 1)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
@@ -555,13 +518,7 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
                 pytest.mark.skipif(
                     flag_gems.vendor_name == "ascend"
                     and utils.TO_CPU
-                    and dtype in (torch.float16, torch.bfloat16),
-                    reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
-                ),
-                pytest.mark.skipif(
-                    flag_gems.vendor_name == "ascend"
-                    and utils.TO_CPU
-                    and dtype == torch.float32
+                    and dtype in (torch.float16, torch.bfloat16, torch.float32)
                     and (
                         special in ("nan", "mixed")
                         or (layout == "batched" and special == "inf")
@@ -581,10 +538,11 @@ def test_multilabel_margin_loss_special_values(dtype, special, layout):
     target = _make_target(shape, MAIN_PATTERN)
     ref_target = tu.to_reference(target)
 
-    ref_out = torch.ops.aten.multilabel_margin_loss(ref_inp, ref_target, 1)
+    ref_out = _reference_loss(ref_inp, ref_target, 1)
+    expected_device = inp.device
     res_out = flag_gems.multilabel_margin_loss(inp, target, 1)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device)
 
 
 @pytest.mark.multilabel_margin_loss
