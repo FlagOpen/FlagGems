@@ -202,17 +202,7 @@ def mm_kernel(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        # [kunlunxin] bf16: extend the operands to fp32 for an exact product
-        # and round once at the end, to match the native matmul numerics.
-        if a.dtype == tl.bfloat16:
-            acc += tl.dot(
-                a.to(tl.float32),
-                b.to(tl.float32),
-                out_dtype=dot_out_dtype,
-                allow_tf32=False,
-            )
-        else:
-            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -299,17 +289,7 @@ def mm_kernel_aligned(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        # [kunlunxin] bf16: extend the operands to fp32 for an exact product
-        # and round once at the end, to match the native matmul numerics.
-        if a.dtype == tl.bfloat16:
-            acc += tl.dot(
-                a.to(tl.float32),
-                b.to(tl.float32),
-                out_dtype=dot_out_dtype,
-                allow_tf32=False,
-            )
-        else:
-            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
