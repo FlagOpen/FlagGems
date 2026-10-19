@@ -99,16 +99,30 @@ def _build_inputs_fn(plan, dtype, device):
 class SetDataBenchmark(OperatorBenchmark):
     """State-changing op, so every sample needs an independent target/donor pair.
 
-    ``fresh_inputs`` restores that pair outside the measured region; without it a
-    repeated call would only re-apply a swap the previous sample already did. The
-    shared helper restores with ``detach().clone().requires_grad_(...)``, so
-    autograd history and cross-input aliases are not preserved - nothing here
-    relies on them, the rows only carry shapes and a donor layout kind.
+    Timing prepares independent target/donor metadata before the measured batch.
+    The views share storage without copying payloads, retain the donor strides,
+    and start each call from the original target rather than a previous swap.
 
     Shared shapes and the original rank-changing donor cases are both retained.
     """
 
     DEFAULT_SHAPE_DESC = "set_data metadata-swap cases"
+
+    def get_latency(self, op, target, source, **kwargs):
+        # Metadata-only ops need host timing, not GPU events or payload copies.
+        reference_only = getattr(base.Config, "reference_only", False)
+        if not reference_only and base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError("Metadata benchmarks require host timing, not CUDA graphs")
+        warmup, repeat = (0, 1) if reference_only else (5, 100)
+        # Prepare independent Tensor metadata before the measured batch.
+        inputs = iter(
+            [(target.detach(), source.detach()) for _ in range(warmup + repeat)]
+        )
+        return base.measure_calls(
+            lambda: op(*next(inputs), **kwargs),
+            warmup_calls=warmup,
+            repeat_calls=repeat,
+        )
 
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)

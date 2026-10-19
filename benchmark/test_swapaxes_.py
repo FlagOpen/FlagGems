@@ -31,7 +31,7 @@ _DTYPE_FLAGS = {
 
 # aten::swapaxes_(Tensor(a!) self, int axis0, int axis1) -> Tensor(a!)
 # Stride-only view: the measured call mutates the tensor it is handed, so the
-# benchmark keeps fresh_inputs=True and rebuilds one input per sample. The op is
+# benchmark prepares an independent metadata view per timed call. The op is
 # dtype- and rank-agnostic, so the shared default/comprehensive shape families
 # stay in place and only tiny, natively valid rank boundaries are appended.
 _BOUNDARY_SHAPES = [(), (0,), (1,), (2, 3), (0, 3, 4), (2, 3, 4)]
@@ -97,6 +97,20 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class SwapaxesBenchmark(OperatorBenchmark):
+    def get_latency(self, op, inp, *args, **kwargs):
+        # Metadata-only ops need host timing, not GPU events or payload copies.
+        reference_only = getattr(base.Config, "reference_only", False)
+        if not reference_only and base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError("Metadata benchmarks require host timing, not CUDA graphs")
+        warmup, repeat = (0, 1) if reference_only else (5, 100)
+        # Prepare independent Tensor metadata before the measured batch.
+        inputs = iter([inp.detach() for _ in range(warmup + repeat)])
+        return base.measure_calls(
+            lambda: op(next(inputs), *args, **kwargs),
+            warmup_calls=warmup,
+            repeat_calls=repeat,
+        )
+
     def set_shapes(self, shape_file_path=None):
         # Keep the shared default/comprehensive families and any core_shapes.yaml
         # entry for this operator or class; append the rank boundaries on top.

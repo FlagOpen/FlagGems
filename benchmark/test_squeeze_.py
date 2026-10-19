@@ -92,6 +92,28 @@ def _build_inputs_fn(plan, dtype, device):
 class SqueezeBenchmark(OperatorBenchmark):
     """In-place metadata benchmark: every timed call gets a fresh operand."""
 
+    def get_latency(self, op, inp, *args, **kwargs):
+        # Metadata-only ops need host timing, not GPU events or payload copies.
+        reference_only = getattr(base.Config, "reference_only", False)
+        if not reference_only and base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError("Metadata benchmarks require host timing, not CUDA graphs")
+        warmup, repeat = (0, 1) if reference_only else (5, 100)
+        # Prepare independent Tensor metadata before the measured batch.
+        inputs = iter(
+            [
+                (
+                    inp.detach(),
+                    *(arg.copy() if isinstance(arg, list) else arg for arg in args),
+                )
+                for _ in range(warmup + repeat)
+            ]
+        )
+        return base.measure_calls(
+            lambda: op(*next(inputs), **kwargs),
+            warmup_calls=warmup,
+            repeat_calls=repeat,
+        )
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         # A shape file may deliver lists; normalise before de-duplicating so the
