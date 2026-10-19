@@ -644,6 +644,7 @@ from flag_gems.ops.diff import diff
 from flag_gems.ops.digamma_ import digamma, digamma_
 from flag_gems.ops.dim import dim
 from flag_gems.ops.dim_arange import _dim_arange as dim_arange
+from flag_gems.ops.dimV import _dimV as dimV
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
@@ -1295,6 +1296,7 @@ from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.slogdet import slogdet
 from flag_gems.ops.slow_conv_transpose2d import slow_conv_transpose2d
+from flag_gems.ops.slow_conv_transpose3d import slow_conv_transpose3d
 from flag_gems.ops.smm import smm
 from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss,
@@ -2170,6 +2172,7 @@ __all__ = [
     "digamma_",
     "dim",
     "dim_arange",
+    "dimV",
     "dist",
     "div_mode",
     "div_mode_",
@@ -2889,6 +2892,7 @@ __all__ = [
     "slice_scatter",
     "slogdet",
     "slow_conv_transpose2d",
+    "slow_conv_transpose3d",
     "smm",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
