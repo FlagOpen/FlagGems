@@ -8767,6 +8767,18 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: gdn_w8a16
+  description: Gated delta-rule core forward with precomputed gates and FP32 recurrent
+    state.
+  for:
+  - gdn_w8a16
+  labels:
+  - fused
+  - FLA
+  kind:
+  - Attention
+  stages:
+  - alpha: '5.5'
 - id: ge
   description: Computes `input` is greater or equal to `other` element-wise.
   for:
