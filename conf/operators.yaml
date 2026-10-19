@@ -16333,6 +16333,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: resize_as_sparse_
+  description: |
+    Resize a sparse COO tensor in place to match the shape and sparse/dense dimensions of a COO or strided template, preserving its index and value buffers.
+  for:
+    - resize_as_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: resize_output
   description: 'Resizes tensor output storage and copies overlapping elements.
 

@@ -1227,6 +1227,7 @@ from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
 from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resize_as import resize_as, resize_as_
+from flag_gems.ops.resize_as_sparse_ import resize_as_sparse_
 from flag_gems.ops.resolve_conj import resolve_conj
 from flag_gems.ops.resolve_neg import resolve_neg
 from flag_gems.ops.rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
@@ -2798,6 +2799,7 @@ __all__ = [
     "resize_",
     "resize_as",
     "resize_as_",
+    "resize_as_sparse_",
     "resolve_conj",
     "resolve_neg",
     "rms_norm",
