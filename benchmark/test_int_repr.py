@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from functools import partial
 
 import pytest
 import torch
@@ -198,8 +199,10 @@ def _validate(plan, dtype):
     return shape
 
 
-def _case_fn(shape, dtype):
+def _case_fn(shape, dtype, input_layout=None):
     for index, layout in enumerate(_applicable_layouts(shape)):
+        if input_layout is not None and layout != input_layout:
+            continue
         if layout == "per_channel":
             axis = len(shape) - 1
             params = {
@@ -283,32 +286,72 @@ class IntReprBenchmark(OperatorBenchmark):
     being replaced by the default shapes.
     """
 
+    input_layout = None
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path, default_shapes=INT_REPR_SHAPES)
         self.shapes = [_validated_shape(shape) for shape in self.shapes]
+        if self.input_layout is not None:
+            self.shapes = [
+                shape
+                for shape in self.shapes
+                if self.input_layout in _applicable_layouts(shape)
+            ]
+            if not self.shapes:
+                pytest.skip("No shapes support this input layout")
 
 
 @pytest.mark.int_repr
-def test_int_repr():
+@pytest.mark.parametrize(
+    "input_layout",
+    [
+        pytest.param(
+            layout,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and layout in ("transposed", "expanded", "channels_last"),
+                reason="QuantizedNPU cannot construct transpose, expand or channels-last inputs",
+            ),
+        )
+        for layout in _LAYOUTS
+    ],
+)
+def test_int_repr(input_layout):
     bench = IntReprBenchmark(
         op_name="int_repr",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, input_layout=input_layout),
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.int_repr,
         gems_op=getattr(flag_gems, "int_repr", None),
         dtypes=QUANTIZED_DTYPES,
+        input_layout=input_layout,
     )
     bench.run()
 
 
 @pytest.mark.int_repr
-def test_int_repr_out():
+@pytest.mark.parametrize(
+    "input_layout",
+    [
+        pytest.param(
+            layout,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and layout in ("transposed", "expanded", "channels_last"),
+                reason="QuantizedNPU cannot construct transpose, expand or channels-last inputs",
+            ),
+        )
+        for layout in _LAYOUTS
+    ],
+)
+def test_int_repr_out(input_layout):
     bench = IntReprBenchmark(
         op_name="int_repr",
-        case_fn=_case_fn,
+        case_fn=partial(_case_fn, input_layout=input_layout),
         build_inputs_fn=_build_inputs_fn_out,
         torch_op=torch.ops.aten.int_repr.out,
         gems_op=getattr(flag_gems, "int_repr", None),
         dtypes=QUANTIZED_DTYPES,
+        input_layout=input_layout,
     )
     bench.run()
