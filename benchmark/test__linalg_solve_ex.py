@@ -118,7 +118,7 @@ class SolveExBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=DEFAULT_DESCRIPTORS)
 
 
-@pytest.mark.linalg_solve_ex
+@pytest.mark.underscore_linalg_solve_ex
 def test__linalg_solve_ex():
     bench = SolveExBenchmark(
         op_name="_linalg_solve_ex",

@@ -69,7 +69,7 @@ class IndicesBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_INDICES_SHAPES)
 
 
-@pytest.mark.indices
+@pytest.mark.underscore_indices
 def test__indices():
     bench = IndicesBenchmark(
         op_name="_indices",

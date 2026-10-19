@@ -336,7 +336,7 @@ _NEGATIVE_ROWS = [
 _NEGATIVE_CASES = tu.selected_cases(_NEGATIVE_ROWS, quick=_NEGATIVE_ROWS)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -353,7 +353,7 @@ def test__to_sparse_csc(shape, value_range, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape,dense_dim", _DENSE_DIM_CASES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test__to_sparse_csc_dense_dim(shape, dense_dim, dtype):
@@ -371,7 +371,7 @@ def test__to_sparse_csc_dense_dim(shape, dense_dim, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape,dense_dim,pattern", _STRUCTURE_CASES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test__to_sparse_csc_sparse_structure(shape, dense_dim, pattern, dtype):
@@ -386,7 +386,7 @@ def test__to_sparse_csc_sparse_structure(shape, dense_dim, pattern, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape,dense_dim,dtype", _EDGE_CASES)
 def test__to_sparse_csc_edge_shape(shape, dense_dim, dtype):
     inp = _dense_input(dtype, shape, ["-1", "1"], dense_dim)
@@ -400,7 +400,7 @@ def test__to_sparse_csc_edge_shape(shape, dense_dim, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("variant,dtype", _VIEW_CASES)
 def test__to_sparse_csc_view_input(variant, dtype):
     storage = tu.make_input(dtype, (17, 25), ["-1", "1"])
@@ -428,7 +428,7 @@ def test__to_sparse_csc_view_input(variant, dtype):
     tu.assert_result_equal(storage, ref_storage)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__to_sparse_csc_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
@@ -441,7 +441,7 @@ def test__to_sparse_csc_special_values(dtype, scenario):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape,dense_dim,dtype", _OUT_CASES)
 def test__to_sparse_csc_out(shape, dense_dim, dtype):
     columns = _out_columns(_axes(shape, dense_dim)[2])
@@ -460,7 +460,7 @@ def test__to_sparse_csc_out(shape, dense_dim, dtype):
     tu.assert_result_equal(inp, ref_inp)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 def test__to_sparse_csc_out_rejects_dense_buffer():
     inp = tu.make_input(torch.float32, (16, 16), ["-1", "1"])
     buffer = torch.zeros(16, 16, dtype=torch.float32, device=flag_gems.device)
@@ -469,7 +469,7 @@ def test__to_sparse_csc_out_rejects_dense_buffer():
         flag_gems._to_sparse_csc(inp, out=buffer)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 def test__to_sparse_csc_out_rejects_wrong_nnz():
     inp = _out_input(torch.float32, (32, 8), _OMITTED, _out_columns(8))
     # Same shape and layout, twice as many specified elements.
@@ -481,7 +481,7 @@ def test__to_sparse_csc_out_rejects_wrong_nnz():
         flag_gems._to_sparse_csc(inp, out=buffer)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape,dense_dim,exception", _NEGATIVE_CASES)
 def test__to_sparse_csc_invalid_dense_dim(shape, dense_dim, exception):
     inp = tu.make_input(torch.float32, shape, ["-1", "1"])
@@ -491,7 +491,7 @@ def test__to_sparse_csc_invalid_dense_dim(shape, dense_dim, exception):
         flag_gems._to_sparse_csc(inp, *args)
 
 
-@pytest.mark.to_sparse_csc
+@pytest.mark.underscore_to_sparse_csc
 @pytest.mark.parametrize("shape,dense_dim,dtype,pattern", _BACKWARD_CASES)
 def test__to_sparse_csc_backward(shape, dense_dim, dtype, pattern):
     args = _dense_dim_args(dense_dim)

@@ -74,7 +74,7 @@ class ValuesBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_VALUES_SHAPES)
 
 
-@pytest.mark.values
+@pytest.mark.underscore_values
 def test__values():
     bench = ValuesBenchmark(
         op_name="_values",

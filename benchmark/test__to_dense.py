@@ -144,7 +144,7 @@ class ToDenseBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_DESCRIPTORS)
 
 
-@pytest.mark.to_dense
+@pytest.mark.underscore_to_dense
 def test__to_dense():
     bench = ToDenseBenchmark(
         op_name="_to_dense",

@@ -520,7 +520,7 @@ _DTYPE_RANGE_CASES = [
 ]
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _VALUE_GRID_ROWS)
 def test__to_sparse_bsc_value_grid(
@@ -538,7 +538,7 @@ def test__to_sparse_bsc_value_grid(
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _ALL_ZERO_ROWS)
 def test__to_sparse_bsc_all_zero(shape, blocksize, dense_dim, omit_dense_dim, dtype):
@@ -555,7 +555,7 @@ def test__to_sparse_bsc_all_zero(shape, blocksize, dense_dim, omit_dense_dim, dt
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _PATTERN_DTYPES)
 @pytest.mark.parametrize(
     "shape,blocksize,dense_dim,omit_dense_dim,empty_blocks", _PATTERN_ROWS_SELECTED
@@ -577,7 +577,7 @@ def test__to_sparse_bsc_pattern_blocks(
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _ZERO_EXTENT_ROWS)
 def test__to_sparse_bsc_zero_extent(shape, blocksize, dense_dim, omit_dense_dim, dtype):
@@ -593,7 +593,7 @@ def test__to_sparse_bsc_zero_extent(shape, blocksize, dense_dim, omit_dense_dim,
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("shape,blocksize", _ZERO_BATCH_ROWS)
 def test__to_sparse_bsc_zero_batch(shape, blocksize):
     inp = tu.make_input(torch.float32, shape, _CENTERED_RANGE)
@@ -602,7 +602,7 @@ def test__to_sparse_bsc_zero_batch(shape, blocksize):
         flag_gems._to_sparse_bsc(inp, blocksize)
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _DENSE_DIM_DTYPES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _DENSE_DIM_ROWS)
 def test__to_sparse_bsc_dense_dim(shape, blocksize, dense_dim, omit_dense_dim, dtype):
@@ -622,7 +622,7 @@ def test__to_sparse_bsc_dense_dim(shape, blocksize, dense_dim, omit_dense_dim, d
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _BLOCKSIZE_DTYPES)
 @pytest.mark.parametrize(
     "shape,blocksize,dense_dim,omit_dense_dim", _BLOCKSIZE_ROWS_SELECTED
@@ -640,7 +640,7 @@ def test__to_sparse_bsc_blocksize(shape, blocksize, dense_dim, omit_dense_dim, d
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _OUT_DTYPES_SELECTED)
 @pytest.mark.parametrize(
     "shape,blocksize,dense_dim,omit_dense_dim,result_empty,out_empty",
@@ -673,7 +673,7 @@ def test__to_sparse_bsc_out(
     assert res_ret.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _OUT_DTYPES_SELECTED)
 def test__to_sparse_bsc_out_requires_matching_nnz(dtype):
     shape, blocksize = (16, 16), (2, 2)
@@ -685,7 +685,7 @@ def test__to_sparse_bsc_out_requires_matching_nnz(dtype):
         flag_gems._to_sparse_bsc(inp, blocksize, out=buffer)
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("shape,blocksize,dense_dim,error", _INVALID_DENSE_DIM_ROWS)
 def test__to_sparse_bsc_invalid_dense_dim(shape, blocksize, dense_dim, error):
     inp = tu.make_input(torch.float32, shape, _CENTERED_RANGE)
@@ -694,7 +694,7 @@ def test__to_sparse_bsc_invalid_dense_dim(shape, blocksize, dense_dim, error):
         flag_gems._to_sparse_bsc(inp, blocksize, dense_dim)
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("shape,blocksize,error", _INVALID_BLOCKSIZE_ROWS)
 def test__to_sparse_bsc_invalid_blocksize(shape, blocksize, error):
     inp = tu.make_input(torch.float32, shape, _CENTERED_RANGE)
@@ -703,7 +703,7 @@ def test__to_sparse_bsc_invalid_blocksize(shape, blocksize, error):
         flag_gems._to_sparse_bsc(inp, blocksize)
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("shape", [(), (5,)])
 def test__to_sparse_bsc_low_rank(shape):
     # The sparse axes do not exist below rank 2; both ranks are real negatives.
@@ -713,7 +713,7 @@ def test__to_sparse_bsc_low_rank(shape):
         flag_gems._to_sparse_bsc(inp, (1, 1))
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _BACKWARD_DTYPES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _BACKWARD_ROWS)
 def test__to_sparse_bsc_backward(shape, blocksize, dense_dim, omit_dense_dim, dtype):
@@ -744,7 +744,7 @@ def test__to_sparse_bsc_backward(shape, blocksize, dense_dim, omit_dense_dim, dt
     tu.assert_result_equal(res_grad, ref_grad)
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype,scenario", tu.special_value_cases(_FLOAT_DTYPES))
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _SPECIAL_ROWS)
 def test__to_sparse_bsc_special_values(
@@ -764,7 +764,7 @@ def test__to_sparse_bsc_special_values(
     assert res_out.device == inp.device
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("dtype", _VIEW_DTYPES)
 @pytest.mark.parametrize("shape,blocksize,dense_dim,omit_dense_dim", _VIEW_ROWS)
 def test__to_sparse_bsc_strided_offset_input(
@@ -793,7 +793,7 @@ def test__to_sparse_bsc_strided_offset_input(
     tu.assert_result_equal(parent, ref_parent)
 
 
-@pytest.mark.to_sparse_bsc
+@pytest.mark.underscore_to_sparse_bsc
 @pytest.mark.parametrize("shape", _LAZY_ROWS)
 def test__to_sparse_bsc_lazy_conjugate_input(shape):
     parent, inp = _lazy_conjugate_input(shape)
