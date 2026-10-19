@@ -6082,7 +6082,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.4'
+    - alpha: '5.5.0'
 - id: flip
   description: Reverse the order of an n-D tensor along given axis in dims.
   for:
