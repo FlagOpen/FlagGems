@@ -770,6 +770,7 @@ from flag_gems.ops.ge import ge, ge_scalar
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.geqrf import geqrf
+from flag_gems.ops.ger import run as ger
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
@@ -2303,6 +2304,7 @@ __all__ = [
     "geometric",
     "geometric_",
     "geqrf",
+    "ger",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
