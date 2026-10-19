@@ -754,10 +754,6 @@ from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fas
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
-from .upsample_bilinear2d_backward import (
-    upsample_bilinear2d_backward,
-    upsample_bilinear2d_backward_grad_input,
-)
 from .upsample_linear1d import upsample_linear1d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
@@ -1620,8 +1616,6 @@ __all__ = [
     "unique_dim",
     "unsafe_chunk",
     "upsample_bilinear2d",
-    "upsample_bilinear2d_backward",
-    "upsample_bilinear2d_backward_grad_input",
     "upsample_linear1d",
     "upsample_linear1d_backward",
     "upsample_nearest1d",
