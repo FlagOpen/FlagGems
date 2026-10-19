@@ -74,11 +74,8 @@ CORE_SHAPES = [(16, 16, 16), (128, 128, 128), (512, 512, 512)]
 
 
 # Do not compile kernels or call native operators while collecting benchmarks.
-CASES = [
-    pytest.param(case, shape, id=f"{case_id(case)}-{shape}")
-    for case in cases()
-    for shape in CORE_SHAPES
-]
+CASES = tuple(cases())
+DTYPES = tuple(dict.fromkeys(case[0] for case in CASES))
 
 
 def _prepare_benchmark(case, shape, use_out, request, monkeypatch):
@@ -90,9 +87,10 @@ def _prepare_benchmark(case, shape, use_out, request, monkeypatch):
         return
     reason = native_reason(case, shape, use_out, reference=golden)
     if reason:
-        request.node.add_marker(
-            pytest.mark.skip_native(vendors=flag_gems.vendor_name, reason=reason)
-        )
+        if request is not None:
+            request.node.add_marker(
+                pytest.mark.skip_native(vendors=flag_gems.vendor_name, reason=reason)
+            )
         # The autouse baseline fixture has already run; update its per-case
         # configuration as well as the reporting marker, then restore it.
         monkeypatch.setattr(config, "skip_native", True)
@@ -102,50 +100,94 @@ def _prepare_benchmark(case, shape, use_out, request, monkeypatch):
 class ScaledMMBenchmark(base.Benchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
 
-    def __init__(self, case, shape, use_out):
-        self.case, self.shape, self.use_out = case, shape, use_out
+    def __init__(self, dtype, use_out):
+        self.use_out = use_out
         op_name = "scaled_mm_out" if use_out else "scaled_mm"
         op = torch.ops.aten._scaled_mm.out if use_out else torch._scaled_mm
-        super().__init__(op_name, op, dtypes=[case[0]])
+        super().__init__(op_name, op, dtypes=[dtype])
         self.set_gems(flag_gems.scaled_mm_out if use_out else flag_gems.scaled_mm)
 
     def set_shapes(self, shape_file_path=None):
-        self.shapes = [self.shape]
+        self.shapes = CORE_SHAPES
         self.shape_desc = "M, N, K"
 
-    def get_input_iter(self, dtype):
+    def _build_input(self):
         args, kwargs = make_inputs(self.case, self.shape)
         if self.use_out:
             kwargs["out"] = torch.empty(
                 (self.shape[0], self.shape[1]),
-                dtype=self.case[2] or dtype,
+                dtype=self.case[2] or self.case[0],
                 device=flag_gems.device,
             )
-        yield (*args, kwargs)
+        return (*args, kwargs)
+
+    def _run_legacy(self):
+        # A pytest item/table groups one A dtype, with B/output dtypes and all
+        # other parameters retained as rows. Restore baseline state per row.
+        results = []
+        failed = skipped = total = 0
+        for dtype in self.to_bench_dtypes:
+            metrics = []
+            for case in CASES:
+                if case[0] != dtype:
+                    continue
+                for shape in self.shapes:
+                    self.case, self.shape = case, shape
+                    total += 1
+                    with pytest.MonkeyPatch.context() as patch:
+                        try:
+                            _prepare_benchmark(case, shape, self.use_out, None, patch)
+                            metric = self._measure_input(self._build_input())
+                        except pytest.skip.Exception as exc:
+                            skipped += 1
+                            detail = self.record_shapes()
+                            detail["skip_reason"] = str(exc)
+                            metric = consts.BenchmarkMetrics(
+                                shape_detail=detail, skip_reason=str(exc)
+                            )
+                        except (Exception, pytest.fail.Exception) as exc:
+                            failed += 1
+                            detail = self.record_shapes()
+                            detail["error"] = str(exc)[-300:]
+                            metric = consts.BenchmarkMetrics(
+                                shape_detail=detail, error_msg=str(exc)
+                            )
+                        metrics.append(metric)
+            if metrics:
+                results.append(self._emit_result(dtype, metrics))
+        if failed:
+            pytest.fail(
+                f"{failed}/{total} scaled_mm benchmark rows failed; see table/JSON"
+            )
+        if total and skipped == total:
+            pytest.skip(f"All {total} benchmark rows unsupported; see per-row reasons")
+        return results
 
     def record_shapes(self, *args, **kwargs):
-        return {
+        detail = {
             "fp8_case": case_id(self.case),
             "M_N_K": self.shape,
-            "arguments": super().record_shapes(*args, **kwargs),
         }
+        if conftest.Config.native_baseline_skip_reason:
+            detail["native_baseline_skip_reason"] = (
+                conftest.Config.native_baseline_skip_reason
+            )
+        return detail
 
     def get_tflops(self, op, *args, **kwargs):
         return 2 * args[0].shape[0] * args[0].shape[1] * args[1].shape[1]
 
 
 @pytest.mark.scaled_mm
-@pytest.mark.parametrize("case,shape", CASES)
-def test_scaled_mm_benchmark(case, shape, request, monkeypatch):
-    _prepare_benchmark(case, shape, False, request, monkeypatch)
-    ScaledMMBenchmark(case, shape, False).run()
+@pytest.mark.parametrize("dtype", DTYPES, ids=str)
+def test_scaled_mm_benchmark(dtype):
+    ScaledMMBenchmark(dtype, False).run()
 
 
 @pytest.mark.scaled_mm_out
-@pytest.mark.parametrize("case,shape", CASES)
-def test_scaled_mm_out_benchmark(case, shape, request, monkeypatch):
-    _prepare_benchmark(case, shape, True, request, monkeypatch)
-    ScaledMMBenchmark(case, shape, True).run()
+@pytest.mark.parametrize("dtype", DTYPES, ids=str)
+def test_scaled_mm_out_benchmark(dtype):
+    ScaledMMBenchmark(dtype, True).run()
 
 
 # Host-only regression checks: no capability probe may run during collection.
@@ -177,7 +219,7 @@ def test_native_rejection_still_runs_candidate(
 ):
     module = modules.benchmark
     case = (f"torch.{a}", f"torch.{b}", "torch.bfloat16", scaling, True)
-    calls, markers = [], []
+    calls = []
 
     def rejected(*args, **kwargs):
         assert ("out" in kwargs) is out
@@ -197,33 +239,41 @@ def test_native_rejection_still_runs_candidate(
         SimpleNamespace(aten=SimpleNamespace(_scaled_mm=SimpleNamespace(out=rejected))),
         raising=False,
     )
+    monkeypatch.setattr(module, "CASES", (case,))
+    bench = object.__new__(module.ScaledMMBenchmark)
+    bench.use_out = out
+    bench.op_name = "scaled_mm_out" if out else "scaled_mm"
+    bench.to_bench_dtypes = [case[0]]
+    bench.shapes = [(16, 16, 16)]
+    monkeypatch.setattr(bench, "_build_input", lambda: ())
     candidate_fails = False
 
-    class Candidate:
-        def __init__(self, selected_case, shape, use_out):
-            assert selected_case == case
-            assert use_out is out
+    def measure(input):
+        assert modules.config.skip_native is True
+        reason = modules.config.native_baseline_skip_reason
+        assert f"native FP8 {scaling}" in reason and message in reason
+        calls.append("candidate ran")
+        if candidate_fails:
+            raise RuntimeError("candidate kernel failure")
+        return module.consts.BenchmarkMetrics(
+            shape_detail=bench.record_shapes(), latency=1.0
+        )
 
-        def run(self):
-            assert modules.config.skip_native is True
-            reason = modules.config.native_baseline_skip_reason
-            assert f"native FP8 {scaling}" in reason and message in reason
-            calls.append("candidate ran")
-            if candidate_fails:
-                raise RuntimeError("candidate kernel failure")
-
-    monkeypatch.setattr(module, "ScaledMMBenchmark", Candidate)
-    request = SimpleNamespace(node=SimpleNamespace(add_marker=markers.append))
-    test = (
-        module.test_scaled_mm_out_benchmark if out else module.test_scaled_mm_benchmark
-    )
-    test(case, (16, 16, 16), request, monkeypatch)
+    monkeypatch.setattr(bench, "_measure_input", measure, raising=False)
+    with redirect_stdout(StringIO()):
+        results = bench._run_legacy()
     assert calls == ["native rejected", "candidate ran"]
-    assert markers[0].name == "skip_native"
+    assert results[0].result[0].latency_base is None
+    assert results[0].result[0].speedup is None
+    assert modules.config.skip_native is False
     candidate_fails = True
-    with pytest.raises(RuntimeError, match="candidate kernel failure"):
-        test(case, (16, 16, 16), request, monkeypatch)
+    with redirect_stdout(StringIO()), pytest.raises(pytest.fail.Exception, match="1/1"):
+        bench._run_legacy()
     assert calls == ["native rejected", "candidate ran", "candidate ran"]
+    assert (
+        modules.conftest.results[-1]["result"][0]["error_msg"]
+        == "candidate kernel failure"
+    )
 
 
 def test_runtime_skips_errors_and_baseline_state(pytester, monkeypatch):
@@ -285,3 +335,135 @@ def test_metadata_and_candidate_modes_do_not_probe_native(modules, monkeypatch, 
     monkeypatch.setattr(modules.benchmark, "native_reason", unexpected)
     modules.benchmark._prepare_benchmark("case", (16, 16, 16), False, None, monkeypatch)
     assert calls == ([] if mode in ("query", "list_cases") else ["case"])
+
+
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize("inject_failure", [False, True])
+def test_grouped_tables_preserve_rows_and_baseline_state(
+    modules, monkeypatch, tmp_path, use_out, inject_failure
+):
+    from .summary_for_plot import all_benchshape_passed, parse_log
+
+    module = modules.benchmark
+
+    def require(case):
+        if any("fnuz" in dtype for dtype in case[:2]):
+            pytest.skip("input FNUZ unsupported")
+
+    monkeypatch.setattr(module, "require_case", require)
+    monkeypatch.setattr(
+        module,
+        "native_reason",
+        lambda case, *args, **kwargs: (
+            "native unavailable" if case[1].endswith("e4m3fn") else None
+        ),
+    )
+    visited = set()
+    tables = []
+    for dtype in module.DTYPES:
+        bench = object.__new__(module.ScaledMMBenchmark)
+        bench.op_name = "scaled_mm_out" if use_out else "scaled_mm"
+        bench.use_out = use_out
+        bench.to_bench_dtypes = [dtype]
+        bench.shapes = module.CORE_SHAPES
+        monkeypatch.setattr(bench, "_build_input", lambda: ())
+
+        def measure(input):
+            case, shape = bench.case, bench.shape
+            visited.add((case, shape))
+            skip_native = case[1].endswith("e4m3fn")
+            assert modules.config.skip_native is skip_native
+            assert modules.config.native_baseline_skip_reason == (
+                "native unavailable" if skip_native else None
+            )
+            if (
+                inject_failure
+                and case == module.CASES[0]
+                and shape == module.CORE_SHAPES[0]
+            ):
+                raise RuntimeError("candidate failed on first row")
+            return module.consts.BenchmarkMetrics(
+                shape_detail=bench.record_shapes(),
+                latency=1.0,
+                latency_base=None if skip_native else 2.0,
+                speedup=None if skip_native else 2.0,
+                tflops=1.0,
+            )
+
+        monkeypatch.setattr(bench, "_measure_input", measure, raising=False)
+        output = StringIO()
+        with redirect_stdout(output):
+            if "fnuz" in dtype:
+                with pytest.raises(pytest.skip.Exception, match="All 60"):
+                    bench._run_legacy()
+            elif inject_failure and dtype == module.DTYPES[0]:
+                with pytest.raises(pytest.fail.Exception, match="1/60"):
+                    bench._run_legacy()
+            else:
+                bench._run_legacy()
+        table = output.getvalue()
+        assert table.count("Performance Test") == 1
+        assert table.count("SKIP") == (60 if "fnuz" in dtype else 30)
+        tables.append(table)
+        assert modules.config.skip_native is False
+        assert modules.config.native_baseline_skip_reason is None
+
+    assert len(visited) == 60  # Two executable A dtypes x two B dtypes x 5 x 3.
+    assert len(modules.conftest.results) == 4
+    rows = [row for report in modules.conftest.results for row in report["result"]]
+    assert len(rows) == 240
+    assert {
+        (row["shape_detail"]["fp8_case"], tuple(row["shape_detail"]["M_N_K"]))
+        for row in rows
+    } == {
+        (module.case_id(case), shape)
+        for case in module.CASES
+        for shape in module.CORE_SHAPES
+    }
+    assert sum(row["error_msg"] is not None for row in rows) == int(inject_failure)
+    assert sum(row["skip_reason"] is not None for row in rows) == 180
+    assert sum(row["latency"] is not None for row in rows) == 60 - int(inject_failure)
+    # The normal reporting parser must retain SKIP rows and never call an
+    # entirely skipped dtype a successful device benchmark.
+    log = tmp_path / "result.log"
+    log.write_text("\n".join("[INFO] " + record for record in modules.conftest.records))
+    reports = parse_log(log)
+    assert [all_benchshape_passed(report.result) for report in reports] == [
+        not inject_failure,
+        True,
+        False,
+        False,
+    ]
+    assert (
+        sum(row.skip_reason is not None for report in reports for row in report.result)
+        == 180
+    )
+
+
+def test_grouped_report_keeps_optional_columns_on_skipped_rows(modules):
+    consts = modules.benchmark.consts
+    metrics = [
+        consts.BenchmarkMetrics(
+            shape_detail={"case": "skipped"}, skip_reason="unsupported"
+        ),
+        consts.BenchmarkMetrics(
+            shape_detail={"case": "measured"}, latency=1.0, tflops=1.0, gbps=2.0
+        ),
+        consts.BenchmarkMetrics(
+            shape_detail={"case": "failed"}, error_msg="candidate error"
+        ),
+    ]
+    report = consts.BenchmarkResult(
+        "scaled_mm", "torch.float8_e4m3fn", "operator", "core", metrics
+    )
+    table = str(report)
+    rows = [
+        line
+        for line in table.splitlines()
+        if line.startswith(("SKIP", "SUCCESS", "FAILED"))
+    ]
+    assert len(rows) == 3
+    assert "TFLOPS" in table and "Gems GBPS" in table
+    assert len({row.index("{") for row in rows}) == 1
+    assert rows[0].count("N/A") == 6
+    assert rows[2].count("N/A") == 6

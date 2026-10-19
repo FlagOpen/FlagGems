@@ -140,6 +140,7 @@ def parse_log(log_file_path: str) -> List[BenchmarkResult]:
                         tflops=metric.get("tflops"),
                         utilization=metric.get("utilization"),
                         error_msg=metric.get("error_msg"),
+                        skip_reason=metric.get("skip_reason"),
                     )
                     for metric in data["result"]
                 ],
@@ -188,6 +189,7 @@ def parse_log_to_dict(log_file_path: str) -> Dict[int, Any]:
                         tflops=metric.get("tflops"),
                         utilization=metric.get("utilization"),
                         error_msg=metric.get("error_msg"),
+                        skip_reason=metric.get("skip_reason"),
                     )
                     for metric in data["result"]
                 ],
@@ -219,7 +221,9 @@ def calculate_avg_compared_speedup_over_dtype(metrics):
 
 
 def all_benchshape_passed(metrics):
-    return all(metric.error_msg is None for metric in metrics)
+    return any(metric.skip_reason is None for metric in metrics) and all(
+        metric.error_msg is None for metric in metrics
+    )
 
 
 def summary_for_plot(benchmark_results):

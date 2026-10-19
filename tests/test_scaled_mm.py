@@ -423,6 +423,9 @@ METAX_ERROR = (
 
 
 def _load_modules(monkeypatch):
+    from dataclasses import asdict, dataclass
+    from typing import List, Optional, Tuple
+
     def unexpected(*args, **kwargs):
         raise AssertionError("device operation during collection")
 
@@ -450,8 +453,25 @@ def _load_modules(monkeypatch):
         "flag_gems.runtime", torch_device_fn=SimpleNamespace(current_device=unexpected)
     )
     module("tests.conftest", QUICK_MODE=False)
-    module("benchmark.base", Benchmark=object)
-    module("benchmark.consts", DEFAULT_METRICS=[])
+    base = module("benchmark.base", Benchmark=type("Benchmark", (), {}))
+    consts = module("benchmark.consts", DEFAULT_METRICS=[])
+    # Load the real report dataclasses/renderer without importing device config.
+    tree = ast.parse((ROOT / "benchmark/consts.py").read_text())
+    tree.body = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+        and node.name in ("BenchmarkMetrics", "BenchmarkResult", "custom_json_encoder")
+    ]
+    consts.__dict__.update(
+        dataclass=dataclass,
+        asdict=asdict,
+        List=List,
+        Optional=Optional,
+        Tuple=Tuple,
+        torch=sys.modules["torch"],
+    )
+    exec(compile(tree, "benchmark/consts.py", "exec"), consts.__dict__)
     config = SimpleNamespace(
         query=False,
         list_cases=False,
@@ -459,6 +479,8 @@ def _load_modules(monkeypatch):
         profile_only=False,
         skip_native=False,
         native_baseline_skip_reason=None,
+        bench_level=SimpleNamespace(value="core"),
+        mode=SimpleNamespace(value="operator"),
     )
     conftest = module("benchmark.conftest", Config=config)
     # Exercise the real baseline fixture, including its teardown ordering.
@@ -472,6 +494,27 @@ def _load_modules(monkeypatch):
     ]
     conftest.__dict__.update(pytest=pytest, vendor_name="metax")
     exec(compile(tree, "benchmark/conftest.py", "exec"), conftest.__dict__)
+    conftest.results, conftest.records = [], []
+    tree = ast.parse((ROOT / "benchmark/base.py").read_text())
+    benchmark_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "Benchmark"
+    )
+    tree.body = [
+        node
+        for node in benchmark_class.body
+        if isinstance(node, ast.FunctionDef) and node.name == "_emit_result"
+    ]
+    namespace = dict(
+        Config=config,
+        BenchmarkResult=consts.BenchmarkResult,
+        asdict=asdict,
+        update_result=lambda name, result: conftest.results.append(result),
+        emit_record_logger=conftest.records.append,
+    )
+    exec(compile(tree, "benchmark/base.py", "exec"), namespace)
+    base.Benchmark._emit_result = namespace["_emit_result"]
 
     def load(name, path):
         spec = importlib.util.spec_from_file_location(name, ROOT / path)
@@ -499,16 +542,12 @@ def modules(monkeypatch):
 def test_import_enumerates_all_cases_without_device_calls(modules):
     accuracy, benchmark = modules.accuracy, modules.benchmark
     assert len(accuracy.CASES) == 80
-    assert len(benchmark.CASES) == 240
+    assert len(benchmark.CASES) == 80
     assert {p.values[0] for p in accuracy.CASES} == set(accuracy.cases())
-    assert {p.values for p in benchmark.CASES} == {
-        (case, shape) for case in accuracy.cases() for shape in benchmark.CORE_SHAPES
-    }
+    assert set(benchmark.CASES) == set(accuracy.cases())
+    assert len(benchmark.DTYPES) == 4
+    assert 2 * len(benchmark.CASES) * len(benchmark.CORE_SHAPES) == 480
     assert all(p.id == accuracy.case_id(p.values[0]) for p in accuracy.CASES)
-    assert all(
-        p.id == f"{accuracy.case_id(p.values[0])}-{p.values[1]}"
-        for p in benchmark.CASES
-    )
 
 
 @pytest.mark.parametrize("dtype", ["float8_e4m3fnuz", "float8_e5m2fnuz"])
@@ -679,10 +718,10 @@ def test_unrelated():
         result = pytester.runpytest_subprocess("-q", "-m", "unrelated")
     diagnostics = result.stdout.str() + result.stderr.str()
     assert result.ret == pytest.ExitCode.OK, diagnostics
-    assert result.parseoutcomes() == {"passed": 1, "deselected": 2242}, diagnostics
+    assert result.parseoutcomes() == {"passed": 1, "deselected": 1770}, diagnostics
     with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
         collected = pytester.runpytest_subprocess("--collect-only", "-qq")
     assert collected.ret == pytest.ExitCode.OK, (
         collected.stdout.str() + collected.stderr.str()
     )
-    assert "test_unselected_tests_do_not_probe.py: 2243" in collected.stdout.str()
+    assert "test_unselected_tests_do_not_probe.py: 1771" in collected.stdout.str()

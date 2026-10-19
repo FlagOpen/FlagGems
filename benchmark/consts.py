@@ -125,6 +125,8 @@ class BenchmarkMetrics:
     compared_speedup: Optional[float] = None
     # Error message
     error_msg: Optional[str] = None
+    # An unmeasured row in a grouped benchmark, not a successful measurement.
+    skip_reason: Optional[str] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
@@ -132,6 +134,7 @@ ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "candidate_source",
     "legacy_shape",
     "shape_detail",
+    "skip_reason",
 }
 
 DEFAULT_METRICS = [
@@ -246,9 +249,11 @@ class BenchmarkResult:
             f"{'Gems Latency (ms)':>20}",
             f"{'Gems Speedup':>20}",
         ]
-        if self.result[0].tflops and self.result[0].tflops != 0.0:
+        show_tflops = any(row.tflops is not None for row in self.result)
+        show_gbps = any(row.gbps is not None for row in self.result)
+        if show_tflops:
             col_names.append(f"{'TFLOPS':>20}")
-        if self.result[0].gbps is not None:
+        if show_gbps:
             col_names.append(f"{'Torch GBPS ':>20}")
             col_names.append(f"{'Gems GBPS ':>20}")
         col_names.append(f"{'Size Detail':>20}\n")
@@ -256,10 +261,15 @@ class BenchmarkResult:
         header_break = "-" * len(header_col_names) + "\n"
         header = header_title + header_col_names + header_break
 
-        metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
+        metrics_lines = "".join(
+            self._format_metrics(ele, show_tflops=show_tflops, show_gbps=show_gbps)
+            for ele in self.result
+        )
         return header + metrics_lines
 
-    def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
+    def _format_metrics(
+        self, metrics: BenchmarkMetrics, *, show_tflops=None, show_gbps=None
+    ) -> str:
         # self.gen_legacy_shape(metrics)
         # legacy_shape_str = (
         #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
@@ -273,7 +283,11 @@ class BenchmarkResult:
             f"{metrics.gbps_base:.3f}" if metrics.gbps_base is not None else "N/A"
         )
         gems_gbps_str = f"{metrics.gbps:.3f}" if metrics.gbps is not None else "N/A"
-        if metrics.tflops and metrics.tflops != 0.0:
+        if show_tflops is None:
+            show_tflops = metrics.tflops is not None
+        if show_gbps is None:
+            show_gbps = metrics.gbps is not None
+        if show_tflops:
             tflops_str = (
                 f"{metrics.tflops:.3f}" if metrics.tflops is not None else "N/A"
             )
@@ -281,15 +295,17 @@ class BenchmarkResult:
             metrics.shape_detail if metrics.shape_detail is not None else "N/A"
         )
         status = "SUCCESS" if metrics.error_msg is None else "FAILED"
+        if metrics.skip_reason is not None and metrics.error_msg is None:
+            status = "SKIP"
         data_line = (
             f"{status:<10}"
             f"{latency_base_str:>20}"
             f"{latency_str:>20}"
             f"{speedup_str:>20}"
         )
-        if metrics.tflops and metrics.tflops != 0.0:
+        if show_tflops:
             data_line += f"{tflops_str:>20}"
-        if metrics.gbps is not None:
+        if show_gbps:
             data_line += f"{torch_gbps_str:>20}{gems_gbps_str:>20}"
         data_line += " " * 10
         data_line += f"{shape_detail_str}\n"
