@@ -49,9 +49,10 @@ from flag_gems.utils.foreach import check_tensor_list, foreach_unary, real_dtype
 
 from ._foreach_direct import _launch_fast, _select_ptr
 
-# The registration-liveness test asserts the "GEMS _FOREACH_ABS_" record under
-# the *generic* logger name (see tests/test_foreach_unary.py), so the record
-# must be emitted from this logger rather than the module's own.
+# The registration-liveness test (tests/test_foreach_unary.py) captures the
+# record under the *generic* logger name, so it must be emitted from this
+# logger rather than the module-local one.  The message carries the vendor
+# prefix "GEMS_KUNLUNXIN", per the operator-log convention.
 logger = logging.getLogger("flag_gems.ops._foreach_unary")
 
 
@@ -104,7 +105,7 @@ def _foreach_abs_unmasked_kernel(
 
 
 def _foreach_abs_(self):
-    logger.debug("GEMS _FOREACH_ABS_")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_ABS_")
     tensors = check_tensor_list(self)
     if _launch_fast(tensors, _foreach_abs_unmasked_kernel):
         # In-place schemas return ``()``; returning the list would make the

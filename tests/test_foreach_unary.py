@@ -23,7 +23,12 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_unary import UNARY_OPS
 
-from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
+from .accuracy_utils import (
+    gems_assert_close,
+    gems_assert_equal,
+    gems_log_prefix,
+    to_reference,
+)
 
 # Every operator name in the table; used to parameterize the shared cases.
 UNARY_NAMES = sorted(UNARY_OPS)
@@ -453,7 +458,12 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     if flag_gems.device != "cuda":
         return
     inp = [_sample((8,), torch.float32, flag_gems.device)]
-    want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
+    # ``gems_log_prefix`` yields ``GEMS`` for the generic executor and
+    # ``GEMS_KUNLUNXIN`` when a vendor override handles the operator, so the
+    # expected record tracks whichever implementation the dispatch resolves to.
+    prefix = gems_log_prefix(_gems_op(name, inplace))
+    suffix = "_" if inplace else ""
+    want = f"{prefix} _FOREACH_{name.upper()}{suffix}"
     logger_name = "flag_gems.ops._foreach_unary"
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):

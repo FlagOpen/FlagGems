@@ -48,9 +48,10 @@ from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 from ._foreach_direct import _launch_fast, _select_ptr
 
-# The registration-liveness test asserts the "GEMS _FOREACH_ROUND_" record under
-# the *generic* logger name (see tests/test_foreach_unary.py), so the record
-# must be emitted from this logger rather than the module's own.
+# The registration-liveness test (tests/test_foreach_unary.py) captures the
+# record under the *generic* logger name, so it must be emitted from this
+# logger rather than the module-local one.  The message carries the vendor
+# prefix "GEMS_KUNLUNXIN", per the operator-log convention.
 logger = logging.getLogger("flag_gems.ops._foreach_unary")
 
 # round accepts every float and integral dtype but rejects bool and complex
@@ -104,7 +105,7 @@ def _foreach_round_unmasked_kernel(
 
 
 def _foreach_round_(self):
-    logger.debug("GEMS _FOREACH_ROUND_")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_ROUND_")
     tensors = check_tensor_list(self)
     if _launch_fast(tensors, _foreach_round_unmasked_kernel):
         # In-place schemas return ``()``; returning the list would make the
