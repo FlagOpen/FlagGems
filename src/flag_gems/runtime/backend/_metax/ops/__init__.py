@@ -79,6 +79,7 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
+from ._make_dep_token import _make_dep_token
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -97,6 +98,7 @@ from .renorm import renorm, renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_tensor
 from .replication_pad3d_backward import replication_pad3d_backward
+from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rnn_tanh import rnn_tanh
 from .rsqrt import rsqrt, rsqrt_
@@ -135,8 +137,6 @@ from .weight_int8pack_mm import weight_int8pack_mm
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-from ._make_dep_token import _make_dep_token
-from .resolve_conj import resolve_conj
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",

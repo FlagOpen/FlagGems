@@ -188,6 +188,7 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
+from .unsqueeze import unsqueeze, unsqueeze_
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
@@ -199,7 +200,6 @@ from .weight_norm import (
     weight_norm_interface,
     weight_norm_interface_backward,
 )
-from .unsqueeze import unsqueeze, unsqueeze_
 
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",

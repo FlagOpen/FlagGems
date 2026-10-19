@@ -309,6 +309,7 @@ from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
+from .functional_assert_async import _functional_assert_async
 from .fused_experts_impl import (
     fused_experts_impl,
     inplace_fused_experts,
@@ -705,6 +706,7 @@ from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
+from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
@@ -742,8 +744,6 @@ from .xlogy import (
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-from .functional_assert_async import _functional_assert_async
-from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 
 __all__ = [
     "__iand___scalar",

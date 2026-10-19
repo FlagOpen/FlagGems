@@ -278,6 +278,7 @@ from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
+from flag_gems.ops._make_dep_token import _make_dep_token
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
@@ -318,6 +319,7 @@ from flag_gems.ops._philox_uniform_ import _philox_uniform_
 from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
+from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
 from flag_gems.ops._resize_output import _resize_output
@@ -380,6 +382,7 @@ from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
 )
+from flag_gems.ops._unsafe_view import _unsafe_view
 from flag_gems.ops._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
 from flag_gems.ops._upsample_bilinear2d_aa_backward import (
     _upsample_bilinear2d_aa_backward,
@@ -441,6 +444,7 @@ from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
 from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
+from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
 from flag_gems.ops.alpha_dropout import alpha_dropout
@@ -666,6 +670,8 @@ from flag_gems.ops.erf import erf, erf_
 from flag_gems.ops.erfinv_ import erfinv, erfinv_
 from flag_gems.ops.exp import exp, exp_, exp_out
 from flag_gems.ops.exp2 import exp2, exp2_
+from flag_gems.ops.expand import expand, expand_
+from flag_gems.ops.expand_as import expand_as
 from flag_gems.ops.expand_copy import expand_copy
 from flag_gems.ops.expm1 import expm1, expm1_, expm1_out
 from flag_gems.ops.exponential import exponential
@@ -716,6 +722,7 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_efficient_attention_backward,
     scaled_dot_product_flash_attention_backward,
 )
+from flag_gems.ops.flatten import flatten
 from flag_gems.ops.flip import flip
 from flag_gems.ops.fliplr import fliplr
 from flag_gems.ops.flipud import flipud
@@ -747,6 +754,7 @@ from flag_gems.ops.fractional_max_pool3d import fractional_max_pool3d
 from flag_gems.ops.frexp import frexp
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
+from flag_gems.ops.functional_assert_async import _functional_assert_async
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
@@ -822,6 +830,7 @@ from flag_gems.ops.hinge_embedding_loss import hinge_embedding_loss
 from flag_gems.ops.histc import histc
 from flag_gems.ops.histogram import histogram_bin_ct, histogram_bins_tensor
 from flag_gems.ops.histogramdd import histogramdd
+from flag_gems.ops.hsplit import hsplit
 from flag_gems.ops.hspmm import hspmm
 from flag_gems.ops.hstack import hstack
 from flag_gems.ops.huber_loss import huber_loss, huber_loss_out
@@ -1224,6 +1233,7 @@ from flag_gems.ops.rnn_tanh_cell import rnn_tanh_cell
 from flag_gems.ops.roll import roll
 from flag_gems.ops.rot90 import rot90
 from flag_gems.ops.round import round, round_, round_out
+from flag_gems.ops.row_indices import row_indices
 from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
 from flag_gems.ops.rrelu import rrelu
@@ -1422,7 +1432,12 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.sym_constrain_range import sym_constrain_range
+from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
+from flag_gems.ops.sym_storage_offset import sym_storage_offset
+from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
+from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.take import take, take_out
 from flag_gems.ops.take_along_dim import take_along_dim, take_along_dim_out
@@ -1445,6 +1460,7 @@ from flag_gems.ops.topk import topk
 from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
+from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
@@ -1456,8 +1472,10 @@ from flag_gems.ops.triu import triu, triu_
 from flag_gems.ops.true_divide import true_divide, true_divide_tensor
 from flag_gems.ops.true_divide_ import true_divide_, true_divide_tensor_
 from flag_gems.ops.trunc_ import trunc, trunc_
+from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.underscore_sobol_engine_draw import underscore_sobol_engine_draw
+from flag_gems.ops.unflatten import unflatten
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
@@ -1467,6 +1485,8 @@ from flag_gems.ops.unique_consecutive import unique_consecutive
 from flag_gems.ops.unique_dim import unique_dim
 from flag_gems.ops.unsafe_index import unsafe_index
 from flag_gems.ops.unsafe_index_put import unsafe_index_put
+from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
+from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
 from flag_gems.ops.upsample_bicubic2d import upsample_bicubic2d
 from flag_gems.ops.upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from flag_gems.ops.upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
@@ -1512,6 +1532,7 @@ from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
+from flag_gems.ops.view_as_complex import view_as_complex
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vstack import vstack
 from flag_gems.ops.w8a8_block_fp8_matmul import w8a8_block_fp8_matmul
@@ -1539,27 +1560,6 @@ from flag_gems.ops.xlogy_ import xlogy_, xlogy_tensor_scalar_
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
-from flag_gems.ops.functional_assert_async import _functional_assert_async
-from flag_gems.ops.sym_constrain_range import sym_constrain_range
-from flag_gems.ops.sym_numel import sym_numel
-from flag_gems.ops.sym_storage_offset import sym_storage_offset
-from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
-from flag_gems.ops._make_dep_token import _make_dep_token
-from flag_gems.ops._reshape_alias import _reshape_alias
-from flag_gems.ops._unsafe_view import _unsafe_view
-from flag_gems.ops.alias import alias
-from flag_gems.ops.expand import expand, expand_
-from flag_gems.ops.expand_as import expand_as
-from flag_gems.ops.flatten import flatten
-from flag_gems.ops.hsplit import hsplit
-from flag_gems.ops.t_ import t_
-from flag_gems.ops.unbind import unbind
-from flag_gems.ops.unflatten import unflatten
-from flag_gems.ops.unsafe_split_with_sizes import unsafe_split_with_sizes
-from flag_gems.ops.unsqueeze import unsqueeze, unsqueeze_
-from flag_gems.ops.row_indices import row_indices
-from flag_gems.ops.transpose import transpose
-from flag_gems.ops.view_as_complex import view_as_complex
 
 __all__ = [
     "__iand___scalar",
