@@ -587,6 +587,3 @@ def multilabel_margin_loss(self, target, reduction=1, out=None):
     result = torch.empty(shape, dtype=self.dtype, device=self.device)
     _launch_forward(self, target, reduction, result)
     return result
-
-
-run = multilabel_margin_loss
