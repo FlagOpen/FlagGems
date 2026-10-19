@@ -29,6 +29,10 @@ random.seed(time.time() // 100)
 
 
 @pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op (no largest/dim/sorted); see test_topk_ascend_dsa",
+)
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
 @pytest.mark.parametrize("topk", [0, 5])
@@ -63,6 +67,10 @@ def test_topk(batch_size, hiddensize, topk, largest, dtype):
 
 
 @pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op (no largest/dim/sorted); see test_topk_ascend_dsa",
+)
 @pytest.mark.parametrize(
     "shape, topk",
     [
@@ -169,6 +177,12 @@ def test_topk_radix_tle_large_fp32_k256_correctness():
     ],
 )
 def test_topk_ascend_dsa(m, n, k):
+    from packaging.version import Version
+    from torch_npu.npu.utils import get_cann_version
+
+    if Version(get_cann_version()) < Version("9.1.0"):
+        pytest.skip("Ascend DSA topk requires CANN >= 9.1.0")
+
     x = torch.rand((m, n), dtype=torch.float32, device=flag_gems.device)
     ref_value, ref_index = torch.topk(utils.to_reference(x), k, dim=-1)
 
