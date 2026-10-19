@@ -4812,6 +4812,19 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: dimI
+  description: 'Returns the number of sparse dimensions of a sparse COO tensor,
+    i.e. the leading dimension of its index matrix.
+    '
+  for:
+  - _dimI
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dimV
   description: 'Returns the number of dense dimensions of a sparse COO tensor.
     '

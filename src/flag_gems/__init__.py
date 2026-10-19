@@ -165,6 +165,7 @@ _FULL_CONFIG = (
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
     ("_dim_arange", dim_arange),
+    ("_dimI", _dimI, None, (SPARSE_DISPATCH_KEY,)),
     ("_dimV", dimV, None, (SPARSE_DISPATCH_KEY,)),
     ("_dirichlet_grad", _dirichlet_grad, lambda: _HAS_MAP_ELEMENTWISE),
     ("_dyn_quant_matmul_4bit", _dyn_quant_matmul_4bit),
