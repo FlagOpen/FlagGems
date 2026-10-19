@@ -1393,6 +1393,8 @@ _FULL_CONFIG = (
     ("mm", mm),
     ("mm.out", mm_out),
     ("mode", mode),
+    ("movedim.int", movedim),
+    ("movedim.intlist", movedim),
     ("mse_loss", mse_loss),
     ("mse_loss_backward", mse_loss_backward),
     ("msort", msort),
