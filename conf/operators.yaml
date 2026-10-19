@@ -3934,6 +3934,37 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_from_and_resize
+  description: 'Copies the elements of `self` into `dst` after resizing `dst` in place
+    to `self`''s shape, and returns `dst`. The data movement (including dtype casting)
+    runs in a Triton kernel.
+
+    '
+  for:
+  - _copy_from_and_resize
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.1'
+- id: copy_from_and_resize_out
+  description: 'A variant of `_copy_from_and_resize()` that also mirrors the resized
+    result into the `out` tensor and returns `out`.
+
+    '
+  for:
+  - _copy_from_and_resize.out
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.1'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.

@@ -150,6 +150,8 @@ _FULL_CONFIG = (
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
     ("_convolution_double_backward", _convolution_double_backward),
     ("_convolution_mode", _convolution_mode),
+    ("_copy_from_and_resize", _copy_from_and_resize),
+    ("_copy_from_and_resize.out", _copy_from_and_resize_out),
     ("_cslt_sparse_mm", _cslt_sparse_mm),
     ("_ctc_loss", _ctc_loss),
     ("_ctc_loss.out", _ctc_loss_out),
