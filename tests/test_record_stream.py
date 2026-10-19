@@ -35,6 +35,9 @@ import flag_gems
 
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+
 _DEVICE_TYPE = torch.device(flag_gems.device).type
 _DEVICE_MODULE = getattr(torch, _DEVICE_TYPE, None)
 _HAS_BLOCK_STATES = hasattr(getattr(_DEVICE_MODULE, "memory", None), "memory_snapshot")
@@ -205,7 +208,20 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.record_stream
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_record_stream_grid(dtype, shape, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     stream = torch.accelerator.current_stream()
@@ -222,7 +238,19 @@ def test_record_stream_grid(dtype, shape, value_range):
 
 @pytest.mark.record_stream
 @pytest.mark.parametrize("view", _VIEWS)
-@pytest.mark.parametrize("dtype", tu.REQUIRED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
+        )
+        for dtype in tu.REQUIRED_DTYPES
+    ],
+)
 def test_record_stream_view_storage(dtype, view):
     recorded, owner = _view_tensor(dtype, view)
     stream = torch.Stream()
@@ -283,7 +311,19 @@ def test_record_stream_stream_forms(stream_kind):
     not _HAS_BLOCK_STATES,
     reason="the active backend exposes no allocator block-state snapshot",
 )
-@pytest.mark.parametrize("dtype", tu.REQUIRED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
+        )
+        for dtype in tu.REQUIRED_DTYPES
+    ],
+)
 def test_record_stream_allocator_lifetime(dtype):
     control_held, _ = _allocator_signature(lambda tensor, stream: None, dtype)
     ref_held, ref_reused = _allocator_signature(torch.ops.aten.record_stream, dtype)
@@ -300,7 +340,20 @@ def test_record_stream_allocator_lifetime(dtype):
 
 
 @pytest.mark.record_stream
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype in _FP8_DTYPES,
+                reason="Ascend cannot generate FP8 payloads with device casts or fills",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 def test_record_stream_special_values(dtype, scenario):
     # The shared generator returns a fixed 5-element payload tensor for the
     # dtype/scenario pair; the shape is not a dimension of this helper.

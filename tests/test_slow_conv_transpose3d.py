@@ -251,7 +251,21 @@ def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     "inp_shape, weight_shape, kernel_size, stride, padding, output_padding, dilation",
     SLOW_CONV_TRANSPOSE3D_CASES,
 )
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64,
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 @pytest.mark.parametrize("bias", BIASES)
 def test_slow_conv_transpose3d(
     inp_shape,
@@ -290,8 +304,24 @@ def test_slow_conv_transpose3d(
 
 @pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize("case", _VALUE_RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "value_range, dtype",
+    [
+        pytest.param(
+            value_range,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64
+                and not tu.is_extreme_range(value_range),
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
+        )
+        for value_range in tu.selected_ranges()
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 @pytest.mark.parametrize("bias", BIASES)
 def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     (
@@ -336,7 +366,21 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     "inp_shape, weight_shape, kernel_size, stride, padding, output_padding, dilation",
     SLOW_CONV_TRANSPOSE3D_CASES,
 )
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64,
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 @pytest.mark.parametrize("bias", BIASES)
 def test_slow_conv_transpose3d_out(
     inp_shape,
@@ -398,7 +442,19 @@ def test_slow_conv_transpose3d_out(
 
 @pytest.mark.slow_conv_transpose3d_backward
 @pytest.mark.parametrize("case", _BACKWARD_CASES)
-@pytest.mark.parametrize("dtype", tu.selected_cases(_BACKWARD_DTYPES))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and dtype == torch.float64,
+                reason="Ascend native convolution backward does not support FP64",
+            ),
+        )
+        for dtype in tu.selected_cases(_BACKWARD_DTYPES)
+    ],
+)
 def test_slow_conv_transpose3d_backward(case, dtype):
     (
         inp_shape,
@@ -454,14 +510,40 @@ def test_slow_conv_transpose3d_backward(case, dtype):
     res_gi, res_gw, res_gb = torch.autograd.grad(
         res_out, (inp, weight, bias), grad_outputs=grad_out
     )
-    _assert_close(res_gi, ref_gi.to(dtype), dtype)
-    _assert_close(res_gw, ref_gw.to(dtype), dtype)
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype == torch.float32
+        and utils.TO_CPU
+        and torch.npu.conv.allow_hf32
+    ):
+        # Native HF32 input/weight gradients differ from the CPU FP64 oracle.
+        # Keep forward, bias and non-HF32 comparisons at their original tolerances.
+        utils.gems_assert_close(res_gi, ref_gi.to(dtype), dtype, atol=3e-3)
+        utils.gems_assert_close(res_gw, ref_gw.to(dtype), dtype, atol=5e-3)
+    else:
+        _assert_close(res_gi, ref_gi.to(dtype), dtype)
+        _assert_close(res_gw, ref_gw.to(dtype), dtype)
     _assert_close(res_gb, ref_gb.to(dtype), dtype)
 
 
 @pytest.mark.slow_conv_transpose3d_nan_inf
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and dtype == torch.float64,
+                reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(SUPPORTED_DTYPES)
+        )
+    ],
 )
 @pytest.mark.parametrize("special_arg", ["inp", "weight", "bias"])
 def test_slow_conv_transpose3d_nan_inf(dtype, scenario, special_arg):
