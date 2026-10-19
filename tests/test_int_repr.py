@@ -17,6 +17,7 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
 
 # aten::int_repr returns the raw integer codes an affine-quantized tensor
@@ -59,7 +60,7 @@ QUANTIZED_DTYPES = list(_QUANTIZED_TO_INT)
 # quantization stores float64 scales and int64 zero points, so its rows exist
 # only where both dtypes do; the plain-dtype negative rows were measured on the
 # CUDA/NVIDIA backend only. Both eligible sets are built here at import time,
-# so no test carries a runtime skip.
+# independently of the layout skips below.
 _PER_CHANNEL_SUPPORTED = gems_device.support_fp64 and gems_device.support_int64
 _NON_QUANTIZED_MEASURED = getattr(gems_device, "vendor_name", "") == "nvidia"
 
@@ -69,6 +70,15 @@ _NON_QUANTIZED_MEASURED = getattr(gems_device, "vendor_name", "") == "nvidia"
 # exposes a candidate that returns without writing its result.
 _UNIT_SCALE = 1.0
 _UNIT_ZERO_POINT = 0
+
+
+def _reference_codes(inp):
+    if flag_gems.vendor_name == "ascend":
+        # QuantizedNPU cannot clone or copy to CPU. Snapshot the native integer
+        # codes before the candidate runs, then move only the plain output.
+        codes = torch.ops.aten.int_repr(inp).clone()
+        return codes.cpu() if utils.TO_CPU else codes
+    return torch.ops.aten.int_repr(tu.to_reference(inp))
 
 
 def _quantized_input(
@@ -245,23 +255,33 @@ NON_QUANTIZED_ROWS = _unquantized_dtypes() if _NON_QUANTIZED_MEASURED else []
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_int_repr(shape, value_range, qdtype):
     inp = _quantized_input(shape, qdtype, value_range)
-    ref_inp = tu.to_reference(inp)
-    before = torch.ops.aten.int_repr(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
     # Reading the input must not change the quantized storage.
-    tu.assert_result_equal(torch.ops.aten.int_repr(inp), before)
+    tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
 @pytest.mark.int_repr
-@pytest.mark.parametrize("qdtype,layout", INDEPENDENT_ROWS)
+@pytest.mark.parametrize(
+    "qdtype,layout",
+    [
+        pytest.param(
+            qdtype,
+            layout,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and layout == "transposed",
+                reason="QuantizedNPU cannot construct transposed inputs",
+            ),
+        )
+        for qdtype, layout in INDEPENDENT_ROWS
+    ],
+)
 def test_int_repr_result_is_independent_of_input_storage(qdtype, layout):
     inp = _apply_layout(_quantized_input((2, 19, 7), qdtype, ["-1", "1"]), layout)
-    ref_inp = tu.to_reference(inp)
-    expected = torch.ops.aten.int_repr(ref_inp)
+    expected = _reference_codes(inp)
 
     res_out = flag_gems.int_repr(inp)
     tu.assert_result_equal(res_out, expected)
@@ -276,13 +296,9 @@ def test_int_repr_result_is_independent_of_input_storage(qdtype, layout):
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 def test_int_repr_out(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
-    before = torch.ops.aten.int_repr(inp)
 
-    ref_out = torch.ops.aten.int_repr.out(
-        ref_inp, out=torch.empty(shape, dtype=out_dtype, device=ref_inp.device)
-    )
     # The sentinel pre-fill makes the exact comparison reject a candidate that
     # returns the buffer without writing its result.
     buf = _sentinel_buffer(shape, out_dtype)
@@ -290,41 +306,36 @@ def test_int_repr_out(shape, qdtype):
 
     assert res_out is buf
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(torch.ops.aten.int_repr(inp), before)
+    tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
 @pytest.mark.int_repr
 @pytest.mark.parametrize("qdtype", OUT_RESIZE_ROWS)
 def test_int_repr_out_resizes_buffer(qdtype):
     inp = _quantized_input((2, 19, 7), qdtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
-    before = torch.ops.aten.int_repr(inp)
 
-    ref_out = torch.ops.aten.int_repr.out(
-        ref_inp, out=torch.empty((3,), dtype=out_dtype, device=ref_inp.device)
-    )
     buf = _sentinel_buffer((3,), out_dtype)
     res_out = flag_gems.int_repr(inp, out=buf)
 
     assert res_out is buf
     tu.assert_result_equal(res_out, ref_out)
     # The resizing path must not disturb the quantized input's storage.
-    tu.assert_result_equal(torch.ops.aten.int_repr(inp), before)
+    tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
 @pytest.mark.int_repr
 @pytest.mark.parametrize("qdtype", OUT_STRIDED_ROWS)
 def test_int_repr_out_writes_through_strided_buffer(qdtype):
     inp = _quantized_input((4, 5, 6), qdtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
     gap = (4, 5, 12)
     sentinel = _sentinel(out_dtype)
-    before = torch.ops.aten.int_repr(inp)
 
-    ref_pad = torch.full(gap, sentinel, dtype=out_dtype, device=ref_inp.device)
-    ref_out = torch.ops.aten.int_repr.out(ref_inp, out=ref_pad[:, :, ::2])
+    ref_pad = torch.full(gap, sentinel, dtype=out_dtype, device=ref_out.device)
+    ref_pad[:, :, ::2].copy_(ref_out)
     pad = torch.full(gap, sentinel, dtype=out_dtype, device=flag_gems.device)
     buf = pad[:, :, ::2]
     res_out = flag_gems.int_repr(inp, out=buf)
@@ -334,16 +345,30 @@ def test_int_repr_out_writes_through_strided_buffer(qdtype):
     tu.assert_result_equal(res_out, ref_out)
     # Only the strided view is written; the parent's padding stays untouched.
     tu.assert_result_equal(pad, ref_pad)
-    tu.assert_result_equal(torch.ops.aten.int_repr(inp), before)
+    tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
 @pytest.mark.int_repr
-@pytest.mark.parametrize("layout,shape,qdtype", LAYOUT_ROWS)
+@pytest.mark.parametrize(
+    "layout,shape,qdtype",
+    [
+        pytest.param(
+            layout,
+            shape,
+            qdtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and layout in ("transposed", "expanded", "channels_last"),
+                reason="QuantizedNPU cannot construct transpose, expand or channels-last inputs",
+            ),
+        )
+        for layout, shape, qdtype in LAYOUT_ROWS
+    ],
+)
 def test_int_repr_reads_layout(layout, shape, qdtype):
     inp = _apply_layout(_quantized_input(shape, qdtype, ["-1", "1"]), layout)
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -355,14 +380,12 @@ def test_int_repr_per_channel_quantization(qdtype, shape, axis):
     payload = tu.make_input(torch.float32, shape, ["-1", "1"])
     scales, zero_points = _channel_qparams(shape[axis], qdtype)
     inp = _quantized_per_channel(payload, qdtype, scales, zero_points, axis)
-    ref_inp = tu.to_reference(inp)
-    before = torch.ops.aten.int_repr(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(torch.ops.aten.int_repr(inp), before)
+    tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
 @pytest.mark.int_repr
@@ -371,9 +394,8 @@ def test_int_repr_extreme_qparams(qdtype, scale, fraction):
     info = torch.iinfo(_QUANTIZED_TO_INT[qdtype])
     zero_point = int(round(info.min + fraction * (info.max - info.min)))
     inp = _quantized_input((6, 7, 8), qdtype, ["-1", "1"], scale, zero_point)
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -386,9 +408,8 @@ def test_int_repr_storage_boundaries(qdtype, rule):
     value = dict(_BOUNDARY_RULES)[rule](info)
     payload = torch.full((6, 7, 8), value, dtype=torch.float32, device=flag_gems.device)
     inp = _quantize(payload, qdtype, 1.0, 0)
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -403,9 +424,8 @@ def test_int_repr_quantized_special_values(scenario, qdtype):
     # and the exact comparison uses the native raw result as the oracle for
     # every dtype.
     inp = _quantize(tu.make_special_input(torch.float32, scenario), qdtype, 1.0, 0)
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -415,9 +435,8 @@ def test_int_repr_quantized_special_values(scenario, qdtype):
 @pytest.mark.parametrize("shape,qdtype", DEGENERATE_ROWS)
 def test_int_repr_degenerate_shape(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
 
-    ref_out = torch.ops.aten.int_repr(ref_inp)
     res_out = flag_gems.int_repr(inp)
 
     tu.assert_result_equal(res_out, ref_out)
@@ -427,19 +446,15 @@ def test_int_repr_degenerate_shape(shape, qdtype):
 @pytest.mark.parametrize("shape,qdtype", DEGENERATE_ROWS)
 def test_int_repr_out_degenerate_shape(shape, qdtype):
     inp = _quantized_input(shape, qdtype, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_out = _reference_codes(inp)
     out_dtype = _QUANTIZED_TO_INT[qdtype]
-    before = torch.ops.aten.int_repr(inp)
 
-    ref_out = torch.ops.aten.int_repr.out(
-        ref_inp, out=torch.empty(shape, dtype=out_dtype, device=ref_inp.device)
-    )
     buf = _sentinel_buffer(shape, out_dtype)
     res_out = flag_gems.int_repr(inp, out=buf)
 
     assert res_out is buf
     tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(torch.ops.aten.int_repr(inp), before)
+    tu.assert_result_equal(torch.ops.aten.int_repr(inp), ref_out)
 
 
 @pytest.mark.int_repr
