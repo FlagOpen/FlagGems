@@ -1891,6 +1891,7 @@ _FULL_CONFIG = (
     ("sum.out", sum_out),
     ("sum_to_size", sum_to_size),
     ("svd", svd),
+    ("swapdims_", swapdims_),
     ("sym_constrain_range", sym_constrain_range),
     ("sym_numel", sym_numel),
     ("sym_size.int", sym_size_int),
