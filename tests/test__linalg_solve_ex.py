@@ -86,13 +86,9 @@ def _conditioned_pair(dtype, shape, value_range, left=True):
 def _raw_pair(dtype, shape, value_range, left=True):
     """Unconditioned operands taken straight from the requested range.
 
-    Nothing is rescaled here, so the requested magnitudes are preserved. On the
-    two unbounded ranges the native factorization degenerates (measured on
-    CUDA: a nonzero info and an all-NaN result with 1-based identity pivots for
-    float32/complex64 at 2-D shapes), and the LU/pivot artifacts degenerate with
-    it. The whole tuple is still compared component by component; finite and
-    nonfinite entries are matched with the shared equal_nan handling instead of
-    the test redefining the range or masking individual components.
+    Nothing is rescaled here, so the requested magnitudes are preserved. The
+    dtype-extreme ranges can overflow during factorization; their complete
+    native tuple is compared using the target backend's reference.
     """
     batch, n, m = _system_shapes(shape)
     return (
@@ -101,16 +97,101 @@ def _raw_pair(dtype, shape, value_range, left=True):
     )
 
 
-def _assert_outputs(res_out, ref_out):
-    """Compare all four components with the semantics each one needs.
+@pytest.fixture(autouse=True)
+def _full_precision_matmul():
+    """Keep solve residuals independent of the caller's TF32 setting."""
+    if flag_gems.vendor_name != "nvidia":
+        yield
+        return
+    previous = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = False
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = previous
 
-    result/LU are computed values and use the close comparison; pivots/info are
-    integer metadata and must match exactly.
+
+def _reference_solve(a, b, *, left=True, overflow=False):
+    """Freeze backend-specific tuples before the candidate can mutate inputs.
+
+    FP32/complex64 LU and pivot choices, nonfinite propagation and overflow are
+    backend-specific. CPU-reference mode compares these native artifacts on
+    CPU; finite low-precision systems also get independent CPU double checks.
     """
+    if utils.TO_CPU and (
+        a.dtype in (torch.float32, torch.complex64)
+        or overflow
+        or not (a.isfinite().all() and b.isfinite().all())
+    ):
+        native = torch.ops.aten._linalg_solve_ex(a.clone(), b.clone(), left=left)
+        return tuple(tu.to_reference(value) for value in native)
+    return torch.ops.aten._linalg_solve_ex(
+        tu.to_reference(a), tu.to_reference(b), left=left
+    )
+
+
+def _assert_outputs(res_out, ref_out, *, a=None, b=None, left=True):
+    """Check the tuple; finite CPU checks use frozen reference inputs a/b."""
+    assert len(res_out) == len(ref_out) == 4
+    for actual, expected in zip(res_out, ref_out):
+        assert actual.shape == expected.shape
+        assert actual.dtype == expected.dtype
     tu.assert_result_close(res_out[0], ref_out[0])
     tu.assert_result_close(res_out[1], ref_out[1])
     tu.assert_result_equal(res_out[2], ref_out[2])
     tu.assert_result_equal(res_out[3], ref_out[3])
+
+    if not (
+        utils.TO_CPU and a is not None and a.dtype in (torch.float32, torch.complex64)
+    ):
+        return
+
+    # In addition to the native tuple, independently verify P L U against A
+    # (A.T for contiguous real operands) and the solve equation on CPU.
+    dtype = torch.complex128 if a.is_complex() else torch.float64
+    matrix, rhs = (value.detach().cpu().to(dtype) for value in (a, b))
+    solution, lu = (value.detach().cpu().to(dtype) for value in res_out[:2])
+    pivots = res_out[2].detach().cpu()
+    assert bool((ref_out[3] == 0).all())
+    assert bool(solution.isfinite().all() and lu.isfinite().all())
+    steps = torch.arange(1, a.shape[-1] + 1)
+    assert bool(((pivots >= steps) & (pivots <= a.shape[-1])).all())
+
+    scale = (
+        matrix.abs()
+        .amax(dim=(-2, -1), keepdim=True)
+        .clamp_min(torch.finfo(torch.float64).tiny)
+    )
+    matrix, rhs = matrix / scale, rhs / scale
+    norm = torch.linalg.matrix_norm
+    golden = torch.linalg.solve(matrix, rhs, left=left)
+    # A small backward error may still amplify into a large forward error for
+    # an ill-conditioned system. Use its condition number rather than comparing
+    # against the rounding error of one particular CPU factorization.
+    eps = torch.finfo(a.dtype).eps
+    tolerance = 32 * eps
+    condition = torch.linalg.cond(matrix, p=float("inf"))
+    forward_bound = tolerance * condition * norm(golden)
+    assert bool((norm(solution - golden) <= forward_bound).all())
+    error = matrix @ solution - rhs if left else solution @ matrix - rhs
+    denominator = norm(matrix) * norm(solution) + norm(rhs)
+    solve_error = norm(error) / denominator.clamp_min(torch.finfo(torch.float64).tiny)
+
+    target = matrix.mT if a.is_contiguous() and not a.is_complex() else matrix
+    permutation, lower, upper = torch.lu_unpack(lu, pivots)
+    row_indices = permutation.real.argmax(dim=-2)
+    target = target.gather(-2, row_indices.unsqueeze(-1).expand_as(target))
+    upper = upper / scale
+    denominator = norm(target) + norm(lower) * norm(upper)
+    lu_error = norm(lower @ upper - target) / denominator.clamp_min(
+        torch.finfo(torch.float64).tiny
+    )
+    # Dimensionless backward error scaled by the input dtype's roundoff. No
+    # absolute tolerance on large payloads.
+    for error in (solve_error, lu_error):
+        torch.testing.assert_close(
+            error, torch.zeros_like(error), rtol=0, atol=tolerance
+        )
 
 
 @pytest.mark.underscore_linalg_solve_ex
@@ -121,10 +202,10 @@ def test__linalg_solve_ex_conditioned_grid(shape, value_range, dtype):
     a, b = _conditioned_pair(dtype, shape, value_range)
     ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
 
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
-    _assert_outputs(res_out, ref_out)
+    _assert_outputs(res_out, ref_out, a=ref_a, b=ref_b)
 
 
 @pytest.mark.underscore_linalg_solve_ex
@@ -133,12 +214,12 @@ def test__linalg_solve_ex_conditioned_grid(shape, value_range, dtype):
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_raw_grid(shape, value_range, dtype):
     a, b = _raw_pair(dtype, shape, value_range)
+    overflow = value_range in (["0", "max"], ["min", "0"])
     ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b, overflow=overflow)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
-    _assert_outputs(res_out, ref_out)
+    _assert_outputs(res_out, ref_out, a=None if overflow else ref_a, b=ref_b)
 
 
 @pytest.mark.underscore_linalg_solve_ex
@@ -231,10 +312,10 @@ def test__linalg_solve_ex_broadcast(a_shape, b_shape, left, dtype):
     b = tu.make_input(dtype, b_shape, ["-1", "1"])
     ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
 
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b, left=left)
+    ref_out = _reference_solve(a, b, left=left)
     res_out = flag_gems._linalg_solve_ex(a, b, left=left)
 
-    _assert_outputs(res_out, ref_out)
+    _assert_outputs(res_out, ref_out, a=ref_a, b=ref_b, left=left)
     # info follows A's batch shape, not the broadcast result shape.
     assert res_out[3].shape == a.shape[:-2]
 
@@ -298,9 +379,7 @@ def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
     a = tu.make_input(dtype, (n, n), ["-1", "1"])
     torch.diagonal(a).copy_(payload)
     b = tu.make_input(dtype, (n, 2), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
@@ -315,9 +394,7 @@ def test__linalg_solve_ex_special_rhs_column(dtype, scenario):
     a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 5
     b = tu.make_input(dtype, (n, 2), ["-1", "1"])
     b[:, 0] = payload[:n]
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
@@ -347,9 +424,7 @@ def test__linalg_solve_ex_special_single_rhs_position(dtype, scenario):
     b = tu.make_input(dtype, (n, 2), ["-1", "1"])
     for row, payload_index in _RHS_POISON_SLOTS[scenario]:
         b[row, 0] = payload[payload_index]
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
@@ -365,9 +440,7 @@ def test__linalg_solve_ex_special_isolated_batch_lane(dtype, scenario):
     a = tu.make_input(dtype, (2, n, n), ["-1", "1"])
     torch.diagonal(a, dim1=-2, dim2=-1)[1].copy_(payload)
     b = tu.make_input(dtype, (2, n, 2), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
@@ -396,9 +469,7 @@ def test__linalg_solve_ex_special_imaginary_diagonal(dtype, scenario):
     a = tu.make_input(dtype, (n, n), ["-1", "1"])
     torch.diagonal(a).copy_(torch.complex(torch.zeros_like(payload), payload).to(dtype))
     b = tu.make_input(dtype, (n, 2), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
