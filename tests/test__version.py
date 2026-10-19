@@ -99,9 +99,32 @@ def _assert_result(res_out, ref_out):
     utils.gems_assert_equal(res_int, ref_int)
 
 
+_VERSION_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and (dtype in _FP8_DTYPES or dtype == torch.complex32),
+            reason="Ascend cannot construct FP8/complex32 inputs with device zero fills",
+        ),
+    )
+    for dtype in _VERSION_DTYPES
+]
+_MUTABLE_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend" and dtype == torch.complex32,
+            reason="Ascend cannot construct complex32 inputs with device zero fills",
+        ),
+    )
+    for dtype in _MUTABLE_DTYPES
+]
+
+
 @pytest.mark.version
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", _VERSION_DTYPES)
+@pytest.mark.parametrize("dtype", _VERSION_INPUT_DTYPE_CASES)
 def test__version_fresh(shape, dtype):
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -115,7 +138,20 @@ def test__version_fresh(shape, dtype):
 @pytest.mark.version
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", tu.REQUIRED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in tu.REQUIRED_DTYPES
+    ],
+)
 def test__version_value_ranges(shape, value_range, dtype):
     inp = _make_value_tensor(dtype, shape, value_range, flag_gems.device)
     ref_device = "cpu" if utils.TO_CPU else flag_gems.device
@@ -130,7 +166,21 @@ def test__version_value_ranges(shape, value_range, dtype):
 @pytest.mark.version
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_VERSION_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_VERSION_DTYPES)
+        )
+    ],
 )
 def test__version_nan_inf(shape, dtype, scenario):
     inp = _special_tensor(shape, dtype, scenario, flag_gems.device)
@@ -146,7 +196,7 @@ def test__version_nan_inf(shape, dtype, scenario):
 @pytest.mark.version
 @pytest.mark.parametrize("shape", _VERSION_SHAPES)
 @pytest.mark.parametrize("bumps", [1, 2, 3, 5])
-@pytest.mark.parametrize("dtype", _MUTABLE_DTYPES)
+@pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_after_inplace(shape, bumps, dtype):
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -163,7 +213,7 @@ def test__version_after_inplace(shape, bumps, dtype):
 
 
 @pytest.mark.version
-@pytest.mark.parametrize("dtype", _VERSION_DTYPES)
+@pytest.mark.parametrize("dtype", _VERSION_INPUT_DTYPE_CASES)
 def test__version_readonly(dtype):
     inp = torch.zeros((8, 16), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -174,11 +224,19 @@ def test__version_readonly(dtype):
 
     _assert_result(res_out, version_before)
     assert torch.ops.aten._version(inp) == version_before
-    assert torch.equal(inp, data_before)
+    # Ascend equal has no complex kernel; only the readback comparison moves.
+    if flag_gems.vendor_name == "ascend" and inp.is_complex():
+        assert inp.device == data_before.device
+        assert inp.dtype == data_before.dtype
+        assert inp.layout == data_before.layout
+        assert inp.shape == data_before.shape
+        assert torch.equal(inp.cpu(), data_before.cpu())
+    else:
+        assert torch.equal(inp, data_before)
 
 
 @pytest.mark.version
-@pytest.mark.parametrize("dtype", _VERSION_DTYPES)
+@pytest.mark.parametrize("dtype", _VERSION_INPUT_DTYPE_CASES)
 def test__version_view(dtype):
     inp = torch.zeros((4, 6), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -192,7 +250,7 @@ def test__version_view(dtype):
 
 
 @pytest.mark.version
-@pytest.mark.parametrize("dtype", _MUTABLE_DTYPES)
+@pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_view_inplace(dtype):
     inp = torch.zeros((4, 6), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -210,7 +268,7 @@ def test__version_view_inplace(dtype):
 
 
 @pytest.mark.version
-@pytest.mark.parametrize("dtype", _MUTABLE_DTYPES)
+@pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_detach_shares_counter(dtype):
     inp = torch.zeros((4,), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -228,7 +286,7 @@ def test__version_detach_shares_counter(dtype):
 
 
 @pytest.mark.version
-@pytest.mark.parametrize("dtype", _MUTABLE_DTYPES)
+@pytest.mark.parametrize("dtype", _MUTABLE_DTYPE_CASES)
 def test__version_independent_counters(dtype):
     first = torch.zeros((4,), dtype=dtype, device=flag_gems.device)
     second = torch.zeros((4,), dtype=dtype, device=flag_gems.device)

@@ -296,7 +296,21 @@ def _assert_operands_unchanged(inp, ref_inp, other, ref_other):
 @pytest.mark.type_as
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("source_dtype,target_dtype", _CAST_PAIRS)
+@pytest.mark.parametrize(
+    "source_dtype,target_dtype",
+    [
+        pytest.param(
+            source_dtype,
+            target_dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and (source_dtype in _FP8_DTYPES or target_dtype in _FP8_DTYPES),
+                reason="Ascend cannot construct FP8 input payloads with device casts or fills",
+            ),
+        )
+        for source_dtype, target_dtype in _CAST_PAIRS
+    ],
+)
 def test_type_as_value_ranges(shape, value_range, source_dtype, target_dtype):
     inp = tu.make_input(source_dtype, shape, value_range)
     other = tu.make_input(target_dtype, (1,), value_range)
@@ -328,7 +342,21 @@ def test_type_as_float_to_int_truncates_toward_zero(source_dtype, target_dtype, 
 
 
 @pytest.mark.type_as
-@pytest.mark.parametrize("source_dtype,target_dtype", _FLOAT_TO_FP8_ROWS)
+@pytest.mark.parametrize(
+    "source_dtype,target_dtype",
+    [
+        pytest.param(
+            source_dtype,
+            target_dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and (source_dtype in _FP8_DTYPES or target_dtype in _FP8_DTYPES),
+                reason="Ascend cannot construct FP8 input payloads with device casts or fills",
+            ),
+        )
+        for source_dtype, target_dtype in _FLOAT_TO_FP8_ROWS
+    ],
+)
 def test_type_as_float_to_fp8_rounds_and_overflows(source_dtype, target_dtype):
     inp = torch.tensor(
         _FLOAT_TO_FP8_VALUES, dtype=source_dtype, device=flag_gems.device
@@ -346,7 +374,19 @@ def test_type_as_float_to_fp8_rounds_and_overflows(source_dtype, target_dtype):
 
 @pytest.mark.type_as
 @pytest.mark.parametrize("base_shape,slices,transpose", _VIEW_ROWS)
-@pytest.mark.parametrize("dtype", _IDENTITY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and (dtype in _FP8_DTYPES),
+                reason="Ascend cannot construct FP8 input payloads with device casts or fills",
+            ),
+        )
+        for dtype in _IDENTITY_DTYPES
+    ],
+)
 def test_type_as_same_dtype_returns_self(base_shape, slices, transpose, dtype):
     base = tu.make_input(dtype, base_shape, ["-1", "1"])
     inp = _make_view(base, slices, transpose)
@@ -364,7 +404,19 @@ def test_type_as_same_dtype_returns_self(base_shape, slices, transpose, dtype):
 
 
 @pytest.mark.type_as
-@pytest.mark.parametrize("dtype", _IDENTITY_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and (dtype in _FP8_DTYPES),
+                reason="Ascend cannot construct FP8 input payloads with device casts or fills",
+            ),
+        )
+        for dtype in _IDENTITY_DTYPES
+    ],
+)
 def test_type_as_same_dtype_empty_returns_self(dtype):
     inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
     other = tu.make_input(dtype, (1,), ["-1", "1"])
@@ -437,7 +489,20 @@ def test_type_as_strided_input(
 
 
 @pytest.mark.type_as
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend" and (dtype in _FP8_DTYPES),
+                reason="Ascend cannot construct FP8 input payloads with device casts or fills",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 def test_type_as_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
     other = tu.make_input(torch.float32, (1,), ["-1", "1"])
@@ -454,7 +519,22 @@ def test_type_as_special_values(dtype, scenario):
 
 
 @pytest.mark.type_as
-@pytest.mark.parametrize("source_dtype,target_dtype,scenario", _FP8_TARGET_CASES)
+@pytest.mark.parametrize(
+    "source_dtype,target_dtype,scenario",
+    [
+        pytest.param(
+            source_dtype,
+            target_dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and (source_dtype in _FP8_DTYPES or target_dtype in _FP8_DTYPES),
+                reason="Ascend cannot construct FP8 input payloads with device casts or fills",
+            ),
+        )
+        for source_dtype, target_dtype, scenario in _FP8_TARGET_CASES
+    ],
+)
 def test_type_as_special_values_into_fp8(source_dtype, target_dtype, scenario):
     inp = tu.make_special_input(source_dtype, scenario)
     other = tu.make_input(target_dtype, (1,), ["-1", "1"])

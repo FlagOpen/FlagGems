@@ -20,6 +20,26 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # CPU observes complex values; validate the original tensor metadata first.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        if result.dtype == torch.complex32:
+            # Copy the real storage components: NPU complex32 copy is unavailable.
+            result = torch.view_as_complex(torch.view_as_real(result).cpu())
+            reference = torch.view_as_complex(torch.view_as_real(reference).cpu())
+        else:
+            result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::numpy_T is a zero-copy metadata view (Tensor(a) -> Tensor(a)): it
 # reverses every dimension, so 0-D/1-D keep their layout, 2-D swaps both
 # dimensions and n-D is a full reversal. It never conjugates -- a lazily
@@ -40,7 +60,7 @@ _NUMPY_T_DTYPES = (
 
 def _assert_view_result(res_out, ref_out, inp, ref_inp):
     """Shared value comparison plus the alias facts it cannot observe."""
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
     assert res_out.is_conj() == ref_out.is_conj()
@@ -56,7 +76,15 @@ def _assert_view_result(res_out, ref_out, inp, ref_inp):
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _NUMPY_T_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -68,7 +96,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.numpy_T
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_numpy_T_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -98,7 +129,8 @@ _RANK_CASES = [
 @pytest.mark.numpy_T
 @pytest.mark.parametrize("shape,expected", _RANK_CASES)
 @pytest.mark.parametrize(
-    "dtype", [torch.float32, torch.int64, torch.bool, torch.complex64]
+    "dtype",
+    [torch.float32, torch.int64, torch.bool, torch.complex64],
 )
 def test_numpy_T_rank_boundaries(shape, expected, dtype):
     # Every rank is accepted, including 0-D and zero-element shapes that the
@@ -178,7 +210,10 @@ _STATE_CASES = [
 
 
 @pytest.mark.numpy_T
-@pytest.mark.parametrize("name,dtype,kind,shape", _STATE_CASES)
+@pytest.mark.parametrize(
+    "name,dtype,kind,shape",
+    _STATE_CASES,
+)
 def test_numpy_T_preserves_lazy_state(name, dtype, kind, shape):
     del name  # the row id documents which lazy bit the case exercises
     base = tu.make_input(dtype, shape, ["-1", "1"])
@@ -206,7 +241,10 @@ _MUTATION_CASES = [
 
 
 @pytest.mark.numpy_T
-@pytest.mark.parametrize("shape,dtype", _MUTATION_CASES)
+@pytest.mark.parametrize(
+    "shape,dtype",
+    _MUTATION_CASES,
+)
 def test_numpy_T_writes_through_to_input(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -220,7 +258,7 @@ def test_numpy_T_writes_through_to_input(shape, dtype):
 
     # One storage behind both: a write through the reversed view has to appear
     # in the original tensor, exactly as it does for the native op.
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
 
 
 # Backward is default-only; the compact rank/layout/state/mutation/overload rows
@@ -235,7 +273,18 @@ _BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.parametrize("shape", _BACKWARD_CASES)
 @pytest.mark.parametrize(
     "dtype",
-    [dtype for dtype in _NUMPY_T_DTYPES if dtype.is_floating_point or dtype.is_complex],
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in _NUMPY_T_DTYPES
+        if dtype.is_floating_point or dtype.is_complex
+    ],
 )
 def test_numpy_T_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).detach().requires_grad_(True)
@@ -254,7 +303,7 @@ def test_numpy_T_backward(shape, dtype):
     # exact relayout with no arithmetic.
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 # Positive special-value cases are default-only; the shared generator decides
@@ -266,7 +315,21 @@ _SPECIAL_SHAPES = [(1, 5), (1, 1, 5)]
 
 
 @pytest.mark.numpy_T
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 @pytest.mark.parametrize("shape", _SPECIAL_SHAPES)
 def test_numpy_T_special_values(dtype, scenario, shape):
     inp = tu.make_special_input(dtype, scenario).reshape(shape)

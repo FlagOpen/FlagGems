@@ -37,7 +37,15 @@ _ATLEAST_1D_SHAPES = [()] + [shape for shape in tu.selected_shapes() if shape]
 # Bool input generation ignores value_range; keep one sample per workload.
 # uint8's other ordinary ranges duplicate zero inputs; keep one zero and one wide range.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _SUPPORTED_DTYPES
     for value_range in (
         tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
@@ -49,7 +57,10 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.atleast_1d
 @pytest.mark.parametrize("shape", _ATLEAST_1D_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_atleast_1d_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -63,7 +74,20 @@ def test_atleast_1d_value_ranges(shape, value_range, dtype):
 
 
 @pytest.mark.atleast_1d
-@pytest.mark.parametrize("dtype", tu.selected_cases(_NAN_INF_DTYPES))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in tu.selected_cases(_NAN_INF_DTYPES)
+    ],
+)
 def test_atleast_1d_nan_inf(dtype):
     # atleast_1d is a view: nan/inf/-inf/+-0.0 must pass through bit-for-bit.
     inp = torch.tensor(
@@ -92,7 +116,10 @@ def test_atleast_1d_nan_inf(dtype):
 
 @pytest.mark.atleast_1d_sequence
 @pytest.mark.parametrize("shape", _ATLEAST_1D_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_atleast_1d_sequence(shape, value_range, dtype):
     # Mix a 0-dim scalar with the current shape so the sequence overload
     # exercises both the scalar -> (1,) view path and the identity path.
@@ -126,9 +153,19 @@ def test_atleast_1d_sequence_empty():
 @pytest.mark.parametrize("shape", [(), (3,), (16, 64), (7, 13, 29)])
 @pytest.mark.parametrize(
     "dtype",
-    tu.selected_cases(
-        [d for d in _SUPPORTED_DTYPES if d.is_floating_point or d.is_complex]
-    ),
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype in tu.selected_cases(
+            [d for d in _SUPPORTED_DTYPES if d.is_floating_point or d.is_complex]
+        )
+    ],
 )
 def test_atleast_1d_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
@@ -166,7 +203,21 @@ def test_atleast_1d_rejects_non_tensor():
 
 @pytest.mark.atleast_1d
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(_SUPPORTED_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SUPPORTED_DTYPES)
+        )
+    ],
 )
 def test_atleast_1d_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)

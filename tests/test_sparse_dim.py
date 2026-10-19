@@ -159,9 +159,22 @@ def _assert_result(res_out, ref_out):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
+    for dtype in _DTYPES
+]
+
+
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize("shape", _DENSE_SHAPES)
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype", _INPUT_DTYPE_CASES)
 def test_sparse_dim_dense_layouts(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -189,7 +202,15 @@ def test_sparse_dim_empty_dense(shape, dtype):
 # Sparse dimensions depend on the tensor layout, not stored values.
 # One ordinary value range per dtype for the fixed-structure queries.
 _DTYPE_RANGE_CASES = [
-    (dtype, value_range)
+    pytest.param(
+        dtype,
+        value_range,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for dtype in _DTYPES
     for value_range in tu.selected_ranges()[:1]
 ]
@@ -211,7 +232,21 @@ _SHAPE_DTYPE_CASES = tu.selected_cases(
 
 
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("shape, dtype", _SHAPE_DTYPE_CASES)
+@pytest.mark.parametrize(
+    "shape, dtype",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for shape, dtype in _SHAPE_DTYPE_CASES
+    ],
+)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_sparse_dim_dense_spec_shapes_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
@@ -225,7 +260,7 @@ def test_sparse_dim_dense_spec_shapes_value_ranges(shape, value_range, dtype):
 
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize("case", _COO_CASES)
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype", _INPUT_DTYPE_CASES)
 def test_sparse_dim_coo_layouts(case, dtype):
     sparse_shape, dense_shape, nnz = case
     inp = _make_coo(sparse_shape, dense_shape, nnz, dtype, ["-1", "1"])
@@ -256,7 +291,21 @@ _COO_SPEC_DTYPE_CASES = tu.selected_cases(
 
 
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("shape, dtype", _COO_SPEC_DTYPE_CASES)
+@pytest.mark.parametrize(
+    "shape, dtype",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for shape, dtype in _COO_SPEC_DTYPE_CASES
+    ],
+)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_sparse_dim_coo_spec_shapes_value_ranges(shape, value_range, dtype):
     inp = _make_coo(tuple(shape), (), _SPEC_NNZ, dtype, value_range, seed=0)
@@ -280,7 +329,21 @@ _COO_DTYPE_CASES = tu.selected_cases(
 
 
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("case, dtype", _COO_DTYPE_CASES)
+@pytest.mark.parametrize(
+    "case, dtype",
+    [
+        pytest.param(
+            case,
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for case, dtype in _COO_DTYPE_CASES
+    ],
+)
 @pytest.mark.parametrize("value_range", tu.selected_ranges()[:1])
 def test_sparse_dim_coo_value_ranges(case, value_range, dtype):
     sparse_shape, dense_shape, nnz = case
@@ -315,7 +378,7 @@ def test_sparse_dim_empty_coo(dtype):
 
 
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype", _INPUT_DTYPE_CASES)
 def test_sparse_dim_uncoalesced_coo(dtype):
     sparse_shape, dense_shape = (2, 2), (3,)
     indices = torch.tensor([[0, 0, 1, 1, 0], [0, 1, 0, 1, 0]], dtype=torch.long)
@@ -334,7 +397,7 @@ def test_sparse_dim_uncoalesced_coo(dtype):
 
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize("case", _CSR_CASES)
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype", _INPUT_DTYPE_CASES)
 def test_sparse_dim_csr_layouts(case, dtype):
     shape, nnz = case
     inp = _make_csr(shape, nnz, dtype, ["-1", "1"])
@@ -350,7 +413,10 @@ def test_sparse_dim_csr_layouts(case, dtype):
 
 
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_sparse_dim_csr_value_ranges(value_range, dtype):
     shape, nnz = (4, 4), 5
     inp = _make_csr(shape, nnz, dtype, value_range)
@@ -363,7 +429,10 @@ def test_sparse_dim_csr_value_ranges(value_range, dtype):
 
 
 @pytest.mark.sparse_dim
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    _DTYPE_RANGE_CASES,
+)
 def test_sparse_dim_csr_dense_dims(value_range, dtype):
     inp = _make_csr_with_dense_dims(dtype, value_range)
     assert inp.sparse_dim() == 2
@@ -393,7 +462,7 @@ def test_sparse_dim_empty_csr(shape, dtype):
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if 2 <= len(shape) <= 3]
 )
-@pytest.mark.parametrize("dtype", _DTYPES)
+@pytest.mark.parametrize("dtype", _INPUT_DTYPE_CASES)
 def test_sparse_dim_csr_spec_shapes(shape, dtype):
     nnz = 5 if len(shape) == 2 else 3
     inp = _make_csr(shape, nnz, dtype, ["-1", "1"])
@@ -407,7 +476,19 @@ def test_sparse_dim_csr_spec_shapes(shape, dtype):
 
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_DTYPES))
+    ],
 )
 def test_sparse_dim_nan_inf_dense(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario).repeat(2)[:6].reshape(2, 3)
@@ -421,7 +502,19 @@ def test_sparse_dim_nan_inf_dense(dtype, scenario):
 
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_DTYPES))
+    ],
 )
 def test_sparse_dim_nan_inf_coo(dtype, scenario):
     values = tu.make_special_input(dtype, scenario).repeat(2)[:6]
@@ -437,7 +530,19 @@ def test_sparse_dim_nan_inf_coo(dtype, scenario):
 
 @pytest.mark.sparse_dim
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_DTYPES))
+    ],
 )
 def test_sparse_dim_nan_inf_csr(dtype, scenario):
     values = tu.make_special_input(dtype, scenario).repeat(2)[:6]

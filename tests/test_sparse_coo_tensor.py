@@ -84,7 +84,16 @@ _NAN_INF_CASES = [
 ]
 
 _VALUE_RANGE_CASES = [
-    (value_range, case, dtype)
+    pytest.param(
+        value_range,
+        case,
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
     for case in _COO_VALUE_CASES
     for dtype in _COO_DTYPES
     for value_range in tu.selected_ranges()
@@ -104,10 +113,11 @@ def _make_values(nnz, dense_shape, dtype, value_range=None):
 
 
 def _make_special_values(shape, dtype, scenario):
-    base = tu.make_special_input(dtype, scenario)
+    # Prepare repetitions in the requested dtype on CPU before the device transfer.
+    base = tu.make_special_input(dtype, scenario).cpu().to(dtype)
     numel = math.prod(int(extent) for extent in shape)
     repeats = (numel + base.numel() - 1) // base.numel()
-    return base.repeat(repeats)[:numel].reshape(shape)
+    return base.repeat(repeats)[:numel].reshape(shape).to(flag_gems.device)
 
 
 def _make_out_buffer(size, dtype, device, nnz):
@@ -176,6 +186,19 @@ def _assert_rejected(ref_call, candidate_call):
         candidate_call()
 
 
+_COO_INPUT_DTYPE_CASES = [
+    pytest.param(
+        dtype,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "ascend"
+            and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+            reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+        ),
+    )
+    for dtype in _COO_DTYPES
+]
+
+
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_SIZE_ONLY_CASES)
 @pytest.mark.parametrize("dtype", _COO_DTYPES)
@@ -195,7 +218,7 @@ def test_sparse_coo_tensor_size(case, dtype):
 
 @pytest.mark.sparse_coo_tensor_size_out
 @pytest.mark.parametrize("case", _COO_SIZE_ONLY_CASES)
-@pytest.mark.parametrize("dtype", _COO_DTYPES)
+@pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_size_out(case, dtype):
     (size,) = case
     ref_device = _reference_device()
@@ -216,7 +239,7 @@ def test_sparse_coo_tensor_size_out(case, dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_2D_CASES)
-@pytest.mark.parametrize("dtype", _COO_DTYPES)
+@pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices_size(case, dtype):
     size, indices = case
     nnz = len(indices[0])
@@ -232,7 +255,7 @@ def test_sparse_coo_tensor_indices_size(case, dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_ND_CASES)
-@pytest.mark.parametrize("dtype", _COO_DTYPES)
+@pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices_size_nd(case, dtype):
     size, indices = case
     sparse_dim = len(indices)
@@ -250,7 +273,7 @@ def test_sparse_coo_tensor_indices_size_nd(case, dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _COO_INFERRED_CASES)
-@pytest.mark.parametrize("dtype", _COO_DTYPES)
+@pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices(case, dtype):
     size, indices, dense_shape = case
     sparse_dim = len(indices)
@@ -285,7 +308,7 @@ def test_sparse_coo_tensor_indices_size_empty(case, dtype):
 
 
 @pytest.mark.sparse_coo_tensor
-@pytest.mark.parametrize("dtype", _COO_DTYPES)
+@pytest.mark.parametrize("dtype", _COO_INPUT_DTYPE_CASES)
 def test_sparse_coo_tensor_indices_size_is_coalesced(dtype):
     size = (2, 3)
     indices = [[0, 1, 1], [2, 0, 2]]
@@ -310,7 +333,10 @@ def test_sparse_coo_tensor_indices_size_is_coalesced(dtype):
 
 
 @pytest.mark.sparse_coo_tensor
-@pytest.mark.parametrize("value_range,case,dtype", _VALUE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "value_range,case,dtype",
+    _VALUE_RANGE_CASES,
+)
 def test_sparse_coo_tensor_value_ranges(value_range, case, dtype):
     variant, size, indices, dense_shape = case
     sparse_dim = len(indices)
@@ -333,7 +359,19 @@ def test_sparse_coo_tensor_value_ranges(value_range, case, dtype):
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("case", _NAN_INF_CASES)
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_COO_DTYPES))
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and dtype in (torch.float8_e4m3fn, torch.float8_e5m2),
+                reason="Ascend cannot construct or compare FP8 payloads with device kernels",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_COO_DTYPES))
+    ],
 )
 def test_sparse_coo_tensor_nan_inf(case, dtype, scenario):
     size, indices = case
