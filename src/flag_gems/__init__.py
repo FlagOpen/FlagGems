@@ -341,6 +341,7 @@ _FULL_CONFIG = (
     ("_foreach_trunc_", _foreach_trunc_),
     ("_foreach_zero", _foreach_zero),
     ("_foreach_zero_", _foreach_zero_),
+    ("_functional_assert_async.msg", _functional_assert_async),
     (
         "_functional_sym_constrain_range",
         _functional_sym_constrain_range,
@@ -349,7 +350,6 @@ _FULL_CONFIG = (
         "_functional_sym_constrain_range_for_size",
         _functional_sym_constrain_range_for_size,
     ),
-    ("_functional_assert_async.msg", _functional_assert_async),
     ("_fused_adagrad_", _fused_adagrad_),
     ("_fused_adam", _fused_adam),
     ("_fused_adam_", _fused_adam_),
