@@ -20,6 +20,26 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_close(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    if result.is_complex():
+        # Complex equal_nan can hide a wrong finite/Inf partner of a NaN component.
+        tu.assert_result_close(result.real, reference.real)
+        tu.assert_result_close(result.imag, reference.imag)
+    else:
+        tu.assert_result_close(result, reference)
+
+
 # Static device capability flags decide which optional dtypes are declared.
 GER_DTYPES = [
     torch.bool,
@@ -87,12 +107,27 @@ def test_ger_values(shape_pair, value_range, dtype):
     vec2 = tu.make_input(dtype, (vec2_len,), value_range)
     ref_inp = tu.to_reference(inp)
     ref_vec2 = tu.to_reference(vec2)
+    device = inp.device
 
     ref_out = torch.ops.aten.ger(ref_inp, ref_vec2)
+    if utils.TO_CPU and dtype.is_complex and not torch.isfinite(ref_out).all():
+        # Complex overflow has backend-specific inf/NaN patterns. Freeze the
+        # native device result before the candidate; finite cases keep the CPU oracle.
+        ref_out = torch.ops.aten.ger(inp, vec2).detach().cpu().clone()
     res_out = flag_gems.ger(inp, vec2)
 
-    assert res_out.device == inp.device
-    tu.assert_result_close(res_out, ref_out)
+    assert res_out.device == device
+    if res_out.numel():
+        assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+        assert res_out.untyped_storage().data_ptr() != vec2.untyped_storage().data_ptr()
+    _assert_result_close(res_out, ref_out)
+    for source, reference in ((inp, ref_inp), (vec2, ref_vec2)):
+        assert source.device == device
+        assert source.stride() == reference.stride()
+        assert source.storage_offset() == reference.storage_offset()
+        torch.testing.assert_close(
+            source.cpu(), reference.cpu(), rtol=0, atol=0, equal_nan=True
+        )
 
 
 # Candidate view construction: sliced 1-D operands with stride > 1 and a
@@ -124,7 +159,7 @@ def test_ger_strided_input(inp_sel, vec2_sel, dtype):
     ref_out = torch.ops.aten.ger(ref_inp, ref_vec2)
     res_out = flag_gems.ger(inp, vec2)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
 
 # Operands of different but compatible dtypes: the result takes the promoted
@@ -167,7 +202,7 @@ def test_ger_mixed_dtype(dtype_pair):
     ref_out = torch.ops.aten.ger(ref_inp, ref_vec2)
     res_out = flag_gems.ger(inp, vec2)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
 
 # d(out)/d(self) = grad_out @ vec2 and d(out)/d(vec2) = grad_out^T @ self; both
@@ -197,7 +232,7 @@ def test_ger_backward(shape_pair, dtype):
     ref_out = torch.ops.aten.ger(ref_inp, ref_vec2)
     res_out = flag_gems.ger(inp, vec2)
 
-    tu.assert_result_close(res_out.detach(), ref_out.detach())
+    _assert_result_close(res_out.detach(), ref_out.detach())
 
     ref_dself, ref_dvec2 = torch.autograd.grad(
         ref_out, (ref_inp, ref_vec2), grad_outputs=ref_upstream
@@ -206,8 +241,8 @@ def test_ger_backward(shape_pair, dtype):
         res_out, (inp, vec2), grad_outputs=upstream
     )
 
-    tu.assert_result_close(res_dself, ref_dself)
-    tu.assert_result_close(res_dvec2, ref_dvec2)
+    _assert_result_close(res_dself, ref_dself)
+    _assert_result_close(res_dvec2, ref_dvec2)
 
 
 # tu.special_value_cases covers the real float dtypes; complex64 uses the same
@@ -230,7 +265,7 @@ def test_ger_special_values(dtype, scenario):
     ref_out = torch.ops.aten.ger(ref_inp, ref_vec2)
     res_out = flag_gems.ger(inp, vec2)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out)
 
 
 # ger takes no scalar parameters; the rank guard is its only input validation.
@@ -308,4 +343,4 @@ def test_ger_out(shape_pair, dtype):
 
     assert res_out is out
     assert out.device == inp.device
-    tu.assert_result_close(res_out, ref_buf)
+    _assert_result_close(res_out, ref_buf)

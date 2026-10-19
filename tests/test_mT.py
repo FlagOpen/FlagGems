@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::mT swaps the last two dimensions of a matrix or batch of matrices and
 # returns a zero-copy view sharing storage with its input. It transposes only:
 # the lazy conjugate bit of a complex input is preserved, not toggled.
@@ -88,7 +103,21 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.mT
 @pytest.mark.parametrize("shape", _MT_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_mT(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -96,7 +125,7 @@ def test_mT(shape, value_range, dtype):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -124,7 +153,7 @@ def test_mT_with_size(shape):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -152,7 +181,7 @@ def test_mT_strided_input(storage_shape, layout, expand_shape, dtype):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
@@ -162,12 +191,12 @@ def test_mT_conjugate_bit(shape):
     # A lazy-conjugate input keeps its conj bit through the transpose view.
     base = tu.make_input(torch.complex64, shape, ["-1", "1"])
     inp = base.conj()
-    ref_inp = tu.to_reference(inp)
+    ref_inp = tu.to_reference(base).conj()
 
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.is_conj()
     _assert_view(res_out, ref_out, inp, ref_inp)
 
@@ -190,12 +219,12 @@ def test_mT_view_writes_through(shape, layout):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
     res_out.fill_(3.0)
     ref_out.fill_(3.0)
-    tu.assert_result_equal(base, ref_base)
+    _assert_result_equal(base, ref_base)
 
 
 _MT_BACKWARD_DTYPES = tu.selected_cases(
@@ -206,7 +235,20 @@ _MT_BACKWARD_DTYPES = tu.selected_cases(
 
 @pytest.mark.mT
 @pytest.mark.parametrize("shape", [(4, 6), (3, 5, 7)])
-@pytest.mark.parametrize("dtype", _MT_BACKWARD_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in _MT_BACKWARD_DTYPES
+    ],
+)
 def test_mT_backward(shape, dtype):
     # The operator is reached through the original leaf, so the gradient is the
     # transposed upstream layout and is compared exactly.
@@ -219,20 +261,34 @@ def test_mT_backward(shape, dtype):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     ref_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
 
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 MT_SPECIAL_CASES = tu.selected_cases(tu.special_value_cases(_MT_DTYPES), quick=[])
 
 
 @pytest.mark.mT
-@pytest.mark.parametrize("dtype,scenario", MT_SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype,scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, scenario in MT_SPECIAL_CASES
+    ],
+)
 def test_mT_special_values(dtype, scenario):
     # mT only moves metadata, so NaN / Inf payloads must survive untouched.
     inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
@@ -241,12 +297,25 @@ def test_mT_special_values(dtype, scenario):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_view(res_out, ref_out, inp, ref_inp)
 
 
 @pytest.mark.mT
-@pytest.mark.parametrize("dtype", _MT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in _MT_DTYPES
+    ],
+)
 def test_mT_0d_identity(dtype):
     # 0-D is a deprecated identity: the input object itself is returned.
     inp = tu.make_input(dtype, (), ["-1", "1"])
@@ -255,7 +324,7 @@ def test_mT_0d_identity(dtype):
     ref_out = torch.ops.aten.mT(ref_inp)
     res_out = flag_gems.mT(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out is inp
 
 

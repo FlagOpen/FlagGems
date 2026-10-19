@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _assert_result_equal(result, reference):
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        # Observe complex values on CPU; keep the original tensor contract checked.
+        device = torch.device(flag_gems.device)
+        if device.index is None:
+            device = torch.device(device.type, torch.npu.current_device())
+        assert result.device == device
+        assert result.dtype == reference.dtype
+        assert result.layout == reference.layout
+        assert result.shape == reference.shape
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # Scalars, vectors and matrices become (1, 1, 1), (1, N, 1) and (M, N, 1)
 # views respectively. Tensors with ndim >= 3 are returned unchanged.
 _FP8_DTYPES = [
@@ -38,7 +53,20 @@ ATLEAST_3D_DTYPES = (
 
 @pytest.mark.atleast_3d
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", ATLEAST_3D_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in ATLEAST_3D_DTYPES
+    ],
+)
 def test_atleast_3d(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -46,7 +74,7 @@ def test_atleast_3d(shape, dtype):
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
     res_out = flag_gems.atleast_3d(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # A view/identity op must alias its input (Tensor(a)).
     assert res_out.data_ptr() == inp.data_ptr()
 
@@ -66,7 +94,21 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.atleast_3d
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_atleast_3d_value_ranges(shape, dtype, value_range):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -74,13 +116,26 @@ def test_atleast_3d_value_ranges(shape, dtype, value_range):
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
     res_out = flag_gems.atleast_3d(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp.data_ptr()
 
 
 @pytest.mark.atleast_3d_sequence
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype", ATLEAST_3D_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in ATLEAST_3D_DTYPES
+    ],
+)
 def test_atleast_3d_sequence(shape, dtype):
     # The Tensor[] overload must apply the same view per element: scalar ->
     # (1,1,1), 1-dim -> (1,N,1), 2-dim -> (M,N,1) and >= 3-dim identity.
@@ -97,13 +152,27 @@ def test_atleast_3d_sequence(shape, dtype):
 
     assert len(res_out) == len(ref_out) == 4
     for res, ref, src in zip(res_out, ref_out, inp):
-        tu.assert_result_equal(res, ref)
+        _assert_result_equal(res, ref)
         # Each result is a view of its own input.
         assert res.data_ptr() == src.data_ptr()
 
 
 @pytest.mark.atleast_3d_sequence
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype,value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_atleast_3d_sequence_value_ranges(dtype, value_range):
     # Range sweep for the Tensor[] overload over the three shape-changing
     # paths (0-dim / 1-dim / 2-dim).
@@ -119,7 +188,7 @@ def test_atleast_3d_sequence_value_ranges(dtype, value_range):
 
     assert len(res_out) == len(ref_out) == 3
     for res, ref, src in zip(res_out, ref_out, inp):
-        tu.assert_result_equal(res, ref)
+        _assert_result_equal(res, ref)
         assert res.data_ptr() == src.data_ptr()
 
 
@@ -158,7 +227,7 @@ def test_atleast_3d_nan_inf(dtype):
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
     res_out = flag_gems.atleast_3d(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp.data_ptr()
 
 
@@ -171,7 +240,7 @@ def test_atleast_3d_complex(dtype):
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
     res_out = flag_gems.atleast_3d(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert res_out.data_ptr() == inp.data_ptr()
 
 
@@ -179,9 +248,19 @@ def test_atleast_3d_complex(dtype):
 @pytest.mark.parametrize("shape", [(), (3,), (4, 5), (16, 64), (7, 13, 29)])
 @pytest.mark.parametrize(
     "dtype",
-    tu.selected_cases(
-        [d for d in ATLEAST_3D_DTYPES if d.is_floating_point or d.is_complex]
-    ),
+    [
+        pytest.param(
+            dtype,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype in tu.selected_cases(
+            [d for d in ATLEAST_3D_DTYPES if d.is_floating_point or d.is_complex]
+        )
+    ],
 )
 def test_atleast_3d_backward(shape, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"]).requires_grad_()
@@ -194,11 +273,11 @@ def test_atleast_3d_backward(shape, dtype):
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)[0]
 
     res_out = flag_gems.atleast_3d(inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
     res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=grad)[0]
-    tu.assert_result_equal(res_in_grad, ref_in_grad)
+    _assert_result_equal(res_in_grad, ref_in_grad)
 
 
 @pytest.mark.atleast_3d_negative
@@ -222,7 +301,21 @@ def test_atleast_3d_rejects_non_tensor():
 
 @pytest.mark.atleast_3d
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(ATLEAST_3D_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and str(dtype).startswith("torch.float8_"),
+                reason="Ascend cannot construct FP8 inputs with device casts or fills",
+            ),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(ATLEAST_3D_DTYPES)
+        )
+    ],
 )
 def test_atleast_3d_special_scenarios(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -231,4 +324,4 @@ def test_atleast_3d_special_scenarios(dtype, scenario):
     ref_out = torch.ops.aten.atleast_3d(ref_inp)
     res_out = flag_gems.atleast_3d(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
