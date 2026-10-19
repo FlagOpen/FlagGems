@@ -18371,6 +18371,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_broadcast_to_copy
+  description: 'Broadcasts a sparse COO tensor to the target shape, always materialising
+    a fresh copy of the broadcast indices and values; the copy variant of
+    ``aten::_sparse_broadcast_to`` supporting the out= form.
+
+    '
+  for:
+  - _sparse_broadcast_to_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
