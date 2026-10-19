@@ -371,7 +371,7 @@ def test_linalg_qr_empty(shape, mode):
     """Degenerate (zero-size) inputs return torch-compatible empty factors."""
     inp = torch.randn(shape, device=DEVICE)
 
-    ref_Q, ref_R = torch.linalg.qr(inp, mode=mode)
+    ref_Q, ref_R = torch.linalg.qr(inp.cpu(), mode=mode)
     res_Q, res_R = flag_gems.linalg_qr(inp, mode=mode)
 
     assert res_Q.shape == ref_Q.shape
