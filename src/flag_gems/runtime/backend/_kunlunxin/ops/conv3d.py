@@ -168,6 +168,7 @@ def conv3d_forward_kernel(
     BLOCK_NI_DO_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    GEOMETRY_KEY: tl.constexpr,
 ):
     pid_ni_do_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
@@ -490,6 +491,14 @@ def _verify3(rec, out):
     return False
 
 
+def _geometry_key(*dims):
+    """Fold the tensor geometry into one value so it keys the launch."""
+    acc = 0
+    for dim in dims:
+        acc = (acc * 1000003) ^ int(dim)
+    return acc & 0x7FFFFFFF
+
+
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     logger.debug("GEMS_KUNLUNXIN CONV3D")
 
@@ -633,6 +642,16 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             BLOCK_NI_DO_HO_WO=32,
             BLOCK_CI=32,
             BLOCK_CO=32,
+            GEOMETRY_KEY=_geometry_key(
+                in_n,
+                input_depth,
+                input_height,
+                input_width,
+                out_c,
+                weight_depth,
+                weight_height,
+                weight_width,
+            ),
         )
         return out
 
