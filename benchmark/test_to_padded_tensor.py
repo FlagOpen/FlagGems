@@ -105,6 +105,15 @@ def _build_inputs_fn(plan, dtype, device):
 class ToPaddedTensorBenchmark(OperatorBenchmark):
     # Two-phase benchmark over the jagged and strided nested layouts.
 
+    def record_shapes(self, nested, **kwargs):
+        # Strided nested tensors have no single size; record each dense part.
+        return [
+            {
+                "layout": str(nested.layout),
+                "parts": [list(part.shape) for part in nested.unbind()],
+            }
+        ], kwargs
+
     def set_shapes(self, shape_file_path=None):
         super().set_shapes(shape_file_path)
         rows = []
