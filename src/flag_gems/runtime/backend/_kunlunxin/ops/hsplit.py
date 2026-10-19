@@ -46,9 +46,7 @@ def hsplit(
     else:
         indices = [int(i) for i in indices_or_sections]
         split_sizes = [indices[0]]
-        split_sizes.extend(
-            indices[i] - indices[i - 1] for i in range(1, len(indices))
-        )
+        split_sizes.extend(indices[i] - indices[i - 1] for i in range(1, len(indices)))
         split_sizes.append(dim_size - indices[-1])
 
     outputs = []
