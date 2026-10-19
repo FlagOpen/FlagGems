@@ -113,6 +113,6 @@ def test_exponential_far_left_tail(seed):
     # times the true mass; the buggy atom overshoots by ~90x.
     for t, bound in ((1e-6, 5e-6), (1e-5, 3e-5)):
         observed = (x < t).float().mean().item()
-        assert observed < bound, (
-            f"seed={seed}: P(X < {t:.0e}) = {observed:.3e}, expected ~{t:.0e}"
-        )
+        assert (
+            observed < bound
+        ), f"seed={seed}: P(X < {t:.0e}) = {observed:.3e}, expected ~{t:.0e}"
