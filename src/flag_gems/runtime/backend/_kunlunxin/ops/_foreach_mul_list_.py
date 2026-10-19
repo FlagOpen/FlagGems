@@ -57,9 +57,7 @@ import triton.language as tl
 from flag_gems.ops._foreach_binary import _foreach_mul__List as _generic_mul_list
 from flag_gems.utils.foreach import check_tensor_list, has_internal_overlap, tl_dtype
 
-# Same logger as the generic implementation; the registration-liveness test
-# keeps probing "GEMS _FOREACH_MUL_" under it through the generic wrapper.
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -165,7 +163,7 @@ def _try_fast(tensors, others):
 
 
 def _foreach_mul__List(self, other):
-    logger.debug("GEMS_KUNLUNXIN _FOREACH_MUL_LIST_")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_MUL_")
     tensors = check_tensor_list(self)
     others = check_tensor_list(other)
     if len(tensors) == len(others):
