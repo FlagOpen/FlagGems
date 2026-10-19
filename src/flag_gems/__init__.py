@@ -1714,6 +1714,7 @@ _FULL_CONFIG = (
     ("slice_scatter", slice_scatter),
     ("slogdet", slogdet),
     ("slow_conv_transpose2d", slow_conv_transpose2d),
+    ("slow_conv_transpose3d", slow_conv_transpose3d),
     ("smm", smm, None, (SPARSE_CUDA_DISPATCH_KEY,)),
     ("smooth_l1_loss", smooth_l1_loss),
     ("smooth_l1_loss.out", smooth_l1_loss_out),
