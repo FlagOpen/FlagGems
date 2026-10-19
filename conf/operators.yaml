@@ -20979,7 +20979,7 @@ ops:
   kind:
     - Tensor
   stages:
-    - alpha: '5.1'
+    - alpha: '5.5.0'
 - id: unfold
   description: Return a view of the tensor with a sliding window along the given dimension.
   for:
