@@ -66,7 +66,7 @@ def _device_key():
     return str(flag_gems.device), torch_device_fn.current_device()
 
 
-def _unsupported_reason(exc, *, dtype=None, stage=None, scaling=None):
+def _unsupported_reason(exc, *, dtype=None, other_dtype=None, stage=None, scaling=None):
     text = str(exc)
     # Resource exhaustion and device faults are not evidence of dtype support.
     if any(
@@ -91,16 +91,27 @@ def _unsupported_reason(exc, *, dtype=None, stage=None, scaling=None):
         and "f8E5M2 type" in text
     ):
         return f"Ascend {stage} does not support {dtype}: {text[-1600:]}"
-    # MetaX rejects this generated rowwise FP8 baseline with INVALID_VALUE;
-    # scalar scaling and failures outside the native probe must still raise.
+    # MACA rejects these generated, aligned native FP8 inputs. Record an
+    # unavailable baseline, not a skipped Gems benchmark or a claim that the
+    # device cannot run FP8. Require both operand types and the native stage;
+    # the same error from a conversion, dot probe, or candidate must still fail.
+    native_dtypes = ("torch.float8_e4m3fn", "torch.float8_e5m2")
     if (
         flag_gems.vendor_name == "metax"
         and stage == "native"
-        and scaling == "rowwise"
-        and str(dtype).removeprefix("torch.") in FP8_NAMES
-        and "CUBLAS_STATUS_INVALID_VALUE when calling cublasLtMatmul" in text
+        and isinstance(exc, RuntimeError)
+        and str(dtype) in native_dtypes
+        and str(other_dtype) in native_dtypes
     ):
-        return f"MetaX native FP8 rowwise scaling is unavailable: {text[-1600:]}"
+        if (
+            scaling in ("scalar", "rowwise")
+            and "torch.float8_e4m3fn" in (str(dtype), str(other_dtype))
+            and "CUBLAS_STATUS_INVALID_VALUE when calling cublasLtMatmul" in text
+        ) or (
+            scaling == "rowwise"
+            and "Rowwise scaling is not currently supported on your device" in text
+        ):
+            return f"MetaX native FP8 {scaling} baseline unavailable: {text[-1600:]}"
     if not any(
         s in text.lower()
         for s in (
@@ -536,6 +547,7 @@ def test_metax_known_native_rowwise_rejection(modules):
     reason = modules.accuracy._unsupported_reason(
         RuntimeError(METAX_ERROR),
         dtype="torch.float8_e4m3fn",
+        other_dtype="torch.float8_e4m3fn",
         stage="native",
         scaling="rowwise",
     )
@@ -543,23 +555,44 @@ def test_metax_known_native_rowwise_rejection(modules):
 
 
 @pytest.mark.parametrize(
-    "vendor,dtype,stage,scaling,message",
+    "vendor,dtype,other_dtype,stage,scaling,message",
     [
-        ("nvidia", "float8_e4m3fn", "native", "rowwise", METAX_ERROR),
-        ("metax", "float32", "native", "rowwise", METAX_ERROR),
-        ("metax", "float8_e4m3fn", "dot", "rowwise", METAX_ERROR),
-        ("metax", "float8_e4m3fn", "native", "scalar", METAX_ERROR),
-        ("metax", "float8_e4m3fn", "native", "rowwise", "CUBLAS_STATUS_INVALID_VALUE"),
+        ("nvidia", "float8_e4m3fn", "float8_e4m3fn", "native", "rowwise", METAX_ERROR),
+        ("metax", "float32", "float8_e4m3fn", "native", "rowwise", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "float32", "native", "scalar", METAX_ERROR),
+        ("metax", "float8_e4m3fn", "float8_e4m3fn", "dot", "scalar", METAX_ERROR),
+        ("metax", "float8_e5m2", "float8_e5m2", "native", "scalar", METAX_ERROR),
+        ("metax", "float8_e4m3fn", None, "native", "scalar", METAX_ERROR),
+        (
+            "metax",
+            "float8_e4m3fn",
+            "float8_e4m3fn",
+            "native",
+            "rowwise",
+            "CUBLAS_STATUS_INVALID_VALUE",
+        ),
+        (
+            "metax",
+            "float8_e4m3fn",
+            "float8_e4m3fn",
+            "native",
+            "scalar",
+            "Rowwise scaling is not currently supported on your device",
+        ),
     ],
 )
 def test_other_native_errors_are_not_skipped(
-    modules, vendor, dtype, stage, scaling, message
+    modules, vendor, dtype, other_dtype, stage, scaling, message
 ):
     modules.gems.vendor_name = vendor
     error = RuntimeError(message)
     with pytest.raises(RuntimeError) as caught:
         modules.accuracy._unsupported_reason(
-            error, dtype=f"torch.{dtype}", stage=stage, scaling=scaling
+            error,
+            dtype=f"torch.{dtype}",
+            other_dtype=f"torch.{other_dtype}" if other_dtype else None,
+            stage=stage,
+            scaling=scaling,
         )
     assert caught.value is error
 
@@ -576,8 +609,19 @@ def test_other_native_errors_are_not_skipped(
     ],
 )
 def test_resource_and_unknown_errors_propagate(modules, message):
+    # A device fault must take precedence even when the diagnostic also
+    # contains the native rejection that would otherwise allow baseline skip.
+    diagnostic = message
+    if message != "unknown compiler regression":
+        diagnostic += "\n" + METAX_ERROR
     with pytest.raises(RuntimeError, match=message):
-        modules.accuracy._unsupported_reason(RuntimeError(message))
+        modules.accuracy._unsupported_reason(
+            RuntimeError(diagnostic),
+            dtype="torch.float8_e4m3fn",
+            other_dtype="torch.float8_e4m3fn",
+            stage="native",
+            scaling="scalar",
+        )
 
 
 def _pytest_environment(pytester, monkeypatch):
