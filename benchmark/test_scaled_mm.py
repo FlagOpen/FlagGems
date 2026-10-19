@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 from contextlib import redirect_stderr, redirect_stdout
 from functools import lru_cache
 from io import StringIO
@@ -37,6 +38,8 @@ from tests.test_scaled_mm import (
 )
 
 from . import base, conftest, consts
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(None)
@@ -128,6 +131,7 @@ class ScaledMMBenchmark(base.Benchmark):
         failed = skipped = total = 0
         for dtype in self.to_bench_dtypes:
             metrics = []
+            skipped_rows = native_skipped_rows = 0
             for case in CASES:
                 if case[0] != dtype:
                     continue
@@ -137,14 +141,14 @@ class ScaledMMBenchmark(base.Benchmark):
                     with pytest.MonkeyPatch.context() as patch:
                         try:
                             _prepare_benchmark(case, shape, self.use_out, None, patch)
-                            metric = self._measure_input(self._build_input())
-                        except pytest.skip.Exception as exc:
-                            skipped += 1
-                            detail = self.record_shapes()
-                            detail["skip_reason"] = str(exc)
-                            metric = consts.BenchmarkMetrics(
-                                shape_detail=detail, skip_reason=str(exc)
+                            native_skipped_rows += int(conftest.Config.skip_native)
+                            metric = self._measure_input(
+                                self._build_input(), dtype=dtype
                             )
+                        except pytest.skip.Exception:
+                            skipped += 1
+                            skipped_rows += 1
+                            continue
                         except (Exception, pytest.fail.Exception) as exc:
                             failed += 1
                             detail = self.record_shapes()
@@ -155,24 +159,27 @@ class ScaledMMBenchmark(base.Benchmark):
                         metrics.append(metric)
             if metrics:
                 results.append(self._emit_result(dtype, metrics))
+            logger.info(
+                "%s dtype=%s: %d result rows, %d skipped rows, %d native baselines skipped",
+                self.op_name,
+                dtype,
+                len(metrics),
+                skipped_rows,
+                native_skipped_rows,
+            )
         if failed:
             pytest.fail(
                 f"{failed}/{total} scaled_mm benchmark rows failed; see table/JSON"
             )
         if total and skipped == total:
-            pytest.skip(f"All {total} benchmark rows unsupported; see per-row reasons")
+            pytest.skip(f"All {total} benchmark rows skipped")
         return results
 
     def record_shapes(self, *args, **kwargs):
-        detail = {
+        return {
             "fp8_case": case_id(self.case),
             "M_N_K": self.shape,
         }
-        if conftest.Config.native_baseline_skip_reason:
-            detail["native_baseline_skip_reason"] = (
-                conftest.Config.native_baseline_skip_reason
-            )
-        return detail
 
     def get_tflops(self, op, *args, **kwargs):
         return 2 * args[0].shape[0] * args[0].shape[1] * args[1].shape[1]
@@ -248,7 +255,8 @@ def test_native_rejection_still_runs_candidate(
     monkeypatch.setattr(bench, "_build_input", lambda: ())
     candidate_fails = False
 
-    def measure(input):
+    def measure(input, *, dtype):
+        assert dtype == case[0]
         assert modules.config.skip_native is True
         reason = modules.config.native_baseline_skip_reason
         assert f"native FP8 {scaling}" in reason and message in reason
@@ -345,8 +353,10 @@ def test_grouped_tables_preserve_rows_and_baseline_state(
     from .summary_for_plot import all_benchshape_passed, parse_log
 
     module = modules.benchmark
+    attempted = set()
 
     def require(case):
+        attempted.add((case, bench.shape))
         if any("fnuz" in dtype for dtype in case[:2]):
             pytest.skip("input FNUZ unsupported")
 
@@ -368,7 +378,8 @@ def test_grouped_tables_preserve_rows_and_baseline_state(
         bench.shapes = module.CORE_SHAPES
         monkeypatch.setattr(bench, "_build_input", lambda: ())
 
-        def measure(input):
+        def measure(input, *, dtype):
+            assert dtype == bench.case[0]
             case, shape = bench.case, bench.shape
             visited.add((case, shape))
             skip_native = case[1].endswith("e4m3fn")
@@ -402,68 +413,33 @@ def test_grouped_tables_preserve_rows_and_baseline_state(
             else:
                 bench._run_legacy()
         table = output.getvalue()
-        assert table.count("Performance Test") == 1
-        assert table.count("SKIP") == (60 if "fnuz" in dtype else 30)
+        assert table.count("Performance Test") == (0 if "fnuz" in dtype else 1)
+        assert "input FNUZ unsupported" not in table
+        assert "native unavailable" not in table
+        assert "SKIP" not in table
         tables.append(table)
         assert modules.config.skip_native is False
         assert modules.config.native_baseline_skip_reason is None
 
     assert len(visited) == 60  # Two executable A dtypes x two B dtypes x 5 x 3.
-    assert len(modules.conftest.results) == 4
+    assert attempted == {
+        (case, shape) for case in module.CASES for shape in module.CORE_SHAPES
+    }
+    assert len(modules.conftest.results) == 2
     rows = [row for report in modules.conftest.results for row in report["result"]]
-    assert len(rows) == 240
+    assert len(rows) == 60
     assert {
         (row["shape_detail"]["fp8_case"], tuple(row["shape_detail"]["M_N_K"]))
         for row in rows
-    } == {
-        (module.case_id(case), shape)
-        for case in module.CASES
-        for shape in module.CORE_SHAPES
-    }
+    } == {(module.case_id(case), shape) for case, shape in visited}
     assert sum(row["error_msg"] is not None for row in rows) == int(inject_failure)
-    assert sum(row["skip_reason"] is not None for row in rows) == 180
     assert sum(row["latency"] is not None for row in rows) == 60 - int(inject_failure)
-    # The normal reporting parser must retain SKIP rows and never call an
-    # entirely skipped dtype a successful device benchmark.
+    # Only executed rows reach the unchanged reporting parser; a fully
+    # skipped dtype must not emit an empty, apparently successful result.
     log = tmp_path / "result.log"
     log.write_text("\n".join("[INFO] " + record for record in modules.conftest.records))
     reports = parse_log(log)
     assert [all_benchshape_passed(report.result) for report in reports] == [
         not inject_failure,
         True,
-        False,
-        False,
     ]
-    assert (
-        sum(row.skip_reason is not None for report in reports for row in report.result)
-        == 180
-    )
-
-
-def test_grouped_report_keeps_optional_columns_on_skipped_rows(modules):
-    consts = modules.benchmark.consts
-    metrics = [
-        consts.BenchmarkMetrics(
-            shape_detail={"case": "skipped"}, skip_reason="unsupported"
-        ),
-        consts.BenchmarkMetrics(
-            shape_detail={"case": "measured"}, latency=1.0, tflops=1.0, gbps=2.0
-        ),
-        consts.BenchmarkMetrics(
-            shape_detail={"case": "failed"}, error_msg="candidate error"
-        ),
-    ]
-    report = consts.BenchmarkResult(
-        "scaled_mm", "torch.float8_e4m3fn", "operator", "core", metrics
-    )
-    table = str(report)
-    rows = [
-        line
-        for line in table.splitlines()
-        if line.startswith(("SKIP", "SUCCESS", "FAILED"))
-    ]
-    assert len(rows) == 3
-    assert "TFLOPS" in table and "Gems GBPS" in table
-    assert len({row.index("{") for row in rows}) == 1
-    assert rows[0].count("N/A") == 6
-    assert rows[2].count("N/A") == 6
