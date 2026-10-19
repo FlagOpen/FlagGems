@@ -116,6 +116,11 @@ def test_where_self_out_cross_device(shape, dtype):
 
     shapes = (shape, None)
     for a_shape, b_shape, c_shape in itertools.product(shapes, shapes, shapes):
+        if not (a_shape and b_shape and c_shape):
+            # Combination with CPU scalars only: the dispatcher selects torch's
+            # native CPU kernel, so the GEMS where kernel (which asserts on a
+            # device tensor) is never in play here. Skip that combination.
+            continue
         a = inp1 if a_shape else torch.tensor(0)
         b = inp2 if b_shape else torch.tensor(1)
         c = cond if c_shape else torch.tensor(True)
@@ -125,12 +130,6 @@ def test_where_self_out_cross_device(shape, dtype):
         ref_c = utils.to_reference(c)
 
         ref_out = torch.where(ref_c, ref_a, ref_b)
-        if flag_gems.device not in {a.device.type, b.device.type, c.device.type}:
-            # All operands are CPU tensors, so the dispatcher never selects the
-            # GEMS kernel (which asserts on a device tensor). Compare torch to
-            # itself on this combination, exactly as the dispatch path does.
-            res_out = torch.where(c, a, b)
-        else:
-            res_out = flag_gems.where_self(c, a, b)
+        res_out = flag_gems.where_self(c, a, b)
 
         utils.gems_assert_equal(res_out, ref_out)
